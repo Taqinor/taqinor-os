@@ -14,6 +14,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 /* WIR109 — XSTK15 : conditionnements d'ACHAT d'un produit (« Touret 100 m »,
    « Carton 50 ») avec leur facteur de conversion vers l'unité de stock. Le
@@ -117,6 +119,7 @@ function ConditionnementForm({ produits, conditionnement, onClose, onSaved }) {
 }
 
 export default function ConditionnementsProduit() {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
   const canWriteViaPerm = useHasPermission('stock_modifier')
   const canWriteViaRole = useIsAdminOrResponsable()
@@ -143,7 +146,7 @@ export default function ConditionnementsProduit() {
   }, [])
 
   const supprimer = async (c) => {
-    if (!window.confirm(`Supprimer le conditionnement « ${c.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer le conditionnement « ${c.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     try {
       await stockApi.deleteConditionnementProduit(c.id)
       reload()
@@ -221,6 +224,7 @@ export default function ConditionnementsProduit() {
         <ConditionnementForm produits={produits} conditionnement={selected.id ? selected : null}
                              onClose={() => setSelected(null)} onSaved={reload} />
       )}
+      {dialogueConfirmation}
     </div>
   )
 }

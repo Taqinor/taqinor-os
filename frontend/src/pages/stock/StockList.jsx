@@ -57,6 +57,8 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const SL_ECRAN = 'stock.produits'
@@ -716,6 +718,7 @@ function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
 
 // ── Page principale ────────────────────────────────────────────────────────
 export default function StockList() {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { produits, produitsArchived, categories, loading, error } = useSelector(s => s.stock)
@@ -1043,7 +1046,7 @@ export default function StockList() {
   }
 
   const handleDelete = async (p) => {
-    if (!window.confirm(`Supprimer le produit « ${p.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer le produit « ${p.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     try {
       const result = await dispatch(deleteProduit(p.id)).unwrap()
       if (result.archived) {
@@ -1068,7 +1071,7 @@ export default function StockList() {
   }
 
   const handleUnarchive = async (p) => {
-    if (!window.confirm(`Désarchiver le produit « ${p.nom} » ?`)) return
+    if (!(await confirmer({ title: `Désarchiver le produit « ${p.nom} » ?`, confirmLabel: 'Désarchiver', severity: 'low' }))) return
     try {
       await dispatch(unarchiveProduit(p.id)).unwrap()
       dispatch(fetchProduitsArchived())
@@ -1664,6 +1667,7 @@ export default function StockList() {
           )}
         </div>
       )}
+      {dialogueConfirmation}
     </div>
   )
 }

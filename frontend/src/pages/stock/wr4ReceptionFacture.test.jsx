@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
@@ -140,5 +140,40 @@ describe('WR4 — PDF facture fournisseur (FG55)', () => {
     fireEvent.click(screen.getByRole('button', { name: /PDF \(interne\)/ }))
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Réservé aux responsables.')
+  })
+})
+
+/* ASTK231 (C-ASTK-042, FOUR-19) — annuler une réception passe par l'AlertDialog
+   commune (`features/stock/useConfirmation`), jamais par la boîte native. */
+describe('ReceptionDetail — annulation confirmée par AlertDialog (ASTK231)', () => {
+  const brouillon = {
+    id: 12, reference: 'REC-2026-10-0012', statut: 'brouillon',
+    bon_commande_reference: 'BCF-9', fournisseur_nom: 'JA Solar',
+    date_reception: '2026-10-06',
+    lignes: [{ id: 1, produit_nom: 'Panneau', quantite: 5 }],
+  }
+
+  it('annuler une réception sans dialogue natif', async () => {
+    const natif = vi.spyOn(window, 'confirm')
+    stockApi.annulerReceptionFournisseur.mockResolvedValue({ data: {} })
+    const onSaved = vi.fn()
+    wrap(<ReceptionDetail reception={brouillon} onClose={() => {}} onSaved={onSaved} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Annuler la réception' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(stockApi.annulerReceptionFournisseur).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler la réception' }))
+    await waitFor(() => expect(stockApi.annulerReceptionFournisseur).toHaveBeenCalledWith(12))
+    expect(onSaved).toHaveBeenCalledWith('Réception annulée.')
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
+  })
+
+  it('« Annuler » dans la boîte ne touche à rien', async () => {
+    wrap(<ReceptionDetail reception={brouillon} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Annuler la réception' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(stockApi.annulerReceptionFournisseur).not.toHaveBeenCalled()
   })
 })

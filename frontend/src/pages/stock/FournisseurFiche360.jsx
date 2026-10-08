@@ -27,6 +27,8 @@ import OnboardingFournisseurWizard from '../../components/OnboardingFournisseurW
 import ScoreRisqueFournisseurBadge from '../../components/ScoreRisqueFournisseurBadge'
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -701,6 +703,7 @@ function ContactForm({ fournisseurId, contact, onClose, onSaved }) {
 }
 
 function OngletContacts({ fournisseurId, canWrite }) {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -716,7 +719,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
   useEffect(() => { reload() }, [fournisseurId])
 
   const supprimer = async (c) => {
-    if (!window.confirm(`Supprimer le contact « ${c.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer le contact « ${c.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     try { await stockApi.deleteContactFournisseur(c.id); reload() } catch { /* affiché via reload */ }
   }
 
@@ -762,6 +765,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
         <ContactForm fournisseurId={fournisseurId} contact={editing.id ? editing : null}
                      onClose={() => setEditing(null)} onSaved={reload} />
       )}
+      {dialogueConfirmation}
     </div>
   )
 }

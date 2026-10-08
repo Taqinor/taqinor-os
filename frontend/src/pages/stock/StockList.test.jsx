@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -350,10 +350,13 @@ describe('StockList — inventaire physique : quantités entières (ASTK209)', (
 describe('StockList — annuler un désarchivage (ASTK83)', () => {
   it('annuler un désarchivage ré-archive sans supprimer', async () => {
     const archive = baseProduit({ id: 7, nom: 'Ancien câble', sku: 'CAB-OLD', is_archived: true })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'confirm')
     renderPage({ produitsArchived: [archive] })
     fireEvent.click(screen.getByRole('button', { name: /Archivés/ }))
     fireEvent.click((await screen.findAllByLabelText('Désarchiver'))[0])
+    // ASTK231 — l'AlertDialog commune remplace la boîte native.
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Désarchiver' }))
+    expect(window.confirm).not.toHaveBeenCalled()
     await waitFor(() => expect(toastWithUndo).toHaveBeenCalled())
     const { onUndo } = toastWithUndo.mock.calls[0][0]
     await onUndo()
