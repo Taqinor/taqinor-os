@@ -18,6 +18,18 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.roles.permissions import IsInternalWriterOrPortalClientOwner
 
 
+def _signaler_pdf_devis_genere(devis):
+    """ADEV22 — émet ``document_pdf_generated(kind='devis')`` (journal
+    d'audit) ; jamais bloquant pour le rendu."""
+    from core.events import document_pdf_generated
+    try:
+        document_pdf_generated.send(sender=Devis, instance=devis, kind='devis')
+    except Exception:  # noqa: BLE001 — un journal raté ne casse pas le rendu
+        import logging
+        logging.getLogger(__name__).exception(
+            'ADEV22 : audit PDF devis ignoré (devis %s)', devis.pk)
+
+
 class DevisPdfActionsMixin:
     """SPL139 — actions de rendu PDF de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -34,12 +46,8 @@ class DevisPdfActionsMixin:
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
         task = task_generate_devis_pdf.delay(devis.id, pdf_options)
-        # M4 — événement découplé : ventes émet, le satellite audit journalise
-        # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
-        # est synchrone (même requête), donc l'acteur/société restent identiques.
-        from core.events import document_pdf_generated
-        document_pdf_generated.send(
-            sender=Devis, instance=devis, kind='devis')
+        # ADEV22 (C-ADEV-028) — l'entrée d'audit « PDF devis généré » n'est
+        # plus écrite à la DEMANDE (202) : la tâche l'émet à son rendu réussi.
         # WIR217 — une nouvelle demande efface l'échec consigné : sinon un
         # « Réessayer » repartirait déjà marqué en échec.
         from ..tasks import oublier_echec_pdf_devis
@@ -153,6 +161,9 @@ class DevisPdfActionsMixin:
                 {'detail': f'Génération de la proposition échouée : {exc}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        # ADEV22 — audit au RENDU réussi (M4 : ventes émet, le satellite audit
+        # journalise AuditLog.Action.PDF ; signal synchrone, même acteur).
+        _signaler_pdf_devis_genere(devis)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         # QD2 — nom cohérent (société _ type _ client _ référence).
         from ..utils.filenames import document_filename

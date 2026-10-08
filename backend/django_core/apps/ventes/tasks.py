@@ -55,6 +55,21 @@ def oublier_echec_pdf_devis(devis_id):
     cache.delete(pdf_job_cache_key(devis_id))
 
 
+def _signaler_pdf_devis_genere(devis_id):
+    """ADEV22 — émet ``document_pdf_generated(kind='devis')`` pour le devis
+    rendu ; best-effort (un journal raté n'invalide pas un PDF rendu)."""
+    try:
+        from core.events import document_pdf_generated
+        from .models import Devis
+        devis = Devis.objects.filter(pk=devis_id).first()
+        if devis is not None:
+            document_pdf_generated.send(
+                sender=Devis, instance=devis, kind='devis')
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception('ADEV22 : audit PDF devis ignoré (devis %s)',
+                         devis_id)
+
+
 @shared_task(
     bind=True,
     name='ventes.generate_devis_pdf',
@@ -102,6 +117,9 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             from .utils.pdf import generate_devis_pdf
             key = generate_devis_pdf(devis_id)
         logger.info('task_generate_devis_pdf OK: %s', key)
+        # ADEV22 (C-ADEV-028) — l'entrée d'audit « PDF devis généré » est
+        # écrite au RENDU réussi (plus à la demande ``generer-pdf``).
+        _signaler_pdf_devis_genere(devis_id)
         # WIR217 — un rendu réussi PURGE l'échec précédent : un « Réessayer »
         # qui aboutit ne doit pas laisser l'écran en échec pendant 24 h.
         oublier_echec_pdf_devis(devis_id)
