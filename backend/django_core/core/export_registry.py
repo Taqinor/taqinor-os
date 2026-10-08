@@ -37,6 +37,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
+from core.throttling import PublicExportThrottle
+
 from .models import TenantModel
 
 logger = logging.getLogger(__name__)
@@ -292,6 +294,7 @@ class ExportReversibiliteHistoriqueView(generics.ListAPIView):
 @extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([PublicExportThrottle])
 def telecharger_export_reversibilite(request, token):
     """GET /api/django/core/export-reversibilite/telecharger/<token>/ —
     public (le jeton EST l'authentification), 404 si expiré/révoqué/inconnu

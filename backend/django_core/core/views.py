@@ -25,6 +25,7 @@ from rest_framework.decorators import (
     api_view,
     authentication_classes,
     permission_classes,
+    throttle_classes,
     action,
 )
 from rest_framework.permissions import (
@@ -51,6 +52,7 @@ from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
+from .throttling import MetricsThrottle, PublicExportThrottle
 from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
     ApiUsagePlan,
@@ -1692,6 +1694,7 @@ def _client_ip(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
+@throttle_classes([MetricsThrottle])
 def metrics_view(request):
     from django.conf import settings
     from django.http import HttpResponse
@@ -1910,9 +1913,15 @@ def maintenance_toggle(request):
 # ── NTOBS17 — export PDF générique du trust center (dossier RFP) ───────────
 
 
+#: ASEC17 — période de service du PDF du trust-center depuis le cache.
+TRUST_CENTER_PDF_CACHE_KEY = 'core:trust_center_export_pdf:v1'
+TRUST_CENTER_PDF_CACHE_TTL = 3600
+
+
 @extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([PublicExportThrottle])
 def trust_center_export_pdf(request):
     """GET /api/django/core/trust-center/export-pdf/ — dossier de confiance
     PDF générique (document commercial, HORS Rule#4), aucune donnée société."""
@@ -1920,7 +1929,15 @@ def trust_center_export_pdf(request):
 
     from .pdf_trust_center import generer_pdf_trust_center
 
-    pdf_bytes = generer_pdf_trust_center()
+    # ASEC17 — rendu UNE fois puis servi du cache pendant sa période : le PDF
+    # est générique (aucune donnée société) et son rendu WeasyPrint coûte cher
+    # à un visiteur anonyme qui le redemande en boucle.
+    from django.core.cache import cache
+    pdf_bytes = cache.get(TRUST_CENTER_PDF_CACHE_KEY)
+    if pdf_bytes is None:
+        pdf_bytes = generer_pdf_trust_center()
+        cache.set(TRUST_CENTER_PDF_CACHE_KEY, pdf_bytes,
+                  TRUST_CENTER_PDF_CACHE_TTL)
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = (
         'attachment; filename="dossier-confiance-taqinor.pdf"')

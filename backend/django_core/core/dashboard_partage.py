@@ -17,9 +17,11 @@ public — seul le ``layout`` déjà agrégé du dashboard (JSON opaque à `core
 est renvoyé, exactement comme il l'est à l'écran interne.
 """
 from rest_framework import serializers, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+
+from core.throttling import PublicTokenReadThrottle
 
 from core.mixins import TenantMixin
 
@@ -52,6 +54,7 @@ def resolve_dashboard_partage_public(token):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([PublicTokenReadThrottle])
 def dashboard_public(request, token):
     """XPLT10 — ``GET dashboards-partages/public/<token>/``.
 

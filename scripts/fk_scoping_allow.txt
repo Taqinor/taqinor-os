@@ -357,3 +357,14 @@ backend/django_core/apps/ventes/serializers_regulatory.py::DossierExchangeSerial
 backend/django_core/apps/ventes/serializers_regulatory.py::Regularisation8221Serializer.devis
 backend/django_core/apps/ventes/serializers_regulatory.py::RegulatoryDossierSerializer.devis
 backend/django_core/apps/ventes/serializers_regulatory.py::SubventionDossierSerializer.devis
+# ASEC46 — FactureWriteSerializer déclare ses champs par Meta.exclude (invisible avant ASEC46) : 8 FK
+# écrivables non bornées CONSTATÉES, à corriger par la lane ventes (same_company_fields) ; chaque ligne
+# se retire dès que son champ est borné (sinon « ligne d'allowlist inutile »).
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.abandon_par
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.bon_commande
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.client
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.condition_paiement_ref
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.devis
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.entite
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.lead
+backend/django_core/apps/ventes/serializers_facturation.py::FactureWriteSerializer.updated_by
