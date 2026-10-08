@@ -274,7 +274,7 @@ jobs:
             # garde de backend-lint-fast : l'edition seule du fichier lu doit declencher
             # le job qui le lit.
             grep -qE '^backend/django_core/apps/(adsengine/(urls|views)|crm/platform|ventes/domain/etude_schema|parametres/serializers_tariff|sav/serializers|records/storage|stock/serializers)\.py$|^docs/engine/field-tests\.md$' <<< "$changed" && frontend=true || true
-            grep -qE '^docs/get-or-create-audit\.md$' <<< "$changed" && backend=true || true
+            grep -qE '^docs/(get-or-create-audit|db-invariants-gap)\.md$' <<< "$changed" && backend=true || true
             # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
             # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
             # `backend == true` et lisent leur BASELINE ici
