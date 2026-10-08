@@ -35,6 +35,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.permissions import declared_action_permissions
 from ..utils.references import create_with_reference  # noqa: F401
@@ -95,7 +96,11 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        if self.action in ('enregistrer_avance', 'ventiler', 'rejeter'):
+        # ASEC29 / D-ASEC-1 — enregistrer et ventiler une avance sont des
+        # gestes d'argent : code ``encaisser`` (seule source).
+        if self.action in ('enregistrer_avance', 'ventiler'):
+            return [HasPermissionOrLegacy('encaisser')()]
+        if self.action == 'rejeter':
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 

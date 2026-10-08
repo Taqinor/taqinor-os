@@ -39,10 +39,18 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
     HasPermissionOrLegacy,
 )
+from core.permissions import declared_action_permissions
+
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+#: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
+#: (Administrateur, Directeur, Commercial et Commercial responsable par
+#: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
+#: de rôles codée ici : le code est la seule source (compte hérité sans rôle
+#: fin = palier responsable, comme ``HasPermissionOrLegacy``).
+PeutEncaisser = HasPermissionOrLegacy('encaisser')
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -156,6 +164,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
+        # ASEC29 — la garde DÉCLARÉE par l'@action PRIME (patron AUD421) :
+        # sans cette ligne, le ``permission_classes=`` des gestes d'argent
+        # était jeté en silence au profit du tiering ci-dessous.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in READ_ACTIONS + [
             'paiements', 'relances', 'emails', 'arrondi_caisse', 'kpis',
         ]:
@@ -779,7 +793,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def enregistrer_paiement(self, request, pk=None):
         """Enregistre MANUELLEMENT un paiement (montant + date + mode).
 
@@ -814,7 +828,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
 
     @action(detail=True, methods=['post'], url_path='abandonner-solde',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def abandonner_solde(self, request, pk=None):
         """XFAC13 — abandon manuel du résiduel (write-off).
 
@@ -1154,7 +1168,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
-    @action(detail=True, methods=['post'], url_path='creer-avoir')
+    @action(detail=True, methods=['post'], url_path='creer-avoir',
+            permission_classes=[PeutEncaisser])
     def creer_avoir(self, request, pk=None):
         """Crée un Avoir (note de crédit) depuis une facture ÉMISE — admin only
         (get_permissions par défaut). Total ou partiel : si `lignes` est fourni
@@ -1906,7 +1921,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='encaissement-groupe',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def encaissement_groupe(self, request):
         """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
         (virement global, chèque unique). Body : ``{client, montant, mode,
