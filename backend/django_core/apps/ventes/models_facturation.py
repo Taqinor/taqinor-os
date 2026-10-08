@@ -357,14 +357,14 @@ class BonCommande(models.Model):
                 .values_list('ligne_devis_id')
                 .annotate(total=Sum('quantite_livree'))
             )
-        # ERR-QAC-MULTIVILLA-MATERIEL-XN — un devis « ×N villas identiques »
-        # porte les lignes d'UNE villa mais commande (et facture) N kits :
-        # sans ×N, livrer le kit d'une villa marquait le BC « livré ». Lu à
-        # la volée (aucune donnée stockée) ; N=1 → chiffres inchangés.
+        # ERR-QAC-MULTIVILLA-MATERIEL-XN — devis « ×N villas » : N kits (N=1
+        # inchangé). AFAC15 — SEUL le panier VENDU (`option_lines`, même panier
+        # que la facture et la sortie) est livrable : jamais l'option écartée.
+        from .utils.options import option_lines
         from .multivilla import nombre_proprietes
         n_prop = nombre_proprietes(self.devis)
         out = []
-        for ligne in self.devis.lignes.all():
+        for ligne in option_lines(self.devis):
             if not ligne.compte_dans_totaux or ligne.quantite is None:
                 continue
             livre = livre_par_ligne.get(ligne.id) or 0
