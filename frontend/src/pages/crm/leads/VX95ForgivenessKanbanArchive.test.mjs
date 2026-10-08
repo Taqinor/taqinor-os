@@ -90,10 +90,10 @@ test('StockList : archiver un produit (delete → archived) affiche toastWithUnd
   assert.match(block, /unarchiveProduit\(p\.id\)/)
 })
 
-test('StockList : désarchiver un produit affiche toastWithUndo relançant deleteProduit', () => {
+test('StockList : désarchiver un produit affiche toastWithUndo ré-archivant via patchProduit (ASTK83)', () => {
   const start = STOCK_LIST.indexOf('const handleUnarchive =')
   assert.ok(start > 0)
   const block = STOCK_LIST.slice(start, start + 700)
   assert.match(block, /toastWithUndo\(/)
-  assert.match(block, /deleteProduit\(p\.id\)/)
+  assert.match(block, /patchProduit\(p\.id, \{ is_archived: true \}\)/)
 })
