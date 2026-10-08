@@ -104,3 +104,25 @@ describe('AlertCenter (PUB48)', () => {
     expect(await screen.findByTestId('ae-alert-center-empty')).toBeInTheDocument()
   })
 })
+
+describe('AlertCenter (AACQ74) — panne ≠ vide', () => {
+  it('un 500 n\'affiche pas « Aucune alerte » mais un état d\'erreur', async () => {
+    mocks.history.mockRejectedValue(new Error('500'))
+    renderScreen()
+    await waitFor(() => expect(mocks.history).toHaveBeenCalled())
+    fireEvent.click(await screen.findByTestId('ae-alert-center-toggle'))
+    const alert = await screen.findByTestId('ae-alert-center-load-error')
+    expect(alert).toHaveAttribute('role', 'alert')
+    expect(alert).toHaveTextContent('Alertes indisponibles')
+    expect(screen.queryByText('Aucune alerte.')).not.toBeInTheDocument()
+  })
+
+  it('un 200 vide continue d\'afficher « Aucune alerte. »', async () => {
+    mocks.history.mockResolvedValue({ data: [] })
+    renderScreen()
+    await waitFor(() => expect(mocks.history).toHaveBeenCalled())
+    fireEvent.click(await screen.findByTestId('ae-alert-center-toggle'))
+    expect(await screen.findByTestId('ae-alert-center-empty')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-alert-center-load-error')).not.toBeInTheDocument()
+  })
+})
