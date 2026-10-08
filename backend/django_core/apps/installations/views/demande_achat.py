@@ -56,6 +56,32 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
+def _exiger_brouillon(demande):
+    """ACHT12 (C-ACHT-010) — LA garde unique : une demande d'achat se fige
+    dès sa soumission (le montant soumis à la règle d'approbation et au budget
+    est celui qui est commandé). Lignes (création, modification,
+    suppression, import CSV) et en-tête ne s'écrivent qu'en BROUILLON ;
+    sinon 400 en français, sans écriture."""
+    if demande is None or demande.statut == DemandeAchat.Statut.BROUILLON:
+        return
+    libelle = demande.get_statut_display().lower()
+    raise ValidationError({'detail': (
+        f'Demande {libelle} : repassez-la en brouillon pour la modifier.')})
+
+
+#: ACHT12 — seul champ d'en-tête modifiable hors brouillon (épingle terrain).
+CHAMPS_ENTETE_LIBRES = frozenset({'epinglee'})
+
+
+def _toucher_demande(demande):
+    """ACHT15 (C-ACHT-014) — toute modification de ligne rafraîchit
+    `DemandeAchat.date_modification` : la purge NTP2P35 (brouillons non
+    retouchés) n'archive jamais une demande activement éditée."""
+    if demande is not None and demande.pk:
+        DemandeAchat.objects.filter(pk=demande.pk).update(
+            date_modification=timezone.now())
+
+
 def _notifier_demandeur_decision(da, approuvee):
     """VX213 (c) — bord RETOUR : notifie le DEMANDEUR (``created_by``) de la
     décision d'approbation de sa réquisition (motif inclus si refus).
@@ -152,6 +178,9 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_all_tenant(serializer)
+        # ACHT12 — hors brouillon, seul `epinglee` reste modifiable.
+        if set(serializer.validated_data) - CHAMPS_ENTETE_LIBRES:
+            _exiger_brouillon(serializer.instance)
         serializer.save(company=self.request.user.company)
 
     @action(detail=True, methods=['post'])
@@ -183,8 +212,11 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         # AUD819 — la transition passe par la table TRANSITIONS du kit
         # (``core.documents.changer_statut``) : garde + événement bus.
         try:
+            # ACHT15 — une demande qui quitte le brouillon n'est plus
+            # « abandonnée » : elle sort de l'archive (liste active).
             services.appliquer_statut_document(
-                da, DemandeAchat.Statut.SOUMISE, user=request.user)
+                da, DemandeAchat.Statut.SOUMISE, user=request.user,
+                champs={'archivee': False, 'date_archivage': None})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -310,8 +342,9 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             statut=EtapeApprobationAchat.Statut.EN_ATTENTE
         ).update(statut=EtapeApprobationAchat.Statut.REJETE,
                  decision_le=timezone.now())
-        # NTP2P4 — l'enveloppe budgétaire engagée est rendue.
-        services.liberer_budget_demande_achat(da)
+        # NTP2P4/ACHT13 — l'enveloppe budgétaire engagée est rendue par le
+        # point d'écriture du statut (`appliquer_statut_document`), commun à
+        # tous les chemins de refus.
         _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
@@ -410,18 +443,14 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         ``quantite``, ``prix_estime``. Chaque ligne est validée
         INDÉPENDAMMENT — une ligne invalide est reportée dans ``erreurs``
         SANS bloquer les autres (rapport ligne par ligne, jamais tout ou
-        rien). Seule une DA BROUILLON/SOUMISE accepte un import (une DA déjà
-        décidée reste figée)."""
+        rien). ACHT12 — seule une DA BROUILLON accepte un import (une DA
+        soumise est figée)."""
         import csv
         import io
 
         da = self.get_object()
-        if da.statut not in (DemandeAchat.Statut.BROUILLON,
-                             DemandeAchat.Statut.SOUMISE):
-            return Response(
-                {'detail': 'Seule une demande brouillon ou soumise accepte '
-                           'un import de lignes.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ACHT12 — une demande soumise est figée : import en brouillon seul.
+        _exiger_brouillon(da)
 
         fichier = request.FILES.get('fichier') or request.FILES.get('csv')
         if fichier is None:
@@ -492,6 +521,8 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 quantite=quantite, prix_estime=prix_estime)
             creees.append(ligne.id)
 
+        if creees:
+            _toucher_demande(da)  # ACHT15
         return Response({
             'importees': len(creees),
             'lignes_creees': creees,
@@ -582,8 +613,22 @@ class DemandeAchatLigneViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         self._check_parent(serializer)
-        serializer.save()
+        _exiger_brouillon(serializer.validated_data.get('demande'))
+        ligne = serializer.save()
+        _toucher_demande(ligne.demande)
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
-        serializer.save()
+        ancienne = serializer.instance.demande
+        _exiger_brouillon(ancienne)
+        _exiger_brouillon(serializer.validated_data.get('demande'))
+        ligne = serializer.save()
+        _toucher_demande(ancienne)
+        if ligne.demande_id != ancienne.pk:
+            _toucher_demande(ligne.demande)
+
+    def perform_destroy(self, instance):
+        demande = instance.demande
+        _exiger_brouillon(demande)
+        instance.delete()
+        _toucher_demande(demande)

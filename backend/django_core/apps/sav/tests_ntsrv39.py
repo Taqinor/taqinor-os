@@ -87,7 +87,10 @@ class NTSRV39GardeProblemeTest(TestCase):
             company=self.company, nom='Client', prenom='NTSRV39')
         self.ticket = Ticket.objects.create(
             company=self.company, reference='SAV-NTSRV39-1',
-            client=self.client_obj, statut=Ticket.Statut.EN_COURS)
+            client=self.client_obj, statut=Ticket.Statut.EN_COURS,
+            # ASAV25 — lier-ticket résout le ticket dans la PORTÉE de
+            # l'utilisateur : le responsable lie un ticket qui lui est affecté.
+            technicien_responsable=self.responsable)
         self.probleme = Probleme.objects.create(
             company=self.company, reference='PRB-NTSRV39-1',
             titre='Onduleur X en panne')

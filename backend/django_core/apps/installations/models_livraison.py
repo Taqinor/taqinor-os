@@ -69,6 +69,9 @@ class Livraison(models.Model):
     # XSTK22 — horodatage de la notification client au passage en transit
     # (garde l'envoi UNE SEULE FOIS même si le statut est ré-enregistré).
     notifie_transit_le = models.DateTimeField(null=True, blank=True)
+    # ACHT19 — même garde pour la notification client + webhook « livrée » :
+    # envoyés UNE SEULE FOIS (horodatage persisté).
+    notifie_livree_le = models.DateTimeField(null=True, blank=True)
     # YSTCK5 — la planification (statut) était déconnectée du grand livre :
     # `expedier` ne bougeait aucun stock. Ce drapeau garde l'idempotence du
     # transfert dépôt → emplacement chantier/van posté à `expedier` (et son

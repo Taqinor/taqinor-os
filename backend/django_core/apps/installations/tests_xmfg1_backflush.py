@@ -86,11 +86,13 @@ class TestBackflush(TestCase):
         self.assertEqual(self.comp2.quantite_stock, 50 - 4 * 3)
         self.assertEqual(self.composite.quantite_stock, 0 + 3)
 
-        # Re-clôture : aucun second mouvement.
+        # Re-clôture : aucun second mouvement. ACHT18 — la table de transitions
+        # refuse désormais la re-clôture d'un ordre terminé (400, comportement
+        # inversé par la tâche) ; la garde « pas de double mouvement » tient.
         resp2 = self.api.post(
             f'{BASE}/ordres-assemblage/{self.ordre.id}/terminer/', {},
             format='json')
-        self.assertEqual(resp2.status_code, 200, resp2.content)
+        self.assertEqual(resp2.status_code, 400, resp2.content)
         self.comp1.refresh_from_db()
         self.comp2.refresh_from_db()
         self.composite.refresh_from_db()

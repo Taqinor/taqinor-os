@@ -398,3 +398,16 @@ def pu_remise(total_remise, quantite):
     if quantite == 0:
         return quantize_mad(Decimal('0'))
     return quantize_mad(Decimal(str(total_remise or 0)) / quantite)
+
+
+def lignes_vendues(devis, option=None):
+    """Le panier VENDU d'un devis (lignes de l'option retenue) — façade.
+
+    Simple NOM posé sur ``utils.options.option_lines`` pour les modules de
+    modèles (``models_facturation``, AFAC15) : ils passent par la façade
+    ``domain.argent`` (arête élaguée dans ``.importlinter``), jamais par
+    ``utils.options`` directement. Import fonction-local, aucun calcul ajouté.
+    """
+    from apps.ventes.utils.options import option_lines
+
+    return option_lines(devis, option)

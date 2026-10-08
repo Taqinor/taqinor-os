@@ -1,0 +1,27 @@
+{
+  "endpoint": "GET /api/django/public/pay/<str:token>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AFAC20 (C-AFAC-020) — la forme de la page CLIENT « Payer » (`/payer/<token>`, AFAC26), lue par jeton, sans authentification. `montant` = ce que le client doit payer MAINTENANT (reste exigible à l'instant T, AFAC24) ; `montant_initial` = la trace figée à la création du lien. `statut` ∈ en_attente|paye|expire|annule ; `paye` et `expire` sont ses deux booléens d'affichage. `rib` = les coordonnées bancaires de la société pour un virement (null si aucune n'est paramétrée). JAMAIS de prix d'achat, de marge ni de donnée interne. Montants en texte décimal.",
+  "exemple": {
+    "reference": "FAC-2026-10-0007",
+    "client_name": "Atlas Agro SARL",
+    "montant": "15000.00",
+    "montant_initial": "20000.00",
+    "devise": "MAD",
+    "statut": "en_attente",
+    "paye": false,
+    "expire": false,
+    "rib": "011 780 0000123456789012 34"
+  },
+  "exemple_paye": {
+    "reference": "FAC-2026-10-0007",
+    "client_name": "Atlas Agro SARL",
+    "montant": "0.00",
+    "montant_initial": "20000.00",
+    "devise": "MAD",
+    "statut": "paye",
+    "paye": true,
+    "expire": false,
+    "rib": "011 780 0000123456789012 34"
+  }
+}

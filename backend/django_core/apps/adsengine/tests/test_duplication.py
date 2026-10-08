@@ -137,6 +137,11 @@ class ProposeDuplicateTests(TestCase):
             services.propose_duplicate(self.company, adset=orphan)
 
     def test_full_cycle_reaches_client_born_paused_compatible(self):
+        # AACQ16 — le daily_budget d'une duplication passe le plafond
+        # quotidien : garde-fous de la société posés (150 MAD ≤ 200 MAD).
+        from apps.adsengine.models import GuardrailConfig
+        GuardrailConfig.objects.create(
+            company=self.company, daily_budget_ceiling_mad=200)
         action = services.propose_duplicate(self.company, adset=self.adset)
         services.approve_action(action, user=self.user)
         client = Mock()

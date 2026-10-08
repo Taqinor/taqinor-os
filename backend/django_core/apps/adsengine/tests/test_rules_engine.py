@@ -59,7 +59,7 @@ class FrequencyRuleTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='RE Co', slug='re-co')
         self.adset = AdSetMirror.objects.create(
-            company=self.company, meta_id='as1', name='AS', status='PAUSED')
+            company=self.company, meta_id='as1', name='AS', status='ACTIVE')
         # PUB119 — une rotation n'est PROPOSABLE que si une source créative
         # existe : l'ad set porte donc une ad avec son créatif LIVE mirroré
         # (sans quoi le moteur alerte « aucun créatif prêt » et ne propose RIEN —

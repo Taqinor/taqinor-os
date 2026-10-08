@@ -47,7 +47,9 @@ STOCK_INITIAL = 30
 CHEMINS_COUVERTS = {
     'apps/ventes/domain/facturation_ops.py::reserver_stock_devis_facture':
         'facture_directe',
-    'apps/ventes/views/bon_commande.py::BonCommandeViewSet.marquer_livre':
+    # AFAC15 — la sortie de « Livrer » vit dans le helper du module (appelé
+    # par BonCommandeViewSet.marquer_livre, joué par le même cas).
+    'apps/ventes/views/bon_commande.py::_sortir_reliquat_bc':
         'bc_livre_toggle_off',
     'apps/stock/services.py::affecter_livraison_directe_chantier':
         'livraison_directe_chantier',
@@ -87,6 +89,9 @@ HORS_VENTE = {
         'sortie manuelle d\'un lot d\'entrepôt',
     'apps/stock/views/mouvement.py::MouvementStockViewSet.perform_create':
         'mouvement manuel saisi au stock',
+    'apps/ventes/views/avoir.py::AvoirViewSet._contre_passer_restockage':
+        "annulation d'un avoir de retour (AFAC28) : SORTIE miroir des "
+        'ENTRÉES du retour, aucune vente de chantier',
 }
 
 #: DETTE NOMMÉE (ne peut que rétrécir) : chemin de sortie d'une vente qui ne

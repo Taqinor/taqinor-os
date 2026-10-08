@@ -10,6 +10,7 @@ Endpoints :
 Le technicien déclare sa collecte du jour (des Paiement déjà encaissés,
 espèces/chèque) ; le responsable la clôture avec un bordereau PDF. L'écart
 (déclaré vs somme des lignes) est calculé et exposé, jamais masqué."""
+from django.db import transaction
 from django.utils import timezone
 from django.http import HttpResponse
 from rest_framework.decorators import action
@@ -36,7 +37,8 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:
             return [IsAnyRole()]
-        elif self.action in ['cloturer', 'valider']:
+        elif self.action in ['cloturer', 'valider', 'destroy']:
+            # AFAC16 — supprimer une remise est un geste de responsable.
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
@@ -102,12 +104,19 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
         technicien = serializer.validated_data.get(
             'technicien') or self.request.user
 
-        from ..utils.references import create_with_reference
-
         # AUD135 — les lignes sont VALIDÉES AVANT de numéroter la remise : un
         # refus ne doit pas laisser derrière lui une remise vide et une
         # référence REM consommée.
         paiements = self._resoudre_paiements(lignes, company)
+
+        # AFAC16 — création ATOMIQUE : la remise et ses lignes naissent
+        # ensemble ou pas du tout (plus de remise orpheline sur une erreur de
+        # ligne). `statut` est en lecture seule : la remise naît OUVERTE.
+        with transaction.atomic():
+            self._creer_remise(serializer, company, technicien, paiements)
+
+    def _creer_remise(self, serializer, company, technicien, paiements):
+        from ..utils.references import create_with_reference
 
         def _save(ref):
             return serializer.save(
@@ -141,6 +150,17 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
                 f'Remise {remise.get_statut_display().lower()} : ses lignes '
                 f'et sa déclaration sont verrouillées.')})
         serializer.save()
+
+    def perform_destroy(self, instance):
+        """AFAC16 — seule une remise OUVERTE se supprime (responsable/admin,
+        voir `get_permissions`) : une remise clôturée est un bordereau remis
+        en banque, et le DELETE en cascade contournait le verrou de ligne du
+        modèle."""
+        if instance.statut != RemiseEncaissement.Statut.OUVERTE:
+            raise ValidationError({'detail': (
+                f'Remise {instance.get_statut_display().lower()} : un '
+                f'bordereau clôturé ne se supprime pas.')})
+        instance.delete()
 
     @action(detail=True, methods=['post'], url_path='cloturer')
     def cloturer(self, request, pk=None):

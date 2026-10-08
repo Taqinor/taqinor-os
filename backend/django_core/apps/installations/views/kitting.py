@@ -52,6 +52,50 @@ READ_ACTIONS = ['list', 'retrieve']
 _ScaledLigne = namedtuple('_ScaledLigne', ['produit', 'quantite'])
 
 
+#: ACHT18 (C-ACHT-017) — table de transitions des ordres d'atelier, lue par
+#: `demarrer`, `terminer` et `annuler` (assemblage) et `terminer` (démontage).
+#: Planifié → terminé direct reste accepté (règle actuelle conservée).
+_PL, _EC = OrdreAssemblage.Statut.PLANIFIE, OrdreAssemblage.Statut.EN_COURS
+_TE, _AN = OrdreAssemblage.Statut.TERMINE, OrdreAssemblage.Statut.ANNULE
+TRANSITIONS_ORDRE_ASSEMBLAGE = {
+    _PL: {_EC, _TE, _AN},
+    _EC: {_TE, _AN},
+}
+TRANSITIONS_ORDRE_DEMONTAGE = {
+    OrdreDemontage.Statut.PLANIFIE: {OrdreDemontage.Statut.TERMINE},
+}
+_VERBES_ORDRE = {
+    _EC: 'le démarrer', _TE: 'le terminer', _AN: "l'annuler",
+}
+
+
+MESSAGE_NOMENCLATURE_VIDE = (
+    "Nomenclature vide : ce kit n'a aucun composant catalogue à quantité "
+    "positive — ajoutez-en avant de l'assembler.")
+
+
+def _exiger_nomenclature(kit, champ='kit'):
+    """ACHT25 (C-ACHT-023) — aucun composite n'entre en stock sans
+    consommation : un kit sans composant EXPLOITABLE (produit catalogue et
+    quantité > 0) refuse la création / la clôture d'un ordre et son
+    activation (400)."""
+    if kit is None:
+        return
+    if not kit.composants.filter(
+            produit__isnull=False, quantite__gt=0).exists():
+        raise ValidationError({champ: MESSAGE_NOMENCLATURE_VIDE})
+
+
+def _exiger_transition_ordre(ordre, cible, table):
+    """ACHT18 — 400 en français nommant la transition refusée (aucune
+    écriture : appelée AVANT tout effet)."""
+    if cible in table.get(ordre.statut, set()):
+        return
+    raise ValidationError({'statut': (
+        f"Ordre {ordre.get_statut_display().lower()} : impossible de "
+        f"{_VERBES_ORDRE.get(cible, 'changer son statut')}.")})
+
+
 def _quantite_entiere_composant(ligne, quantite_produite, quantite_ordre):
     """ASTK46 — quantité d'une ligne d'ordre remise à l'échelle de la
     quantité produite, calculée EXACTEMENT (Fraction) : entière → int ;
@@ -112,6 +156,10 @@ class KitViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # ACHT25 — un kit vide ne s'ACTIVE pas (inactif → actif).
+        if (serializer.validated_data.get('active') is True
+                and not serializer.instance.active):
+            _exiger_nomenclature(serializer.instance, champ='active')
         serializer.save(company=self.request.user.company)
 
     @action(detail=True, methods=['get'], url_path='revisions')
@@ -425,6 +473,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         company = self.request.user.company
         self._check_tenant(serializer)
+        _exiger_nomenclature(serializer.validated_data.get('kit'))  # ACHT25
 
         def _save(reference):
             return serializer.save(
@@ -450,9 +499,24 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         activity.log_creation(serializer.instance, self.request.user)
 
     def perform_update(self, serializer):
+        from ..services import (
+            CHAMPS_FIGES_ORDRE_ASSEMBLAGE, MESSAGE_ORDRE_FIGE,
+            champs_entete_ordre_modifies,
+            recreer_nomenclature_ordre_assemblage,
+        )
         self._check_tenant(serializer)
         old = copy.copy(serializer.instance)
+        # ACHT17 — en-tête figé hors « planifié » ; tant qu'il est planifié,
+        # un changement de kit/quantité recrée lignes et réservations.
+        modifies = champs_entete_ordre_modifies(
+            old, serializer.validated_data, CHAMPS_FIGES_ORDRE_ASSEMBLAGE)
+        if modifies and old.statut != OrdreAssemblage.Statut.PLANIFIE:
+            raise ValidationError(
+                {nom: MESSAGE_ORDRE_FIGE for nom in modifies})
         serializer.save(company=self.request.user.company)
+        if {'kit', 'quantite'} & set(modifies):
+            recreer_nomenclature_ordre_assemblage(
+                serializer.instance, user=self.request.user)
         activity.log_changes(old, serializer.instance, self.request.user)
 
     @action(detail=False, methods=['post'], url_path='depuis-devis')
@@ -470,27 +534,34 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         if devis is None or devis.company_id != getattr(company, 'id', None):
             raise ValidationError({'devis': 'Devis inconnu pour cette société.'})
 
-        produit_ids = [
-            ligne.produit_id for ligne in devis.lignes.all()
-            if ligne.produit_id is not None]
-        from ..selectors import kit_map_for_produits_composes
-        kit_map = kit_map_for_produits_composes(company, produit_ids)
+        # ACHT23 (C-ACHT-021) — quantités VENDUES lues sur la nomenclature
+        # gelée du devis (option retenue × N villas, options non activées
+        # exclues), cumulées par produit : un ordre par kit.
+        from ..selectors import (
+            kit_map_for_produits_composes, quantites_nomenclature_devis,
+        )
+        from ..services import (
+            recreer_nomenclature_ordre_assemblage, snapshot_revision_kit,
+        )
+        quantites = quantites_nomenclature_devis(devis)
+        kit_map = kit_map_for_produits_composes(company, list(quantites))
         if not kit_map:
             return Response([])
 
         kits_by_id = {k.id: k for k in Kit.objects.filter(
             id__in=set(kit_map.values()), company=company)}
+        par_kit = {}
+        for produit_id, qte in quantites.items():
+            kit_id = kit_map.get(produit_id)
+            if kit_id is None or kit_id not in kits_by_id:
+                continue
+            par_kit[kit_id] = par_kit.get(kit_id, 0) + qte
 
         ordres = []
         any_created = False
-        for ligne in devis.lignes.all():
-            kit_id = kit_map.get(ligne.produit_id)
-            if kit_id is None:
-                continue
-            kit = kits_by_id.get(kit_id)
-            if kit is None:
-                continue
-            quantite = int(ligne.quantite) if ligne.quantite else 1
+        for kit_id, quantite in par_kit.items():
+            kit = kits_by_id[kit_id]
+            quantite = max(1, int(quantite))
             ordre = OrdreAssemblage.objects.filter(
                 company=company, devis=devis, kit=kit).first()
             if ordre is None:
@@ -501,9 +572,21 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                         reference=reference)
                 ordre = create_with_reference(
                     OrdreAssemblage, 'ASM', company, _save)
+                # Même gel de révision que `perform_create` (XMFG18).
+                revision, _created = snapshot_revision_kit(
+                    kit, user=request.user)
+                ordre.revision_kit_numero = revision.numero
+                ordre.save(update_fields=['revision_kit_numero'])
                 seed_lignes_assemblage(ordre)
                 seed_reservations_assemblage(ordre)
                 any_created = True
+            elif (ordre.statut == OrdreAssemblage.Statut.PLANIFIE
+                  and ordre.quantite != quantite):
+                # Devis modifié : l'ordre planifié suit (règle d'ACHT17).
+                ordre.quantite = quantite
+                ordre.save(update_fields=['quantite', 'date_modification'])
+                recreer_nomenclature_ordre_assemblage(
+                    ordre, user=request.user)
             ordres.append(ordre)
         return Response(
             OrdreAssemblageSerializer(ordres, many=True).data,
@@ -537,17 +620,30 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         confie les composants (transfert vers l'emplacement dédié « chez
         {sous-traitant} », idempotent) : le backflush à la clôture consommera
         depuis cet emplacement."""
-        from ..services import confier_composants_soustraitance
+        from django.db import transaction
+
+        from ..services import (
+            ConfiageImpossible, confier_composants_soustraitance,
+        )
 
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreAssemblage.Statut.EN_COURS,
+            TRANSITIONS_ORDRE_ASSEMBLAGE)
         old = copy.copy(ordre)
-        ordre.statut = OrdreAssemblage.Statut.EN_COURS
-        ordre.save(update_fields=['statut', 'date_modification'])
+        try:
+            with transaction.atomic():
+                ordre.statut = OrdreAssemblage.Statut.EN_COURS
+                ordre.save(update_fields=['statut', 'date_modification'])
+                if ordre.sous_traitant_id is not None:
+                    # ACHT24 — un composant non confiable refuse le
+                    # démarrage (rien n'est confié, statut inchangé).
+                    confier_composants_soustraitance(ordre)
+        except ConfiageImpossible as exc:
+            raise ValidationError({'composants': str(exc)})
+        ordre.refresh_from_db()
         activity.log_changes(old, ordre, request.user)
         alerter_penurie_assemblage(ordre)
-        if ordre.sous_traitant_id is not None:
-            confier_composants_soustraitance(ordre)
-            ordre.refresh_from_db()
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['post'])
@@ -556,6 +652,9 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         mouvementé (XMFG1) — la traçabilité stock ne peut pas être défaite par
         une simple annulation. Libère les réservations non consommées."""
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreAssemblage.Statut.ANNULE,
+            TRANSITIONS_ORDRE_ASSEMBLAGE)
         if ordre.stock_mouvemente:
             raise ValidationError({
                 'statut': "Ordre déjà mouvementé en stock : annulation "
@@ -564,11 +663,17 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         if not motif:
             raise ValidationError({
                 'motif_annulation': "Le motif d'annulation est requis."})
+        from django.db import transaction
+
+        from ..services import rapatrier_composants_soustraitance
         old = copy.copy(ordre)
-        ordre.statut = OrdreAssemblage.Statut.ANNULE
-        ordre.motif_annulation = motif
-        ordre.save(update_fields=[
-            'statut', 'motif_annulation', 'date_modification'])
+        with transaction.atomic():
+            ordre.statut = OrdreAssemblage.Statut.ANNULE
+            ordre.motif_annulation = motif
+            ordre.save(update_fields=[
+                'statut', 'motif_annulation', 'date_modification'])
+            # ACHT24 — composants confiés au sous-traitant rapatriés au dépôt.
+            rapatrier_composants_soustraitance(ordre, user=request.user)
         activity.log_changes(old, ordre, request.user)
         release_reservations_assemblage(ordre)
         return Response(self.get_serializer(ordre).data)
@@ -680,10 +785,13 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         instancier_controle_qualite(ordre)
         resultat = request.data.get('resultat')
         valeur_mesuree = request.data.get('valeur_mesuree')
+        from ..services import SaisieAtelierRefusee
         try:
             controle = enregistrer_controle_qualite(
                 ordre, item_modele_id, resultat=resultat,
                 valeur_mesuree=valeur_mesuree, user=request.user)
+        except SaisieAtelierRefusee as exc:  # ACHT26 — sous le champ
+            raise ValidationError(exc.erreurs)
         except Exception as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(ControleQualiteOrdreSerializer(controle).data)
@@ -712,10 +820,13 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             raise ValidationError({
                 'duree_reelle_min': 'Durée réelle invalide.'})
+        from ..services import SaisieAtelierRefusee
         try:
             etape_ordre = cocher_etape_ordre(
                 ordre, etape_modele_id, fait=fait,
                 duree_reelle_min=duree_reelle_min, user=request.user)
+        except SaisieAtelierRefusee as exc:  # ACHT26
+            raise ValidationError(exc.erreurs)
         except Exception as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(EtapeOrdreSerializer(etape_ordre).data)
@@ -732,10 +843,14 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         from apps.stock.services import consommer_et_produire_assemblage
 
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreAssemblage.Statut.TERMINE,
+            TRANSITIONS_ORDRE_ASSEMBLAGE)
         if ordre.kit.produit_compose_id is None:
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : clôture impossible."})
+        _exiger_nomenclature(ordre.kit)  # ACHT25
 
         # XMFG13 — gate qualité : un kit avec modèle QC actif bloque la
         # clôture tant que la checklist n'est pas entièrement passée, sauf
@@ -745,7 +860,8 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         forcer = str(request.data.get('forcer') or '').lower() in (
             '1', 'true', 'yes')
         motif_forcage = (request.data.get('motif_forcage') or '').strip()
-        if controle_qualite_bloque_cloture(ordre) and not forcer:
+        qc_bloque = controle_qualite_bloque_cloture(ordre)
+        if qc_bloque and not forcer:
             raise ValidationError({
                 'controle_qualite':
                     "Checklist qualité incomplète ou en échec : clôture "
@@ -777,6 +893,10 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
 
         with transaction.atomic():
             ordre = OrdreAssemblage.objects.select_for_update().get(pk=ordre.pk)
+            # ACHT18 — relu sous verrou : deux clôtures concurrentes.
+            _exiger_transition_ordre(
+                ordre, OrdreAssemblage.Statut.TERMINE,
+                TRANSITIONS_ORDRE_ASSEMBLAGE)
             old = copy.copy(ordre)
             ordre.quantite_produite = quantite_produite
             if emplacement_source is not None:
@@ -842,6 +962,12 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                     active=True, consomme=False).update(consomme=True)
             ordre.save(update_fields=update_fields)
             activity.log_changes(old, ordre, request.user)
+            if qc_bloque and forcer:
+                # ACHT26 — le forçage laisse sa trace (motif + utilisateur).
+                activity.log_note(
+                    ordre, request.user,
+                    "Clôture forcée malgré le contrôle qualité : "
+                    f"{motif_forcage}")
             # XMFG7 — capture optionnelle des séries à la clôture (composite
             # produit + composants sérialisés consommés, si transmis).
             series_composite = request.data.get('series_composite')
@@ -1021,6 +1147,8 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         company = self.request.user.company
         self._check_tenant(serializer)
 
+        _exiger_nomenclature(serializer.validated_data.get('kit'))  # ACHT25
+
         def _save(reference):
             return serializer.save(
                 company=company, created_by=self.request.user,
@@ -1030,8 +1158,21 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         seed_lignes_demontage(serializer.instance)
 
     def perform_update(self, serializer):
+        from ..services import (
+            CHAMPS_FIGES_ORDRE_DEMONTAGE, MESSAGE_ORDRE_FIGE,
+            champs_entete_ordre_modifies, recreer_lignes_ordre_demontage,
+        )
         self._check_tenant(serializer)
+        ordre = serializer.instance
+        # ACHT17 — même garde que l'assemblage (jumeau démontage).
+        modifies = champs_entete_ordre_modifies(
+            ordre, serializer.validated_data, CHAMPS_FIGES_ORDRE_DEMONTAGE)
+        if modifies and ordre.statut != OrdreDemontage.Statut.PLANIFIE:
+            raise ValidationError(
+                {nom: MESSAGE_ORDRE_FIGE for nom in modifies})
         serializer.save(company=self.request.user.company)
+        if {'kit', 'quantite'} & set(modifies):
+            recreer_lignes_ordre_demontage(serializer.instance)
 
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
@@ -1042,16 +1183,24 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         from apps.stock.services import demonter_composite
 
         ordre = self.get_object()
+        _exiger_transition_ordre(  # ACHT18
+            ordre, OrdreDemontage.Statut.TERMINE,
+            TRANSITIONS_ORDRE_DEMONTAGE)
         if ordre.kit.produit_compose_id is None:
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : démontage impossible."})
+        _exiger_nomenclature(ordre.kit)  # ACHT25
         # ASEC33 — emplacements de l'ordre bornés à sa société avant le
         # service de stock.
         _verifier_emplacements_ordre(ordre)
 
         with transaction.atomic():
             ordre = OrdreDemontage.objects.select_for_update().get(pk=ordre.pk)
+            # ACHT18 — relu sous verrou : deux clôtures concurrentes.
+            _exiger_transition_ordre(
+                ordre, OrdreDemontage.Statut.TERMINE,
+                TRANSITIONS_ORDRE_DEMONTAGE)
             already_moved = ordre.stock_mouvemente
             ordre.statut = OrdreDemontage.Statut.TERMINE
             ordre.date_terminaison = timezone.now()

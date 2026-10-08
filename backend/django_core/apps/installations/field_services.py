@@ -390,6 +390,10 @@ def missing_required_fiche_champs(intervention):
 
 
 # ── Garde de transition de statut (F5 départ + F8 arrivée + ZFSM1 fiche) ─────
+#: ACHT34 — message unique d'une intervention annulée (statut et saisie).
+MESSAGE_INTERVENTION_ANNULEE = 'Intervention annulée — réactivez le chantier.'
+
+
 def transition_block_reason(intervention, new_statut):
     """Renvoie un message FR si la transition de statut est interdite, sinon
     None. Garde PROPRE à l'intervention — ne lit/écrit JAMAIS le statut chantier
@@ -404,6 +408,11 @@ def transition_block_reason(intervention, new_statut):
     comportement historique byte-identique)."""
     if new_statut == intervention.statut:
         return None
+    # ACHT34 (C-ACHT-030) — une intervention annulée (drapeau YSERV6) ne
+    # change plus de statut tant que son chantier n'est pas réactivé : elle
+    # n'émet donc jamais `intervention_completed`.
+    if getattr(intervention, 'annulee', False):
+        return MESSAGE_INTERVENTION_ANNULEE
     order = list(Intervention.STATUT_ORDER)
 
     def rank(s):

@@ -104,7 +104,7 @@ ENV PYTHONTZPATH=""
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
+        libpango-1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi8 libharfbuzz0b shared-mime-info fonts-liberation fonts-noto-core libxmlsec1-openssl \
         git curl ca-certificates zstd gnupg procps locales; \
     sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen; \
     locale-gen; \

@@ -49,7 +49,7 @@
     <strong>Facture {{ facture.reference }}</strong><br />
     Échéance : {{ facture.date_echeance.strftime('%d/%m/%Y') if facture.date_echeance else 'N/A' }}
     {% if facture.jours_retard > 0 %} — en retard de {{ facture.jours_retard }} jour(s){% endif %}<br />
-    Montant restant dû : <strong>{{ "%.2f"|format(facture.montant_du) }} MAD</strong>
+    Montant restant dû : <strong>{{ "%.2f"|format(facture.montant_exigible) }} MAD</strong>
     {% if niveau and niveau.penalite and niveau.penalite != "0.00" %}
     <br />Pénalité de retard indicative : <strong>{{ niveau.penalite }} MAD</strong>
     {% endif %}

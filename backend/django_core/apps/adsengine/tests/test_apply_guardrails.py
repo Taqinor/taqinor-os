@@ -14,6 +14,7 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.adsengine import guardrails, services
+from apps.adsengine.meta_client import MetaClient  # AACQ4 — spec réelle
 from apps.adsengine.models import (
     CreativeAsset, EngineAction, GuardrailConfig,
 )
@@ -37,7 +38,7 @@ class RebalanceGuardrailApplyTests(TestCase):
         # 20000 centimes = 200 MAD > plafond 100 MAD → refus AVANT le client.
         action = self._approved_rebalance(
             {'adset_id': 'as1', 'daily_budget': 20000, 'current_budget': 20000})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(guardrails.GuardrailViolation):
             services.apply_action(action, client=client)
         client.update_adset_budget.assert_not_called()
@@ -49,7 +50,7 @@ class RebalanceGuardrailApplyTests(TestCase):
         # 5000 centimes = 50 MAD < 100 MAD ; variation 0 % → les deux passent.
         action = self._approved_rebalance(
             {'adset_id': 'as1', 'daily_budget': 5000, 'current_budget': 5000})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.update_adset_budget.return_value = {'success': True}
         services.apply_action(action, client=client)
         client.update_adset_budget.assert_called_once()
@@ -62,7 +63,7 @@ class RebalanceGuardrailApplyTests(TestCase):
         # ici PROUVE que le budget est lu en centimes puis converti en MAD.
         action = self._approved_rebalance(
             {'adset_id': 'as1', 'daily_budget': 10000, 'current_budget': 10000})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.update_adset_budget.return_value = {'success': True}
         services.apply_action(action, client=client)
         client.update_adset_budget.assert_called_once()
@@ -74,7 +75,7 @@ class RebalanceGuardrailApplyTests(TestCase):
         # GuardrailInoperative (fail-safe) — jamais un skip silencieux.
         action = self._approved_rebalance(
             {'adset_id': 'as1', 'daily_budget': 5000})
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(guardrails.GuardrailInoperative):
             services.apply_action(action, client=client)
         client.update_adset_budget.assert_not_called()
@@ -112,7 +113,7 @@ class CreativePassRecheckedAtApplyTests(TestCase):
         self.asset.policy_stamp = {}
         self.asset.save(update_fields=['policy_stamp'])
 
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(services.CreativePolicyNotPassed):
             services.apply_action(action, client=client)
         client.create_ad.assert_not_called()
@@ -122,7 +123,7 @@ class CreativePassRecheckedAtApplyTests(TestCase):
 
     def test_a_still_valid_pass_dispatches_normally(self):
         action = self._approved_rotation()
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.create_ad.return_value = {'id': 'ad-1'}
         services.apply_action(action, client=client)
         client.create_ad.assert_called_once()
@@ -132,7 +133,7 @@ class CreativePassRecheckedAtApplyTests(TestCase):
     def test_an_asset_deleted_after_approval_fails_the_action(self):
         action = self._approved_rotation()
         self.asset.delete()
-        client = Mock()
+        client = Mock(spec=MetaClient)
         with self.assertRaises(services.CreativePolicyNotPassed):
             services.apply_action(action, client=client)
         client.create_ad.assert_not_called()
@@ -148,7 +149,7 @@ class CreativePassRecheckedAtApplyTests(TestCase):
             payload={'adset_id': 'as1', 'name': '20260716_STATIC',
                      'creative': {'creative_id': 'cr-live'}},
             status=EngineAction.Statut.APPROUVEE)
-        client = Mock()
+        client = Mock(spec=MetaClient)
         client.create_ad.return_value = {'id': 'ad-2'}
         services.apply_action(action, client=client)
         client.create_ad.assert_called_once()

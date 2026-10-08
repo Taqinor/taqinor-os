@@ -431,16 +431,30 @@ def build_brief(company, *, now=None, create_proposals=True):
     spend, results, freq_avg, last_date, per_campaign = _window_aggregate(
         company, start, end)
 
-    cpl = (spend / results) if results else None
+    # AACQ26 — CPL sur les LEADS Meta (``leads_count``), jamais sur les
+    # « résultats » génériques (clics, conversations…) ; source nommée.
+    leads_meta = (InsightSnapshot.objects
+                  .filter(company=company,
+                          content_type=ContentType.objects.get_for_model(
+                              AdCampaignMirror),
+                          date__gte=start, date__lte=end)
+                  .aggregate(n=Sum('leads_count'))['n'] or 0)
+    cpl_calc = metrics.cout_par_lead(spend, leads_meta, source='leads_meta')
+    cpl = (cpl_calc.valeur.quantize(Decimal('0.01'))
+           if cpl_calc.valeur is not None else None)
     summary = metrics.cost_per_signature_summary(company)
 
     proposals = _build_proposals(company, per_campaign) if create_proposals else []
 
+    from .rules_engine import account_currency
     data = {
         'periode': {'debut': start.isoformat(), 'fin': end.isoformat()},
+        # AACQ7 — devise RÉELLE du compte : tous les montants Meta du brief.
+        'devise': account_currency(company),
         'spend_semaine': str(spend),
         'resultats_semaine': results,
         'cpl_semaine': (str(cpl) if cpl is not None else None),
+        'cpl_source': cpl_calc.source_fr,
         'frequence_moyenne': (str(freq_avg) if freq_avg is not None else None),
         'fatigue': {
             'seuil_bas': str(FATIGUE_THRESHOLD_LOW),
@@ -476,15 +490,21 @@ def render_markdown(data):
     """Rend le brief en markdown FR — uniquement des NOMBRES dans des phrases
     template (aucun texte généré). Déterministe."""
     p = data['periode']
+    # AACQ7 — montants libellés dans la devise du compte (repli MAD pour un
+    # brief historique sans la clé, même convention qu'``account_currency``).
+    devise = data.get('devise') or 'MAD'
     lines = [
         f"# Brief hebdomadaire ({p['debut']} → {p['fin']})",
         '',
         '## Ce qui s\'est passé',
-        f"- Dépense de la semaine : {data['spend_semaine']} MAD "
+        f"- Dépense de la semaine : {data['spend_semaine']} {devise} "
         f"pour {data['resultats_semaine']} résultat(s).",
     ]
     if data['cpl_semaine'] is not None:
-        lines.append(f"- Coût par lead (semaine) : {data['cpl_semaine']} MAD.")
+        source = data.get('cpl_source')
+        libelle = (f"Coût par lead (semaine, {source})" if source
+                   else "Coût par lead (semaine)")
+        lines.append(f"- {libelle} : {data['cpl_semaine']} {devise}.")
     if data['frequence_moyenne'] is not None:
         fat = data['fatigue']['niveau']
         lines.append(
@@ -494,7 +514,7 @@ def render_markdown(data):
     if data['cout_par_signature_cumule'] is not None:
         lines.append(
             f"- Coût par signature (cumulé) : "
-            f"{data['cout_par_signature_cumule']} MAD "
+            f"{data['cout_par_signature_cumule']} {devise} "
             f"pour {data['signatures_cumulees']} signature(s).")
     # ADSDEEP48 — benchmarks internes (cadence créative + taux de gagnants),
     # repères du dossier concurrent (Motion, benchmark §2).

@@ -259,7 +259,7 @@
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
     interventions:inconnu, seuil_pct:inconnu
 - frontend/src/api/installationsApi.js :: supprimerLigneConsommation -> /api/django/installations/interventions/<>/supprimer-ligne-consommation
-    detail:texte
+    detail:inconnu
 - frontend/src/api/installationsApi.js :: supprimerMemo -> /api/django/installations/interventions/<>/supprimer-memo
     detail:texte
 - frontend/src/api/installationsApi.js :: supprimerPhoto -> /api/django/installations/interventions/<>/supprimer-photo
@@ -1521,6 +1521,7 @@
     champs: archived, id, nom, ordre
 - frontend/src/api/savApi.js :: deleteReponseType -> /api/django/sav/reponses-type/<>  [ReponseTypeSerializer]
     champs: archived, canaux_autorises, corps, date_creation, id, nouveau_statut, titre
+    nouveau_statut ∈ {cloture, en_cours, nouveau, planifie, resolu}
 - frontend/src/api/savApi.js :: deleteWorksheetModele -> /api/django/sav/worksheet-modeles/<>  [WorksheetMaintenanceModeleSerializer]
     champs: actif, champs, date_creation, id, nom, type_ticket_applicable
     type_ticket_applicable ∈ {correctif, preventif, tous}
@@ -1546,6 +1547,7 @@
     champs: archived, id, nom, ordre
 - frontend/src/api/savApi.js :: getReponsesType -> /api/django/sav/reponses-type  [ReponseTypeSerializer]
     champs: archived, canaux_autorises, corps, date_creation, id, nouveau_statut, titre
+    nouveau_statut ∈ {cloture, en_cours, nouveau, planifie, resolu}
 - frontend/src/api/savApi.js :: getWorksheetModeles -> /api/django/sav/worksheet-modeles  [WorksheetMaintenanceModeleSerializer]
     champs: actif, champs, date_creation, id, nom, type_ticket_applicable
     type_ticket_applicable ∈ {correctif, preventif, tous}

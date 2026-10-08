@@ -6,9 +6,15 @@ généré et streamé à la demande.
 CÔTÉ CLIENT : aucun prix d'achat, aucune marge — jamais. Les pièces (si le
 modèle en porte un jour) n'affichent que désignation/marque/quantité.
 """
+import re
+
+from apps.parametres.selectors import nom_intervenant
+
 from apps.ventes.utils.pdf import (
     _company_context, _render_html, _html_to_pdf,
 )
+
+_EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+')
 
 
 def _interventions_payload(ticket):
@@ -18,7 +24,9 @@ def _interventions_payload(ticket):
         rows.append({
             'type': itv.get_type_intervention_display(),
             'date': itv.date_realisee or itv.date_prevue,
-            'technicien': getattr(itv.technicien, 'username', None),
+            # ASAV34 — nom d'intervenant, jamais l'identifiant de connexion.
+            'technicien': nom_intervenant(
+                itv.technicien, ticket.company) or None,
             'compte_rendu': itv.compte_rendu or '',
         })
     return rows
@@ -117,14 +125,24 @@ def _chatter_payload(ticket):
     outcomes = dict(TicketActivity.OUTCOMES)
     for entree in lignes:
         if entree.kind == TicketActivity.Kind.MODIFICATION:
-            texte = (f'{entree.field_label or entree.field} : '
-                     f'{entree.old_value or "—"} → {entree.new_value or "—"}')
+            # ASAV34 — une valeur historisée contenant « @ » (identifiant de
+            # connexion d'un ancien journal) n'est jamais imprimée.
+            avant = entree.old_value or '—'
+            apres = entree.new_value or '—'
+            avant = '—' if '@' in avant else avant
+            apres = '—' if '@' in apres else apres
+            texte = f'{entree.field_label or entree.field} : {avant} → {apres}'
         else:
             texte = entree.body or ''
+        # ASAV34 — un ancien journal peut citer un identifiant de connexion
+        # (« Ticket créé par prenom@domaine ») : jamais imprimé sur la fiche.
+        auteur = nom_intervenant(entree.user, ticket.company) or '—'
+        texte = _EMAIL_RE.sub(auteur, texte)
         rows.append({
             'date': entree.created_at,
             'genre': kinds.get(entree.kind, entree.kind),
-            'auteur': getattr(entree.user, 'username', None) or '—',
+            # ASAV34 — nom d'intervenant, jamais l'identifiant de connexion.
+            'auteur': auteur,
             'texte': texte,
             'issue': outcomes.get(entree.outcome, '') if entree.outcome else '',
             'duree_minutes': entree.duree_minutes,
@@ -186,6 +204,9 @@ def fiche_synthese_ticket_pdf(ticket):
         'categorie_nom': getattr(ticket.categorie, 'libelle', '') or '',
         'statut_label': ticket.get_statut_display(),
         'priorite_label': ticket.get_priorite_display(),
+        # ASAV34 — « Technicien » : nom d'intervenant, jamais le username.
+        'technicien_nom': nom_intervenant(
+            ticket.technicien_responsable, ticket.company),
         'chatter': _chatter_payload(ticket),
         'interventions': _interventions_payload(ticket),
         'pieces': _pieces_payload(ticket),
