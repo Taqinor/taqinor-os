@@ -101,7 +101,7 @@ import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
 // « structure ». Partagé tel quel avec la fiche lead (SectionSite).
 import StructureSelector from '../../features/stock/StructureSelector'
 import { structuresEligibles } from '../../features/stock/structures'
-import { useCanCreateProduit, useIsAdmin } from '../../hooks/useHasPermission'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../ui/useDraftAutosave'
@@ -175,7 +175,7 @@ import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMote
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
 import {
-  CHEMINS_AUTORISES, cheminNonLu, valeursImposees,
+  CHEMINS_AUTORISES, valeursImposees,
 } from '../../features/ventes/quote/overrides'
 import { deuxValeursDim as selecteurDeuxValeursDim }
   from '../../features/ventes/quote/paireDimensionnement'
@@ -205,6 +205,8 @@ import CarteEcheancier from './generator/CarteEcheancier'
 import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
+import IndicationRegistre from './generator/IndicationRegistre'
+import PanneauSurcharges from './generator/PanneauSurcharges'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
 // SON marché et lit la clé de son module de stratégie (QJR89) pour se retirer
 // ailleurs. Cet écran garde l'en-tête, le sélecteur de marché, le lead/client,
@@ -221,6 +223,7 @@ import PanneauAgricole from './generator/PanneauAgricole'
 import { repartirRemiseParLigne } from '../../features/ventes/remise'
 import { usePersistanceDevis } from '../../features/ventes/quote/hooks/usePersistanceDevis'
 import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeurEdition'
+import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
 import { withKeys, emptyLine, structureLine } from '../../features/ventes/quote/ligneFabrique.js'
 import {
@@ -269,21 +272,6 @@ const MODE_OPTIONS = [
 // vivent dans `generator/CarteMetrique.jsx`, partagés par les morceaux
 // extraits (LigneTable, RailArgent). `MetricCard` s'appelle désormais
 // `CarteMetrique` et sait, EN PLUS, déballer une valeur signée (QJR86).
-
-// QJR572 — sous un choix que le registre IMPOSE : le dire, et offrir le
-// retour à l'automatique (DELETE ?chemin=, `regenererOverride`).
-function IndicationRegistre({ chemin, busy, onRegenerer }) {
-  return (
-    <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
-       data-testid={`registre-impose-${chemin}`}>
-      Imposé par le registre —
-      <button type="button" className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
-              disabled={busy} onClick={() => onRegenerer(chemin)}>
-        revenir à l&apos;automatique
-      </button>
-    </p>
-  )
-}
 
 /**
  * Générateur de devis. Utilisable en PLEINE PAGE (route /ventes/devis/nouveau,
@@ -440,107 +428,14 @@ export default function DevisGenerator({
   // devis_overrides.json) — jamais recalculée ici, seulement affichée.
   // QJR572 — déclarée ici : `alignerSurRegistre` (ci-dessous) la pose.
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
-  const [overridesReg, setOverridesReg] = useState(null)
-  // QJR574 (D-QJR5-8) — le panneau BRUT « Surcharges (registre) » (chemin +
-  // valeur JSON libre) est réservé aux administrateurs : Scénario, Option
-  // recommandée et nombre de panneaux portent déjà la surcharge (QJR572).
-  // L'endpoint reste IsResponsableOrAdmin ; le registre est lu pour tous.
-  const estAdmin = useIsAdmin()
-  const [overridesBusy, setOverridesBusy] = useState(false)
-  // Un refus 400 est affiché TEL QUEL (le message FR du serveur, jamais avalé
-  // ni remplacé par une phrase générique) — les formes varient selon le refus
-  // (`{detail}`, `{chemin: "..."}`, `{chemin: ["..."]}`) : on en extrait la
-  // PREMIÈRE valeur textuelle, sans reformuler son contenu.
-  const [overridesErreur, setOverridesErreur] = useState(null)
-  const [ovChemin, setOvChemin] = useState(CHEMINS_AUTORISES[0])
-  const [ovValeur, setOvValeur] = useState('')
-
-  const messageErreurOverrides = (err) => {
-    const data = err?.response?.data
-    if (data && typeof data === 'object') {
-      const brut = Object.values(data)[0]
-      const texte = Array.isArray(brut) ? brut[0] : brut
-      if (typeof texte === 'string') return texte
-    }
-    // QJR309 — un refus CLIENT-SIDE de la liste blanche (`ventesApi.
-    // poserOverrides`, AVANT tout réseau) est un TypeError NU, sans
-    // `.response` : il ne doit JAMAIS être maquillé en refus du serveur — son
-    // propre message nomme déjà le chemin fautif (voir `ventesApi.js`),
-    // rendu tel quel plutôt que remplacé par la phrase générique ci-dessous.
-    if (!err?.response && err instanceof TypeError && typeof err.message === 'string') {
-      return err.message
-    }
-    return 'La surcharge a été refusée par le serveur.'
-  }
-
-  // QJR572 — LE REGISTRE GAGNE AU PDF (scenario.py, utils/options.py,
-  // builder.py) : à l'arrivée du registre, Scénario, Option recommandée et
-  // nombre de panneaux affichent la valeur qu'il IMPOSE, jamais une valeur
-  // d'`etude_params` que le document ignore. Transition `REOUVERTURE` (le
-  // choix est déjà fait), sans toucher aux autres champs.
-  const alignerSurRegistre = (data) => {
-    const imp = valeursImposees(data)
-    const devis = {}
-    if (typeof imp.scenario === 'string') devis.scenario = imp.scenario
-    const n = Number.parseInt(imp['taille.nb_panneaux'], 10)
-    if (n > 0) devis.panneaux = n
-    if (Object.keys(devis).length) dispatchSizing({ type: 'REOUVERTURE', devis })
-    if (imp.recommended_option === 'Sans batterie' || imp.recommended_option === 'Avec batterie') {
-      setRecommendedChoice(imp.recommended_option)
-    }
-  }
-
-  const chargerOverrides = (id) => {
-    if (!id) return
-    ventesApi.lireOverrides(id)
-      .then(({ data }) => {
-        // QJR581 — hydratation serveur tardive : la référence « rien n'a
-        // changé » est re-capturée sur l'état qu'elle pose.
-        captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
-        setOverridesReg(data); alignerSurRegistre(data)
-      })
-      .catch(() => {})
-  }
-
-  // Lecture du registre À L'OUVERTURE d'un devis existant.
-  // QJR572 — relu à CHAQUE ouverture d'un devis, jamais à chaque rendu.
-  useEffect(() => {
-    if (editDevis?.id) chargerOverrides(editDevis.id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editDevis?.id])
-
-  const poserOverride = async () => {
-    if (!editDevis?.id || !ovChemin) return
-    setOverridesBusy(true)
-    setOverridesErreur(null)
-    let valeur
-    try { valeur = JSON.parse(ovValeur) } catch { valeur = ovValeur }
-    try {
-      const { data } = await ventesApi.poserOverrides(editDevis.id, {
-        [ovChemin]: { valeur },
-      })
-      setOverridesReg(data)
-      setOvValeur('')
-    } catch (err) {
-      setOverridesErreur(messageErreurOverrides(err))
-    } finally {
-      setOverridesBusy(false)
-    }
-  }
-
-  const regenererOverride = async (chemin) => {
-    if (!editDevis?.id) return
-    setOverridesBusy(true)
-    setOverridesErreur(null)
-    try {
-      const { data } = await ventesApi.regenererOverride(editDevis.id, chemin)
-      setOverridesReg(data)
-    } catch (err) {
-      setOverridesErreur(messageErreurOverrides(err))
-    } finally {
-      setOverridesBusy(false)
-    }
-  }
+  // SPL46 — registre de surcharges (état + gestes déplacés tels quels dans le hook).
+  const {
+    overridesReg, setOverridesReg, estAdmin, overridesBusy, overridesErreur, setOverridesErreur,
+    ovChemin, setOvChemin, ovValeur, setOvValeur, messageErreurOverrides, poserOverride,
+    regenererOverride,
+  } = useRegistreOverrides({
+    dispatchSizing, editDevis, captureReferenceJusqua, setRecommendedChoice,
+  })
 
   // ── Document ──
   const [leadId, setLeadId] = useState('')
@@ -4427,101 +4322,14 @@ export default function DevisGenerator({
           </Card>
         )}
 
-        {/* QJR215 — registre de surcharges (QJR214/QJR216) : lecture à
-            l'ouverture (au montage de ce panneau), pose EXPLICITE d'un
-            chemin, retour à l'automatique par chemin. N'existe que sur un
-            devis DÉJÀ enregistré (le registre vit sur `Devis.overrides`).
-            QJR574 — administrateurs seulement. */}
-        {editDevis?.id && estAdmin && (
-          <Card data-testid="overrides-panel">
-            <GenCardHeader icon={FileText} title="Surcharges (registre)" />
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex flex-wrap items-end gap-2">
-                <select
-                  data-testid="overrides-chemin"
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  value={ovChemin}
-                  onChange={(e) => setOvChemin(e.target.value)}
-                >
-                  {/* QJR571 (D-QJR5-8) — un chemin que le moteur ne lit pas
-                      est DIT tel quel : sa pose ne change pas le document. */}
-                  {CHEMINS_AUTORISES.map((c) => (
-                    <option key={c} value={c}>
-                      {cheminNonLu(c) ? `${c} — sans effet sur le document` : c}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  data-testid="overrides-valeur"
-                  placeholder="Valeur (ex. 14, &quot;ONEE&quot;, [1,2,3])"
-                  value={ovValeur}
-                  onChange={(e) => setOvValeur(e.target.value)}
-                  className="max-w-xs"
-                />
-                <Button type="button" size="sm" data-testid="overrides-poser"
-                        disabled={overridesBusy || !ovValeur}
-                        onClick={poserOverride}>
-                  Poser
-                </Button>
-              </div>
-              {/* Un refus 400 est affiché VERBATIM — jamais avalé. */}
-              {overridesErreur && (
-                <p className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
-                   data-testid="overrides-erreur">
-                  {overridesErreur}
-                </p>
-              )}
-              {/* Bloc `effectif` : valeur AUTO vs valeur MANUELLE, côte à
-                  côte — la déclaration devient visible, jamais tacite. */}
-              {overridesReg?.effectif && Object.keys(overridesReg.effectif).length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs" data-testid="overrides-effectif-table">
-                    <thead>
-                      <tr className="text-left text-muted-foreground">
-                        <th className="pr-3 py-1">Chemin</th>
-                        <th className="pr-3 py-1">Auto</th>
-                        <th className="pr-3 py-1">Manuel</th>
-                        <th className="pr-3 py-1">Effectif</th>
-                        <th className="pr-3 py-1">Source</th>
-                        <th className="py-1" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(overridesReg.effectif).map(([chemin, v]) => (
-                        <tr key={chemin} className="border-t border-border"
-                            data-testid={`overrides-effectif-row-${chemin}`}>
-                          <td className="pr-3 py-1 font-mono">
-                            {chemin}
-                            {v.non_lu && (
-                              <span className="ml-1 font-sans text-muted-foreground"
-                                    data-testid={`overrides-non-lu-${chemin}`}>
-                                — sans effet sur le document
-                              </span>
-                            )}
-                          </td>
-                          <td className="pr-3 py-1">{v.auto == null ? '—' : JSON.stringify(v.auto)}</td>
-                          <td className="pr-3 py-1">{v.manuel == null ? '—' : JSON.stringify(v.manuel)}</td>
-                          <td className="pr-3 py-1 font-medium">{v.effectif == null ? '—' : JSON.stringify(v.effectif)}</td>
-                          <td className="pr-3 py-1">{v.source}</td>
-                          <td className="py-1">
-                            {v.source === 'manuel' && (
-                              <Button type="button" size="sm" variant="ghost"
-                                      data-testid={`overrides-regenerer-${chemin}`}
-                                      disabled={overridesBusy}
-                                      onClick={() => regenererOverride(chemin)}>
-                                Régénérer
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {/* SPL46 — le panneau brut du registre (admin, devis enregistré) : sa
+            condition d'affichage vit avec lui dans PanneauSurcharges. */}
+        <PanneauSurcharges editDevis={editDevis} estAdmin={estAdmin}
+                           ovChemin={ovChemin} setOvChemin={setOvChemin}
+                           ovValeur={ovValeur} setOvValeur={setOvValeur}
+                           overridesBusy={overridesBusy} poserOverride={poserOverride}
+                           overridesErreur={overridesErreur} overridesReg={overridesReg}
+                           regenererOverride={regenererOverride} />
 
         {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
         {editDevis && (
