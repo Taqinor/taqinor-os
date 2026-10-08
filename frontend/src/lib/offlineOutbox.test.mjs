@@ -279,6 +279,60 @@ test('BinaryOutbox : deux enqueue concurrents sont tous deux conservés', async 
   assert.deepEqual(store.contenu().sort(), ['p1', 'p2'])
 })
 
+// ADEP18 — une erreur HTTP non transitoire du lot (4xx hors 401/408/429) n'est pas une
+// coupure réseau : les ops du lot sont MARQUÉES (visibles, abandonnables), et une op
+// refusée en tête ne bloque plus les suivantes. 5xx / réseau : réessai sans marque.
+const erreurHttp = (status, detail) => Object.assign(new Error(`HTTP ${status}`), {
+  response: { status, data: detail ? { detail } : {} },
+})
+
+test('lot refusé en 400 : ops marquées serverError (ADEP18)', async () => {
+  const store = storePartage()
+  const ob = new Outbox({ store, sender: async () => { throw erreurHttp(400, 'Aucune société') } })
+  for (const id of ['o1', 'o2', 'o3']) await ob.enqueue('t.op', {}, { clientOpId: id })
+  let res
+  for (let i = 0; i < 3; i += 1) res = await ob.flush()
+  assert.equal(res.remaining, 3)
+  const echecs = await ob.failed()
+  assert.equal(echecs.length, 3, 'les 3 ops sont visibles comme refusées')
+  assert.ok(echecs.every((o) => o.serverError === 'Aucune société' && o.attempts === 3))
+  // Persistance : un onglet neuf retrouve marques et compteur.
+  const autre = new Outbox({ store })
+  assert.equal((await autre.failed()).length, 3)
+  await ob.discard('o1')
+  assert.equal((await ob.failed()).length, 2, 'abandonnable')
+})
+
+test('op refusée en tête : les suivantes partent (ADEP18)', async () => {
+  const store = storePartage()
+  const envoyes = []
+  const sender = async (ops) => {
+    envoyes.push(ops.map((o) => o.client_op_id))
+    return { results: ops.map((o) => ({ client_op_id: o.client_op_id, status: 'applied' })) }
+  }
+  const ob = new Outbox({ store, sender })
+  await ob.enqueue('t.op', {}, { clientOpId: 'refusee' })
+  // marquée refusée par un flush antérieur
+  await store.update((cur) => cur.map((o) => ({ ...o, serverError: 'Refusée', attempts: 1 })))
+  await ob.enqueue('t.op', {}, { clientOpId: 'suite1' })
+  await ob.enqueue('t.op', {}, { clientOpId: 'suite2' })
+  const res = await ob.flush()
+  assert.deepEqual(envoyes, [['suite1', 'suite2']], 'l’op marquée est sautée')
+  assert.equal(res.flushed, 2)
+  assert.deepEqual(store.contenu(), ['refusee'])
+})
+
+test('5xx et réseau : réessai sans marque (ADEP18)', async () => {
+  for (const erreur of [erreurHttp(503), erreurHttp(401), erreurHttp(429), new Error('réseau')]) {
+    const ob = new Outbox({ store: storePartage(), sender: async () => { throw erreur } })
+    await ob.enqueue('t.op', {}, { clientOpId: 'a' })
+    const res = await ob.flush()
+    assert.equal(res.remaining, 1)
+    assert.equal((await ob.failed()).length, 0, 'aucune marque')
+    assert.equal((await ob.pending())[0].attempts, undefined)
+  }
+})
+
 // ADEP16 — un timeout APRES l'effet serveur ne doit jamais produire un second effet :
 // la MEME cle d'idempotence voyage avec l'appel en ligne et avec l'op mise en file.
 test('queueIfOffline : timeout après effet serveur → une seule application (ADEP16)', async () => {

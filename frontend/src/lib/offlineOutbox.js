@@ -402,13 +402,30 @@ export class Outbox {
     let failed = 0
     try {
       await this._refresh()
-      while (this._ops.length > 0) {
-        const batch = this._ops.slice(0, this.maxBatch)
+      // ADEP18 — les ops déjà MARQUÉES (refusées) sont sautées en composant le lot : une
+      // op refusée en tête ne bloque pas les suivantes. Elles ne sont retentées que
+      // lorsqu'il ne reste QUE des ops marquées (VX119 : rejeu + `attempts`).
+      const retenterMarquees = !this._ops.some((op) => !op.serverError)
+      const aEnvoyer = () => (retenterMarquees ? this._ops : this._ops.filter((op) => !op.serverError))
+      while (aEnvoyer().length > 0) {
+        const batch = aEnvoyer().slice(0, this.maxBatch)
         let resp
         try {
           resp = await this.sender(batch)
-        } catch {
-          // Réseau retombé / serveur indispo : on s'arrête, file intacte.
+        } catch (err) {
+          const statut = err?.response?.status
+          const transitoire = !statut || statut >= 500 || statut === 401
+            || statut === 408 || statut === 429
+          if (transitoire) break // Réseau retombé / serveur indispo : file intacte.
+          // ADEP18 — réponse HTTP NON transitoire (400, 403, 404…) : ce n'est pas une
+          // coupure. Les ops du lot sont marquées (visibles, abandonnables), comme le
+          // fait `BinaryOutbox.flush`, au lieu de rester « en attente » en silence.
+          const detail = err?.response?.data?.detail || 'Refusée par le serveur.'
+          const ids = new Set(batch.map((op) => op.client_op_id))
+          await this._mutate((cur) => cur.map((op) => (ids.has(op.client_op_id)
+            ? { ...op, serverError: detail, attempts: (op.attempts || 0) + 1 }
+            : op)))
+          failed += ids.size
           break
         }
         const results = (resp && resp.results) || []
