@@ -26,7 +26,8 @@ from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers, status
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import (
     SAFE_METHODS, BasePermission, IsAuthenticated,
@@ -441,7 +442,7 @@ def recalculer_sla_perimes():
 
 # ── API ──────────────────────────────────────────────────────────────────
 
-class SlaSnapshotSerializer(serializers.ModelSerializer):
+class SlaSnapshotSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     # NTOBS23 — ``genere_le`` dans le fuseau d'affichage DE LA SOCIÉTÉ DU
     # SNAPSHOT (``SlaSnapshot.company`` est toujours renseignée, contrairement
     # à une fenêtre de maintenance système-wide).
@@ -460,7 +461,7 @@ class SlaSnapshotSerializer(serializers.ModelSerializer):
         return to_company_tz(obj.genere_le, obj.company).isoformat()
 
 
-class SlaCreditDuSerializer(serializers.ModelSerializer):
+class SlaCreditDuSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTOBS4 — un crédit dû, avec le nom de la société (vue cross-tenant
     Directeur uniquement)."""
 

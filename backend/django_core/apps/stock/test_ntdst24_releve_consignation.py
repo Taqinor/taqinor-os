@@ -90,7 +90,7 @@ class Ntdst24HtmlTests(Ntdst24Base):
         html = render_releve_consignation_html(self.depot)
         self.assertIn('déposé 30', html)
         self.assertIn('consommé 11', html)
-        self.assertIn('facturé 7', html)
+        self.assertIn('facturé 11', html)  # ASTK198 : 4 + 7, tout facturé
 
     def test_len_tete_est_la_societe_jamais_une_marque_en_dur(self):
         html = render_releve_consignation_html(self.depot)

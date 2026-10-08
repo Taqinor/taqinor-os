@@ -1314,7 +1314,13 @@ jobs:
       - name: YanBow — navigateur Playwright (chromium)
         if: ${{ needs.changes.outputs.yanbow == 'true' && hashFiles('apps/yanbow-web/playwright.config.ts') != '' }}
         working-directory: apps/yanbow-web
-        timeout-minutes: 6
+        # CI vague 5 (08/10/2026) — 6 min ne suffisaient pas : le dépaquetage
+        # apt de `--with-deps` (polices fonts-freefont/unifont/wqy-zenhei sur
+        # le miroir azure) a tourné > 6 min (run 37780121463), le navigateur
+        # lui-même n'a jamais commencé. Même plafond que l'étape Playwright de
+        # la lane e2e (10 min) : un miroir étranglé échoue toujours en NOMMANT
+        # l'étape, sans retomber dans les 59 min silencieuses du 19/08.
+        timeout-minutes: 10
         run: npx playwright install --with-deps chromium
       - name: YanBow — gardes navigateur (test:e2e)
         if: ${{ needs.changes.outputs.yanbow == 'true' && hashFiles('apps/yanbow-web/playwright.config.ts') != '' }}

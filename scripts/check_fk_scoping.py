@@ -348,6 +348,7 @@ def collect_sites():
             model_name = None
             declared_fields = None
             read_only_meta = set()
+            exclus_meta = None
             for stmt in meta.body:
                 noms = _assigned_targets(stmt)
                 value = getattr(stmt, "value", None)
@@ -362,6 +363,13 @@ def collect_sites():
                         declared_fields = _str_list(value)
                 if "read_only_fields" in noms:
                     read_only_meta.update(_str_list(value) or [])
+                if "exclude" in noms:
+                    exclus_meta = set(_str_list(value) or [])
+            # ASEC46 — ``Meta.exclude`` expose TOUS les champs du modèle moins
+            # l'exclusion : les FK écrivables restantes doivent être bornées
+            # comme avec ``fields = '__all__'`` (jusqu'ici ``continue`` muet).
+            if declared_fields is None and exclus_meta is not None:
+                declared_fields = "__all__"
             if model_name is None or declared_fields is None:
                 continue
             key = (app, model_name)
@@ -398,6 +406,9 @@ def collect_sites():
 
             noms_exposes = (list(champs_fk)
                             if declared_fields == "__all__" else declared_fields)
+            if exclus_meta:
+                noms_exposes = [n for n in noms_exposes
+                                if n not in exclus_meta]
             for champ in noms_exposes:
                 cible = champs_fk.get(champ)
                 if cible is None:
@@ -414,6 +425,117 @@ def collect_sites():
                            or champ in validates)
                 sites.append((rel, cls.name, champ,
                               f"{t_app}.{t_model}", couvert))
+    return sites
+
+
+# ── 3. ids bruts lus dans le corps d'une @action (ASEC46) ──────────────────
+
+#: Mots-clés d'appel qui portent une clé étrangère brute.
+_CLES_ID = {"pk", "id"}
+#: Un appel dont le texte contient l'un de ces mots est BORNÉ (société, queryset
+#: du viewset, résolveur scopé) : l'id brut n'y est pas résolu à l'aveugle.
+_MARQUEURS_BORNE = ("company", "get_queryset", "scoped", "get_object")
+
+
+def _est_action(fn) -> bool:
+    for dec in fn.decorator_list:
+        cible = dec.func if isinstance(dec, ast.Call) else dec
+        nom = (cible.attr if isinstance(cible, ast.Attribute)
+               else getattr(cible, "id", ""))
+        if nom == "action":
+            return True
+    return False
+
+
+def _cle_corps(node):
+    """``X.data.get('k_id')`` / ``X.data['k_id']`` → ``'k_id'`` (sinon None)."""
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get" and node.args
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "data"):
+        cle = node.args[0]
+    elif (isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "data"):
+        cle = node.slice
+    else:
+        return None
+    if isinstance(cle, ast.Constant) and isinstance(cle.value, str):
+        return cle.value
+    return None
+
+
+def _iter_view_files():
+    if not APPS_DIR.is_dir():
+        return
+    for app_dir in sorted(APPS_DIR.iterdir()):
+        if not app_dir.is_dir():
+            continue
+        for f in sorted(app_dir.rglob("*.py")):
+            rel_parts = f.relative_to(app_dir).parts
+            if any(part in SKIP_DIRS for part in rel_parts[:-1]):
+                continue
+            if f.name.startswith(("test_", "tests_")) or f.name in (
+                    "tests.py", "conftest.py"):
+                continue
+            try:
+                if "@action" not in f.read_text(encoding="utf-8"):
+                    continue
+            except (OSError, UnicodeDecodeError):
+                continue
+            yield f
+
+
+def collect_action_id_sites():
+    """→ ``[(rel, 'Classe.action', variable)]`` : un id lu du corps d'une
+    ``@action`` (clé ``*_id`` / ``id``) puis passé en ``*_id=`` / ``pk=`` /
+    ``.get(...)`` dans un appel NON borné (aucun marqueur société/queryset)."""
+    sites = []
+    for path in _iter_view_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):
+            continue
+        rel = _rel(path)
+        for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+            for fn in cls.body:
+                if (not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        or not _est_action(fn)):
+                    continue
+                bruts = {}
+                for node in ast.walk(fn):
+                    if (isinstance(node, ast.Assign)
+                            and len(node.targets) == 1
+                            and isinstance(node.targets[0], ast.Name)):
+                        cle = _cle_corps(node.value)
+                        if cle and (cle == "id" or cle.endswith("_id")):
+                            bruts[node.targets[0].id] = cle
+                if not bruts:
+                    continue
+                vus = set()
+                for call in [n for n in ast.walk(fn)
+                             if isinstance(n, ast.Call)]:
+                    texte = ast.unparse(call)
+                    if any(m in texte for m in _MARQUEURS_BORNE):
+                        continue
+                    # Un SERVICE (hors ORM direct) qui reçoit l'utilisateur ou
+                    # l'objet déjà borné dérive la société lui-même : borné.
+                    if ".objects" not in texte and (
+                            "user=" in texte or "request.user" in texte):
+                        continue
+                    for kw in call.keywords:
+                        if (isinstance(kw.value, ast.Name)
+                                and kw.value.id in bruts and kw.arg
+                                and (kw.arg.endswith("_id")
+                                     or kw.arg in _CLES_ID)):
+                            vus.add(kw.value.id)
+                    if (isinstance(call.func, ast.Attribute)
+                            and call.func.attr == "get"):
+                        for a in call.args:
+                            if isinstance(a, ast.Name) and a.id in bruts:
+                                vus.add(a.id)
+                for var in sorted(vus):
+                    sites.append((rel, f"{cls.name}.{fn.name}", var))
     return sites
 
 
@@ -434,11 +556,14 @@ def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
     sites = collect_sites()
+    actions = collect_action_id_sites()
 
     if list_mode:
         for rel, cls, champ, cible, couvert in sorted(sites):
             etat = "OK " if couvert else "NON"
             print(f"{etat} {rel}::{cls}.{champ} -> {cible}")
+        for rel, action, var in sorted(actions):
+            print(f"ACT {rel}::{action}.{var}")
         return 0
 
     offenders = []
@@ -459,6 +584,13 @@ def main(argv):
         for cle in inutiles:
             print(f"  - ligne d'allowlist inutile : {cle} — la retirer")
         return 1
+
+    # ASEC46 — id brut du corps d'une @action passé sans queryset borné.
+    for rel, action, var in sorted(actions):
+        cle = f"{rel}::{action}.{var}"
+        if cle not in allow:
+            offenders.append(f"{cle} -> id brut du corps de l'action non "
+                             "borné société")
 
     if offenders:
         print("check_fk_scoping: FK cross-app écrivable non validée "

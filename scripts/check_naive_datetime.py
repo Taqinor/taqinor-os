@@ -70,8 +70,8 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # Remappés 967->980 et 1169->1182 par CIQ215/CIQ216 : ventilation_tva et
     # reference_commande_client (+13 lignes) insérés dans Facture, AVANT ces
     # deux champs. MÊME champ, déclaration byte-identique. Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:980",
-    "backend/django_core/apps/facturation/models.py:1182",
+    "backend/django_core/apps/facturation/models.py:989",  # ATOT5/6 : lignes décalées, même champ Avoir.date_emission
+    "backend/django_core/apps/facturation/models.py:1198",  # ATOT5/6 : lignes décalées, même champ RelanceLog.date
     # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
     # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
     # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux

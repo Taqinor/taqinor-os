@@ -16,6 +16,8 @@ const read = (rel: string) => readFileSync(root(rel), 'utf-8');
 
 const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
 const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+// ATOT34 — la chaîne de prix vit dans ce composant (un seul rendu).
+const CHAINE_PRIX = read('../src/components/proposition/ChainePrix.astro');
 const GLOBAL_CSS = read('../src/styles/global.css');
 
 describe('WJ17/WJ43 — proposition/[token].astro : le switcher FR/EN/عربي est câblé (pas juste des boutons morts)', () => {
@@ -88,11 +90,10 @@ describe('WJ17/WJ43 — proposition/[token].astro : le switcher FR/EN/عربي e
 
   it('les valeurs numériques/références/dates restent dir="ltr" (jamais mirées en RTL)', () => {
     expect(PROPOSITION).toContain('dir="ltr"');
-    // Chaîne de prix (Sous-total/Remise/Total HT/TVA/Total TTC) : chaque <dd> figure numérique est LTR.
-    // Fenêtre bornée à la fermeture du <dl> — les data-en ajoutés en WJ43 ont rallongé chaque ligne,
-    // donc on slice jusqu'au </dl> réel plutôt qu'une fenêtre fixe de N caractères.
-    const priceStart = PROPOSITION.indexOf('Chaîne de prix explicite');
-    const priceChain = PROPOSITION.slice(priceStart, PROPOSITION.indexOf('</dl>', priceStart));
+    // Chaîne de prix (Sous-total/Remise/Arrondi/Total HT/TVA/Total TTC) : chaque <dd> figure numérique
+    // est LTR. ATOT34 : elle est rendue par ChainePrix.astro (la page l'inclut, ne l'imprime plus).
+    expect(PROPOSITION).toContain('<ChainePrix');
+    const priceChain = CHAINE_PRIX;
     expect((priceChain.match(/dir="ltr"/g) || []).length).toBeGreaterThanOrEqual(5);
   });
 });

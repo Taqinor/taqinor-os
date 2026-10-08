@@ -14,7 +14,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..models import Devis, BonCommande
 from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsResponsableOrAdmin,
+)
 from ..utils.references import create_with_reference
 from ..utils.company_settings import create_numbered
 
@@ -141,7 +143,8 @@ class DevisFacturationActionsMixin:
         detail=True,
         methods=['post'],
         url_path='facturer-complet',
-        permission_classes=[IsResponsableOrAdmin],
+        # ASEC29 / D-ASEC-1 — geste d'argent : code ``encaisser``.
+        permission_classes=[HasPermissionOrLegacy('encaisser')],
     )
     def facturer_complet(self, request, pk=None):
         """« Facturer » un devis ACCEPTÉ en un geste (fondateur, 05/10/2026).

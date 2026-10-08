@@ -39,7 +39,7 @@ vi.mock('../../api/stockApi', () => ({
     getHistoriquePrixBcf: vi.fn(),
     // WIR220 — liste par défaut (page complète).
     getBonsCommandeFournisseur: vi.fn(() => Promise.resolve({ data: [] })),
-    getFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
+    getAllFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
     getProduits: vi.fn(() => Promise.resolve({ data: [] })),
     getBcfEnRetard: vi.fn(() => Promise.resolve({ data: [] })),
     getAchatsHorsContrat: vi.fn(() => Promise.resolve({ data: [] })),
@@ -559,7 +559,7 @@ describe('WIR220 — dépassements listés (liste des BCF, filtre « En retard �
 describe('WIR220 — rapport « Achats hors contrat »', () => {
   it('génère le rapport filtré (fournisseur + période) et liste les écarts', async () => {
     stockApi.getBonsCommandeFournisseur.mockResolvedValue({ data: [] })
-    stockApi.getFournisseurs.mockResolvedValue({ data: [{ id: 1, nom: 'Fourni Plus' }] })
+    stockApi.getAllFournisseurs.mockResolvedValue({ data: [{ id: 1, nom: 'Fourni Plus' }] })
     stockApi.getAchatsHorsContrat.mockResolvedValue({
       data: [{
         ligne_id: 1, reference: 'BCF-1', fournisseur_nom: 'Fourni Plus', produit_nom: 'Module',

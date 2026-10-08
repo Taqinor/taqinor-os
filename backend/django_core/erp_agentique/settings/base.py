@@ -834,6 +834,18 @@ SPECTACULAR_SETTINGS = {
         # « multiple names for the same choice set » et deux composants
         # jumeaux. Nommage de schéma uniquement — aucun choix ne change.
         'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
+        # Vague 5 (08/10/2026) — ASTK214 expose `periodicite_defaut`
+        # (stock.Produit.PeriodiciteDefaut) : jeu IDENTIQUE à
+        # sav.ContratMaintenance.Periodicite (mensuel/trimestriel/semestriel/
+        # annuel). ASTK198 sert `statut` de DeclarationConsommation sous deux
+        # composants (DeclarationFactureeSerializer en hérite). Sans ces
+        # entrées : « multiple names for the same choice set » et des noms
+        # hachés (PeriodiciteA1cEnum, Statut437Enum). On ré-épingle les noms
+        # historiques. Nommage de schéma uniquement — aucun choix ne change.
+        'ContratMaintenancePeriodiciteEnum':
+            'apps.sav.models.ContratMaintenance.Periodicite',
+        'DeclarationConsommationStatutEnum':
+            'apps.stock.models_consignation.DeclarationConsommation.Statut',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
         # SOLMVP (21/09/2026) — `langue` (crm.MessageTemplate.Langue) et `langue`
@@ -1387,6 +1399,15 @@ SAV_WHATSAPP_NUMEROS = os.environ.get('SAV_WHATSAPP_NUMEROS', '')
 ODOO_COMPANY_ID = os.environ.get('ODOO_COMPANY_ID', '')
 # Tenant cible des leads web (id de Company) ; à défaut, la première Company.
 WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
+
+# YBW51 — demandes de rendez-vous du site YanBow (apps/crm/webhooks.py::
+# demande_rdv_webhook). Format : ``id_cle:slug_societe:secret,…`` (secret =
+# ``secrets.token_hex(32)``). La société destinataire est CELLE du slug lié à
+# l'identifiant de clé reçu en ``X-Site-Cle`` — jamais un repli. Vide par
+# défaut = TOUT refusé (401).
+SITE_RDV_CLES = os.environ.get('SITE_RDV_CLES', '')
+# Limite PAR CLÉ (jamais par IP) : demandes acceptées par minute.
+SITE_RDV_LIMITE_PAR_MINUTE = int(os.environ.get('SITE_RDV_LIMITE_PAR_MINUTE') or 30)
 
 # URL publique par DÉFAUT de la plateforme (page proposition/suivi client). Un
 # tenant white-label pointe ses liens sur SON propre site (CompanyProfile.site_web,

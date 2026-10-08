@@ -176,3 +176,60 @@ class TenantRateThrottle(SimpleRateThrottle):
         if company_id is None:
             return None  # superuser/opérateur sans société → non throttlé ici
         return f'throttle_tenant_{company_id}'
+
+
+# ── ASEC17 — débit anonyme PAR IP des vues publiques « sécurité » ────────────
+# ``TenantRateThrottle`` renvoie None pour un anonyme : ces vues n'avaient
+# AUCUN plafond applicatif (nginx ``public_token_limit`` reste la seconde ligne,
+# pas un substitut). La primitive d'IP est la même que partout
+# (``IdentIpPartageeMixin`` → ``ip_de_requete``) ; le débit est porté par la
+# sous-classe (comme ``CalendrierIcsThrottle``), sans entrée de settings.
+
+class PublicIpRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
+    """Base : un seau par (scope, IP). Les sous-classes fixent ``scope``/``rate``."""
+
+    scope = 'public_ip'
+    rate = '60/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request)}
+
+
+class LoginBannerThrottle(PublicIpRateThrottle):
+    """Bannière de connexion (GET + POST d'acquittement)."""
+    scope = 'public_login_banner'
+    rate = '30/minute'
+
+
+class ScimThrottle(PublicIpRateThrottle):
+    """Provisioning SCIM (jeton porteur de l'IdP)."""
+    scope = 'public_scim'
+    rate = '120/minute'
+
+
+class CookieRefreshThrottle(PublicIpRateThrottle):
+    """Rafraîchissement du jeton par cookie."""
+    scope = 'public_cookie_refresh'
+    rate = '60/minute'
+
+
+class PublicTokenReadThrottle(PublicIpRateThrottle):
+    """Lectures publiques par jeton (tableau partagé, trust-center, mode dégradé)."""
+    scope = 'public_token_read'
+    rate = '60/minute'
+
+
+class PublicExportThrottle(PublicIpRateThrottle):
+    """Exports publics coûteux (réversibilité, PDF trust-center)."""
+    scope = 'public_export'
+    rate = '10/minute'
+
+
+class MetricsThrottle(PublicIpRateThrottle):
+    """Exposition des métriques."""
+    scope = 'public_metrics'
+    rate = '60/minute'

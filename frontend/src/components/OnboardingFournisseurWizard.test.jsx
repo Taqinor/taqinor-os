@@ -17,10 +17,12 @@ vi.mock('../api/stockApi', () => ({
     createDocumentFournisseur: vi.fn(),
     televerserDocumentFournisseur: vi.fn(),
     validerDossierOnboarding: vi.fn(),
+    updateDocumentFournisseur: vi.fn(),
   },
 }))
 
 import stockApi from '../api/stockApi'
+import { documentContrat } from '../test/fixtures/contractSamples'
 import OnboardingFournisseurWizard from './OnboardingFournisseurWizard.jsx'
 
 const FOURNISSEUR = {
@@ -142,5 +144,28 @@ describe('OnboardingFournisseurWizard (NTP2P29)', () => {
     await waitFor(() =>
       expect(stockApi.createDossierOnboarding).toHaveBeenCalledWith(
         { fournisseur: 7 }))
+  })
+
+  // ASTK225 (FOUR-12) — la date d'expiration d'une pièce d'onboarding est
+  // saisissable et envoyée avec le téléversement (réponse = le contrat).
+  it('date d\'expiration envoyée', async () => {
+    const element = documentContrat('stock', 'fournisseur_conformite')
+      .routes.documents_fournisseur.exemple_element
+    stockApi.getOnboardingFournisseur.mockResolvedValue(reponse({ recus: [] }))
+    stockApi.createDocumentFournisseur.mockResolvedValue({ data: element })
+    stockApi.televerserDocumentFournisseur.mockResolvedValue({ data: element })
+    renderWizard()
+    await screen.findByTestId('onboarding-progression')
+    fireEvent.click(screen.getByTestId('onboarding-suivant'))
+    const date = await screen.findByLabelText('Date d\'expiration Registre du commerce')
+    fireEvent.change(date, { target: { value: element.date_expiration } })
+    const fichier = new File(['%PDF'], 'rc.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Téléverser Registre du commerce'),
+      { target: { files: [fichier] } })
+    await waitFor(() => expect(stockApi.createDocumentFournisseur).toHaveBeenCalledWith({
+      dossier: 3, type_document: 'rc', date_expiration: element.date_expiration,
+    }))
+    await waitFor(() => expect(stockApi.televerserDocumentFournisseur)
+      .toHaveBeenCalledWith(element.id, expect.any(FormData)))
   })
 })

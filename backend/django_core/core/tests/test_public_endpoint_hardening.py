@@ -23,7 +23,11 @@ from core import public_endpoint_scan
 THROTTLE_EXEMPT = {
     # Clé VAPID statique (aucune surface de brute-force).
     "notifications/views.py::vapid_public_key",
-    # Jetons signés / opaques — dette de throttle à ajouter (suivi YRBAC9).
+    # ASEC17 — sondes de santé : 200 immédiat sans donnée, interrogées en
+    # continu par nginx/Caddy/l'orchestrateur (un throttle ferait sortir le
+    # worker du pool). SEULES exemptions « sécurité » de ce fichier.
+    "core/views.py::health_live",
+    "core/views.py::health_ready",
     # (``crm/public_chat_views.py::open_chat_session`` a QUITTÉ cette liste :
     # il porte désormais ``@throttle_classes([PublicChatRateThrottle])`` — le
     # ratchet ne fait que décroître, une exemption résorbée se retire.)
@@ -34,8 +38,55 @@ THROTTLE_EXEMPT = {
     # plus, donc les endpoints ne sont plus servis. Le ratchet ne garde AUCUNE
     # exemption pour une surface absente ; au retour d'un module, l'exemption se
     # redéclare avec lui — ou mieux, sa dette de throttle est résorbée.)
-    # (ASEC45 — ``reporting/calendar.py::calendar_ics`` a quitté cette liste :
-    # il porte désormais ``@throttle_classes([CalendrierIcsThrottle])``.)
+    # (ASEC45 — ``reporting/calendar.py::calendar_ics`` a quitté la liste : il
+    # porte ``@throttle_classes([CalendrierIcsThrottle])``.)
+}
+
+# C-ASEC-028 (S4, V7 SPUB-4) — vues publiques qui lisent le corps comme un
+# OBJET sans le garder : un corps JSON non-objet (``[]``, ``"x"``) y donne un
+# 500 générique (aucune fuite : handler DRF unique). Inventaire STATIQUE gelé le
+# jour d'ASEC17 (sur-ensemble des 8 sites sondés au runtime par V7) ; il ne peut
+# que DÉCROÎTRE : un NOUVEAU site fait échouer le test, un site corrigé (garde
+# ``isinstance(request.data, dict)`` ou sérialiseur) doit être retiré d'ici.
+CORPS_NON_GARDE_PUBLIC = {
+    "adminops/views_signup.py::SignupDemandeView",
+    "contact/views.py::contact",
+    "crm/public_booking_views.py::public_booking_reserve",
+    "crm/public_chat_views.py::post_chat_message",
+    "ged/views.py::public_depot",
+    "ged/views.py::public_signature",
+    "ged/views.py::public_signataire",
+    "identity/views.py::LoginBannerView",
+    "portail/public_views.py::accepter_invitation_portail_public",
+    "reporting/approbations.py::decider_approbation_via_push",
+    "sav/public_views.py::ticket_public_satisfaction",
+    "sav/public_views.py::equipement_public_signaler",
+    "statuspage/views.py::public_abonner",
+    "stock/public_views.py::portail_fournisseur_confirmer_bcf_view",
+    "stock/public_views.py::portail_fournisseur_reserver_creneau_view",
+    "ventes/public/lecture_views.py::proposal_engagement",
+    "ventes/public/signature_views.py::proposal_contact_request",
+    "ventes/public/signature_views.py::proposal_accept",
+    "ventes/public/signature_views.py::proposal_activate_option",
+    "authentication/views.py::RegisterCompanyView",
+}
+
+# Les vues « sécurité » que l'ancien scanner (``views.py`` d'apps/ seulement,
+# ``AllowAny`` en liste nue) ne voyait pas — chacune DOIT être détectée ET
+# throttlée (ASEC17).
+VUES_SECURITE_ATTENDUES = {
+    "identity/views.py::LoginBannerView",
+    "identity/scim.py::ScimUsersView",
+    "identity/scim.py::ScimUserDetailView",
+    "identity/scim.py::ScimGroupsView",
+    "identity/scim.py::ScimGroupDetailView",
+    "authentication/views.py::CookieTokenRefreshView",
+    "core/dashboard_partage.py::dashboard_public",
+    "core/degraded_mode.py::degraded_mode_status_view",
+    "core/export_registry.py::telecharger_export_reversibilite",
+    "core/trust_center.py::trust_center_public",
+    "core/views.py::trust_center_export_pdf",
+    "core/views.py::metrics_view",
 }
 
 
@@ -63,6 +114,119 @@ class PublicEndpointThrottleGuardTests(SimpleTestCase):
         self.assertGreater(
             len(endpoints), 5,
             "Le scanner ne détecte quasiment aucun endpoint AllowAny — régression ?")
+
+
+class PublicEndpointHardeningTests(TestCase):
+    """ASEC17 — scanner complet, throttle, bannière agrégée, PDF en cache."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_scanner_voit_toutes_formes_allowany(self):
+        source = (
+            "from rest_framework import permissions\n"
+            "from rest_framework.permissions import AllowAny\n"
+            "class A(APIView):\n    permission_classes = [AllowAny]\n"
+            "class B(APIView):\n    permission_classes = (AllowAny,)\n"
+            "class C(APIView):\n"
+            "    permission_classes = [permissions.AllowAny]\n"
+            "class D(APIView):\n"
+            "    permission_classes: list = [AllowAny]\n"
+            "class E(APIView):\n"
+            "    def get_permissions(self):\n        return [AllowAny()]\n"
+            "@api_view(['GET'])\n@permission_classes([permissions.AllowAny])\n"
+            "def f(request):\n    pass\n"
+            "@api_view(['GET'])\n@permission_classes((AllowAny,))\n"
+            "def g(request):\n    pass\n"
+            "class V(viewsets.ViewSet):\n"
+            "    @action(detail=False, permission_classes=[AllowAny])\n"
+            "    def pub(self, request):\n        pass\n"
+            "class Throttled(APIView):\n    permission_classes = [AllowAny]\n"
+            "    throttle_classes = [X]\n"
+        )
+        trouves = {e["id"]: e
+                   for e in public_endpoint_scan.endpoints_of_source(
+                       source, "x.py")}
+        attendus = {"x.py::" + n for n in (
+            "A", "B", "C", "D", "E", "f", "g", "V.pub", "Throttled")}
+        self.assertEqual(set(trouves), attendus)
+        self.assertTrue(trouves["x.py::Throttled"]["throttled"])
+        self.assertFalse(trouves["x.py::A"]["throttled"])
+
+    def test_scanner_couvre_core_authentication_et_tout_fichier(self):
+        ids = {e["id"] for e in public_endpoint_scan.public_endpoints()}
+        manquantes = VUES_SECURITE_ATTENDUES - ids
+        self.assertEqual(manquantes, set(),
+                         "Vues publiques « sécurité » invisibles du scanner")
+
+    def test_vues_publiques_throttlees(self):
+        par_id = {e["id"]: e for e in public_endpoint_scan.public_endpoints()}
+        for vue in sorted(VUES_SECURITE_ATTENDUES):
+            self.assertTrue(
+                par_id[vue]["throttled"],
+                f"{vue} : vue publique « sécurité » sans throttle anonyme")
+        sans_throttle = {i for i, e in par_id.items() if not e["throttled"]}
+        self.assertEqual(sans_throttle - THROTTLE_EXEMPT, set())
+
+    def test_banniere_post_alerte_agregee(self):
+        from django.test import override_settings
+        from rest_framework.test import APIClient
+
+        from apps.audit.models import AuditLog
+        from apps.parametres.models_company import CompanyProfile
+        from authentication.models import Company
+        from core.models import TenantTheme
+
+        hote = "asec17-banner.example"
+        company = Company.objects.create(nom="ASEC17 Co", slug="asec17-co")
+        TenantTheme.objects.create(company=company, domaine=hote)
+        CompanyProfile.objects.update_or_create(
+            company=company, defaults={"login_banner_text": "Accès restreint."})
+        api = APIClient(HTTP_HOST=hote)
+        url = "/api/django/identity/login-banner/"
+        avant = AuditLog.objects.filter(
+            action=AuditLog.Action.SECURITY_ALERT).count()
+        with override_settings(ALLOWED_HOSTS=[hote, "testserver"]):
+            codes = [api.post(url, {"username": "x"}, format="json").status_code
+                     for _ in range(40)]
+        # CLAUSE PERSISTANCE : EXACTEMENT une alerte agrégée pour la rafale.
+        apres = AuditLog.objects.filter(
+            action=AuditLog.Action.SECURITY_ALERT).count()
+        self.assertEqual(apres - avant, 1)
+        self.assertIn(429, codes)
+        self.assertEqual(codes[0], 200)
+
+    def test_trust_center_pdf_cache(self):
+        from unittest import mock
+
+        from rest_framework.test import APIClient
+
+        api = APIClient()
+        with mock.patch(
+                "core.pdf_trust_center.generer_pdf_trust_center",
+                return_value=b"%PDF-1.4 asec17") as rendu:
+            r1 = api.get("/api/django/core/trust-center/export-pdf/")
+            r2 = api.get("/api/django/core/trust-center/export-pdf/")
+        self.assertEqual((r1.status_code, r2.status_code), (200, 200))
+        self.assertEqual(r1.content, r2.content)
+        self.assertEqual(rendu.call_count, 1)
+
+    def test_inventaire_500_publics_decroissant(self):
+        reel = set(public_endpoint_scan.body_unguarded_public_endpoints())
+        nouveaux = reel - CORPS_NON_GARDE_PUBLIC
+        self.assertEqual(
+            nouveaux, set(),
+            "Nouvelle vue publique qui lit le corps JSON comme un objet sans "
+            "garde (isinstance(request.data, dict) ou sérialiseur) — un corps "
+            "non-objet y donnerait un 500 :\n" + "\n".join(sorted(nouveaux)))
+        obsoletes = CORPS_NON_GARDE_PUBLIC - reel
+        self.assertEqual(
+            obsoletes, set(),
+            "Entrées CORPS_NON_GARDE_PUBLIC obsolètes (site corrigé ou "
+            "supprimé — retirez-les, la liste ne fait que décroître) :\n"
+            + "\n".join(sorted(obsoletes)))
 
 
 class TokenLinkExpiryContractTests(TestCase):

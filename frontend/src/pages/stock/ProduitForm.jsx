@@ -412,6 +412,49 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
   )
 }
 
+// ── ASTK230 — champs maîtres de la fiche produit ─────────────────────────────
+// Valeurs de saisie (chaînes / booléens) depuis le produit SERVEUR, puis
+// conversion vers la forme API — et SEULEMENT pour les champs modifiés.
+const MAITRES_TEXTE_NULLABLE = ['role_devis', 'code_barres', 'code_sh', 'pays_origine', 'periodicite_defaut']
+const MAITRES_TEXTE = ['unite_stock', 'avertissement_vente', 'politique_facturation_achat', 'classe_danger']
+const MAITRES_BOOLEENS = ['avertissement_bloquant', 'suivi_serie', 'louable', 'est_recurrent']
+const MAITRES_DECIMAUX = ['tarif_location_jour', 'tarif_location_semaine', 'tarif_location_mois']
+
+function champsMaitresInitiaux(produit) {
+  const out = {}
+  for (const k of [...MAITRES_TEXTE_NULLABLE, ...MAITRES_TEXTE]) out[k] = produit?.[k] ?? ''
+  for (const k of MAITRES_BOOLEENS) out[k] = !!produit?.[k]
+  for (const k of MAITRES_DECIMAUX) out[k] = produit?.[k] != null ? String(produit[k]) : ''
+  out.quantite_reappro_cible = produit?.quantite_reappro_cible != null ? String(produit.quantite_reappro_cible) : ''
+  out.paliers_prix_vente = (Array.isArray(produit?.paliers_prix_vente) ? produit.paliers_prix_vente : [])
+    .map((p) => ({
+      seuil_min: p?.seuil_min != null ? String(p.seuil_min) : '',
+      seuil_max: p?.seuil_max != null ? String(p.seuil_max) : '',
+      prix_vente_ttc: p?.prix_vente_ttc != null ? String(p.prix_vente_ttc) : '',
+    }))
+  return out
+}
+
+function champsMaitresModifies(fields, initiaux) {
+  const out = {}
+  const change = (k) => JSON.stringify(fields[k]) !== JSON.stringify(initiaux[k])
+  for (const k of MAITRES_TEXTE_NULLABLE) if (change(k)) out[k] = fields[k].trim() || null
+  for (const k of MAITRES_TEXTE) if (change(k)) out[k] = fields[k].trim()
+  for (const k of MAITRES_BOOLEENS) if (change(k)) out[k] = !!fields[k]
+  for (const k of MAITRES_DECIMAUX) if (change(k)) out[k] = fields[k] !== '' ? fields[k] : null
+  if (change('quantite_reappro_cible')) {
+    out.quantite_reappro_cible = fields.quantite_reappro_cible !== '' ? Number(fields.quantite_reappro_cible) : null
+  }
+  if (change('paliers_prix_vente')) {
+    out.paliers_prix_vente = fields.paliers_prix_vente.map((p) => ({
+      seuil_min: p.seuil_min !== '' ? Number(p.seuil_min) : null,
+      seuil_max: p.seuil_max !== '' ? Number(p.seuil_max) : null,
+      prix_vente_ttc: p.prix_vente_ttc,
+    }))
+  }
+  return out
+}
+
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const { categories, fournisseurs, produits } = useSelector(s => s.stock)
@@ -503,6 +546,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     role_ci:   produit?.role_ci   ?? '',
     type_pose: produit?.type_pose ?? '',
     delai_appro_jours: produit?.delai_appro_jours != null ? String(produit.delai_appro_jours) : '',
+    // ASTK230 (C-ASTK-045, CAT-8) — champs maîtres LUS par les consommateurs
+    // (générateur, comptoir, achats, rangement, réappro, location, contrats)
+    // mais jusqu'ici sans geste d'écriture. Seuls ceux MODIFIÉS partent au
+    // PATCH (`champsMaitresModifies`) : enregistrer sans toucher laisse
+    // l'objet serveur identique.
+    ...champsMaitresInitiaux(produit),
   }
   const [initialFieldsSnapshot] = useState(initialFields)
   const [fields, setFields] = useState(initialFields)
@@ -605,7 +654,11 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const setFicheCiField = (k, v) => setFicheCi((f) => ({ ...f, [k]: v }))
   // CIQ104 — libellés FR des rôles C&I / types de pose : servis par l'API
   // (choix de `role_ci` / `type_pose` lus par OPTIONS) — aucun miroir JS.
-  const [choixCi, setChoixCi] = useState({ roles: [], poses: [] })
+  const [choixCi, setChoixCi] = useState({
+    roles: [], poses: [],
+    // ASTK230 — listes des champs maîtres, servies par l'API (OPTIONS).
+    rolesDevis: [], classesDanger: [], periodicites: [], politiquesAchat: [],
+  })
   useEffect(() => {
     if (typeof api?.options !== 'function') return undefined
     let active = true
@@ -615,6 +668,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         setChoixCi({
           roles: choixDepuisOptions(r?.data, 'role_ci'),
           poses: choixDepuisOptions(r?.data, 'type_pose'),
+          rolesDevis: choixDepuisOptions(r?.data, 'role_devis'),
+          classesDanger: choixDepuisOptions(r?.data, 'classe_danger'),
+          periodicites: choixDepuisOptions(r?.data, 'periodicite_defaut'),
+          politiquesAchat: choixDepuisOptions(r?.data, 'politique_facturation_achat'),
         })
       })
       .catch(() => {})
@@ -801,6 +858,20 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
 
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
   const setField = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
+  // ASTK230 — paliers de prix de vente (lignes éditables).
+  const setPalier = (i, cle, valeur) => {
+    clearField('paliers_prix_vente')
+    setFields(f => ({
+      ...f,
+      paliers_prix_vente: f.paliers_prix_vente.map((p, idx) => (idx === i ? { ...p, [cle]: valeur } : p)),
+    }))
+  }
+  const ajouterPalier = () => setFields(f => ({
+    ...f, paliers_prix_vente: [...f.paliers_prix_vente, { seuil_min: '', seuil_max: '', prix_vente_ttc: '' }],
+  }))
+  const retirerPalier = (i) => setFields(f => ({
+    ...f, paliers_prix_vente: f.paliers_prix_vente.filter((_, idx) => idx !== i),
+  }))
 
   // Doublon de SKU détecté localement (unicité ('company','sku') côté serveur).
   // Le serveur reste l'autorité ; ceci évite un aller-retour pour un cas courant.
@@ -906,6 +977,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         delai_appro_jours: fields.delai_appro_jours !== '' ? Number(fields.delai_appro_jours) : null,
         // WIR67 — champs personnalisés du module « produit ».
         custom_data: customData,
+        // ASTK230 — seuls les champs maîtres MODIFIÉS (jamais un écrasement).
+        ...champsMaitresModifies(fields, initialFieldsSnapshot),
       }
       let enregistre
       if (isEdit) {
@@ -2091,6 +2164,152 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               )}
             </FormSection>
           )}
+
+          {/* ASTK230 (C-ASTK-045, CAT-8) — champs maîtres lus par les
+              consommateurs. Listes de choix servies par l'API (OPTIONS),
+              jamais retapées ; un 400 serveur s'affiche sous le champ. */}
+          <FormSection
+            title="Données maîtres"
+            description="Rôle de devis, logistique, ventes, achats, location et abonnement."
+          >
+            <FormField label="Rôle de devis" htmlFor="pf-role-devis" error={errors.role_devis}
+                       hint={isEdit && produit?.role_devis_effectif
+                         ? `Rôle effectif : ${produit.role_devis_effectif}${produit.role_devis_source ? ` (${produit.role_devis_source})` : ''}`
+                         : undefined}>
+              <Select value={fields.role_devis || '__none'}
+                      onValueChange={v => setField('role_devis', v === '__none' ? '' : v)}>
+                <SelectTrigger id="pf-role-devis"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">Non déclaré (déduit)</SelectItem>
+                  {fields.role_devis && !choixCi.rolesDevis.some(([v]) => v === fields.role_devis) && (
+                    <SelectItem value={fields.role_devis}>{fields.role_devis}</SelectItem>
+                  )}
+                  {choixCi.rolesDevis.map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Unité de stock" htmlFor="pf-unite-stock" error={errors.unite_stock}>
+              <Input id="pf-unite-stock" value={fields.unite_stock}
+                     onChange={e => setField('unite_stock', e.target.value)} placeholder="unité" />
+            </FormField>
+            <FormField label="Code-barres" htmlFor="pf-code-barres" error={errors.code_barres}>
+              <Input id="pf-code-barres" value={fields.code_barres}
+                     onChange={e => setField('code_barres', e.target.value)} />
+            </FormField>
+            <FormField label="Code SH" htmlFor="pf-code-sh" error={errors.code_sh}>
+              <Input id="pf-code-sh" value={fields.code_sh}
+                     onChange={e => setField('code_sh', e.target.value)} />
+            </FormField>
+            <FormField label="Pays d'origine" htmlFor="pf-pays-origine" error={errors.pays_origine}>
+              <Input id="pf-pays-origine" value={fields.pays_origine}
+                     onChange={e => setField('pays_origine', e.target.value)} />
+            </FormField>
+            <FormField label="Politique de facturation d'achat" htmlFor="pf-politique-achat"
+                       error={errors.politique_facturation_achat}>
+              <Select value={fields.politique_facturation_achat || '__none'}
+                      onValueChange={v => setField('politique_facturation_achat', v === '__none' ? '' : v)}>
+                <SelectTrigger id="pf-politique-achat"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {!fields.politique_facturation_achat && <SelectItem value="__none">Par défaut</SelectItem>}
+                  {choixCi.politiquesAchat.map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Avertissement de vente" htmlFor="pf-avert-vente" fullWidth
+                       error={errors.avertissement_vente}>
+              <Textarea id="pf-avert-vente" rows={2} value={fields.avertissement_vente}
+                        onChange={e => setField('avertissement_vente', e.target.value)} />
+            </FormField>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={!!fields.avertissement_bloquant} aria-label="Avertissement bloquant"
+                      onCheckedChange={v => setField('avertissement_bloquant', !!v)} />
+              Avertissement bloquant
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={!!fields.suivi_serie} aria-label="Suivi par n° de série"
+                      onCheckedChange={v => setField('suivi_serie', !!v)} />
+              Suivi par n° de série
+            </label>
+            <FormField label="Classe de danger" htmlFor="pf-classe-danger" error={errors.classe_danger}>
+              <Select value={fields.classe_danger || '__none'}
+                      onValueChange={v => setField('classe_danger', v === '__none' ? '' : v)}>
+                <SelectTrigger id="pf-classe-danger"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {!fields.classe_danger && <SelectItem value="__none">Par défaut</SelectItem>}
+                  {choixCi.classesDanger.map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Quantité cible de réappro" htmlFor="pf-qte-cible"
+                       error={errors.quantite_reappro_cible} hint="Vide = seuil × 2.">
+              <Input id="pf-qte-cible" type="number" step="any" inputMode="numeric"
+                     value={fields.quantite_reappro_cible}
+                     onChange={e => setField('quantite_reappro_cible', e.target.value)} />
+            </FormField>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={!!fields.louable} aria-label="Louable aux clients"
+                      onCheckedChange={v => setField('louable', !!v)} />
+              Louable aux clients
+            </label>
+            {[['tarif_location_jour', 'Tarif location / jour'],
+              ['tarif_location_semaine', 'Tarif location / semaine'],
+              ['tarif_location_mois', 'Tarif location / mois']].map(([cle, libelle]) => (
+              <FormField key={cle} label={libelle} htmlFor={`pf-${cle}`} error={errors[cle]}>
+                <Input id={`pf-${cle}`} type="number" step="any" inputMode="decimal"
+                       value={fields[cle]} onChange={e => setField(cle, e.target.value)} />
+              </FormField>
+            ))}
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={!!fields.est_recurrent} aria-label="Produit récurrent (abonnement)"
+                      onCheckedChange={v => setField('est_recurrent', !!v)} />
+              Produit récurrent (abonnement)
+            </label>
+            <FormField label="Périodicité par défaut" htmlFor="pf-periodicite"
+                       error={errors.periodicite_defaut}>
+              <Select value={fields.periodicite_defaut || '__none'}
+                      onValueChange={v => setField('periodicite_defaut', v === '__none' ? '' : v)}>
+                <SelectTrigger id="pf-periodicite"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">Non précisée (annuel)</SelectItem>
+                  {choixCi.periodicites.map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <div className="flex flex-col gap-2 sm:col-span-2" data-testid="pf-paliers">
+              <span className="text-sm font-medium">Paliers de prix de vente (TTC)</span>
+              {fields.paliers_prix_vente.map((pal, i) => (
+                <div key={i} className="flex flex-wrap items-end gap-2">
+                  <Input aria-label={`Palier ${i + 1} — quantité min`} type="number" step="any" className="w-28"
+                         value={pal.seuil_min} onChange={e => setPalier(i, 'seuil_min', e.target.value)} />
+                  <Input aria-label={`Palier ${i + 1} — quantité max`} type="number" step="any" className="w-28"
+                         value={pal.seuil_max} placeholder="∞"
+                         onChange={e => setPalier(i, 'seuil_max', e.target.value)} />
+                  <Input aria-label={`Palier ${i + 1} — prix TTC`} type="number" step="any" className="w-32"
+                         value={pal.prix_vente_ttc} onChange={e => setPalier(i, 'prix_vente_ttc', e.target.value)} />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => retirerPalier(i)}
+                          aria-label={`Retirer le palier ${i + 1}`}>
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              ))}
+              {errors.paliers_prix_vente && (
+                <p className="text-xs text-destructive">{String(errors.paliers_prix_vente)}</p>
+              )}
+              <div>
+                <Button type="button" variant="outline" size="sm" onClick={ajouterPalier}>
+                  <Plus className="size-4" /> Ajouter un palier
+                </Button>
+              </div>
+            </div>
+          </FormSection>
 
           {/* WIR67 — champs personnalisés (module « produit »). */}
           <CustomFieldsInput module="produit" value={customData} onChange={setCustomData} />

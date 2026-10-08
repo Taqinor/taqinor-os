@@ -168,6 +168,7 @@ SURFACE_PUBLIQUE = (
     "creer_devis_import",
     "creer_facture_acompte_situation",
     "creer_facture_classique",
+    "creer_facture_consignation",
     "creer_facture_contrat",
     "creer_facture_import",
     "creer_facture_regie",

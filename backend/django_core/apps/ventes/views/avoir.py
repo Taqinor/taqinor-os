@@ -160,6 +160,14 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             # l'écriture d'avoir (jamais de suppression, COMPTA11).
             avoir_annule.send(
                 sender=Avoir, instance=avoir, company=avoir.company)
+            # ATOT8 — le reste dû remonte : une facture PAYÉE grâce à cet
+            # avoir revient au recouvrement (statut dérivé du reste dû).
+            if trace is None:
+                from ..domain.encaissements import recalculer_statut_paiement
+                recalculer_statut_paiement(
+                    Facture.objects.get(
+                        pk=avoir.facture_id, company=avoir.company),
+                    user=request.user, source='annulation_avoir')
         return Response(AvoirSerializer(avoir).data)
 
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')

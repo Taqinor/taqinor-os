@@ -34,9 +34,13 @@ class TestEncaissementGroupe(TestCase):
         from apps.roles.models import Role
         from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         self.company = make_company()
+        # ASEC29 / D-ASEC-1 — l'encaissement groupé est un geste d'argent :
+        # le rôle de test porte le code `encaisser` (comportement inversé par
+        # la tâche — sans ce code, 403).
         resp_role = Role.objects.create(
             company=self.company, nom='Responsable',
-            permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)
+            permissions=list(RESPONSABLE_PERMISSIONS) + ['encaisser'],
+            est_systeme=True)
         self.resp = User.objects.create_user(
             username='zfac6_resp', password='x', role=resp_role,
             role_legacy='responsable', company=self.company)

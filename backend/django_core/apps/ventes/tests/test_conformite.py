@@ -132,4 +132,7 @@ class TestClearanceStatut(TestCase):
             f'/api/django/ventes/factures/{facture.id}/',
             {'statut_teledeclaration': 'soumise'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['statut_teledeclaration'], 'soumise')
+        # ASEC27 — comportement INVERSÉ par la tâche : le statut de
+        # télédéclaration est posé par le serveur, un PATCH est sans effet.
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut_teledeclaration, 'non_soumise')

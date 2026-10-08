@@ -15,6 +15,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 /* WIR109 — XSTK13 : inventaire annuel légal FIGÉ (CGNC, support du bilan).
    LECTURE SEULE côté modèle : un snapshot n'est créé QUE par l'action
@@ -30,26 +32,35 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
 }
 
 function FigerDialog({ onClose, onDone }) {
-  const anneeActuelle = new Date().getFullYear()
-  const [exercice, setExercice] = useState(String(anneeActuelle))
+  const [confirmer, dialogueConfirmation] = useConfirmation()
+  // ASTK203 — seul un exercice CLOS se fige : l'année précédente est proposée.
+  const anneePrecedente = new Date().getFullYear() - 1
+  const [exercice, setExercice] = useState(String(anneePrecedente))
   const [error, setError] = useState(null)
+  const [exerciceError, setExerciceError] = useState(null)
   const [saving, setSaving] = useState(false)
 
   const submit = async (ev) => {
     ev.preventDefault()
     const annee = Number(exercice)
     if (!annee) { setError('Année invalide.'); return }
-    if (!window.confirm(
-      `Figer l'inventaire de l'exercice ${annee} ? Cette action est IRRÉVERSIBLE (le snapshot ne pourra plus être modifié).`,
-    )) return
+    if (!(await confirmer({
+      title: `Figer l'inventaire de l'exercice ${annee} ?`,
+      description: 'Cette action est IRRÉVERSIBLE (le snapshot ne pourra plus être modifié).',
+      confirmLabel: 'Figer',
+    }))) return
     setSaving(true)
     setError(null)
+    setExerciceError(null)
     try {
       await stockApi.figerInventaireAnnuel({ exercice: annee })
       onDone?.()
       onClose()
     } catch (err) {
-      setError(frErr(err, 'Le figement a échoué.'))
+      // ASTK203 — le refus « exercice non clos » s'affiche SOUS le champ.
+      const surChamp = err?.response?.data?.exercice
+      if (surChamp) setExerciceError(Array.isArray(surChamp) ? surChamp[0] : String(surChamp))
+      else setError(frErr(err, 'Le figement a échoué.'))
     } finally { setSaving(false) }
   }
 
@@ -64,9 +75,10 @@ function FigerDialog({ onClose, onDone }) {
           </DialogDescription>
         </DialogHeader>
         <Form onSubmit={submit} className="gap-4">
-          <FormField label="Exercice (année)" required htmlFor="inv-exercice" fullWidth>
-            <Input id="inv-exercice" type="number" step="1" value={exercice}
-                   onChange={(e) => setExercice(e.target.value)} />
+          <FormField label="Exercice (année)" required htmlFor="inv-exercice" fullWidth
+                     error={exerciceError}>
+            <Input id="inv-exercice" type="number" step="1" value={exercice} invalid={!!exerciceError}
+                   onChange={(e) => { setExercice(e.target.value); setExerciceError(null) }} />
           </FormField>
           {error && (
             <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -79,6 +91,7 @@ function FigerDialog({ onClose, onDone }) {
           </DialogFooter>
         </Form>
       </DialogContent>
+      {dialogueConfirmation}
     </Dialog>
   )
 }

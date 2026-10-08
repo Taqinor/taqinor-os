@@ -16,7 +16,7 @@ vi.mock('../../api/stockApi', () => ({
     updateModeleBcf: vi.fn(),
     deleteModeleBcf: vi.fn(),
     genererModeleBcf: vi.fn(),
-    getFournisseurs: vi.fn(),
+    getAllFournisseurs: vi.fn(),
     getProduits: vi.fn(),
   },
 }))
@@ -47,7 +47,7 @@ beforeEach(() => {
       { id: 1, nom: 'Réassort panneaux', fournisseur: 3, fournisseur_nom: 'JA Solar', lignes: [{ id: 1, produit: 7, quantite: 10 }] },
     ],
   })
-  stockApi.getFournisseurs.mockResolvedValue({ data: [{ id: 3, nom: 'JA Solar' }] })
+  stockApi.getAllFournisseurs.mockResolvedValue({ data: [{ id: 3, nom: 'JA Solar' }] })
   stockApi.getProduits.mockResolvedValue({ data: [{ id: 7, nom: 'Panneau 550', sku: 'PAN-550' }] })
 })
 

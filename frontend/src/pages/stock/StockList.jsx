@@ -57,6 +57,8 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const SL_ECRAN = 'stock.produits'
@@ -87,11 +89,15 @@ function MiniTable({ head, children, className = '' }) {
 }
 
 // ── N16 — Inventaire physique : comptage par produit → ajustement de stock ──
+// ASTK209 — même message que le serveur (apply_inventory_count).
+const QTE_ENTIERE_ATTENDUE = 'Quantité entière ≥ 0 attendue.'
 function InventaireModal({ produits, onClose, onDone }) {
   const [motif, setMotif] = useState('')
   const [counts, setCounts] = useState({}) // { produitId: '12' }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // ASTK209 — erreur par produit, affichée SOUS son champ « Compté ».
+  const [ligneErrors, setLigneErrors] = useState({})
   const [recherche, setRecherche] = useState('')
   const allRows = (produits ?? []).filter((p) => !p.is_archived)
   // Recherche interne (grand catalogue) sur nom/SKU.
@@ -102,10 +108,21 @@ function InventaireModal({ produits, onClose, onDone }) {
   const submit = async () => {
     // On collecte sur TOUT le catalogue (les comptages saisis avant un filtre
     // de recherche ne doivent pas être perdus).
-    const lignes = allRows
-      .filter((p) => counts[p.id] !== undefined && counts[p.id] !== '')
-      .map((p) => ({ produit: p.id, quantite_comptee: parseInt(counts[p.id], 10) }))
-      .filter((l) => Number.isInteger(l.quantite_comptee) && l.quantite_comptee >= 0)
+    // ASTK209 (MVT-22) — plus de parseInt muet : 7.5 n'est plus tronqué en
+    // 7, un négatif n'est plus écarté en silence. Toute saisie non entière
+    // ou négative est signalée sous SON champ et RIEN n'est envoyé.
+    const saisies = allRows.filter((p) => counts[p.id] !== undefined && counts[p.id] !== '')
+    const erreurs = {}
+    const lignes = saisies.map((p) => {
+      const n = Number(counts[p.id])
+      if (!Number.isInteger(n) || n < 0) erreurs[p.id] = QTE_ENTIERE_ATTENDUE
+      return { produit: p.id, quantite_comptee: n }
+    })
+    setLigneErrors(erreurs)
+    if (Object.keys(erreurs).length > 0) {
+      setError('Corrigez les quantités signalées : rien n\'a été enregistré.')
+      return
+    }
     if (lignes.length === 0) { setError('Saisissez au moins un comptage.'); return }
     setSaving(true); setError(null)
     try {
@@ -113,7 +130,19 @@ function InventaireModal({ produits, onClose, onDone }) {
       onDone?.(r.data)
       onClose()
     } catch (err) {
-      setError(err.response?.data?.detail ?? "Échec de l'inventaire.")
+      // 400 serveur {lignes: {"<index>": [msg]}} → sous le champ du produit.
+      const parIndex = err.response?.data?.lignes
+      if (parIndex && typeof parIndex === 'object' && !Array.isArray(parIndex)) {
+        const parProduit = {}
+        for (const [i, msgs] of Object.entries(parIndex)) {
+          const ligne = lignes[Number(i)]
+          if (ligne) parProduit[ligne.produit] = Array.isArray(msgs) ? msgs[0] : String(msgs)
+        }
+        setLigneErrors(parProduit)
+        setError('Corrigez les quantités signalées : rien n\'a été enregistré.')
+      } else {
+        setError(err.response?.data?.detail ?? "Échec de l'inventaire.")
+      }
     } finally { setSaving(false) }
   }
 
@@ -149,18 +178,33 @@ function InventaireModal({ produits, onClose, onDone }) {
           <MiniTable head={['Produit', 'SKU', 'Stock actuel', 'Compté', 'Écart']}>
             {rows.map((p) => {
               const saisie = counts[p.id]
-              const compte = saisie === undefined || saisie === '' ? null : parseInt(saisie, 10)
-              const delta = compte === null || Number.isNaN(compte) ? null : compte - p.quantite_stock
+              const compte = saisie === undefined || saisie === '' ? null : Number(saisie)
+              const delta = compte === null || !Number.isInteger(compte) ? null : compte - p.quantite_stock
+              const ligneError = ligneErrors[p.id]
               return (
                 <tr key={p.id} className="border-t border-border">
                   <td className="px-3 py-2">{p.nom}</td>
                   <td className="px-3 py-2 font-mono text-xs">{p.sku ?? '—'}</td>
                   <td className="px-3 py-2 tabular-nums">{p.quantite_stock}</td>
                   <td className="px-3 py-2">
-                    <Input type="number" min="0" inputMode="numeric" className="h-9 w-24"
+                    <Input type="number" min="0" step="any" inputMode="numeric" className="h-9 w-24"
+                           aria-label={`Compté — ${p.nom}`}
+                           aria-invalid={ligneError ? true : undefined}
+                           aria-describedby={ligneError ? `inv-err-${p.id}` : undefined}
+                           invalid={!!ligneError}
                            value={counts[p.id] ?? ''}
                            placeholder={String(p.quantite_stock)}
-                           onChange={(e) => setCounts((c) => ({ ...c, [p.id]: e.target.value }))} />
+                           onChange={(e) => {
+                             setCounts((c) => ({ ...c, [p.id]: e.target.value }))
+                             setLigneErrors((errs) => {
+                               const reste = { ...errs }
+                               delete reste[p.id]
+                               return reste
+                             })
+                           }} />
+                    {ligneError && (
+                      <p id={`inv-err-${p.id}`} className="mt-1 text-xs text-destructive">{ligneError}</p>
+                    )}
                   </td>
                   <td className="px-3 py-2 tabular-nums">
                     {delta === null
@@ -674,6 +718,7 @@ function ForceDeleteModal({ produit, onCancel, onConfirm, loading }) {
 
 // ── Page principale ────────────────────────────────────────────────────────
 export default function StockList() {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { produits, produitsArchived, categories, loading, error } = useSelector(s => s.stock)
@@ -1001,7 +1046,7 @@ export default function StockList() {
   }
 
   const handleDelete = async (p) => {
-    if (!window.confirm(`Supprimer le produit « ${p.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer le produit « ${p.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     try {
       const result = await dispatch(deleteProduit(p.id)).unwrap()
       if (result.archived) {
@@ -1026,7 +1071,7 @@ export default function StockList() {
   }
 
   const handleUnarchive = async (p) => {
-    if (!window.confirm(`Désarchiver le produit « ${p.nom} » ?`)) return
+    if (!(await confirmer({ title: `Désarchiver le produit « ${p.nom} » ?`, confirmLabel: 'Désarchiver', severity: 'low' }))) return
     try {
       await dispatch(unarchiveProduit(p.id)).unwrap()
       dispatch(fetchProduitsArchived())
@@ -1622,6 +1667,7 @@ export default function StockList() {
           )}
         </div>
       )}
+      {dialogueConfirmation}
     </div>
   )
 }

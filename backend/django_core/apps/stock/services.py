@@ -162,25 +162,52 @@ def export_products_xlsx(produits):
 # action amont peut transformer ces manques en un BonCommandeFournisseur
 # brouillon. Le prix d'achat reste INTERNE (jamais sur un document client).
 
+def _quantite_comptee_entiere(valeur):
+    """ASTK209 — ``valeur`` en ``int`` si c'est un entier ≥ 0 (``7``,
+    ``"7"``, ``7.0``), sinon ``None`` (``7.5``, ``"7.5"``, ``-3``, ``True``,
+    texte, absent)."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = Decimal(str(valeur).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    if not nombre.is_finite() or nombre != nombre.to_integral_value() or nombre < 0:
+        return None
+    return int(nombre)
+
+
 def apply_inventory_count(*, company, user, motif, lignes):
     """N16 — inventaire : pose un comptage physique par produit et enregistre
     l'écart en MouvementStock (AJUSTEMENT). Renvoie {ajustes, inchanges,
     mouvements:[…]}. Le stock devient la quantité comptée ; rien n'est touché
     quand le comptage = stock actuel. Tout est scopé à la société."""
     from django.db import transaction
+    from rest_framework.exceptions import ValidationError
     from .models import Produit, MouvementStock
+
+    # ASTK209 (C-ASTK-053, MVT-22) — chaque quantité comptée doit être un
+    # ENTIER ≥ 0 : 7.5 n'est plus tronqué en 7, "7.5" et -3 ne sont plus
+    # ignorés en silence. Toutes les lignes sont validées AVANT toute
+    # écriture : une seule ligne invalide → 400 qui nomme chaque ligne
+    # fautive (par index), rien n'est appliqué.
+    lignes = list(lignes or [])
+    erreurs = {}
+    comptes = []
+    for index, ligne in enumerate(lignes):
+        compte = _quantite_comptee_entiere(
+            ligne.get('quantite_comptee') if isinstance(ligne, dict) else None)
+        if compte is None:
+            erreurs[str(index)] = ['Quantité entière ≥ 0 attendue.']
+        comptes.append(compte)
+    if erreurs:
+        raise ValidationError({'lignes': erreurs})
 
     motif = (motif or '').strip()
     result = {'ajustes': 0, 'inchanges': 0, 'mouvements': []}
     with transaction.atomic():
-        for ligne in (lignes or []):
+        for ligne, compte in zip(lignes, comptes):
             pid = ligne.get('produit')
-            try:
-                compte = int(ligne.get('quantite_comptee'))
-            except (TypeError, ValueError):
-                continue
-            if compte < 0:
-                continue
             produit = Produit.objects.select_for_update().filter(
                 id=pid, company=company).first()
             if produit is None:
@@ -1096,12 +1123,20 @@ def figer_inventaire_annuel(company, exercice, user):
     import datetime
     import json
     from django.core.serializers.json import DjangoJSONEncoder
+    from django.utils import timezone
+    from rest_framework.exceptions import ValidationError
     from .models import InventaireAnnuel
+    date_fin = datetime.date(exercice, 12, 31)
+    # ASTK203 (C-ASTK-051) — un exercice NON CLOS (31/12 ≥ aujourd'hui) ne
+    # se fige pas : le snapshot « immuable » serait faux (mouvements à venir).
+    if date_fin >= timezone.localdate():
+        raise ValidationError({'exercice': [
+            f"L'exercice {exercice} n'est pas clos ({date_fin:%d/%m/%Y}) : "
+            f'figez-le à partir du 01/01/{exercice + 1}.']})
     if InventaireAnnuel.objects.filter(
             company=company, exercice=exercice).exists():
         raise ValueError(
             f"L'exercice {exercice} est déjà figé pour cette société.")
-    date_fin = datetime.date(exercice, 12, 31)
     data = valorisation_a_date(company, date_fin)
     total_valeur = data['total']
     nb_lignes = len(data['lignes'])
@@ -2965,34 +3000,58 @@ def sortie_exists_for_reference(company, reference):
 
 # ── XSTK17 — profils saisonniers de seuils (saison pompage) ─────────────────
 
-def profil_saisonnier_actif(company, produit, *, mois=None):
+def profils_saisonniers_index(company):
+    """ASTK207 — profils saisonniers ACTIFS de la société en UNE requête :
+    ``(par_produit, par_categorie)`` où ``par_produit[pid]`` = le PREMIER
+    profil du produit (même ordre que ``.first()``) et
+    ``par_categorie[cid]`` = la liste des profils de la catégorie. Permet à
+    une LISTE produits de résoudre le seuil saisonnier sans N+1."""
+    from .models import ProfilSaisonnier
+    par_produit, par_categorie = {}, {}
+    for profil in ProfilSaisonnier.objects.filter(company=company, actif=True):
+        if profil.produit_id:
+            par_produit.setdefault(profil.produit_id, profil)
+        if profil.categorie_id:
+            par_categorie.setdefault(profil.categorie_id, []).append(profil)
+    return par_produit, par_categorie
+
+
+def profil_saisonnier_actif(company, produit, *, mois=None, index=None):
     """XSTK17 — profil saisonnier ACTIF couvrant ``mois`` (défaut : mois
     courant) pour ce produit (priorité) ou sa catégorie. Renvoie None hors
     saison / sans profil — auquel cas l'appelant garde le seuil statique
-    (comportement historique inchangé)."""
+    (comportement historique inchangé). ASTK207 — ``index`` (issu de
+    :func:`profils_saisonniers_index`) évite toute requête par produit."""
     from django.utils import timezone
     from .models import ProfilSaisonnier
     mois = mois or timezone.now().month
 
-    profil_produit = ProfilSaisonnier.objects.filter(
-        company=company, produit=produit, actif=True).first()
+    if index is not None:
+        par_produit, par_categorie = index
+        profil_produit = par_produit.get(produit.id)
+    else:
+        profil_produit = ProfilSaisonnier.objects.filter(
+            company=company, produit=produit, actif=True).first()
     candidats = [profil_produit] if profil_produit else []
     if not candidats and produit.categorie_id:
-        candidats = list(ProfilSaisonnier.objects.filter(
-            company=company, categorie_id=produit.categorie_id, actif=True))
+        candidats = (list(par_categorie.get(produit.categorie_id, []))
+                     if index is not None else
+                     list(ProfilSaisonnier.objects.filter(
+                         company=company, categorie_id=produit.categorie_id,
+                         actif=True)))
     for profil in candidats:
         if profil and profil.couvre_mois(mois):
             return profil
     return None
 
 
-def seuil_effectif_produit(company, produit, *, mois=None):
+def seuil_effectif_produit(company, produit, *, mois=None, index=None):
     """XSTK17 — (seuil_alerte, quantite_cible) EFFECTIFS pour ce produit : le
     profil saisonnier ACTIF prime pendant sa fenêtre ; hors saison ou sans
     profil, renvoie EXACTEMENT (produit.seuil_alerte,
     produit.quantite_reappro_cible) — repli byte-identique au comportement
     historique."""
-    profil = profil_saisonnier_actif(company, produit, mois=mois)
+    profil = profil_saisonnier_actif(company, produit, mois=mois, index=index)
     if profil is None:
         return produit.seuil_alerte, produit.quantite_reappro_cible
     seuil = profil.seuil_min if profil.seuil_min is not None \
@@ -3037,6 +3096,38 @@ def creer_profil_saisonnier(
         mois_debut=mois_debut, mois_fin=mois_fin, seuil_min=seuil_min,
         seuil_max=seuil_max, quantite_cible=quantite_cible, nom=nom,
         created_by=user)
+
+
+def quantite_suggeree_nette(company, produit, *, disponible=None,
+                            en_commande=None, cible=None, mois=None,
+                            index=None):
+    """ASTK207 (C-ASTK-053, MVT-21) — LA quantité à commander pour un
+    produit, seule formule du module : ``cible − disponible − en commande``
+    (jamais négative). Lue par a-reapprovisionner, previsions-reappro et le
+    champ ``quantite_suggeree`` du ProduitSerializer (catalogue) — les trois
+    affichent donc la même valeur.
+
+    * ``cible`` : la cible EFFECTIVE (profil saisonnier actif, XSTK17) ou, à
+      défaut, ``quantite_reappro_cible`` ; sans cible, repli ``seuil × 2``.
+      Un appelant peut passer sa propre cible (ex. la cible prévisionnelle
+      de previsions_reappro) : seuls disponible et en-commande sont alors
+      retranchés.
+    * ``disponible`` : stock − réservations chantier actives (N14).
+    * ``en_commande`` : restant des BCF brouillon/envoyés (YPROC9).
+    Les trois peuvent être fournis pré-agrégés (liste) pour éviter un N+1.
+    """
+    if cible is None:
+        seuil_effectif, cible_effective = seuil_effectif_produit(
+            company, produit, mois=mois, index=index)
+        cible = cible_effective if cible_effective else (
+            (seuil_effectif or 0) * 2)
+    if disponible is None:
+        disponible = (produit.quantite_stock
+                      - reserved_quantities(company).get(produit.id, 0))
+    if en_commande is None:
+        from .selectors import quantite_en_commande_produit
+        en_commande = quantite_en_commande_produit(company, produit.id)
+    return max((cible or 0) - disponible - en_commande, 0)
 
 
 def produits_a_reapprovisionner(company):
@@ -3119,8 +3210,6 @@ def produits_a_reapprovisionner(company):
                 .select_related('fournisseur')
                 .order_by('prix_achat')
                 .first())
-        cible = cible_effective if cible_effective else (
-            (seuil_effectif or 0) * 2)
         # ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — la quantité SUGGÉRÉE est ce
         # qu'il MANQUE pour atteindre la cible : cible − disponible (stock −
         # réservations) − pipeline déjà en commande (YPROC9). Avant, elle
@@ -3128,8 +3217,11 @@ def produits_a_reapprovisionner(company):
         # produit disait « commander ~10 » : deux quantités pour un même
         # produit, et un BCF auto qui sur-commandait le stock déjà présent.
         # Une quantité nette <= 0 exclut le produit (ce qui est là + ce qui
-        # arrive suffit).
-        qte_suggere = max(cible - disponible - en_commande, 0)
+        # arrive suffit). ASTK207 — calculée par LA fonction partagée.
+        qte_suggere = quantite_suggeree_nette(
+            company, p, disponible=disponible, en_commande=en_commande,
+            cible=(cible_effective if cible_effective
+                   else (seuil_effectif or 0) * 2))
         if qte_suggere <= 0:
             continue
         kit_id = kit_map.get(p.id)
@@ -3140,6 +3232,9 @@ def produits_a_reapprovisionner(company):
             'quantite_stock': p.quantite_stock,
             'seuil_alerte': seuil_effectif,
             'quantite_suggere': qte_suggere,
+            # ASTK207 — même clé que previsions-reappro et le catalogue
+            # (`quantite_suggere` reste servie pour les lecteurs existants).
+            'quantite_suggeree': qte_suggere,
             'disponible': disponible,
             'en_commande': en_commande,
             'fournisseur_id': best.fournisseur_id if best else None,
@@ -4144,14 +4239,26 @@ def previsions_reappro(company, nb_mois=6):
         company=company, id__in=list(sorties_map.keys()),
         is_archived=False).only('id', 'nom', 'sku', 'quantite_stock',
                                 'seuil_alerte', 'quantite_reappro_cible')
+    # ASTK207 — réservations et pipeline agrégés UNE fois (pas de N+1).
+    from .selectors import bcf_sources_en_commande_map
+    reserved_map = reserved_quantities(company)
+    en_commande_map = bcf_sources_en_commande_map(company)
     result = []
     for p in produits:
         total_sorties = sorties_map[p.id]
         conso_moy = total_sorties / nb_mois  # par mois
-        # Quantité suggérée = conso 2 mois (stock de sécurité) ou cible si définie
-        qte_suggeree = (p.quantite_reappro_cible
-                        if p.quantite_reappro_cible
-                        else max(round(conso_moy * 2), p.seuil_alerte * 2 if p.seuil_alerte else 1))
+        # Cible prévisionnelle = conso 2 mois (stock de sécurité) ou cible si
+        # définie ; ASTK207 — la quantité SUGGÉRÉE en retranche le disponible
+        # et l'en-commande (même fonction que a-reapprovisionner).
+        cible_prev = (p.quantite_reappro_cible
+                      if p.quantite_reappro_cible
+                      else max(round(conso_moy * 2), p.seuil_alerte * 2 if p.seuil_alerte else 1))
+        disponible = p.quantite_stock - reserved_map.get(p.id, 0)
+        en_commande = sum(
+            s['quantite_restante'] for s in en_commande_map.get(p.id, []))
+        qte_suggeree = quantite_suggeree_nette(
+            company, p, disponible=disponible, en_commande=en_commande,
+            cible=cible_prev)
         conso_jour = conso_moy / 30.0 if conso_moy else 0.0
         reorder = predict_reorder(
             current_stock=p.quantite_stock, today=today,
@@ -4164,6 +4271,9 @@ def previsions_reappro(company, nb_mois=6):
             'total_sorties': total_sorties,
             'consommation_mensuelle_moy': round(conso_moy, 2),
             'quantite_stock': p.quantite_stock,
+            'disponible': disponible,
+            'en_commande': en_commande,
+            'cible': cible_prev,
             'quantite_suggeree': qte_suggeree,
             'date_rupture': reorder.rupture_date,
             'point_commande': reorder.reorder_point,

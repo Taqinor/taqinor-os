@@ -112,7 +112,11 @@ class TestDoubleFacturationDevis(TestCase):
         self._facturer_bc()
         self.devis.refresh_from_db()
         solde = solde_devis(self.devis)
-        self.assertEqual(solde['tranches_facturees'], 1)
+        # ATOT2 — comportement INVERSÉ par la tâche : `tranches_facturees` ne
+        # compte plus que les factures de TRANCHE ; la facture de BC reste
+        # vue par le solde (`facture`) et ferme la porte (`aucune`).
+        self.assertEqual(solde['tranches_facturees'], 0)
+        self.assertEqual(solde['porte_facturation'], 'aucune')
         self.assertEqual(solde['facture'], Decimal('12000.00'))
 
     # ── Le prédicat partagé lui-même ──────────────────────────────────────

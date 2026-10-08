@@ -16,10 +16,13 @@ from __future__ import annotations
 
 from django.db import models
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import serializers
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+
+from core.throttling import PublicTokenReadThrottle
 
 from .models import TimestampedModel
 
@@ -60,7 +63,7 @@ class TrustCenterEntry(TimestampedModel):
         return f'{self.get_categorie_display()} — {self.titre}'
 
 
-class TrustCenterEntrySerializer(serializers.ModelSerializer):
+class TrustCenterEntrySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = TrustCenterEntry
         fields = [
@@ -72,6 +75,7 @@ class TrustCenterEntrySerializer(serializers.ModelSerializer):
 @extend_schema(responses=TrustCenterEntrySerializer(many=True))
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([PublicTokenReadThrottle])
 def trust_center_public(request):
     """GET /api/django/core/trust-center/ — public, lecture seule, aucune
     donnée société (le modèle lui-même n'en porte aucune)."""

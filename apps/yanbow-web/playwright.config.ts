@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { CLE_E2E, SECRET_E2E, URL_FAUX_ERP } from './tests-e2e/fauxErp';
 
 /**
  * Gardes navigateur (YBW15) sur le BUILD servi localement.
@@ -26,5 +27,13 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}/robots.txt`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // YBW56 : le Worker relaie les demandes de rendez-vous vers le FAUX ERP
+    // local (tests-e2e/fauxErp.ts) — valeurs de TEST seulement.
+    env: {
+      CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true',
+      YANBOW_RDV_URL: URL_FAUX_ERP,
+      YANBOW_RDV_CLE_ID: CLE_E2E,
+      YANBOW_RDV_SECRET: SECRET_E2E,
+    },
   },
 });
