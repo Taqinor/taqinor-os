@@ -56,35 +56,35 @@ def _branded_html(company, sujet, corps):
 
 
 def is_email_configured():
-    """True si un compte d'envoi (Brevo ou SMTP) est réellement configuré.
+    """True SEULEMENT si un e-mail partira réellement : une clé d'envoi est
+    posée (Brevo/SendGrid, ``settings.ANYMAIL``) ET le backend RÉELLEMENT
+    chargé envoie.
 
-    Sert UNIQUEMENT à informer l'UI / décider d'un envoi réel ; l'absence de
-    configuration n'est jamais une erreur — on retombe sur le backend console
-    (NO-OP). On considère « configuré » : une clé Brevo, OU un backend non
-    console explicitement choisi (ex. SMTP avec hôte).
+    ADEP34 — la clé seule ne suffit plus (décision QW8 corrigée) : avec
+    ``BREVO_API_KEY`` posée mais ``EMAIL_BACKEND`` resté sur *console* (le
+    défaut du projet), ``send_mail`` imprime le message sur stdout — l'ERP
+    disait « configuré » alors que rien ne partait, et contredisait
+    ``public.payload_conditions`` (« backend sans envoi »). Une seule règle
+    désormais, lue par les deux :
 
-    QW8 — CORRECTIF : ``ANYMAIL`` (settings/base.py) ne pose JAMAIS de clé
-    littéralement nommée ``BREVO_API_KEY`` — la valeur de l'env var
-    ``BREVO_API_KEY`` est rangée sous ``SENDINBLUE_API_KEY`` (nom du backend
-    anymail pour Brevo, ex-Sendinblue) ; ce contrôle vérifiait donc une clé
-    qui n'existe JAMAIS dans ``ANYMAIL``, rendant l'email config-mort même
-    avec une vraie clé Brevo configurée en prod. On honore les DEUX clés
-    réellement posées par les settings (Sendinblue/Brevo ET SendGrid,
-    héritage)."""
-    anymail = settings.ANYMAIL or {}
-    if anymail.get('SENDINBLUE_API_KEY') or anymail.get('SENDGRID_API_KEY'):
+    * aucune clé → faux ;
+    * clé + backend console / dummy / filebased → faux (prédicat
+      ``core.checks.backend_email_envoie``, source unique posée par ADEP31) ;
+    * clé + backend qui envoie (anymail, SMTP…) → vrai ;
+    * clé + ``locmem`` → vrai : c'est le DOUBLE de test imposé par le lanceur
+      Django (``mail.outbox``), traité comme un backend qui envoie pour que
+      les tests voient la branche « configuré ».
+
+    QW8 — la clé Brevo est rangée sous ``SENDINBLUE_API_KEY`` dans
+    ``ANYMAIL`` (jamais sous ``BREVO_API_KEY``) ; on lit les clés réellement
+    posées via ``core.checks.cles_envoi_posees``."""
+    from core.checks import backend_email_envoie, cles_envoi_posees
+    if not cles_envoi_posees():
+        return False
+    backend = str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip()
+    if backend == 'django.core.mail.backends.locmem.EmailBackend':
         return True
-    backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
-    if 'console' in backend or 'dummy' in backend:
-        return False
-    if 'locmem' in backend:
-        # Backend de test : non « configuré » au sens d'un compte réel, mais on
-        # laisse l'envoi se faire (les tests vérifient le contenu via locmem).
-        return False
-    if 'smtp' in backend:
-        return bool(getattr(settings, 'EMAIL_HOST', ''))
-    # Tout autre backend explicitement choisi (anymail prod) → configuré.
-    return True
+    return backend_email_envoie(backend)
 
 
 def _from_email():
