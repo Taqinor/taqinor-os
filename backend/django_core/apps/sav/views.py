@@ -919,9 +919,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # ASAV15 — l'échéance SLA dépend de la priorité, de l'ouverture et du
         # client (override contrat) : capturés AVANT la mise à jour.
         avant = self._cle_sla(serializer.instance)
+        # ASAV22 — instantané AVANT la correction, pour l'historique.
+        ancien = Ticket.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
         if self._cle_sla(serializer.instance) != avant:
             self._recalculer_sla(serializer.instance)
+        # ASAV22 — chaque champ suivi corrigé par PATCH laisse une ligne
+        # avant → après au chatter (aucune ligne sans changement réel).
+        activity.log_changes(ancien, serializer.instance, self.request.user)
         if serializer.instance.arret_installation and not etait_a_l_arret:
             from . import services as sav_services
             sav_services.notifier_arret_installation(serializer.instance)
