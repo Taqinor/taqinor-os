@@ -180,5 +180,88 @@ class CiChangesFilterTest(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# ADEP10 — les cinq checks requis alimentes par `changes` doivent ROUGIR quand
+# `changes` n'est pas `success` (checkout transitoire, timeout 5 min), tandis qu'un
+# saut par filtre de chemins reste vert. Emulation minimale de la semantique des `if`.
+# ---------------------------------------------------------------------------
+import yaml  # noqa: E402
+
+REQUIS_ALIMENTES_PAR_CHANGES = ("backend-lint", "backend-tests", "frontend-lint", "e2e",
+                                "web-build-test")
+_ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi",
+             "backend-tests-shard", "frontend-static", "frontend-vitest-shard",
+             "e2e-shard", "web-build-test")
+
+
+def _expr(cond, results, outputs):
+    """Evalue une condition `${{ ... }}` (sous-ensemble : always(), success(), needs.X.result,
+    needs.X.outputs.Y, hashFiles(), ==, !=, &&, ||, ()). Rend un booleen."""
+    if cond is None:
+        return None
+    if isinstance(cond, bool):
+        return cond
+    texte = str(cond).strip()
+    m = re.fullmatch(r"\$\{\{(.*)\}\}", texte, re.S)
+    texte = (m.group(1) if m else texte).strip()
+    texte = re.sub(r"hashFiles\([^)]*\)", "'h'", texte)
+    texte = re.sub(r"\b(always|success)\(\)", "True", texte)
+    texte = re.sub(r"needs\.([\w-]+)\.result", lambda g: f"R[{g.group(1)!r}]", texte)
+    texte = re.sub(r"needs\.([\w-]+)\.outputs\.(\w+)",
+                   lambda g: f"O[{g.group(1)!r}].get({g.group(2)!r}, '')", texte)
+    texte = texte.replace("&&", " and ").replace("||", " or ")
+    if re.search(r"contains\(|github\.|failure\(\)|cancelled\(\)", texte):
+        raise AssertionError(f"condition hors du sous-ensemble emule : {cond}")
+    return bool(eval(texte, {"__builtins__": {}}, {"R": results, "O": outputs}))  # noqa: S307
+
+
+def _verdict(jobs, nom, results, outputs):
+    """'failure' | 'success' | 'skipped' pour l'agregateur `nom` dans le scenario."""
+    job = jobs[nom]
+    needs = job.get("needs", [])
+    needs = [needs] if isinstance(needs, str) else needs
+    cond = _expr(job.get("if"), results, outputs)
+    if cond is None:
+        cond = all(results.get(n) == "success" for n in needs)
+    if not cond:
+        return "skipped"
+    for step in job["steps"]:
+        marche = _expr(step.get("if"), results, outputs)
+        if marche is None or marche:
+            if "exit 1" in (step.get("run") or ""):
+                return "failure"
+    return "success"
+
+
+class AgregateursChangesTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.jobs = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+    def _scenario(self, changes, outputs):
+        results = {j: "skipped" for j in _ALL_JOBS}
+        results["changes"] = changes
+        results["ci-image-check"] = "success"
+        out = {"changes": outputs}
+        return results, out
+
+    def test_changes_echec_rougit_les_requis(self):
+        results, out = self._scenario("failure", {})
+        for nom in REQUIS_ALIMENTES_PAR_CHANGES:
+            with self.subTest(requis=nom):
+                self.assertEqual(
+                    _verdict(self.jobs, nom, results, out), "failure",
+                    f"ci.yml : `{nom}` reste vert quand `changes` echoue — un check REQUIS "
+                    f"ne doit jamais passer sans que le filtre ait resolu.")
+
+    def test_filtre_saute_reste_vert(self):
+        tout_faux = {"backend": "false", "frontend": "false", "web": "false",
+                     "yanbow": "false", "code": "false"}
+        results, out = self._scenario("success", tout_faux)
+        for nom in REQUIS_ALIMENTES_PAR_CHANGES:
+            with self.subTest(requis=nom):
+                self.assertIn(_verdict(self.jobs, nom, results, out), ("success", "skipped"))
+
+
 if __name__ == "__main__":
     unittest.main()

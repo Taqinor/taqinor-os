@@ -540,6 +540,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       # WOW-CI RONDE 5 — même garde que sur `backend-tests` : `backend-openapi`
       # dépend de l'image CI, donc un échec de `ci-image-check` le laisserait
       # « skipped » et ferait passer ce check REQUIS au vert sans rien valider.
@@ -1033,6 +1042,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       # WOW-CI RONDE 5 — GARDE OBLIGATOIRE. Les shards déclarent désormais
       # `needs: ci-image-check` ; si ce job échoue, les shards ne sont pas
       # « failure » mais « skipped », et sans cette étape cet agrégateur —
@@ -1200,6 +1218,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       - name: Fail if a frontend lane failed or was cancelled
         if: ${{ needs.frontend-static.result == 'failure' || needs.frontend-static.result == 'cancelled' || needs.frontend-vitest-shard.result == 'failure' || needs.frontend-vitest-shard.result == 'cancelled' }}
         run: |
@@ -1254,13 +1281,23 @@ jobs:
   # permet de les cabler des maintenant, avant que le dossier ne soit complet.
   web-build-test:
     needs: changes
-    if: ${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.yanbow == 'true' }}
+    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true' || needs.changes.outputs.yanbow == 'true') }}
     runs-on: ubuntu-latest
     # 12 min pour apps/web + le budget YanBow (chaque etape YanBow porte son
     # propre timeout-minutes ci-dessous).
     timeout-minutes: 40
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       - uses: actions/checkout@v4
+        if: ${{ needs.changes.result == 'success' }}
       # -- TAQINOR (apps/web) --------------------------------------------------
       - uses: actions/setup-node@v4
         if: ${{ needs.changes.outputs.web == 'true' }}
@@ -1676,6 +1713,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       # WOW-CI RONDE 5 — même garde que sur `backend-tests` et `backend-lint` :
       # `e2e-shard` dépend désormais de l'image CI, donc un `ci-image-check`
       # rouge le laisserait « skipped » et ferait passer ce check REQUIS au vert
