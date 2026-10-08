@@ -69,10 +69,13 @@ class ProposalLangueQueryParamTests(TestCase):
         opts = gen_mock.call_args[0][1]
         # APDF18 — sans `?langue=`, la vue ne résout plus rien : elle laisse
         # `langue_sortie` vide et LE MOTEUR résout (APDF7, build_quote_data).
+        # Une-page : la fabrique n'a pas de ligne onduleur (le 'full' refuse) ;
+        # la résolution de langue ne dépend pas du format.
         self.assertIsNone(opts['langue_sortie'])
         from apps.ventes.quote_engine.builder import build_quote_data
         self.assertEqual(
-            build_quote_data(self.devis, opts)['langue_sortie'], 'ar')
+            build_quote_data(self.devis, dict(opts, pdf_mode='onepage'))[
+                'langue_sortie'], 'ar')
 
     def test_explicit_query_param_overrides_client(self):
         resp, gen_mock = self._get_proposal('?langue=en')
@@ -104,4 +107,5 @@ class ProposalLangueQueryParamTests(TestCase):
         self.assertIsNone(opts['langue_sortie'])
         from apps.ventes.quote_engine.builder import build_quote_data
         self.assertEqual(
-            build_quote_data(devis_fr, opts)['langue_sortie'], 'fr')
+            build_quote_data(devis_fr, dict(opts, pdf_mode='onepage'))[
+                'langue_sortie'], 'fr')
