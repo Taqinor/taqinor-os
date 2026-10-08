@@ -162,14 +162,16 @@ class TestDashboardAggregation(TestCase):
         self.assertGreaterEqual(d['total'], 4)
 
     def test_taux_acceptation_pct_calculated(self):
-        # 2 envoyés, 1 accepté → 50 %
-        _devis(self.co, self.user, self.cli, statut='envoye', ref='D-ENV-A1')
-        _devis(self.co, self.user, self.cli, statut='envoye', ref='D-ENV-A2')
-        _devis(self.co, self.user, self.cli, statut='accepte', ref='D-ACC-A1')
+        # ADEV10 — base = devis ENVOYÉS DANS LA PÉRIODE (date_envoi) : 3
+        # envoyés dont 1 accepté depuis → 33,3 % (l'ancienne base, le stock
+        # d'envoyés encore ouverts, donnait 1 / 2 = 50 %).
+        from django.utils import timezone
+        for statut, ref in (('envoye', 'D-ENV-A1'), ('envoye', 'D-ENV-A2'),
+                            ('accepte', 'D-ACC-A1')):
+            d = _devis(self.co, self.user, self.cli, statut=statut, ref=ref)
+            Devis.objects.filter(pk=d.pk).update(date_envoi=timezone.now())
         r = self.api.get(URL)
-        # taux_acceptation = acceptes / envoyes × 100
-        # 1 accepte / 2 envoyes = 50 %
-        self.assertEqual(r.data['devis']['taux_acceptation_pct'], 50.0)
+        self.assertEqual(r.data['devis']['taux_acceptation_pct'], 33.3)
 
     def test_valeur_pipeline_non_zero_when_lignes(self):
         d = _devis(self.co, self.user, self.cli, statut='envoye', ref='D-PIPE-1')
