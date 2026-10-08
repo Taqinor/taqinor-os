@@ -417,6 +417,9 @@ export function paybackMoteurHoraire(total, ecoAnnuelle, {
 export function computeROI({
   kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
   consoAnnuelleKwh, utility, productible,
+  // AGNR35 — barème EFFECTIF de la société (`baremeDepuisProfil`) : grille et
+  // redevance réglées ; absent ⇒ constantes nationales (inchangé).
+  bareme = null,
   // Q1 (fondateur 20/08/2026) — lignes RÉELLES du devis, pour retrouver le
   // prix TTC de l'onduleur de chaque option (provision de remplacement à
   // l'année 12). Optionnel : sans lignes, aucune provision (jamais un
@@ -550,8 +553,10 @@ export function computeROI({
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
-    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility)
-    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility)
+    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility,
+      bareme?.tranches, bareme?.chargesFixes)
+    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility,
+      bareme?.tranches, bareme?.chargesFixes)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
       autoconsoSansEff = autoconsoSansPlaf
@@ -766,6 +771,26 @@ export const ONEE_TRANCHES = trancheTable([
                      // 1,15142 HT × TVA 20% ; voir la note ci-dessus
   [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
+// AGNR35 — le barème EFFECTIF de la société, servi par le profil
+// (`bareme_effectif`, contrat parametres/bareme_effectif.json) → la forme de
+// l'écran : `{ tranches, chargesFixes }`, ou `null` en `national` (les
+// constantes ci-dessous restent alors seules en jeu, chiffres inchangés).
+export function baremeDepuisProfil(baremeEffectif) {
+  const b = baremeEffectif
+  if (!b || b.source !== 'societe') return null
+  let tranches = null
+  if (b.tranches && Array.isArray(b.tranches.pairs) && b.tranches.pairs.length) {
+    const pairs = b.tranches.pairs.map(([plafond, prix]) => [plafond == null ? null : Number(plafond), Number(prix)])
+    const seuil = parseFloat(b.tranches.selective_threshold)
+    tranches = trancheTable(pairs, seuil > 0
+      ? { seuil, tolerance: parseFloat(b.tranches.boundary_tolerance) || 0 } : null)
+  }
+  const redevance = parseFloat(b.redevance_compteur_mad_mois)
+  const chargesFixes = Number.isFinite(redevance) && redevance >= 0 ? redevance : null
+  if (!tranches && chargesFixes == null) return null
+  return { tranches, chargesFixes }
+}
+
 // Q7 (decision fondateur du 20/08/2026) — UN SEUL BAREME NATIONAL. Les grilles
 // « approximatives » Lydec et Redal disparaissent : elles etaient inventees
 // (trois paliers ronds « a confirmer ») et faisaient diverger l'ecran du
@@ -920,10 +945,10 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
 // la borne de boucle.
 const PLAFOND_DICHOTOMIE_KWH = 1e6
 export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
-  jours = TPPAN_JOURS_REFERENCE) {
+  jours = TPPAN_JOURS_REFERENCE, chargesFixes = null) {
   const montant = parseFloat(totalMad) || 0
   if (montant <= 0) return 0
-  const total = (k) => factureMad(k, tranches, jours).totalMad
+  const total = (k) => factureMad(k, tranches || ONEE_TRANCHES, jours, chargesFixes).totalMad
   if (montant <= total(0)) return 0
   let bas = 0
   let haut = 1000
@@ -947,12 +972,15 @@ export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
 // `utility` n'est plus lu (gardé pour la signature des appelants) ;
 // `tranchesOverride` = grille vendeur. Un mois non inversable ⇒ 0 (le serveur
 // omet toute la série). 0 quand aucune facture exploitable — l'appelant OMET.
-export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride) {
+// AGNR35 — `chargesFixes` : la redevance de compteur RÉGLÉE par la société
+// (`bareme_effectif.redevance_compteur_mad_mois`) ; absente ⇒ lignes fixes
+// nationales.
+export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride, chargesFixes = null) {
   if (!Array.isArray(factures) || !factures.length) return 0
   const table = tranchesOverride && tranchesOverride.length ? tranchesOverride : ONEE_TRANCHES
   let total = 0
   for (const bill of factures) {
-    const kwh = kwhDepuisFactureMad(bill, table)
+    const kwh = kwhDepuisFactureMad(bill, table, TPPAN_JOURS_REFERENCE, chargesFixes)
     if (kwh === null) return 0
     total += kwh
   }
@@ -975,11 +1003,16 @@ function consoAnnuelleEnergieSeule(factures, utility) {
 // réafficher comme des kWh tapés puis de la réécrire à l'identique (le
 // 165 000 kWh de DEV-202609-0113 revenait à chaque enregistrement). Tolérance
 // 12 kWh/an : la dérive ×12 de l'aller-retour kWh/mois (110 000 → 110 004).
-export function consoDescendDesFactures(conso, factures, distributeur) {
+export function consoDescendDesFactures(conso, factures, distributeur, bareme = null) {
   const c = parseFloat(conso) || 0
   if (c <= 0 || !Array.isArray(factures) || !factures.length) return false
   const derivee = consoAnnuelleDepuisFactures(factures)
   if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
+  // AGNR35 — une conso dérivée au barème SOCIÉTÉ reste reconnue.
+  if (bareme) {
+    const societe = consoAnnuelleDepuisFactures(factures, null, bareme.tranches, bareme.chargesFixes)
+    if (societe > 0 && Math.abs(c - societe) <= 12) return true
+  }
   for (const d of new Set([distributeur || undefined, 'onee', undefined])) {
     const ancienne = consoAnnuelleEnergieSeule(factures, d)
     if (ancienne > 0 && Math.abs(c - ancienne) <= 12) return true
@@ -1043,8 +1076,9 @@ export function chargesFixesTtc() {
 //     s'écarte de plus de 25 % de la facture d'hiver du lead ⇒
 //     `{ serie, lead }`, à faire CONFIRMER, jamais corrigé en silence.
 export const ECART_FACTURE_LEAD_MAX = 0.25
-export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
-  const plancher = chargesFixesTtc()
+export function controlerFacturesSaisies(factures, { factureHiverLead, chargesFixes = null } = {}) {
+  // AGNR35 — plancher = la redevance société quand elle est réglée.
+  const plancher = Number.isFinite(parseFloat(chargesFixes)) ? parseFloat(chargesFixes) : chargesFixesTtc()
   const serie = Array.isArray(factures) ? factures.map(v => Number(v) || 0) : []
   const sousPlancher = []
   serie.forEach((v, i) => { if (v > 0 && v < plancher) sousPlancher.push(i + 1) })
@@ -1069,12 +1103,12 @@ const RATIO_KWH_FACTURE_MAX = 2
 export const MESSAGE_KWH_INCOHERENT =
   'kWh déclarés incohérents avec les factures — corriger la fiche du lead'
 export function controlerKwhDeclare(kwhMensuel, { factureHiver, factureEte, eteDifferente } = {},
-  tranches = ONEE_TRANCHES) {
+  tranches = ONEE_TRANCHES, chargesFixes = null) {
   const kwh = parseFloat(kwhMensuel) || 0
   const factures = [factureHiver, eteDifferente ? factureEte : null]
     .map(v => parseFloat(v) || 0).filter(v => v > 0)
   if (!(kwh > 0) || !factures.length) return null
-  const factureBareme = factureMad(kwh, tranches).totalMad
+  const factureBareme = factureMad(kwh, tranches || ONEE_TRANCHES, TPPAN_JOURS_REFERENCE, chargesFixes).totalMad
   const ratios = factures.map(f => factureBareme / f)
   return {
     factureBareme,
@@ -1110,10 +1144,12 @@ export function tppanMad(kwhMensuel, jours = TPPAN_JOURS_REFERENCE) {
 // dans l'ordre de la vraie facture. Jumeau de bareme.facture_mad. Une
 // consommation nulle ne doit RIEN en énergie ni en TPPAN, mais les lignes
 // fixes restent dues : c'est la réalité d'un abonnement.
-export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) {
+// AGNR35 — `chargesFixes` (MAD TTC/mois) REMPLACE en bloc les deux lignes
+// fixes nationales, exactement comme le serveur (`charges_fixes_mad`).
+export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE, chargesFixes = null) {
   const kwh = parseFloat(kwhMensuel) || 0
   const energie = kwh > 0 ? monthlyBillFromKwh(kwh, tranches) : 0
-  const fixes = chargesFixesTtc()
+  const fixes = Number.isFinite(parseFloat(chargesFixes)) ? parseFloat(chargesFixes) : chargesFixesTtc()
   const taxe = tppanMad(kwh, jours)
   return {
     energieMad: energie,
@@ -1131,14 +1167,15 @@ export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) 
 // comme le serveur depuis QJR157 : le mois reste l'unité de tarification (le
 // seuil des marches est MENSUEL), on ne divise jamais l'année après avoir
 // tarifé. Mois MOYEN, comme le repli serveur sans répartition mensuelle.
-export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
+export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride,
+  chargesFixes = null) {
   const { table } = resolveTranches(utility, tranchesOverride)
   if (!table) return null
   const conso = parseFloat(consoAnnuelleKwh) || 0
   const prod = parseFloat(productionKwh) || 0
   const ratio = parseFloat(autoconsoRatio) || 0
   if (conso <= 0 || prod <= 0 || ratio <= 0) return null
-  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table).totalMad * 12
+  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table, TPPAN_JOURS_REFERENCE, chargesFixes).totalMad * 12
   const factureSans = Math.round(factureAnnuelle(conso))
   const autoconsoKwh = Math.min(prod * ratio, conso)
   const residuel = Math.max(0, conso - autoconsoKwh)

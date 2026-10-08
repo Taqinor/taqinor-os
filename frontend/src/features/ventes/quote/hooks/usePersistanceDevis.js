@@ -58,7 +58,7 @@ export function usePersistanceDevis(ctx) {
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
-    setEditDevis, setReserveEnregistrement, setErreursChamps,
+    setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete,
   } = ctx
 
   // ── Sauvegarde ──
@@ -92,7 +92,7 @@ export function usePersistanceDevis(ctx) {
         factureHiver: selectedLead.facture_hiver,
         factureEte: selectedLead.facture_ete,
         eteDifferente: selectedLead.ete_differente,
-      })
+      }, baremeSociete?.tranches, baremeSociete?.chargesFixes)
       if (ctlKwh && !ctlKwh.coherent) e.conso = MESSAGE_KWH_INCOHERENT
     }
     const orphan = lines.find(l =>
@@ -159,6 +159,7 @@ export function usePersistanceDevis(ctx) {
     if (facturesSaisies) {
       const ctl = controlerFacturesSaisies(monthly, {
         factureHiverLead: selectedLead?.facture_hiver,
+        chargesFixes: baremeSociete?.chargesFixes,
       })
       if (ctl.sousPlancher.length) {
         e.factures = `Facture(s) mensuelle(s) inférieure(s) aux lignes fixes du `
@@ -320,7 +321,8 @@ export function usePersistanceDevis(ctx) {
     if (conso == null && stockee && !stockee.descendDesFactures) conso = stockee.valeur
     const factures = entrees.factures_mensuelles_reelles || stockee?.factures || null
     if (conso == null && factures) {
-      const derivee = consoAnnuelleDepuisFactures(factures, distributeur)
+      const derivee = consoAnnuelleDepuisFactures(factures, distributeur,
+        baremeSociete?.tranches, baremeSociete?.chargesFixes)
       if (derivee > 0) { conso = derivee; auBareme = true }
     }
     if (conso == null && consoAnnuelleReelle > 0) {
@@ -345,6 +347,7 @@ export function usePersistanceDevis(ctx) {
   // appel, voir `persisterDevis`).
   // QJR658 — l'état d'écran à enregistrer, dans la forme de `etatDevis.js`.
   const etatEcran = () => ({
+    bareme: baremeSociete,
     mode: modeInstallation, dateValidite, tauxTva, discountPct, note, prixCible,
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
     conditions, conditionsServies: conditionsServies.current,

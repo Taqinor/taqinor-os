@@ -16,7 +16,7 @@ export function useLeadClientEcran(ctx) {
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerPartDiurneDuMarche, appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
-    pompeCv, pompeHmt, pompeDebit,
+    pompeCv, pompeHmt, pompeDebit, baremeSociete,
   } = ctx
   const vide = (v) => v == null || String(v).trim() === ''
 
@@ -179,7 +179,7 @@ export function useLeadClientEcran(ctx) {
       // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
       // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
       // société (PVORD) : rien de cela ne part d'ici.
-      const devisId = await createAutoQuote({ lead, discountStr })
+      const devisId = await createAutoQuote({ lead, discountStr, bareme: baremeSociete })
       finish(devisId)
     } catch (err) {
       const msg = typeof err?.detail === 'string'

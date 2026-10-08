@@ -27,7 +27,7 @@ export function useChargeurEdition(ctx) {
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
     setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
     setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
-    setFarmHmtDrawdown, setPompageSaisie, clear, appliquerPartDiurneDuMarche,
+    setFarmHmtDrawdown, setPompageSaisie, clear, appliquerPartDiurneDuMarche, baremeSociete,
   } = ctx
 
   // QJR548 — le chargeur `?edit=` se relance quand le devis a été recomposé
@@ -79,7 +79,7 @@ export function useChargeurEdition(ctx) {
       // QJR658 — LE MAPPEUR EST UN MODULE PUR (`quote/etatDevis.js`,
       // aller-retour exécuté par `etatDevis.test.mjs`) : il lit le devis
       // servi et rend l'état d'écran ; ici on ne fait que le POSER.
-      const etat = devisVersEtat(d)
+      const etat = devisVersEtat(d, { bareme: baremeSociete })
       const pose = (valeur, setter) => { if (valeur !== undefined) setter(valeur) }
       // Défaut de part diurne du marché (QJR641), avant la valeur persistée.
       if (etat.mode && etat.mode !== modeInstallation) appliquerPartDiurneDuMarche(etat.mode)

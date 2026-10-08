@@ -97,7 +97,8 @@ test('CIQ127 — runAutoQuote et createAutoQuote ne transmettent plus l’ordre 
   const idx = DG.indexOf('const runAutoQuote = async')
   assert.ok(idx > -1, 'runAutoQuote introuvable')
   const appel = DG.indexOf('createAutoQuote({', idx)
-  assert.match(DG.slice(appel, appel + 60), /createAutoQuote\(\{ lead, discountStr \}\)/)
+  // AGNR35 — seul le barème société s'ajoute (jamais l'ordre des lignes).
+  assert.match(DG.slice(appel, appel + 80), /createAutoQuote\(\{ lead, discountStr(, bareme: baremeSociete)? \}\)/)
   // Le devis auto ne compose plus rien à l'écran (aucun autoFillLines).
   assert.doesNotMatch(AQ, /autoFillLines\(|ordreLignes,\s*\}\)\s*\{/)
 })

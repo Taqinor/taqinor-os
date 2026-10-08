@@ -137,7 +137,7 @@ export function entreesPompageEcran(etat) {
 }
 
 /** Le devis servi → l'état de l'écran d'Édition complète. */
-export function devisVersEtat(d) {
+export function devisVersEtat(d, { bareme = null } = {}) {
   const devis = d || {}
   const e = devis.etude_params || {}
   const mode = devis.mode_installation || undefined
@@ -246,7 +246,8 @@ export function devisVersEtat(d) {
   etat.consoStockee = e.conso_annuelle > 0 ? {
     valeur: Number(e.conso_annuelle),
     factures,
-    descendDesFactures: consoDescendDesFactures(e.conso_annuelle, factures, e.distributeur),
+    // AGNR35 — une conso dérivée au barème SOCIÉTÉ est reconnue aussi.
+    descendDesFactures: consoDescendDesFactures(e.conso_annuelle, factures, e.distributeur, bareme),
   } : null
   if (etat.consoStockee && !etat.consoStockee.descendDesFactures) {
     etat.realBillMode = 'kwh'
@@ -289,7 +290,8 @@ export function entreesDeEtat(etat) {
   let auBareme = false
   if (stockee && !stockee.descendDesFactures) conso = stockee.valeur
   if (conso == null && factures) {
-    const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee')
+    const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee',
+      etat.bareme?.tranches, etat.bareme?.chargesFixes)
     if (derivee > 0) { conso = derivee; auBareme = true }
   }
   if (conso != null) {

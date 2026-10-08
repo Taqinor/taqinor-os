@@ -45,7 +45,8 @@ function mappeurEdit() {
   assert.ok(end > start, "la pose des lignes (setLines(withKeys(etat.lignes))) est introuvable")
   // QJR658 — le devis passe par devisVersEtat, qui COMPOSE le mappeur UNIQUE
   // de lignesEcran.js (QJR523).
-  assert.match(DG.slice(start, end), /devisVersEtat\(d\)/)
+  // AGNR35 — le barème société voyage avec (reconnaissance de la conso).
+  assert.match(DG.slice(start, end), /devisVersEtat\(d(, \{ bareme: baremeSociete \})?\)/)
   assert.match(ED, /lignesServeurVersEcran\(/)
   const debut = LE.indexOf('export function lignesServeurVersEcran(')
   assert.ok(debut > -1, 'lignesServeurVersEcran introuvable')

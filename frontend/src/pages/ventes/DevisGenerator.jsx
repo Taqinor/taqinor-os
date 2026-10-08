@@ -118,7 +118,7 @@ import {
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  consoAnnuelleDepuisFactures, multiPropertyPreviewTTC, lignesRemiseesParPanier,
+  consoAnnuelleDepuisFactures, baremeDepuisProfil, multiPropertyPreviewTTC, lignesRemiseesParPanier,
   productibleForCity,
   COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
@@ -380,6 +380,9 @@ export default function DevisGenerator({
   // AGNR21 — l'enregistrement PARTIEL (lignes écrites, étude ou registre
   // refusés) : bandeau persistant, l'écran reste sur le formulaire.
   const [reserveEnregistrement, setReserveEnregistrement] = useState(null)
+  // AGNR35 — le barème EFFECTIF de la société (profil `bareme_effectif`) :
+  // `null` = barème national (constantes de l'écran, chiffres inchangés).
+  const [baremeSociete, setBaremeSociete] = useState(null)
   // AGNR33 — refus 400 « par champ » de l'en-tête et notes de normalisation
   // (AGNR8), affichés sous LE champ concerné.
   const [erreursChamps, setErreursChamps] = useState({})
@@ -1128,7 +1131,8 @@ export default function DevisGenerator({
     // (énergie + lignes fixes + TPPAN) : inversée au barème COMPLET, comme
     // les 12 factures et le serveur (`kwh_from_bill(..., facture_totale=True)`),
     // jamais par l'énergie seule (`kwhFromBill`, +40 % sur les petites factures).
-    const kwhAn = consoAnnuelleDepuisFactures(Array(12).fill(mad), distributeur)
+    const kwhAn = consoAnnuelleDepuisFactures(Array(12).fill(mad), distributeur,
+      baremeSociete?.tranches, baremeSociete?.chargesFixes)
     return kwhAn > 0 ? kwhAn : null
   })()
 
@@ -1155,7 +1159,8 @@ export default function DevisGenerator({
     if (realBillSaisi && consoAnnuelleReelle > 0) return consoAnnuelleReelle
     if (!realBillSaisi && realBillMode === 'kwh' && consoAnnuelleReelle > 0) return consoAnnuelleReelle
     if (facturesSaisies) {
-      const derivee = consoAnnuelleDepuisFactures(monthly.map(v => parseFloat(v) || 0), distributeur)
+      const derivee = consoAnnuelleDepuisFactures(monthly.map(v => parseFloat(v) || 0), distributeur,
+        baremeSociete?.tranches, baremeSociete?.chargesFixes)
       if (derivee > 0) return derivee
     }
     return consoAnnuelleReelle > 0 ? consoAnnuelleReelle : null
@@ -1228,13 +1233,14 @@ export default function DevisGenerator({
       // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
       consoAnnuelleKwh: consoEcran,
       utility: distributeur,
+      bareme: baremeSociete,
       // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
       // avec le PDF/web) ; override société si renseigné ≠ 1600.
       productible: productibleForCity(
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead])
+    consoEcran, distributeur, selectedLead, baremeSociete])
 
   // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
   // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
@@ -1258,11 +1264,12 @@ export default function DevisGenerator({
       efficiency: quoteLogic.efficiency,
       consoAnnuelleKwh: consoEcran,
       utility: distributeur,
+      bareme: baremeSociete,
       productible: productibleForCity(
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead])
+    consoEcran, distributeur, selectedLead, baremeSociete])
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
@@ -1718,7 +1725,7 @@ export default function DevisGenerator({
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerPartDiurneDuMarche, appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
-    pompeCv, pompeHmt, pompeDebit,
+    pompeCv, pompeHmt, pompeDebit, baremeSociete,
   })
 
   // SPL45 — chargeur `?edit=` (déplacé tel quel dans le hook, même position : l'ordre des effets est inchangé).
@@ -1736,7 +1743,7 @@ export default function DevisGenerator({
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
     setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
     setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
-    setFarmHmtDrawdown, setPompageSaisie, clear, appliquerPartDiurneDuMarche,
+    setFarmHmtDrawdown, setPompageSaisie, clear, appliquerPartDiurneDuMarche, baremeSociete,
   })
 
   // ── Réglages entreprise (Paramètres) → valeurs par défaut du générateur ──
@@ -1765,6 +1772,7 @@ export default function DevisGenerator({
       // côté du champ prix, jamais recopiés dedans).
       setReperesEnergie(data?.reperes_energie_agricole || {})
       setTermesEffectifs(data?.payment_terms_effectifs || null)
+      setBaremeSociete(baremeDepuisProfil(data?.bareme_effectif))
       // AGNR26 — `agricole_pump_hours` reste un réglage SERVEUR (repli PVGIS
       // du moteur pompage) : l'écran n'a plus de champ « heures » à pré-remplir.
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
@@ -2118,7 +2126,7 @@ export default function DevisGenerator({
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
-    setEditDevis, setReserveEnregistrement, setErreursChamps,
+    setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete,
   })
 
   // Réinitialiser : recharge la page, comme le bouton du simulateur
