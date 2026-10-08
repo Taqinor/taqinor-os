@@ -62,6 +62,44 @@ class BuildStageEventTests(TestCase):
         self.assertEqual(len(ud['ph'][0]), 64)
         self.assertNotIn('0612345678', ud['ph'][0])
 
+    def test_ph_e164_partage(self):
+        """AACQ18 — même clé ``ph`` (sha256 de l'E.164) quelle que soit la
+        saisie ; aucune clé ``ph`` pour un numéro illisible ; même dérivation
+        que les audiences et l'émetteur Odoo."""
+        import hashlib
+
+        from apps.adsengine import audiences, capi_odoo
+        attendu = [hashlib.sha256(b'212612345678').hexdigest()]
+        for i, saisie in enumerate(
+                ('0612345678', '06 12 34 56 78', '+212 6 12 34 56 78')):
+            with self.subTest(saisie=saisie):
+                lead = self._meta_lead(external_id=f'78945612{i}',
+                                       telephone=saisie)
+                stage = capi_crm.build_stage_event(
+                    self.company, lead.pk, CONTACTED, old_stage=NEW)
+                self.assertEqual(stage['event']['user_data']['ph'], attendu)
+                visite = capi_crm.build_appointment_event(
+                    self.company, lead.pk, 1, 'effectue')
+                if visite.get('event'):
+                    self.assertEqual(
+                        visite['event']['user_data']['ph'], attendu)
+        self.assertEqual(capi_crm.phone_hash_list('0612345678'), attendu)
+        self.assertEqual(
+            [hashlib.sha256(
+                audiences._normalize_phone('0612345678').encode()).hexdigest()],
+            attendu)
+        odoo = capi_odoo.build_signed_event(self.company, {
+            'phone_norm': '612345678', 'amount_mad': '1',
+            'date': '2026-07-16 10:00:00', 'source_name': 'FORM',
+            'origin': 'sale_order', 'lead_id': None})
+        self.assertEqual(odoo['event']['user_data']['ph'], attendu)
+        illisible = self._meta_lead(external_id='789456199',
+                                    telephone='pas un numero')
+        ev = capi_crm.build_stage_event(
+            self.company, illisible.pk, CONTACTED, old_stage=NEW)['event']
+        self.assertNotIn('ph', ev['user_data'])
+        self.assertIsNone(capi_crm.phone_hash_list('pas un numero'))
+
     def test_deterministic_event_id_dedup(self):
         lead = self._meta_lead()
         a = capi_crm.build_stage_event(

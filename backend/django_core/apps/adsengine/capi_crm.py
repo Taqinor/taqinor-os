@@ -89,6 +89,18 @@ def _sha256(value):
     return hashlib.sha256((value or '').strip().lower().encode()).hexdigest()
 
 
+def phone_hash_list(raw):
+    """AACQ18 — UNE dérivation de la clé ``ph`` Meta pour tout envoi CAPI :
+    ``[sha256(normalize_phone_e164(tel))]`` (même clé que QJR136 et que les
+    audiences), ou ``None`` si le numéro n'est pas normalisable (aucune clé
+    ``ph`` plutôt qu'un hash de chiffres bruts qui ne matcherait jamais)."""
+    if not raw:
+        return None
+    from apps.ventes.utils.phone import normalize_phone_e164
+    norme = normalize_phone_e164(str(raw))
+    return [_sha256(norme)] if norme else None
+
+
 def _setting(name):
     """Valeur d'un réglage (settings puis environnement), strip. '' si absent."""
     from django.conf import settings
@@ -148,9 +160,9 @@ def build_stage_event(company, lead_id, new_stage, *, old_stage=None, now=None):
     if ids['leadgen_id']:
         # Clé de match préférée de Meta (leadgen_id 15-17 chiffres) — NON hachée.
         user_data['lead_id'] = ids['leadgen_id']
-    phone_digits = ''.join(c for c in ids['phone'] if c.isdigit())
-    if phone_digits:
-        user_data['ph'] = [_sha256(phone_digits)]
+    ph = phone_hash_list(ids['phone'])  # AACQ18 — clé E.164 partagée
+    if ph:
+        user_data['ph'] = ph
     if ids['email']:
         user_data['em'] = [_sha256(ids['email'])]
     if ids['fbclid']:
@@ -319,9 +331,9 @@ def build_appointment_event(company, lead_id, appointment_id, statut, *,
     user_data = {}
     if ids['leadgen_id']:
         user_data['lead_id'] = ids['leadgen_id']
-    phone_digits = ''.join(c for c in ids['phone'] if c.isdigit())
-    if phone_digits:
-        user_data['ph'] = [_sha256(phone_digits)]
+    ph = phone_hash_list(ids['phone'])  # AACQ18 — clé E.164 partagée
+    if ph:
+        user_data['ph'] = ph
     if ids['email']:
         user_data['em'] = [_sha256(ids['email'])]
     if ids['fbclid']:
