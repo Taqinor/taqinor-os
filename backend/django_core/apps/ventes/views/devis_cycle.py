@@ -251,15 +251,18 @@ class DevisCycleActionsMixin:
                 return {'quantite': max(qty, Decimal('0.01')),
                         'quantite_manuelle': False}
 
+            # ADEV32 (C-ADEV-045) — note CLIENT de la source telle quelle ;
+            # le marqueur « Variante … » va au chatter de la copie.
             nd = cloner_devis(
-                source, user=request.user,
-                note=(f'[Variante {variant_note}] '
-                      + (source.note or '')).strip(),
+                source, user=request.user, note=None,
                 # Groupe : version_parent = racine, version incrémentée,
                 # is_active=True (alternative, pas remplacement).
                 version=source.version + len(created) + 1,
                 version_parent=root,
                 remplacements=_echelle)
+            from .. import activity
+            activity.log_devis_note(
+                nd, request.user, f'Variante {variant_note}')
             created.append(nd)
 
         return Response(
