@@ -148,7 +148,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
-    taux_demande = Decimal(str(taux_tva or 20))
+    # AMOT69 — un 0 % EXPLICITE reste 0 % ; seul un taux absent vaut 20.
+    taux_demande = Decimal(str(20 if taux_tva is None else taux_tva))
     rendu = []
     for index, ligne in enumerate(lignes):
         # TVA-LIGNE (06/10/2026) — le taux PAR LIGNE : celui du produit quand
