@@ -517,10 +517,18 @@ def _scoped_mirrors(company, policy, scope):
     if model is None:
         return None, []
     pattern = getattr(policy, 'name_pattern', '') or ''
+    # AACQ22 — une cible non ACTIVE (pause, archivée, supprimée…) n'est plus
+    # évaluée : aucune alerte ni proposition sur ce qui ne diffuse pas. Un
+    # statut vide (miroir pas encore synchronisé) reste évalué.
     mirrors = [
         m for m in model.objects.filter(company=company)
-        if _name_matches(pattern, m.name)]
+        if _name_matches(pattern, m.name) and _is_evaluable_status(m)]
     return model, mirrors
+
+
+def _is_evaluable_status(mirror):
+    status = (getattr(mirror, 'status', '') or '').strip().upper()
+    return status in ('', 'ACTIVE')
 
 
 def _sum_attr(snaps, attr):
@@ -1107,13 +1115,15 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
     émise (visible in-app via le journal d'actions uniquement — dd-guardian §A10).
 
     Un finding DÉCLENCHÉ sur un template mappé (ADSENG18) route vers
-    ``alerts.emit_guarded_alert`` (rendu WhatsApp FR + dédup/cooldown/escalade) ;
-    une branche insufficient_data ou un template non mappé retombe sur l'alerte
-    basique avec son message custom."""
+    ``alerts.emit_guarded_alert`` (rendu WhatsApp FR + dédup/cooldown/escalade).
+
+    AACQ22 — une branche insufficient_data ou un template non mappé passe AUSSI
+    par ``emit_guarded_alert`` (gabarit ``regle_moteur``, message custom) avec
+    la clé d'entité ``(règle, type de cible, id cible[, insuffisant])`` : une
+    condition persistante = UNE alerte ouverte mise à jour, jamais un doublon."""
     if dry_run:
         return None
     from . import alerts as alerts_mod
-    from . import guardrails
 
     wa_key = None
     if not insufficient:
@@ -1132,12 +1142,18 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
             company, template_key=wa_key, target_type=target_type,
             target_id=target_id, context=context, action=action,
             dry_run=dry_run)
-    return guardrails.emit_alert(
-        company, alert_type=guardrails.ALERT_ANOMALY, message=message,
-        action=action,
-        detail={'template_key': template_key,
-                'target_meta_id': finding.get('target_meta_id'),
-                'computed': finding.get('computed', {})})
+    target_type = finding.get('target_type', '') or ''
+    target_id = finding.get('target_meta_id', '') or ''
+    entity_key = f'{template_key}:{target_type}:{target_id}'
+    if insufficient:
+        entity_key += ':insuffisant'
+    return alerts_mod.emit_guarded_alert(
+        company, template_key='regle_moteur', target_type=target_type,
+        target_id=target_id, entity_key=entity_key,
+        context={'message': message, 'template_key': template_key,
+                 'target_meta_id': target_id,
+                 'computed': finding.get('computed', {})},
+        action=action, dry_run=dry_run)
 
 
 # ── ADSDEEP40 — Actions de règle v2 (montée de budget learning-safe / duplication)

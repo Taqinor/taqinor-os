@@ -357,7 +357,7 @@ class RotationProposalFromRuleTests(TestCase):
         self.company = make_company('pub119-rule', 'PUB119 Rule')
         self.adset = AdSetMirror.objects.create(
             company=self.company, meta_id='as-9', name='Toit Rabat',
-            status='PAUSED')
+            status='ACTIVE')
         self.policy = RulePolicy.objects.create(
             company=self.company, template_key='frequency_high', enabled=True,
             dry_run=False, mode=RulePolicy.Mode.PROPOSE)
@@ -383,7 +383,7 @@ class RotationProposalFromRuleTests(TestCase):
         premier avant PUB-P8/C6."""
         adset = AdSetMirror.objects.create(
             company=self.company, meta_id='as-10', name='Toit Fès',
-            status='PAUSED')
+            status='ACTIVE')
         ct = ContentType.objects.get_for_model(AdSetMirror)
         for i in range(4):
             InsightSnapshot.objects.create(

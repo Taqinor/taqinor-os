@@ -162,7 +162,7 @@ class CplBandEngineWiringTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='CB Co', slug='cb-co')
         self.camp = AdCampaignMirror.objects.create(
-            company=self.company, meta_id='c1', name='C', status='PAUSED')
+            company=self.company, meta_id='c1', name='C', status='ACTIVE')
         ct = ContentType.objects.get_for_model(AdCampaignMirror)
         # 6 jours trainants à CPL 100 (avec ≥1 lead), aujourd'hui à CPL 300.
         for i in range(1, 7):

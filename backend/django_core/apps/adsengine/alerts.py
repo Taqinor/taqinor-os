@@ -191,7 +191,7 @@ def deep_link(name):
     return base + DEEP_LINKS.get(name, DEEP_LINKS['dashboard'])
 
 
-# 9 gabarits (AACQ7 : + coût par lead). ``body`` = cause racine + recommandation (une phrase chacune) ;
+# 10 gabarits (AACQ7 : + coût par lead ; AACQ22 : + alerte de règle générique). ``body`` = cause racine + recommandation (une phrase chacune) ;
 # ``severity`` pilote emoji + label + cooldown ; ``link`` = destination du deep
 # link ; ``cta`` = libellé de l'appel à l'action.
 WA_TEMPLATES = {
@@ -255,6 +255,13 @@ WA_TEMPLATES = {
                  "paiement échoué ou "
                  "compte suspendu. Recommandation : vérifier le compte Meta "
                  "immédiatement."),
+    },
+    # AACQ22 — alerte de RÈGLE sans gabarit dédié (alerte-seule, données
+    # insuffisantes, devise non applicable…) : même dédup/cooldown que les
+    # autres ; le message composé par le moteur est rendu tel quel.
+    'regle_moteur': {
+        'severity': SEVERITY_WARNING, 'link': 'dashboard', 'cta': 'Détails',
+        'body': "{message}",
     },
     'rule_execution_failed': {
         'severity': SEVERITY_WARNING, 'link': 'connection', 'cta': 'Détails',
@@ -337,7 +344,8 @@ def _entity_key(template_key, target_type, target_id):
 
 
 def emit_guarded_alert(company, *, template_key, target_type='', target_id='',
-                       context=None, action=None, dry_run=False):
+                       context=None, action=None, dry_run=False,
+                       entity_key=None):
     """ADSENG18 — Émet/actualise une ``EngineAlert`` WhatsApp avec DÉDUP +
     COOLDOWN + ESCALADE (dd-guardian §C3).
 
@@ -363,7 +371,10 @@ def emit_guarded_alert(company, *, template_key, target_type='', target_id='',
         return None
     severity = tpl['severity']
     cooldown = DEFAULT_COOLDOWN_HOURS.get(severity, 24)
-    entity_key = _entity_key(template_key, target_type, target_id)
+    # AACQ22 — ``entity_key`` explicite (clé de RÈGLE du moteur) ou dérivée
+    # du gabarit + cible.
+    entity_key = (entity_key[:80] if entity_key
+                  else _entity_key(template_key, target_type, target_id))
     message = render_whatsapp(template_key, context)
     now = timezone.now()
 
