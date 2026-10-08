@@ -483,6 +483,16 @@ def get_company_leads_by_ids(company, ids, avec_corbeille=False):
     return {lead.pk: lead for lead in leads}
 
 
+def lead_ids_du_responsable(user):
+    """Sous-requête des ids de leads dont ``user`` est le RESPONSABLE
+    (``Lead.owner``), bornée à SA société. Lecture seule, cross-app : ventes
+    l'utilise pour que le responsable d'un lead voie TOUS les devis de ce lead,
+    quel qu'en soit l'auteur (règle fondateur 08/10/2026)."""
+    from .models import Lead
+    return Lead.objects.filter(
+        company_id=user.company_id, owner_id=user.pk).values('pk')
+
+
 def rechercher_leads_minimal(company, q, limit=10):
     """VTA16 — recherche de leads MINIMALE pour un consommateur cross-app.
 
