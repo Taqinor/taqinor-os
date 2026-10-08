@@ -480,7 +480,9 @@ class AvoirSerializer(serializers.ModelSerializer):
                             # ARRONDI-100 — repris de la facture côté serveur.
                             'arrondi_pas', 'arrondi_unites',
                             # ATOT6 — ventilation recopiée par le serveur.
-                            'ventilation_tva']
+                            'ventilation_tva',
+                            # AFAC32 — avoir de note de débit (serveur).
+                            'note_debit']
 
     def get_tva_par_taux(self, obj):
         return [

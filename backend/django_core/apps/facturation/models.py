@@ -1027,6 +1027,12 @@ class Avoir(TotauxDocumentMixin, models.Model):
     # NE PAS re-stocker, ex. produit défectueux détruit) et exige un motif.
     restocke = models.BooleanField(default=False)
     motif_retour = models.CharField(max_length=255, blank=True, default='')
+    # AFAC32 (D-AFAC-C4) — « avoir de note de débit » : une ND émise
+    # s'annule par un avoir qui la neutralise (jamais en place). Vide pour
+    # tout autre avoir — comportement historique intact.
+    note_debit = models.ForeignKey(
+        'ventes.NoteDebit', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='avoirs_annulation')
 
     class Meta:
         verbose_name = 'Avoir'

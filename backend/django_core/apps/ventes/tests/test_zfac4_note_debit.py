@@ -85,10 +85,10 @@ class TestNoteDebit(TestCase):
         api = self._api(self.admin)
         r1 = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-note-debit/',
-            {'motif': 'Première majoration'}, format='json')
+            {'motif': 'Première majoration', 'montant': '1000'}, format='json')
         r2 = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-note-debit/',
-            {'motif': 'Deuxième majoration'}, format='json')
+            {'motif': 'Deuxième majoration', 'montant': '500'}, format='json')
         self.assertEqual(r1.status_code, 201, r1.data)
         self.assertEqual(r2.status_code, 201, r2.data)
         self.assertNotEqual(r1.data['reference'], r2.data['reference'])
@@ -97,7 +97,7 @@ class TestNoteDebit(TestCase):
         api = self._api(self.admin)
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-note-debit/',
-            {'motif': 'Complément'}, format='json')
+            {'motif': 'Complément', 'montant': '1000'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         note = NoteDebit.objects.get(id=resp.data['id'])
         self.assertTrue(note.fichier_pdf)

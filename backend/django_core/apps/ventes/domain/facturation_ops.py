@@ -1730,3 +1730,91 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
         if mode != 'contre_passation':
             recalculer_statut_paiement(locked, user=user, source='avoir')
     return avoir
+
+
+# ── AFAC32 (C-AFAC-026, D-AFAC-C4) : annulation d'une note de débit ─────────
+def notes_debit_actives(facture):
+    """Notes de débit ÉMISES de la facture qu'aucun avoir de note de débit
+    actif ne neutralise encore (D-AFAC-C4 : une ND s'annule par avoir)."""
+    from ..models import Avoir, NoteDebit
+    return [
+        nd for nd in facture.notes_debit.filter(
+            statut=NoteDebit.Statut.EMISE).order_by('id')
+        if not nd.avoirs_annulation.filter(
+            statut=Avoir.Statut.EMISE).exists()
+    ]
+
+
+def annuler_note_debit_par_avoir(*, note_debit, user):
+    """AFAC32 — LA voie d'annulation d'une note de débit émise (D-AFAC-C4,
+    option a : par AVOIR, jamais en place) : un avoir sur la facture d'origine,
+    miroir exact de la ND (lignes, remise globale, montants figés, paniers
+    TVA), lié par ``Avoir.note_debit``. Le reste dû revient à ce qu'il était
+    avant la ND ; chatter tracé, ``avoir_cree`` émis, statut de paiement
+    re-dérivé (ATOT8).
+
+    IDEMPOTENTE : une ND déjà neutralisée renvoie son avoir actif, sans en
+    créer un second. Renvoie ``(avoir, cree)``. Lève ``AvoirRefuse`` si la ND
+    n'est pas émise."""
+    from django.db import transaction
+
+    from core.events import avoir_cree
+
+    from .. import activity
+    from ..models import Avoir, Facture, FactureActivity, LigneAvoir, NoteDebit
+    from ..utils.company_settings import create_numbered
+    from .encaissements import recalculer_statut_paiement
+
+    with transaction.atomic():
+        locked_facture = Facture.objects.select_for_update().get(
+            pk=note_debit.facture_id)
+        nd = NoteDebit.objects.select_for_update().get(pk=note_debit.pk)
+        existant = nd.avoirs_annulation.filter(
+            statut=Avoir.Statut.EMISE).order_by('id').first()
+        if existant is not None:
+            return existant, False
+        if nd.statut != NoteDebit.Statut.EMISE:
+            raise AvoirRefuse(
+                'Seule une note de débit émise peut être annulée.')
+        company = nd.company or locked_facture.company
+        nd_lignes = list(nd.lignes.all())
+
+        def _create(ref):
+            avoir = Avoir.objects.create(
+                company=company, reference=ref, facture=locked_facture,
+                client=nd.client, statut=Avoir.Statut.EMISE,
+                motif=f'Annulation de la note de débit {nd.reference}',
+                taux_tva=nd.taux_tva, remise_globale=nd.remise_globale,
+                note_debit=nd, created_by=user)
+            for ligne in nd_lignes:
+                LigneAvoir.objects.create(
+                    avoir=avoir, produit_id=ligne.produit_id,
+                    designation=ligne.designation, quantite=ligne.quantite,
+                    prix_unitaire=ligne.prix_unitaire, remise=ligne.remise,
+                    taux_tva=ligne.taux_tva)
+            if (nd.montant_ttc is not None or not nd_lignes
+                    or nd.ventilation_tva):
+                # Montants FIGÉS de la ND (saisie par montant, paniers TVA) :
+                # l'avoir porte exactement les mêmes.
+                avoir.montant_ht = nd.total_ht
+                avoir.montant_tva = nd.total_tva
+                avoir.montant_ttc = nd.total_ttc
+                avoir.ventilation_tva = nd.ventilation_tva
+                avoir.save(update_fields=[
+                    'montant_ht', 'montant_tva', 'montant_ttc',
+                    'ventilation_tva'])
+            return avoir
+
+        avoir = create_numbered(Avoir, company, 'avoir', _create)
+        activity.log_facture_avoir(locked_facture, user, avoir)
+        FactureActivity.objects.create(
+            company=company, facture=locked_facture, user=user,
+            kind=FactureActivity.Kind.MODIFICATION,
+            field='note_debit', field_label='Note de débit',
+            old_value=nd.reference, new_value=avoir.reference,
+            body=(f"Note de débit {nd.reference} annulée par l'avoir "
+                  f"{avoir.reference} ({avoir.total_ttc} MAD TTC)."))
+        avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        recalculer_statut_paiement(
+            locked_facture, user=user, source='annulation_note_debit')
+    return avoir, True

@@ -83,7 +83,12 @@ class TestNoteDebitRemiseGlobale(TestCase):
         resp = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/'
             'creer-note-debit/',
-            payload or {'motif': 'Pénalités de retard'}, format='json')
+            # AFAC32 — plus de repli « facture entière » : la ligne de la
+            # facture est SAISIE (la remise globale de la facture suit).
+            payload or {'motif': 'Pénalités de retard', 'lignes': [{
+                'produit': self.produit.id, 'designation': 'Kit',
+                'quantite': '1', 'prix_unitaire': '20000',
+                'taux_tva': '20'}]}, format='json')
         return resp
 
     def test_repli_facture_entiere_applique_la_remise(self):
@@ -121,7 +126,10 @@ class TestNoteDebitRemiseGlobale(TestCase):
             taux_tva=Decimal('20.00'))
         resp = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
-            {'motif': 'Complément'}, format='json')
+            {'motif': 'Complément', 'lignes': [{
+                'produit': self.produit.id, 'designation': 'Kit',
+                'quantite': '1', 'prix_unitaire': '20000',
+                'taux_tva': '20'}]}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         note = NoteDebit.objects.get(pk=resp.data['id'])
         self.assertEqual(note.remise_globale, Decimal('0'))

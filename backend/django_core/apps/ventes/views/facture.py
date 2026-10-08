@@ -603,6 +603,20 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # AFAC32 (D-AFAC-C4) — jamais une note de débit ÉMISE sur une facture
+        # annulée : la ND active s'annule d'abord (par avoir de ND).
+        from ..domain.facturation_ops import notes_debit_actives
+        nd_actives = notes_debit_actives(facture)
+        if nd_actives:
+            return Response(
+                {'detail': (
+                    'Cette facture porte une note de débit active ('
+                    + ', '.join(nd.reference for nd in nd_actives)
+                    + ') : annulez-la d\'abord (avoir de note de débit).'
+                ),
+                 'code': 'note_debit_active'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         directive = request.data.get('acompte') or {}
         if not isinstance(directive, dict):
             return Response(
@@ -1248,6 +1262,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': ("Contre-passation refusée : cette facture a déjà "
                             "des paiements enregistrés.")},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AFAC32 (D-AFAC-C4) — la contre-passation ANNULE la facture : ses
+        # notes de débit actives s'annulent d'abord (par avoir de ND).
+        from ..domain.facturation_ops import notes_debit_actives
+        if mode == 'contre_passation' and notes_debit_actives(facture):
+            return Response(
+                {'detail': ("Contre-passation refusée : la facture porte une "
+                            "note de débit active — annulez-la d'abord."),
+                 'code': 'note_debit_active'},
+                status=status.HTTP_400_BAD_REQUEST)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         lignes = None if mode == 'contre_passation' \
@@ -1426,6 +1449,34 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
+        # AFAC32 (C-AFAC-026, D-AFAC-C4) — note de débit PARTIELLE seulement :
+        # des `lignes` saisies, ou un `montant` HT + `taux_tva`. Plus jamais
+        # la copie silencieuse de toute la facture (le montant dû doublait).
+        montant_saisi = None
+        taux_saisi = None
+        if not clean_lignes:
+            brut = request.data.get('montant')
+            if brut in (None, ''):
+                return Response(
+                    {'detail': ('Saisissez les lignes ou le montant de la '
+                                'note de débit.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                montant_saisi = Decimal(str(brut))
+                taux_brut = request.data.get('taux_tva')
+                taux_saisi = (Decimal(str(taux_brut))
+                              if taux_brut not in (None, '')
+                              else Decimal(str(facture.taux_tva)))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'detail': 'Montant ou taux de TVA invalide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if montant_saisi <= 0 or taux_saisi < 0 or taux_saisi > 100:
+                return Response(
+                    {'detail': ('Le montant doit être positif et le taux de '
+                                'TVA compris entre 0 et 100 %.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+
         def _create(ref):
             note_debit = NoteDebit.objects.create(
                 company=company, reference=ref, facture=facture,
@@ -1445,21 +1496,19 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     LigneNoteDebit.objects.create(
                         note_debit=note_debit, **ligne)
             else:
-                f_lignes = list(facture.lignes.all())
-                if f_lignes:
-                    for ligne in f_lignes:
-                        LigneNoteDebit.objects.create(
-                            note_debit=note_debit, produit=ligne.produit,
-                            designation=ligne.designation,
-                            quantite=ligne.quantite,
-                            prix_unitaire=ligne.prix_unitaire,
-                            remise=ligne.remise, taux_tva=ligne.taux_tva)
-                else:
-                    note_debit.montant_ht = facture.total_ht
-                    note_debit.montant_tva = facture.total_tva
-                    note_debit.montant_ttc = facture.total_ttc
-                    note_debit.save(update_fields=[
-                        'montant_ht', 'montant_tva', 'montant_ttc'])
+                # AFAC32 — montant saisi (HT) au taux saisi : un seul panier,
+                # aucune remise globale de la facture (montant déjà net).
+                from core.money import quantize_mad
+                tva = quantize_mad(montant_saisi * taux_saisi / Decimal('100'))
+                note_debit.taux_tva = taux_saisi
+                note_debit.remise_globale = Decimal('0')
+                note_debit.montant_ht = quantize_mad(montant_saisi)
+                note_debit.montant_tva = tva
+                note_debit.montant_ttc = quantize_mad(montant_saisi) + tva
+                note_debit.save(update_fields=[
+                    'taux_tva', 'remise_globale', 'montant_ht',
+                    'montant_tva', 'montant_ttc'])
+                return note_debit
             # ATOT6 — même règle que l'avoir : paniers de la facture.
             from ..domain.facturation_ops import (
                 ventiler_document_depuis_facture,
