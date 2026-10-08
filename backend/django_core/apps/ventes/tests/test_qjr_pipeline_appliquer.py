@@ -366,6 +366,11 @@ CHEMINS_BASCULES = {
     # QJR554 — ``LigneDevisViewSet`` (ajout / modification / retrait d'une
     # ligne) demande le mode « rafraîchir » : études + caches (kWc, marge).
     'views/ligne_devis.py': 1,
+    # ADEV19 — l'activation d'une option par le CLIENT (``cycle_vie.
+    # _geste_option_client``) est un geste de ligne comme ``views/
+    # ligne_devis.py`` : même mode « rafraîchir » (études, kWc, marge).
+    # Golden : ``test_adev19_option_client_geste.test_kwc_rafraichi``.
+    'domain/cycle_vie.py': 1,
 }
 
 
