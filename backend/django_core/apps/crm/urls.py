@@ -12,6 +12,7 @@ from .views import (
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
+from .webhooks import demande_rdv_webhook
 from .roof_views import lead_roof_footprint
 from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
@@ -99,6 +100,9 @@ urlpatterns = [
     # XMKT32 — Sync Meta Lead Ads (gated, no-op sans jeton — voir webhooks.py)
     # headless: rappel entrant de Meta, appele par leur serveur
     path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
+    # YBW51 — demandes de rendez-vous du site YanBow (société tirée de la clé)
+    # headless: appele par le Worker du site apps/yanbow-web, jamais par un ecran ERP
+    path('webhooks/demande-rdv/', demande_rdv_webhook, name='demande-rdv-webhook'),
     # WREF2-L3 — relève publique de la référence serveur « NOM-N » pour
     # l'écran de succès du site (voir public_lead_ref_views.py) : le transfert
     # du lead reste fire-and-forget, donc l'écran interroge CET endpoint
