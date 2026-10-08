@@ -48,7 +48,12 @@ def lettre_relance_premium(request, facture_id):
     if niveau not in (1, 2, 3):
         return Response({'detail': 'Niveau de relance invalide (1, 2 ou 3).'},
                         status=status.HTTP_400_BAD_REQUEST)
-    from .quote_engine.extra_docs import render_lettre_relance_pdf
+    from .quote_engine.extra_docs import (
+        motif_refus_lettre_relance, render_lettre_relance_pdf)
+    # AMOT60 — aucune lettre (ni mise en demeure) sans somme exigible.
+    motif = motif_refus_lettre_relance(facture)
+    if motif:
+        return Response({'detail': motif}, status=status.HTTP_409_CONFLICT)
     try:
         pdf_bytes = render_lettre_relance_pdf(facture, niveau)
     except Exception as exc:

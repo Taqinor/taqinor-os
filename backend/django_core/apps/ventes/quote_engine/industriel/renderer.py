@@ -99,6 +99,15 @@ def _augment(data: dict) -> dict:
     # QJR625 — la puissance DES LIGNES (``systeme.kwc`` en est la lecture).
     d["ind_kwc"] = chiffres["kwc"] or _num(d.get("puissance_kwc"))         or _num(etude.get("kwc"))
     d["ind_prod"] = chiffres["production_kwh_an"]
+    # AMOT35 — bloc bancable périmé (autre champ, autre production) : omis par
+    # la page finance, motif dit au vendeur (interne, jamais rendu).
+    _bank = etude.get("bankable") if isinstance(etude, dict) else None
+    if isinstance(_bank, dict) and not d.get("regles_calcul_origine"):
+        from ..bankable import bankable_imprimable
+        _ok, _motif = bankable_imprimable(_bank, d["ind_kwc"], d["ind_prod"])
+        if not _ok:
+            d["avertissements_internes"] = (
+                list(d.get("avertissements_internes") or []) + [_motif])
     # AMOT41 (C-AMOT-051) — la consommation imprimée est celle du MOTEUR C&I
     # (``synthese_ci.baseline.kwh_an``, Σ des 12 mois résolus), jamais la
     # saisie d'écran ``etude.conso_annuelle`` (sonde VC ci1 : « ≈ 1 kWh/an »

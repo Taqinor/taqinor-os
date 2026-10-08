@@ -28,8 +28,9 @@ from pathlib import Path
 from .generate_devis_premium import (
     CA, CAL, CG1, CG2, CG4, CG7, CGR, CN,
     _DMSANS400, _DMSANS500, _DMSANS700, _DS400,
-    _font_face, fmt,
+    _font_face,
 )
+from .montants import fmt_centimes_mad
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -292,6 +293,33 @@ RELANCE_TONES = {
 }
 
 
+#: AMOT60 — motif du refus (409) d'une lettre sans somme exigible.
+MSG_AUCUNE_SOMME_EXIGIBLE = "Aucune somme exigible"
+
+
+def montant_reclame(facture):
+    """AMOT60 (C-AMOT-036) — ce que la lettre RÉCLAME : l'EXIGIBLE
+    (``recouvrement.montant_exigible`` : ``montant_du`` − retenue de garantie
+    non libérée), le MÊME montant que l'e-mail, le rappel planifié et le
+    domaine de recouvrement — jamais la créance totale."""
+    from apps.ventes.recouvrement import montant_exigible
+    return montant_exigible(facture)
+
+
+def motif_refus_lettre_relance(facture):
+    """AMOT60 — ``None`` si une relance peut partir, sinon le motif : une
+    facture payée, annulée ou sans exigible ne reçoit AUCUNE lettre (une mise
+    en demeure pour une somme non due)."""
+    if getattr(facture, "statut", None) in ("payee", "annulee"):
+        return MSG_AUCUNE_SOMME_EXIGIBLE
+    try:
+        if float(montant_reclame(facture) or 0) <= 0:
+            return MSG_AUCUNE_SOMME_EXIGIBLE
+    except (TypeError, ValueError):
+        return MSG_AUCUNE_SOMME_EXIGIBLE
+    return None
+
+
 def _facture_resume(facture):
     """Résumé chiffré d'une facture pour la lettre (aucun prix d'achat)."""
     return {
@@ -299,7 +327,9 @@ def _facture_resume(facture):
         "date_emission": _fr_date(getattr(facture, "date_emission", None)),
         "date_echeance": _fr_date(getattr(facture, "date_echeance", None)),
         "total_ttc": facture.total_ttc,
-        "montant_du": facture.montant_du,
+        # AMOT60 — l'EXIGIBLE (retenue non libérée exclue), comme les trois
+        # autres canaux de relance.
+        "montant_du": montant_reclame(facture),
         "jours_retard": facture.jours_retard,
     }
 
@@ -361,7 +391,8 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
         f'<span class="v">{escape(resume["date_echeance"] or "—")}</span></div>'
         f'{retard_row}'
         f'<div class="row due"><span>Montant restant dû</span>'
-        f'<span class="v">{escape(fmt(resume["montant_du"]))}</span></div>'
+        f'<span class="v">{escape(fmt_centimes_mad(resume["montant_du"]))}'
+        f'</span></div>'
         f'</div>'
     )
     body = (

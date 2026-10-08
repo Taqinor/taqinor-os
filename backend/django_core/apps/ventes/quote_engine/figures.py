@@ -610,6 +610,25 @@ def options_affichees(quote: dict) -> tuple[str, ...]:
     return ("avec",) if quote.get("avec_ok", True) else ("sans",)
 
 
+def option_recommandee(d: dict):
+    """AMOT33 (C-AMOT-043) — l'option que le document RECOMMANDE, lue sur le
+    choix du serveur (``d['recommended']``, valeur stockée du vendeur) :
+    ``'sans'`` / ``'avec'`` sur un document à deux options, ``None`` quand
+    aucune recommandation n'est portée (ou document mono-option). Un devis
+    aux règles d'origine garde le comportement d'hier (l'option 2)."""
+    if not d.get("deux_options", True):
+        return None
+    if d.get("regles_calcul_origine") or "recommended" not in d:
+        # Règles d'origine, ou dict d'avant la clé : l'option 2, comme hier.
+        return "avec"
+    reco = d.get("recommended")
+    if reco == "Sans batterie":
+        return "sans"
+    if reco == "Avec batterie":
+        return "avec"
+    return None
+
+
 def option_economique(quote: dict) -> str:
     """L'option que décrit la synthèse −N % / donut
     (``renderer.synthese_economies`` : ``_avec``)."""
@@ -769,3 +788,21 @@ def figures_depuis_devis_api(detail: dict) -> dict[str, list[Mesure]]:
     c.mettre("payback_ans", roi.get("roi_s"), "sans")
     c.mettre("payback_ans", roi.get("roi_a"), "avec")
     return c.figures
+
+
+def parite_gabarit(data: dict, html: str) -> list[Mismatch]:
+    """AMOT50 — les chiffres IMPRIMÉS par le gabarit (``html`` RENDU, ancres
+    ``data-figure`` lues par :func:`extract_figures`) contre ceux du dict
+    serveur ``data`` (``build_quote_data``, lu par la MÊME projection que la
+    proposition : :func:`figures_depuis_proposition`). Seules les identités
+    présentes sur les DEUX surfaces sont confrontées : un chiffre que le
+    gabarit n'imprime pas n'est pas une incohérence."""
+    gabarit = extract_figures(html)
+    serveur = figures_depuis_proposition(
+        {"quote": data or {},
+         "mode_installation": (data or {}).get("mode_installation")})
+    communes = set(gabarit) & set(serveur)
+    return compare_surfaces({
+        "gabarit": {k: v for k, v in gabarit.items() if k in communes},
+        "serveur": {k: v for k, v in serveur.items() if k in communes},
+    })

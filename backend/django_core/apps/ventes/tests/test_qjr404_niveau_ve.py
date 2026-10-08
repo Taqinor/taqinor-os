@@ -76,7 +76,7 @@ class NiveauVeCourbeRenduTest(SimpleTestCase):
         # couche VE, sans jamais dégrader en ``None``.
         etude = EH.calculer_etude_horaire(
             kwc=6.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
-            occupation=CJ.OCCUPATION_PRESENCE, equipements=self.VE)
+            occupation=CJ.OCCUPATION_PRESENCE, equipements=self.VE, tranches=None, charges_fixes_mad=None)
         self.assertIsNotNone(etude)
         self.assertIn('ve', etude['equipements_actifs'])
 

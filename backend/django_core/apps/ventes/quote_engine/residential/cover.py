@@ -183,8 +183,12 @@ def build(ctx):
         # Guillemets DOUBLES à l'extérieur : aucun antislash dans la f-string
         # (RENDERING_NOTES.md §3 — la prod rend les PDF sur Python 3.11, où un
         # antislash dans une f-string est une SyntaxError).
+        # AMOT33 — « recommandée » seulement quand le serveur en porte une.
+        from ..figures import option_recommandee as _reco_de
+        _qualif = ("l'option recommandée — " if _reco_de(d)
+                   else "l'option ")
         opt_caption = ('<div class="c1-bigcut-cap">Chiffres calculés pour '
-                       + f"l'option recommandée — {_opt_txt}.</div>")
+                       + f"{_qualif}{_opt_txt}.</div>")
 
     cov_gap_note = ""
     if not masquer_eco and coverage_pct - pct_cut >= 10:
@@ -663,12 +667,17 @@ def build(ctx):
     # sans batterie chiffrée. Absent (vieux dict) ⇒ libellé historique.
     libelle_avec = d.get("libelle_avec") or "Avec batterie"
     if deux_options:
+        # AMOT33 — la pastille suit l'option RECOMMANDÉE par le serveur ;
+        # aucune pastille sans recommandation.
+        from ..figures import option_recommandee as _reco_de
+        _reco = _reco_de(d)
         opts_html = (
             _opt_card("Option 1", "Sans batterie", total_sans, pkwc_sans,
-                      roi_s, sans_bullets, eco=eco_s_ann, opt="sans")
+                      roi_s, sans_bullets, eco=eco_s_ann,
+                      reco=(_reco == "sans"), opt="sans")
             + _opt_card("Option 2", libelle_avec, total_avec, pkwc_avec,
-                        roi_a, avec_bullets, eco=eco_a_ann, reco=True,
-                        opt="avec"))
+                        roi_a, avec_bullets, eco=eco_a_ann,
+                        reco=(_reco == "avec"), opt="avec"))
     elif avec_ok:
         # Option unique AVEC batterie : une carte pleine largeur, pas de « Sans »
         # fabriquée (dépourvue d'onduleur).

@@ -333,6 +333,9 @@ CHIFFRES_CI = None
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
+# Décision fondateur 08/10/2026 — faux pour un devis envoyé avant les
+# corrections (``data['regles_calcul_origine']``) : formats d'origine.
+REGLES_CORRIGEES = True
 # QJR623 — cases « Modalités de paiement » calculées par le builder (par
 # branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
 MONTANTS_TRANCHES = {}
@@ -849,9 +852,36 @@ def _pct_echeance(valeur, defaut):
     return int(f) if f == int(f) else round(f, 2)
 
 
+def _pcts_imprimes(data):
+    """``(acompte, materiel, solde)`` tels que le document les IMPRIME.
+
+    AMOT19 — ``data['termes_paiement_imprimes']`` (builder : les cases de la
+    branche imprimée) prime ; ``materiel`` y vaut ``None`` pour un échéancier
+    à deux tranches. Sans elle, ``payment_terms`` et les défauts d'hier."""
+    imp = data.get("termes_paiement_imprimes")
+    if isinstance(imp, dict) and imp:
+        return (_pct_echeance(imp.get("acompte"), 0),
+                (_pct_echeance(imp.get("materiel"), 0)
+                 if imp.get("materiel") else None),
+                _pct_echeance(imp.get("solde"), 0))
+    terms = data.get("payment_terms") or {}
+    return (_pct_echeance(terms.get("acompte"), 30),
+            _pct_echeance(terms.get("materiel"), 60),
+            _pct_echeance(terms.get("solde"), 10))
+
+
+def _pct_txt(v):
+    """AMOT24 — un pourcentage imprimé : ``montants.pct_fr`` (2,5 · 20) ;
+    format d'origine (« 2.5 ») pour un devis aux règles d'origine."""
+    if REGLES_CORRIGEES:
+        from .montants import pct_fr
+        return pct_fr(v)
+    return int(v) if v == int(v) else v
+
+
 def _tva_note_par_defaut(tva_pct):
     """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
-    tva_lbl = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
+    tva_lbl = _pct_txt(tva_pct)
     return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
             f"travaux.")
 
@@ -870,6 +900,10 @@ def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
     du remplissage."""
     out = []
     for raw in bullets or ():
+        # AMOT19 — échéancier sans tranche matériel (``materiel=None``) : la
+        # puce « matériel » est omise, jamais imprimée à 0 % ni à 60 %.
+        if materiel is None and "{materiel}" in str(raw):
+            continue
         try:
             txt = raw.format(
                 acompte=acompte, materiel=materiel, solde=solde,
@@ -906,11 +940,13 @@ def cgv_bullets_remplies(data):
         tva_pct = float(data.get("taux_tva", 20) or 20)
     except (TypeError, ValueError):
         tva_pct = 20.0
+    pay_a, pay_m, pay_s = _pcts_imprimes(data)
     return remplir_cgv_bullets(
         bullets,
-        acompte=_pct_echeance(terms.get("acompte"), 30),
-        materiel=_pct_echeance(terms.get("materiel"), 60),
-        solde=_pct_echeance(terms.get("solde"), 10),
+        acompte=pay_a if pay_a is not None else _pct_echeance(
+            terms.get("acompte"), 30),
+        materiel=pay_m,
+        solde=pay_s,
         tva_note=data.get("tva_note") or _tva_note_par_defaut(tva_pct),
         valid_until=(data.get("valid_until") or "").strip())
 
@@ -1005,8 +1041,10 @@ def fmt(v):
     \u00e9tiquet\u00e9 EUR aurait affich\u00e9 des dirhams sous un signe euro. L'\u00e9tiquette
     suit d\u00e9sormais la r\u00e9alit\u00e9 des montants.
     """
+    # AMOT26 — LE formateur unique HALF_UP (``montants.fmt_dirhams``).
+    from .montants import fmt_dirhams
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
+        return fmt_dirhams(v, "\u202f") + "\u00a0MAD"
     except Exception:
         return str(v)
 
@@ -1523,7 +1561,7 @@ def _note_remise_par_ligne():
     """
     if DISCOUNT_PCT <= 0:
         return ""
-    pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+    pct = _pct_txt(DISCOUNT_PCT)
     return (f"Remise de {pct} % appliquée sur chaque ligne "
             f"— prix catalogue barrés, totaux après remise.")
 
@@ -1575,7 +1613,7 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     arrondi = totaux.get("arrondi") or 0
     rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        pct = _pct_txt(DISCOUNT_PCT)
         rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
     if arrondi > 0:
@@ -1588,12 +1626,12 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     buckets = totaux.get("tva_par_taux") or []
     if len(buckets) > 1:
         for b in buckets:
-            r = int(b["taux"]) if b["taux"] == int(b["taux"]) else b["taux"]
+            r = _pct_txt(b["taux"])
             rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]),
                         fig="tva_taux", taux=b["taux"])
     else:
         rate = buckets[0]["taux"] if buckets else TVA_PCT
-        tva_pct = int(rate) if rate == int(rate) else rate
+        tva_pct = _pct_txt(rate)
         rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva), fig="tva")
     # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
     # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
@@ -1788,7 +1826,7 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         tot_ht_s = (_cellule_prix_remise(qty * pu_ht, _item_total_ht_remise(it))
                     if pu_ht else dash)
         taux = it.get("taux_tva", TVA_PCT)
-        taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
+        taux_s = f"{_pct_txt(taux)}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
                  f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
@@ -1930,7 +1968,9 @@ def page1():
         # d'arrondi que le total qu'il barre.
         _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
-        _disc_str = f"\u2212{int(DISCOUNT_PCT)}\u202f%"
+        _disc_str = (f"\u2212{_pct_txt(DISCOUNT_PCT)}\u202f%"
+                     if REGLES_CORRIGEES
+                     else f"\u2212{int(DISCOUNT_PCT)}\u202f%")
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_s_before}</div>'
@@ -2890,101 +2930,33 @@ def _bankable_pct(valeur):
         return ""
 
 
-#: QJR159 (b) — écart RELATIF toléré entre la puissance simulée et la puissance
-#: VENDUE. Même esprit que ``pricing._HORAIRE_TOLERANCE_KWC`` : 2 % absorbe les
-#: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
-#: panneau de plus pèse déjà bien davantage).
-TOLERANCE_KWC_SIMULATION = 0.02
+# AMOT35 — LA règle unique vit dans ``quote_engine.bankable`` (fonction
+# pure partagée avec la page finance industrielle) ; les constantes restent
+# ré-exportées ici pour leurs lecteurs historiques.
+from .bankable import (  # noqa: E402 — ré-export
+    TOLERANCE_KWC_SIMULATION, TOLERANCE_PRODUCTION_PAGE, bankable_imprimable,
+    concorde_avec_production, decrit_le_champ,
+)
 
 
 def _bankable_decrit_ce_champ(bank):
     """QJR159 (b) — la simulation décrit-elle le champ PV RÉELLEMENT vendu ?
-
-    La preuve est la seule dont on dispose sans recalculer quoi que ce soit :
-    la somme des ``kwc`` des zones simulées doit égaler la puissance crête du
-    document. Tout ce qui n'est pas prouvé — puissance du devis inconnue,
-    zones absentes ou illisibles — rend ``False`` et le bloc est OMIS (jamais
-    un productible de repli).
-    """
-    if not isinstance(bank, dict):
+    Délègue à ``bankable.decrit_le_champ`` (kWc du document ; puissance
+    inconnue ⇒ False, le bloc est omis)."""
+    if PUISSANCE_INCONNUE:
         return False
-    try:
-        kwc_devis = float(KWC or 0)
-    except (TypeError, ValueError):
-        return False
-    if kwc_devis <= 0 or PUISSANCE_INCONNUE:
-        return False
-    zones = bank.get("zones")
-    if not isinstance(zones, (list, tuple)) or not zones:
-        return False
-    total = 0.0
-    for zone in zones:
-        if not isinstance(zone, dict):
-            return False
-        try:
-            total += float(zone.get("kwc"))
-        except (TypeError, ValueError):
-            return False
-    if total <= 0:
-        return False
-    return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
-
-
-#: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
-#: \u00ab Production annuelle \u00bb imprim\u00e9e sur la M\u00caME page. C'est EXACTEMENT la
-#: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
-#: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
-#: l'entier de la carte, jamais les ~10 % que produisait le double derate.
-TOLERANCE_PRODUCTION_PAGE = 0.01
+    return decrit_le_champ(bank, KWC)
 
 
 def _bankable_concorde_avec_la_page(bank):
-    """QJR115 \u2014 la P50 bancable dit-elle la M\u00caME production que la carte ?
-
-    La page \u00c9tude imprime deux fois la production annuelle de la M\u00caME
-    installation : la carte \u00ab Production annuelle \u00bb (``ETUDE
-    ['production_annuelle']``, figure canonique du document \u2014 \u00e9tude saisie ou
-    calepinage recal\u00e9) et, juste en dessous, \u00ab Production P50 (m\u00e9diane) \u00bb du
-    bloc bancable (``etude_params['simulation']``, jou\u00e9 par ``apps.ventes.
-    etude``). QJR114 a fait converger les deux CHA\u00ceNES de calcul (plus de
-    double derate : la P50 vaut d\u00e9sormais ``productible \u00d7 PRODUCTION_DERATE``,
-    la formule m\u00eame de ``pricing``) \u2014 mais rien n'oblige les deux SOURCES \u00e0
-    d\u00e9crire le m\u00eame devis : le builder recopie ``simulation`` sans condition et
-    cette cl\u00e9 ne fait pas partie des \u00e9tudes rafra\u00eechies, donc une \u00e9tude jou\u00e9e
-    avant un redimensionnement (ou une production saisie \u00e0 la main) remet deux
-    nombres contradictoires c\u00f4te \u00e0 c\u00f4te sur la feuille.
-
-    On ne r\u00e9concilie rien ici \u2014 le moteur de rendu ne calcule aucune
-    production : on PROUVE l'\u00e9galit\u00e9, et \u00e0 d\u00e9faut de preuve le bloc est OMIS
-    (r\u00e8gle fondateur : omettre plut\u00f4t que publier deux v\u00e9rit\u00e9s).
-
-    Rend ``True`` quand il n'y a rien \u00e0 contredire : page sans carte
-    \u00ab Production annuelle \u00bb, ou bloc bancable sans P50 (il ne publie alors que
-    la P90 \u2014 une autre grandeur, explicitement nomm\u00e9e \u2014 le ratio de performance
-    et la cascade). Rend ``False`` d\u00e8s qu'un des deux nombres est illisible :
-    l'\u00e9galit\u00e9 n'est pas prouv\u00e9e.
-    """
-    # ``ETUDE`` n'est écrite que par ``apply_quote_data`` : avant toute
-    # ingestion le nom n'existe PAS dans le module (les tests unitaires du
-    # bloc l'appellent dans cet état). Sans étude ingérée il n'y a pas de carte
-    # « Production annuelle », donc rien à contredire.
+    """QJR115 — la P50 bancable dit-elle la MÊME production que la carte
+    « Production annuelle » (``ETUDE['production_annuelle']``) ? Délègue à
+    ``bankable.concorde_avec_production``. ``ETUDE`` n'existe qu'après
+    ``apply_quote_data`` : sans étude ingérée, rien à contredire."""
     etude_page = globals().get("ETUDE")
     prod_page = (etude_page.get("production_annuelle")
                  if isinstance(etude_page, dict) else None)
-    if prod_page in (None, ""):
-        return True
-    pr = bank.get("pr") if isinstance(bank, dict) else None
-    p50 = pr.get("p50_kwh") if isinstance(pr, dict) else None
-    if p50 in (None, ""):
-        return True
-    try:
-        prod_page = float(prod_page)
-        p50 = float(p50)
-    except (TypeError, ValueError):
-        return False
-    if prod_page <= 0:
-        return False
-    return abs(p50 - prod_page) <= prod_page * TOLERANCE_PRODUCTION_PAGE
+    return concorde_avec_production(bank, prod_page)
 
 
 def _bankable_block_html(bank):
@@ -4220,7 +4192,7 @@ def page_onepage(items, tronquees=0):
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
                 f'padding-left:6px;">&#10003; {gar}</div>')
         _taux = it.get("taux_tva", TVA_PCT)
-        _taux_s = f"{int(_taux)}&#37;" if _taux == int(_taux) else f"{_taux}&#37;"
+        _taux_s = f"{_pct_txt(_taux)}&#37;"
         rows_html += (
             f'<tr style="background:{bg};">'
             f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
@@ -4274,7 +4246,7 @@ def page_onepage(items, tronquees=0):
     totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
                             fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        _pct = _pct_txt(DISCOUNT_PCT)
         totals_html += _tot_line(
             f"{_L('remise')} ({_pct}&#8201;%)",
             "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True, fig="remise")
@@ -4292,13 +4264,13 @@ def page_onepage(items, tronquees=0):
     _buckets = totaux.get("tva_par_taux") or []
     if len(_buckets) > 1:
         for _b in _buckets:
-            _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
+            _r = _pct_txt(_b["taux"])
             totals_html += _tot_line(
                 f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD",
                 fig="tva_taux", taux=_b["taux"])
     else:
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
-        _tva_pct = int(_rate) if _rate == int(_rate) else _rate
+        _tva_pct = _pct_txt(_rate)
         totals_html += _tot_line(f"{_L('tva')} ({_tva_pct}&#8201;%)",
                                  _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
@@ -4426,7 +4398,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
       <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
-      <span style="margin-right:20px;">&#183; {PAY_M}&#37; {_L("a_la_reception_materiel")}</span>
+      {'' if PAY_M is None else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
       <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
       <span>&#183; {TVA_NOTE}</span>
       {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
@@ -4746,6 +4718,10 @@ def apply_quote_data(data: dict) -> None:
     TOTAL_SANS        = float(data["total_sans"])
     TOTAL_AVEC        = float(data["total_avec"])
     DISCOUNT_PCT      = float(data.get("discount_pct", 0))
+    global REGLES_CORRIGEES
+    REGLES_CORRIGEES = not data.get("regles_calcul_origine")
+    from .montants import poser_regles_origine
+    poser_regles_origine(data.get("regles_calcul_origine"))
     TOTAL_SANS_BEFORE = float(data.get("total_sans_before", TOTAL_SANS))
     TOTAL_AVEC_BEFORE = float(data.get("total_avec_before", TOTAL_AVEC))
     ECO_S_ANN    = int(data["eco_s_ann"])
@@ -4877,12 +4853,11 @@ def apply_quote_data(data: dict) -> None:
                 "generate_devis_premium: %s (%.2f) ne correspond pas au TTC "
                 "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
                 "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
-    _terms = data.get("payment_terms") or {}
     # QJR623 / QJR668 — même normalisation que la page publique de signature
     # (``_pct_echeance``, partagée avec ``cgv_bullets_remplies``).
-    PAY_A = _pct_echeance(_terms.get("acompte"), 30)
-    PAY_M = _pct_echeance(_terms.get("materiel"), 60)
-    PAY_S = _pct_echeance(_terms.get("solde"), 10)
+    # AMOT19 — les pourcentages IMPRIMÉS (cases de la branche imprimée) ;
+    # ``PAY_M`` vaut None sans tranche matériel (créneau omis du texte).
+    PAY_A, PAY_M, PAY_S = _pcts_imprimes(data)
     global MONTANTS_TRANCHES
     MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))

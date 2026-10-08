@@ -169,4 +169,4 @@ def regles_selectionnees(ids=None):
 def charger_regles():
     """Importe les modules de règles (l'import les enregistre)."""
     from . import (regles_documents, regles_etude, regles_crm,  # noqa: F401
-                   regles_securite, regles_calepinage)
+                   regles_securite, regles_calepinage, regles_invariants)

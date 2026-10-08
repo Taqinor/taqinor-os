@@ -139,6 +139,7 @@ CHAMPS_CONFIG = ('nb_panneaux', 'batterie_nb_modules', 'equipements')
 #: silencieusement ignoré : le vendeur qui essaie apprend la règle.
 CHAMPS_DERIVES = (
     'prix_ttc', 'prix_par_kwc_ttc', 'economie_annuelle_mad', 'payback_annees',
+    'payback_jamais_rembourse',
     'couverture_pct', 'taux_autoconsommation_pct', 'production_annuelle_kwh',
     'economies_cumulees_25_ans_mad', 'puissance_kwc', 'capacite_utile_kwh',
     'batterie', 'materiel', 'familles', 'familles_diff', 'toit_ok',
@@ -204,6 +205,28 @@ def _payback(cout, economie):
     if cout is None or economie is None or cout <= 0 or economie <= 0:
         return None
     return round(cout / economie, 2)
+
+
+def _publier_payback(carte, devis, prix, economie, **cashflow):
+    """AMOT29 — pose le payback PUBLIÉ d'une carte : celui du cashflow 25 ans
+    (``pricing.payback_publiable``, mêmes arguments que le cumul de la carte),
+    « jamais remboursé » publié comme tel (``payback_jamais_rembourse``, aucune
+    année). Un devis aux règles d'origine garde le ratio simple d'hier.
+    Le ratio simple :func:`_payback` ne sert plus qu'au tri interne."""
+    from .domain.regles_calcul import calcul_corrige
+    if not calcul_corrige(devis):
+        paye = _payback(prix, economie)
+        if paye is not None:
+            carte['payback_annees'] = paye
+        return
+    from .quote_engine.pricing import payback_publiable
+    pub = payback_publiable(prix, economie, **cashflow)
+    if pub is None:
+        return
+    if pub['jamais_rembourse']:
+        carte['payback_jamais_rembourse'] = True
+    else:
+        carte['payback_annees'] = round(pub['annees'], 2)
 
 
 def _prix_par_kwc(prix_ttc, kwc):
@@ -437,7 +460,7 @@ def _cumul_servi(data, variante, prix_ttc):
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
-                  cout_onduleur_ttc, sortie=None):
+                  cout_onduleur_ttc, sortie=None, battery_roundtrip=None):
     """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
 
     ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
@@ -462,10 +485,12 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
         return None
     try:
         from .quote_engine.pricing import compute_cashflow_payback
+        _rt = {} if not battery_roundtrip else {
+            'battery_roundtrip': float(battery_roundtrip)}
         resultat = compute_cashflow_payback(
             float(prix_ttc), float(economie_annuelle),
             battery=bool(stockage), battery_share=part_batterie,
-            inverter_replace_cost=cout_onduleur_ttc)
+            inverter_replace_cost=cout_onduleur_ttc, **_rt)
     except Exception:  # noqa: BLE001 — un cumul indisponible s'omet
         logger.warning('cumul 25 ans indisponible', exc_info=True)
         return None
@@ -617,14 +642,40 @@ class _Contexte:
 
     @property
     def etude_kwargs(self):
-        return {
-            'conso_kwh_mensuelles': self.entrees['conso_kwh_mensuelles'],
-            'ville': self.entrees['ville'],
-            'lat': self.entrees['lat'],
-            'lon': self.entrees['lon'],
-            'occupation': self.entrees['occupation'],
-            'equipements': self.entrees['equipements'],
-        }
+        # AMOT30 — LE constructeur unique : barème société, charges fixes,
+        # jour de référence et source de conso, comme le devis.
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        from apps.ventes.etude_horaire import kwargs_moteur_horaire
+        kw = kwargs_moteur_horaire(self.entrees)
+        if not calcul_corrige(self.devis):
+            # Devis envoyé avant les corrections : les arguments d'hier.
+            for cle in ('tranches', 'charges_fixes_mad', 'jour_reference',
+                        'source_conso'):
+                kw[cle] = None
+        return kw
+
+    @property
+    def balayage_kwargs(self):
+        """Les mêmes entrées pour ``balayer_stockage_horaire`` (qui ne prend
+        pas la source de conso)."""
+        kw = dict(self.etude_kwargs)
+        kw.pop('source_conso', None)
+        return kw
+
+    @property
+    def rendement_batterie(self):
+        """AMOT30 — rendement aller-retour de la fiche batterie du devis
+        (``None`` ⇒ hypothèse de référence du cashflow)."""
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        if not calcul_corrige(self.devis):
+            return None
+        try:
+            from apps.ventes.horaire.batterie_lignes import (
+                rendement_batterie_du_devis)
+            return (rendement_batterie_du_devis(self.devis) or {}).get(
+                'rendement')
+        except Exception:  # noqa: BLE001 — une fiche illisible : hypothèse
+            return None
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.
@@ -697,7 +748,35 @@ def _tableau_du_devis(devis):
     return tableau if isinstance(tableau, list) else []
 
 
+def borner_eco(champs, toit_max=None):
+    """AMOT32 (C-AMOT-033) — l'Éco tient sous le toit ET sous Max.
+
+    L'Éco est la taille au meilleur payback du balayage, qui ignore le toit :
+    elle pouvait dépasser Max (30 panneaux pour un Max de 26). Propriété
+    tenue ici : ``eco ≤ min(toit_max, max)`` ; une Éco qui ne tient pas est
+    RETIRÉE (collapse), jamais proposée. Pure : rend une copie."""
+    champs = dict(champs or {})
+    eco = champs.get('eco')
+    if eco is None:
+        return champs
+    bornes = [int(b) for b in (toit_max, champs.get('max'))
+              if b is not None and int(b) > 0]
+    if bornes and int(eco) > min(bornes):
+        champs.pop('eco')
+    return champs
+
+
 def _champs_des_tailles(contexte, nb_panneaux_devis):
+    """``{cle: nb_panneaux}`` — les champs des trois tailles, Éco BORNÉE par
+    le toit et par Max (AMOT32 ; devis aux règles d'origine : d'hier)."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    champs = _champs_des_tailles_bruts(contexte, nb_panneaux_devis)
+    if not calcul_corrige(contexte.devis):
+        return champs
+    return borner_eco(champs, contexte.toit_max)
+
+
+def _champs_des_tailles_bruts(contexte, nb_panneaux_devis):
     """``{cle: nb_panneaux}`` — le champ PV de chacune des trois tailles.
 
     Une clé ABSENTE = cette taille n'est pas dérivable (ou a convergé vers une
@@ -881,8 +960,11 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # Une variante « avec batterie » sans batterie composée n'est pas
             # une variante : elle est ABSENTE, jamais une copie du « sans ».
             continue
-        prix = _palier_devis(
-            _positif(_num(vue.get('cout_ttc')) * contexte.facteur_remise))
+        # AMOT59 — LE prix client d'une composition (fonction partagée avec
+        # l'échelle et le curseur public).
+        from .domain.dimensionnement_devis import prix_client_au_facteur
+        prix = prix_client_au_facteur(vue.get('cout_ttc'),
+                                      contexte.facteur_remise)
         economie = _positif(annuel.get('economie_%s_mad' % variante))
         carte = {
             'nb_panneaux': int(nb_panneaux),
@@ -895,22 +977,29 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                 carte['prix_par_kwc_ttc'] = prix_kwc
         if economie is not None:
             carte['economie_annuelle_mad'] = round(economie, 2)
-        paye = _payback(prix, economie)
-        if paye is not None:
-            carte['payback_annees'] = paye
+        # AMOT58 — l'économie du moteur horaire est DÉJÀ nette du stockage :
+        # aucune seconde déduction du rendement (part batterie 0) pour un
+        # devis aux règles corrigées.
+        from .domain.regles_calcul import calcul_corrige
+        _part = (_part_batterie(annuel) if variante == 'avec' else None)
+        if _part is not None and calcul_corrige(contexte.devis):
+            _part = 0.0
+        _cashflow = dict(
+            stockage=bool(variante == 'avec' and capacite),
+            part_batterie=_part,
+            cout_onduleur_ttc=_cout_onduleur_ttc(
+                lignes, list(getattr(lignes, 'roles', ()) or ()),
+                contexte.facteur_remise))
+        _publier_payback(carte, contexte.devis, prix, economie, **_cashflow)
         _ajouter_taux(carte, annuel, variante)
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
         serie = {} if sortie_profonde is not None else None
-        cumul = _cumul_moteur(
-            prix, economie,
-            stockage=bool(variante == 'avec' and capacite),
-            part_batterie=(_part_batterie(annuel) if variante == 'avec'
-                           else None),
-            cout_onduleur_ttc=_cout_onduleur_ttc(
-                lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise),
-            sortie=serie)
+        cumul = _cumul_moteur(prix, economie, sortie=serie,
+                              battery_roundtrip=(contexte.rendement_batterie
+                                                 if variante == 'avec'
+                                                 else None),
+                              **_cashflow)
         if serie and serie.get('cumulative'):
             sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
@@ -1011,7 +1100,7 @@ def _remplissage_ok(contexte, kwc, capacite, bornes):
                         'batterie_puissance_decharge_onduleur_kw'),
                     'charge_kw': bornes.get('batterie_puissance_charge_kw'),
                 }} if bornes else None),
-            **contexte.etude_kwargs)
+            **contexte.balayage_kwargs)
     except Exception:  # noqa: BLE001 — un verdict indisponible s'omet
         logger.warning('verdict de remplissage indisponible', exc_info=True)
         return None
@@ -1200,9 +1289,17 @@ def _carte_du_devis(contexte, data, variante):
     # il n'est recalculé QUE s'il n'a pas été servi — jamais en concurrence.
     paye = _positif((data or {}).get(
         'roi_s' if variante == 'sans' else 'roi_a'))
-    if paye is None:
-        paye = _payback(prix, economie)
-    if paye is not None:
+    if (data or {}).get('roi_s_jamais' if variante == 'sans'
+                        else 'roi_a_jamais'):
+        from .domain.regles_calcul import calcul_corrige
+        if calcul_corrige(contexte.devis):
+            # AMOT29 — « jamais remboursé » servi par le document : publié
+            # comme tel, jamais la sentinelle « 25 ans ».
+            paye = None
+            carte['payback_jamais_rembourse'] = True
+    if paye is None and not carte.get('payback_jamais_rembourse'):
+        _publier_payback(carte, contexte.devis, prix, economie)
+    elif paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))
     if production is not None:

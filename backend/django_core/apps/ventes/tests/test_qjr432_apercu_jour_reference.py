@@ -62,7 +62,7 @@ class _Base(TestCase):
             mode_installation='residentiel',
             etude_params={'conso_kwh_mensuelles': [800.0] * 12})
 
-    def _espionner_calculer_etude_horaire(self, corps):
+    def _espionner_calculer_etude_horaire(self, corps, tranches=None, charges_fixes_mad=None):
         """POST l'aperçu en espionnant les kwargs REÇUS par
         ``calculer_etude_horaire`` — renvoie ``(response, kwargs_vus)``.
         Le calcul réel n'a pas besoin d'aboutir : seul l'APPEL nous
@@ -88,7 +88,7 @@ class ApercuAvecDevisResoluRecoitSaDateTest(_Base):
         serveur, pas la date du devis résolu."""
         resp, vues = self._espionner_calculer_etude_horaire({
             'devis': self.devis.id, 'kwc': 6.0, 'dimensionner': False,
-        })
+        }, tranches=None, charges_fixes_mad=None)
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn(
             'jour_reference', vues,
@@ -108,7 +108,7 @@ class ApercuAvecDevisResoluRecoitSaDateTest(_Base):
 
         _resp, vues = self._espionner_calculer_etude_horaire({
             'devis': self.devis.id, 'kwc': 6.0, 'dimensionner': False,
-        })
+        }, tranches=None, charges_fixes_mad=None)
         self.assertEqual(vues.get('jour_reference'),
                          _entrees.jour_reference_du_devis(self.devis))
         self.assertEqual(vues.get('jour_reference').isoformat(), '2026-03-15')
@@ -123,7 +123,7 @@ class ApercuSansDevisResoluInchangeTest(_Base):
         _resp, vues = self._espionner_calculer_etude_horaire({
             'kwc': 6.0, 'conso_kwh_mensuelles': [800.0] * 12,
             'dimensionner': False,
-        })
+        }, tranches=None, charges_fixes_mad=None)
         self.assertIn('jour_reference', vues)
         self.assertIsNone(
             vues['jour_reference'],
@@ -137,6 +137,6 @@ class ApercuSansDevisResoluInchangeTest(_Base):
         _resp, vues = self._espionner_calculer_etude_horaire({
             'devis': self.devis.id + 999999, 'kwc': 6.0,
             'conso_kwh_mensuelles': [800.0] * 12, 'dimensionner': False,
-        })
+        }, tranches=None, charges_fixes_mad=None)
         self.assertIn('jour_reference', vues)
         self.assertIsNone(vues['jour_reference'])

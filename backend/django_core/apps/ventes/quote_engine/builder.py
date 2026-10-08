@@ -715,6 +715,35 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     }
 
 
+def branche_paiement_imprimee(d) -> str:
+    """La branche (« sans » | « avec ») dont le document imprime les
+    modalités de paiement — LA règle du moteur legacy et du gabarit
+    résidentiel (scénario, sinon option recommandée)."""
+    scenario = d.get("scenario")
+    if scenario == "Sans batterie":
+        return "sans"
+    if scenario == "Avec batterie":
+        return "avec"
+    if d.get("recommended") == "Sans batterie":
+        return "sans"
+    return "avec"
+
+
+def termes_paiement_imprimes(d):
+    """AMOT19 (C-AMOT-017) — les pourcentages que le TEXTE des conditions
+    imprime, lus dans ``montants_tranches`` de la branche imprimée : la MÊME
+    source que les cases du « Devis final ». Somme = 100 % ; un échéancier à
+    deux tranches (``deux_cases``) n'a PAS de clé ``materiel`` (aucun créneau
+    absent ni à 0 % imprimé). ``None`` sans montants."""
+    rep = (d.get("montants_tranches") or {}).get(branche_paiement_imprimee(d))
+    if not rep:
+        return None
+    if (rep.get("materiel") or 0) > 0:
+        return {"acompte": rep.get("pct_a"), "materiel": rep.get("pct_m"),
+                "solde": rep.get("pct_s")}
+    return {"acompte": rep.get("pct_a"), "solde": rep.get("pct_s2")}
+
+
 def tranches_echeancier_en_montant(devis):
     """QJR624 — les tranches normalisées de l'échéancier du devis quand il
     compte 2 ou 3 tranches dont au moins une déclarée en DIRHAMS, sinon
@@ -1570,10 +1599,25 @@ def cgv_ci_du_devis(devis, tva_note=""):
 
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+
     from .pricing import calculate_savings_roi
 
+    # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
+    # envoyé avant les corrections AMOT/ADEV28 (``regles_calcul = 1``) est
+    # rendu avec les règles d'origine, exactement ce que le client a reçu.
+    _corrige = calcul_corrige(devis)
+    from .montants import poser_regles_origine
+    poser_regles_origine(not _corrige)
     client = devis.client
-    taux_tva = devis.taux_tva or Decimal(20)
+    # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un taux, pas une
+    # absence : même règle que ``LigneDevis.taux_tva_effectif`` (``is not
+    # None``) ; seul un taux ABSENT retombe sur 20 %.
+    if _corrige:
+        taux_tva = (devis.taux_tva if devis.taux_tva is not None
+                    else Decimal(20))
+    else:
+        taux_tva = devis.taux_tva or Decimal(20)
     # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
     # rien n'est lu hors préchargement — ni pièce jointe (affiche de toiture),
     # ni révision remplacée, ni lien de partage. Le mode DOCUMENT est
@@ -1722,6 +1766,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # LIGNES. Il est relu bien plus bas, au bloc « toiture 3D » : un calepinage
     # ne peut plus écraser une puissance issue des lignes.
     puissance_des_lignes = nb_panneaux > 0
+    _kwc_registre_impose = False
     if nb_panneaux > 0 and watt:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
         # QJR63 — LE REGISTRE DE SURCHARGES PASSE DEVANT (décision fondateur
@@ -1741,6 +1786,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         puissance_kwc = None
         if nb_panneaux <= 0:
             nb_panneaux = None
+        # AMOT9 (C-AMOT-004) — le kWc du PROPRIÉTAIRE
+        # (``domain.scenario.puissance_kwc_du_devis`` : registre ``taille.kwc``
+        # d'abord) vaut aussi quand le watt est illisible ou qu'aucune ligne
+        # panneau n'existe : une surcharge saisie n'est jamais perdue au PDF.
+        if _corrige:
+            _kwc_impose = _kwc_du_registre(devis)
+            if _kwc_impose:
+                puissance_kwc = _kwc_impose
+                _kwc_registre_impose = True
 
     # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
     #
@@ -1962,8 +2016,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "unique — toutes les lignes sont chiffrées ensemble, comme le "
             "noyau les facture ; composition à vérifier")
 
+    # AMOT8 (C-AMOT-001) — MONO-OPTION « onduleur réseau + batterie » : la
+    # batterie n'entre que dans le panier « avec », qui n'est pas servable
+    # sans onduleur hybride ; le panier « sans » servi l'excluait — batterie et
+    # prix absents du tableau et du total imprimé, scénario stocké « Avec
+    # batterie » re-titré « Sans ». Même remède que l'artefact PV86 : toutes
+    # les lignes, étiquette suivant la batterie réelle, avertissement INTERNE.
+    _reseau_batterie_sans_hybride = bool(
+        _corrige and has_reseau and has_batterie and not has_hybride
+        and not has_offgrid and not deux_options)
+    if _reseau_batterie_sans_hybride:
+        avertissements_internes.append(
+            "batterie sans onduleur hybride — onduleur réseau et batterie "
+            "chiffrés ensemble dans une option unique ; composition à vérifier")
+
     _artefact_deux_onduleurs = bool(sans_ok and avec_ok and not deux_options)
-    if _artefact_deux_onduleurs or _mono_a_lignes_variantees:
+    if (_artefact_deux_onduleurs or _mono_a_lignes_variantees
+            or _reseau_batterie_sans_hybride):
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
         # est TOUTES les lignes du devis — donc dont le total EST le total du
         # devis, à l'écran comme au PDF. Les deux paniers portent la même
@@ -2387,7 +2456,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     from apps.ventes.utils.options import AVEC_BATTERIE as _SIGNE_AVEC
     from apps.ventes.utils.options import SANS_BATTERIE as _SIGNE_SANS
     _option_signee = getattr(devis, 'option_acceptee', '') or ''
-    if _option_signee and _deux_options_structurel:
+    # AMOT10 (C-AMOT-005) — une VARIANTE demandée qui rétrécit le document à
+    # UNE option (``deux_options`` faux après QF6/L-VAR) décrit une option et
+    # UN total : celui de cette variante (= ``totaux_all``), jamais celui de
+    # l'option signée imprimé au-dessus des lignes de l'autre.
+    _variante_retrecie = bool(
+        _corrige and opts.get('variante_option') and not deux_options)
+    if (_option_signee and _deux_options_structurel
+            and not _variante_retrecie):
         if _option_signee == _SIGNE_SANS:
             display_total = totaux_sans["ttc"]
         elif _option_signee == _SIGNE_AVEC:
@@ -2429,7 +2505,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # calepinage (une seule source pour les deux figures) ; la puissance
         # unitaire, elle, reste inconnue (roofPro modélise à 720 W constants,
         # ce n'est pas le panneau vendu) — voir M3.
-        if _kwc_layout and not puissance_des_lignes:
+        if (_kwc_layout and not puissance_des_lignes
+                and not _kwc_registre_impose):
             puissance_kwc = round(_kwc_layout, 2)
             nb_panneaux = _compte_du_layout(roof_layout) or None
         # Facteur de RECALAGE des figures du calepinage (production, économies)
@@ -2438,8 +2515,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # conservée — seule sa TAILLE est ramenée à celle des lignes. 1.0 quand
         # les deux coïncident, donc sortie inchangée sur un devis sain.
         _recalage = 1.0
-        if (puissance_des_lignes and _kwc_layout > 0
-                and (puissance_kwc or 0) > 0):
+        if ((puissance_des_lignes or _kwc_registre_impose)
+                and _kwc_layout > 0 and (puissance_kwc or 0) > 0):
             _recalage = puissance_kwc / _kwc_layout
         _stored = dict(devis.etude_params or {})
         # ACAL102 (C-ACAL-113) — la provenance est LUE (``production_source``,
@@ -2462,13 +2539,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 # marquée) reste souveraine.
                 _stored[_cle] = figure_production_du_devis(
                     devis, cle=_cle,
-                    puissance_kwc=(puissance_kwc if puissance_des_lignes
-                                   else 0))
+                    puissance_kwc=(puissance_kwc if (
+                        puissance_des_lignes or _kwc_registre_impose)
+                        else 0))
         # Le kWc stocké dans l'étude est SERVI tel quel (payload public
         # ``etude.puissance_kwc``, ``etude.toiture.kwc``) : il suit la même
         # règle, sans quoi la page publiait encore la base 720 W sous un autre
         # nom. Copies défensives — ``etude_params`` du devis n'est jamais muté.
-        if puissance_des_lignes and (puissance_kwc or 0) > 0:
+        if ((puissance_des_lignes or _kwc_registre_impose)
+                and (puissance_kwc or 0) > 0):
             _stored["puissance_kwc"] = puissance_kwc
             _toiture = _stored.get("toiture")
             if isinstance(_toiture, dict) and _nombre(_toiture.get("kwc")):
@@ -2552,16 +2631,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # AGR303 — plus de surcharge de l'énergie actuelle par une option de
     # rendu : l'étude rendue est l'étude STOCKÉE (énergie déclarée et datée,
     # D-AGR-5 ; le bloc AGR3 porte la dépense déclarée).
-    # QJ13 — tariff / self-consumption overrides from etude_params.
-    # Resolves: tarif_kwh_override → tranches_override → utility name → fallback.
-    # All are seller-editable via etude_params; nothing is fabricated from thin air.
-    _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
-    _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
+    # QJ13 — distributeur et autoconsommation lus dans etude_params.
+    # AMOT47 (08/10/2026) — les lectures ``etude.tarif_kwh`` / ``etude
+    # .tarif_tranches`` sont SUPPRIMÉES : ces clés sont inécrivables (le schéma
+    # d'étude les refuse, aucun devis ne les porte) ; le barème vient du
+    # réglage société ci-dessous, sinon de la grille nationale.
+    _tranches_override = None
     _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
     # ORDRE FONDATEUR (19/08/2026) — barème ONEE résidentiel RÉGLABLE par
     # société (« correct all prices and keep them changable in the settings »).
-    # Le vendeur (etude.tarif_tranches, ci-dessus) reste souverain s'il a collé
-    # un barème custom pour CE devis ; à défaut, si le fondateur a ÉDITÉ le
+    # Si le fondateur a ÉDITÉ le
     # barème de sa société (Paramètres → Tarification & ROI, apps/parametres
     # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
     # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
@@ -2587,7 +2666,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # « autre ») lit LA grille nationale, éditable par société. Réservée à
     # vide/'onee', la grille société était contournée dès qu'un SRM tarifait
     # (grille codée en dur, 1,6229 au lieu du 1,5958 de la société).
-    if _co_tranches and not _tranches_override:
+    if _co_tranches:
         _tranches_override = _co_tranches
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
@@ -2654,7 +2733,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
         utility=_utility or None,
-        tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
         tranches_override=_tranches_override or None,
         # QJR409 — la redevance de compteur RÉGLÉE par la société atteint enfin
         # le modèle « factures » : sans elle, sa « Facture actuelle » comptait
@@ -2702,6 +2780,32 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
     # drapeau ``puissance_inconnue`` fait OMETTRE ces vignettes au rendu, au
     # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
+    # ── AMOT15 (C-AMOT-013) — LES FIGURES D'ÉTUDE ENTRENT DANS LA CHAÎNE ────
+    # (1) une production POSÉE par le calepinage (base 720 W) n'est plus
+    # recopiée : la production imprimée est celle du moteur devis (D-ACAL-6) ;
+    # (2) une économie SAISIE (étude humaine) alimente le cashflow option par
+    # option (``economie_imposee``) au lieu d'un payback linéaire collé après
+    # coup. Devis aux règles d'origine : chemin d'hier, intact.
+    from apps.ventes.domain.etude_schema import (
+        PRODUCTION_CALEPINAGE as _PROD_CAL)
+    _prod_du_calepinage = bool(
+        _corrige and (devis.etude_params or {}).get("production_source")
+        == _PROD_CAL)
+    _economie_saisie = None
+    if (_corrige and not _mode_ci and not _prod_du_calepinage
+            and etude.get("production_annuelle")
+            and etude.get("economies_annuelles")):
+        try:
+            _economie_saisie = int(etude["economies_annuelles"]) or None
+        except (TypeError, ValueError):
+            _economie_saisie = None
+    if _economie_saisie:
+        roi_kwargs["economie_imposee"] = _economie_saisie
+    if _corrige:
+        # AMOT58 — rendement aller-retour de la batterie déduit UNE fois.
+        roi_kwargs["rendement_une_fois"] = True
+        # AMOT27 — forme mensuelle = poids GHI de la production.
+        roi_kwargs["forme_mensuelle_ghi"] = True
     roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
                                 **roi_kwargs)
     # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──
@@ -2770,7 +2874,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                      bool(_roi_a.get("savings_estimated"))),
         }
     if etude.get("production_annuelle"):
-        roi["prod_kwh"] = int(etude["production_annuelle"])
+        if not _prod_du_calepinage:
+            roi["prod_kwh"] = int(etude["production_annuelle"])
         # Une production SAISIE par un humain est UN chiffre, pas deux : elle
         # vaut pour les deux options (comme les économies d'étude juste en
         # dessous). Sans ce réalignement, le une-page aurait pu servir une
@@ -2794,7 +2899,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # mensuelles RÉSIDENTIELLES ``_sf``) ne s'applique PLUS au C&I : ses
         # économies viendront du moteur C&I (``synthese_ci.argent``, CIQ307),
         # jamais d'une clé d'étude reprise ni d'une saisonnalité résidentielle.
-        if etude.get("economies_annuelles") and not _mode_ci:
+        if (etude.get("economies_annuelles") and not _mode_ci
+                and not _corrige):
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
@@ -2803,8 +2909,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["roi_a"] = roi["roi_s"]
             # Payback LINÉAIRE d'une étude saisie : toujours un vrai nombre.
             roi["roi_s_jamais"] = roi["roi_a_jamais"] = False
-            _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                   0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+            from .constants import CLE_SOLAIRE_MENSUELLE_HISTORIQUE as _sf
             roi["eco_s_monthly"] = [round(eco * f) for f in _sf]
             roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
@@ -2897,7 +3002,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     #   'estimation' — ancienne approximation production × autoconso × prix,
     #                  toujours étiquetée comme estimation (aucun chiffre inventé).
     savings_model = roi.get("savings_model", "estimation")
-    if (etude.get("production_annuelle") and etude.get("economies_annuelles")
+    if _corrige:
+        # AMOT15 — « étude » seulement quand une économie SAISIE a réellement
+        # alimenté le calcul (une figure de calepinage n'est pas une étude).
+        if _economie_saisie:
+            savings_model = "etude"
+    elif (etude.get("production_annuelle") and etude.get("economies_annuelles")
             and not _mode_ci):
         savings_model = "etude"
     # QJR28 — la DÉCLARATION par colonne. Une étude saisie par un humain
@@ -3038,6 +3148,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "exemple": None,
         }
 
+    if _corrige:
+        # AMOT15 — la SOURCE réelle de l'économie (saisie humaine ou calcul).
+        savings_method["source"] = "saisie" if _economie_saisie else "calculee"
+
     # ── QK4 — « Nos hypothèses » : transparence des hypothèses d'économies ────
     # Surface côté client les hypothèses derrière les économies : tarif MAD/kWh
     # utilisé, source du barème (Q7 : UNE grille nationale, le nom du
@@ -3094,7 +3208,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     elif _tarif_txt:
         # QRES16 (fondateur, 2026-07-18) — ne JAMAIS présenter le défaut
         # interne du simulateur comme un « tarif retenu » réfléchi : le 1,75
-        # historique (constants.KWH_PRICE, marqué « ne pas afficher dans les
+        # historique (ex-``constants.KWH_PRICE``, supprimé par AMOT47, marqué « ne pas afficher dans les
         # PDF/UI ») s'imprimait tel quel via ce bloc et fragilisait la
         # confiance. Un tarif ÉGAL au défaut est présenté comme référence de
         # calcul avec le chemin vers l'exactitude (facture → barème par
@@ -3107,7 +3221,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # du défaut) reste affiché, car c'est la donnée du client.
         # Z3 × M11 — MÊME défaut, deux correctifs : on garde le plus
         # STRICT (M11). Z3 avait identifié la cause — la garde QRES55
-        # comparait le tarif à ``constants.KWH_PRICE`` (1,75, l'ANCIEN
+        # comparait le tarif à l'ex-``constants.KWH_PRICE`` (1,75, l'ANCIEN
         # défaut, plus jamais utilisé comme prix) au lieu du repli
         # réellement appliqué ``_FALLBACK_KWH_PRICE`` (1,20) : l'égalité
         # n'arrivant jamais, la branche « personnalisé » s'exécutait
@@ -3311,8 +3425,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 (savings_model_avec, "eco_a_ann", "eco_a_monthly")):
             if _modele_opt == "horaire":
                 continue
+            from .pricing import (CLE_SOLAIRE_MENSUELLE,
+                                  CLE_SOLAIRE_MENSUELLE_HISTORIQUE)
             _serie = repartir_economie_plafonnee(
-                roi.get(_cle_ann), factures_mensuelles)
+                roi.get(_cle_ann), factures_mensuelles,
+                cle=(CLE_SOLAIRE_MENSUELLE if _corrige
+                     else CLE_SOLAIRE_MENSUELLE_HISTORIQUE))
             if _serie is not None:
                 roi[_cle_mois] = _serie
 
@@ -3520,8 +3638,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (``panneaux_et_watt_lu`` : désignation ET nom du produit lié). Au point où
     # ces puces étaient construites, la clé interne avait déjà été effacée —
     # d'où les deux lectures divergentes du même document.
-    def _bullets(rows):
+    def _bullets(rows, watt_option=None):
         out = []
+        # AMOT16 (C-AMOT-014/015) — la puissance de CETTE option (jamais le
+        # watt scalaire du document, porté par l'option « avec » quand les
+        # champs divergent) et la puce « Structures + installation » seulement
+        # si l'option porte réellement une structure ET une pose.
+        _watt_puce = (watt_option or watt) if _corrige else watt
         # QJR17 (b) — MÊME PRÉDICAT, MÊMES ENTRÉES que le total compté :
         # « Module PV 550 W » était compté comme panneau par le scalaire et
         # ABSENT de la puce du même document (celle-ci ne lisait que la
@@ -3535,7 +3658,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             # depuis M3) : la puce imprimait littéralement « 16 panneaux
             # None W ». Même doctrine que la vignette du moteur legacy — on
             # écrit « N panneaux » tout court, jamais un défaut catalogue.
-            out.append(f"{n} panneaux {watt} W" if watt else f"{n} panneaux")
+            out.append(f"{n} panneaux {_watt_puce} W" if _watt_puce
+                       else f"{n} panneaux")
         for r in rows:
             if r["quantite"] <= 0:
                 continue
@@ -3553,11 +3677,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
         if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
             out.append("Smart Meter + monitoring")
-        out.append("Structures + installation complète")
+        if _corrige:
+            from apps.ventes.domain.catalogue import classer_produit
+            _roles = {classer_produit(r["designation"]) for r in rows
+                      if r["quantite"] > 0}
+            if _roles & {"structure", "socle"} and "installation" in _roles:
+                out.append("Structures + installation complète")
+        else:
+            out.append("Structures + installation complète")
         return out[:6]
 
-    sans_bullets = _bullets(sans_items)
-    avec_bullets = _bullets(avec_items)
+    sans_bullets = _bullets(sans_items, _scal.get("watt_sans"))
+    avec_bullets = _bullets(avec_items, _scal.get("watt_avec"))
     if avec_batterie_differee:
         # BAT-DIFF — la carte de l'option « avec » DIT que la batterie est à
         # ajouter (aucune puce batterie ne sort de ``_bullets`` : la ligne est
@@ -4319,6 +4450,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
             payment_terms, _tranches_montant)
         for branche in ("sans", "avec")}
+    if _corrige:
+        # AMOT19 — le texte des conditions (ligne « Paiement », puces CGV,
+        # une-page, page publique) lit CETTE clé quand elle existe.
+        _termes_imp = termes_paiement_imprimes(data)
+        if _termes_imp:
+            data["termes_paiement_imprimes"] = _termes_imp
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
     # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
@@ -4422,6 +4559,28 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
+    # Décision fondateur 08/10/2026 — les GABARITS lisent ce drapeau (posé
+    # seulement pour un devis envoyé avant les corrections) pour garder leurs
+    # formats d'origine : le client relit exactement ce qu'il a reçu.
+    if not _corrige:
+        data["regles_calcul_origine"] = True
+    else:
+        # AMOT48 — garde de classe : un écart entre le total imprimé, les
+        # lignes imprimées et le noyau est DIT au vendeur (interne) ; la
+        # règle nocturne ``DOC_TOTAL_IMPRIME_NE_NOYAU`` le signale aussi.
+        if opts.get('variante_option'):
+            data["variante_rendue"] = True
+        _noyau = None
+        if not _totaux_seuls:
+            try:
+                _noyau = devis.total_ttc
+            except Exception:  # noqa: BLE001 — un PDF ne casse jamais ici
+                _noyau = None
+        _ecarts_totaux = ecarts_totaux_imprimes(data, _noyau)
+        if _ecarts_totaux:
+            data["avertissements_internes"] = (
+                list(data.get("avertissements_internes") or [])
+                + [f"totaux : {e}" for e in _ecarts_totaux])
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une
@@ -4678,6 +4837,64 @@ def _echapper_chaines(valeur, echapper):
     if isinstance(valeur, str):
         return echapper(valeur)
     return valeur
+
+
+#: AMOT48 — écart toléré (MAD) entre deux totaux imprimés d'un même document.
+TOLERANCE_TOTAUX_IMPRIMES = 0.011
+
+
+def ecarts_totaux_imprimes(data, total_noyau=None):
+    """AMOT48 (C-AMOT-001/005) — garde de classe « aucun dirham ne s'évapore
+    entre le devis et son PDF ». Rend la liste (vide si sain) des écarts :
+
+    * document à UNE option : ``display_total`` = ``totaux_all.ttc`` (le total
+      imprimé décrit les lignes imprimées) ;
+    * ``display_total`` est l'un des TTC imprimés (sans / avec / tout) ;
+    * ``total_noyau`` (``Devis.total_ttc``, option effective) fourni et
+      document à une option non rétréci par une variante : égal au total
+      imprimé.
+
+    Pure (lecture du dict de rendu). Un document ×N villas compare ses
+    totaux unitaires (le ×N a sa propre clé)."""
+    tol = TOLERANCE_TOTAUX_IMPRIMES
+    out = []
+
+    def _ttc(cle):
+        tot = data.get(cle)
+        try:
+            return float(tot.get("ttc")) if isinstance(tot, dict) else None
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        affiche = float(data.get("display_total"))
+    except (TypeError, ValueError):
+        return out
+    tout, sans, avec = _ttc("totaux_all"), _ttc("totaux_sans"), _ttc("totaux_avec")
+    if data.get("nb_options") == 1 and tout is not None \
+            and abs(affiche - tout) > tol:
+        out.append(f"total imprimé {affiche:.2f} ≠ Σ lignes imprimées "
+                   f"{tout:.2f} (document à une option)")
+    imprimes = [v for v in (tout, sans, avec) if v is not None]
+    if imprimes and not any(abs(affiche - v) <= tol for v in imprimes):
+        out.append(f"total imprimé {affiche:.2f} absent des chaînes de "
+                   "totaux imprimées")
+    if (total_noyau is not None and data.get("nb_options") == 1
+            and not data.get("variante_rendue")):
+        try:
+            noyau = float(total_noyau)
+        except (TypeError, ValueError):
+            noyau = None
+        # ×N villas : le noyau facture le total ×N, imprimé sous sa clé.
+        try:
+            affiche_n = float(data.get("display_total_multi"))
+        except (TypeError, ValueError):
+            affiche_n = affiche
+        if noyau is not None and abs(affiche_n - noyau) > tol:
+            affiche = affiche_n
+            out.append(f"total imprimé {affiche:.2f} ≠ total du devis "
+                       f"{noyau:.2f} (noyau)")
+    return out
 
 
 def echapper_textes_client(data: dict) -> dict:

@@ -188,3 +188,6 @@ backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::a
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::f4b512886cc4 | QJR616 — total d'option ×N villas affiché par le PDF (moteur en float), jamais persisté
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté
 backend/django_core/apps/ventes/selectors.py::promesse_production_devis::c78ef06fb352 | CIQ627 — ratio de performance modélisé (sans unité, 3 décimales), jamais un montant
+backend/django_core/apps/ventes/quote_engine/pricing.py::repartir_annuel::c6c79d2a0030 | AMOT27 — économie MENSUELLE affichée (graphe) : répartition d'un annuel déjà calculé par la forme GHI, au dirham ; jamais persistée.
+backend/django_core/apps/ventes/quote_engine/pricing.py::repartir_annuel::282103b4ae6b | AMOT27 — le total annuel au dirham contre lequel le reliquat d'arrondi mensuel est calé (Σ mois = annuel) ; affichage seul.
+backend/django_core/apps/ventes/domain/dimensionnement_devis.py::prix_client_au_facteur::9352ee4da552 | AMOT59 — prix client d'un palier sous le palier ARRONDI-100 (au centime), affiché sur la page publique / l'échelle ; jamais persisté.
