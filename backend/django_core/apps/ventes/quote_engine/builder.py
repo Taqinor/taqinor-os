@@ -1985,6 +1985,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 "deux onduleurs non optionnels — devis à assainir par "
                 "resynchronisation")
 
+    # ── AMOT8 (C-AMOT-001) — MONO-OPTION « ONDULEUR RÉSEAU + BATTERIE » ──────
+    # Un onduleur RÉSEAU et une batterie RÉELLE, sans onduleur hybride ni
+    # autonome : ``familles_servables`` ne sert que « sans » (l'option « avec »
+    # exige un hybride/autonome), et le panier « sans » EXCLUT la batterie. Le
+    # document imprimait donc les lignes sans la batterie et un total sous le
+    # noyau (``option_lines`` facture TOUTES les lignes d'un mono-option), et
+    # re-titrait « Sans batterie » un scénario stocké « Avec batterie ». Même
+    # remède que PV86 : UNE présentation portant TOUTES les lignes, étiquette
+    # suivant la batterie réelle (« Avec batterie »), avertissement interne.
+    _reseau_batterie_sans_hybride = bool(
+        sans_ok and not avec_ok and has_batterie and not deux_options)
+    if _reseau_batterie_sans_hybride:
+        sans_items = [dict(it) for it in items]
+        avec_items = [dict(it) for it in items]
+        sans_lignes = list(lignes)
+        avec_lignes = list(lignes)
+        sans_ok, avec_ok = False, True
+        avertissements_internes.append(
+            "batterie sans onduleur hybride — document rendu en option "
+            "unique avec toutes les lignes (onduleur réseau + batterie)")
+
     # ── QJR300 — QF9 S'APPLIQUE ICI, ET SEULEMENT DANS LE CAS DEUX-OPTIONS ───
     # ``deux_options`` est ici la valeur « VRAIES options » (avant tout
     # rétrécissement de confort QF6/L-VAR) — exactement la question que pose le
