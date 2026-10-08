@@ -9,11 +9,14 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_desacceptation -v 2
 """
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+
+from testkit.time import frozen
 
 from apps.crm.models import Client
 from apps.ventes import services
@@ -126,9 +129,10 @@ class TestAnnulerAcceptation(TestCase):
         self._accepter(devis)
         services.annuler_acceptation(devis=devis, user=self.user)
         devis.refresh_from_db()
-        self._accepter(devis)
+        with frozen('2030-01-15 10:00:00'):
+            self._accepter(devis)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
         self.assertEqual(devis.option_acceptee,
                          Devis.OptionAcceptee.SANS_BATTERIE)
-        self.assertEqual(devis.date_acceptation, timezone.now().date())
+        self.assertEqual(devis.date_acceptation, date(2030, 1, 15))

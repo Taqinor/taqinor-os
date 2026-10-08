@@ -1232,6 +1232,7 @@ def _reactiver_contrat_reaccepte(devis):
     from .models import ContratMaintenance
 
     contrat = (ContratMaintenance.objects
+               .select_for_update()
                .filter(company=devis.company,
                        notes__contains=_marqueur_desaccepte(devis.pk))
                .order_by('pk').first())
