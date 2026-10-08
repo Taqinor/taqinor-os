@@ -1563,8 +1563,14 @@ def cgv_ci_du_devis(devis, tva_note=""):
 
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+
     from .pricing import calculate_savings_roi
 
+    # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
+    # envoyé avant les corrections AMOT/ADEV28 (``regles_calcul = 1``) est
+    # rendu avec les règles d'origine, exactement ce que le client a reçu.
+    _corrige = calcul_corrige(devis)
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
     # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
@@ -1955,8 +1961,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "unique — toutes les lignes sont chiffrées ensemble, comme le "
             "noyau les facture ; composition à vérifier")
 
+    # AMOT8 (C-AMOT-001) — MONO-OPTION « onduleur réseau + batterie » : la
+    # batterie n'entre que dans le panier « avec », qui n'est pas servable
+    # sans onduleur hybride ; le panier « sans » servi l'excluait — batterie et
+    # prix absents du tableau et du total imprimé, scénario stocké « Avec
+    # batterie » re-titré « Sans ». Même remède que l'artefact PV86 : toutes
+    # les lignes, étiquette suivant la batterie réelle, avertissement INTERNE.
+    _reseau_batterie_sans_hybride = bool(
+        _corrige and has_reseau and has_batterie and not has_hybride
+        and not has_offgrid and not deux_options)
+    if _reseau_batterie_sans_hybride:
+        avertissements_internes.append(
+            "batterie sans onduleur hybride — onduleur réseau et batterie "
+            "chiffrés ensemble dans une option unique ; composition à vérifier")
+
     _artefact_deux_onduleurs = bool(sans_ok and avec_ok and not deux_options)
-    if _artefact_deux_onduleurs or _mono_a_lignes_variantees:
+    if (_artefact_deux_onduleurs or _mono_a_lignes_variantees
+            or _reseau_batterie_sans_hybride):
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
         # est TOUTES les lignes du devis — donc dont le total EST le total du
         # devis, à l'écran comme au PDF. Les deux paniers portent la même
