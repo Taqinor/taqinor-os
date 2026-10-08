@@ -146,17 +146,17 @@ class BaseTests(BaseDepot):
         code, sortie = lancer()
         self.assertEqual(code, 1)
         self.assertIn("DEVENUE(S) INUTILE(S)", sortie)
-        self.assertIn("services/pack.py:2:apps.ged.services", sortie)
+        self.assertIn("services/pack.py:apps.ged.services", sortie)
 
-    def test_import_deplace_se_reenregistre(self):
+    def test_decalage_d_un_import_ne_rougit_pas(self):
+        # ACAL338 : la cle est fichier + module + compte, jamais la ligne.
         self.depot.module("services/pack.py", self.SOURCE)
         lancer(["--write-baseline"])
-        self.depot.module("services/pack.py", "\n\n" + self.SOURCE)
-        self.assertEqual(lancer()[0], 1)  # nouveau :4 ET périmé :2
-        self.assertEqual(lancer(["--write-baseline"])[0], 0)
-        self.assertEqual(lancer()[0], 0)
-        self.assertIn("services/pack.py:4:apps.ged.services",
-                      self.depot.baseline.read_text(encoding="utf-8"))
+        self.depot.module("services/pack.py", chr(10) * 2 + self.SOURCE)
+        code, sortie = lancer()
+        self.assertEqual(code, 0, sortie)
+        self.assertNotRegex(self.depot.baseline.read_text(encoding="utf-8"),
+                            r"pack\.py:\d+:")
 
     def test_import_nouveau_refuse_par_write_baseline(self):
         self.depot.module("services/pack.py", self.SOURCE)
@@ -166,9 +166,9 @@ class BaseTests(BaseDepot):
         code, sortie = lancer(["--write-baseline"])
         self.assertEqual(code, 1)
         self.assertIn("REFUS", sortie)
-        self.assertEqual(cfc.charger_base(),
-                         ["backend/django_core/apps/calepinage/services/"
-                          "pack.py:2:apps.ged.services"])
+        self.assertEqual(dict(cfc.charger_base()),
+                         {("backend/django_core/apps/calepinage/services/pack.py",
+                           "apps.ged.services"): 1})
 
     def test_croissance_autorisee_par_le_fondateur(self):
         self.depot.module("services/pack.py", self.SOURCE)
@@ -205,8 +205,8 @@ class DepotReelTests(unittest.TestCase):
     def test_la_base_mesuree_ne_porte_que_la_ged(self):
         base = cfc.charger_base()
         self.assertTrue(base, "base vide — la mesure du jour a disparu")
-        for cle in base:
-            self.assertIn(":apps.ged.", cle)
+        for fichier, module in base:
+            self.assertTrue(module.startswith("apps.ged."), (fichier, module))
 
 
 if __name__ == "__main__":
