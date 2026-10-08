@@ -1721,6 +1721,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # LIGNES. Il est relu bien plus bas, au bloc « toiture 3D » : un calepinage
     # ne peut plus écraser une puissance issue des lignes.
     puissance_des_lignes = nb_panneaux > 0
+    _kwc_registre_impose = False
     if nb_panneaux > 0 and watt:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
         # QJR63 — LE REGISTRE DE SURCHARGES PASSE DEVANT (décision fondateur
@@ -1740,6 +1741,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         puissance_kwc = None
         if nb_panneaux <= 0:
             nb_panneaux = None
+        # AMOT9 (C-AMOT-004) — le kWc du PROPRIÉTAIRE
+        # (``domain.scenario.puissance_kwc_du_devis`` : registre ``taille.kwc``
+        # d'abord) vaut aussi quand le watt est illisible ou qu'aucune ligne
+        # panneau n'existe : une surcharge saisie n'est jamais perdue au PDF.
+        if _corrige:
+            _kwc_impose = _kwc_du_registre(devis)
+            if _kwc_impose:
+                puissance_kwc = _kwc_impose
+                _kwc_registre_impose = True
 
     # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
     #
@@ -2443,7 +2453,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # calepinage (une seule source pour les deux figures) ; la puissance
         # unitaire, elle, reste inconnue (roofPro modélise à 720 W constants,
         # ce n'est pas le panneau vendu) — voir M3.
-        if _kwc_layout and not puissance_des_lignes:
+        if (_kwc_layout and not puissance_des_lignes
+                and not _kwc_registre_impose):
             puissance_kwc = round(_kwc_layout, 2)
             nb_panneaux = _compte_du_layout(roof_layout) or None
         # Facteur de RECALAGE des figures du calepinage (production, économies)
@@ -2452,8 +2463,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # conservée — seule sa TAILLE est ramenée à celle des lignes. 1.0 quand
         # les deux coïncident, donc sortie inchangée sur un devis sain.
         _recalage = 1.0
-        if (puissance_des_lignes and _kwc_layout > 0
-                and (puissance_kwc or 0) > 0):
+        if ((puissance_des_lignes or _kwc_registre_impose)
+                and _kwc_layout > 0 and (puissance_kwc or 0) > 0):
             _recalage = puissance_kwc / _kwc_layout
         _stored = dict(devis.etude_params or {})
         # ACAL102 (C-ACAL-113) — la provenance est LUE (``production_source``,
@@ -2476,13 +2487,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 # marquée) reste souveraine.
                 _stored[_cle] = figure_production_du_devis(
                     devis, cle=_cle,
-                    puissance_kwc=(puissance_kwc if puissance_des_lignes
-                                   else 0))
+                    puissance_kwc=(puissance_kwc if (
+                        puissance_des_lignes or _kwc_registre_impose)
+                        else 0))
         # Le kWc stocké dans l'étude est SERVI tel quel (payload public
         # ``etude.puissance_kwc``, ``etude.toiture.kwc``) : il suit la même
         # règle, sans quoi la page publiait encore la base 720 W sous un autre
         # nom. Copies défensives — ``etude_params`` du devis n'est jamais muté.
-        if puissance_des_lignes and (puissance_kwc or 0) > 0:
+        if ((puissance_des_lignes or _kwc_registre_impose)
+                and (puissance_kwc or 0) > 0):
             _stored["puissance_kwc"] = puissance_kwc
             _toiture = _stored.get("toiture")
             if isinstance(_toiture, dict) and _nombre(_toiture.get("kwc")):
