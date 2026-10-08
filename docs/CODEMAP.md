@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: d8ec1feb55d91cbbf70912d1f750fd06c63530a6c7dd99c909db51fad8a62f12
+Structure fingerprint: 45cc9bff1866559cfcfc1ec5a1ae86c8b98e8bd82d5ed2825045f08b172f26e4
 Plan fingerprint: 39fab5bceb153b6f1ceb39d85bb72b26f6df94388ee4bb045063d81af25d4c65
 
 
@@ -250,7 +250,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |
 | `entites` | `entites/` | 1 | Intra-tenant org tree (`Entite`: holding/filiale/agence) with anti-cycle guard. |
 | `adminops` | `adminops/` | 12 | Health score, sandbox, config packages, adoption, `PlanLicence`/`FactureLicence`, impersonation, signup requests, product announcements. |
-| `notifications` | `notifications/` | 17 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), push, `MessageAccueil`, working hours. |
+| `notifications` | `notifications/` | 18 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), sweep emission marker (`MarqueurEmissionBalayage`), push, `MessageAccueil`, working hours. |
 | `automation` | `automation/` | 13 | No-code rules + approvals: `AutomationRule`/`Run`/`Step`, `ApprovalRequest`/`Decision`/`Delegation`, incoming webhooks. |
 | `agent` | `agent/` | 1 | Agentic action catalogue (declared in code, `AgentActionLog` only) — metadata; the endpoint re-checks permissions. |
 | `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. |
