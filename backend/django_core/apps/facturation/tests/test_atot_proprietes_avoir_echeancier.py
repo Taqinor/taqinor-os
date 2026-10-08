@@ -98,7 +98,10 @@ class _Base(HypothesisDjangoTestCase):
             taux_tva=Decimal('20.00'), mode_installation='residentiel',
             **extra)
         for i, li in enumerate(lignes):
-            LigneDevis.objects.create(devis=devis, designation=f'L{i}', **li)
+            # Une ligne produit porte son produit du catalogue
+            # (`LigneFacture.produit` est NOT NULL : sans lui → IntegrityError).
+            LigneDevis.objects.create(devis=devis, produit=self.produit,
+                                      designation=f'L{i}', **li)
         return Devis.objects.get(pk=devis.pk)
 
     def _generer(self, devis):
