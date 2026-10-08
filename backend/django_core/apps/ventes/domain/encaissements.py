@@ -1112,9 +1112,14 @@ def mandat_actif_pour_client(client):
     ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
     par défaut) fait strictement l'encaissement manuel actuel."""
     from apps.ventes.models import MandatPaiement
+    if client is None:
+        return None
+    # ASEC28 — borné à la SOCIÉTÉ du client : un mandat d'une autre société
+    # ne peut jamais servir au prélèvement (signature inchangée).
     return (
         MandatPaiement.objects
-        .filter(client=client, statut=MandatPaiement.Statut.ACTIF)
+        .filter(client=client, company_id=client.company_id,
+                statut=MandatPaiement.Statut.ACTIF)
         .exclude(token='')
         .order_by('-created_at')
         .first()

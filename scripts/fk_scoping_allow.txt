@@ -71,8 +71,6 @@ backend/django_core/apps/scm/serializers.py::PrevisionDemandeSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.facture
 backend/django_core/apps/ventes/serializers_facturation.py::AffectationPaiementSerializer.paiement
 backend/django_core/apps/ventes/serializers_facturation.py::AvoirSerializer.client
-backend/django_core/apps/ventes/serializers_facturation.py::BonCommandeSerializer.client
-backend/django_core/apps/ventes/serializers_facturation.py::BonCommandeSerializer.lead
 backend/django_core/apps/ventes/serializers.py::DevisSerializer.client
 backend/django_core/apps/ventes/serializers.py::DevisSerializer.entite
 backend/django_core/apps/ventes/serializers.py::DevisSerializer.lead
@@ -91,11 +89,9 @@ backend/django_core/apps/ventes/serializers_facturation.py::LigneAvoirSerializer
 backend/django_core/apps/ventes/serializers_facturation.py::LigneNoteDebitSerializer.produit
 backend/django_core/apps/ventes/serializers.py::LignePrixListeSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::LigneRemiseEncaissementSerializer.paiement
-backend/django_core/apps/ventes/serializers_facturation.py::MandatPaiementSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::NoteDebitSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::NoteDebitSerializer.facture
 backend/django_core/apps/ventes/serializers_facturation.py::PaiementSerializer.client
-backend/django_core/apps/ventes/serializers_facturation.py::ParametrageRelanceClientSerializer.client
 backend/django_core/apps/ventes/serializers_facturation.py::PromessePaiementSerializer.facture
 # SPL72 — 95 sites PRÉEXISTANTS que la garde ne voyait pas (découverte étendue à
 # serializers*.py / *_serializers.py / models*.py et héritage résolu à l'échelle de l'app) :
@@ -222,8 +218,6 @@ backend/django_core/apps/ventes/serializers.py::DevisSerializer.remise_approuvee
 backend/django_core/apps/ventes/serializers.py::DevisWriteSerializer.updated_by
 backend/django_core/apps/ventes/serializers.py::PlanCommissionSerializer.owner
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.abandon_par
-backend/django_core/apps/ventes/serializers_facturation.py::ParametrageRelanceClientSerializer.responsable
-backend/django_core/apps/ventes/serializers_facturation.py::RemiseEncaissementSerializer.technicien
 
 # ASTK9 - pre-existant (releve 2026-10-07) : FK meme-app vers modele a societe, sites hors stock ; CONSTATES, pas approuves
 backend/django_core/apps/accessreview/serializers.py::AccessReviewItemSerializer.campagne
@@ -347,7 +341,6 @@ backend/django_core/apps/ventes/serializers_commissioning.py::CommissioningTestS
 backend/django_core/apps/ventes/serializers_commissioning.py::IVCurveCaptureSerializer.recette
 backend/django_core/apps/ventes/serializers_commissioning.py::TestPerformanceReceptionSerializer.recette
 backend/django_core/apps/ventes/serializers_facturation.py::AvoirSerializer.facture
-backend/django_core/apps/ventes/serializers_facturation.py::BonCommandeSerializer.devis
 backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.facture
 backend/django_core/apps/ventes/serializers_facturation.py::RelanceLogSerializer.facture
 backend/django_core/apps/ventes/serializers_regulatory.py::DossierChecklistItemSerializer.dossier

@@ -14,7 +14,12 @@ from .serializers import _fallback_taux_tva
 from core.mixins import SameCompanyFKSerializerMixin
 
 
-class BonCommandeSerializer(serializers.ModelSerializer):
+class BonCommandeSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
+    # ASEC28 (C-ASEC-005) — FK inscriptibles bornées à la société de la
+    # requête : un id étranger = 400 « objet inexistant », en PATCH comme en
+    # création (la garde ERR13 de perform_create ne couvrait que la création).
+    same_company_fields = ('client', 'devis', 'lead')
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
@@ -551,8 +556,12 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
                   'taux_interet_annuel', 'frais_fixes', 'canal']
 
 
-class ParametrageRelanceClientSerializer(serializers.ModelSerializer):
-    """ZFAC8 — réglage par client du responsable/mode de relance."""
+class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
+                                         serializers.ModelSerializer):
+    """ZFAC8 — réglage par client du responsable/mode de relance.
+
+    ASEC28 — `client` et `responsable` bornés à la société de la requête."""
+    same_company_fields = ('client', 'responsable')
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     responsable_username = serializers.CharField(
@@ -611,7 +620,11 @@ class LigneRemiseEncaissementSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
-class RemiseEncaissementSerializer(serializers.ModelSerializer):
+class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ASEC28 — le technicien d'une remise est un utilisateur de la société.
+    same_company_fields = ('technicien',)
+
     lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
@@ -631,10 +644,17 @@ class RemiseEncaissementSerializer(serializers.ModelSerializer):
         ]
 
 
-class MandatPaiementSerializer(serializers.ModelSerializer):
+class MandatPaiementSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """XCTR22 — mandat de prélèvement carte. `token` n'est JAMAIS accepté en
     écriture directe (posé uniquement par le service de tokenisation) ; seuls
-    les 4 derniers chiffres/expiration sont exposés pour l'affichage."""
+    les 4 derniers chiffres/expiration sont exposés pour l'affichage.
+
+    ASEC28 — `client` borné à la société ; `statut` et
+    `consentement_horodate` en lecture seule : seules les actions dédiées
+    (tokenisation, `revoquer`) les changent — un mandat révoqué ne redevient
+    jamais actif par PATCH."""
+    same_company_fields = ('client',)
     client_nom = serializers.CharField(source='client.nom', read_only=True)
 
     class Meta:
@@ -642,4 +662,5 @@ class MandatPaiementSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = [
             'id', 'token', 'company', 'created_at', 'revoked_at',
+            'statut', 'consentement_horodate',
         ]

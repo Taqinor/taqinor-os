@@ -256,7 +256,7 @@
   "BonCommandeSerializer": {
    "fields": {
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -305,7 +305,7 @@
      false
     ],
     "devis": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -354,7 +354,7 @@
      false
     ],
     "lead": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1706,7 +1706,7 @@
   "MandatPaiementSerializer": {
    "fields": {
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1728,7 +1728,7 @@
     ],
     "consentement_horodate": [
      "DateTimeField",
-     false,
+     true,
      false,
      null,
      false
@@ -1777,7 +1777,7 @@
     ],
     "statut": [
      "ChoiceField",
-     false,
+     true,
      false,
      null,
      false
@@ -2159,7 +2159,7 @@
   "ParametrageRelanceClientSerializer": {
    "fields": {
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -2194,7 +2194,7 @@
      false
     ],
     "responsable": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -2511,7 +2511,7 @@
      false
     ],
     "technicien": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
