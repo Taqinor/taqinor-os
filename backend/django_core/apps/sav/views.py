@@ -1162,6 +1162,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         body = (request.data.get('body') or '').strip()
         reponse_type_id = request.data.get('reponse_type_id')
+        statut_macro = None
 
         if not body and reponse_type_id:
             try:
@@ -1186,14 +1187,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 date=timezone.localdate().strftime('%d/%m/%Y'),
             ).strip()
             if macro.nouveau_statut and ticket.statut != macro.nouveau_statut:
-                old = Ticket.objects.get(pk=ticket.pk)
-                ticket.statut = macro.nouveau_statut
-                ticket.save(update_fields=['statut'])
-                activity.log_changes(old, ticket, request.user)
+                statut_macro = macro.nouveau_statut
 
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if statut_macro:
+            # ASAV13 — le statut d'une macro passe par LE service gardé
+            # (graphe, YSERV2, effets complets d'ASAV12) ; un refus renvoie
+            # 400 SANS note ni changement de statut.
+            from . import services as sav_services
+            try:
+                sav_services.appliquer_transition_ticket(
+                    ticket, statut_macro, request.user, request=request)
+            except sav_services.TransitionTicketRefusee as exc:
+                return Response(exc.detail, status=400)
         # NTPRT12 — opt-in EXPLICITE : sans `visible_client` vrai dans le
         # corps, la note reste interne et le portail client ne la voit jamais.
         visible_client = request.data.get('visible_client') in (

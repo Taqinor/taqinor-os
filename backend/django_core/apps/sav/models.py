@@ -1998,8 +1998,11 @@ class ReponseType(models.Model):
         null=True, blank=True, related_name='reponses_type')
     titre = models.CharField(max_length=150)
     corps = models.TextField()
+    # ASAV13 — limité aux choix de ``Ticket.Statut`` (vide = aucun
+    # changement) ; appliqué par ``services.appliquer_transition_ticket``.
     nouveau_statut = models.CharField(
         max_length=12, blank=True, default='',
+        choices=Ticket.Statut.choices,
         help_text='Statut optionnel appliqué au ticket à l\'insertion.')
     archived = models.BooleanField(default=False)
     # ── NTSRV34 — Canaux autorisés pour cette macro ─────────────────────────
