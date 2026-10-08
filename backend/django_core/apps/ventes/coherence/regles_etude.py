@@ -550,3 +550,30 @@ def i8_parite(r, devis, ctx):
                                  ('scenario', 'pdf_mode', 'variante_option')
                                  if opts.get(k) is not None}},
         attendu='mêmes chiffres', cle={'champs': sorted(ecarts)})]
+
+
+@regle('ETU_I8B_PARITE_GABARIT',
+       "Le gabarit PDF résidentiel imprime un chiffre différent de celui du "
+       "dict serveur",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_DEVIS, besoin_rendu=True)
+def i8b_parite_gabarit(r, devis, ctx):
+    """AMOT50 (C-AMOT-039) — ``ETU_I8`` compare deux ``build_quote_data`` et
+    n'appelle JAMAIS le rendu (survivant : il garde le volet données). Ici le
+    gabarit est RENDU sans réseau (``render.build_html(renderer._augment
+    (data))``, pas de WeasyPrint) et ses chiffres ancrés (couverture, −N %,
+    économie, retour, TTC…) sont confrontés au dict serveur par
+    ``figures.parite_gabarit`` — l'extracteur unique de
+    ``test_figures_parite``. Une levée du gabarit remonte en ``rule_errors``
+    (moteur), jamais en silence."""
+    if not _residentiel(devis):
+        return []
+    from apps.ventes.quote_engine.figures import parite_gabarit
+    from apps.ventes.quote_engine.residential import render, renderer
+    data = ctx.donnees_devis(devis)
+    html = render.build_html(renderer._augment(dict(data)))
+    return [r.violation(
+        devis, f"Gabarit ≠ serveur : {m}.",
+        valeurs={'identite': m.identite, 'gabarit': m.texte_a,
+                 'serveur': m.texte_b, 'raison': m.raison},
+        attendu='même chiffre', cle={'identite': m.identite})
+        for m in parite_gabarit(data, html)]

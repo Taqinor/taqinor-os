@@ -788,3 +788,21 @@ def figures_depuis_devis_api(detail: dict) -> dict[str, list[Mesure]]:
     c.mettre("payback_ans", roi.get("roi_s"), "sans")
     c.mettre("payback_ans", roi.get("roi_a"), "avec")
     return c.figures
+
+
+def parite_gabarit(data: dict, html: str) -> list[Mismatch]:
+    """AMOT50 — les chiffres IMPRIMÉS par le gabarit (``html`` RENDU, ancres
+    ``data-figure`` lues par :func:`extract_figures`) contre ceux du dict
+    serveur ``data`` (``build_quote_data``, lu par la MÊME projection que la
+    proposition : :func:`figures_depuis_proposition`). Seules les identités
+    présentes sur les DEUX surfaces sont confrontées : un chiffre que le
+    gabarit n'imprime pas n'est pas une incohérence."""
+    gabarit = extract_figures(html)
+    serveur = figures_depuis_proposition(
+        {"quote": data or {},
+         "mode_installation": (data or {}).get("mode_installation")})
+    communes = set(gabarit) & set(serveur)
+    return compare_surfaces({
+        "gabarit": {k: v for k, v in gabarit.items() if k in communes},
+        "serveur": {k: v for k, v in serveur.items() if k in communes},
+    })
