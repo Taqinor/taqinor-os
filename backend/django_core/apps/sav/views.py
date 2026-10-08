@@ -10,7 +10,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import (
+    APIException, NotFound, ValidationError,
+)
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -587,6 +589,34 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         return Response(payload, status=201)
 
 
+def _tickets_visibles(request):
+    """ASAV25 — tickets de la société VISIBLES par l'utilisateur : la même
+    portée (``scope_queryset`` : créés par soi / dont on est technicien /
+    équipe ; « tous » inchangé) que la liste ``TicketViewSet``. Toute action
+    qui reçoit des ids de tickets dans son corps les résout ICI — jamais par
+    ``Ticket.objects.filter(company=…)`` nu."""
+    from authentication.scoping import scope_queryset
+    return scope_queryset(
+        Ticket.objects.filter(company=request.user.company), request.user,
+        ['technicien_responsable', 'created_by'])
+
+
+def _ticket_visible_du_corps(request, brut, champ='ticket'):
+    """ASAV25 — ticket du corps : inconnu de la société → 400 sous ``champ``
+    (inchangé) ; de la société mais HORS portée → 404 (introuvable)."""
+    try:
+        ticket_id = int(brut)
+    except (TypeError, ValueError):
+        raise ValidationError({champ: 'Ticket inconnu.'})
+    ticket = _tickets_visibles(request).filter(pk=ticket_id).first()
+    if ticket is not None:
+        return ticket
+    if Ticket.objects.filter(
+            pk=ticket_id, company=request.user.company).exists():
+        raise NotFound({champ: 'Ticket introuvable.'})
+    raise ValidationError({champ: 'Ticket inconnu.'})
+
+
 class TicketEnDoubleError(APIException):
     """ASAV23 — création d'un ticket identique dans la fenêtre anti-doublon."""
     status_code = 409
@@ -1097,11 +1127,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'operation': 'Opération inconnue.'}, status=400)
 
+        # ASAV25 — seuls les tickets VISIBLES (portée de l'utilisateur) sont
+        # traités ; les autres ids sortent en échec « introuvable », sans
+        # dire s'ils existent.
         company = request.user.company
-        tickets = list(
-            Ticket.objects.filter(company=company, id__in=ids))
+        tickets = list(_tickets_visibles(request).filter(id__in=ids))
         traites = []
         echecs = []
+        vus = {t.id for t in tickets}
+        for brut in ids:
+            try:
+                ident = int(brut)
+            except (TypeError, ValueError):
+                ident = brut
+            if ident not in vus:
+                echecs.append({'id': ident, 'raison': 'Ticket introuvable.'})
 
         if operation == 'statut':
             statut_cible = request.data.get('statut')
@@ -2173,8 +2213,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 {'detail': "Un ticket ne peut pas être fusionné avec lui-même."},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        doublon = Ticket.objects.filter(
-            pk=doublon_id, company=principal.company).first()
+        # ASAV25 — le doublon doit être VISIBLE par l'utilisateur (sinon sa
+        # fusion transférerait son chatter vers un ticket qu'il voit).
+        doublon = _tickets_visibles(request).filter(pk=doublon_id).first()
         if doublon is None:
             return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
 
@@ -2579,10 +2620,8 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
 
         ticket_id = request.data.get('ticket')
         if ticket_id:
-            ticket = Ticket.objects.filter(
-                id=ticket_id, company=company).first()
-            if ticket is None:
-                raise ValidationError({'ticket': 'Ticket inconnu.'})
+            # ASAV25 — résolu par la portée de l'utilisateur.
+            ticket = _ticket_visible_du_corps(request, ticket_id)
         else:
             # Ouvre un ticket correctif. Le client/chantier sont déduits de
             # l'équipement lié à l'alarme quand c'est possible.
@@ -2931,15 +2970,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         brut = request.data.get('ticket')
         if brut in (None, ''):
             raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})
-        try:
-            ticket_id = int(brut)
-        except (TypeError, ValueError):
-            raise ValidationError({'ticket': 'Ticket inconnu.'})
-        ticket = Ticket.objects.filter(
-            pk=ticket_id, company=request.user.company).first()
-        if ticket is None:
-            raise ValidationError({'ticket': 'Ticket inconnu.'})
-        return ticket
+        # ASAV25 — résolu par la portée de l'utilisateur (404 hors portée).
+        return _ticket_visible_du_corps(request, brut)
 
     @extend_schema(
         request=inline_serializer('SavProblemeLierTicketRequest', {
