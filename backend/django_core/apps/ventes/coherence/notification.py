@@ -64,3 +64,47 @@ def notifier_nouvelles_violations(report):
                       company=company) is not None:
                 emises += 1
     return emises
+
+
+def corps_regles_sans_verdict(erreurs):
+    """AMOT61 — texte (FR) du digest « règles sans verdict » d'UNE société :
+    décompte par règle + la première erreur de chacune."""
+    par_regle = Counter(e.get('rule') for e in erreurs)
+    premiere = {}
+    for e in erreurs:
+        premiere.setdefault(e.get('rule'), e.get('error') or '')
+    lignes = [f'• {n} × {regle} — {premiere.get(regle, "")}'
+              for regle, n in par_regle.most_common()]
+    lignes.append('')
+    lignes.append("Ces règles n'ont rendu AUCUN verdict cette nuit : leurs "
+                  "incohérences éventuelles ne sont pas détectées. Détail : "
+                  "python manage.py audit_coherence --json (lecture seule).")
+    return '\n'.join(lignes)
+
+
+def notifier_regles_sans_verdict(report):
+    """AMOT61 (C-AMOT-037) — notifie les admins de chaque société dont une
+    ou plusieurs règles sont restées SANS VERDICT (``report.rule_errors``) :
+    « N règles sans verdict » + décompte par règle. Rend le nombre de
+    notifications émises ; aucune erreur ⇒ aucune notification."""
+    from authentication.models import Company, CustomUser
+    from apps.notifications.types_evenements import EventType
+    from apps.notifications.services import notify
+
+    par_societe = {}
+    for e in report.rule_errors:
+        par_societe.setdefault(e.get('company'), []).append(e)
+    emises = 0
+    for slug, erreurs in par_societe.items():
+        company = Company.objects.filter(slug=slug).first()
+        if company is None:
+            continue
+        nb_regles = len({e.get('rule') for e in erreurs})
+        titre = (f'Audit de cohérence : {nb_regles} règle(s) sans verdict '
+                 f'({len(erreurs)} erreur(s))')
+        corps = corps_regles_sans_verdict(erreurs)
+        for admin in CustomUser.admins_actifs_qs(company).distinct():
+            if notify(admin, EventType.DIGEST, titre, body=corps,
+                      company=company) is not None:
+                emises += 1
+    return emises

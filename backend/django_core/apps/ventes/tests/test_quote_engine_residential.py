@@ -583,7 +583,7 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         self.client_obj = make_client(self.company)
 
     def _resid_devis(self):
-        return make_devis(self.company, self.user, self.client_obj, [
+        devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
@@ -597,6 +597,16 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
                 1200, 1200, 1300, 1400, 1600, 1800,
                 1900, 1900, 1700, 1500, 1300, 1200],
         })
+        # ADEV68 / AMOT13 — le moteur n'imprime « signer » que pour un devis
+        # HORS brouillon, et LIT le lien sans jamais le créer : ces tests du
+        # CTA de signature portent donc sur un devis ENVOYÉ dont le lien a été
+        # frappé par l'envoi (cas brouillon : test_quote_engine_adev68_* ;
+        # lecture pure : test_quote_engine_amot13_*).
+        from apps.ventes.models import ShareLink
+        type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        ShareLink.for_devis(devis)
+        return devis
 
     def test_builder_mints_tokenized_signer_link(self):
         from apps.ventes.models import ShareLink
@@ -863,14 +873,18 @@ class TestResidentialFooterBranding(SimpleTestCase):
         self.assertNotIn('TAQINOR', foot)
         self.assertNotIn('contact@taqinor.com', foot)
 
-    def test_footer_nom_only_keeps_founder_contact_line(self):
-        """Nom fourni sans contact → contact fondateur préservé (comme DC1)."""
+    def test_footer_nom_only_omits_founder_contact_line(self):
+        """AMOT18 (C-AMOT-016) — nom fourni sans contact : la société est
+        IDENTIFIÉE, ses champs vides sont OMIS — jamais le contact fondateur
+        sous le nom d'un autre (la règle de ``bande_legale`` et du legacy ;
+        l'ancien repli « comme DC1 » est retiré par la décision d'audit)."""
         from apps.ventes.quote_engine.residential import theme
         foot = theme.page_footer(
             {'ref': 'DEV-3', 'entreprise': {'nom': 'Helios SARL'}})
         self.assertIn('<b>Helios SARL</b>', foot)
-        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10',
-                      foot)
+        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('+212 6 61 85 04 10', foot)
+        self.assertNotIn('taqinor.ma', foot)
 
     def test_footer_html_escapes_tenant_name(self):
         from apps.ventes.quote_engine.residential import theme

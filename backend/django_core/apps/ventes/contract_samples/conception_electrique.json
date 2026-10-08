@@ -64,5 +64,11 @@
     "schema_version": 2,
     "source_entree": { "temperatures": "calepinage", "longueurs": "surcharge", "regime": "defaut" }
   },
-  "pourquoi_source_entree": "ACAL10 (PACT10, C-ACAL-061) a posé SEUL le fragment ; ACAL165 l'a déplacé dans `exemple` avec le code qui le produit (apps/ventes/electrical_service.py::construire_entree_et_source). La clé de premier niveau `source_entree` {temperatures, longueurs, regime}, chaque valeur dans 'calepinage' | 'surcharge' | 'defaut', dit d'où vient chaque grandeur de site de l'étude électrique : la surcharge explicite du devis (POST conception-electrique) d'abord, puis le calepinage LIÉ (températures de son Verdict, longueurs et régime SAISIS), les forfaits du noyau (−5/70 °C, 30/15 m, TT) seulement sans l'un ni l'autre. Une étude rangée AVANT ACAL165 ne la porte pas (elle n'est pas recalculée pour l'ajouter) : l'écran la traite comme absente."
+  "pourquoi_source_entree": "ACAL10 (PACT10, C-ACAL-061) a posé SEUL le fragment ; ACAL165 l'a déplacé dans `exemple` avec le code qui le produit (apps/ventes/electrical_service.py::construire_entree_et_source). La clé de premier niveau `source_entree` {temperatures, longueurs, regime}, chaque valeur dans 'calepinage' | 'surcharge' | 'defaut', dit d'où vient chaque grandeur de site de l'étude électrique : la surcharge explicite du devis (POST conception-electrique) d'abord, puis le calepinage LIÉ (températures de son Verdict, longueurs et régime SAISIS), les forfaits du noyau (−5/70 °C, 30/15 m, TT) seulement sans l'un ni l'autre. Une étude rangée AVANT ACAL165 ne la porte pas (elle n'est pas recalculée pour l'ajouter) : l'écran la traite comme absente.",
+  "erreurs": {
+    "409": {
+      "quand": "ADEV58 — POST /conception-electrique/ et POST /simuler/ sur un devis non modifiable (accepté, refusé, expiré, remplacé ou archivé). Le GET rend l'étude stockée sans la réécrire.",
+      "forme": {"detail": "Devis accepté : révisez-le", "statut": "accepte", "revision_possible": true}
+    }
+  }
 }

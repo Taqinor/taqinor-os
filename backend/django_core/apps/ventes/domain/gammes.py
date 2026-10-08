@@ -284,7 +284,7 @@ def create_devis_from_reserve(*, reserve, user):
     aval (règle #4). Aucun impact sur `/proposal`.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
 
     installation = reserve.intervention.installation
     if installation is None or installation.client_id is None:
@@ -323,7 +323,7 @@ def create_devis_from_reserve(*, reserve, user):
             mode_installation=mode,
         )
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
     logger.info(
         'XFSM18: devis de réparation %s créé depuis la réserve %s (company %s)',
         devis.reference, reserve.id, getattr(company, 'id', '?'))

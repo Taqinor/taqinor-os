@@ -99,7 +99,7 @@ def _calepinage_range(layout, toiture, kwc):
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
-                            taux_tva=Decimal('20'), remise_globale=Decimal('0'),
+                            taux_tva=None, remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
                             mppt_paires=1, structure_type=None,
@@ -193,6 +193,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
       options pouvait naître avec un seul onduleur composable, et ne servir
       qu'une des deux options qu'il promet au client.
     """
+    # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
+    if taux_tva is None:
+        from apps.ventes.utils.company_settings import tva_standard
+        taux_tva = tva_standard(company)
     # STKCAT8/STKCAT9 (bis) — le chemin 3D suit la MÊME règle que /auto/ :
     # le choix imposé par l'appelant d'abord, sinon la structure épinglée
     # sur le lead, sinon sa préférence acier/aluminium, sinon acier (le

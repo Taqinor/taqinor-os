@@ -166,7 +166,34 @@ class LigneDevisSerializer(SameCompanyFKSerializerMixin,
                 raise serializers.ValidationError({
                     'tva_base_legale': 'Une base légale est obligatoire pour '
                                        'un taux de TVA de 0 %.'})
+            self._poser_marqueurs_saisie(attrs, instance)
         return attrs
+
+    #: ADEV23 — (champ saisi, marqueur D12 qu'il pose).
+    _MARQUEURS_SAISIE = (('prix_unitaire', 'prix_manuel'),
+                         ('quantite', 'quantite_manuelle'))
+
+    def _poser_marqueurs_saisie(self, attrs, instance):
+        """ADEV23 (C-ADEV-030) — un prix (resp. une quantité) TAPÉ via
+        ``/devis-lignes/`` est une entrée commerciale souveraine : il pose
+        ``prix_manuel`` (resp. ``quantite_manuelle``), exactement comme
+        l'écrivain de domaine (``creer_ligne`` / ``remplacer_lignes``), pour
+        que la re-tarification des forfaits ne le remette pas au barème.
+
+        Un corps qui fixe EXPLICITEMENT le marqueur garde son choix ; en
+        modification, seule une valeur qui CHANGE est une saisie (renvoyer la
+        valeur courante ne fige rien)."""
+        brut = getattr(self, 'initial_data', None)
+        if not hasattr(brut, 'keys'):
+            return
+        for champ, marqueur in self._MARQUEURS_SAISIE:
+            if champ not in brut or marqueur in brut:
+                continue
+            if champ not in attrs or attrs[champ] is None:
+                continue
+            if instance is not None and getattr(instance, champ) == attrs[champ]:
+                continue
+            attrs[marqueur] = True
 
     def create(self, validated_data):
         # XSAL14 — une ligne section/note n'a pas de produit : pas de copie de
@@ -1048,6 +1075,15 @@ class LignePrixListeSerializer(serializers.ModelSerializer):
         model = LignePrixListe
         fields = ['id', 'liste', 'produit', 'produit_nom', 'prix_unitaire']
         read_only_fields = ['id']
+
+
+class SaisiePrixListeSerializer(serializers.Serializer):
+    """ADEV39 (C-ADEV-056) — le prix saisi par ``POST /listes-prix/<id>/
+    lignes/`` : fini (NaN/Infini refusés par ``DecimalField``), ≥ 0 et dans
+    la plage de ``LignePrixListe.prix_unitaire`` (10 chiffres, 2 décimales).
+    Un refus est un 400 nommant ``prix_unitaire``, jamais un 500."""
+    prix_unitaire = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=0)
 
 
 class RegleListePrixSerializer(SameCompanyFKSerializerMixin,

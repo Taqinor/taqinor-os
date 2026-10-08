@@ -18,6 +18,23 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.roles.permissions import IsInternalWriterOrPortalClientOwner
 
 
+#: ADEV31 — le seul texte servi quand le rendu de ``/proposal`` échoue.
+MSG_PROPOSITION_INDISPONIBLE = (
+    'Génération de la proposition momentanément indisponible.')
+
+
+def _signaler_pdf_devis_genere(devis):
+    """ADEV22 — émet ``document_pdf_generated(kind='devis')`` (journal
+    d'audit) ; jamais bloquant pour le rendu."""
+    from core.events import document_pdf_generated
+    try:
+        document_pdf_generated.send(sender=Devis, instance=devis, kind='devis')
+    except Exception:  # noqa: BLE001 — un journal raté ne casse pas le rendu
+        import logging
+        logging.getLogger(__name__).exception(
+            'ADEV22 : audit PDF devis ignoré (devis %s)', devis.pk)
+
+
 class DevisPdfActionsMixin:
     """SPL139 — actions de rendu PDF de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -34,12 +51,8 @@ class DevisPdfActionsMixin:
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
         task = task_generate_devis_pdf.delay(devis.id, pdf_options)
-        # M4 — événement découplé : ventes émet, le satellite audit journalise
-        # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
-        # est synchrone (même requête), donc l'acteur/société restent identiques.
-        from core.events import document_pdf_generated
-        document_pdf_generated.send(
-            sender=Devis, instance=devis, kind='devis')
+        # ADEV22 (C-ADEV-028) — l'entrée d'audit « PDF devis généré » n'est
+        # plus écrite à la DEMANDE (202) : la tâche l'émet à son rendu réussi.
         # WIR217 — une nouvelle demande efface l'échec consigné : sinon un
         # « Réessayer » repartirait déjà marqué en échec.
         from ..tasks import oublier_echec_pdf_devis
@@ -132,27 +145,46 @@ class DevisPdfActionsMixin:
             if 'include_calepinage' in request.query_params:
                 raw['include_calepinage'] = (
                     request.query_params['include_calepinage'] in ('1', 'true'))
+            # APDF16 (C-APDF-007) — annexe « Note de calcul » agricole
+            # (AGR319) : même convention que `include_etude` (`1`/`true` =
+            # oui). Absent ⇒ défaut moteur (pas d'annexe) ; un devis non
+            # agricole ignore l'option (le moteur en décide).
+            if 'include_note_calcul' in request.query_params:
+                raw['include_note_calcul'] = (
+                    request.query_params['include_note_calcul'] in ('1', 'true'))
             # NTI18N4 — langue de sortie du document, INDÉPENDANTE de la
             # langue d'interface de qui génère le PDF. `?langue=` écrase la
             # résolution auto (priorité : explicite > Client.langue_document
             # > repli société [NTI18N34, pas encore construit] > FR). Le
             # moteur reçoit toujours une valeur DÉJÀ résolue — jamais un
             # second moteur, jamais de logique de langue dupliquée ici.
-            from apps.parametres.i18n_resolver import resolve_langue_sortie
-            raw['langue_sortie'] = resolve_langue_sortie(
-                langue_explicite=request.query_params.get('langue'),
-                client=devis.client, company=devis.company)
+            # APDF18 — la résolution AUTOMATIQUE (client, repli société) vit
+            # désormais dans le moteur (APDF7) : la vue ne transmet que le
+            # `?langue=` EXPLICITE (validé par le résolveur).
+            if request.query_params.get('langue'):
+                from apps.parametres.i18n_resolver import resolve_langue_sortie
+                raw['langue_sortie'] = resolve_langue_sortie(
+                    langue_explicite=request.query_params.get('langue'),
+                    client=devis.client, company=devis.company)
             # ERR74 — /proposal is a safe GET: render + stream, but do NOT
             # persist fichier_pdf on every call (persist=False). The single
             # engine picks the residential (redesigned) or legacy renderer.
             key = generate_premium_devis_pdf(
                 devis.id, clean_pdf_options(raw), persist=False)
             pdf_bytes = download_pdf(key)
-        except Exception as exc:
+        except Exception:
+            # ADEV31 (C-ADEV-043) — jamais le texte brut de l'exception au
+            # client (hôte, bucket, chemin) : message neutre, pile au journal.
+            import logging
+            logging.getLogger(__name__).exception(
+                '/proposal : rendu échoué (devis %s)', devis.pk)
             return Response(
-                {'detail': f'Génération de la proposition échouée : {exc}'},
+                {'detail': MSG_PROPOSITION_INDISPONIBLE},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        # ADEV22 — audit au RENDU réussi (M4 : ventes émet, le satellite audit
+        # journalise AuditLog.Action.PDF ; signal synchrone, même acteur).
+        _signaler_pdf_devis_genere(devis)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         # QD2 — nom cohérent (société _ type _ client _ référence).
         from ..utils.filenames import document_filename

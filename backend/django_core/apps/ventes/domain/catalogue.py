@@ -584,6 +584,61 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None,
     return min(candidates, key=lambda p: Decimal(p.prix_vente))
 
 
+def choisir_onduleur_permutation(company, predicate, *, kwc, phase=None,
+                                 role=None, gamme=None):
+    """ADEV29 (C-ADEV-039) — l'onduleur d'une PERMUTATION de resynchronisation
+    (réseau ⇄ hybride) choisi par la RÈGLE DU COMPOSEUR
+    (``composition.choisir_onduleur``), plus par « le moins cher » :
+
+    * vivier = produits tarifés (société ou catalogue global, non archivés)
+      du prédicat, contrat complet, marque préférée réglée gagnante (PVMRQ) ;
+    * raccordement : ``phase`` du client (``compatibilites``) réduit le
+      vivier (triphasé : AUCUN monophasé ; monophasé : repli toléré) ;
+    * puissance : le plus PETIT modèle ≥ 0,8 × ``kwc`` (à défaut, le plus
+      gros du vivier, comme le composeur) ; à puissance égale, la phase du
+      client, puis le moins cher.
+
+    Rend ``None`` quand le vivier est vide (aucun modèle tarifé de la phase
+    du client) : l'appelant garde l'onduleur d'origine et DIT le manque
+    (jamais un onduleur de mauvaise phase posé en silence)."""
+    from apps.stock.models import Produit
+    from django.db.models import Q
+
+    from apps.ventes.compatibilites import PHASE_MONO, PHASE_TRI
+    from apps.ventes.domain.composition import _vivier_onduleurs_par_phase
+
+    qs = (Produit.objects
+          .filter(Q(company=company) | Q(company__isnull=True),
+                  is_archived=False)
+          .select_related('fiche_technique'))
+    candidats = _filtrer_onduleurs_complets(
+        [p for p in qs if predicate(p.nom) and _has_price(p)])
+    if role:
+        marque = marque_preferee(company, gamme, role)
+        if marque:
+            candidats = [p for p in candidats if _marque_correspond(p, marque)]
+    candidats, _replie = _vivier_onduleurs_par_phase(candidats, phase)
+    seuil = 0.8 * float(kwc or 0)
+    dimensionnes = []
+    for produit in candidats:
+        kw = _parse_kw(getattr(produit, 'nom', ''))
+        if kw and kw > 0:
+            dimensionnes.append((kw, produit))
+    if not dimensionnes:
+        return None
+    # Même règle que ``choisir_onduleur`` : le plus petit ≥ 80 % du kWc,
+    # sinon le plus gros du vivier (déjà réduit au raccordement).
+    valides = ([c for c in dimensionnes if c[0] >= seuil]
+               or [max(dimensionnes, key=lambda c: c[0])])
+    meilleure = min(kw for kw, _p in valides)
+    memes = [p for kw, p in valides if kw == meilleure]
+    if phase in (PHASE_TRI, PHASE_MONO):
+        assortis = [p for p in memes
+                    if _est_triphase(p.nom) == (phase == PHASE_TRI)]
+        memes = assortis or memes
+    return min(memes, key=lambda p: (Decimal(p.prix_vente), p.pk or 0))
+
+
 def _parse_watt(name):
     m = _WATT_RE.search(name or "")
     return int(m.group(1)) if m else None

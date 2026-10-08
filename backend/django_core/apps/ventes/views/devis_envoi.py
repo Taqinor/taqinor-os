@@ -230,8 +230,14 @@ class DevisEnvoiActionsMixin:
         # remplacement du fichier stocké : le moteur rend seulement).
         attachment = None
         attachment_name = None
+        # ADEV68 — le lien de proposition est créé AVANT le rendu et son jeton
+        # passé au moteur : la pièce jointe d'un devis encore brouillon (rendue
+        # juste avant ``mark_devis_sent``) imprime CE lien, alors que le
+        # moteur ne frappe plus de lien pour un brouillon.
+        link = ShareLink.for_devis(devis)
         try:
-            opts = clean_pdf_options({'pdf_mode': pdf_mode})
+            opts = clean_pdf_options({'pdf_mode': pdf_mode,
+                                      'share_token': link.token})
             key = generate_premium_devis_pdf(devis.id, opts, persist=False)
             attachment = download_pdf(key)
             attachment_name = f'Devis_{devis.reference}.pdf'
@@ -239,7 +245,6 @@ class DevisEnvoiActionsMixin:
             pass
 
         # Ajoute le lien de proposition tokenisé dans le corps si fourni.
-        link = ShareLink.for_devis(devis)
         proposal_url = chemin_proposition(devis, link.token)
         # ZSAL5 — gabarit ``envoi_devis`` (EmailTemplate) : sujet/corps
         # explicitement fournis dans le corps de requête restent prioritaires

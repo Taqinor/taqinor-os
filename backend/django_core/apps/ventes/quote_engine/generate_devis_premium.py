@@ -74,6 +74,9 @@ ASSET_DIR = BASE_DIR / "assets"
 _RENDER_LOCK = threading.RLock()
 
 
+from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402
+
+
 def _esc(value):
     """HTML-escape a user-controlled scalar (ERR37). Byte-identical for text
     without &<>"' so legitimate names/PDFs are unchanged."""
@@ -229,6 +232,8 @@ ROI_A        = 0.0
 ROI_S_JAMAIS = False
 ROI_A_JAMAIS = False
 INST_TYPE    = ""
+# AMOT22 — ville de calcul du productible (libellé), posée par le builder.
+VILLE_CALCUL = ""
 SANS_ITEMS   = []
 AVEC_ITEMS   = []
 # XSAL14/XSAL5 \u2014 lignes de structure (sections/notes) + options propos\u00e9es.
@@ -311,7 +316,12 @@ CALEPINAGE_EMPREINTE = ""
 # d'avant. Le délai est celui des articles 49 et 50 — c'est la loi, pas un
 # réglage société, et il ne se recopie nulle part ailleurs dans ce module.
 SIGNE_AU_DOMICILE = False
-DELAI_RETRACTATION_DOMICILE_JOURS = 7
+# AMOT23 — délai légal : UNE source (annexe_domicile, partagée avec le
+# gabarit résidentiel).
+from .annexe_domicile import (  # noqa: E402
+    DELAI_RETRACTATION_DOMICILE_JOURS,
+    corps_annexe_domicile as _corps_annexe_domicile,
+)
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # AGR313 — la synthèse agricole (``agricole/synthese.synthese_agricole``) : la
 # MÊME fonction que le document de 3 pages et /proposition. None hors agricole.
@@ -388,11 +398,17 @@ ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
 ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
                   "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
                   "&middot; Siège : 5 Rue Ennoussour RDC, Casablanca")
-# Ligne RIB (bénéficiaire · banque · RIB · BIC) — littéral historique exact.
-ENT_RIB_LINE = ('<strong style="color:{cg7}">TAQINOR SOLUTION</strong> '
-                '· Saham Bank · '
-                'RIB 022 780 0002720029379418 74 '
-                '· BIC SGMBMAMCXXX')
+# Ligne RIB (bénéficiaire · banque · RIB · BIC) — APDF2 : LA règle unique de
+# ``quote_engine.identite`` (un seul littéral, partagé avec le résidentiel).
+
+
+def _gras_rib_legacy(texte):
+    """APDF2 — balise du bénéficiaire propre au moteur legacy (``{cg7}`` est
+    substitué au rendu, jamais par ``.format()``, QJR146)."""
+    return f'<strong style="color:{{cg7}}">{texte}</strong>'
+
+
+ENT_RIB_LINE = _ligne_rib_identite(None, gras=_gras_rib_legacy)
 
 # Snapshot des DÉFAUTS Taqinor : les ENT_* actifs sont réinitialisés depuis eux
 # au début de chaque rendu (sous _RENDER_LOCK) avant surcharge par le profil,
@@ -447,6 +463,10 @@ def _apply_entreprise(ent):
     if email or tel:
         parts = [p for p in (_esc(email), _esc(tel)) if p]
         ENT_CONTACT_LINE = " &nbsp;&#183;&nbsp; ".join(parts)
+    else:
+        # AMOT17 (C-AMOT-016) — société IDENTIFIÉE sans contact : la ligne
+        # est OMISE, jamais le contact de TAQINOR sous le nom d'un autre.
+        ENT_CONTACT_LINE = ""
 
     # Pied de page ÉTUDE : reconstruit dès QU'UN contact quelconque est fourni
     # (email, site OU téléphone) — même sémantique que la ligne de contact
@@ -461,6 +481,9 @@ def _apply_entreprise(ent):
         if not etude_parts and tel:
             etude_parts = [_esc(tel)]
         ENT_ETUDE_CONTACT = " &nbsp;·&nbsp; ".join(etude_parts)
+    else:
+        # AMOT17 — idem pour le pied de la page Étude.
+        ENT_ETUDE_CONTACT = ""
 
     # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
     legal_bits = []
@@ -479,15 +502,10 @@ def _apply_entreprise(ent):
     if legal_bits:
         ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
 
-    # Ligne RIB : reconstruite dès qu'un RIB ou une banque est fourni.
-    if rib or banque:
-        benef = _esc(nom) if nom else "Virement"
-        rib_bits = [f'<strong style="color:{{cg7}}">{benef}</strong>']
-        if banque:
-            rib_bits.append(_esc(banque))
-        if rib:
-            rib_bits.append("RIB " + _esc(rib))
-        ENT_RIB_LINE = " · ".join(rib_bits)
+    # APDF2 (C-APDF-001) — ligne RIB par LA règle unique (identite.py) :
+    # RIB/banque du profil → sa ligne ; société identifiée SANS RIB → AUCUNE
+    # ligne (plus jamais le RIB Taqinor sous le nom d'un autre tenant).
+    ENT_RIB_LINE = _ligne_rib_identite(ent, gras=_gras_rib_legacy)
 
     # Couleur de charte (accent) — surcharge CA quand un hex valide est fourni.
     couleur = (ent.get("couleur_principale") or "").strip()
@@ -514,7 +532,8 @@ def _apply_seller(seller):
     bits = f"Votre conseiller&#160;: {_esc(nom)}"
     if tel:
         bits += f" &#8212; {_esc(tel)}"
-    ENT_CONTACT_LINE = f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
+    ENT_CONTACT_LINE = (f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
+                        if ENT_CONTACT_LINE else bits)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1300,7 +1319,7 @@ def make_chart_roi():
         ax.plot(x, ys, color=CNM, linewidth=2.5, label="Sans batterie", zorder=4, solid_capstyle="round")
     if _show_a:
         ax.fill_between(x, ya, 0, where=(ya >= 0), alpha=0.08, color=CA,  zorder=2)
-        ax.plot(x, ya, color=CA,  linewidth=2.5, label="Avec batterie",  zorder=4, solid_capstyle="round")
+        ax.plot(x, ya, color=CA,  linewidth=2.5, label=LIBELLE_AVEC,  zorder=4, solid_capstyle="round")
     # QJR125 — l'étoile sort du croisement à zéro de la courbe TRACÉE, plus du
     # payback annoncé ailleurs : les deux pouvaient désigner deux années
     # différentes sur la même image. Pas de croisement ⇒ pas d'étoile.
@@ -1396,7 +1415,7 @@ def make_chart_monthly():
     if _show_a:
         legend_handles.append(Line2D([0], [0], color=CA,  linewidth=2.2, marker="o", markersize=5.5,
                markerfacecolor="white", markeredgewidth=1.8, markeredgecolor=CA,
-               label="\u00c9conomies Option\u00a02 \u2013 Avec batterie"))
+               label=f"\u00c9conomies Option\u00a02 \u2013 {LIBELLE_AVEC}"))
     leg = ax.legend(handles=legend_handles, fontsize=8.5, frameon=True,
                     loc="upper center", bbox_to_anchor=(0.5, 1.20), ncol=3,
                     edgecolor="#E5E7EB", facecolor="white",
@@ -2242,8 +2261,8 @@ def page1():
     <div style="flex:1;min-width:0;overflow:hidden;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
       {_r2}
       <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">Option 2</div>
-      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">Avec batterie</div>
-      <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">Stockage + autonomie nocturne</div>
+      <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{LIBELLE_AVEC}</div>
+      <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_sous_titre_avec()}</div>
       {_ta_price}
       <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">Prix total TTC{_pkwc_a}</div>
       {_roi_pill_a}
@@ -2406,7 +2425,7 @@ def page2(sans_items, img_roi, img_mon):
       </div>
 
       <div style="flex:1;min-width:0;{_p2_s2}">
-        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">Option 2 \u2014 Avec batterie</div>
+        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">Option 2 \u2014 {LIBELLE_AVEC}</div>
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>D\u00e9signation</th>
@@ -2560,8 +2579,8 @@ def page3():
         f'background:{CAL};display:flex;align-items:center;gap:9px;">'
         f'<div style="width:17px;height:17px;border:2px solid {CA};border-radius:3px;flex-shrink:0;"></div>'
         f'<div>'
-        f'<div style="font-size:9pt;font-weight:700;color:{CN};">Avec batterie</div>'
-        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">Option 2 &#8212; R&#233;seau + Stockage</div>'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};">{LIBELLE_AVEC}</div>'
+        f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">Option 2 &#8212; {_composition_avec()}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -2577,7 +2596,7 @@ def page3():
         f'<div>'
         f'<div style="font-size:9pt;font-weight:700;color:{CN};">'
         f'Syst&#232;me photovolta&#239;que{_kwc_mention()} &#8212; '
-        f'{"Sans batterie" if SCENARIO == "Sans batterie" else "Avec batterie"}</div>'
+        f'{"Sans batterie" if SCENARIO == "Sans batterie" else LIBELLE_AVEC}</div>'
         f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">'
         f'Je confirme la commande du syst&#232;me d&#233;crit dans ce devis</div>'
         f'</div>'
@@ -2653,9 +2672,7 @@ def page3():
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'
             f'* La r\u00e9ception du mat\u00e9riel et le solde s\u2019appliquent m\u00eame si r\u00e9alis\u00e9s le m\u00eame jour.'
             f'</div>'
-            # RIB bar
-            f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
-            f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
+            # RIB bar — APDF2 : omise quand la société n'a pas de RIB.
             # QJR146 (e) — SUBSTITUTION LITTÉRALE, JAMAIS ``.format()``.
             # ``ENT_RIB_LINE`` est RECONSTRUITE à l'ingestion avec la raison
             # sociale, la banque et le RIB du tenant (échappés HTML, ce qui ne
@@ -2663,9 +2680,11 @@ def page3():
             # « } » faisait lever ``.format()`` (KeyError/ValueError) ICI, hors
             # de tout try — le PDF entier échouait sur un caractère du nom de
             # la société. ``str.replace`` ne lit aucun champ de format.
-            f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
-            f'</div>'
-            f'</div>'
+            + (f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
+               f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
+               f'{ENT_RIB_LINE.replace("{cg7}", CG7)}</div>'
+               f'</div>' if ENT_RIB_LINE else '')
+            + f'</div>'
         )
 
     return f"""
@@ -3114,12 +3133,64 @@ def _branche_nommee():
         return ""
     if _capacite_batterie_vendue() <= 0:
         return ""
-    return " &#8212; option avec batterie"
+    return f" &#8212; option {_libelle_avec_minuscule()}"
 
 
 def _branche_phrase():
     """QJR159 (c) — la MÊME précision, en incise dans une phrase."""
-    return (" (option avec batterie)" if _branche_nommee() else "")
+    return (f" (option {_libelle_avec_minuscule()})"
+            if _branche_nommee() else "")
+
+
+def _phrase_methode_etude():
+    """AMOT22 (C-AMOT-020) — la phrase de méthode de la page « Étude »,
+    composée depuis le DEVIS : ville de calcul (omise sans ville), phases
+    seulement si les lignes d'onduleur les portent, « sans batterie » seulement
+    pour un document sans batterie ; jamais une affirmation technique fixe
+    (« irradiation moyenne du Maroc », « onduleur réseau, triphasé »)."""
+    debut = ("Simulation \u00e9tablie sur le productible de "
+             f"{_esc(VILLE_CALCUL)}" if VILLE_CALCUL
+             else "Simulation \u00e9tablie")
+    precisions = []
+    if SCENARIO == "Sans batterie" or _capacite_batterie_vendue() <= 0:
+        precisions.append("sans batterie")
+    noms = " ".join(str(it.get("designation") or "").lower()
+                    for it in list(SANS_ITEMS) + list(AVEC_ITEMS)
+                    if "onduleur" in str(it.get("designation") or "").lower())
+    if "triphas" in noms and "monophas" not in noms:
+        precisions.append("raccordement triphas\u00e9")
+    elif "monophas" in noms and "triphas" not in noms:
+        precisions.append("raccordement monophas\u00e9")
+    phrase = (f"{debut} et le profil de consommation communiqu\u00e9. "
+              f"Mode\u00a0: {INST_TYPE}")
+    if precisions:
+        phrase += " \u2014 " + ", ".join(precisions)
+    return phrase + "."
+
+
+def _batterie_differee():
+    """AMOT21 (C-AMOT-019) — l'option 2 est-elle « hybride, batterie plus
+    tard » (BAT-DIFF) ? Le serveur le DIT par ``libelle_avec``."""
+    return LIBELLE_AVEC != "Avec batterie"
+
+
+def _libelle_avec_minuscule():
+    """AMOT21 — le libellé serveur de l'option 2, en incise (« avec
+    batterie » / « hybride, batterie plus tard »)."""
+    return LIBELLE_AVEC[:1].lower() + LIBELLE_AVEC[1:]
+
+
+def _sous_titre_avec():
+    """AMOT21 — sous-titre de la carte option 2 : aucun stockage promis
+    quand la batterie n'est pas vendue."""
+    return ("Onduleur hybride &#8212; batterie ajoutable"
+            if _batterie_differee() else "Stockage + autonomie nocturne")
+
+
+def _composition_avec():
+    """AMOT21 — composition affichée de l'option 2 (« Réseau + Stockage »
+    seulement quand une batterie est vendue)."""
+    return "Hybride" if _batterie_differee() else "R&#233;seau + Stockage"
 
 
 def _config_identifiante(panneaux, batterie_kwh):
@@ -3433,9 +3504,7 @@ def page_etude():
 
   <div style="padding:14px 24px;flex:1;min-height:0;">
     <div style="font-size:8pt;color:{CG4};margin-bottom:10px;">
-      Simulation \u00e9tablie sur l'irradiation moyenne du Maroc et le profil de
-      consommation communiqu\u00e9. Mode\u00a0: {INST_TYPE} \u2014 sans batterie,
-      onduleur r\u00e9seau, raccordement triphas\u00e9 (sauf indication contraire).
+      {_phrase_methode_etude()}
     </div>
     <div style="display:flex;gap:9px;margin-bottom:9px;">{cards1}</div>
     <div style="display:flex;gap:9px;">{cards2}</div>
@@ -3592,21 +3661,12 @@ def page_annexe_domicile():
       * ce n'est PAS une seconde voie de PDF (règle #4) : c'est une page de
         plus, rendue par le moteur vendu, dans le même document.
     """
-    _cadre = (f'border:1px dashed {CG4};border-radius:8px;'
-              f'padding:12px 14px;background:white;')
-    _mentions = [
-        "Nom et adresse du vendeur, et nom du représentant qui vous a "
-        "rendu visite.",
-        "Désignation précise de la nature et des caractéristiques des "
-        "biens ou services proposés.",
-        "Conditions d&#8217;exécution du contrat, notamment les modalités "
-        "et le délai de livraison.",
-        "Prix global à payer et modalités de paiement.",
-        "Faculté de renonciation, ainsi que ses conditions d&#8217;exercice, "
-        "et de façon apparente le texte intégral des articles 49 et 50.",
-    ]
-    _mentions_html = "".join(
-        f'<li style="margin-bottom:3px;">{m}</li>' for m in _mentions)
+    # AMOT23 — le CORPS vient de la fonction partagée (annexe_domicile) :
+    # le gabarit résidentiel 3 pages imprime la MÊME annexe.
+    _corps = _corps_annexe_domicile(
+        ref=REF, vendeur=ENT_NOM_MARQUE,
+        couleurs={'navy': CN, 'texte': CG7, 'muet': CG4, 'fond': CG1,
+                  'filet': CG2})
     return f"""
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -3619,43 +3679,7 @@ def page_annexe_domicile():
   <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
   <div style="padding:14px 24px;flex:1;min-height:0;">
-    <div style="font-size:8pt;color:{CG7};line-height:1.5;margin-bottom:10px;">
-      Cette commande a été signée à votre domicile. La loi
-      n° 31-08 édictant des mesures de protection du consommateur vous
-      ouvre un délai de rétractation de
-      <strong>{DELAI_RETRACTATION_DOMICILE_JOURS} jours</strong> à
-      compter de la commande. Pendant ce délai, <strong>aucun acompte ni
-      aucun paiement ne peut être exigé ni encaissé</strong>
-      (articles 49 et 50).
-    </div>
-
-    <div style="background:{CG1};border:1px solid {CG2};border-radius:7px;padding:9px 12px;margin-bottom:12px;">
-      <div style="font-size:7.5pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Mentions de l&#8217;article 48</div>
-      <ul style="margin:0;padding-left:16px;font-size:7.5pt;color:{CG7};line-height:1.45;">{_mentions_html}</ul>
-    </div>
-
-    <div style="font-size:7.5pt;color:{CG4};font-style:italic;margin-bottom:8px;">
-      Détachez, complétez et renvoyez le formulaire ci-dessous si vous
-      souhaitez renoncer à cette commande.
-    </div>
-
-    <div style="{_cadre}">
-      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Formulaire détachable de rétractation</div>
-      <div style="font-size:8pt;color:{CG7};line-height:1.9;">
-        À l&#8217;attention de : <strong>{ENT_NOM_MARQUE}</strong><br>
-        Je soussigné(e) : _______________________________________________<br>
-        Adresse : ____________________________________________________<br>
-        déclare renoncer à la commande n° <strong>{REF}</strong>,
-        signée le : ___/___/______<br>
-        Fait à : _______________________ le : ___/___/______
-      </div>
-      <div style="display:flex;gap:18px;margin-top:10px;">
-        <div style="flex:1;">
-          <div style="border-bottom:1px solid {CG2};min-height:26px;"></div>
-          <div style="font-size:7pt;color:{CG4};margin-top:3px;">Signature du client (de sa main)</div>
-        </div>
-      </div>
-    </div>
+{_corps}
   </div>
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
@@ -4440,16 +4464,11 @@ def _css_arabe():
     police syst\u00e8me (d\u00e9gradation propre, jamais un PDF cass\u00e9), au prix d'un
     rendu arabe moins soign\u00e9.
     """
-    faces = (_font_face("Noto Sans Arabic", 400, "normal",
-                        _load_gfont("NotoSansArabic-400.woff2"))
-             + _font_face("Noto Sans Arabic", 700, "normal",
-                          _load_gfont("NotoSansArabic-700.woff2")))
-    if not faces:
-        return ""
-    # La pile garde DM Sans derri\u00e8re : les chiffres et les segments latins
-    # (r\u00e9f\u00e9rences, MAD, noms de marque) restent dans la police du document.
-    return (faces + 'body,body *{font-family:"Noto Sans Arabic","DM Sans",'
-                    'sans-serif !important;}')
+    # APDF6 (C-APDF-002) — plus d'@font-face woff2 vendorisé homonyme de la
+    # police système (glyphes superposés mesurés) : LA CSS arabe partagée,
+    # police système de l'image, aucun espacement de lettres.
+    from .premium_base import css_arabe
+    return css_arabe(libelles=True, document=True)
 
 
 def _attributs_langue_html():
@@ -4654,7 +4673,7 @@ def apply_quote_data(data: dict) -> None:
     global MIS_A_JOUR_LE, REMPLACE_REF
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
-    global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
+    global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE, VILLE_CALCUL
     global ROI_S_JAMAIS, ROI_A_JAMAIS
     global SANS_ITEMS, AVEC_ITEMS, ECO_S_M, ECO_A_M, CUMUL_S, CUMUL_A
     global FACTURES_M
@@ -4736,6 +4755,8 @@ def apply_quote_data(data: dict) -> None:
     ROI_S_JAMAIS = bool(data.get("roi_s_jamais"))
     ROI_A_JAMAIS = bool(data.get("roi_a_jamais"))
     INST_TYPE    = data["inst_type"]
+    VILLE_CALCUL = str(data.get("client_ville_libelle")
+                       or data.get("client_city") or "").strip()
     SCENARIO     = data.get("scenario", "Les deux (Sans + Avec)")
     RECOMMENDED  = data.get("recommended", "Avec batterie")
     SHOW_MONTHLY = data.get("show_monthly", True)
@@ -4772,6 +4793,14 @@ def apply_quote_data(data: dict) -> None:
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
     SLD_SVG        = data.get("sld_svg") or ""
     INCLUDE_CALEPINAGE = bool(data.get("include_calepinage", False))
+    # ACAL103 (C-ACAL-117, QJR666) — un devis RÉSIDENTIEL rendu par ce moteur
+    # (cas « + étude ») n'ajoute la planche que sur une demande EXPLICITE
+    # (``include_calepinage_demande``, posé par le builder) : l'AUTO n'ajoute
+    # aucune page, exactement comme ``residential/render.calepinage_demande``.
+    # Les autres marchés gardent l'AUTO (D-QJR5-12).
+    if (MODE_INSTALLATION.strip().lower() in ("", "residentiel", "résidentiel")
+            and not data.get("include_calepinage_demande")):
+        INCLUDE_CALEPINAGE = False
     # CAD122 — marqueur « signé au domicile », posé CÔTÉ SERVEUR depuis le bon
     # de commande (jamais une option du corps client : c'est un fait juridique,
     # pas une préférence de rendu). Faux = document inchangé (art. 32).
