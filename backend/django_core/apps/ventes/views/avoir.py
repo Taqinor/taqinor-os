@@ -165,7 +165,8 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             if trace is None:
                 from ..domain.encaissements import recalculer_statut_paiement
                 recalculer_statut_paiement(
-                    Facture.objects.get(pk=avoir.facture_id),
+                    Facture.objects.get(
+                        pk=avoir.facture_id, company=avoir.company),
                     user=request.user, source='annulation_avoir')
         return Response(AvoirSerializer(avoir).data)
 
