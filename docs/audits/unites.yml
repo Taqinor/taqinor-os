@@ -518,7 +518,7 @@ unites:
     groupe: ADEV
     plan: docs/plans/PLAN_AUDIT_DEVIS.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SAV.md]
-    pr: null
+    pr: 859
     date: 2026-10-08
     notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build. Propriétaire RÉSIDUEL de apps/ventes et des écrans ventes (J5, D2, D3, D4 possèdent des fichiers plus spécifiques). Audit L3 du 07-08/10/2026 (dossier docs/audits/2026-10-07-devis.md) : 58 constats (4 S1, 15 S2), 70 tâches ADEV déposées + 3 tâches web (apps/web, propriétaire web) gardées au dossier §7 en attente d'accord ; 6 décisions fondateur ouvertes (D-ADEV-1..6, tâches M1) ; contre-visite QJR5 : 11 écarts (dont C-ADEV-034 S1 TVA de ligne, 008/012/040/044/045 S2) repris en tâches ADEV."
 
