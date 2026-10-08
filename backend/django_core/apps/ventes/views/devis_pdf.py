@@ -158,10 +158,14 @@ class DevisPdfActionsMixin:
             # > repli société [NTI18N34, pas encore construit] > FR). Le
             # moteur reçoit toujours une valeur DÉJÀ résolue — jamais un
             # second moteur, jamais de logique de langue dupliquée ici.
-            from apps.parametres.i18n_resolver import resolve_langue_sortie
-            raw['langue_sortie'] = resolve_langue_sortie(
-                langue_explicite=request.query_params.get('langue'),
-                client=devis.client, company=devis.company)
+            # APDF18 — la résolution AUTOMATIQUE (client, repli société) vit
+            # désormais dans le moteur (APDF7) : la vue ne transmet que le
+            # `?langue=` EXPLICITE (validé par le résolveur).
+            if request.query_params.get('langue'):
+                from apps.parametres.i18n_resolver import resolve_langue_sortie
+                raw['langue_sortie'] = resolve_langue_sortie(
+                    langue_explicite=request.query_params.get('langue'),
+                    client=devis.client, company=devis.company)
             # ERR74 — /proposal is a safe GET: render + stream, but do NOT
             # persist fichier_pdf on every call (persist=False). The single
             # engine picks the residential (redesigned) or legacy renderer.

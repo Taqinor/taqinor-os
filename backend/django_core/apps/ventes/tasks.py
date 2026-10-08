@@ -276,9 +276,29 @@ def _render_signature(devis_id, pdf_options):
     payload = json.dumps(
         {'devis': devis_id,
          'content': _content_version(devis_id, pdf_options),
-         'opts': pdf_options or {}},
+         'opts': pdf_options or {},
+         # APDF18 (C-APDF-003) — la langue RÉSOLUE du document : un rendu
+         # FR puis AR du même devis (client passé en arabe, ou ?langue=)
+         # ne ressert jamais le PDF de l'autre langue.
+         'langue': _langue_resolue(devis_id, pdf_options)},
         sort_keys=True, default=str)
     return 'devis-pdf:' + hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _langue_resolue(devis_id, pdf_options):
+    """APDF18 — la langue que le moteur rendra : ``langue_sortie``
+    explicite, sinon celle du client / repli société (même résolveur que
+    ``build_quote_data``, APDF7)."""
+    explicite = (pdf_options or {}).get('langue_sortie')
+    if explicite:
+        return explicite
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    from .models import Devis
+    devis = (Devis.objects.select_related('client', 'company')
+             .filter(pk=devis_id).first())
+    if devis is None:
+        return 'fr'
+    return resolve_langue_sortie(client=devis.client, company=devis.company)
 
 
 def _idempotent_cached_key(devis_id, pdf_options):
