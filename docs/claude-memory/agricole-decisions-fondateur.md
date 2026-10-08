@@ -34,6 +34,7 @@ Groupe AGR (docs/PLAN.md) et le Groupe AGW (docs/WEB_PLAN.md).
 
 **Why:** tranchées en séance interactive le 02/10/2026 sur la base de constats vérifiés (code, production en
 lecture seule, sources primaires : CGI 2026, Guide FDA 2024, loi 82-21, FAO-56, Banque mondiale 2018).
+**Ajout du 08/10/2026** : AGR609 — l'écart de la recette pompage se mesure contre le débit PROMIS figé du devis ((mesuré − promis) ÷ promis), pas contre le débit attendu à la HMT mesurée.
 **How to apply:** ne pas les re-demander ; toute tâche agricole les applique. Restent ouverts (manuels, pas des
 décisions de produit) : avis écrit du fiscaliste sur la TVA du kit, prix des pompes OSP (QXG3), garanties écrites
 des fournisseurs, confirmation DPA du processus FDA. Voir [[qjr5-decisions-fondateur]], [[kwh-declare-vs-factures]].
