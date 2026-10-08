@@ -97,6 +97,56 @@ def _best_effort(libelle, fn, *args, **kwargs):
         return None
 
 
+class GesteToucheEchoue(APIException):
+    """ACRM22 — un geste de touche (fait, sauter, réponse, pièce reçue,
+    note, report, WhatsApp) a échoué en cours d'écriture : la transaction
+    est annulée, RIEN n'est écrit (ni touche close, ni chatter, ni pièce),
+    et la réponse le dit explicitement."""
+    status_code = 500
+    default_detail = ('Le geste n’a pas pu être enregistré : rien n’a été '
+                      'écrit. Réessayez.')
+    default_code = 'geste_touche_echoue'
+
+
+def _geste_atomique(methode):
+    """ACRM22 (C-ACRM-015) — exécute un geste de touche dans
+    ``transaction.atomic()`` : une panne du 2ᵉ ou 3ᵉ appel (report de la
+    prochaine touche, enregistrement de la pièce…) annule AUSSI les
+    écritures des appels précédents. Les fichiers déjà poussés au stockage
+    par le geste (``request._acrm22_cles``) sont supprimés si la transaction
+    échoue — jamais une pièce orpheline. Les refus (400/403/404) passent
+    tels quels."""
+    import functools
+
+    @functools.wraps(methode)
+    def enveloppe(self, request, *args, **kwargs):
+        from django.core.exceptions import PermissionDenied
+        from django.db import transaction
+        from django.http import Http404
+
+        request._acrm22_cles = []
+        try:
+            with transaction.atomic():
+                return methode(self, request, *args, **kwargs)
+        except (APIException, Http404, PermissionDenied):
+            _supprimer_fichiers_du_geste(request)
+            raise
+        except Exception as exc:
+            _supprimer_fichiers_du_geste(request)
+            logger.warning('ACRM22: geste de touche annulé (%s)',
+                           getattr(methode, '__name__', '?'), exc_info=True)
+            raise GesteToucheEchoue() from exc
+    return enveloppe
+
+
+def _supprimer_fichiers_du_geste(request):
+    """ACRM22 — retire du stockage les fichiers poussés par un geste dont
+    la transaction n'a pas été validée (best-effort)."""
+    from apps.records.storage import delete_attachment
+    for cle in getattr(request, '_acrm22_cles', None) or []:
+        delete_attachment(cle)
+
+
 def _parse_rappel(date_str, heure_str=''):
     """MRY10 — « AAAA-MM-JJ » (+ « HH:MM » optionnel) → datetime AWARE local.
 
@@ -3291,6 +3341,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],
             parser_classes=[MultiPartParser, FormParser, JSONParser])
+    @_geste_atomique
     def noter(self, request, pk=None):
         """Note manuelle (appel, commentaire…) — auteur pris de la requête.
 
@@ -3317,6 +3368,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             meta, err = store_attachment(file, company=request.user.company)
             if err:
                 return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+            # ACRM22 — supprimée du stockage si le geste échoue ensuite.
+            request._acrm22_cles.append(meta.get('file_key'))
             ct = ContentType.objects.get(app_label='crm', model='lead')
             attachment = Attachment.objects.create(
                 company=request.user.company, content_type=ct, object_id=lead.id,
@@ -4292,6 +4345,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             request.user.company, request.user, jours=jours, owner=owner,
             segment=segment))
 
+    @_geste_atomique
     def _marquer(self, request, statut):
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
@@ -4565,6 +4619,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             _prochaine_touche_a_faire(etape.lead))
         return Response(data)
 
+    @_geste_atomique
     def _repondre(self, request, reponse):
         """CAD-A — une RÉPONSE du client saisie sur la touche (``reponse``).
 
@@ -4797,6 +4852,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             langue=langue or None))
 
     @action(detail=True, methods=['post'])
+    @_geste_atomique
     def whatsapp(self, request, pk=None):
         """MRY13 — Le CLIC : même rendu, puis le clic est JOURNALISÉ.
 
@@ -4836,19 +4892,20 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 status=status.HTTP_400_BAD_REQUEST)
         journaliser_whatsapp_ouvert(etape, request.user)
         marquer_premier_contact(etape.lead)
-        try:
+
+        def _audit():
             from apps.audit.models import AuditLog
             from apps.audit.recorder import record
             record(AuditLog.Action.WHATSAPP, instance=etape.lead,
                    detail=f'Message de relance ouvert (touche #{etape.pk})')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'MRY13: AuditLog non écrit (étape #%s)', etape.pk,
-                exc_info=True)
+        # ACRM22 — AuditLog et mesure CAD178 en BEST-EFFORT (point de
+        # sauvegarde propre) : leur panne n'annule pas le geste.
+        _best_effort('AuditLog WhatsApp', _audit)
         # CAD178 — compteur BEST-EFFORT du geste « WhatsApp », par famille
         # d'appareil.
         from .mesure_cadence import enregistrer_geste_appareil
-        enregistrer_geste_appareil(
+        _best_effort(
+            'mesure CAD178 WhatsApp', enregistrer_geste_appareil,
             etape.company, 'whatsapp', request.META.get('HTTP_USER_AGENT', ''))
         rendu['etape'] = self.get_serializer(etape).data
         return Response(rendu)
@@ -4897,6 +4954,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     @action(detail=True, methods=['post'], url_path='piece-recue',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
+    @_geste_atomique
     def piece_recue(self, request, pk=None):
         """CAD101 — « pièce reçue » : le client a envoyé sa facture, son
         adresse ou sa localisation (sur WhatsApp, le plus souvent).
@@ -4932,6 +4990,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response(
                     {'erreurs': {'fichier': f'« Pièce jointe » : {err}'}},
                     status=status.HTTP_400_BAD_REQUEST)
+            # ACRM22 — supprimée du stockage si le geste échoue ensuite.
+            request._acrm22_cles.append(meta.get('file_key'))
             attachment = Attachment.objects.create(
                 company=etape.company,
                 content_type=ContentType.objects.get(
@@ -4946,6 +5006,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])
+    @_geste_atomique
     def reporter(self, request, pk=None):
         """MRY10 — Reporte CETTE touche (et décale les suivantes du même
         delta). Corps : ``{due_at}`` (ISO) ou ``{rappel_le, rappel_heure?}``.
@@ -4998,9 +5059,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response({'erreurs': {champ: refus}},
                             status=status.HTTP_400_BAD_REQUEST)
         # CAD178 — compteur BEST-EFFORT du geste « Reporter », par famille
-        # d'appareil (les deux modes, decaler ET veille, comptent).
+        # d'appareil (les deux modes, decaler ET veille, comptent). ACRM22 —
+        # dans son propre point de sauvegarde.
         from .mesure_cadence import enregistrer_geste_appareil
-        enregistrer_geste_appareil(
+        _best_effort(
+            'mesure CAD178 reporter', enregistrer_geste_appareil,
             etape.company, 'reporter', request.META.get('HTTP_USER_AGENT', ''))
         if mode == 'veille':
             from .services import mettre_en_veille
