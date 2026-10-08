@@ -124,6 +124,13 @@ def ensure_equipement_for_bom_line(*, company, produit, installation,
     return equip, True
 
 
+#: ACHT45 (D-ACHT-1 a) — types de catégorie qui n'entrent PAS au parc SAV à
+#: la réception : prestations et consommables (câbles, structures,
+#: protections, accessoires). Une catégorie sans type entre (historique).
+TYPES_HORS_PARC = frozenset(
+    {'service', 'cable', 'structure', 'protection', 'accessoire'})
+
+
 def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
                       resolve_produit):
     """FG70 — balaye la nomenclature gelée du chantier (`installation.bom`) et
@@ -156,6 +163,11 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
             continue
         produit = resolve_produit(produit_id)
         if produit is None:
+            continue
+        # ACHT45 (D-ACHT-1 a) — seuls les biens à garantie suivis à l'unité
+        # entrent au parc ; une catégorie non typée entre toujours.
+        categorie = getattr(produit, 'categorie', None)
+        if getattr(categorie, 'type_equipement', None) in TYPES_HORS_PARC:
             continue
         seen.add(produit_id)
         _equip, created = ensure_equipement_for_bom_line(
