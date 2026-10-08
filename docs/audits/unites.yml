@@ -292,13 +292,13 @@ unites:
     I: 5
     score: 15
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APDF
     plan: null
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: null
-    date: null
-    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts)."
+    date: 2026-10-08
+    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-pdf.md) : 18 constats sur PDF rendus (1 S1 latent : identité TAQINOR imprimée pour toute société), 61 tâches APDF routées chez 10 propriétaires ; PDF EN/AR majoritairement en français."
 
   - id: D2
     rang: 9
