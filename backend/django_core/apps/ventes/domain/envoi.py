@@ -74,7 +74,16 @@ TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
 #: Les entrées de ``Devis.clauses_appliquees`` qui ne sont PAS des clauses
 #: particulières ``cpq`` (gels internes) : ``builder`` ne les imprime pas dans
 #: le bloc « Clauses particulières », et un re-gel cpq ne les efface jamais.
-TYPES_GELS_INTERNES = frozenset({TYPE_CGV_GELEES, TYPE_BAREMES_GELES})
+#: APDF20 (C-APDF-006) — type de l'entrée qui porte l'ENSEMBLE des textes
+#: contractuels du devis gelés à l'envoi (``DocumentTemplates.as_doc_texts``
+#: fusionné au défaut du moteur, une clé par ``DEVIS_TEXT_KEYS``) et la
+#: ``version`` des modèles de documents. Contrat figé par
+#: ``tests/test_apdf_gel_textes.py`` (lu par APDF14) :
+#: ``{'type': 'doc_texts_geles', 'textes': {<DEVIS_TEXT_KEYS>}, 'version': int}``.
+TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
+
+TYPES_GELS_INTERNES = frozenset(
+    {TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES})
 
 
 def est_gel_interne(entree):
@@ -135,6 +144,28 @@ def baremes_forfaits_geles(devis):
     return {}
 
 
+def doc_texts_a_geler(company):
+    """APDF20 — l'entrée ``doc_texts_geles`` de ``company`` : les textes
+    contractuels EFFECTIFS (défaut du moteur, surchargé par chaque texte non
+    vide de la société — même fusion que le rendu) et la version des modèles.
+    Une société sans aucun texte personnalisé gèle les textes PAR DÉFAUT."""
+    import copy
+
+    from apps.parametres.models_documents import (
+        DEVIS_TEXT_KEYS, DocumentTemplates)
+    from apps.ventes.quote_engine.generate_devis_premium import (
+        DEFAULT_DOC_TEXTS)
+
+    modeles = DocumentTemplates.get(company=company)
+    surcharges = modeles.as_doc_texts()
+    textes = {}
+    for cle in DEVIS_TEXT_KEYS:
+        valeur = surcharges.get(cle, DEFAULT_DOC_TEXTS.get(cle, ''))
+        textes[cle] = copy.deepcopy(valeur)
+    return {'type': TYPE_DOC_TEXTS_GELES, 'textes': textes,
+            'version': int(modeles.version or 1)}
+
+
 def clauses_applicables_devis(devis):
     """QJR668 — les clauses PARTICULIÈRES du catalogue ``cpq`` qui s'appliquent
     à ce devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou
@@ -181,11 +212,16 @@ def figer_clauses_devis(devis):
     def _est_cgv(c):
         return isinstance(c, dict) and c.get('type') == TYPE_CGV_GELEES
 
+    def _est_doc_texts(c):
+        return isinstance(c, dict) and c.get('type') == TYPE_DOC_TEXTS_GELES
+
     cgv = [c for c in existant if _est_cgv(c)]
+    doc_texts = [c for c in existant if _est_doc_texts(c)]
     # ADEV30 — les autres gels internes (barème des forfaits) sont conservés
     # tels quels : un re-gel cpq ne les efface jamais.
     autres_gels = [c for c in existant
-                   if est_gel_interne(c) and not _est_cgv(c)]
+                   if est_gel_interne(c) and not _est_cgv(c)
+                   and not _est_doc_texts(c)]
     particulieres = [c for c in existant if not est_gel_interne(c)]
     if not cgv:
         # CIQ218 — un devis C&I gèle la variante de SON mode (sinon l'autre
@@ -196,10 +232,16 @@ def figer_clauses_devis(devis):
             if source.get('mode'):
                 entree.update(mode=source['mode'], titre=source['titre'])
             cgv = [entree]
+    if not doc_texts:
+        # APDF20 — les textes contractuels sont gelés UNE fois, même sans
+        # personnalisation (les défauts) ; un texte édité ensuite dans
+        # Paramètres ne les change pas. Une correction sur place d'un envoyé
+        # d'avant ce gel le pose.
+        doc_texts = [doc_texts_a_geler(devis.company)]
     cpq = clauses_applicables_devis(devis)
     if cpq is not None:
         particulieres = cpq
-    cible = particulieres + cgv + autres_gels
+    cible = particulieres + cgv + doc_texts + autres_gels
     if cible == existant or (not cible and not existant):
         return False
     devis.clauses_appliquees = cible
