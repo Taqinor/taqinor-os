@@ -972,10 +972,9 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
             'retenue_garantie', 'penalites_retard_livraison', 'caution',
             # CIQ216 — référence de commande du client (≤ 60, facultative).
             'reference_commande_client',
-            # ADEV33 — profondeur de remise approuvée (serveur seulement) ;
-            # règles de calcul du rendu (décision fondateur 08/10/2026,
-            # migration 0134) — jamais écrivables depuis le corps.
-            'remise_approuvee_pct', 'regles_calcul',
+            # Règles de calcul du rendu (décision fondateur 08/10/2026) —
+            # jamais écrivables depuis le corps.
+            'regles_calcul',
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
