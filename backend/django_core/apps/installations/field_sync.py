@@ -191,6 +191,10 @@ def _h_serial(company, user, payload):
     iv = _intervention(company, payload, user)
     if not field_capture.intervention_modifiable(iv):  # ACHT30
         raise FieldOpError(field_capture.MESSAGE_INTERVENTION_VALIDEE)
+    # ACHT37 — même contrôle de doublon que l'action en ligne.
+    if field_capture.numero_serie_en_double(
+            company, payload.get('numero_serie')):
+        raise FieldOpError(field_capture.MESSAGE_SERIE_DOUBLON)
     serial = ComponentSerial.objects.create(
         company=company, intervention=iv, produit=produit,
         designation=(payload.get('designation') or '').strip(),

@@ -564,11 +564,16 @@ class TestCompteRendu(_Base):
         self.assertFalse(any('prix_achat' in str(c) for c in cons))
 
     def test_compte_rendu_pushes_serials_to_parc(self):
+        # ACHT37 — un GET n'écrit plus au parc : la poussée se fait à la
+        # clôture de l'intervention (voir tests_acht_series_parc).
         from apps.sav.models import Equipement
         ComponentSerial.objects.create(
             company=self.company, intervention=self.interv,
             produit=self.onduleur, numero_serie='SN-X', created_by=self.user)
         self.api.get(f'{self.url}/compte-rendu/')
+        self.assertFalse(Equipement.objects.filter(
+            installation=self.inst, numero_serie='SN-X').exists())
+        field_capture.push_serials_to_parc(self.interv, self.user)
         self.assertTrue(Equipement.objects.filter(
             installation=self.inst, numero_serie='SN-X').exists())
 

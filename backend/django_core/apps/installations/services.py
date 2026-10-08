@@ -5712,6 +5712,20 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
             sender=_Intervention, intervention=intervention,
             company=intervention.company, user=user)
         effets['intervention_completed'] = True
+    if ancien not in termines and intervention.statut in termines:
+        # ACHT37 — poussée des n° de série vers le parc SAV à la clôture
+        # (idempotente via `pousse_parc`), plus depuis le GET compte-rendu.
+        # Jamais bloquante pour la clôture.
+        try:
+            from django.db import transaction as _tx
+            from . import field_capture
+            with _tx.atomic():
+                field_capture.push_serials_to_parc(intervention, user)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                'ACHT37: poussée des séries au parc échouée (intervention %s)',
+                intervention.pk, exc_info=True)
     if (ancien != _Intervention.Statut.VALIDEE
             and intervention.statut == _Intervention.Statut.VALIDEE):
         # ZFSM2 — jeton du lien public « compte-rendu signé » (lazy, idempotent).

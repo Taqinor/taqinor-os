@@ -940,6 +940,11 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 return Response({'produit': 'Produit inconnu.'},
                                 status=status.HTTP_400_BAD_REQUEST)
         numero = (request.data.get('numero_serie') or '').strip()
+        # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
+        if field_capture.numero_serie_en_double(company, numero):
+            return Response(
+                {'numero_serie': field_capture.MESSAGE_SERIE_DOUBLON},
+                status=status.HTTP_400_BAD_REQUEST)
         serie_ocr = False
         plaque = None
         file = request.FILES.get('file')
@@ -982,9 +987,19 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if serial is None:
             return Response({'detail': 'Relevé inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ACHT37 — un relevé déjà poussé au parc ne se corrige plus ici.
+        if serial.pousse_parc:
+            return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
+                            status=status.HTTP_409_CONFLICT)
         fields = []
         if 'numero_serie' in request.data:
-            serial.numero_serie = (request.data.get('numero_serie') or '').strip()
+            nouveau = (request.data.get('numero_serie') or '').strip()
+            if field_capture.numero_serie_en_double(
+                    interv.company, nouveau, exclude_id=serial.pk):
+                return Response(
+                    {'numero_serie': field_capture.MESSAGE_SERIE_DOUBLON},
+                    status=status.HTTP_400_BAD_REQUEST)
+            serial.numero_serie = nouveau
             serial.serie_ocr = False
             fields += ['numero_serie', 'serie_ocr']
         if 'designation' in request.data:
@@ -1004,6 +1019,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if serial is None:
             return Response({'detail': 'Relevé inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if serial.pousse_parc:  # ACHT37
+            return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
+                            status=status.HTTP_409_CONFLICT)
         serial.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -1704,8 +1722,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from django.http import HttpResponse
         from .. import intervention_pdf
         interv = self.get_object()
-        # Pousse les n° de série relevés vers le parc installé (F9) avant le PDF.
-        field_capture.push_serials_to_parc(interv, request.user)
+        # ACHT37 — un GET n'écrit RIEN : la poussée des n° de série vers le
+        # parc installé (F9) se fait à la clôture de l'intervention.
         pdf_bytes = intervention_pdf.compte_rendu_pdf(interv)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
