@@ -275,7 +275,20 @@ def poser_premiere_reponse(ticket, at=None):
 
 
 def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
-    """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
+    """FG81/XSAV5/XSAV7 — DATE de l'échéance (voir ``compute_sla_echeance``)."""
+    return compute_sla_echeance(
+        company, client, priorite, date_ouverture, depart=depart)[0]
+
+
+def compute_sla_echeance(company, client, priorite, date_ouverture,
+                         depart=None):
+    """ASAV21 — ``(date, horodatage)`` de l'échéance SLA de résolution.
+
+    L'horodatage (datetime AWARE, fuseau métier) n'existe que sur le chemin
+    HEURES ouvrées (NTSRV11) — ``None`` sur le chemin en jours, où seule la
+    date compte. ``(None, None)`` sans SLA activé.
+
+    FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
     activé ``sla_breach_enabled``. Logique extraite telle quelle de
     ``TicketViewSet._compute_sla_due_at`` (jours ouvrés si ``sla_jours_ouvres``,
     calendaires sinon).
@@ -292,7 +305,7 @@ def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
 
     sla = SavSlaSettings.get(company)
     if not sla.sla_breach_enabled:
-        return None
+        return None, None
 
     # NTSRV11 — chemin HEURES ouvrées (opt-in double : flag + clé de priorité).
     if sla.sla_heures_ouvrees_actif:
@@ -302,13 +315,17 @@ def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
             echeance = echeance_sla_heures_ouvrees(
                 company, depart or _depart_sla(date_ouverture, sla), heures)
             if echeance is not None:
-                return echeance.date()
+                # ASAV21 — heure murale locale → horodatage aware.
+                if timezone.is_naive(echeance):
+                    echeance = timezone.make_aware(
+                        echeance, timezone.get_current_timezone())
+                return timezone.localtime(echeance).date(), echeance
 
     resolution_days = resolution_days_pour(company, client, priorite)
     if sla.sla_jours_ouvres:
         from core.calendar import add_working_days
-        return add_working_days(date_ouverture, resolution_days)
-    return date_ouverture + timedelta(days=resolution_days)
+        return add_working_days(date_ouverture, resolution_days), None
+    return date_ouverture + timedelta(days=resolution_days), None
 
 
 def _depart_sla(date_ouverture, sla):
@@ -339,18 +356,20 @@ def poser_sla_due_at(ticket, *, persister=True):
     (AUD502). Renvoie le ticket."""
     if ticket is None or ticket.sla_due_at or ticket.company_id is None:
         return ticket
-    due = compute_sla_due_at(
+    due, echeance_at = compute_sla_echeance(
         ticket.company, ticket.client, ticket.priorite,
         ticket.date_ouverture or timezone.localdate())
     if due is None:
         return ticket
     ticket.sla_due_at = due
+    ticket.sla_echeance_at = echeance_at
     # ASAV19 — l'échéance de première réponse naît avec celle de résolution.
     ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
         ticket.company, ticket.client, ticket.priorite,
         ticket.date_ouverture or timezone.localdate())
     if persister:
-        ticket.save(update_fields=['sla_due_at', 'sla_reponse_due_at'])
+        ticket.save(update_fields=[
+            'sla_due_at', 'sla_echeance_at', 'sla_reponse_due_at'])
     return ticket
 
 

@@ -378,6 +378,8 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             'sla_breach', 'sla_due_at', 'date_premiere_reponse',
             # ASAV19 — échéance de première réponse, posée par le serveur.
             'sla_reponse_due_at',
+            # ASAV21 — échéance horodatée (heures ouvrées), posée par le serveur.
+            'sla_echeance_at',
             # FG88 — date_tournee est posée par l'action de planification de
             # tournée (bulk-assign), jamais directement du corps de requête.
             'date_tournee',

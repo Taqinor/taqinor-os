@@ -778,9 +778,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
         # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
-        from .services import compute_sla_reponse_due_at
+        from .services import compute_sla_echeance, compute_sla_reponse_due_at
         sla_reponse_due_at = compute_sla_reponse_due_at(
             company, client, priorite, date_ouverture)
+        # ASAV21 — horodatage de l'échéance (chemin heures ouvrées seulement).
+        sla_echeance_at = compute_sla_echeance(
+            company, client, priorite, date_ouverture)[1]
         create_with_reference(
             Ticket, 'SAV', company,
             lambda ref: serializer.save(
@@ -788,6 +791,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 created_by=self.request.user,
                 date_ouverture=date_ouverture,
                 sla_due_at=sla_due_at,
+                sla_echeance_at=sla_echeance_at,
                 sla_reponse_due_at=sla_reponse_due_at),
         )
         # XSAV9 — affectation automatique si aucun technicien n'a été choisi
@@ -881,10 +885,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``compute_sla_due_at`` que la création) et ouvre un nouveau cycle :
         pré-alerte, escalade (paliers compris) et ``sla_breach`` remis à
         zéro puis ``sla_breach`` recalculé sur la nouvelle échéance."""
-        from .services import compute_sla_due_at
-        from .services import compute_sla_reponse_due_at
+        from .services import compute_sla_echeance, compute_sla_reponse_due_at
         ouverture = ticket.date_ouverture or timezone.localdate()
-        ticket.sla_due_at = compute_sla_due_at(
+        ticket.sla_due_at, ticket.sla_echeance_at = compute_sla_echeance(
             ticket.company, ticket.client, ticket.priorite, ouverture)
         # ASAV19 — l'échéance de première réponse suit les mêmes entrées.
         ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
@@ -895,7 +898,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket.sla_breach = False
         ticket.recompute_sla_breach()
         ticket.save(update_fields=[
-            'sla_due_at', 'sla_reponse_due_at', 'sla_pre_alert_notifiee',
+            'sla_due_at', 'sla_echeance_at', 'sla_reponse_due_at',
+            'sla_pre_alert_notifiee',
             'sla_escalade_notifiee', 'sla_escalade_paliers_notifies',
             'sla_breach'])
 

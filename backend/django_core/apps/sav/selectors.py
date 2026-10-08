@@ -1198,6 +1198,9 @@ def ticket_en_retard_sla(ticket, today=None, *, sla_actif=None):
         sla_actif = SavSlaSettings.get(ticket.company).sla_breach_enabled
     if not sla_actif:
         return False
+    if ticket.sla_echeance_at:
+        # ASAV21 — SLA en heures ouvrées : comparé à maintenant.
+        return timezone.now() > ticket.sla_echeance_at_effectif()
     today = today or timezone.localdate()
     return today > ticket.sla_due_at_effectif(today=today)
 

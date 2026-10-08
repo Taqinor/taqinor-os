@@ -792,6 +792,9 @@ class Ticket(models.Model):
     # ASAV19 — échéance cible de PREMIÈRE RÉPONSE (même service que la
     # résolution, premier terme de ``days_for``). NULL sans SLA activé.
     sla_reponse_due_at = models.DateField(null=True, blank=True)
+    # ASAV21 — échéance HORODATÉE (aware) quand le SLA est en heures ouvrées ;
+    # NULL sur le chemin en jours (``sla_due_at`` porte alors seul la date).
+    sla_echeance_at = models.DateTimeField(null=True, blank=True)
     # True quand sla_due_at est dépassé et le ticket toujours ouvert.
     # Mis à jour par le scan journalier + à chaque changement de statut.
     sla_breach = models.BooleanField(default=False)
@@ -1088,9 +1091,21 @@ class Ticket(models.Model):
         if self.statut not in self.OPEN_STATUTS or self.annule:
             self.sla_breach = False
             return
+        if self.sla_echeance_at:
+            # ASAV21 — SLA en heures : comparé à MAINTENANT, pas au lendemain.
+            self.sla_breach = timezone.now() > self.sla_echeance_at_effectif()
+            return
         today = timezone.localdate()
         due = self.sla_due_at_effectif(today=today)
         self.sla_breach = today > due
+
+    def sla_echeance_at_effectif(self, today=None):
+        """ASAV21 — échéance HORODATÉE décalée des pauses (jours entiers
+        convertis en durée), ou None sans échéance horodatée."""
+        if not self.sla_echeance_at:
+            return None
+        total_pause = self.jours_pause + self._pause_en_cours_jours(today=today)
+        return self.sla_echeance_at + timezone.timedelta(days=total_pause)
 
     def _pause_en_cours_jours(self, today=None):
         """XSAV5 — jours déjà écoulés dans la pause EN COURS (0 si aucune)."""
