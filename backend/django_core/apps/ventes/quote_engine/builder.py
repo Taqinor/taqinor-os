@@ -1572,7 +1572,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # rendu avec les règles d'origine, exactement ce que le client a reçu.
     _corrige = calcul_corrige(devis)
     client = devis.client
-    taux_tva = devis.taux_tva or Decimal(20)
+    # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un taux, pas une
+    # absence : même règle que ``LigneDevis.taux_tva_effectif`` (``is not
+    # None``) ; seul un taux ABSENT retombe sur 20 %.
+    if _corrige:
+        taux_tva = (devis.taux_tva if devis.taux_tva is not None
+                    else Decimal(20))
+    else:
+        taux_tva = devis.taux_tva or Decimal(20)
     # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
     # rien n'est lu hors préchargement — ni pièce jointe (affiche de toiture),
     # ni révision remplacée, ni lien de partage. Le mode DOCUMENT est
