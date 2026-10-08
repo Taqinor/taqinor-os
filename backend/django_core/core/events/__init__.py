@@ -34,66 +34,6 @@ importe ``apps.audit``.
 Événements disponibles
 ----------------------
 
-``chantier_receptionne``
-    Émis quand une ``installations.Installation`` atteint le statut canonique
-    RECEPTIONNE (YSERV4) — aux DEUX sites où ce jalon peut être atteint :
-    ``InstallationViewSet.perform_update`` et l'action ``mise-en-service``
-    (celle-ci se rabat sur RECEPTIONNE, même patron que ``_apply_reception_
-    handover``). Émis SYNCHRONE, best-effort, uniquement sur le FRANCHISSEMENT
-    (``ancien_statut`` canonique différent de RECEPTIONNE) — un re-passage ne
-    réémet rien. Ne change AUCUN statut (l'émission suit la bascule déjà
-    actée). Abonné dans ce repo : ``compta`` (``apps/compta/receivers.py``) —
-    crée idempotemment une ``EnqueteNPS`` pour le client du chantier (une
-    enquête par chantier, jamais de doublon même en cas de ré-émission) et
-    appelle ``envoyer_enquete_nps`` (no-op sans clé Brevo, comportement FG238
-    inchangé). ``installations`` n'importe jamais la comptabilité — même
-    patron que ``devis_accepted`` → ``crm``. Arguments du signal :
-
-    * ``installation`` — l'instance ``installations.Installation`` désormais
-      RECEPTIONNE ;
-    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
-      ``None``) ;
-    * ``ancien_statut`` — le statut BRUT (non canonicalisé) avant la
-      transition.
-
-``ticket_resolu``
-    Émis quand un ``sav.Ticket`` bascule vers RESOLU (ARC37) — aux DEUX sites
-    où cette bascule peut être atteinte : l'action gardée ``resoudre``
-    (``apps/sav/views.py``, via ``sav.services.emettre_ticket_resolu``) et
-    l'avancement automatique sur intervention terminée
-    (``apps/sav/receivers.py``, YSERV2). Émis SYNCHRONE, best-effort,
-    uniquement sur le FRANCHISSEMENT (un ticket déjà RESOLU/CLOTURE ne réémet
-    rien — même garde que les autres transitions SAV). Ne change AUCUN statut
-    lui-même (l'émission suit la bascule déjà actée). Arguments du signal :
-
-    * ``ticket`` — l'instance ``sav.Ticket`` désormais RESOLU ;
-    * ``company`` — la société (posée côté serveur) ;
-    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
-      ``None`` pour une résolution automatique) ;
-    * ``ancien_statut`` — le statut avant la transition.
-
-    Abonnés dans ce repo (ARC37) : ``notifications``
-    (``apps/notifications/signals.py`` — notifie le technicien assigné, repli
-    managers, ``EventType.SAV_TICKET_RESOLU``) et ``crm``
-    (``apps/crm/receivers.py`` — note chatter ARC8 sur le ``crm.Client`` du
-    ticket, sans jamais importer ``apps.sav``).
-
-``equipement_remplace``
-    Émis quand un ``sav.Equipement`` est marqué REMPLACE suite au retrait
-    d'une pièce (ARC37, ``sav.services.retirer_piece``). Émis SYNCHRONE,
-    best-effort, à l'unique site de la bascule. Ne change AUCUN statut
-    lui-même. Arguments du signal :
-
-    * ``equipement`` — l'instance ``sav.Equipement`` désormais REMPLACE ;
-    * ``ticket`` — le ``sav.Ticket`` dont le retrait de pièce a déclenché le
-      remplacement ;
-    * ``company`` — la société (posée côté serveur) ;
-    * ``user`` — l'utilisateur qui a retiré la pièce (peut être ``None``).
-
-    Abonné dans ce repo (ARC37) : ``notifications``
-    (``apps/notifications/signals.py`` — notifie les managers,
-    ``EventType.SAV_EQUIPEMENT_REMPLACE``).
-
 ``module_toggled``
     ODY25 — Émis à CHAQUE bascule RÉELLE d'un ``core.ModuleToggle`` (une app
     installée ou désinstallée pour une société), aux DEUX seuls sites qui
@@ -138,47 +78,9 @@ from .devis import *  # noqa: F401,F403
 from .stock import *  # noqa: F401,F403
 from .lead import *  # noqa: F401,F403
 from .acquisition import *  # noqa: F401,F403
-
-
-# Émis quand une Intervention (apps.installations) passe à TERMINEE ou VALIDEE
-# (YSERV2). Arguments : intervention, company, user (peut être None). Abonné
-# dans ce repo : sav (apps/sav/receivers.py) — si l'intervention porte un
-# ticket lié, pose Ticket.date_resolution et avance le ticket vers RESOLU
-# (idempotent, ne recule jamais un statut). installations n'importe jamais
-# apps.sav — même patron que devis_accepted → crm.
-intervention_completed = django.dispatch.Signal()
-
-
-# Émis à l'annulation d'un chantier (``apps.installations``) — YSERV9.
-# Arguments : installation (installations.Installation), user (peut être
-# None), company. NE change JAMAIS un statut devis/facture (règle #4,
-# STATUT PRESERVATION) : simple signal d'exception pour que ``ventes`` pose
-# une activité/alerte au responsable (décider avoir vs retenue sur un
-# acompte déjà encaissé). Abonné dans ce repo : ventes
-# (``apps/ventes/receivers.py``), qui pose une ``DevisActivity`` de type NOTE
-# sur le devis lié au chantier quand il existe. ``installations`` n'importe
-# jamais ``apps.ventes`` — même patron que ``devis_accepted`` → installations.
-chantier_annule = django.dispatch.Signal()
-
-
-# Émis quand une Installation atteint le statut canonique RECEPTIONNE
-# (YSERV4). Arguments : installation, user (peut être None), ancien_statut.
-# Abonné dans ce repo : compta (crée l'EnqueteNPS + envoyer_enquete_nps,
-# idempotent) — voir docstring du module ci-dessus.
-chantier_receptionne = django.dispatch.Signal()
-
-# Émis quand un Ticket SAV bascule vers RESOLU (ARC37). Arguments : ticket,
-# company, user (peut être None), ancien_statut. Abonnés dans ce repo :
-# notifications (EventType.SAV_TICKET_RESOLU) et crm (chatter ARC8 sur le
-# Client lié) — voir docstring du module ci-dessus.
-ticket_resolu = django.dispatch.Signal()
-
-
-# Émis quand un Equipement SAV est marqué REMPLACE suite au retrait d'une
-# pièce (ARC37). Arguments : equipement, ticket, company, user (peut être
-# None). Abonné dans ce repo : notifications (EventType.
-# SAV_EQUIPEMENT_REMPLACE) — voir docstring du module ci-dessus.
-equipement_remplace = django.dispatch.Signal()
+from .chantiers import *  # noqa: F401,F403
+from .sav import *  # noqa: F401,F403
+from .calepinage import *  # noqa: F401,F403
 
 
 # Émis par le kit DocumentMetier (SCA30, ``core.documents``) quand un document
@@ -527,18 +429,3 @@ export_reversibilite_declenche = django.dispatch.Signal()
 # FAIT qu'un humain a décidé. Arguments : ``snapshot`` (le ``SlaSnapshot``),
 # ``company``, ``ancien_statut``, ``nouveau_statut``, ``user``.
 sla_credit_statut_change = django.dispatch.Signal()
-
-# CALX368 — Émis par ``apps.calepinage.services.simulation.simuler_calepinage``
-# (le SEUL chemin qui lance une simulation, D-CALX 4) quand une simulation a
-# RÉELLEMENT abouti et que son résultat vient d'être fusionné dans
-# ``Calepinage.resultat`` — jamais pour un « déjà calculé » (empreinte
-# inchangée), jamais pour une simulation refusée, jamais pour un calcul à
-# blanc (``enregistrer=False``). Ce n'est PAS un changement de statut (règle
-# #4) : le calepinage reste où il est.
-# Arguments : ``calepinage`` (l'instance, résultat déjà fusionné) et
-# ``company_id`` (ENTIER — la société du calepinage, lue sans requête).
-# Abonné dans ce repo : ``apps.publicapi`` (``calepinage_event_receivers``,
-# webhook sortant ``calepinage.simule``) — ainsi ``apps.calepinage`` ne
-# connaît pas l'API publique, et ``apps.publicapi`` n'importe jamais
-# ``apps.calepinage``.
-calepinage_simule = django.dispatch.Signal()
