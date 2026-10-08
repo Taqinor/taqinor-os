@@ -855,7 +855,13 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     ligne_taux = getattr(ligne, "taux_tva", None)
     if ligne_taux is None:
         ligne_taux = taux_tva
-    pu_ht = Decimal(ligne.prix_unitaire) * (Decimal(1) - Decimal(ligne.remise) / Decimal(100))
+    # AMOT12 (C-AMOT-007) — même tolérance que le noyau monnaie : une ligne
+    # produit SANS prix ou SANS quantité (``null=True`` au modèle) vaut 0 et
+    # est DITE par ``avertissements_internes`` (``lignes_sans_montant``) —
+    # jamais un 500 au rendu.
+    _prix = ligne.prix_unitaire if ligne.prix_unitaire is not None else 0
+    _remise = getattr(ligne, "remise", None) or 0
+    pu_ht = Decimal(_prix) * (Decimal(1) - Decimal(_remise) / Decimal(100))
     pu_ttc = pu_ht * (Decimal(1) + Decimal(ligne_taux) / Decimal(100))
     produit = getattr(ligne, "produit", None)
     produit_nom = getattr(produit, "nom", "") or ""
@@ -873,7 +879,7 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "garantie_mois": getattr(produit, "garantie_mois", None),
         "garantie_production_mois": getattr(
             produit, "garantie_production_mois", None),
-        "quantite": float(ligne.quantite),
+        "quantite": float(ligne.quantite or 0),
         # QJR410 (b) / S8-F8 — LE PRIX UNITAIRE REMISÉ N'EST PLUS ARRONDI
         # AVANT D'ÊTRE MULTIPLIÉ. Il l'était à 2 décimales ici, et
         # ``_LigneArgentPdf`` alimentait ensuite le noyau monnaie
@@ -905,6 +911,15 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "courbe_pompe": (getattr(produit, "courbe_pompe", None) or None),
         "_produit_nom": produit_nom,
     }
+
+
+def lignes_sans_montant(lignes) -> list:
+    """AMOT12 — désignations des lignes PRODUIT sans prix ou sans quantité."""
+    return [getattr(li, "designation", "") or "ligne sans désignation"
+            for li in lignes
+            if getattr(li, "type_ligne", "produit") in (None, "", "produit")
+            and (getattr(li, "prix_unitaire", None) is None
+                 or getattr(li, "quantite", None) is None)]
 
 
 def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
@@ -1863,6 +1878,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avertissements_internes.append(
             f"onduleur {_famille_sans_batterie} sans ligne batterie — "
             "document rendu en option unique (aucune batterie n'est inventée)")
+    # AMOT12 — une ligne produit sans prix / sans quantité est imprimée à
+    # 0,00 et DITE au vendeur (jamais au client).
+    for _desig in lignes_sans_montant(lignes):
+        avertissements_internes.append(
+            f"ligne sans prix ou sans quantité : {_desig} — imprimée à 0,00")
     for _desig in _variante_contradictions:
         # L-2OPT — trace INTERNE : la variante déclarée sur la ligne contredit
         # sa nature lue par mots-clés (une batterie marquée « sans »…). La
