@@ -722,6 +722,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         `/intervention/<token>`, et l'`url` absolue est servie comme pour le
         suivi de ticket SAV (`sav.views.lien_client`, FG86)."""
         interv = self.get_object()
+        if interv.annulee:  # ACHT51
+            return Response(
+                {'detail': field_services.MESSAGE_INTERVENTION_ANNULEE},
+                status=status.HTTP_409_CONFLICT)
         token = interv.ensure_lien_client_token()
         path = f'/intervention/{token}'
         return Response({
@@ -2023,7 +2027,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from django.utils.timezone import localdate
         company = request.user.company
         jour = request.query_params.get('date') or str(localdate())
-        qs = (Intervention.objects
+        qs = (Intervention.objects.actives()  # ACHT51 — hors annulées
               .filter(company=company, technicien=request.user, date_prevue=jour)
               .select_related('installation', 'installation__client',
                               'technicien', 'camionnette')

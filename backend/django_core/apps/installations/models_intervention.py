@@ -47,7 +47,17 @@ class TypeIntervention(models.Model):
         return self.libelle
 
 
+class InterventionQuerySet(models.QuerySet):
+    """ACHT51 — ensemble des interventions NON annulées : seul manager lu par
+    les balayages qui parlent au client (rappel J-1, météo, tournée)."""
+
+    def actives(self):
+        return self.filter(annulee=False)
+
+
 class Intervention(models.Model):
+    objects = InterventionQuerySet.as_manager()
+
     class Type(models.TextChoices):
         POSE = 'pose', 'Pose'
         RACCORDEMENT = 'raccordement', 'Raccordement'

@@ -37,7 +37,8 @@ class InterventionLienClientPublicView(APIView):
             Intervention.objects
             .select_related('installation', 'technicien')
             .filter(lien_client_token=token).first())
-        if interv is None or interv.lien_client_expire:
+        # ACHT51 — une intervention annulée est servie comme un lien expiré.
+        if interv is None or interv.annulee or interv.lien_client_expire:
             return Response(
                 {'detail': 'Lien invalide ou expiré.'},
                 status=status.HTTP_404_NOT_FOUND)

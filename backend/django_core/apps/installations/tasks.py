@@ -107,28 +107,32 @@ def rappel_rdv_j1():
     politique manuel-first). Renvoie un compte {cibles, wa_generes, emails_envoyes}
     pour observabilité/tests."""
     from datetime import timedelta
+    from authentication.selectors import active_companies
     from .models import Intervention
 
     demain = casablanca_today() + timedelta(days=1)
-    qs = (Intervention.objects
-          .filter(date_prevue=demain, rdv_confirme=False)
-          .select_related('installation', 'installation__client',
-                          'installation__technicien_responsable'))
 
     cibles = 0
     wa_generes = 0
     emails_envoyes = 0
-    for interv in qs:
-        cibles += 1
-        try:
-            if _wa_draft_for_intervention(interv):
-                wa_generes += 1
-        except Exception as exc:  # pragma: no cover - défensif
-            logger.warning(
-                'XFSM6 : brouillon WhatsApp échoué (intervention %s) : %s',
-                interv.id, exc)
-        if _envoyer_email_client(interv):
-            emails_envoyes += 1
+    for company in active_companies():  # ACHT51 — pas les suspendus
+        # ACHT51 — jamais d'intervention annulée (rien n'est annoncé).
+        qs = (Intervention.objects.actives()
+              .filter(company=company, date_prevue=demain,
+                      rdv_confirme=False)
+              .select_related('installation', 'installation__client',
+                              'installation__technicien_responsable'))
+        for interv in qs:
+            cibles += 1
+            try:
+                if _wa_draft_for_intervention(interv):
+                    wa_generes += 1
+            except Exception as exc:  # pragma: no cover - défensif
+                logger.warning(
+                    'XFSM6 : brouillon WhatsApp échoué (intervention %s) : '
+                    '%s', interv.id, exc)
+            if _envoyer_email_client(interv):
+                emails_envoyes += 1
 
     return {
         'jour_cible': str(demain), 'cibles': cibles,
@@ -147,18 +151,27 @@ def meteo_planning_j3():
     compte {cibles, evaluees, a_risque} pour observabilité/tests."""
     from datetime import timedelta
 
+    from authentication.selectors import active_companies
+
     from . import weather
     from .models import Intervention
 
     jour_cible = casablanca_today() + timedelta(days=3)
-    qs = (Intervention.objects
-          .filter(date_prevue=jour_cible, type_intervention=Intervention.Type.POSE)
-          .select_related('installation', 'installation__technicien_responsable'))
 
     cibles = 0
     evaluees = 0
     a_risque = 0
-    for interv in qs:
+    # ACHT51 — sociétés actives, interventions non annulées uniquement.
+    interventions = [
+        interv
+        for company in active_companies()
+        for interv in (
+            Intervention.objects.actives()
+            .filter(company=company, date_prevue=jour_cible,
+                    type_intervention=Intervention.Type.POSE)
+            .select_related('installation',
+                            'installation__technicien_responsable'))]
+    for interv in interventions:
         cibles += 1
         inst = interv.installation
         lat = getattr(inst, 'gps_lat', None)
