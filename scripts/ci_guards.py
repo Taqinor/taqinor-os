@@ -58,6 +58,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Check date du jour en UTC : plus de nouveau toISOString().slice(0, 10) (ADEV73)',
+         'python scripts/check_date_jour_utc.py',
+         '.'),
+        ('Tests de la garde date du jour UTC (ADEV73)',
+         'python -m unittest scripts.tests.test_check_date_jour_utc -v',
+         '.'),
         ('Tests symboles du moteur sans lecteur (AMOT75)',
          'python -m unittest scripts.tests.test_check_services_appeles_constantes -v',
          '.'),
