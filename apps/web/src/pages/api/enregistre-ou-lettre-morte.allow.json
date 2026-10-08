@@ -1,0 +1,8 @@
+{
+  "pourquoi": "AACQ78 (C-AACQ-074) — dette GELÉE de la garde _enregistre-ou-lettre-morte.test.ts : les cas `<module>:<motif>` où l'endpoint répond aujourd'hui ok:true sans livrer le lead au CRM, sans le déposer en lettre morte (LEADS_DLQ) et sans alerte. Mesurée à chaque exécution : un cas fautif absent de cette liste rougit, une entrée devenue conforme rougit tant qu'elle n'est pas retirée. Décroissance seulement — la correction de forwardLead (URL CRM absente ou faite de blancs ⇒ lettre morte, LWEB-4, lot R2) vide cette liste.",
+  "entrees": [
+    "capture-lead:no-webhook-configured",
+    "preview-lead:no-webhook-configured",
+    "simulate:no-webhook-configured"
+  ]
+}
