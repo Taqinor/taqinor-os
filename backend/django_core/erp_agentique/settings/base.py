@@ -1136,6 +1136,8 @@ CELERY_TASK_ROUTES = {
     'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
     # NTSRV38 — violation SLA (FG81) rescannée au quart d'heure.
     'sav.scan_sla_breaches_quart_heure': {'queue': 'scheduled'},
+    # ASAV33 — auto-clôture SAV planifiée (beat `sav-auto-cloture`).
+    'sav.scan_auto_cloture_quotidien': {'queue': 'scheduled'},
     # WIR50 — commandes périodiques de sécurité/gouvernance (break-glass échu,
     # comptes dormants, escalade SLA workflow) planifiées au beat.
     'identity.revoke_expired_break_glass': {'queue': 'scheduled'},
