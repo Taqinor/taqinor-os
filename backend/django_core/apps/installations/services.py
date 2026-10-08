@@ -564,12 +564,12 @@ def _realigner_nomenclature_revision(chantier, devis):
     ``seed_reservations`` et libère les réservations des SKU disparus.
 
     Gardes :
-      * une réservation CONSOMMÉE n'est jamais touchée (``seed_reservations``
-        et ``release_reservations`` l'ignorent déjà) ;
-      * une quantité déjà SORTIE par la vente (réservation soldée par
-        ``solder_reservations_vente`` : réservé < nomenclature V1) n'est
-        jamais re-réservée — la V2 ne réserve que son besoin moins ce déjà
-        sorti ;
+      * une réservation consommée par N14 n'est jamais touchée ; une
+        réservation SOLDÉE à 0 (vente / F11) n'est rouverte que pour l'écart
+        d'une V2 plus grande (ACHT1, ``_poser_reservation_ecart``) ;
+      * une quantité déjà SORTIE (vente + F11 validée, source unique
+        ``quantite_deja_sortie_chantier``) n'est jamais re-réservée — la V2
+        ne réserve que son besoin moins ce déjà sorti ;
       * mode de réservation « manuelle » sans aucune réservation posée :
         la nomenclature est réalignée mais aucune réservation n'est créée
         (le bouton explicite reste le déclencheur).
@@ -577,14 +577,6 @@ def _realigner_nomenclature_revision(chantier, devis):
     V2 sans autre changement. Renvoie True si le chantier a été réaligné."""
     if not _chantier_realignable(chantier):
         return False
-    ancien_bom = _quantites_depuis_bom(chantier.bom)
-    deja_sorti = {}
-    actives = StockReservation.objects.filter(
-        installation=chantier, active=True, consomme=False)
-    for resa in actives:
-        ecart = ancien_bom.get(resa.produit_id, 0) - resa.quantite
-        if ecart > 0:
-            deja_sorti[resa.produit_id] = ecart
     a_des_reservations = StockReservation.objects.filter(
         installation=chantier).exists()
 
@@ -596,15 +588,10 @@ def _realigner_nomenclature_revision(chantier, devis):
             and methode_reservation_stock(chantier.company)
             == METHODE_RESERVATION_MANUELLE):
         return True
+    # ACHT1 — le « déjà sorti » (vente + F11 validée) est lu à sa source
+    # unique par `seed_reservations` (`quantite_deja_sortie_chantier`) :
+    # la V2 ne réserve que l'écart, jamais ce qui est déjà sorti.
     seed_reservations(chantier)
-    for produit_id, sorti in deja_sorti.items():
-        if produit_id not in nouveaux:
-            continue
-        reste = max(0, nouveaux[produit_id] - sorti)
-        (StockReservation.objects
-         .filter(installation=chantier, produit_id=produit_id,
-                 active=True, consomme=False)
-         .update(quantite=reste))
     # SKU absents de la V2 : réservations non consommées libérées (jamais
     # supprimées — trace conservée, comme `release_reservations`).
     (StockReservation.objects
@@ -937,32 +924,125 @@ def seed_reservations(installation):
     for produit_id, qte in besoins.items():
         if produit_id not in valid_ids:
             continue
-        resa, created = StockReservation.objects.get_or_create(
-            installation=installation, produit_id=produit_id,
-            defaults={
-                'company': company, 'quantite': qte,
-                'origine_calepinage_id': origine_calepinage_id,
-            })
-        if not created and not resa.consomme:
-            # Réaligne la quantité réservée sur le BOM (réservation non encore
-            # consommée). Une réservation consommée reste figée.
-            changed = []
-            if resa.quantite != qte:
-                resa.quantite = qte
-                changed.append('quantite')
-            if not resa.active:
-                resa.active = True
-                changed.append('active')
-            if resa.company_id is None:
-                resa.company = company
-                changed.append('company')
-            if (resa.origine_calepinage_id is None
-                    and origine_calepinage_id is not None):
-                resa.origine_calepinage_id = origine_calepinage_id
-                changed.append('origine_calepinage_id')
-            if changed:
-                resa.save(update_fields=changed)
+        _poser_reservation_ecart(
+            installation, produit_id, qte,
+            origine_calepinage_id=origine_calepinage_id)
     return list(installation.reservations.filter(active=True))
+
+
+def quantite_deja_sortie_chantier(installation, produit_id):
+    """ACHT1 (D-ACHT-1, « une vente = une sortie ») — LA source unique de la
+    quantité déjà SORTIE du stock pour ce chantier et ce produit HORS
+    réservation N14 : la vente (réservations soldées par
+    ``solder_reservations_vente``) + la consommation terrain F11 validée
+    (lignes ``stock_applique``), arrondie à l'entier comme la nomenclature
+    (HALF_UP). Lue par tout écrivain de réservation (``seed_reservations`` —
+    V2, réactivation, ``reserver-stock`` — et ``reserver_stock_depuis_bc``)
+    pour ne réserver que l'écart."""
+    from decimal import ROUND_HALF_UP
+    from django.db.models import Sum
+    from .models import ConsommationLigne
+    f11 = (
+        ConsommationLigne.objects
+        .filter(consommation__intervention__installation=installation,
+                produit_id=produit_id, stock_applique=True)
+        .aggregate(total=Sum('quantite_utilisee'))['total']
+    ) or Decimal('0')
+    total = Decimal(str(f11)) + _quantite_soldee_par_vente(
+        installation, produit_id)
+    return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def _poser_reservation_ecart(installation, produit_id, besoin,
+                             origine_calepinage_id=None):
+    """ACHT1 — pose/réaligne la réservation (chantier, produit) sur
+    ``besoin − quantite_deja_sortie_chantier`` (borné à 0).
+
+    * réservation non consommée : quantité réalignée sur l'écart, réactivée ;
+    * réservation consommée par N14 (``quantite > 0``) : jamais touchée ;
+    * réservation SOLDÉE à 0 par la vente ou F11 (``consomme`` et
+      ``quantite == 0``) : rouverte, avec une note au chatter, si le besoin
+      dépasse désormais le déjà sorti (V2 plus grande)."""
+    from . import activity
+    company = installation.company
+    ecart = max(0, int(besoin) - quantite_deja_sortie_chantier(
+        installation, produit_id))
+    resa, created = StockReservation.objects.get_or_create(
+        installation=installation, produit_id=produit_id,
+        defaults={
+            'company': company, 'quantite': ecart,
+            'origine_calepinage_id': origine_calepinage_id,
+        })
+    if created:
+        return resa
+    changed = []
+    if resa.consomme:
+        if resa.quantite > 0 or ecart <= 0:
+            return resa
+        resa.consomme = False
+        resa.date_consommation = None
+        changed += ['consomme', 'date_consommation']
+        activity.log_note(
+            installation, None,
+            f"Réservation {getattr(resa.produit, 'sku', '') or produit_id} "
+            f"rouverte : {ecart} à réserver en plus du déjà sorti "
+            f"(nomenclature agrandie).")
+    if resa.quantite != ecart:
+        resa.quantite = ecart
+        changed.append('quantite')
+    if not resa.active:
+        resa.active = True
+        changed.append('active')
+    if resa.company_id is None:
+        resa.company = company
+        changed.append('company')
+    if (resa.origine_calepinage_id is None
+            and origine_calepinage_id is not None):
+        resa.origine_calepinage_id = origine_calepinage_id
+        changed.append('origine_calepinage_id')
+    if changed:
+        resa.save(update_fields=changed)
+    return resa
+
+
+def solder_reservations_consommation_terrain(installation, quantites):
+    """ACHT1 — la consommation terrain F11 validée SOLDE la réservation N14
+    du chantier (au lieu de la libérer) : pour chaque ``{produit_id: qte}``,
+    la réservation active non consommée est décrémentée (bornée à 0) ; à 0
+    elle porte ``consomme=True`` et une note « soldée par la consommation
+    terrain ». `consume_reservations` à « Installé » ne sort donc plus ce
+    qui l'a déjà été. Renvoie le nombre de réservations modifiées."""
+    from decimal import ROUND_HALF_UP
+    from django.utils import timezone
+    from . import activity
+    modifiees = 0
+    for produit_id, qte in quantites.items():
+        if not produit_id or qte <= 0:
+            continue
+        resa = (StockReservation.objects.select_for_update()
+                .select_related('produit')
+                .filter(installation=installation, produit_id=produit_id,
+                        active=True, consomme=False)
+                .first())
+        if resa is None:
+            continue
+        decompte = min(
+            int(Decimal(str(qte)).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP)),
+            resa.quantite)
+        resa.quantite -= decompte
+        changed = ['quantite']
+        if resa.quantite <= 0:
+            resa.consomme = True
+            resa.date_consommation = timezone.now()
+            changed += ['consomme', 'date_consommation']
+            activity.log_note(
+                installation, None,
+                f"Réservation {resa.produit.sku or resa.produit.nom} soldée "
+                f"par la consommation terrain ({decompte} posé(s)).")
+        resa.save(update_fields=changed)
+        modifiees += 1
+    return modifiees
 
 
 def consume_reservations(installation, user):
@@ -1421,20 +1501,10 @@ def reserver_stock_depuis_bc(bon_commande):
     for produit_id, qte in besoins.items():
         if produit_id not in valid_ids:
             continue
-        resa, created = StockReservation.objects.get_or_create(
-            installation=installation, produit_id=produit_id,
-            defaults={'company': installation.company, 'quantite': qte})
-        if not created and not resa.consomme:
-            changed = []
-            if resa.quantite != qte:
-                resa.quantite = qte
-                changed.append('quantite')
-            if not resa.active:
-                resa.active = True
-                changed.append('active')
-            if changed:
-                resa.save(update_fields=changed)
-        reservations.append(resa)
+        # ACHT1 — même prédicat « déjà sorti » que `seed_reservations` :
+        # le BC confirmé ne réserve que l'écart.
+        reservations.append(
+            _poser_reservation_ecart(installation, produit_id, qte))
     return reservations
 
 
