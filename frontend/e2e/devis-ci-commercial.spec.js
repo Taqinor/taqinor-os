@@ -101,8 +101,16 @@ test('CIQ334 — créer (hôtel, dimanche fermé, août fermé), rouvrir, ré-en
   await auto
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  // CAD177 — l'étude C&I part APRÈS la création, par la fusion
+  // `PATCH …/etude-params/` (QJR66, DevisGenerator) : relire le devis avant
+  // cette réponse lisait un etude_params réduit aux choix d'écran (nocturne
+  // 37792898726) — même attente que devis-ci-serveur.spec.js.
+  const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
+    && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
+    && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   const cree = await (await creation).json()
+  await etudeEcrite
   etat.devisId = cree.id ?? cree.devis?.id
   expect(etat.devisId, 'identifiant du devis créé').toBeTruthy()
   devisIds.push(etat.devisId)
