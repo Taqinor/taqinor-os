@@ -132,15 +132,21 @@ export default function TreeScreen() {
   const [leads, setLeads] = useState([])
   const [leadsLoading, setLeadsLoading] = useState(false)
 
+  // AACQ74 — panne ≠ « Aucun nœud » / « Aucun test » / « Aucun lead ».
+  const [nodesError, setNodesError] = useState(false)
+  const [queueError, setQueueError] = useState(false)
+  const [testsError, setTestsError] = useState(false)
+  const [leadsError, setLeadsError] = useState(false)
+
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       adsengineApi.assumptions.nodes()
-        .then(r => setNodes(normalizeNodes(r.data)))
-        .catch(() => setNodes([])),
+        .then(r => { setNodes(normalizeNodes(r.data)); setNodesError(false) })
+        .catch(() => { setNodes([]); setNodesError(true) }),
       adsengineApi.assumptions.queue()
-        .then(r => setQueue(normalizeQueue(r.data)))
-        .catch(() => setQueue([])),
+        .then(r => { setQueue(normalizeQueue(r.data)); setQueueError(false) })
+        .catch(() => { setQueue([]); setQueueError(true) }),
     ]).finally(() => setLoading(false))
   }, [])
 
@@ -156,9 +162,10 @@ export default function TreeScreen() {
     if (closing) return
     setTestsLoading(true)
     setTests([])
+    setTestsError(false)
     adsengineApi.assumptions.tests(nodeId)
       .then(r => setTests(normalizeTests(r.data)))
-      .catch(() => setTests([]))
+      .catch(() => { setTests([]); setTestsError(true) })
       .finally(() => setTestsLoading(false))
   }
 
@@ -169,9 +176,10 @@ export default function TreeScreen() {
     if (closing) return
     setLeadsLoading(true)
     setLeads([])
+    setLeadsError(false)
     adsengineApi.assumptions.testLeads(testId)
       .then(r => setLeads(Array.isArray(r.data) ? r.data : (r.data?.results || r.data?.leads || [])))
-      .catch(() => setLeads([]))
+      .catch(() => { setLeads([]); setLeadsError(true) })
       .finally(() => setLeadsLoading(false))
   }
 
@@ -192,7 +200,10 @@ export default function TreeScreen() {
             {/* File VoI (ASG3) — le PROCHAIN test à argmax */}
             <section className="card ae-tree-queue" data-testid="ae-tree-queue" style={{ padding: '1rem', marginBottom: '1.25rem' }}>
               <h3 style={{ margin: '0 0 0.6rem' }}>File de priorité (VoI)</h3>
-              {queue.length === 0
+              {queueError
+                ? <p data-testid="ae-tree-queue-load-error" role="alert" style={{ color: '#dc2626', margin: 0 }}>
+                    File indisponible — <button type="button" className="btn btn-light" onClick={load}>réessayer</button></p>
+                : queue.length === 0
                 ? <p data-testid="ae-tree-queue-empty" style={{ color: '#64748b', margin: 0 }}>
                     Aucun nœud en file.</p>
                 : (
@@ -213,7 +224,10 @@ export default function TreeScreen() {
 
             {/* Nœuds par statut/fraîcheur */}
             {groups.length === 0
-              ? <p data-testid="ae-tree-empty" style={{ color: '#64748b' }}>Aucun nœud d&apos;hypothèse.</p>
+              ? nodesError
+                ? <p data-testid="ae-tree-load-error" role="alert" style={{ color: '#dc2626' }}>
+                    Nœuds indisponibles — <button type="button" className="btn btn-light" onClick={load}>réessayer</button></p>
+                : <p data-testid="ae-tree-empty" style={{ color: '#64748b' }}>Aucun nœud d&apos;hypothèse.</p>
               : groups.map(g => (
                 <section key={g.statut} className="ae-tree-group" data-testid={`ae-tree-group-${g.statut}`}
                   style={{ marginBottom: '1.25rem' }}>
@@ -288,6 +302,9 @@ export default function TreeScreen() {
                             <div data-testid={`ae-tree-node-tests-${n.id}`} style={{ padding: '0.75rem 0 0 0.75rem' }}>
                               {testsLoading
                                 ? <p className="page-loading">Chargement…</p>
+                                : testsError
+                                  ? <p data-testid="ae-tree-tests-load-error" role="alert" style={{ color: '#dc2626', margin: 0 }}>
+                                      Tests indisponibles.</p>
                                 : tests.length === 0
                                   ? <p data-testid="ae-tree-tests-empty" style={{ color: '#64748b', margin: 0 }}>
                                       Aucun test pour ce nœud.</p>
@@ -312,6 +329,9 @@ export default function TreeScreen() {
                                             <div data-testid={`ae-tree-test-leads-${t.id}`} style={{ padding: '0.5rem 0 0 0.6rem' }}>
                                               {leadsLoading
                                                 ? <p className="page-loading">Chargement…</p>
+                                                : leadsError
+                                                  ? <p data-testid="ae-tree-leads-load-error" role="alert" style={{ color: '#dc2626', margin: 0 }}>
+                                                      Leads indisponibles.</p>
                                                 : leads.length === 0
                                                   ? <p data-testid="ae-tree-leads-empty" style={{ color: '#64748b', margin: 0 }}>
                                                       Aucun lead pour ce test.</p>
