@@ -372,6 +372,10 @@ def page1(ctx):
               f'<div class="ag-title">{_t(lg, "agr_titre_p1")}</div>'
               f'<div class="ag-sub">{client or ""} · {_t(lg, "reference")} '
               f'{d.get("ref", "")} · {d.get("date", "")}{validite}</div>')
+    # ADEV67 (C-ADEV-044) — « Document mis à jour le … / Remplace le devis
+    # … » : même décision du builder, même helper que les autres marchés.
+    entete += "".join(f'<div class="ag-sub">{m}</div>'
+                      for m in theme.marques_correction(d))
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{_argent(synthese, lg)}{_qj(25)}'
@@ -588,7 +592,23 @@ def page3(ctx):
             f'<div class="ag-tot"><div class="ag-tot-g">'
             f'{_garanties(synthese, lg)}{non_inclus_html}</div>'
             f'<div class="ag-tot-d">{_totaux(d, lg)}</div></div>{_qj(20)}'
-            f'{_formalites(synthese, lg)}{_qj(30)}{cloture(ctx)}</div>')
+            f'{_formalites(synthese, lg)}{_note_et_clauses(d, lg)}'
+            f'{_qj(30)}{cloture(ctx)}</div>')
+
+
+def _note_et_clauses(d, lg):
+    """ADEV67 (C-ADEV-044) — la note CLIENT (déjà échappée par le builder)
+    et les clauses/CGV gelées (QJR668), comme les autres marchés ; rien
+    quand ni l'une ni les autres n'existent (jamais un bloc vide)."""
+    from ..clauses_cgv import bloc_clauses_html
+    note = (d.get("note_client") or "").strip()
+    note_html = (f'<div class="ag-small" style="margin-top:6px;">'
+                 f'<b>{_t(lg, "ci_note")}</b> : {note}</div>'
+                 if note else "")
+    clauses_html = bloc_clauses_html(
+        d.get("clauses_cgv"), couleur_titre="#1A2B4A", couleur_texte="#334155",
+        taille_pt="7")
+    return note_html + clauses_html
 
 
 # ── AGR311 — clôture de la page 3 (canon v6) ────────────────────────────────
