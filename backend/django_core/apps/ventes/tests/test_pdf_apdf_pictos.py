@@ -10,7 +10,7 @@ du PDF réel. Le moteur ne fait que RENDRE (règle #4).
 """
 import re
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.quote_engine.commercial import categories
 from apps.ventes.quote_engine.commercial import render as c_render
@@ -28,6 +28,7 @@ def _html(categorie):
     return c_render.build_html(c_renderer._augment(c_sample.build(categorie)))
 
 
+@tag('pdf')
 class PictosCategoriesTests(SimpleTestCase):
 
     def test_dix_categories(self):
