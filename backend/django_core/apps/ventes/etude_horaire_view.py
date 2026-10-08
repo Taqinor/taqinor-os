@@ -105,7 +105,10 @@ def _devis_de_la_societe(request, devis_id):
     qs = Devis.objects.all()
     company_id = getattr(user, 'company_id', None)
     if company_id:
-        qs = qs.filter(company_id=company_id)
+        # ADEV41 — bornée à la portée équipe (ADEV21, ``created_by``).
+        from core.scoping import scope_queryset
+        qs = scope_queryset(qs.filter(company_id=company_id), user,
+                            ['created_by'])
     elif not user.is_superuser:
         return None
     return qs.filter(pk=devis_id).first()
