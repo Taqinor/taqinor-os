@@ -184,6 +184,10 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             # APAR16 — horodatage du verrou optimiste : posé par le serveur
             # (auto_now), renvoyé par l'écran pour comparaison, jamais écrit.
             'updated_at',
+            # APAR53 — le fuseau de la société est UN réglage
+            # (``fuseau_horaire``, validé IANA) ; l'ancien champ NTOBS23 reste
+            # servi en lecture mais n'est plus inscriptible par ce PATCH.
+            'timezone_affichage',
         ]
 
     def validate_responsable_defaut_leads(self, value):
