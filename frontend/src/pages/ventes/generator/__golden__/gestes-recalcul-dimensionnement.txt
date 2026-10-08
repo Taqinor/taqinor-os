@@ -90,26 +90,26 @@ Auto-remplir depuis le stock
 Aperçu de la Simulation
 Replier
 Calcul du moteur horaire en cours…
-Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Facture réelle ONEE ≈ 36 001 MAD/an sans solaire → avec solaire ≈ 20 298 MAD/an — économie calculée par tranche (barème ONEE), pas une estimation.
 Production annuelle
 13 085
 kWh / an
 Sans batterie
 Économies
-13 739
+12 741
 MAD / an
 ROI
-3.7 ans
+4 ans
 retour sur invest.
 Coût
 50 800
 MAD TTC
 Avec batterie★ Recommandé
 Économies
-16 933
+15 703
 MAD / an
 ROI
-4.2 ans
+4.6 ans
 retour sur invest.
 Coût
 70 000

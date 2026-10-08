@@ -1135,6 +1135,22 @@ export default function DevisGenerator({
   const moisNonSaisis = provenanceMois.some(p => p !== 'exemple')
     ? CHART_MONTHS.filter((_, i) => provenanceMois[i] === 'exemple') : []
 
+  // AGNR24 — LA consommation que l'écran ENREGISTRE, un seul sélecteur :
+  // même cascade que `entreesReellesEcran` (usePersistanceDevis) — saisie
+  // réelle de la session → conso stockée relue (`?edit=` : mode kWh non
+  // retouché) → 12 factures réelles au barème → facture réelle. L'aperçu
+  // (`computeROI`) la reçoit : jamais « estimation » quand le corps
+  // enregistré porte une conso.
+  const consoEcran = (() => {
+    if (realBillSaisi && consoAnnuelleReelle > 0) return consoAnnuelleReelle
+    if (!realBillSaisi && realBillMode === 'kwh' && consoAnnuelleReelle > 0) return consoAnnuelleReelle
+    if (facturesSaisies) {
+      const derivee = consoAnnuelleDepuisFactures(monthly.map(v => parseFloat(v) || 0), distributeur)
+      if (derivee > 0) return derivee
+    }
+    return consoAnnuelleReelle > 0 ? consoAnnuelleReelle : null
+  })()
+
   // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
   // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
   const leadsListe = (leadDuDevis
@@ -1199,7 +1215,8 @@ export default function DevisGenerator({
       efficiency: quoteLogic.efficiency,
       // QF5 — bascule sur le modèle « deux factures » par tranche (parité
       // PDF) dès qu'une consommation réelle + un distributeur sont connus.
-      consoAnnuelleKwh: consoAnnuelleReelle,
+      // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
+      consoAnnuelleKwh: consoEcran,
       utility: distributeur,
       // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
       // avec le PDF/web) ; override société si renseigné ≠ 1600.
@@ -1207,7 +1224,7 @@ export default function DevisGenerator({
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoAnnuelleReelle, distributeur, selectedLead])
+    consoEcran, distributeur, selectedLead])
 
   // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
   // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
@@ -1229,13 +1246,13 @@ export default function DevisGenerator({
       lines: dLines,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
-      consoAnnuelleKwh: consoAnnuelleReelle,
+      consoAnnuelleKwh: consoEcran,
       utility: distributeur,
       productible: productibleForCity(
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoAnnuelleReelle, distributeur, selectedLead])
+    consoEcran, distributeur, selectedLead])
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)

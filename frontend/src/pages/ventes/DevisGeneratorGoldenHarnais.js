@@ -226,9 +226,9 @@ export function formaterGolden(html) {
   return `${sansCr(normalise(html)).replace(/></g, '>\n<')}\n`
 }
 
-/** Attend que le DOM ne bouge plus pendant 1,5 s (> le plus long debounce de
+/** Attend que le DOM ne bouge plus pendant 2,5 s (> le plus long debounce de
  *  l’écran : brouillon 800 ms, aperçus serveur 500 ms), promesses résolues. */
-export async function attendreStable(container, act, { pas = 100, stables = 15, max = 15000 } = {}) {
+export async function attendreStable(container, act, { pas = 100, stables = 25, max = 20000 } = {}) {
   let precedent = null
   let egal = 0
   // `Date` est figée : le temps écoulé se mesure au nombre de pas.
