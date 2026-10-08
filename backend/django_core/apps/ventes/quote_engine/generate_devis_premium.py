@@ -604,10 +604,52 @@ NOTE_CLIENT = ""
 CLAUSES_CGV = []
 
 
+#: AMOT20 — vrai pendant l'ajustement du une-page quand la note et les
+#: clauses ont dû être TRONQUÉES (avec renvoi déclaré) pour que le dernier
+#: bloc de la zone tienne. Remis à ``False`` en fin d'ajustement : aucun autre
+#: format n'est jamais tronqué.
+ONEPAGE_TEXTES_TRONQUES = False
+#: AMOT20 — longueurs gardées (texte BRUT, coupe au mot) quand on tronque.
+_ONEPAGE_NOTE_MAX = 220
+_ONEPAGE_CLAUSE_MAX = 90
+#: AMOT20 — le renvoi DÉCLARÉ qui remplace la suite d'un texte tronqué.
+_RENVOI_TEXTE_INTEGRAL = {
+    "fr": "texte int&#233;gral sur la proposition en ligne",
+    "en": "full text in the online proposal",
+    # À relire par le fondateur (patron CIQM22).
+    "ar": "\u0627\u0644\u0646\u0635 \u0627\u0644\u0643\u0627\u0645\u0644 "
+          "\u0641\u064a \u0627\u0644\u0639\u0631\u0636 "
+          "\u0639\u0628\u0631 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a",
+}
+
+
+def _renvoi_texte_integral():
+    return _RENVOI_TEXTE_INTEGRAL.get(LANGUE_SORTIE,
+                                      _RENVOI_TEXTE_INTEGRAL["fr"])
+
+
+def _tronquer_texte_echappe(texte, longueur):
+    """AMOT20 — tronque un texte DÉJÀ échappé sur son texte BRUT (au mot,
+    « … ») puis le ré-échappe : jamais une entité HTML coupée."""
+    brut = html.unescape(str(texte or ""))
+    if len(brut) <= longueur:
+        return texte
+    coupe = brut[:longueur].rsplit(" ", 1)[0] or brut[:longueur]
+    return html.escape(coupe.rstrip(), quote=False) + "&#8230;"
+
+
 def _clauses_cgv_html(font_pt="7.5"):
     """QJR668 — bloc « Clauses particulières », ou '' sans clause gelée."""
     from .clauses_cgv import bloc_clauses_html
-    return bloc_clauses_html(CLAUSES_CGV, couleur_titre=CN,
+    clauses = CLAUSES_CGV
+    if ONEPAGE_TEXTES_TRONQUES and clauses:
+        # AMOT20 — une-page trop dense : chaque clause garde son nom et le
+        # début de son texte, la suite est renvoyée à la proposition.
+        clauses = [dict(c, corps_texte=_tronquer_texte_echappe(
+            c.get("corps_texte"), _ONEPAGE_CLAUSE_MAX)) for c in clauses]
+        clauses.append({"nom": "", "corps_texte":
+                        "(" + _renvoi_texte_integral() + ")"})
+    return bloc_clauses_html(clauses, couleur_titre=CN,
                              couleur_texte=CG7, taille_pt=font_pt)
 
 
@@ -615,9 +657,14 @@ def _note_client_html(font_pt="8"):
     """QJR627 — le bloc « Note » du devis, ou '' quand le champ est vide."""
     if not NOTE_CLIENT:
         return ""
+    note = NOTE_CLIENT
+    if ONEPAGE_TEXTES_TRONQUES:
+        tronquee = _tronquer_texte_echappe(note, _ONEPAGE_NOTE_MAX)
+        if tronquee != note:
+            note = f"{tronquee} ({_renvoi_texte_integral()})"
     return (f'<div style="font-size:{font_pt}pt;color:{CN};white-space:pre-line;'
             f'margin-bottom:4px;"><b style="text-transform:uppercase;'
-            f'letter-spacing:.8px;margin-right:6px;">Note</b>{NOTE_CLIENT}</div>')
+            f'letter-spacing:.8px;margin-right:6px;">Note</b>{note}</div>')
 DATE_ACCEPTATION = ""
 # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple), posé
 # depuis data["savings_method"]. Vide → aucun bloc rendu (byte-identique).
@@ -4573,6 +4620,12 @@ def _mesure_onepage(html):
                 bas = boite.position_y + boite.height
                 bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
             hauteurs.append(boite.height)
+        # AMOT20 — la postcondition porte sur le DERNIER bloc de la zone (la
+        # ligne Validité/Acompte/TVA ; le bon pour accord agricole est déjà
+        # dans ``formes``) : son bloc entier (toutes ses lignes) doit tenir.
+        bas_fin = _bas_bloc_fin(page)
+        if bas_fin is not None and bas_totaux is not None:
+            bas_totaux = max(bas_totaux, bas_fin)
         if bas_totaux is None:
             # CAD177 — le bloc de totaux est ABSENT de la page composée : ce
             # n'est PAS une mesure impossible. WeasyPrint arrête la composition
@@ -4624,7 +4677,48 @@ def _bas_totaux_page_haute(html_cls, html, formes):
         if any(forme in texte for forme in formes):
             bas = boite.position_y + boite.height
             bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
+    # AMOT20 — même ancre que la mesure A4 : le DERNIER bloc de la zone.
+    bas_fin = _bas_bloc_fin(pages[0])
+    if bas_fin is not None and bas_totaux is not None:
+        bas_totaux = max(bas_totaux, bas_fin)
     return bas_totaux
+
+
+def _formes_bloc_fin():
+    """AMOT20 — libellés de la ligne de conditions (dernier bloc de la zone
+    du une-page), dans la langue du document et en français (filet)."""
+    formes = []
+    for cle in ("acompte", "apres_mise_en_marche"):
+        for brut in (_L(cle), i18n_labels.libelle(cle, "fr")):
+            brut = html.unescape(brut or "")
+            if brut and brut not in formes:
+                formes.append(brut)
+    return tuple(formes)
+
+
+def _bas_bloc_fin(page):
+    """AMOT20 — bas du BLOC (div) qui porte la ligne de conditions du
+    une-page : la boîte de bloc ancêtre la plus proche d'un texte qui porte
+    l'un de ses libellés, toutes lignes comprises. ``None`` si introuvable."""
+    formes = _formes_bloc_fin()
+    bas = []
+
+    def _walk(box, ancetres):
+        texte = getattr(box, "text", None)
+        if texte and any(f in texte for f in formes):
+            for anc in reversed(ancetres):
+                if type(anc).__name__ == "BlockBox":
+                    _mh = getattr(anc, "margin_height", None)
+                    bas.append(anc.position_y
+                               + (_mh() if callable(_mh) else anc.height))
+                    break
+            else:
+                bas.append(box.position_y + box.height)
+        for child in (getattr(box, "children", None) or []):
+            _walk(child, ancetres + [box])
+
+    _walk(page._page_box, [])
+    return max(bas) if bas else None
 
 
 def _html_sans_base(html):
@@ -5094,8 +5188,9 @@ def render_html_for(data: dict) -> str:
 
 #: QJR161 — nombre maximum de passes de mesure. Chaque passe compose la page,
 #: donc on borne le coût ; la première correction est déjà dimensionnée par la
-#: mesure (dépassement ÷ hauteur de ligne).
-_ONEPAGE_PASSES = 3
+#: mesure (dépassement ÷ hauteur de ligne). AMOT20 — une passe de plus : la
+#: première correction peut être la troncature déclarée de la note/clauses.
+_ONEPAGE_PASSES = 4
 
 
 def _onepage_html_qui_tient(items):
@@ -5110,24 +5205,37 @@ def _onepage_html_qui_tient(items):
     en le DÉCLARANT (les totaux restent ceux du devis entier). Sans WeasyPrint,
     la mesure est impossible : le document reste EXACTEMENT celui d'aujourd'hui.
     """
+    global ONEPAGE_TEXTES_TRONQUES
     lignes = list(items or [])
     tronquees = 0
-    html = build_html_onepage(lignes, tronquees)
-    for _ in range(_ONEPAGE_PASSES):
-        mesure = _mesure_onepage(html)
-        if mesure is None:
-            return html
-        depassement, hauteur_ligne = mesure
-        if depassement <= 0 or len(lignes) <= 1:
-            return html
-        a_retirer = 1
-        if hauteur_ligne > 0:
-            a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
-        a_retirer = min(a_retirer, len(lignes) - 1)
-        lignes = lignes[:-a_retirer]
-        tronquees += a_retirer
+    ONEPAGE_TEXTES_TRONQUES = False
+    try:
         html = build_html_onepage(lignes, tronquees)
-    return html
+        for _ in range(_ONEPAGE_PASSES):
+            mesure = _mesure_onepage(html)
+            if mesure is None:
+                return html
+            depassement, hauteur_ligne = mesure
+            if depassement <= 0:
+                return html
+            # AMOT20 — d'abord la note et les clauses (textes longs) :
+            # tronquées au mot avec renvoi DÉCLARÉ, jamais effacées en silence.
+            if not ONEPAGE_TEXTES_TRONQUES and (NOTE_CLIENT or CLAUSES_CGV):
+                ONEPAGE_TEXTES_TRONQUES = True
+                html = build_html_onepage(lignes, tronquees)
+                continue
+            if len(lignes) <= 1:
+                return html
+            a_retirer = 1
+            if hauteur_ligne > 0:
+                a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
+            a_retirer = min(a_retirer, len(lignes) - 1)
+            lignes = lignes[:-a_retirer]
+            tronquees += a_retirer
+            html = build_html_onepage(lignes, tronquees)
+        return html
+    finally:
+        ONEPAGE_TEXTES_TRONQUES = False
 
 
 def _render_premium_pdf(data: dict, out_path) -> str:
