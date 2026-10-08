@@ -702,19 +702,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         lien public « technicien en route » — aucune autre logique n'en
         dépend)."""
         interv = self.get_object()
-        interv.depart_depot_le = timezone.now()
-        fields = ['depart_depot_le']
-        lat, lng = request.data.get('lat'), request.data.get('lng')
-        if lat not in (None, '') and lng not in (None, ''):
-            try:
-                interv.depart_gps_lat = round(float(lat), 6)
-                interv.depart_gps_lng = round(float(lng), 6)
-                fields += ['depart_gps_lat', 'depart_gps_lng']
-            except (TypeError, ValueError):
-                pass
-        interv.save(update_fields=fields)
-        intervention_activity.log_note(
-            interv, request.user, "Départ dépôt enregistré.")
+        # ACHT43 — geste unique partagé avec la synchro terrain.
+        field_services.enregistrer_depart_depot(
+            interv, timezone.now(), request.data.get('lat'),
+            request.data.get('lng'), request.user)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
@@ -746,33 +737,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         aucun service externe). On en dérive une distance-au-site indicative.
         Corps : {"lat": <num>, "lng": <num>}."""
         interv = self.get_object()
-        lat = request.data.get('lat')
-        lng = request.data.get('lng')
-        now = timezone.now()
-        interv.arrivee_site_le = now
-        fields = ['arrivee_site_le']
-        if lat not in (None, '') and lng not in (None, ''):
-            try:
-                interv.arrivee_gps_lat = round(float(lat), 6)
-                interv.arrivee_gps_lng = round(float(lng), 6)
-                fields += ['arrivee_gps_lat', 'arrivee_gps_lng']
-            except (TypeError, ValueError):
-                return Response({'detail': 'Coordonnées invalides.'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        # XFSM5 — ponctualité : dérivée de l'arrivée réelle vs la fenêtre
-        # promise (heure locale du serveur — cohérent avec `date_prevue`).
-        # None si aucune fenêtre n'est promise (comportement actuel inchangé).
-        if interv.fenetre_debut is not None and interv.fenetre_fin is not None:
-            heure_arrivee = timezone.localtime(now).time()
-            interv.arrivee_dans_fenetre = (
-                interv.fenetre_debut <= heure_arrivee <= interv.fenetre_fin)
-            fields.append('arrivee_dans_fenetre')
-        interv.save(update_fields=fields)
-        dist = field_services.distance_to_site(interv)
-        intervention_activity.log_note(
-            interv, request.user,
-            "Arrivée sur site enregistrée"
-            + (f" (≈ {dist} km du chantier)" if dist is not None else "") + ".")
+        # ACHT43 — geste unique partagé avec la synchro terrain (XFSM5 :
+        # ponctualité dérivée de l'instant vs la fenêtre promise).
+        try:
+            field_services.enregistrer_arrivee(
+                interv, timezone.now(), request.data.get('lat'),
+                request.data.get('lng'), request.user)
+        except field_services.CoordonneesInvalides as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 

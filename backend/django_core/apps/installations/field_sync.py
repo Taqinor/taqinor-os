@@ -117,26 +117,22 @@ def _chantier(company, payload, user=None):
 # ── Handlers — un par op_type. Chacun POSE un état (last-write-wins). ─────────
 def _h_depart_depot(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.depart_depot_le = _instant_saisie(payload)
-    iv.save(update_fields=['depart_depot_le'])
-    intervention_activity.log_note(iv, user, 'Départ dépôt enregistré (synchro hors-ligne).')
+    # ACHT43 — même geste que la vue (position de départ incluse).
+    field_services.enregistrer_depart_depot(
+        iv, _instant_saisie(payload), payload.get('lat'), payload.get('lng'),
+        user, suffixe=' (synchro hors-ligne)')
     return {'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()}
 
 
 def _h_checkin(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.arrivee_site_le = _instant_saisie(payload)
-    fields = ['arrivee_site_le']
-    lat, lng = payload.get('lat'), payload.get('lng')
-    if lat not in (None, '') and lng not in (None, ''):
-        try:
-            iv.arrivee_gps_lat = round(float(lat), 6)
-            iv.arrivee_gps_lng = round(float(lng), 6)
-            fields += ['arrivee_gps_lat', 'arrivee_gps_lng']
-        except (TypeError, ValueError):
-            raise FieldOpError('Coordonnées invalides.')
-    iv.save(update_fields=fields)
-    intervention_activity.log_note(iv, user, 'Arrivée sur site enregistrée (synchro hors-ligne).')
+    # ACHT43 — même geste que la vue (ponctualité XFSM5 incluse).
+    try:
+        field_services.enregistrer_arrivee(
+            iv, _instant_saisie(payload), payload.get('lat'),
+            payload.get('lng'), user, suffixe=' (synchro hors-ligne)')
+    except field_services.CoordonneesInvalides:
+        raise FieldOpError('Coordonnées invalides.')
     return {'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()}
 
 
