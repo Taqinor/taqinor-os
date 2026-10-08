@@ -58,6 +58,28 @@ function idbAdapter(key = KEY) {
         tx.onerror = () => resolve()
       })
     },
+    // ADEP17 — lecture-modification-écriture en UNE transaction readwrite : atomique
+    // entre onglets (IndexedDB sérialise les transactions readwrite d'un même store).
+    // `fn` est synchrone et reçoit le contenu COURANT de la clé.
+    async update(fn) {
+      const db = await openDb()
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite')
+        const os = tx.objectStore(STORE)
+        let suivant = []
+        const req = os.get(key)
+        req.onsuccess = () => {
+          try {
+            suivant = fn(Array.isArray(req.result) ? req.result : [])
+            os.put(suivant, key)
+          } catch (e) { tx.abort(); reject(e) }
+        }
+        tx.oncomplete = () => resolve(suivant)
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error || new Error('transaction annulée'))
+      })
+    },
+    lockName: key,
   }
 }
 
@@ -74,6 +96,19 @@ function localStorageAdapter(key = KEY) {
     async save(ops) {
       try { localStorage.setItem(k, JSON.stringify(ops)) } catch { /* quota / privé */ }
     },
+    // ADEP17 — get→set dans un même tour d'événement (synchrone) : atomique.
+    async update(fn) {
+      let courant = []
+      try {
+        const raw = localStorage.getItem(k)
+        const parsed = raw ? JSON.parse(raw) : []
+        courant = Array.isArray(parsed) ? parsed : []
+      } catch { courant = [] }
+      const suivant = fn(courant)
+      try { localStorage.setItem(k, JSON.stringify(suivant)) } catch { /* quota / privé */ }
+      return suivant
+    },
+    lockName: k,
   }
 }
 
@@ -82,6 +117,7 @@ function memoryAdapter() {
   return {
     async load() { return [...data] },
     async save(ops) { data = [...ops] },
+    async update(fn) { data = [...fn([...data])]; return [...data] },
   }
 }
 

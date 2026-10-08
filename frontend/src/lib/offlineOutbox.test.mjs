@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  OFFLINE_MODULES, Outbox, countByPayloadKey, discardModuleOp,
+  BinaryOutbox, OFFLINE_MODULES, Outbox, countByPayloadKey, discardModuleOp,
   flushModuleOutboxes, getModuleOutbox, notifyOfflineOutboxChange,
   onOfflineOutboxChange, pendingCountByTarget, pendingModuleOps,
   purgeModuleOutboxes, queueIfOffline, queueOperation, setModuleSender,
@@ -189,6 +189,94 @@ test('NTMOB24 — comptage par clé de corps (file terrain : payload.chantier)',
   assert.equal(compte.get('12'), 1)
   assert.equal(compte.size, 2)
   assert.equal(countByPayloadKey(undefined, 'chantier').size, 0)
+})
+
+// ADEP17 — file sûre entre onglets et entre appels concurrents. Magasin PARTAGÉ à 5 ms
+// de latence (imite IndexedDB) ; `avecUpdate: false` = magasin load/save nu (repli verrouillé).
+function storePartage({ avecUpdate = true } = {}) {
+  let data = []
+  let chaine = Promise.resolve()
+  const attendre = () => new Promise((r) => setTimeout(r, 5))
+  const s = {
+    async load() { await attendre(); return structuredClone(data) },
+    async save(ops) { await attendre(); data = structuredClone(ops) },
+    contenu: () => data.map((o) => o.client_op_id),
+  }
+  if (avecUpdate) {
+    s.update = (fn) => {
+      const p = chaine.then(async () => {
+        await attendre()
+        data = structuredClone(fn(structuredClone(data)))
+        return structuredClone(data)
+      })
+      chaine = p.catch(() => {})
+      return p
+    }
+  }
+  return s
+}
+
+for (const avecUpdate of [true, false]) {
+  const etiquette = avecUpdate ? 'update atomique' : 'repli load/save verrouillé'
+
+  test(`deux onglets : aucune op écrasée (${etiquette})`, async () => {
+    const store = storePartage({ avecUpdate })
+    const A = new Outbox({ store, sender: async () => ({ results: [] }) })
+    const B = new Outbox({ store, sender: async () => ({ results: [] }) })
+    await A.enqueue('t.op', {}, { clientOpId: 'a0' })
+    await B.enqueue('t.op', {}, { clientOpId: 'b1' })
+    await A.enqueue('t.op', {}, { clientOpId: 'a2' })
+    assert.deepEqual(store.contenu(), ['a0', 'b1', 'a2'])
+    // Persistance : un onglet neuf voit tout.
+    const C = new Outbox({ store })
+    assert.deepEqual((await C.pending()).map((o) => o.client_op_id), ['a0', 'b1', 'a2'])
+  })
+
+  test(`enqueue concurrents au premier accès (${etiquette})`, async () => {
+    const store = storePartage({ avecUpdate })
+    const o = new Outbox({ store })
+    await Promise.all([
+      o.enqueue('t.op', {}, { clientOpId: 'x1' }),
+      o.enqueue('t.op', {}, { clientOpId: 'x2' }),
+    ])
+    assert.deepEqual(store.contenu().sort(), ['x1', 'x2'])
+  })
+
+  test(`le flush d'un onglet n'efface pas l'op d'un autre (${etiquette})`, async () => {
+    const store = storePartage({ avecUpdate })
+    let ouvrir
+    const porte = new Promise((r) => { ouvrir = r })
+    let appels = 0
+    const sender = async (ops) => {
+      appels += 1
+      // 2e envoi (l'op de B) : coupure réseau, pour isoler la conservation de b1
+      if (appels > 1) throw new Error('réseau coupé')
+      await porte                         // le réseau « répond » plus tard
+      return { results: ops.map((op) => ({ client_op_id: op.client_op_id, status: 'applied' })) }
+    }
+    const A = new Outbox({ store, sender })
+    const B = new Outbox({ store, sender })
+    await A.enqueue('t.op', {}, { clientOpId: 'a0' })
+    const flushA = A.flush()
+    await new Promise((r) => setTimeout(r, 30))   // A a lu a0 et attend le réseau
+    await B.enqueue('t.op', {}, { clientOpId: 'b1' })
+    ouvrir()
+    const res = await flushA
+    assert.equal(res.flushed, 1)
+    assert.deepEqual(store.contenu(), ['b1'], 'l’op de B n’est jamais perdue')
+  })
+}
+
+test('BinaryOutbox : deux enqueue concurrents sont tous deux conservés', async () => {
+  const store = storePartage()
+  const a = new BinaryOutbox({ store })
+  const b = new BinaryOutbox({ store })
+  const buf = () => new Uint8Array([1, 2, 3]).buffer
+  await Promise.all([
+    a.enqueue('photo', {}, { bytes: buf() }, { clientOpId: 'p1' }),
+    b.enqueue('photo', {}, { bytes: buf() }, { clientOpId: 'p2' }),
+  ])
+  assert.deepEqual(store.contenu().sort(), ['p1', 'p2'])
 })
 
 // ADEP16 — un timeout APRES l'effet serveur ne doit jamais produire un second effet :

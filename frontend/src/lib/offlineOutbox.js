@@ -51,10 +51,42 @@ export function makeOpId() {
 // Adaptateur en mémoire — défaut hors navigateur (et base des tests).
 export function memoryStore(initial = []) {
   let data = [...initial]
+  let chaine = Promise.resolve()
   return {
     async load() { return [...data] },
     async save(ops) { data = [...ops] },
+    // ADEP17 — lecture-modification-écriture ATOMIQUE (sérialisée) : `fn` reçoit le
+    // contenu COURANT et rend le nouveau ; jamais un instantané périmé.
+    update(fn) {
+      const p = chaine.then(() => { data = [...fn([...data])]; return [...data] })
+      chaine = p.catch(() => {})
+      return p
+    },
   }
+}
+
+// ADEP17 — mise à jour ATOMIQUE d'une file : `store.update(fn)` quand le magasin la
+// fournit (IndexedDB : UNE transaction readwrite get→put, atomique entre onglets) ;
+// repli pour un magasin load/save nu : load→fn→save sous un verrou par file
+// (`navigator.locks` entre onglets quand disponible, chaîne de promesses sinon).
+// `fn` est SYNCHRONE et PURE : elle reçoit les ops courantes et rend les nouvelles.
+const _chainesVerrou = new WeakMap()
+export async function majAtomique(store, fn) {
+  if (typeof store.update === 'function') return store.update(fn)
+  const executer = async () => {
+    const courant = await store.load()
+    const suivant = fn(courant)
+    await store.save(suivant)
+    return suivant
+  }
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  const sousVerrou = locks && typeof locks.request === 'function'
+    ? () => locks.request(`taqinor-outbox:${store.lockName || 'file'}`, executer)
+    : executer
+  const precedent = _chainesVerrou.get(store) || Promise.resolve()
+  const p = precedent.then(sousVerrou)
+  _chainesVerrou.set(store, p.catch(() => {}))
+  return p
 }
 
 const STATUS_DONE = new Set(['applied', 'replayed'])
@@ -115,15 +147,28 @@ export class BinaryOutbox {
     this.maxBytes = maxBytes
     this.persistent = persistent
     this._ops = null
+    this._loading = null
     this._flushing = false
   }
 
+  // ADEP17 — UNE promesse de chargement : deux appels avant la fin du premier
+  // chargement attendent le MÊME résultat (sinon le second écrasait le premier).
   async _ensureLoaded() {
-    if (this._ops === null) this._ops = await this.store.load()
+    if (this._ops === null) {
+      if (!this._loading) {
+        this._loading = this.store.load().then((ops) => { this._ops = ops; return ops })
+      }
+      await this._loading
+    }
     return this._ops
   }
 
-  async _persist() { await this.store.save(this._ops) }
+  // ADEP17 — toute mutation = lecture-modification-écriture ATOMIQUE sur le contenu
+  // COURANT du magasin (un autre onglet a pu écrire entre-temps).
+  async _mutate(fn) {
+    this._ops = await majAtomique(this.store, fn)
+    return this._ops
+  }
 
   async bytes() {
     await this._ensureLoaded()
@@ -158,12 +203,30 @@ export class BinaryOutbox {
         + 'Libérez de l’espace, puis reprenez la photo.')
     }
     const client_op_id = clientOpId || makeOpId()
-    this._ops.push({
+    const nouvelle = {
       client_op_id, op_type: opType, meta: meta ?? {},
       bytes, name: name || 'photo.jpg', type: type || 'image/jpeg',
       size, queuedAt: new Date().toISOString(),
+    }
+    // Plafonds RE-vérifiés sur le contenu courant, dans la mise à jour atomique.
+    let refus = null
+    await this._mutate((cur) => {
+      if (cur.some((x) => x.client_op_id === client_op_id)) return cur
+      if (cur.length >= this.maxOps) {
+        refus = new OutboxQuotaError(
+          `File d’envoi pleine (${this.maxOps} photos en attente). `
+          + 'Reconnectez-vous au réseau pour la vider avant d’en ajouter.')
+        return cur
+      }
+      if (cur.reduce((n, x) => n + (x.size || 0), 0) + size > this.maxBytes) {
+        refus = new OutboxQuotaError(
+          'File d’envoi pleine (limite de taille atteinte). '
+          + 'Reconnectez-vous au réseau pour la vider avant d’en ajouter.')
+        return cur
+      }
+      return [...cur, nouvelle]
     })
-    await this._persist()
+    if (refus) throw refus
     return client_op_id
   }
 
@@ -184,13 +247,11 @@ export class BinaryOutbox {
 
   async discard(clientOpId) {
     await this._ensureLoaded()
-    this._ops = this._ops.filter((op) => op.client_op_id !== clientOpId)
-    await this._persist()
+    await this._mutate((cur) => cur.filter((op) => op.client_op_id !== clientOpId))
   }
 
   async clear() {
-    this._ops = []
-    await this._persist()
+    await this._mutate(() => [])
   }
 
   /**
@@ -209,26 +270,26 @@ export class BinaryOutbox {
     let failed = 0
     try {
       await this._ensureLoaded()
+      // ADEP17 — contenu COURANT du magasin (un autre onglet a pu y écrire).
+      this._ops = await this.store.load()
       // Copie : on itère sur un instantané, la file est réécrite au fil de l'eau.
       for (const op of [...this._ops]) {
         if (op.serverError) continue // déjà refusée : attend un abandon explicite
         try {
           await this.uploader(op)
-          this._ops = this._ops.filter((x) => x.client_op_id !== op.client_op_id)
+          await this._mutate((cur) => cur.filter((x) => x.client_op_id !== op.client_op_id))
           flushed += 1
-          await this._persist()
         } catch (err) {
           const reseau = !err?.response
           if (reseau) break // réseau retombé : file intacte, on retentera
-          this._ops = this._ops.map((x) => (x.client_op_id === op.client_op_id
+          await this._mutate((cur) => cur.map((x) => (x.client_op_id === op.client_op_id
             ? {
               ...x,
               serverError: err?.response?.data?.detail || 'Refusée par le serveur.',
               attempts: (x.attempts || 0) + 1,
             }
-            : x))
+            : x)))
           failed += 1
-          await this._persist()
         }
       }
       return { skipped: false, flushed, failed, remaining: this._ops.length }
@@ -245,16 +306,32 @@ export class Outbox {
     this.sender = sender
     this.maxBatch = maxBatch
     this._ops = null        // cache mémoire de la file (chargé paresseusement)
+    this._loading = null     // ADEP17 : promesse de chargement UNIQUE
     this._flushing = false   // garde anti-réentrance du flush
   }
 
   async _ensureLoaded() {
-    if (this._ops === null) this._ops = await this.store.load()
+    if (this._ops === null) {
+      if (!this._loading) {
+        this._loading = this.store.load().then((ops) => { this._ops = ops; return ops })
+      }
+      await this._loading
+    }
     return this._ops
   }
 
-  async _persist() {
-    await this.store.save(this._ops)
+  // ADEP17 — lecture-modification-écriture ATOMIQUE sur le contenu COURANT du magasin
+  // (un autre onglet / appel concurrent a pu écrire), fusionnée par `client_op_id`.
+  async _mutate(fn) {
+    this._ops = await majAtomique(this.store, fn)
+    return this._ops
+  }
+
+  // Relit le magasin : les lectures voient aussi ce qu'un autre onglet a mis en file.
+  async _refresh() {
+    await this._ensureLoaded()
+    this._ops = await this.store.load()
+    return this._ops
   }
 
   // Met une opération en file. `payload` voyagera tel quel au serveur. Renvoie
@@ -273,30 +350,31 @@ export class Outbox {
     const op = { client_op_id, op_type: opType, payload }
     if (target !== undefined && target !== null) op.target = target
     if (queuedAt) op.queued_at = queuedAt
-    this._ops.push(op)
-    await this._persist()
+    await this._ensureLoaded()
+    await this._mutate((cur) => (
+      cur.some((x) => x.client_op_id === client_op_id) ? cur : [...cur, op]))
     return client_op_id
   }
 
   async pending() {
-    await this._ensureLoaded()
+    await this._refresh()
     return [...this._ops]
   }
 
   async count() {
-    await this._ensureLoaded()
+    await this._refresh()
     return this._ops.length
   }
 
   async clear() {
-    this._ops = []
-    await this._persist()
+    await this._ensureLoaded()
+    await this._mutate(() => [])
   }
 
   // Ops actuellement marquées en erreur serveur (survivent au flush, restent
   // visibles à l'utilisateur — jamais retirées silencieusement).
   async failed() {
-    await this._ensureLoaded()
+    await this._refresh()
     return this._ops.filter((op) => !!op.serverError)
   }
 
@@ -305,8 +383,7 @@ export class Outbox {
   // jamais un effet de bord du flush.
   async discard(clientOpId) {
     await this._ensureLoaded()
-    this._ops = this._ops.filter((op) => op.client_op_id !== clientOpId)
-    await this._persist()
+    await this._mutate((cur) => cur.filter((op) => op.client_op_id !== clientOpId))
   }
 
   // Vide la file vers le serveur, par paquets de `maxBatch`. Retire
@@ -324,7 +401,7 @@ export class Outbox {
     let flushed = 0
     let failed = 0
     try {
-      await this._ensureLoaded()
+      await this._refresh()
       while (this._ops.length > 0) {
         const batch = this._ops.slice(0, this.maxBatch)
         let resp
@@ -343,7 +420,9 @@ export class Outbox {
         // Ops confirmées (applied|replayed) sont retirées ; toute autre op du
         // paquet reste en file, marquée avec le message d'erreur serveur +
         // compteur de tentatives — JAMAIS retirée silencieusement (VX119).
-        this._ops = this._ops
+        // ADEP17 — appliqué au contenu COURANT du magasin : une op ajoutée par un
+        // autre onglet pendant l'envoi est CONSERVÉE (jamais un `save` de l'instantané).
+        await this._mutate((cur) => cur
           .filter((op) => !doneIds.has(op.client_op_id))
           .map((op) => {
             if (!batchIds.has(op.client_op_id) || doneIds.has(op.client_op_id)) return op
@@ -353,11 +432,10 @@ export class Outbox {
               serverError: (r && r.error) || 'Rejetée par le serveur.',
               attempts: (op.attempts || 0) + 1,
             }
-          })
+          }))
         flushed += doneIds.size
         const batchFailed = batchIds.size - doneIds.size
         failed += batchFailed
-        await this._persist()
         // Ce paquet contenait des ops en erreur : on s'arrête pour ne pas les
         // renvoyer en boucle dans ce même flush() — un prochain flush (manuel
         // ou au retour réseau) les retentera avec `attempts` à jour.
