@@ -386,6 +386,8 @@ export function normaliserNombreEntete(valeur) {
   if (valeur === null || valeur === undefined) return { tape: valeur, envoye: null, change: false }
   const tape = String(valeur).trim()
   if (tape === '') return { tape, envoye: null, change: false }
+  // Déjà acceptable (au plus 2 décimales, point) : envoyé tel que tapé.
+  if (/^-?\d+(\.\d{1,2})?$/.test(tape)) return { tape, envoye: tape, change: false }
   const m = /^([+-]?)(\d*)(?:[.,](\d*))?$/.exec(tape.replace(/\s/g, ''))
   if (!m || (m[2] === '' && !(m[3] || ''))) return { tape, envoye: null, change: true }
   const negatif = m[1] === '-'

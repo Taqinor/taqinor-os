@@ -37,17 +37,19 @@ test('AGNR8 — une valeur déjà propre ne produit aucune normalisation', () =>
   const { entete, normalisations } = etatVersEcritures(etat({
     discountPct: '5.00', tauxTva: '20', prixCible: '1500',
   }))
+  // Déjà acceptable : envoyé tel que tapé (aucune réécriture inutile).
   assert.equal(entete.remise_globale, '5.00')
-  assert.equal(entete.taux_tva, '20.00')
-  assert.equal(entete.prix_cible_kwc, '1500.00')
+  assert.equal(entete.taux_tva, '20')
+  assert.equal(entete.prix_cible_kwc, '1500')
   assert.deepEqual(normalisations, [])
 })
 
 test('AGNR8 — arrondi au demi supérieur calculé sur le texte (pas d’erreur binaire)', () => {
   assert.equal(normaliserNombreEntete('1.005').envoye, '1.01')
   assert.equal(normaliserNombreEntete('12.344').envoye, '12.34')
-  assert.equal(normaliserNombreEntete('0.5').envoye, '0.50')
-  assert.equal(normaliserNombreEntete(' 3 ').envoye, '3.00')
+  assert.equal(normaliserNombreEntete('0.5').envoye, '0.5')
+  assert.equal(normaliserNombreEntete(' 3 ').envoye, '3')
+  assert.equal(normaliserNombreEntete('7,5').envoye, '7.50')
 })
 
 test('AGNR8 — une saisie illisible n’est jamais envoyée, elle est signalée', () => {

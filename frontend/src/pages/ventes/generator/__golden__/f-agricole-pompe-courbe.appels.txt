@@ -110,7 +110,7 @@
           "note": null,
           "mode_installation": "residentiel",
           "taux_tva": "20.00",
-          "remise_globale": "0.00",
+          "remise_globale": "0",
           "prix_cible_kwc": null
         },
         "etude_params": {
@@ -190,7 +190,7 @@
           "note": null,
           "mode_installation": "industriel",
           "taux_tva": "20.00",
-          "remise_globale": "0.00",
+          "remise_globale": "0",
           "prix_cible_kwc": null
         },
         "etude_params": {
@@ -290,7 +290,7 @@
           "note": null,
           "mode_installation": "agricole",
           "taux_tva": "20.00",
-          "remise_globale": "0.00",
+          "remise_globale": "0",
           "prix_cible_kwc": null
         },
         "etude_params": {
