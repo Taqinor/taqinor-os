@@ -1956,6 +1956,59 @@
     ]
    }
   },
+  "PaiementAvecRetenueEntreeSerializer": {
+   "fields": {
+    "date_paiement": [
+     "DateField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "mode": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "type_retenue": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ]
+   }
+  },
   "PaiementSerializer": {
    "fields": {
     "banque_tiree": [

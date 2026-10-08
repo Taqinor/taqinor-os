@@ -1,6 +1,8 @@
 """Sérialiseurs de facturation de ventes (BC, factures, paiements, avoirs,
 notes de débit, relances, remises, mandats) — déplacés tels quels de
 `serializers.py` par SPL148 (move only, sans ré-export)."""
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -8,7 +10,7 @@ from .models import (
     BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir,
     RemiseEncaissement, LigneRemiseEncaissement,
-    MandatPaiement,
+    MandatPaiement, RetenueSubie,
 )
 from .serializers import _fallback_taux_tva
 from core.mixins import SameCompanyFKSerializerMixin
@@ -239,6 +241,46 @@ class RetenueSubieSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
                             'paiement']
+
+
+class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
+    """AFAC30 (C-AFAC-029) — valide l'ENTRÉE de `paiement-avec-retenue` :
+    montant décimal > 0, date requise, `mode` ∈ `Paiement.Mode`,
+    `type_retenue` ∈ `TypeRetenue`, taux 0-100. Une entrée invalide donne un
+    400 en français SOUS le champ fautif — plus jamais un 500
+    (`InvalidOperation`/`TypeError`/`IntegrityError`) ni un `zzz` enregistré."""
+
+    montant = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        error_messages={
+            'required': 'Le montant est requis.',
+            'invalid': 'Montant invalide : un nombre décimal est attendu.',
+            'min_value': 'Le montant doit être positif.',
+            'max_decimal_places': 'Montant : deux décimales au plus.',
+        })
+    date_paiement = serializers.DateField(error_messages={
+        'required': 'La date de paiement est requise.',
+        'invalid': 'Date de paiement invalide (AAAA-MM-JJ).',
+    })
+    mode = serializers.ChoiceField(
+        choices=Paiement.Mode.choices, default=Paiement.Mode.VIREMENT,
+        error_messages={'invalid_choice': 'Mode de paiement inconnu.'})
+    type_retenue = serializers.ChoiceField(
+        choices=RetenueSubie.TypeRetenue.choices,
+        default=RetenueSubie.TypeRetenue.RAS_TVA,
+        error_messages={'invalid_choice': 'Type de retenue inconnu.'})
+    taux = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal('0'),
+        max_value=Decimal('100'),
+        error_messages={
+            'required': 'Le taux de RAS est requis.',
+            'invalid': 'Taux de RAS invalide : un nombre est attendu.',
+            'min_value': 'Le taux de RAS doit être compris entre 0 et 100 %.',
+            'max_value': 'Le taux de RAS doit être compris entre 0 et 100 %.',
+        })
+    reference = serializers.CharField(
+        required=False, allow_blank=True, default='', max_length=120)
+    note = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 class FactureSerializer(serializers.ModelSerializer):

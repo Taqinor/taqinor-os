@@ -986,26 +986,28 @@ def enregistrer_paiement_avec_retenue(
     payée » à tort — la retenue n'est pas un montant perdu, c'est une créance
     d'attestation à recevoir de la DGT/du client.
 
-    ``taux`` est informatif (tracé sur la retenue) ; le MONTANT de la retenue
-    est déduit du reste à payer : ``retenue = reste_avant − montant`` (le
-    paiement partiel + la retenue soldent ensemble EXACTEMENT le reste à
-    payer). Rejette un montant qui dépasserait seul le reste à payer, ou une
-    retenue résultante négative (le paiement seul suffirait déjà). Le
+    AFAC30 — le MONTANT de la retenue vient de son assiette fiscale (TVA ou
+    HT × ``taux``), moins les RAS déjà constatées, plafonné au reste après
+    paiement ; le reste non couvert RESTE DÛ. Rejette un montant qui
+    dépasserait seul le reste à payer. Le
     paiement + la retenue sont créés dans la MÊME transaction ; la facture
     bascule automatiquement « Payée » si le solde tombe à zéro (même seuil que
     ``enregistrer_paiement``).
     """
-    from decimal import Decimal
+    from decimal import Decimal, InvalidOperation
     from django.db import transaction
     from rest_framework.exceptions import ValidationError
     from ..models import Facture, Paiement, RetenueSubie
 
-    montant = Decimal(montant)
+    try:
+        montant = Decimal(str(montant))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError({'montant': 'Montant invalide.'})
     if montant <= 0:
         raise ValidationError({'montant': 'Le montant doit être positif.'})
     try:
-        taux = Decimal(taux)
-    except (TypeError, ValueError):
+        taux = Decimal(str(taux))
+    except (InvalidOperation, TypeError, ValueError):
         raise ValidationError({'taux': 'Taux de RAS invalide.'})
     if taux < 0 or taux > 100:
         raise ValidationError(
@@ -1023,13 +1025,28 @@ def enregistrer_paiement_avec_retenue(
                     f'Le paiement dépasse le reste à payer '
                     f'({reste:.2f} MAD).'),
             })
-        # Base de la retenue = ce qui reste dû après le règlement partiel ;
-        # le paiement + la retenue soldent ensemble exactement le reste à
-        # payer (jamais de fraction perdue, jamais de sur-solde).
-        base = reste - montant
-        retenue_montant = base.quantize(Decimal('0.01'))
+        # AFAC30 (C-AFAC-028) — ASSIETTE FISCALE de la RAS, plus le reste
+        # dû : RAS-TVA = TVA × taux, RAS-IS = HT × taux, moins les RAS du
+        # même type déjà constatées (hors paiement rejeté), plafonnée au
+        # reste après le paiement. Ce qui n'est pas couvert RESTE DÛ (l'ancien
+        # `reste − montant` soldait toute facture : 1 MAD à 0 % = tout le
+        # reste en « RAS »).
+        if type_retenue == RetenueSubie.TypeRetenue.RAS_IS:
+            base = Decimal(str(locked.total_ht))
+        else:
+            base = Decimal(str(locked.total_tva))
+        from core.money import quantize_mad
+        due = quantize_mad(base * taux / Decimal('100'))
+        deja = sum(
+            (r.montant for r in locked.retenues_subies.select_related(
+                'paiement').filter(type_retenue=type_retenue)
+             if not (r.paiement_id
+                     and r.paiement.statut == Paiement.Statut.REJETE)),
+            Decimal('0'))
+        retenue_montant = min(due - deja, reste - montant)
         if retenue_montant < 0:
             retenue_montant = Decimal('0')
+        retenue_montant = quantize_mad(retenue_montant)
 
         paiement = Paiement.objects.create(
             company=locked.company, facture=locked, montant=montant,
@@ -1048,15 +1065,11 @@ def enregistrer_paiement_avec_retenue(
         activity.log_facture_retenue_subie(locked, created_by, retenue)
 
         locked.refresh_from_db()
-        # AUD102 (P6) — la retenue à la source a sa PROPRE assiette (payé +
-        # retenue soldent ensemble le TTC net d'avoirs) : on la passe en
-        # ``reste`` au service unique, qui applique la même garde centime-près
-        # puis émet `facture_payee` — ce que ce chemin ne faisait pas.
-        reste_retenue = (locked.total_ttc - locked.avoirs_total
-                         - locked.montant_paye_avec_retenues)
+        # AUD102 (P6) / AFAC30 — la bascule passe par le service unique, sur
+        # le reste dû RÉEL (paiements + RAS + avoirs + notes de débit) : une
+        # RAS ne solde plus ce qu'elle ne couvre pas.
         marquer_facture_soldee(
-            locked, montant=montant, reste=reste_retenue,
-            source='retenue_source')
+            locked, montant=montant, source='retenue_source')
 
     return paiement, retenue
 

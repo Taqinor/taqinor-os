@@ -540,10 +540,10 @@ class Facture(TotauxDocumentMixin, models.Model):
         """XFAC4 — total des retenues à la source SUBIES (RAS TVA/IS) que le
         client a retenues sur cette facture. Une retenue solde la facture au
         même titre qu'un paiement — trace la créance d'attestation, pas une
-        perte. Aucune retenue → 0 → comportement historique inchangé."""
+        perte. AFAC30 : la RAS d'un paiement REJETÉ ne compte plus."""
         from decimal import Decimal
-        return sum(
-            (r.montant for r in self.retenues_subies.all()), Decimal('0'))
+        return sum((r.montant for r in self.retenues_subies.all() if not (
+            r.paiement_id and r.paiement.statut == 'rejete')), Decimal('0'))
 
     @property
     def montant_paye_avec_retenues(self):
