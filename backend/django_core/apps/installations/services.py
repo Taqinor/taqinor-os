@@ -601,6 +601,29 @@ def _realigner_nomenclature_revision(chantier, devis):
     return True
 
 
+def realigner_nomenclature_si_divergente(chantier, user, contexte):
+    """ACHT7 (C-ACHT-006) — un chantier ANNULÉ rattaché à une V2 a gardé la
+    nomenclature V1 (``_chantier_realignable`` l'écarte tant qu'il est
+    annulé). Au plus tard à sa réactivation (ou à ``reserver-stock``), si
+    ``chantier.bom`` diffère du gel de ``chantier.devis``, on rejoue le
+    survivant unique ``_realigner_nomenclature_revision`` (qui réamorce les
+    réservations) et on le note au chatter. Renvoie True si réaligné."""
+    devis = getattr(chantier, 'devis', None)
+    if devis is None or not _chantier_realignable(chantier):
+        return False
+    if _quantites_depuis_bom(chantier.bom) == _quantites_depuis_bom(
+            _freeze_bom(devis)):
+        return False
+    if not _realigner_nomenclature_revision(chantier, devis):
+        return False
+    from . import activity
+    activity.log_note(
+        chantier, user,
+        f'Matériel : nomenclature réalignée sur {devis.reference} '
+        f'{contexte}.')
+    return True
+
+
 def create_installation_from_devis(devis, user, company):
     """Retourne (installation, created).
 

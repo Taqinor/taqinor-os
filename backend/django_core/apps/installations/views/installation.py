@@ -561,7 +561,14 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             # Borné aux chantiers qui PORTAIENT déjà des réservations : en
             # mode `methode_reservation_stock='manuelle'` (ZSTK11), un
             # chantier jamais réservé ne se réserve pas tout seul ici.
-            from ..services import seed_reservations
+            from ..services import (
+                realigner_nomenclature_si_divergente, seed_reservations,
+            )
+            # ACHT7 — chantier annulé rattaché entre-temps à une V2 : sa
+            # nomenclature (et ses réservations) suivent la V2 dès la
+            # réactivation (le réalignement réamorce lui-même la réservation).
+            realigner_nomenclature_si_divergente(
+                inst, request.user, 'à la réactivation')
             if inst.reservations.exists():
                 reamorcees = seed_reservations(inst)
                 if reamorcees:
@@ -1224,8 +1231,14 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         `methode_reservation_stock='manuelle'`, où la création du chantier ne
         sème plus la réservation automatiquement — reste utilisable aussi en
         mode `confirmation` (idempotent, sans effet de bord supplémentaire)."""
-        from ..services import seed_reservations
+        from ..services import (
+            realigner_nomenclature_si_divergente, seed_reservations,
+        )
         inst = self.get_object()
+        # ACHT7 — réserver sur la nomenclature du devis COURANT (V2), jamais
+        # sur un gel V1 resté d'une annulation.
+        realigner_nomenclature_si_divergente(
+            inst, request.user, 'à la réservation du stock')
         reservations = seed_reservations(inst)
         return Response({
             'installation': inst.id,
