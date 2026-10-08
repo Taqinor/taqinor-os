@@ -379,13 +379,83 @@ def regle_e(racine: Path, parked):
         parquer.APPS_DIR = ancien
 
 
+# f. — ACAL337 : résidus de l'AO détaché dans le code MVP du calepinage.
+SYMBOLES_PONT_AO = frozenset({
+    'lier_appel_offre', 'journaliser_lien_appel_offre', 'calepinage_de_l_affaire',
+    'resultat_en_cache', 'mettre_en_cache', 'tiroir_electrique_vers_json',
+    'module_de_reference', 'onduleur_de_reference',
+})
+IDENTIFIANT_AO = 'appel_offre'
+LISTE_BLANCHE_AO = 'scripts/ao_residus_allow.txt'
+
+
+def liste_blanche_ao(racine: Path):
+    """Motifs fnmatch (relatifs à la racine) autorisés à porter ``appel_offre``."""
+    chemin = racine / LISTE_BLANCHE_AO
+    if not chemin.is_file():
+        return []
+    motifs = []
+    for ligne in chemin.read_text(encoding='utf-8').splitlines():
+        ligne = ligne.split('#', 1)[0].strip()
+        if ligne:
+            motifs.append(ligne)
+    return motifs
+
+
+def _noms_du_noeud(noeud):
+    """Identifiants que ce noeud DÉFINIT ou RÉFÉRENCE (jamais une chaîne)."""
+    if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        yield noeud.name
+    elif isinstance(noeud, ast.Name):
+        yield noeud.id
+    elif isinstance(noeud, ast.Attribute):
+        yield noeud.attr
+    elif isinstance(noeud, ast.keyword) and noeud.arg:
+        yield noeud.arg
+    elif isinstance(noeud, ast.arg):
+        yield noeud.arg
+    elif isinstance(noeud, ast.alias):
+        yield noeud.name.split('.')[-1]
+
+
+def regle_f(racine: Path, labels, motifs=None):
+    """Aucun symbole de pont AO, ni identifiant ``appel_offre`` hors liste
+    blanche, dans ``apps/calepinage`` (hors tests et migrations)."""
+    motifs = liste_blanche_ao(racine) if motifs is None else motifs
+    echecs = []
+    for chemin, chemin_rel in fichiers_py(
+            racine, 'backend/django_core/apps/calepinage', labels):
+        parties = chemin_rel.split('/')
+        nom = parties[-1]
+        if ('tests' in parties or nom.startswith(('test_', 'tests_'))
+                or nom in ('tests.py', 'conftest.py')):
+            continue
+        arbre = arbre_de(chemin)
+        if arbre is None:
+            continue
+        tolere = any(fnmatch.fnmatch(chemin_rel, motif) for motif in motifs)
+        for noeud in ast.walk(arbre):
+            for ident in _noms_du_noeud(noeud):
+                ligne = getattr(noeud, 'lineno', 0)
+                if ident in SYMBOLES_PONT_AO:
+                    echecs.append((chemin_rel, ligne,
+                                   "symbole de pont AO '%s' — l'AO est "
+                                   'détaché (backend/parked)' % ident))
+                elif ident == IDENTIFIANT_AO and not tolere:
+                    echecs.append((chemin_rel, ligne,
+                                   "identifiant '%s' hors liste blanche (%s) — "
+                                   "résidu de l'AO détaché"
+                                   % (ident, LISTE_BLANCHE_AO)))
+    return echecs
+
+
 def verifier_tout(racine: Path):
-    """Les 5 règles, dans l'ordre. Renvoie la liste des échecs."""
+    """Les 6 règles, dans l'ordre. Renvoie la liste des échecs."""
     parked = charger_registre(racine)
     labels = parked.APPS_PARQUEES_SET
     return (regle_a(racine, labels) + regle_b(racine, labels)
             + regle_c(racine, labels) + regle_d(racine, labels)
-            + regle_e(racine, parked))
+            + regle_e(racine, parked) + regle_f(racine, labels))
 
 
 def main(argv=None) -> int:
