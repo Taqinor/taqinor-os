@@ -146,6 +146,26 @@ def _refus_date_passee(quand, libelle_champ):
 
 
 READ_ACTIONS = ['list', 'retrieve']
+
+#: ACRM3 — les LECTURES de l'annuaire clients (en plus de ``READ_ACTIONS``) :
+#: elles exigent ``crm_voir`` ou le code de lecture d'un module consommateur.
+CLIENT_LECTURE_ACTIONS = [
+    'documents', 'search', 'dormants', 'engagement', 'engagement_bulk',
+    'mon_portefeuille',
+]
+
+
+def _voit_le_crm(user):
+    """ACRM3 — vrai si ``user`` lit le CRM (``crm_voir``), même règle que
+    ``HasPermissionOrLegacy('crm_voir')`` : superuser, rôle fin portant le
+    code, ou compte historique responsable sans rôle fin."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(user, 'role', None):
+        return user.has_erp_permission('crm_voir')
+    return bool(getattr(user, 'is_responsable', False))
+
+
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 #: CAD4 (résiduel) — le refus d'un appel coché « Fait » sans issue NOMME les
@@ -362,10 +382,24 @@ class ClientViewSet(CompanyScopedModelViewSet):
         # sur leur @action, mais get_permissions() PRIME dessus — sans les
         # lister ICI elles retombaient sur le défaut `IsAdminRole` (403 pour
         # tout rôle Commercial/Responsable non-admin).
-        if self.action in READ_ACTIONS + [
-            'export_xlsx', 'documents', 'search', 'dormants', 'engagement',
-            'engagement_bulk', 'mon_portefeuille', 'relancer_dormance',
-        ]:
+        #
+        # ACRM3 (C-ACRM-001) — « tout rôle authentifié » laissait le
+        # Commercial terrain (app Visites seule) et l'Admin RH lire
+        # l'annuaire clients et chercher des leads avec leur téléphone : les
+        # LECTURES exigent désormais un code fin de lecture — ``crm_voir``,
+        # ou celui d'un module qui CONSOMME l'annuaire clients (``sav_voir``
+        # pour le SAV, ``installation_voir`` pour les chantiers) — et la
+        # relance (une écriture au chatter du lead) ``crm_modifier``.
+        # ``OrLegacy`` préserve les comptes historiques sans rôle fin.
+        if self.action in READ_ACTIONS + CLIENT_LECTURE_ACTIONS:
+            return [(HasPermissionOrLegacy('crm_voir')
+                     | HasPermissionOrLegacy('sav_voir')
+                     | HasPermissionOrLegacy('installation_voir'))()]
+        elif self.action == 'relancer_dormance':
+            return [HasPermissionOrLegacy('crm_modifier')()]
+        elif self.action == 'export_xlsx':
+            # Export : garde propre (ASEC50, code ``crm_export``) — hors
+            # périmètre d'ACRM3.
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
@@ -419,6 +453,11 @@ class ClientViewSet(CompanyScopedModelViewSet):
         results = (search_companies(request.user.company, q,
                                     user=request.user)
                    if q else [])
+        # ACRM3 — un module consommateur (SAV, chantiers) cherche des
+        # CLIENTS : sans ``crm_voir``, aucun lead (ni son téléphone) ne sort
+        # de l'autocomplete.
+        if not _voit_le_crm(request.user):
+            results = [r for r in results if r.get('source') != 'lead']
         return Response({'results': results})
 
     @action(detail=True, methods=['get'], url_path='documents',
