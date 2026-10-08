@@ -2,7 +2,8 @@
 
 Authentifié par jeton signé (sans session), borné à la société + à
 l'utilisateur résolu du jeton. Vérifie : jeton valide → text/calendar avec
-VEVENT, jeton absent/invalide → 401, isolation société, isolation utilisateur.
+VEVENT, jeton absent/invalide → 404 neutre (ASEC45), isolation société,
+isolation utilisateur.
 """
 from datetime import date, timedelta
 
@@ -57,12 +58,13 @@ class TestCalendarIcs(TestCase):
 
     def test_missing_token_unauthorized(self):
         resp = self.api.get('/api/django/reporting/calendar.ics')
-        self.assertEqual(resp.status_code, 401)
+        # ASEC45 — réponse neutre unique pour tout lien inutilisable.
+        self.assertEqual(resp.status_code, 404)
 
     def test_bad_token_unauthorized(self):
         resp = self.api.get(
             '/api/django/reporting/calendar.ics?token=not-a-real-token')
-        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.status_code, 404)
 
     def test_only_token_users_events_appear(self):
         soon = date.today() + timedelta(days=4)
@@ -126,4 +128,4 @@ class TestCalendarIcs(TestCase):
         self.user.save(update_fields=['is_active'])
         resp = self.api.get(
             f'/api/django/reporting/calendar.ics?token={self.token}')
-        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.status_code, 404)

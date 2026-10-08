@@ -60,6 +60,7 @@ def _login_token(api, username, password='motdepasse123'):
     return r.cookies['access_token'].value
 
 
+@override_settings(TENANT_SIGNUP_ENABLED=True)  # ASEC13 — inscription parquée par défaut
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class Day2TenantJourneyTest(TestCase):
     """Parcours jour-2 complet d'un tenant #2, palier de suite standard."""
@@ -188,6 +189,7 @@ class Day2TenantJourneyTest(TestCase):
         self.assertEqual(rd_own.status_code, 200, rd_own.data)
 
 
+@override_settings(TENANT_SIGNUP_ENABLED=True)  # ASEC13 — inscription parquée par défaut
 @tag('pdf')
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class Day2TenantProposalPdfTest(TestCase):

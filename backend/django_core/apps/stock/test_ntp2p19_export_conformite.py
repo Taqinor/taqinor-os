@@ -115,9 +115,12 @@ class ExportConformiteTests(TestCase):
         self.assertEqual(ligne['dernier_retard_jours'], 9)
 
     def test_montant_achete_sur_la_periode(self):
+        # ASTK189 — un BCF BROUILLON n'est pas un achat : les bons de ce test
+        # sont envoyés (le montant reste celui des BCF réellement commandés).
         bcf = BonCommandeFournisseur.objects.create(
             company=self.company, fournisseur=self.fournisseur,
             reference=f'BCF-C-{next(_seq):04d}',
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
             date_commande=date(2026, 4, 15))
         LigneBonCommandeFournisseur.objects.create(
             bon_commande=bcf, designation='Panneau', quantite=10,
@@ -125,6 +128,7 @@ class ExportConformiteTests(TestCase):
         hors_periode = BonCommandeFournisseur.objects.create(
             company=self.company, fournisseur=self.fournisseur,
             reference=f'BCF-C-{next(_seq):04d}',
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
             date_commande=date(2025, 4, 15))
         LigneBonCommandeFournisseur.objects.create(
             bon_commande=hors_periode, designation='Câble', quantite=5,

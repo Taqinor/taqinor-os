@@ -40,7 +40,10 @@ class FusionBcfTests(TestCase):
             slug=f'astk66-co-{n}', nom=f'ASTK66 Co {n}')
         role = Role.objects.create(
             company=self.company, nom=f'r-astk66-{n}',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username=f'astk66-{n}', password='x', company=self.company,
             role=role, role_legacy='responsable')

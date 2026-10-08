@@ -7,8 +7,32 @@ import tailwindcss from '@tailwindcss/vite';
 import { ORIGINE_CANONIQUE } from './src/lib/site.ts';
 import { sourcesCsp } from './src/lib/subprocessors.ts';
 import { LOCALES_ACTIVES } from './src/i18n/config.ts';
+import { routesJuridiquesCompletes } from './src/lib/legal.ts';
 
 const EN_ACTIVE = /** @type {readonly string[]} */ (LOCALES_ACTIVES).includes('en');
+
+/** Routes juridiques (FR + EN, dossier construit sous dist/client/) et leur complétude (YBW28). */
+const ROUTES_JURIDIQUES = ['/mentions-legales', '/en/legal', '/confidentialite', '/en/privacy'];
+const JURIDIQUES_COMPLETES = routesJuridiquesCompletes();
+
+/**
+ * Pages juridiques incomplètes (YBW28) : une page juridique dont les champs
+ * requis sont `null` (src/lib/legal.ts) n'existe pas — son dossier construit
+ * est retiré, et le Worker la sert en 404 (porte YBW12, liste
+ * ROUTES_JURIDIQUES_COMPLETES ci-dessous).
+ */
+const routesJuridiques = () => ({
+  name: 'yanbow:routes-juridiques',
+  hooks: {
+    /** @param {{ dir: URL }} p */
+    'astro:build:done': async ({ dir }) => {
+      for (const route of ROUTES_JURIDIQUES) {
+        if (JURIDIQUES_COMPLETES.includes(route)) continue;
+        await rm(new URL(`.${route}/`, dir), { recursive: true, force: true });
+      }
+    },
+  },
+});
 
 /**
  * Page sonde « bonjour » (YBW10) : les fichiers `src/pages/_*.astro` ne sont pas
@@ -86,8 +110,8 @@ const workersDevRedirect = () => ({
         `// Généré au build depuis src/lib/site.ts et src/lib/subprocessors.ts — ne pas éditer.\n` +
           `export const CANONICAL_ORIGIN = ${JSON.stringify(ORIGINE_CANONIQUE)};\n` +
           `export const CSP_SOURCES = ${JSON.stringify(sourcesCsp())};\n` +
-          // YBW12 — routes juridiques déclarées complètes (rempli par YBW28 depuis legal.ts).
-          `export const ROUTES_JURIDIQUES_COMPLETES = [];\n`,
+          // YBW12/YBW28 — routes juridiques déclarées complètes, calculées depuis legal.ts.
+          `export const ROUTES_JURIDIQUES_COMPLETES = ${JSON.stringify(JURIDIQUES_COMPLETES)};\n`,
       );
       cfg.main = 'redirect-entry.mjs';
       cfg.assets = { ...cfg.assets, run_worker_first: ['/*', '!/_astro/*'] };
@@ -114,5 +138,5 @@ export default defineConfig({
     // Aucun script en ligne : la CSP est `script-src 'self'` (worker/headers.mjs).
     build: { assetsInlineLimit: 0 },
   },
-  integrations: [sondeBonjour(), localesActives(), workersDevRedirect()],
+  integrations: [sondeBonjour(), localesActives(), routesJuridiques(), workersDevRedirect()],
 });

@@ -1,0 +1,327 @@
+{
+  "endpoint": "PATCH /api/django/stock/fournisseurs/<id>/",
+  "pourquoi": "ASTK166 (M0, PACT10, C-ASTK-045 / C-ASTK-043) — contrat posé SEUL sur main avant les écrans de conformité fournisseur (ASTK188 affirme `conformite_documents_manquants` ; ASTK225/ASTK226 en sont nourris). Fichier multi-routes (`routes.<nom>`). Clés dérivées ligne à ligne des serializers/vues cités. L'entrée marquée « NOUVEAU — ASTK188 » n'est pas construite. Aucun prix ni montant d'achat n'est contractualisé ici.",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes : `endpoint`/`exemple` de tête = la route PATCH fournisseur. Clés lues dans les serializers/vues cités ; pas encore affirmées par APIClient (à confirmer à la fusion). L'entrée NOUVEAU est exclue de toute affirmation serveur.",
+  "exemple": {
+    "id": 12,
+    "company": 1,
+    "nom": "Fournisseur Test SARL",
+    "type": "materiel",
+    "contact_personne": "",
+    "email": "contact@exemple.ma",
+    "telephone": "0522000000",
+    "adresse": "Casablanca",
+    "ice": "001234567000012",
+    "identifiant_fiscal": "12345678",
+    "rc": "123456",
+    "rib": "011780000012345678901234",
+    "custom_data": null,
+    "statut": "actif",
+    "motif_blocage": null,
+    "statut_validation": "valide",
+    "categorie": null,
+    "categorie_nom": null,
+    "devise_defaut": "MAD",
+    "incoterm": "",
+    "delai_paiement_jours": 30,
+    "fin_de_mois": false,
+    "escompte_pct": "0.00",
+    "escompte_jours": 0,
+    "condition_paiement_ref": null,
+    "tiers": null,
+    "is_archived": false,
+    "frais_livraison_estimes": "0.00",
+    "nb_produits": 0,
+    "nb_bons_commande": 0,
+    "contacts": []
+  },
+  "routes": {
+    "fournisseurs_conformite_champs": {
+      "endpoint": "PATCH /api/django/stock/fournisseurs/<id>/",
+      "pourquoi": "FOUR-12 / XPUR5 — `ice`, `identifiant_fiscal`, `rc`, `rib` sont écrivables par PATCH (FournisseurSerializer `fields='__all__'`, serializers.py) mais sans champ à l'écran. 200 + le fournisseur complet (exemple). Le serializer sert aussi `nb_produits`, `nb_bons_commande`, `contacts`, `categorie_nom` (lecture seule). Données INTERNES : aucune sortie client.",
+      "exemple": {
+        "id": 12,
+        "company": 1,
+        "nom": "Fournisseur Test SARL",
+        "type": "materiel",
+        "contact_personne": "",
+        "email": "contact@exemple.ma",
+        "telephone": "0522000000",
+        "adresse": "Casablanca",
+        "ice": "001234567000012",
+        "identifiant_fiscal": "12345678",
+        "rc": "123456",
+        "rib": "011780000012345678901234",
+        "custom_data": null,
+        "statut": "actif",
+        "motif_blocage": null,
+        "statut_validation": "valide",
+        "categorie": null,
+        "categorie_nom": null,
+        "devise_defaut": "MAD",
+        "incoterm": "",
+        "delai_paiement_jours": 30,
+        "fin_de_mois": false,
+        "escompte_pct": "0.00",
+        "escompte_jours": 0,
+        "condition_paiement_ref": null,
+        "tiers": null,
+        "is_archived": false,
+        "frais_livraison_estimes": "0.00",
+        "nb_produits": 0,
+        "nb_bons_commande": 0,
+        "contacts": []
+      },
+      "exemple_corps": {
+        "ice": "001234567000012",
+        "identifiant_fiscal": "12345678",
+        "rc": "123456",
+        "rib": "011780000012345678901234"
+      }
+    },
+    "fournisseurs_ice_doublon": {
+      "endpoint": "POST /api/django/stock/fournisseurs/",
+      "pourquoi": "XPUR5 — création/PATCH avec un `ice` déjà utilisé : la réponse porte, EN PLUS des clés du fournisseur, la clé non bloquante `ice_duplicate_warning` (texte « Attention : l'ICE <ice> est déjà utilisé par « <nom> ». », views/fournisseur.py `_attach_ice_warning`). La clé n'est présente QUE s'il y a doublon. (Le plan la nomme `ice_doublon` ; le nom réel servi est `ice_duplicate_warning`.)",
+      "exemple": {
+        "id": 12,
+        "company": 1,
+        "nom": "Fournisseur Test SARL",
+        "type": "materiel",
+        "contact_personne": "",
+        "email": "contact@exemple.ma",
+        "telephone": "0522000000",
+        "adresse": "Casablanca",
+        "ice": "001234567000012",
+        "identifiant_fiscal": "12345678",
+        "rc": "123456",
+        "rib": "011780000012345678901234",
+        "custom_data": null,
+        "statut": "actif",
+        "motif_blocage": null,
+        "statut_validation": "valide",
+        "categorie": null,
+        "categorie_nom": null,
+        "devise_defaut": "MAD",
+        "incoterm": "",
+        "delai_paiement_jours": 30,
+        "fin_de_mois": false,
+        "escompte_pct": "0.00",
+        "escompte_jours": 0,
+        "condition_paiement_ref": null,
+        "tiers": null,
+        "is_archived": false,
+        "frais_livraison_estimes": "0.00",
+        "nb_produits": 0,
+        "nb_bons_commande": 0,
+        "contacts": [],
+        "ice_duplicate_warning": "Attention : l'ICE 001234567000012 est déjà utilisé par « Autre Fournisseur »."
+      },
+      "exemple_corps": {
+        "nom": "Fournisseur Test SARL",
+        "ice": "001234567000012"
+      }
+    },
+    "documents_conformite_fournisseur": {
+      "endpoint": "GET /api/django/stock/documents-conformite-fournisseur/?fournisseur=<id>",
+      "pourquoi": "XPUR1 — pièces de conformité ARF/CNSS/RC/assurance (DocumentConformiteFournisseurSerializer, views/conformite_fournisseur.py). Lecture tout rôle ; écriture `stock_modifier` (repli Responsable/Admin), suppression Admin. `type_document` ∈ arf|cnss|rc|assurance|autre. Aujourd'hui seul un GET est consommé par le frontend (stockApi.js) — POST/PATCH/DELETE existent côté serveur.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 4,
+            "fournisseur": 12,
+            "fournisseur_nom": "Fournisseur Test SARL",
+            "type_document": "arf",
+            "type_document_display": "Attestation de régularité fiscale (ARF)",
+            "reference": "ARF-2026-01",
+            "date_emission": "2026-01-10",
+            "date_expiration": "2026-12-31",
+            "obligatoire": true,
+            "note": "",
+            "est_valide": true,
+            "date_creation": "2026-10-12T09:00:00Z",
+            "date_modification": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 4,
+        "fournisseur": 12,
+        "fournisseur_nom": "Fournisseur Test SARL",
+        "type_document": "arf",
+        "type_document_display": "Attestation de régularité fiscale (ARF)",
+        "reference": "ARF-2026-01",
+        "date_emission": "2026-01-10",
+        "date_expiration": "2026-12-31",
+        "obligatoire": true,
+        "note": "",
+        "est_valide": true,
+        "date_creation": "2026-10-12T09:00:00Z",
+        "date_modification": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "fournisseur": 12,
+        "type_document": "arf",
+        "reference": "ARF-2026-01",
+        "date_expiration": "2026-12-31",
+        "obligatoire": true
+      }
+    },
+    "documents_fournisseur": {
+      "endpoint": "GET /api/django/stock/documents-fournisseur/?dossier=<id>",
+      "pourquoi": "NTP2P7 — pièces d'onboarding datées (DocumentFournisseurSerializer, views/onboarding_fournisseur.py). `date_emission`/`date_expiration` nullables ; `est_valide` calculé ; la clé de stockage `file_key` n'est JAMAIS servie (fichier via l'action `telecharger`). `type_document` ∈ rc|attestation_fiscale|attestation_cnss|rib_certifie|assurance|autre. Filtre `?dossier=` : voir la vue (à confirmer à la fusion).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 9,
+            "dossier": 3,
+            "type_document": "rc",
+            "type_document_display": "Registre du commerce",
+            "filename": "rc.pdf",
+            "mime": "application/pdf",
+            "taille": 120345,
+            "reference": "RC-123456",
+            "date_emission": "2026-01-05",
+            "date_expiration": "2027-01-05",
+            "note": "",
+            "est_valide": true,
+            "date_creation": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 9,
+        "dossier": 3,
+        "type_document": "rc",
+        "type_document_display": "Registre du commerce",
+        "filename": "rc.pdf",
+        "mime": "application/pdf",
+        "taille": 120345,
+        "reference": "RC-123456",
+        "date_emission": "2026-01-05",
+        "date_expiration": "2027-01-05",
+        "note": "",
+        "est_valide": true,
+        "date_creation": "2026-10-12T09:00:00Z"
+      }
+    },
+    "incidents_qualite_fournisseur": {
+      "endpoint": "GET /api/django/stock/incidents-qualite-fournisseur/?fournisseur=<id>&produit=<id>&gravite=<mineure|majeure|critique>&resolu=<true|false>",
+      "pourquoi": "NTSCM9 — incidents qualité (IncidentQualiteFournisseurSerializer, views/fournisseur_scm.py). Lecture ET écriture Responsable/Admin (le coût d'impact est INTERNE : `cout_impact_mad` n'apparaît jamais pour un autre rôle car la route lui est fermée), suppression Admin. `type_incident` ∈ non_conforme|endommage|erreur_reference|…|autre ; `declare_par` posé côté serveur.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 2,
+            "fournisseur": 12,
+            "fournisseur_nom": "Fournisseur Test SARL",
+            "bon_commande_fournisseur": null,
+            "produit": 5,
+            "retour": null,
+            "type_incident": "non_conforme",
+            "gravite": "majeure",
+            "quantite_affectee": 3,
+            "description": "Panneaux fissurés à la réception",
+            "date_incident": "2026-10-10",
+            "resolu": false,
+            "date_resolution": null,
+            "cout_impact_mad": "1200.00",
+            "declare_par": 1,
+            "est_bloquant": false,
+            "created_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 2,
+        "fournisseur": 12,
+        "fournisseur_nom": "Fournisseur Test SARL",
+        "bon_commande_fournisseur": null,
+        "produit": 5,
+        "retour": null,
+        "type_incident": "non_conforme",
+        "gravite": "majeure",
+        "quantite_affectee": 3,
+        "description": "Panneaux fissurés à la réception",
+        "date_incident": "2026-10-10",
+        "resolu": false,
+        "date_resolution": null,
+        "cout_impact_mad": "1200.00",
+        "declare_par": 1,
+        "est_bloquant": false,
+        "created_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "fournisseur": 12,
+        "produit": 5,
+        "type_incident": "non_conforme",
+        "gravite": "majeure",
+        "quantite_affectee": 3,
+        "description": "Panneaux fissurés à la réception",
+        "cout_impact_mad": "1200.00"
+      }
+    },
+    "fournisseurs_vue_360": {
+      "endpoint": "GET /api/django/stock/fournisseurs/<id>/vue-360/",
+      "pourquoi": "XPUR25 — agrégat fiche fournisseur (views/fournisseur.py `vue_360`). SÉMANTIQUE ACTUELLE : `conformite_ok` = aucune pièce obligatoire manquante/expirée ; `conformite_documents_manquants` = ENTIER (nombre de pièces). `solde_total_du` et `accords_prix[].prix_convenu` sont retirés sans `prix_achat_voir` (ASTK13) — hors périmètre ici (D-ASTK-2).",
+      "exemple": {
+        "fournisseur_id": 12,
+        "bcf_ouverts": 1,
+        "bcf_en_retard": 0,
+        "receptions_attendues": 1,
+        "factures_ouvertes": 0,
+        "solde_total_du": "0",
+        "score_performance": 100,
+        "nb_retours_avoirs": 0,
+        "accords_prix_actifs": 0,
+        "accords_prix": [],
+        "conformite_ok": false,
+        "conformite_documents_manquants": 1
+      },
+      "exemple_vue_360_nouveau_astk188": {
+        "fournisseur_id": 12,
+        "bcf_ouverts": 1,
+        "bcf_en_retard": 0,
+        "receptions_attendues": 1,
+        "factures_ouvertes": 0,
+        "solde_total_du": "0",
+        "score_performance": 100,
+        "nb_retours_avoirs": 0,
+        "accords_prix_actifs": 0,
+        "accords_prix": [],
+        "conformite_ok": false,
+        "conformite_documents_manquants": [
+          "cnss",
+          "assurance"
+        ]
+      },
+      "nouveau_astk188": "NOUVEAU — ASTK188 : `conformite_documents_manquants` liste les TYPES requis absents (arf, cnss, rc, assurance) au lieu d'un entier ; `conformite_ok` = liste vide. Hors affirmation serveur tant que ASTK188 n'est pas construite."
+    }
+  }
+}

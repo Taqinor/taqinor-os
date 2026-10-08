@@ -35,6 +35,7 @@ import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -686,6 +687,8 @@ export default function StockList() {
   const canWriteViaPerm = useHasPermission('stock_modifier')
   const canWriteViaRole = useIsAdminOrResponsable()
   const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
+  const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
   const canDelete = useIsAdmin()
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
@@ -906,6 +909,17 @@ export default function StockList() {
   // qu'InlineEdit restaure la valeur si l'enregistrement échoue.
   const onInlineSave = (p, field, value) =>
     dispatch(updateProduit({ id: p.id, data: { [field]: value } })).unwrap()
+  // ASTK33 (C-ASTK-005) — la cellule « Stock » pose un comptage d'inventaire
+  // one-shot (niveau compté → mouvement d'ajustement tracé), puis relit le
+  // catalogue : la valeur affichée est celle du SERVEUR. Un refus rejette la
+  // promesse → la cellule restaure l'ancienne valeur.
+  const onAjusterStock = async (p, value) => {
+    await stockApi.inventaire({
+      motif: 'Correction depuis le catalogue',
+      lignes: [{ produit: p.id, quantite_comptee: parseInt(value, 10) }],
+    })
+    await dispatch(fetchProduits())
+  }
 
   useEffect(() => {
     if (showArchived) dispatch(fetchProduitsArchived())
@@ -1018,11 +1032,17 @@ export default function StockList() {
       dispatch(fetchProduitsArchived())
       toastWithUndo({
         message: 'Produit désarchivé.',
+        // ASTK83 (C-ASTK-017) — « Annuler » RÉ-ARCHIVE le produit (PATCH
+        // is_archived), jamais une suppression : un produit sans relation
+        // aurait sinon disparu pour de bon.
         onUndo: async () => {
           try {
-            await dispatch(deleteProduit(p.id)).unwrap()
+            await stockApi.patchProduit(p.id, { is_archived: true })
             dispatch(fetchProduitsArchived())
-          } catch { toastError('Archivage impossible.') }
+            dispatch(fetchProduits())
+          } catch (err) {
+            toastError(err?.response?.data?.detail ?? 'Ré-archivage impossible.')
+          }
         },
       })
     } catch (err) {
@@ -1521,6 +1541,7 @@ export default function StockList() {
               produits={filtered}
               loading={loading}
               canWrite={canWrite}
+              canEditPrix={canEditPrix}
               canDelete={canDelete}
               onEdit={openEdit}
               onDelete={handleDelete}
@@ -1535,6 +1556,7 @@ export default function StockList() {
                 } },
               }) : null}
               onInlineSave={canWrite ? onInlineSave : null}
+              onAjusterStock={canWrite ? onAjusterStock : null}
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}

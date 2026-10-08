@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/stock/consignations/?statut=<actif|clos>&client=<id>",
-  "pourquoi": "ASTK164 (M0, PACT10, C-ASTK-045 / C-ASTK-047 / C-ASTK-049) — contrat posé SEUL sur main avant les écrans consignation / RFA / paramètres négoce / portail 3PL (ASTK198 et ASTK201 affirment leurs clés contre ce fichier ; ASTK221-ASTK223 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées NOUVEAU (facture_id/facture_reference ASTK198, paramètres réduits ASTK201) sont hors de ce test. Aucun montant d'achat (RFA et avoir à zéro), le solde 3PL public ne porte aucun prix.",
+  "pourquoi": "ASTK164 (M0, PACT10, C-ASTK-045 / C-ASTK-047 / C-ASTK-049) — contrat posé SEUL sur main avant les écrans consignation / RFA / paramètres négoce / portail 3PL (ASTK198 et ASTK201 affirment leurs clés contre ce fichier ; ASTK221-ASTK223 en sont nourris). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ `exemple_vide`, erreurs). Clés dérivées ligne à ligne des serializers/vues/services et affirmées par apps/stock/test_contrats_wms_astk.py ; les entrées NOUVEAU (facture_id/facture_reference ASTK198) sont hors de ce test ; les paramètres réduits ASTK201 sont construits et affirmés. Aucun montant d'achat (RFA et avoir à zéro), le solde 3PL public ne porte aucun prix.",
   "forme_serveur": "partielle",
   "forme_serveur_pourquoi": "Fichier multi-routes (une entrée par route dans `routes`) : `endpoint`/`exemple` de tête = la route `consignations`. Les clés de chaque `exemple` sont affirmées contre la réponse RÉELLE (APIClient) par apps/stock/test_contrats_wms_astk.py ; les entrées « NOUVEAU — ASTKnnn » (non construites) sont exclues de ce test et affirmées par leur propre tâche.",
   "exemple": {
@@ -304,37 +304,27 @@
     },
     "parametres_negoce": {
       "endpoint": "GET /api/django/stock/parametres-negoce/",
-      "pourquoi": "NTDST30 — réglages négoce de LA société (`parametres_negoce_view`, views/negoce.py:454 ; ParametresNegoceSerializer :429 ; singleton créé à la demande ; responsable/admin). GET et PATCH (partiel) renvoient CE même objet ; `company` jamais lue du corps ; `seuil_alerte_rfa_pct` > 100 → 400 {seuil_alerte_rfa_pct:['Le seuil de progression RFA ne peut pas dépasser 100 %.']}. `cout_rupture_jour_mad` est une valeur INTERNE (null = non saisi).",
+      "pourquoi": "NTDST30 / ASTK201 — réglages négoce de LA société (`parametres_negoce_view`, views/negoce.py ; ParametresNegoceSerializer ; singleton créé à la demande ; responsable/admin). GET et PATCH (partiel) renvoient CE même objet ; `company` jamais lue du corps. ASTK201 (C-ASTK-049) : seuls les DEUX réglages réellement lus sont exposés (`consignation_activee`, `atp_horizon_jours`) ; écrire un des cinq réglages sans lecteur (van_sales_active, seuil_alerte_rfa_pct, heures_tournee_defaut, seuil_alerte_marge_pct, cout_rupture_jour_mad) → 400 {<champ>:['Réglage non branché.']} (jamais un 200 sans effet).",
       "exemple": {
         "id": 1,
         "consignation_activee": true,
-        "van_sales_active": true,
-        "seuil_alerte_rfa_pct": 80,
-        "heures_tournee_defaut": 7,
         "atp_horizon_jours": 30,
-        "seuil_alerte_marge_pct": null,
-        "cout_rupture_jour_mad": null,
         "updated_at": "2026-10-01T09:00:00Z"
       },
       "exemple_erreur_400": {
         "seuil_alerte_rfa_pct": [
-          "Le seuil de progression RFA ne peut pas dépasser 100 %."
+          "Réglage non branché."
         ],
         "error": {
           "code": "validation_error",
-          "message": "{'seuil_alerte_rfa_pct': [ErrorDetail(string='Le seuil de progression RFA ne peut pas dépasser 100 %.', code='invalid')]}",
+          "message": "{'seuil_alerte_rfa_pct': [ErrorDetail(string='Réglage non branché.', code='invalid')]}",
           "fields": {
             "seuil_alerte_rfa_pct": [
-              "Le seuil de progression RFA ne peut pas dépasser 100 %."
+              "Réglage non branché."
             ]
           },
           "request_id": "<request_id>"
         }
-      },
-      "nouveau_astk201": "NOUVEAU — ASTK201 (réglages réduits aux DEUX lus : consignation_activee, atp_horizon_jours ; non construit, exclu du test de forme)",
-      "exemple_nouveau_astk201": {
-        "consignation_activee": true,
-        "atp_horizon_jours": 30
       }
     },
     "portails_tiers": {

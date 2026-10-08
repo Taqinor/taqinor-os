@@ -2,6 +2,8 @@
 // Page sonde (YBW10, gabarit i18n YBW13) — prouve la chaîne de build et le
 // mécanisme i18n ; noindex, liée nulle part, supprimée par YBW61. UN gabarit :
 // la route anglaise (`en/_bonjour.astro`) est une enveloppe mince qui l'importe.
+import '../styles/global.css';
+import { POLICES_PRECHARGEES } from '../lib/typo';
 import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
 import { SONDE } from '../i18n/pages';
 import { alternates, selecteurLangue, t } from '../i18n/utils';
@@ -26,8 +28,12 @@ const autres = selecteurLangue(SONDE, locale, locales);
     <meta name="robots" content="noindex, nofollow" />
     <title>{t(dict, 'titre', locale)}</title>
     <meta name="description" content={t(dict, 'description', locale)} />
-    {/* Pas d'icône avant YBW37 : une icône vide évite le 404 /favicon.ico (console). */}
-    <link rel="icon" href="data:," />
+    {/* Icônes (YBW37) : tuile encre opaque, visible sur onglet clair et sombre. */}
+    {POLICES_PRECHARGEES.map((p) => <link rel="preload" href={p} as="font" type="font/woff2" crossorigin />)}
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
   </head>
   <body>

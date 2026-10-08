@@ -19,7 +19,10 @@ safe/company-local) and retries, recursing to handle chained PROTECT FKs
 
 Safety guards (to never wipe a real company by accident):
   * ``--slug`` is REQUIRED (no default) — the caller must name the tenant.
-  * the slug MUST contain ``demo`` — otherwise the command refuses.
+  * ASEC16 — the company MUST be ``Company.est_demo=True`` (never a ``demo``
+    substring of the slug: a REAL company may be called ``taqinor-demo``).
+  * ASEC16 — the wipe and the re-seed run in ONE transaction: a failed
+    re-seed rolls the wipe back (the original data stays intact).
 
 Run:
   python manage.py reset_demo_company --slug taqinor-demo-full
@@ -52,31 +55,34 @@ def _delete_cascading(obj, max_depth=60):
 
 class Command(BaseCommand):
     help = ('Wipe and re-seed a single demo company (by --slug). Refuses any '
-            "slug that does not contain 'demo'.")
+            'company that is not est_demo=True.')
 
     def add_arguments(self, parser):
         # Pas de défaut : le slug DOIT être fourni explicitement (garde-fou).
         parser.add_argument(
             '--slug', required=True,
-            help='Slug de la société démo à réinitialiser (doit contenir '
-                 "'demo').")
+            help='Slug de la société démo à réinitialiser (société '
+                 'est_demo=True uniquement).')
         parser.add_argument(
             '--force', action='store_true',
             help='Transmis à seed_demo_company (re-seed hors DEBUG).')
 
     def handle(self, *args, **options):
         slug = options['slug']
-        if 'demo' not in slug.lower():
-            raise CommandError(
-                f"Refus : le slug « {slug} » ne contient pas 'demo'. "
-                "reset_demo_company ne réinitialise QUE des sociétés de "
-                "démonstration (garde-fou anti-effacement d'une société réelle).")
+        from authentication.selectors import (
+            refus_societe_non_demo,
+        )
+        refus = refus_societe_non_demo(slug)
+        if refus:
+            raise CommandError(refus)
 
         from authentication.models import Company, CustomUser
 
-        company = Company.objects.filter(slug=slug).first()
-        if company is not None:
-            with transaction.atomic():
+        # ASEC16 — vider PUIS re-peupler dans UNE transaction : si le re-seed
+        # échoue, la suppression est annulée (données d'origine intactes).
+        with transaction.atomic():
+            company = Company.objects.filter(slug=slug).first()
+            if company is not None:
                 # CustomUser.company est SET_NULL → supprimer explicitement les
                 # comptes de la société démo (sinon ils seraient orphelinés).
                 CustomUser.objects.filter(company=company).delete()
@@ -84,13 +90,13 @@ class Command(BaseCommand):
                 # FK PROTECT (Produit/Client…) que le simple `company.delete()`
                 # CASCADE ne peut pas traverser seul (voir docstring module).
                 _delete_cascading(company)
-            self.stdout.write(self.style.WARNING(
-                f'Société démo "{slug}" vidée.'))
-        else:
-            self.stdout.write(self.style.WARNING(
-                f'Aucune société "{slug}" existante — création directe.'))
+                self.stdout.write(self.style.WARNING(
+                    f'Société démo "{slug}" vidée.'))
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f'Aucune société "{slug}" existante — création directe.'))
 
-        call_command('seed_demo_company', slug=slug,
-                     force=options.get('force', False), verbosity=0)
+            call_command('seed_demo_company', slug=slug,
+                         force=options.get('force', False), verbosity=0)
         self.stdout.write(self.style.SUCCESS(
             f'Société démo "{slug}" réinitialisée (vidée puis re-peuplée).'))

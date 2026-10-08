@@ -939,6 +939,8 @@ append_only:
     rule: "une entrée par nouvel EventType, en fin"
   - path: backend/django_core/core/events.py
     rule: "un Signal EN FIN sous une bannière « # ── <TASKID> — … ── » (+ puce du catalogue) ; jamais renommer un événement émis"
+  - path: backend/django_core/core/events/*.py
+    rule: "un Signal EN FIN sous une bannière « # ── <TASKID> — … ── » (+ puce du catalogue) ; jamais renommer un événement émis"
   - path: backend/django_core/core/event_catalog.py
     rule: "une entrée par nouvel événement, en fin"
   - path: backend/django_core/core/event_coverage.py

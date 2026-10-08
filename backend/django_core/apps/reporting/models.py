@@ -906,3 +906,28 @@ class RapportAbonnement(TenantModel):
 
     def __str__(self):
         return f'{self.rapport_def_id} @ {self.cron or "—"}'
+
+
+class JetonCalendrier(TenantModel):
+    """ASEC45 — version du jeton de flux iCal d'un utilisateur.
+
+    La version est incluse dans la signature du jeton (``calendar.py``) :
+    « régénérer le lien » l'incrémente, ce qui révoque d'un coup tous les
+    liens émis auparavant. Absente = version 0 (les liens émis avant ASEC45
+    restent valides jusqu'à leur expiration, aucune coupure au déploiement).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: la version de jeton n'a pas de sens hors de la société de l'utilisateur
+        null=True, blank=True, related_name='jetons_calendrier',
+        verbose_name='Société')  # SCA4 : TenantModel, company redéclarée (superutilisateur sans société)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition — la version appartient à l'utilisateur
+        related_name='jeton_calendrier')
+    version = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Version de jeton de calendrier'
+        verbose_name_plural = 'Versions de jeton de calendrier'
+
+    def __str__(self):
+        return f'{self.user_id} v{self.version}'

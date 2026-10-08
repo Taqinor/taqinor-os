@@ -1,4 +1,31 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
+
+
+class IsAuthenticatedInterne(BasePermission):
+    """ASEC51 (C-ASEC-017) — permission DRF PAR DÉFAUT (``REST_FRAMEWORK
+    ['DEFAULT_PERMISSION_CLASSES']``) : compte authentifié ET INTERNE.
+
+    Avant, le défaut était ``IsAuthenticated`` : toute vue sans
+    ``permission_classes`` explicite s'ouvrait à un compte PORTAIL externe
+    (client / fournisseur / partenaire) dès qu'il avait un JWT. Désormais une
+    vue n'est joignable par un compte portail QUE si elle le déclare
+    explicitement (gardes ``IsPortal*`` des endpoints ``/portail/*``, ou un
+    ``IsAuthenticated`` explicite comme ``/auth/me/``, ``/auth/logout/``,
+    ``/auth/change-password/``).
+
+    Lit le marqueur portail EXISTANT de ``CustomUser`` (``portee``, défaut
+    ``interne``) — aucune seconde notion de « compte interne », aucun import
+    d'``apps.*`` (``authentication`` reste une app de fondation). Un anonyme
+    reste refusé exactement comme par ``IsAuthenticated`` (401)."""
+
+    message = 'Accès réservé aux comptes internes.'
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        interne = getattr(type(user), 'PORTEE_INTERNE', 'interne')
+        return getattr(user, 'portee', interne) == interne
 
 
 class IsAdminRole(BasePermission):
@@ -11,14 +38,89 @@ class IsAdminRole(BasePermission):
         )
 
 
+# ASEC11-lint — registre module→codes INJECTÉ par ``apps.roles`` depuis son
+# ``AppConfig.ready()`` (``enregistrer_registre_modules``). ``authentication``
+# est une app de fondation importée par ``core`` : elle ne doit avoir AUCUNE
+# arête d'import vers ``apps.*`` (contrat « core imports downward only »). On
+# garde une RÉFÉRENCE au dict (jamais une copie) : comportement identique à
+# l'ancien import fonction-local de ``PERMISSION_MODULE``.
+_REGISTRE_MODULES = None
+
+
+def enregistrer_registre_modules(permission_module):
+    """Branché par ``apps.roles.apps.RolesConfig.ready()`` avec
+    ``apps.roles.permissions_registre.PERMISSION_MODULE``."""
+    global _REGISTRE_MODULES
+    _REGISTRE_MODULES = permission_module
+
+
+def _registre_modules():
+    if _REGISTRE_MODULES is None:
+        from django.core.exceptions import ImproperlyConfigured
+        # Jamais de repli silencieux : un registre absent dégraderait la garde
+        # ASEC11 vers la règle historique (plus permissive).
+        raise ImproperlyConfigured(
+            'Registre des modules de permissions non enregistré : '
+            "'apps.roles' doit figurer dans INSTALLED_APPS (son ready() "
+            'appelle authentication.permissions.enregistrer_registre_modules).')
+    return _REGISTRE_MODULES
+
+
+def module_de_la_vue(view):
+    """ASEC11 — module (clé de ``PERMISSION_MODULE``) dont relève ``view``.
+
+    Attribut explicite ``permission_module`` d'abord, sinon l'app de la classe
+    de vue (``apps.<app>.…`` → ``<app>``) si — et seulement si — le registre
+    des droits porte des codes pour ce module. ``None`` = vue de fondation /
+    satellite sans codes propres (règle historique, cf. ``IsResponsableOrAdmin``
+    et la liste figée du test de matrice)."""
+    if view is None:
+        return None
+    explicite = getattr(view, 'permission_module', None)
+    if explicite:
+        return explicite
+    PERMISSION_MODULE = _registre_modules()
+    parties = (type(view).__module__ or '').split('.')
+    app = parties[1] if parties[0] == 'apps' and len(parties) > 1 \
+        else parties[0]
+    return app if app in set(PERMISSION_MODULE.values()) else None
+
+
+def codes_du_module(module):
+    """ASEC11 — codes du registre rattachés au module ``module``."""
+    PERMISSION_MODULE = _registre_modules()
+    return frozenset(c for c, m in PERMISSION_MODULE.items() if m == module)
+
+
 class IsResponsableOrAdmin(BasePermission):
-    """Responsable or admin role."""
+    """Responsable or admin role — ET, pour un rôle fin, droit sur le MODULE.
+
+    ASEC11 (C-ASEC-004) : ``is_responsable`` est vrai dès qu'un rôle porte UN
+    code d'écriture, quel que soit son module — Commercial terrain (visites) et
+    Admin RH (paie) passaient donc les écritures CRM/Ventes/Facturation/Stock.
+    Désormais, pour un compte à rôle fin non administrateur, la vue doit
+    relever d'un module où le rôle porte :
+      * un code d'ÉCRITURE de ce module pour une méthode d'écriture ;
+      * au moins un code de ce module (lecture comprise) pour une lecture.
+    Toujours AU-DESSUS de ``is_responsable`` (jamais plus large qu'avant).
+    Inchangés : superuser, palier administrateur, comptes hérités sans rôle
+    fin, vues sans module résolu (``module_de_la_vue`` → None)."""
     def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_responsable
-        )
+        user = request.user
+        if not (user and user.is_authenticated and user.is_responsable):
+            return False
+        if getattr(user, 'is_superuser', False) \
+                or getattr(user, 'is_admin_role', False):
+            return True
+        if not getattr(user, 'role_id', None):
+            return True
+        module = module_de_la_vue(view)
+        if module is None:
+            return True
+        codes = codes_du_module(module) & set(user.role.permissions or [])
+        if request.method in SAFE_METHODS:
+            return bool(codes)
+        return user._role_grants_write(codes)
 
 
 class IsAdminOrResponsableTier(BasePermission):

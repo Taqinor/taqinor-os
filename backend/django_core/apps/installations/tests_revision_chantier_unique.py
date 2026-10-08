@@ -2,8 +2,10 @@
 
 ROUGE AVANT : ``create_installation_from_devis`` ne dédupliquait que sur CE
 devis ; accepter la révision (D-QJR5-2) créait un SECOND chantier. Désormais
-le chantier de la version remplacée est RATTACHÉ à la V2 (note de trace,
-nomenclature gelée intacte).
+le chantier de la version remplacée est RATTACHÉ à la V2 (note de trace).
+ASTK177 (décision fondateur ASTK173 (a), 07/10/2026) a renversé la
+« nomenclature V1 gelée » : la nomenclature est désormais RÉALIGNÉE sur la V2
+(couvert par ``tests_astk_resa3_v2``) ; ici, V1 et V2 sans ligne → bom vide.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -63,6 +65,8 @@ class RevisionChantierUnique(TestCase):
         self.assertEqual(chantiers.count(), 1)
         chantier.refresh_from_db()
         self.assertEqual(chantier.devis_id, v2.pk)
+        # ASTK177 — bom = nomenclature de la V2 (identique ici : clone sans
+        # ligne) ; le réalignement V1 → V2 est testé dans tests_astk_resa3_v2.
         self.assertEqual(chantier.bom, bom_avant)
         self.assertTrue(InstallationActivity.objects.filter(
             installation=chantier, body__contains=v2.reference).exists())

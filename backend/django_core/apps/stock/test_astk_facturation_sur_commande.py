@@ -34,7 +34,10 @@ class _Base(TestCase):
             nom=f'{self.slug}-co', slug=f'{self.slug}-co')
         role = Role.objects.create(
             company=self.company, nom=f'r-{self.slug}',
-            permissions=['stock_voir', 'stock_modifier'])
+            permissions=['stock_voir', 'stock_modifier',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username=f'{self.slug}-user', password='x', company=self.company,
             role=role, role_legacy='responsable')

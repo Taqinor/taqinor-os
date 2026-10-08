@@ -37,7 +37,10 @@ class FournisseurStatutValidationTests(TestCase):
         self.autre = Company.objects.create(nom='astk23-b', slug='astk23-b')
         role = Role.objects.create(
             company=self.co, nom='r-astk23-resp',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.resp = User.objects.create_user(
             username='astk23-resp', password='x', company=self.co,
             role=role, role_legacy='responsable')

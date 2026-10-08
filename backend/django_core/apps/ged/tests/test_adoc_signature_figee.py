@@ -73,10 +73,13 @@ class SignatureFigeeBase(TestCase):
         return resp.content
 
     def _poster_version(self, octets):
-        key, _meta = services._store_bytes(octets, mime='application/pdf')
+        # ASEC37 — la version arrive comme fichier téléversé (multipart).
+        from django.core.files.uploadedfile import SimpleUploadedFile
         return self.api.post('/api/django/ged/versions/', {
-            'document': self.doc.pk, 'file_key': key, 'filename': 'v.pdf',
-            'mime': 'application/pdf', 'size': len(octets)}, format='json')
+            'document': self.doc.pk,
+            'file': SimpleUploadedFile(
+                'v.pdf', octets, content_type='application/pdf')},
+            format='multipart')
 
 
 class SignatureFigeeTests(SignatureFigeeBase):

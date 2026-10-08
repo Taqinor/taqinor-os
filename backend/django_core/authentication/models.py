@@ -331,23 +331,55 @@ class CustomUser(AbstractUser):
     # Liste JSON de hachages (make_password). Permet de se reconnecter si le
     # téléphone d'authentification est perdu. Additif, défaut liste vide.
     totp_recovery_codes = models.JSONField(default=list, blank=True)
+    # ASEC5 — dernier pas TOTP (``timecode``, fenêtre de 30 s) CONSOMMÉ par ce
+    # compte : un code déjà accepté (ou d'un pas antérieur) est refusé, même
+    # dans sa fenêtre de validité (anti-rejeu). Persisté en base (jamais en
+    # cache local) pour que tout processus le voie. Null = aucun code consommé.
+    totp_dernier_pas = models.IntegerField(null=True, blank=True)
 
     def verify_totp(self, code):
         """Valide un code TOTP courant (ou un code de secours à usage unique).
 
         Retourne True si le code est valide. Un code de secours consommé est
         retiré de ``totp_recovery_codes`` et persisté. Tolérance d'une fenêtre
-        (±30 s) pour absorber les petites dérives d'horloge."""
-        if not self.totp_secret:
+        (±30 s) pour absorber les petites dérives d'horloge.
+
+        ASEC5 — un code TOTP n'est accepté qu'UNE fois : son pas est consommé
+        atomiquement (UPDATE conditionnel ``totp_dernier_pas < pas``) ; un
+        second usage pose ``self._totp_rejeu = True`` et renvoie False."""
+        self._totp_rejeu = False
+        secret = self.totp_secret
+        if not secret:
             return False
+        import time
+
         import pyotp
         from django.contrib.auth.hashers import check_password
+        from django.db.models import Q
         code = (str(code) if code is not None else '').strip().replace(' ', '')
         if not code:
             return False
-        totp = pyotp.TOTP(self.totp_secret)
-        if totp.verify(code, valid_window=1):
-            return True
+        totp = pyotp.TOTP(secret)
+        now = time.time()
+        pas_courant = int(now // totp.interval)
+        pas_valide = None
+        for decalage in (1, 0, -1):
+            pas = pas_courant + decalage
+            if totp.at(pas * totp.interval) == code:
+                pas_valide = pas
+                break
+        if pas_valide is not None:
+            if self.pk is None:
+                return True
+            consomme = type(self).objects.filter(pk=self.pk).filter(
+                Q(totp_dernier_pas__isnull=True)
+                | Q(totp_dernier_pas__lt=pas_valide)
+            ).update(totp_dernier_pas=pas_valide)
+            if consomme:
+                self.totp_dernier_pas = pas_valide
+                return True
+            self._totp_rejeu = True
+            return False
         # Repli : code de secours à usage unique (haché en base).
         for hashed in list(self.totp_recovery_codes or []):
             if check_password(code, hashed):

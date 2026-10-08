@@ -51,14 +51,24 @@ describe('ASTK215 — CasiersPage', () => {
     expect(within(section).getByText('37')).toBeInTheDocument()
   })
 
-  it("Exécuter est désactivé tant que l'action serveur (ASTK213) n'existe pas", async () => {
+  it('Exécuter une tâche appelle executer puis recharge', async () => {
+    const R = ROUTES.taches_reappro_interne_executer
+    api.post.mockResolvedValue({ data: R.exemple })
     monter()
     const section = await screen.findByRole('region', { name: /Tâches de réappro/i })
-    const bouton = await within(section).findByRole('button', { name: /Exécuter/i })
-    expect(bouton).toBeDisabled()
-    expect(bouton).toHaveAttribute('title', expect.stringMatching(/bient/i))
-    fireEvent.click(bouton)
-    expect(api.post).not.toHaveBeenCalled()
+    fireEvent.click(await within(section).findByRole('button', { name: /Exécuter/i }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/stock\/taches-reappro-interne\/\d+\/executer\/$/)))
+    expect(await screen.findByText('Tâche exécutée.')).toBeInTheDocument()
+  })
+
+  it('un 409 serveur est affiché tel quel', async () => {
+    const R = ROUTES.taches_reappro_interne_executer
+    api.post.mockRejectedValue({ response: { status: 409, data: R.exemple_erreur_409 } })
+    monter()
+    const section = await screen.findByRole('region', { name: /Tâches de réappro/i })
+    fireEvent.click(await within(section).findByRole('button', { name: /Exécuter/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(R.exemple_erreur_409.detail)
   })
 
   it('génère les tâches avec POST casiers-a-reapprovisionner', async () => {

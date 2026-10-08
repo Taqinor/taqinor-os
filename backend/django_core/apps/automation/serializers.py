@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .actions import (
     SET_FIELD_TARGETS, set_field_autorise, set_field_champs_autorises,
 )
@@ -198,7 +200,10 @@ class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class ApprovalRequestSerializer(serializers.ModelSerializer):
+class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    # ASEC30 — un type de demande d'une autre société = id absent (400).
+    same_company_fields = ('request_type',)
     status_display = serializers.CharField(
         source='get_status_display', read_only=True)
     request_type_nom = serializers.CharField(
@@ -238,6 +243,23 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
 
+    def validate(self, attrs):
+        """ASEC30 — une demande DÉCIDÉE (approuvée/rejetée) est figée :
+        ni son type ni son contenu ne changent plus par PATCH ; seules les
+        actions dédiées écrivent la décision."""
+        attrs = super().validate(attrs)
+        inst = self.instance
+        decidees = (ApprovalRequest.Status.APPROVED,
+                    ApprovalRequest.Status.REJECTED)
+        if inst is not None and inst.status in decidees:
+            figes = sorted(k for k in ('request_type', 'payload')
+                           if k in attrs)
+            if figes:
+                raise serializers.ValidationError({
+                    k: ['Demande déjà décidée : modification impossible.']
+                    for k in figes})
+        return attrs
+
     def get_approvals_count(self, obj):
         from .models import ApprovalDecision
         return obj.decisions.filter(
@@ -245,7 +267,10 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
         ).values('decided_by_id').distinct().count()
 
 
-class ApprovalDelegationSerializer(serializers.ModelSerializer):
+class ApprovalDelegationSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ASEC30 — délégant et suppléant d'une autre société = id absent (400).
+    same_company_fields = ('delegant', 'suppleant')
     delegant_nom = serializers.CharField(
         source='delegant.username', read_only=True, default=None)
     suppleant_nom = serializers.CharField(
@@ -261,8 +286,17 @@ class ApprovalDelegationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation']
 
+    def update(self, instance, validated_data):
+        # ASEC30 — le délégant est fixé à la création : un PATCH ne le
+        # réattribue jamais (champ ignoré).
+        validated_data.pop('delegant', None)
+        return super().update(instance, validated_data)
 
-class IncomingWebhookTriggerSerializer(serializers.ModelSerializer):
+
+class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
+                                       serializers.ModelSerializer):
+    # ASEC30 — une règle d'une autre société = id absent (400).
+    same_company_fields = ('rule',)
     rule_nom = serializers.CharField(source='rule.nom', read_only=True)
     url_path = serializers.SerializerMethodField()
 

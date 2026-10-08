@@ -83,8 +83,10 @@ class TestEmployeeAdmin(TestCase):
         self.assertEqual(resp.data['poste'], 'Commerciale')
 
     def test_admin_can_set_new_password(self):
-        resp = self.api.patch(
-            f'/api/django/users/{self.employee.id}/',
+        # ASEC3 — le mot de passe passe désormais par l'action dédiée (le PATCH
+        # générique le refuse : tests_asec3_reinit_mdp).
+        resp = self.api.post(
+            f'/api/django/users/{self.employee.id}/reinitialiser-mot-de-passe/',
             {'password': 'brandnew123'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.employee.refresh_from_db()
