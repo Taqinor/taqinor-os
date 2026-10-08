@@ -1461,6 +1461,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         note_debit = create_numbered(
             NoteDebit, company, 'note_debit', _create)
+        # AFAC29 (C-AFAC-027) — une note de débit AUGMENTE le reste dû : le
+        # statut de paiement est re-dérivé par LE service d'ATOT8 (une facture
+        # PAYÉE majorée revient au recouvrement, émise ou en retard).
+        from ..domain.encaissements import recalculer_statut_paiement
+        recalculer_statut_paiement(
+            facture, user=request.user, source='note_debit')
         try:
             from ..utils.pdf import generate_note_debit_pdf
             generate_note_debit_pdf(note_debit.id)
