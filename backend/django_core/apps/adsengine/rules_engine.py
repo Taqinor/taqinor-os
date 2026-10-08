@@ -414,14 +414,32 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
     _, campaigns = _scoped_mirrors(company, policy, 'campaign')
     for camp in campaigns:
+        # AACQ9 — CPL sur des LEADS seulement (objectif sans leads : N/A).
+        lead_field, not_cpl = _cpl_basis(camp)
+        if not_cpl:
+            findings.append({
+                'target_type': 'campaign', 'target_meta_id': camp.meta_id,
+                'target_object_id': camp.pk, 'fired': False,
+                'insufficient_data': True, 'blocked_fr': not_cpl,
+                'computed': {'metric': 'cpl'}, 'severity': template.get(
+                    'severity', 'info'), 'detection': None})
+            continue
         snaps = list(InsightSnapshot.objects.filter(
             company=company, content_type=ct, object_id=camp.pk,
             date__gte=start).order_by('date'))
-        daily_cpls = [s.cpl for s in snaps
-                      if s.cpl is not None and (s.results or 0) >= 1
+
+        def _day_cpl(s):
+            if lead_field == 'leads_count':
+                leads = s.leads_count or 0
+                return (float(s.spend or 0) / leads) if leads else None
+            return s.cpl
+
+        daily_cpls = [_day_cpl(s) for s in snaps
+                      if _day_cpl(s) is not None
+                      and (getattr(s, lead_field) or 0) >= 1
                       and s.date < today]
-        n_leads = sum((s.results or 0) for s in snaps)
-        cpl_today = next((s.cpl for s in snaps if s.date == today), None)
+        n_leads = sum((getattr(s, lead_field) or 0) for s in snaps)
+        cpl_today = next((_day_cpl(s) for s in snaps if s.date == today), None)
         det = anomaly.detect_cpl_band(
             daily_cpls, cpl_today, n_leads,
             band_low_mult=low_mult, band_high_mult=high_mult,
@@ -532,16 +550,58 @@ def _sum_video(snaps, key):
     return total
 
 
-def _derived_metric(snaps, metric):
+# AACQ9 — le « coût par lead » des règles ne se calcule que sur des LEADS.
+# Objectif Meta → nom FR court pour la raison « non applicable ».
+_OBJECTIVE_FR = {
+    'OUTCOME_TRAFFIC': 'trafic', 'LINK_CLICKS': 'trafic',
+    'OUTCOME_ENGAGEMENT': 'messages', 'MESSAGES': 'messages',
+    'CONVERSATIONS': 'messages', 'OUTCOME_MESSAGES': 'messages',
+    'OUTCOME_AWARENESS': 'notoriété', 'BRAND_AWARENESS': 'notoriété',
+    'OUTCOME_SALES': 'ventes', 'CONVERSIONS': 'conversions',
+}
+CPL_SOURCE_LEADS_META = 'leads Meta'
+
+
+def _mirror_objective(mirror):
+    """Objectif Meta de la campagne porteuse d'un miroir (campagne, ad set
+    ou ad) ; ``''`` si inconnu."""
+    obj = mirror
+    for parent in ('adset', 'campaign'):
+        if getattr(obj, 'objective', None) is not None:
+            break
+        obj = getattr(obj, parent, None) or obj
+    return (getattr(obj, 'objective', '') or '').strip().upper()
+
+
+def _cpl_basis(mirror):
+    """AACQ9 — ``(champ_dénominateur, raison_non_applicable)`` du CPL.
+
+    Objectif LEADS → ``leads_count`` (leads Meta) ; objectif CONNU sans leads
+    (trafic, messages, notoriété, ventes) → non applicable (jamais un coût par
+    clic comparé à un plafond de coût par lead) ; objectif absent (miroir pas
+    encore synchronisé) → ``results`` historique."""
+    from .metrics import result_metric_for_objective
+    objective = _mirror_objective(mirror)
+    if not objective:
+        return 'results', None
+    if result_metric_for_objective(objective)['metric'] == 'leads_count':
+        return 'leads_count', None
+    label = _OBJECTIVE_FR.get(
+        objective, result_metric_for_objective(objective)['label_fr'])
+    return None, f'objectif {label} : pas de coût par lead'
+
+
+def _derived_metric(snaps, metric, *, lead_field='results'):
     """Valeur d'une métrique DÉRIVÉE sur une fenêtre de snapshots.
 
     Renvoie ``(valeur|None, samples)`` : ``None`` quand le dénominateur est nul
     ou la donnée absente (le déclencheur retombe alors sur ``insufficient_data``
-    — jamais un faux 0). ``samples`` = nombre de snapshots de la fenêtre."""
+    — jamais un faux 0). ``samples`` = nombre de snapshots de la fenêtre.
+    AACQ9 — ``lead_field`` = dénominateur du CPL (``_cpl_basis``)."""
     n = len(snaps)
     if metric == 'cpl':
         spend = _sum_attr(snaps, 'spend')
-        results = _sum_attr(snaps, 'results')
+        results = _sum_attr(snaps, lead_field)
         return ((spend / results) if results > 0 else None), n
     if metric == 'cost_per_conversation':
         spend = _sum_attr(snaps, 'spend')
@@ -606,24 +666,30 @@ def _eval_metric_threshold(company, policy, template, *, now, config):
     for m in mirrors:
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
-        if blocked:
+        lead_field, not_cpl = (_cpl_basis(m) if metric == 'cpl'
+                               else ('results', None))
+        blocked_here = blocked or not_cpl
+        if blocked_here:
             findings.append({**base, 'fired': False, 'insufficient_data': True,
-                             'blocked_fr': blocked,
+                             'blocked_fr': blocked_here,
                              'computed': {'metric': metric}})
             continue
         snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
-        value, n = _derived_metric(snaps, metric)
+        value, n = _derived_metric(snaps, metric, lead_field=lead_field)
         if n < min_samples or value is None:
             findings.append({**base, 'fired': False, 'insufficient_data': True,
                              'computed': {'metric': metric, 'value': value,
                                           'samples': n}})
             continue
         fired = value > threshold if operator == 'gt' else value < threshold
+        computed = {'metric': metric, 'value': round(value, 4),
+                    'threshold': threshold, 'operator': operator,
+                    'window_days': window_days, 'samples': n}
+        if lead_field == 'leads_count':
+            computed['source'] = CPL_SOURCE_LEADS_META
         findings.append({
             **base, 'fired': fired, 'insufficient_data': False,
-            'computed': {'metric': metric, 'value': round(value, 4),
-                         'threshold': threshold, 'operator': operator,
-                         'window_days': window_days, 'samples': n}})
+            'computed': computed})
     return findings
 
 
@@ -652,12 +718,21 @@ def _eval_window_regression(company, policy, template, *, now, config):
 
     findings = []
     for m in mirrors:
-        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
-        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
-        short_val, _ = _derived_metric(short_snaps, metric)
-        long_val, long_n = _derived_metric(long_snaps, metric)
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
+        lead_field, not_cpl = (_cpl_basis(m) if metric == 'cpl'
+                               else ('results', None))
+        if not_cpl:  # AACQ9 — objectif sans leads : CPL non applicable.
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': not_cpl,
+                             'computed': {'metric': metric}})
+            continue
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, metric,
+                                       lead_field=lead_field)
+        long_val, long_n = _derived_metric(long_snaps, metric,
+                                           lead_field=lead_field)
         if (long_n < min_samples or short_val is None or long_val is None
                 or long_val <= 0):
             findings.append({**base, 'fired': False, 'insufficient_data': True,
@@ -708,13 +783,21 @@ def _eval_winner_duplicate(company, policy, template, *, now, config):
 
     findings = []
     for m in mirrors:
-        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
-        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
-        short_val, _ = _derived_metric(short_snaps, 'cpl')
-        long_val, long_n = _derived_metric(long_snaps, 'cpl')
-        results = _sum_attr(long_snaps, 'results')
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
+        lead_field, not_cpl = _cpl_basis(m)
+        if not_cpl:  # AACQ9 — objectif sans leads : CPL non applicable.
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': not_cpl,
+                             'computed': {'metric': 'cpl'}})
+            continue
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, 'cpl',
+                                       lead_field=lead_field)
+        long_val, long_n = _derived_metric(long_snaps, 'cpl',
+                                           lead_field=lead_field)
+        results = _sum_attr(long_snaps, lead_field)
         if (long_n < min_samples or short_val is None or long_val is None
                 or long_val <= 0):
             findings.append({**base, 'fired': False, 'insufficient_data': True,
