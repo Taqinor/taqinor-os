@@ -938,7 +938,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 qs = qs.filter(is_archived=True)
             elif archived != 'all':
                 qs = qs.filter(is_archived=False)
-        qs = self._annoter_prochaine_touche(qs)
+        qs = self._annoter_prochaine_touche(qs, self.request.user.company)
         # CAD133 (correctif de budget) — le score d'une ligne lit désormais
         # des signaux de COMPORTEMENT (proposition ouverte/rouverte/lue,
         # questionnaire répondu, client joint) et la fraîcheur de la DERNIÈRE
@@ -961,7 +961,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             pk__in=self.get_queryset().values('pk'))
 
     @staticmethod
-    def _annoter_prochaine_touche(qs):
+    def _annoter_prochaine_touche(qs, company):
         """MRY5 — la prochaine touche de cadence, EN UNE requête.
 
         Le badge « touche due » et la chip « À relancer » (MRY16) doivent
@@ -973,6 +973,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             Count, DateTimeField, Exists, F, OuterRef, Q, Subquery)
 
         from core.dates import aujourd_hui_local
+        from .controle_suivi import seuil_retard
         from .models import LeadActivity, RelanceEtape
 
         ouvertes = RelanceEtape.objects.filter(
@@ -985,8 +986,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 output_field=DateTimeField()),
             prochaine_touche_canal=Subquery(
                 prochaines.values('canal')[:1]),
+            # ALEA32 — « en retard » = au moins un jour COMPTÉ (calendrier
+            # de la société) depuis l'échéance : le seuil unique des filtres.
             touche_en_retard_flag=Exists(
-                ouvertes.filter(due_date__lt=aujourd_hui_local())),
+                ouvertes.filter(due_date__lt=seuil_retard(
+                    company, aujourd_hui_local()))),
             # MRY20 — combien de fois a-t-on VRAIMENT essayé ? Seules les
             # tentatives HUMAINES comptent (appel / WhatsApp / e-mail avec un
             # auteur) : compter les lignes système gonflerait le chiffre

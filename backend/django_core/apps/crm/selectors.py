@@ -3026,10 +3026,14 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
     from . import horaires, stages
     from .cadence_config import CLE_DEVIS, q_etape
     from .models import Lead, LeadActivity, RelanceEtape
+    from .controle_suivi import etape_en_retard, seuil_retard
     from .serializers import pii_masquee_pour
     from .services import ISSUES_CLIENT_JOINT
 
     today = aujourd_hui_local()
+    # ALEA32 — LA définition unique de « en retard » (jours COMPTÉS).
+    seuil = seuil_retard(company, today)
+    memo_retard = {}
     masquer = pii_masquee_pour(user)
     visibles = scope_queryset(
         Lead.objects.filter(company=company), user, ['owner'])
@@ -3073,8 +3077,9 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
                                 if prochaine_le is not None else None),
             'prochaine_le': (prochaine_le.isoformat()
                              if prochaine_le is not None else None),
+            # ALEA32 — le seuil unique (jours COMPTÉS de la société).
             'en_retard': bool(prochaine_le is not None
-                              and prochaine_le < today),
+                              and prochaine_le < seuil),
         })
         lignes_joints.append(ligne)
     # Un trou (aucune prochaine étape) d'abord, puis le retard, puis la date.
@@ -3117,7 +3122,9 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
         ligne = _chaine_identite(etape.lead, masquer)
         ligne.update({
             'prochaine_le': etape.due_date.isoformat(),
-            'en_retard': etape.due_date < today,
+            # ALEA32 — LA définition unique (jours ouvrés + absences).
+            'en_retard': etape_en_retard(etape, memo=memo_retard,
+                                         aujourd_hui=today),
             'apres_visite': bool(etape.lead.visite_effectuee),
         })
         lignes_devis.append(ligne)
@@ -3703,7 +3710,10 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
         lead__is_archived=False,
     ).select_related('lead', 'lead__owner', 'devis')
     if scope == 'overdue':
-        qs = qs.filter(due_date__lt=today)
+        # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance
+        # (le seuil unique, ``controle_suivi.seuil_retard``).
+        from .controle_suivi import seuil_retard
+        qs = qs.filter(due_date__lt=seuil_retard(company, today))
     elif scope == 'all':
         qs = qs.filter(Q(due_date__lte=today) | q_tache())
     elif scope == 'tomorrow':
@@ -3824,9 +3834,12 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
 
     from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
+    from .controle_suivi import seuil_retard
     from .models import Lead, RelanceEtape
 
     today = today or aujourd_hui_local()
+    # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance.
+    seuil = seuil_retard(company, today)
     qs = RelanceEtape.objects.filter(
         company=company, lead__is_archived=False,
         due_date__gte=date_debut, due_date__lte=date_fin,
@@ -3841,7 +3854,7 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
     a_faire = Q(statut=RelanceEtape.Statut.A_FAIRE)
     resume = qs.aggregate(
         a_faire=Count('pk', filter=a_faire),
-        en_retard=Count('pk', filter=a_faire & Q(due_date__lt=today)),
+        en_retard=Count('pk', filter=a_faire & Q(due_date__lt=seuil)),
         fait=Count('pk', filter=Q(statut=RelanceEtape.Statut.FAIT)),
         sautee=Count('pk', filter=Q(statut=RelanceEtape.Statut.SAUTEE)),
         # CKP1 — colonne SÉPARÉE, ajoutée À CÔTÉ de `sautee` (jamais fondue
@@ -3852,7 +3865,7 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
     )
 
     if statut == STATUT_EN_RETARD:
-        qs = qs.filter(a_faire, due_date__lt=today)
+        qs = qs.filter(a_faire, due_date__lt=seuil)
     elif statut:
         qs = qs.filter(statut=statut)
 
@@ -3944,6 +3957,7 @@ def journal_relance(company, user, lead_id):
     from core.dates import aujourd_hui_local
 
     from . import stages
+    from .controle_suivi import etape_en_retard
     from .models import Lead, LeadActivity, RelanceEtape
     from .services import prefixe_activite_touche
 
@@ -4087,7 +4101,8 @@ def journal_relance(company, user, lead_id):
             'cadence': prochaine.cadence,
             'due_at': prochaine.due_at,
             'due_date': prochaine.due_date,
-            'en_retard': prochaine.due_date < aujourdhui,
+            # ALEA32 — LA définition unique (jours ouvrés + absences).
+            'en_retard': etape_en_retard(prochaine, aujourd_hui=aujourdhui),
         },
         'dernier_echange': None if dernier is None else {
             'quand': dernier.created_at,

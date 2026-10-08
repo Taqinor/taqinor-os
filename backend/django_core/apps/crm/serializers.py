@@ -386,8 +386,13 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         return getattr(obj.devis, 'reference', '') or ''
 
     def get_overdue(self, obj) -> bool:
-        from core.dates import aujourd_hui_local
-        return obj.due_date < aujourd_hui_local()
+        # ALEA32 — LA définition unique (jours ouvrés + absences), celle du
+        # cockpit ; le mémo du contexte évite de relire le calendrier par
+        # ligne d'une liste.
+        from .controle_suivi import etape_en_retard
+        memo = (self.context.setdefault('_alea32_retard', {})
+                if isinstance(self.context, dict) else None)
+        return etape_en_retard(obj, memo=memo)
 
     def get_traite_par_nom(self, obj) -> str:
         # `select_related('traite_par')` côté sélecteur de période : jamais
