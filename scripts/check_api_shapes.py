@@ -1305,6 +1305,22 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "n'est pas lisible statiquement — la garde s'abstient, les deux "
         "moities (DevisSerializer, BlocCalepinageDevis.jsx) s'appuient sur "
         "CET exemple (CALX45/CALX46)",
+    "sav/ticket_detail.json":
+        "cles ADDITIVES `statuts_suivants`, `equipement_fin_garantie_effective` "
+        "et `je_suis_abonne` du detail d'un ticket (GET sav/tickets/<pk>/) : "
+        "servi par un ModelViewSet dont la forme n'est pas lisible "
+        "statiquement ; les moities back (ASAV39/43/44) et front (ASAV42/45) "
+        "s'appuient sur CET exemple (ASAV1)",
+    "sav/ticket_suivi_public.json":
+        "GET public/sav/ticket/<token>/ — `annule`, `fusionne_dans_reference`, "
+        "`statut_display` « Annule » : la vue publique les sert avec ASAV30, "
+        "la page /suivi/:token avec ASAV31 — toutes deux s'appuient sur CET "
+        "exemple (ASAV1)",
+    "sav/piece_retiree.json":
+        "POST sav/tickets/<pk>/pieces-retirees/ — corps `serie_neuve` "
+        "optionnel et reponse `equipement_neuf` : servis par l'@action de "
+        "TicketViewSet avec ASAV9, champ ecran avec ASAV10 — tous deux "
+        "s'appuient sur CET exemple (ASAV1)",
 }
 
 
