@@ -60,8 +60,20 @@ SIGNATURES = {
 }
 
 # Table remplie par chaque tâche d'extraction (SPL285-SPL290) :
-# ``{'<module de core/events/>': ['<nom de signal>', ...]}``. Vide aujourd'hui.
-OWNER_MODULE = {}
+# ``{'<module de core/events/>': ['<nom de signal>', ...]}``.
+OWNER_MODULE = {
+    # SPL285 — les 22 signaux des apps parquées (core/parked.py).
+    'parked': [
+        'employe_sorti', 'conge_approuve', 'contrat_signe', 'contrat_actif',
+        'contrat_resilie', 'effet_rejete', 'abonnement_monitoring_resilie',
+        'projet_status_change', 'incident_declared', 'budget_cycle_clos',
+        'cycle_sterilisation_non_conforme', 'ao_depose', 'ao_gagne',
+        'lead_maturite_changee', 'dossier_export_cloture',
+        'scm_rupture_imminente_detectee', 'scm_cycle_sop_cloture',
+        'dossier_juridique_clos', 'btp_reserve_levee', 'btp_rfi_repondu',
+        'btp_visa_approuve', 'btp_dgd_finalise',
+    ],
+}
 
 INIT_EVENTS = Path(__file__).resolve().parents[1] / 'events' / '__init__.py'
 
