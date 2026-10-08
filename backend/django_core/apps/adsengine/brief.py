@@ -431,7 +431,17 @@ def build_brief(company, *, now=None, create_proposals=True):
     spend, results, freq_avg, last_date, per_campaign = _window_aggregate(
         company, start, end)
 
-    cpl = (spend / results) if results else None
+    # AACQ26 — CPL sur les LEADS Meta (``leads_count``), jamais sur les
+    # « résultats » génériques (clics, conversations…) ; source nommée.
+    leads_meta = (InsightSnapshot.objects
+                  .filter(company=company,
+                          content_type=ContentType.objects.get_for_model(
+                              AdCampaignMirror),
+                          date__gte=start, date__lte=end)
+                  .aggregate(n=Sum('leads_count'))['n'] or 0)
+    cpl_calc = metrics.cout_par_lead(spend, leads_meta, source='leads_meta')
+    cpl = (cpl_calc.valeur.quantize(Decimal('0.01'))
+           if cpl_calc.valeur is not None else None)
     summary = metrics.cost_per_signature_summary(company)
 
     proposals = _build_proposals(company, per_campaign) if create_proposals else []
@@ -444,6 +454,7 @@ def build_brief(company, *, now=None, create_proposals=True):
         'spend_semaine': str(spend),
         'resultats_semaine': results,
         'cpl_semaine': (str(cpl) if cpl is not None else None),
+        'cpl_source': cpl_calc.source_fr,
         'frequence_moyenne': (str(freq_avg) if freq_avg is not None else None),
         'fatigue': {
             'seuil_bas': str(FATIGUE_THRESHOLD_LOW),
@@ -490,8 +501,10 @@ def render_markdown(data):
         f"pour {data['resultats_semaine']} résultat(s).",
     ]
     if data['cpl_semaine'] is not None:
-        lines.append(
-            f"- Coût par lead (semaine) : {data['cpl_semaine']} {devise}.")
+        source = data.get('cpl_source')
+        libelle = (f"Coût par lead (semaine, {source})" if source
+                   else "Coût par lead (semaine)")
+        lines.append(f"- {libelle} : {data['cpl_semaine']} {devise}.")
     if data['frequence_moyenne'] is not None:
         fat = data['fatigue']['niveau']
         lines.append(

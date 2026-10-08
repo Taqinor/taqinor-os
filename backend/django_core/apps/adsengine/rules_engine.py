@@ -430,8 +430,10 @@ def _eval_cpl_band(company, policy, template, *, now, config):
 
         def _day_cpl(s):
             if lead_field == 'leads_count':
-                leads = s.leads_count or 0
-                return (float(s.spend or 0) / leads) if leads else None
+                from .metrics import cout_par_lead
+                calc = cout_par_lead(s.spend or 0, s.leads_count or 0,
+                                     source='leads_meta')
+                return float(calc.valeur) if calc.valeur is not None else None
             return s.cpl
 
         daily_cpls = [_day_cpl(s) for s in snaps
@@ -568,6 +570,9 @@ _OBJECTIVE_FR = {
     'OUTCOME_SALES': 'ventes', 'CONVERSIONS': 'conversions',
 }
 CPL_SOURCE_LEADS_META = 'leads Meta'
+# AACQ26 — champ dénominateur → source de ``metrics.cout_par_lead``.
+_CPL_SOURCE_FOR_FIELD = {'leads_count': 'leads_meta',
+                         'results': 'resultats_meta'}
 
 
 def _mirror_objective(mirror):
@@ -608,9 +613,13 @@ def _derived_metric(snaps, metric, *, lead_field='results'):
     AACQ9 — ``lead_field`` = dénominateur du CPL (``_cpl_basis``)."""
     n = len(snaps)
     if metric == 'cpl':
-        spend = _sum_attr(snaps, 'spend')
-        results = _sum_attr(snaps, lead_field)
-        return ((spend / results) if results > 0 else None), n
+        # AACQ26 — même définition que tout « coût par lead » : la fonction
+        # unique ``metrics.cout_par_lead``, qui nomme sa source.
+        from .metrics import cout_par_lead
+        calc = cout_par_lead(
+            _sum_attr(snaps, 'spend'), _sum_attr(snaps, lead_field),
+            source=_CPL_SOURCE_FOR_FIELD.get(lead_field, 'resultats_meta'))
+        return (float(calc.valeur) if calc.valeur is not None else None), n
     if metric == 'cost_per_conversation':
         spend = _sum_attr(snaps, 'spend')
         conv = _sum_attr(snaps, 'conversations')

@@ -38,6 +38,47 @@ from .models import AdCampaignMirror, InsightSnapshot
 # qu'un « résultats » opaque. ``metric`` désigne une clé de
 # ``platforms.base.normalize_insight_row`` (conversations/leads_count/…).
 DEFAULT_RESULT_METRIC = {'metric': 'results', 'label_fr': 'résultats'}
+# ── AACQ26 — UNE seule fonction « coût par lead », qui NOMME sa source ───────
+# Quatre dénominateurs différents portaient le même nom « coût par lead » ;
+# chacun passe désormais par ``cout_par_lead`` et affiche sa source. Un calcul
+# dépense ÷ leads hors de cette fonction est refusé par un contrôle AST
+# (``tests/test_aacq_parite_cpl.py``).
+CPL_SOURCES = {
+    'leads_meta': 'leads Meta',            # InsightSnapshot.leads_count
+    'formulaires_meta': 'formulaires Meta',  # MetaLeadMirror reçus
+    'odoo': 'leads Odoo',                  # leads Odoo attribués
+    'crm': 'leads CRM attribués',          # leads ERP attribués
+    # Repli des règles pour un miroir sans objectif synchronisé (AACQ9).
+    'resultats_meta': 'résultats Meta',
+}
+
+
+class CoutParLead(tuple):
+    """``(valeur, source, source_fr)`` — ``valeur`` Decimal ou None (jamais
+    un 0 fabriqué quand le dénominateur est nul)."""
+    __slots__ = ()
+
+    def __new__(cls, valeur, source, source_fr):
+        return super().__new__(cls, (valeur, source, source_fr))
+
+    valeur = property(lambda self: self[0])
+    source = property(lambda self: self[1])
+    source_fr = property(lambda self: self[2])
+
+
+def cout_par_lead(spend, leads, *, source):
+    """AACQ26 — Coût par lead = dépense ÷ leads de la ``source`` nommée
+    (clé de ``CPL_SOURCES``). Dépense absente ou leads nuls → ``valeur`` None."""
+    if source not in CPL_SOURCES:
+        raise ValueError(f"Source de coût par lead inconnue : {source!r}.")
+    valeur = None
+    if spend is not None and leads:
+        n = Decimal(str(leads))
+        if n > 0:
+            valeur = Decimal(str(spend)) / n
+    return CoutParLead(valeur, source, CPL_SOURCES[source])
+
+
 RESULT_METRIC_BY_OBJECTIVE = {
     # CTWA / messagerie → conversations WhatsApp (action
     # messaging_conversation_started_7d).
@@ -933,7 +974,9 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
         total = totals.get(ad.pk, {})
         spend = total.get('spend') or Decimal('0')
         leads = real_leads_by_ad.get(ad.meta_id, 0)
-        cpl = (spend / leads) if leads else None
+        # AACQ26 — leads = formulaires Meta REÇUS (MetaLeadMirror).
+        cpl_calc = cout_par_lead(spend, leads, source='formulaires_meta')
+        cpl = cpl_calc.valeur
 
         # DATAPUB5 — parité colonnes Ads Manager : champs bruts + métriques
         # DÉRIVÉES (CTR/CPC/CPM), None honnête quand un dénominateur manque
@@ -1000,6 +1043,8 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
             'conversations': conv_row.get('conversations', 0),
             'nb_leads': leads,
             'cpl_mad': (str(cpl) if cpl is not None else None),
+            # AACQ26 — source nommée de chaque coût par lead (additif).
+            'cpl_source': cpl_calc.source_fr,
             # DATAPUB5 — colonnes brutes + dérivées (parité Ads Manager).
             'impressions': impressions,
             'reach': reach,
@@ -1016,6 +1061,7 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
             # FIXPUB6 — leads Odoo par annonce + coût-par-lead (additif).
             'leads_odoo': leads_odoo,
             'cpl_odoo': cpl_odoo,
+            'cpl_odoo_source': CPL_SOURCES['odoo'],
             'odoo_configured': odoo_configured,
             'frequency': (str(total['frequency'])
                           if total.get('frequency') is not None else None),
