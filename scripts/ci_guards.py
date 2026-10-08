@@ -58,6 +58,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Check .dockerignore : aucun motif racine-seul non justifie (ADEP4)',
+         'python scripts/check_dockerignore.py',
+         '.'),
+        ('Tests de la garde .dockerignore (ADEP4)',
+         'python -m unittest scripts.tests.test_check_dockerignore -v',
+         '.'),
         ('Check parite image de prod <-> environnements CI (ADEP2)',
          'python scripts/check_parite_image_ci.py',
          '.'),
