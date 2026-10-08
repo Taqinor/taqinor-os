@@ -156,7 +156,7 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
 
 
 def decompter_stock_lignes(*, lignes, company, user, reference, note,
-                           multiplicateur=1, manquants=None):
+                           multiplicateur=1, manquants=None, sorties=None):
     """AUD116 — LE DÉCOMPTEUR UNIQUE de stock des lignes d'un devis.
 
     Il existait DEUX décompteurs pour le MÊME panier, et ils ne faisaient pas
@@ -185,6 +185,10 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
     sortie est posée quand même (le stock ERP passe sous zéro) et chaque
     manque est ajouté à la liste ``(nom, disponible, requis)`` pour être
     signalé. ``None`` = garde bloquante historique (livraison BC).
+
+    ``sorties`` (dict, facultatif) — ASTK135 : reçoit ``{produit_id: qte}``
+    des quantités réellement sorties, pour que l'appelant SOLDE la
+    réservation du chantier (``solder_reservations_chantier_vente``).
     """
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
@@ -240,8 +244,32 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
             note=note,
             created_by=user,
         )
+        if sorties is not None:
+            sorties[produit.id] = sorties.get(produit.id, 0) + qte
         moved = True
     return moved
+
+
+def solder_reservations_chantier_vente(*, devis, company, sorties, reference,
+                                       user=None):
+    """ASTK135 (C-ASTK-028) — « une vente = une sortie ».
+
+    Le matériel d'une vente SORTI par la facture directe ou par la livraison
+    d'un BC (toggle OFF) SOLDE la réservation N14 du chantier du devis, sinon
+    « Installé » le sortait une seconde fois. Service UNIQUE du propriétaire
+    chantiers (ASTK120), appelé via ``apps.installations`` (doctrine
+    cross-app, imports fonction-locaux) DANS la transaction de la sortie ;
+    idempotent par (référence, produit). No-op sans chantier ou sans sortie.
+    """
+    if devis is None or not sorties:
+        return 0
+    from apps.installations.selectors import installation_for_devis
+    from apps.installations.services import solder_reservations_vente
+    installation = installation_for_devis(devis, company=company)
+    if installation is None:
+        return 0
+    return solder_reservations_vente(
+        installation, sorties, reference, user=user)
 
 
 def reserver_stock_devis_facture(*, devis, user, company):
@@ -293,6 +321,7 @@ def reserver_stock_devis_facture(*, devis, user, company):
     # facture. La sortie est posée quand même (stock ERP sous zéro) et le
     # manque est noté sur le devis pour recompter le stock.
     manquants = []
+    sorties = {}
     moved = decompter_stock_lignes(
         lignes=option_lines(devis),
         company=company,
@@ -301,7 +330,13 @@ def reserver_stock_devis_facture(*, devis, user, company):
         note=f'Facturation directe — devis {reference}',
         multiplicateur=nombre_proprietes(devis),
         manquants=manquants,
+        sorties=sorties,
     )
+    # ASTK135 — la sortie de la vente solde la réservation du chantier (même
+    # transaction : un échec de la sortie annule aussi le solde).
+    solder_reservations_chantier_vente(
+        devis=devis, company=company, sorties=sorties, reference=reference,
+        user=user)
     if manquants:
         from apps.ventes import activity
         detail = ' ; '.join(

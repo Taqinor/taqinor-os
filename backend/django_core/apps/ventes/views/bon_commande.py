@@ -245,10 +245,14 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     # consommait les DEUX kits — le stock physique divergeait
                     # du stock ERP du montant d'une batterie.
                     from ..utils.options import option_lines
-                    from ..domain.facturation_ops import decompter_stock_lignes
+                    from ..domain.facturation_ops import (
+                        decompter_stock_lignes,
+                        solder_reservations_chantier_vente,
+                    )
                     # ERR-QAC-MULTIVILLA-MATERIEL-XN — ×N villas : livrer
                     # le BC sort le matériel des N villas facturées.
                     from ..multivilla import nombre_proprietes
+                    sorties = {}
                     decompter_stock_lignes(
                         lignes=option_lines(bc.devis),
                         company=bc.company,
@@ -256,7 +260,14 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                         reference=bc.reference,
                         note=f'Livraison BC {bc.reference}',
                         multiplicateur=nombre_proprietes(bc.devis),
+                        sorties=sorties,
                     )
+                    # ASTK135 — la sortie du BC solde la réservation du
+                    # chantier (même transaction) : « Installé » ne ressort
+                    # que le reliquat.
+                    solder_reservations_chantier_vente(
+                        devis=bc.devis, company=bc.company, sorties=sorties,
+                        reference=bc.reference, user=request.user)
                 bc.statut = BonCommande.Statut.LIVRE
                 from django.utils import timezone as _tz2
                 bc.date_livraison_reelle = _tz2.now().date()
