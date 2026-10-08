@@ -82,7 +82,11 @@ TOLERANCE_CENTIME = Decimal('0.01')
 
 # Statuts de ligne qui EXIGENT une décision humaine — la « file de revue ».
 # Aucune de ces lignes n'est jamais affectée automatiquement.
-STATUTS_REVUE = ('ambigu', 'client_non_identifie')
+STATUTS_REVUE = ('ambigu', 'client_non_identifie', 'date_invalide')
+# AFAC5 — ligne déjà importée par un relevé antérieur (même clé
+# d'idempotence) : jamais importable, jamais en revue.
+STATUT_DOUBLON = 'doublon_import'
+STATUT_DATE_INVALIDE = 'date_invalide'
 # Le seul statut qu'un commit accepte d'écrire.
 STATUT_IMPORTABLE = 'a_importer'
 
@@ -126,12 +130,20 @@ def _parse_montant(v):
 
 
 def _parse_date(v):
-    """Convertit une valeur en str ISO AAAA-MM-JJ ou None."""
+    """Convertit une valeur en str ISO AAAA-MM-JJ, ou None si non reconnue.
+
+    AFAC5 (C-AFAC-016) — une date NON reconnue renvoie désormais ``None``
+    (elle renvoyait la chaîne brute, que le commit remplaçait en silence par
+    la date du JOUR : un paiement daté d'un jour où il n'a pas eu lieu). La
+    ligne part en ``date_invalide`` (file de revue) et n'est jamais écrite.
+    Appelants : ``dry_run`` seul (le commit relit l'ISO de la décision)."""
     if v is None:
         return None
     if hasattr(v, 'strftime'):  # datetime/date (openpyxl)
         return v.strftime('%Y-%m-%d')
     s = str(v).strip()
+    if not s:
+        return None
     # Accepte DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY
     for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d'):
         try:
@@ -139,7 +151,44 @@ def _parse_date(v):
             return datetime.strptime(s, fmt).date().isoformat()
         except ValueError:
             continue
-    return s  # renvoie brut si non reconnu (signalé dans l'aperçu)
+    return None
+
+
+def _cle_contenu(decision):
+    """AFAC5 — empreinte NORMALISÉE d'une ligne de relevé (sans son rang).
+
+    Ne dépend que du SENS de la ligne — date ISO, montant à 2 décimales,
+    référence et libellé normalisés — jamais de la forme du fichier : un
+    relevé ré-encodé (CRLF/BOM), ré-exporté au format FR (« 20/06/2026 »,
+    « 5 000,00 »), aux colonnes réordonnées ou chevauchant un import
+    antérieur donne la MÊME empreinte pour la même opération bancaire."""
+    montant = _parse_montant(decision.get('montant'))
+    montant_txt = (str(montant.quantize(Decimal('0.01')))
+                   if montant is not None else '')
+    ref = ' '.join(str(decision.get('reference') or '').split()).upper()
+    libelle = ' '.join(str(decision.get('libelle') or '').split()).upper()
+    return f"{decision.get('date') or ''}|{montant_txt}|{ref}|{libelle}"
+
+
+def _cles_idempotence(decisions):
+    """AFAC5 — clé d'idempotence PAR LIGNE, alignée sur ``decisions``.
+
+    Clé = ``releve:`` + sha256(empreinte normalisée + rang d'occurrence de
+    cette empreinte dans le fichier). Le rang garde deux lignes identiques
+    LÉGITIMES d'un même relevé (deux virements du même montant le même jour)
+    comme deux paiements, tout en reconnaissant la même ligne réimportée.
+    Posée en ``Paiement.idempotency_key`` (contrainte
+    ``uniq_paiement_idempotency_par_societe``)."""
+    vus = {}
+    cles = []
+    for decision in decisions:
+        contenu = _cle_contenu(decision)
+        rang = vus.get(contenu, 0)
+        vus[contenu] = rang + 1
+        empreinte = hashlib.sha256(
+            f'{contenu}|{rang}'.encode('utf-8')).hexdigest()
+        cles.append(f'releve:{empreinte}')
+    return cles
 
 
 def _match_facture(ref, montant, company, libelle='', ice=''):
@@ -213,6 +262,32 @@ def _normaliser_mode(mode_raw):
     return mode_map.get((mode_raw or 'virement').strip().lower(), 'virement')
 
 
+def _marquer_doublons(decisions, company):
+    """AFAC5 — passe en ``doublon_import`` toute ligne déjà importée.
+
+    Seules les lignes porteuses d'un montant ET d'une date valides peuvent
+    être des doublons (les autres ne sont jamais écrites). La facture
+    rapprochée est effacée : la ligne n'est plus importable."""
+    from .models import Paiement
+    cles = _cles_idempotence(decisions)
+    candidates = {
+        cle for cle, d in zip(cles, decisions)
+        if d.get('statut') not in ('montant_invalide', STATUT_DATE_INVALIDE)}
+    if not candidates:
+        return
+    existantes = set(Paiement.objects.filter(
+        company=company, idempotency_key__in=candidates,
+    ).values_list('idempotency_key', flat=True))
+    for cle, d in zip(cles, decisions):
+        if cle in existantes and d.get('statut') not in (
+                'montant_invalide', STATUT_DATE_INVALIDE):
+            d['statut'] = STATUT_DOUBLON
+            d['facture_id'] = None
+            d['facture_reference'] = None
+            d['match_type'] = None
+            d['candidats'] = []
+
+
 def dry_run(file_bytes, filename, company, max_preview=10, user=None):
     """Aperçu + DÉCISIONS jetonnées. Aucune écriture d'argent.
 
@@ -255,8 +330,6 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
             unmapped.append(h)
 
     decisions = []
-    matched = 0
-    already_paid = 0
 
     for i, raw_row in enumerate(rows):
         mapped = _map_row(raw_row, col_to_field)
@@ -278,13 +351,25 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
             })
             continue
 
+        if date is None:
+            # AFAC5 — date vide ou non reconnue (« 15.06.2026 ») : jamais
+            # inventée (plus de repli sur la date du jour au commit). La
+            # ligne part en revue humaine.
+            decisions.append({
+                'ligne': i + 2, 'date': None, 'reference': ref,
+                'libelle': libelle, 'montant': str(montant),
+                'mode': _normaliser_mode(mapped.get('mode')),
+                'statut': STATUT_DATE_INVALIDE,
+                'facture_id': None, 'facture_reference': None,
+                'match_type': None, 'candidats': [],
+            })
+            continue
+
         facture, match_type, statut_match, candidats = _match_facture(
             ref, montant, company, libelle=libelle, ice=ice)
         if facture is not None:
-            matched += 1
             reste = facture.montant_du
             if reste <= TOLERANCE_CENTIME:
-                already_paid += 1
                 statut = 'deja_regle'
             elif montant - reste > TOLERANCE_CENTIME:
                 statut = 'surpaiement'
@@ -302,6 +387,11 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
             'facture_reference': facture.reference if facture else None,
             'match_type': match_type, 'candidats': candidats,
         })
+
+    # AFAC5 — idempotence PAR LIGNE : une ligne dont la clé est déjà posée
+    # sur un paiement de la société a déjà été importée (relevé ré-encodé,
+    # ré-exporté ou chevauchant — que le hash de fichier ne voit pas).
+    _marquer_doublons(decisions, company)
 
     fichier_hash = hashlib.sha256(file_bytes).hexdigest()
     session = ReleveImportSession.objects.create(
@@ -321,9 +411,9 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
         'preview': decisions[:max_preview],
         'revue': revue,
         'total_rows': len(rows),
-        'matched': matched,
+        'matched': sum(1 for d in decisions if d.get('facture_id')),
         'ambigus': len(revue),
-        'already_paid': already_paid,
+        'already_paid': sum(1 for d in decisions if d.get('statut') == 'deja_regle'),
         'deja_importe': ReleveImportSession.objects.filter(
             company=company, fichier_hash=fichier_hash,
             consomme_at__isnull=False).exists(),
@@ -349,7 +439,7 @@ def commit(company, user, token, lignes=None):
     Renvoie un dict : {created, skipped, errors, results[{ligne, statut}]}.
     Chaque paiement est créé dans sa propre transaction (pas de rollback global).
     """
-    from django.db import transaction as db_transaction
+    from django.db import IntegrityError, transaction as db_transaction
     from django.utils import timezone as dj_timezone
     from .models import Facture, Paiement, ReleveImportSession
     from . import activity
@@ -359,16 +449,26 @@ def commit(company, user, token, lignes=None):
         raise ValueError(
             "Jeton de dry-run requis : lancez d'abord l'aperçu, vérifiez les "
             "lignes, puis validez.")
-    session = ReleveImportSession.objects.filter(
-        company=company, token=token).first()
-    if session is None:
-        raise ValueError('Jeton de dry-run inconnu ou expiré.')
-    if session.consomme_at is not None:
-        raise ValueError('Ce dry-run a déjà été importé.')
-    if ReleveImportSession.objects.filter(
-            company=company, fichier_hash=session.fichier_hash,
-            consomme_at__isnull=False).exists():
-        raise ValueError('Ce relevé a déjà été importé (contenu identique).')
+    # AFAC5 — la session est VERROUILLÉE puis CONSOMMÉE en tête, avant toute
+    # écriture : deux commits concurrents du même jeton ne peuvent plus
+    # passer tous les deux le contrôle « non consommé » puis importer deux
+    # fois (le second voit `consomme_at` posé et est refusé).
+    with db_transaction.atomic():
+        session = ReleveImportSession.objects.select_for_update().filter(
+            company=company, token=token).first()
+        if session is None:
+            raise ValueError('Jeton de dry-run inconnu ou expiré.')
+        if session.consomme_at is not None:
+            raise ValueError('Ce dry-run a déjà été importé.')
+        if ReleveImportSession.objects.filter(
+                company=company, fichier_hash=session.fichier_hash,
+                consomme_at__isnull=False).exists():
+            raise ValueError(
+                'Ce relevé a déjà été importé (contenu identique).')
+        session.consomme_at = dj_timezone.now()
+        session.save(update_fields=['consomme_at', 'updated_at'])
+
+    cles = _cles_idempotence(session.decisions or [])
 
     OPEN_STATUTS = (Facture.Statut.EMISE.value, Facture.Statut.EN_RETARD.value)
     demandees = None if lignes is None else {int(x) for x in lignes}
@@ -378,7 +478,7 @@ def commit(company, user, token, lignes=None):
     errors = 0
     results = []
 
-    for decision in (session.decisions or []):
+    for decision, cle in zip(session.decisions or [], cles):
         i = int(decision.get('ligne', 0)) - 2
         montant = _parse_montant(decision.get('montant'))
         date_str = decision.get('date')
@@ -397,11 +497,25 @@ def commit(company, user, token, lignes=None):
                             'statut': decision.get('statut') or 'non_trouve'})
             continue
 
+        # AFAC5 — plus AUCUN repli sur la date du jour : une décision sans
+        # date ISO valide n'est jamais écrite (elle est en revue).
         from datetime import date as _date
         try:
-            date_obj = _date.fromisoformat(date_str) if date_str else _date.today()
+            date_obj = _date.fromisoformat(date_str) if date_str else None
         except (ValueError, TypeError):
-            date_obj = _date.today()
+            date_obj = None
+        if date_obj is None:
+            skipped += 1
+            results.append({'ligne': i + 2, 'statut': STATUT_DATE_INVALIDE})
+            continue
+
+        # AFAC5 — idempotence par ligne, re-vérifiée au commit (un autre
+        # import a pu passer entre l'aperçu et la validation).
+        if Paiement.objects.filter(
+                company=company, idempotency_key=cle).exists():
+            skipped += 1
+            results.append({'ligne': i + 2, 'statut': STATUT_DOUBLON})
+            continue
 
         facture = Facture.objects.filter(
             company=company, pk=decision.get('facture_id')).first()
@@ -437,6 +551,7 @@ def commit(company, user, token, lignes=None):
                     montant=montant, date_paiement=date_obj,
                     mode=mode, reference=ref or None,
                     note=f'Import relevé bancaire (ligne {i + 2})',
+                    idempotency_key=cle,
                     created_by=user)
                 activity.log_facture_paiement(locked, user, paiement)
                 # YLEDG1 — événement documentaire générique (pose du seam
@@ -458,6 +573,11 @@ def commit(company, user, token, lignes=None):
                 'facture': facture.reference,
                 'montant': str(montant),
                 'match_type': match_type})
+        except IntegrityError:
+            # AFAC5 — course : la même ligne vient d'être importée par un
+            # autre commit (contrainte uniq_paiement_idempotency_par_societe).
+            skipped += 1
+            results.append({'ligne': i + 2, 'statut': STATUT_DOUBLON})
         except Facture.DoesNotExist:
             # Race: facture payée entre le match et l'atomic.
             skipped += 1
@@ -469,12 +589,6 @@ def commit(company, user, token, lignes=None):
                            exc_info=True)
             results.append({'ligne': i + 2, 'statut': 'erreur',
                             'detail': str(exc)})
-
-    # Jeton à usage unique : consommé même si rien n'a été créé (l'opérateur
-    # a bien exécuté sa décision). Un ré-import du MÊME contenu sera refusé
-    # par la garde de hash en tête de fonction.
-    session.consomme_at = dj_timezone.now()
-    session.save(update_fields=['consomme_at', 'updated_at'])
 
     return {
         'token': session.token,
