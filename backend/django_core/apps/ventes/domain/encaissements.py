@@ -86,6 +86,9 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     with transaction.atomic():
         locked = Facture.objects.select_for_update().get(pk=facture.pk)
         if locked.statut in (Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
+            # AFAC23 — une facture close (soldée ou annulée) ne garde aucun
+            # lien de paiement ouvert, même sur un rejeu idempotent.
+            _fermer_liens_facture_close(locked)
             return False
         if not force:
             residuel = locked.montant_du if reste is None else Decimal(
@@ -103,6 +106,11 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
             company=locked.company)
         facture_payee.send(
             sender=Facture, instance=locked, company=locked.company)
+        # AFAC23 (C-AFAC-018) — le SOLDE (paiement manuel, avoir, abandon,
+        # ventilation…) ferme les liens « Payer en ligne » encore ouverts :
+        # la page client ne réclame plus rien sur une facture soldée. Le lien
+        # soldé par SON propre encaissement est déjà PAYÉ (pas touché).
+        _fermer_liens_facture_close(locked)
 
     # L'instance de l'appelant reflète la bascule (elle n'est pas ``locked``).
     if facture.pk == locked.pk:
@@ -528,6 +536,25 @@ def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
 # une seule source de vérité, jamais dupliquée ici.
 
 
+def fermer_liens_paiement(facture, statut):
+    """AFAC23 (C-AFAC-018) — LE service unique de fermeture des liens
+    « Payer en ligne » d'une facture : tout lien EN ATTENTE passe ``statut``
+    (``annule`` sur annulation / solde par un autre chemin, ``paye`` quand la
+    facture est soldée par son propre encaissement). Appelé par l'annulation,
+    le solde (``marquer_facture_soldee``) et la révocation manuelle.
+    Idempotent ; renvoie le nombre de liens fermés."""
+    from ..models import PaymentLink
+
+    return PaymentLink.objects.filter(
+        facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
+    ).update(statut=statut)
+
+
+def _fermer_liens_facture_close(facture):
+    from ..models import PaymentLink
+    return fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+
+
 def expirer_liens_paiement_perimes(facture):
     """AUD136 — bascule en EXPIRÉ les liens EN ATTENTE dont la date est passée.
 
@@ -609,8 +636,9 @@ def revoquer_lien_paiement(*, facture, user=None):
             .order_by('-created_at').first())
     if lien is None:
         return None
-    lien.statut = PaymentLink.Statut.ANNULE
-    lien.save(update_fields=['statut'])
+    # AFAC23 — même service de fermeture que l'annulation et le solde.
+    fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+    lien.refresh_from_db()
     return lien
 
 
@@ -753,10 +781,14 @@ def record_payment_from_link(*, link, payload=None):
     if not result.get('paid'):
         return None, 'Paiement non confirmé par le fournisseur.'
 
+    # AFAC23 (C-AFAC-023) — sans montant déclaré, le repli est ce qui reste
+    # à payer MAINTENANT (`montant_a_payer`), jamais le montant FIGÉ à la
+    # création du lien (une note de débit postérieure était perdue).
     montant = result.get('montant')
     if montant is None:
-        montant = link.montant
+        montant = link.montant_a_payer
     montant = Decimal(str(montant))
+    provider_ref = (result.get('provider_ref') or '')[:120]
 
     with transaction.atomic():
         locked_link = (PaymentLink.objects.select_for_update()
@@ -768,6 +800,14 @@ def record_payment_from_link(*, link, payload=None):
                    .get(pk=locked_link.facture_id))
         if facture.statut == Facture.Statut.ANNULEE:
             return None, 'Facture annulée.'
+        # AFAC23 — rejeu d'une confirmation PARTIELLE (le lien reste ouvert) :
+        # même référence fournisseur ⇒ le paiement existant, jamais un second.
+        if provider_ref:
+            deja = Paiement.objects.filter(
+                facture=facture, mode=Paiement.Mode.CARTE,
+                reference=provider_ref).first()
+            if deja is not None:
+                return deja, None
         # Borne le montant au reste à payer (jamais de sur-paiement).
         reste = facture.montant_du
         if montant > reste:
@@ -780,7 +820,7 @@ def record_payment_from_link(*, link, payload=None):
             montant=montant,
             date_paiement=timezone.localdate(),
             mode=Paiement.Mode.CARTE,
-            reference=(result.get('provider_ref') or '')[:120],
+            reference=provider_ref,
             note='Paiement en ligne (lien « Payer en ligne »).',
         )
         # YLEDG1 — événement documentaire générique (pose du seam pour
@@ -788,13 +828,17 @@ def record_payment_from_link(*, link, payload=None):
         from core.events import paiement_enregistre
         paiement_enregistre.send(
             sender=Paiement, instance=paiement, company=facture.company)
-        locked_link.statut = PaymentLink.Statut.PAYE
-        locked_link.paiement = paiement
+        facture.refresh_from_db()
+        # AFAC23 — le lien ne passe PAYÉ que si la facture est SOLDÉE : un
+        # règlement partiel le laisse ouvert pour le reste (la page affiche
+        # alors le nouveau reste, `paye: false`).
         locked_link.provider_ref = (result.get('provider_ref') or '')[:200]
-        locked_link.paid_at = timezone.now()
+        if facture.montant_du <= Decimal('0.01'):
+            locked_link.statut = PaymentLink.Statut.PAYE
+            locked_link.paiement = paiement
+            locked_link.paid_at = timezone.now()
         locked_link.save(update_fields=[
             'statut', 'paiement', 'provider_ref', 'paid_at'])
-        facture.refresh_from_db()
         # AUD102 (P4) — YDOCF4/YEVNT6 passent par LE service unique (garde
         # centime-près, verrou, `facture_paid` + `facture_payee` une seule
         # fois). Comportement identique pour ce chemin, déjà correct.

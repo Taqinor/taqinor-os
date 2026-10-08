@@ -152,7 +152,9 @@ class PaymentLinkTests(TestCase):
 
     def test_real_provider_path_still_confirms(self):
         """QX3 — un vrai fournisseur (mocké paid=True) enregistre bien un
-        paiement, avec le montant SERVEUR (link.montant), jamais le payload."""
+        paiement, avec le montant SERVEUR, jamais le payload. AFAC23 — le
+        repli sans montant déclaré est `link.montant_a_payer` (reste dû à
+        l'instant T), plus `link.montant` figé à la création."""
         from unittest import mock
         link_token = self._create_link().data['token']
         fake = mock.Mock()

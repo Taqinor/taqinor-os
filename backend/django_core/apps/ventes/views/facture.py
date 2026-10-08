@@ -774,6 +774,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 locked.save(update_fields=['statut'])
                 facture = locked
 
+            # AFAC23 (C-AFAC-018) — les trois branches convergent vers
+            # ANNULEE : les liens « Payer en ligne » ouverts sont fermés dans
+            # la même transaction (la page client répond « annulé »).
+            from ..domain.encaissements import fermer_liens_paiement
+            from ..models import PaymentLink
+            fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+
         # YEVNT6 — événement documentaire (best-effort), une fois pour les
         # trois branches ci-dessus (toutes convergent vers ANNULEE).
         from core.events import facture_annulee
