@@ -378,6 +378,13 @@ const stockApi = {
     api.patch(`/stock/documents-conformite-fournisseur/${id}/`, data),
   deleteDocumentConformiteFournisseur: (id) =>
     api.delete(`/stock/documents-conformite-fournisseur/${id}/`),
+  // ASTK226 — incidents qualité (NTSCM9), filtrés serveur par ?fournisseur=.
+  getIncidentsQualiteFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/incidents-qualite-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
+  createIncidentQualiteFournisseur: (data) =>
+    api.post('/stock/incidents-qualite-fournisseur/', data),
+  updateIncidentQualiteFournisseur: (id, data) =>
+    api.patch(`/stock/incidents-qualite-fournisseur/${id}/`, data),
   // WIR26 — Paramètres → Achats (singleton par société). GET crée le réglage
   // si besoin (`AchatsParametres.for_company`) ; PATCH exige un `id` (route
   // détail du ViewSet), obtenu via le GET précédent.

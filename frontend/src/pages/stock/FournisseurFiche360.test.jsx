@@ -29,6 +29,10 @@ vi.mock('../../api/stockApi', () => ({
     createDocumentConformiteFournisseur: vi.fn(),
     updateDocumentConformiteFournisseur: vi.fn(),
     deleteDocumentConformiteFournisseur: vi.fn(),
+    // ASTK226 — incidents qualité.
+    getIncidentsQualiteFournisseurDe: vi.fn(),
+    createIncidentQualiteFournisseur: vi.fn(),
+    updateIncidentQualiteFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),
     createAcompteFournisseur: vi.fn(),
@@ -52,7 +56,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 // ASTK178 — frontière réseau des VRAIS wrappers stockApi (importActual).
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
 
 import stockApi from '../../api/stockApi'
 import { documentContrat } from '../../test/fixtures/contractSamples'
@@ -623,5 +627,78 @@ describe('ASTK225 — onglet Conformité saisissable', () => {
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
     expect(await within(dialog).findByText('Date invalide.')).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK226 (C-ASTK-045, D-ASTK-4) — onglet « Incidents qualité » : déclarer,
+   suivre, résoudre. Les VRAIS wrappers stockApi (seul axios est simulé) :
+   la liste est filtrée côté serveur par `?fournisseur=` ; le badge de
+   risque est recalculé après chaque écriture. Réponses = le contrat.
+   ========================================================================== */
+describe('ASTK226 — onglet Incidents qualité', () => {
+  const route = documentContrat('stock', 'fournisseur_conformite').routes.incidents_qualite_fournisseur
+
+  it('déclarer puis résoudre un incident', async () => {
+    const vrai = (await vi.importActual('../../api/stockApi')).default
+    const api = (await import('../../api/axios')).default
+    stockApi.getIncidentsQualiteFournisseurDe.mockImplementation(vrai.getIncidentsQualiteFournisseurDe)
+    stockApi.createIncidentQualiteFournisseur.mockImplementation(vrai.createIncidentQualiteFournisseur)
+    stockApi.updateIncidentQualiteFournisseur.mockImplementation(vrai.updateIncidentQualiteFournisseur)
+    const critique = { ...route.exemple_element, id: 3, fournisseur: 12, gravite: 'critique', resolu: false, est_bloquant: true }
+    let liste = route.exemple_vide
+    api.get.mockImplementation(() => Promise.resolve({ data: liste }))
+    api.post.mockImplementation(() => { liste = { ...route.exemple, results: [critique] }; return Promise.resolve({ data: critique }) })
+    api.patch.mockImplementation(() => {
+      liste = { ...route.exemple, results: [{ ...critique, resolu: true, date_resolution: '2026-10-12', est_bloquant: false }] }
+      return Promise.resolve({ data: liste.results[0] })
+    })
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+
+    renderPage({ fournisseurId: '12' })
+    await userEvent.click(await screen.findByRole('tab', { name: /Incidents qualité/ }))
+    const panel = await screen.findByTestId('f360-tab-incidents')
+    expect(await within(panel).findByText('Aucun incident qualité.')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/',
+      { params: { fournisseur: '12' } })
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Déclarer un incident/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Gravité' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Critique' }))
+    await userEvent.type(within(dialog).getByLabelText('Description'), route.exemple_element.description)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Déclarer' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/',
+      expect.objectContaining({ fournisseur: 12, gravite: 'critique', description: route.exemple_element.description })))
+    const ligne = await within(panel).findByTestId('incident-3')
+    expect(within(ligne).getByText('Critique')).toBeInTheDocument()
+    const scoresAvant = stockApi.getScoreRisqueFournisseur.mock.calls.length
+
+    await userEvent.click(within(ligne).getByRole('button', { name: /Résoudre/ }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/3/',
+      expect.objectContaining({ resolu: true })))
+    expect(await within(panel).findByText(/Résolu le/)).toBeInTheDocument()
+    await waitFor(() => expect(stockApi.getScoreRisqueFournisseur.mock.calls.length).toBeGreaterThan(scoresAvant))
+  })
+
+  it('un 403 (rôle sans accès) est affiché tel quel', async () => {
+    stockApi.getIncidentsQualiteFournisseurDe.mockRejectedValue({
+      response: { status: 403, data: { detail: "Vous n'avez pas la permission d'effectuer cette action." } },
+    })
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /Incidents qualité/ }))
+    const panel = await screen.findByTestId('f360-tab-incidents')
+    expect(await within(panel).findByText(/pas la permission/)).toBeInTheDocument()
   })
 })

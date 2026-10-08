@@ -988,6 +988,183 @@ function OngletDocuments({ fournisseurId, canWrite, resume, onConformiteChange }
   )
 }
 
+// ── Onglet Incidents qualité (NTSCM9) — ASTK226 ─────────────────────────────
+// Déclarer / suivre / résoudre les incidents qualité du fournisseur. Liste
+// filtrée CÔTÉ SERVEUR (`?fournisseur=`) ; `declare_par` posé par le serveur ;
+// route Responsable/Admin (un 403 s'affiche tel quel). Le badge de risque
+// (ASTK187) est recalculé après chaque écriture.
+const GRAVITES_INCIDENT = [
+  { value: 'mineure', label: 'Mineure' },
+  { value: 'majeure', label: 'Majeure' },
+  { value: 'critique', label: 'Critique' },
+]
+const TYPES_INCIDENT = [
+  { value: 'non_conforme', label: 'Non conforme' },
+  { value: 'endommage', label: 'Endommagé' },
+  { value: 'erreur_reference', label: 'Erreur de référence' },
+  { value: 'documentation_manquante', label: 'Documentation manquante' },
+  { value: 'autre', label: 'Autre' },
+]
+const libelle = (liste, v) => liste.find((x) => x.value === v)?.label ?? v
+// Date du jour (calendrier marocain) au format ISO attendu par DRF.
+const aujourdhuiIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' })
+
+function IncidentForm({ fournisseurId, onClose, onSaved }) {
+  const [fields, setFields] = useState({
+    type_incident: 'non_conforme', gravite: 'mineure', date_incident: aujourdhuiIso(),
+    quantite_affectee: '0', description: '',
+  })
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    setSaving(true); setErrors({})
+    const payload = {
+      fournisseur: Number(fournisseurId),
+      type_incident: fields.type_incident,
+      gravite: fields.gravite,
+      date_incident: fields.date_incident,
+      quantite_affectee: Number(fields.quantite_affectee || 0),
+      description: fields.description.trim(),
+    }
+    try {
+      await stockApi.createIncidentQualiteFournisseur(payload)
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      const parChamp = erreursParChamp(err, Object.keys(payload))
+      setErrors({ ...parChamp, submit: Object.keys(parChamp).length ? undefined : frErr(err, 'Déclaration impossible.') })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Déclarer un incident qualité</DialogTitle>
+          <DialogDescription>Incident imputable au fournisseur (donnée interne).</DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Type d'incident" htmlFor="inc-type" error={errors.type_incident}>
+            <Select value={fields.type_incident} onValueChange={(v) => setField('type_incident', v)}>
+              <SelectTrigger id="inc-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_INCIDENT.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Gravité" htmlFor="inc-gravite" error={errors.gravite}>
+            <Select value={fields.gravite} onValueChange={(v) => setField('gravite', v)}>
+              <SelectTrigger id="inc-gravite"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {GRAVITES_INCIDENT.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Date de l'incident" htmlFor="inc-date" error={errors.date_incident}>
+            <Input id="inc-date" type="date" value={fields.date_incident}
+                   onChange={(e) => setField('date_incident', e.target.value)} />
+          </FormField>
+          <FormField label="Quantité affectée" htmlFor="inc-qte" error={errors.quantite_affectee}>
+            <Input id="inc-qte" type="number" step="any" value={fields.quantite_affectee}
+                   onChange={(e) => setField('quantite_affectee', e.target.value)} />
+          </FormField>
+          <FormField label="Description" htmlFor="inc-desc" error={errors.description} fullWidth>
+            <Textarea id="inc-desc" rows={2} value={fields.description}
+                      onChange={(e) => setField('description', e.target.value)} />
+          </FormField>
+          {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>Déclarer</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OngletIncidents({ fournisseurId, canWrite, onConformiteChange }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [actionError, setActionError] = useState(null)
+  const [resolvingId, setResolvingId] = useState(null)
+
+  const reload = () => {
+    stockApi.getIncidentsQualiteFournisseurDe(fournisseurId)
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Incidents indisponibles.')))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const apresEcriture = () => { reload(); onConformiteChange?.() }
+  const resoudre = async (inc) => {
+    setResolvingId(inc.id); setActionError(null)
+    try {
+      await stockApi.updateIncidentQualiteFournisseur(inc.id, { resolu: true, date_resolution: aujourdhuiIso() })
+      apresEcriture()
+    } catch (err) {
+      setActionError(frErr(err, 'Résolution impossible.'))
+    } finally { setResolvingId(null) }
+  }
+
+  if (error) return <Indisponible message={error} />
+  if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canWrite && (
+        <div>
+          <Button type="button" size="sm" onClick={() => setShowForm(true)}>
+            <Plus className="size-4" /> Déclarer un incident
+          </Button>
+        </div>
+      )}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun incident qualité." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((inc) => (
+            <li key={inc.id} data-testid={`incident-${inc.id}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+              <span className="flex items-center gap-2">
+                <Badge tone={inc.gravite === 'critique' ? 'danger' : inc.gravite === 'majeure' ? 'warning' : 'neutral'}>
+                  {libelle(GRAVITES_INCIDENT, inc.gravite)}
+                </Badge>
+                {libelle(TYPES_INCIDENT, inc.type_incident)}
+                {inc.description ? <span className="text-muted-foreground">· {inc.description}</span> : null}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-muted-foreground">{formatDate(inc.date_incident)}</span>
+                {inc.resolu ? (
+                  <Badge tone="success">
+                    Résolu{inc.date_resolution ? ` le ${formatDate(inc.date_resolution)}` : ''}
+                  </Badge>
+                ) : canWrite ? (
+                  <Button type="button" size="sm" variant="outline" loading={resolvingId === inc.id}
+                          onClick={() => resoudre(inc)}>
+                    <Check className="size-4" /> Résoudre
+                  </Button>
+                ) : (
+                  <Badge tone="warning">Ouvert</Badge>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showForm && (
+        <IncidentForm fournisseurId={fournisseurId} onClose={() => setShowForm(false)} onSaved={apresEcriture} />
+      )}
+    </div>
+  )
+}
+
 // ── Onglet Tarif (WIR268/XPUR14) — export/import xlsx du tarif fournisseur ──
 // Garde-fou « écrasement » côté écran : l'import passe TOUJOURS par un aperçu
 // (apercu=true, aucune écriture) avant que « Écraser » (décoché par défaut)
@@ -1203,7 +1380,8 @@ export default function FournisseurFiche360({
       .then((r) => { if (active) setScoreRisque(r.data ?? null) })
       .catch(() => { if (active) setScoreRisque(null) })
     return () => { active = false }
-  }, [fournisseurId, canView])
+    // ASTK226 — `resumeVersion` : recalculé après un incident / une pièce.
+  }, [fournisseurId, canView, resumeVersion])
 
   // WIR219/NTPRT25 — candidature d'auto-inscription au portail : visible et
   // décidable directement sur la fiche 360 (même garde Admin que la liste
@@ -1243,6 +1421,8 @@ export default function FournisseurFiche360({
     { value: 'avoirs', label: 'Avoirs', icon: FileMinus2, Comp: OngletAvoirs },
     { value: 'contacts', label: 'Contacts', icon: Users, Comp: OngletContacts },
     { value: 'documents', label: 'Conformité', icon: ShieldCheck, Comp: OngletDocuments },
+    // ASTK226 — incidents qualité (NTSCM9), jusqu'ici sans écran.
+    { value: 'incidents', label: 'Incidents qualité', icon: FileWarning, Comp: OngletIncidents },
     // NTP2P29 — wizard d'onboarding (dossier NTP2P7). Contextuelle : atteinte
     // par la fiche fournisseur, jamais une route autonome.
     { value: 'onboarding', label: 'Onboarding', icon: ShieldCheck, Comp: OngletOnboarding },
