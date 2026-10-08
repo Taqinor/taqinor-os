@@ -26,6 +26,11 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm import stages as stage_mod
+# APRF14 — UNE seule valeur pipeline par lead : le helper de ``pipeline.py``
+# (survivant des deux copies), mémoïsé par lead quand ses devis sont préchargés.
+from apps.reporting.pipeline import (
+    _lead_value, durees_par_etape, leads_avec_devis_totaux,
+)
 
 
 def _co(user):
@@ -47,17 +52,6 @@ def _qdate(value):
 
 def _username(user):
     return getattr(user, 'username', '') if user else ''
-
-
-def _lead_value(lead):
-    """Valeur pipeline = total TTC du devis le plus récent du lead."""
-    devis = max(lead.devis.all(), key=lambda d: d.id, default=None)
-    if devis is None:
-        return Decimal('0')
-    try:
-        return Decimal(str(devis.total_ttc or 0))
-    except Exception:
-        return Decimal('0')
 
 
 # ── QJ18 — Tableau de bord commercial ────────────────────────────────────────
@@ -88,13 +82,14 @@ def commercial_dashboard(request):
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))
 
-    leads_qs = Lead.objects.filter(**co, is_archived=False).prefetch_related('devis')
+    # APRF14 — devis préchargés AVEC leurs totaux (requêtes constantes).
+    leads_qs = Lead.objects.filter(**co, is_archived=False)
     if start:
         leads_qs = leads_qs.filter(date_creation__date__gte=start)
     if end:
         leads_qs = leads_qs.filter(date_creation__date__lte=end)
 
-    leads = list(leads_qs)
+    leads = list(leads_avec_devis_totaux(leads_qs))
 
     # ── Entonnoir de conversion ───────────────────────────────────────────────
     total_active = len([le for le in leads if not le.perdu])
@@ -121,39 +116,10 @@ def commercial_dashboard(request):
     win_rate_pct = taux_gain(leads) or 0.0
 
     # ── Temps moyen par étape (LeadActivity stage changes) ───────────────────
-    stage_dwell = {key: [] for key in stage_mod.STAGES}
-    activity_leads = Lead.objects.filter(**co, is_archived=False)
-    if start:
-        activity_leads = activity_leads.filter(date_creation__date__gte=start)
-    if end:
-        activity_leads = activity_leads.filter(date_creation__date__lte=end)
-
-    for lead in activity_leads:
-        changes = list(
-            LeadActivity.objects
-            .filter(lead=lead, kind=LeadActivity.Kind.MODIFICATION, field='stage')
-            .order_by('created_at')
-        )
-        events = [(lead.date_creation, stage_mod.NEW)]
-        for ch in changes:
-            try:
-                key = next(
-                    (k for k, v in stage_mod.STAGE_LABELS.items() if v == ch.new_value),
-                    ch.new_value
-                )
-                events.append((ch.created_at, key))
-            except Exception:
-                continue
-        for i in range(len(events) - 1):
-            t_in, stage = events[i]
-            t_out, _ = events[i + 1]
-            if stage in stage_dwell and t_in and t_out:
-                try:
-                    days = (t_out - t_in).total_seconds() / 86400
-                    if 0 <= days <= 730:
-                        stage_dwell[stage].append(days)
-                except Exception:
-                    pass
+    # APRF14 — UNE requête LeadActivity pour tous les leads de la fenêtre
+    # (helper partagé avec ``pipeline.funnel_velocity``) : mêmes leads (même
+    # filtre société + fenêtre), mêmes durées qu'avant.
+    stage_dwell = durees_par_etape(leads)
 
     time_in_stage = []
     for key in stage_mod.STAGES:
