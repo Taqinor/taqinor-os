@@ -306,20 +306,52 @@ def _sweep_chantier_due(company):
 
 # ── FACTURE_OVERDUE sweep (YEVNT3) ────────────────────────────────────────────
 
+def _reserver_emission(company, event_type, cle, periode=''):
+    """APAR23 — réserve l'émission ``(event_type, cle, periode)`` pour la
+    société. True = première fois (le balayage diffuse), False = déjà émise.
+
+    Marqueur INDÉPENDANT des préférences de canal (``MarqueurEmissionBalayage``)
+    : in-app coupé, aucune ligne ``Notification`` ne reste, mais le marqueur,
+    lui, reste. L'unicité en base rend deux passages concurrents sûrs.
+    Best-effort : une erreur de lecture/écriture laisse diffuser (False
+    négatif plutôt qu'une alerte perdue)."""
+    from django.db import IntegrityError, transaction
+
+    from .models import MarqueurEmissionBalayage
+    try:
+        with transaction.atomic():
+            _obj, cree = MarqueurEmissionBalayage.objects.get_or_create(
+                company=company, event_type=event_type, cle=cle[:255],
+                periode=periode)
+        return cree
+    except IntegrityError:
+        return False
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('sweeps: marqueur d\'émission illisible', exc_info=True)
+        return True
+
+
 def _already_notified_today(company, event_type, link):
-    """True si une notification `event_type` avec ce `link` a déjà été émise
-    AUJOURD'HUI pour cette société — idempotence stricte (une notif/jour),
-    plus stricte que les autres sweeps de ce fichier (qui tolèrent une
-    ré-émission par exécution)."""
+    """True si `event_type` pour ce `link` a déjà été émis AUJOURD'HUI pour
+    cette société — idempotence stricte (une émission/jour), plus stricte que
+    les autres sweeps de ce fichier (qui tolèrent une ré-émission par
+    exécution).
+
+    APAR23 — lu sur le marqueur d'émission (réservé ici : un False RÉSERVE
+    l'émission du jour), plus sur la présence d'une ``Notification`` (absente
+    quand l'in-app est coupé). Une notification du jour émise AVANT le
+    marqueur compte encore (pas de re-diffusion au déploiement)."""
     try:
         from .models import Notification
         today = date.today()
-        return Notification.objects.filter(
-            company=company, event_type=event_type, link=link,
-            created_at__date=today,
-        ).exists()
+        if Notification.objects.filter(
+                company=company, event_type=event_type, link=link,
+                created_at__date=today).exists():
+            return True
     except Exception:  # pragma: no cover - défensif
-        return False
+        pass
+    return not _reserver_emission(
+        company, event_type, link, periode=date.today().isoformat())
 
 
 def _sweep_facture_overdue(company):
@@ -663,17 +695,34 @@ def _lead_id_from_link(link):
     return int(m.group(1)) if m else None
 
 
+def _cle_lead(lead_pk):
+    return f'lead:{lead_pk}'
+
+
 def _leads_deja_escalades(company):
     """Ids des leads dont le filet a DÉJÀ sonné (une escalade par lead, comme
-    le marqueur de l'escalade premier-contact) — lus sur les notifications
-    elles-mêmes, lues ou non : leur état de lecture ne décide plus de rien."""
-    from .models import Notification
+    le marqueur de l'escalade premier-contact).
 
+    APAR23 — lus sur le MARQUEUR d'émission (indépendant des préférences de
+    canal : in-app coupé, aucune notification ne reste) ; les notifications
+    déjà émises avant le marqueur comptent encore (lues ou non : leur état de
+    lecture ne décide de rien)."""
+    from .models import MarqueurEmissionBalayage, Notification
+
+    ids = set()
+    for cle in MarqueurEmissionBalayage.objects.filter(
+            company=company, event_type=EventType.HOT_LEAD_UNREAD,
+            periode='').values_list('cle', flat=True):
+        try:
+            ids.add(int(cle.split(':', 1)[1]))
+        except (IndexError, ValueError):
+            continue
     liens = Notification.objects.filter(
         company=company, event_type=EventType.HOT_LEAD_UNREAD,
         title=HOT_LEAD_TITRE,
     ).values_list('link', flat=True)
-    return {i for i in (_lead_id_from_link(lien) for lien in liens) if i}
+    ids |= {i for i in (_lead_id_from_link(lien) for lien in liens) if i}
+    return ids
 
 
 def _sweep_hot_leads(company, now=None):
@@ -745,6 +794,10 @@ def _sweep_hot_leads(company, now=None):
                                lead.pk, exc_info=True)
                 continue
             if ecoulees <= minutes:
+                continue
+            # APAR23 — une escalade par lead, réservée AVANT la diffusion.
+            if not _reserver_emission(
+                    company, EventType.HOT_LEAD_UNREAD, _cle_lead(lead.pk)):
                 continue
             if managers is None:
                 managers = _managers(company, EventType.HOT_LEAD_UNREAD)
