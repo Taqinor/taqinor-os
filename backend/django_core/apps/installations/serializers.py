@@ -306,6 +306,10 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
             # `signer-client` (et la synchro terrain field_sync, qui écrit
             # le modèle directement) : jamais par un PATCH générique.
             'signature_client', 'signataire_nom', 'signe_le',
+            # ACHT6 — posés par leurs actions (generer-facture,
+            # confirmer-rdv / replanification, check-in) : jamais du corps.
+            'facture_id', 'rdv_confirme', 'rdv_confirme_le',
+            'rdv_reschedule_count', 'arrivee_dans_fenetre',
         ]
 
     def get_statut_ordre(self, obj):
@@ -536,6 +540,10 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
             # que par `creer-depuis-devis` / l'acceptation (et le rattachement
             # à une révision), jamais par un POST ou un PATCH générique.
             'devis',
+            # ACHT6 — drapeau d'annulation (actions `annuler`/`reactiver`,
+            # garde CHT2), nomenclature gelée (devis / révision) et BC
+            # d'origine : posés par le serveur, jamais par un PATCH.
+            'annule', 'motif_annulation', 'bom', 'bon_commande',
         ]
 
     def validate(self, attrs):
