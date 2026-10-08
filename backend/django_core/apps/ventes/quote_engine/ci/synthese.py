@@ -80,8 +80,15 @@ DEFINITIONS = {
 }
 
 #: Entrées de consommation du moteur (``entrees_resolues``), par priorité.
-CLES_CONSOMMATION = ("kwh_mensuels", "consommation", "factures_mad",
-                     "registres_mt", "kwh_annuel")
+#: AMOT39 (C-AMOT-048) — TOUTES les feuilles que ``domain/etude_ci.
+#: _consommation`` peut retenir (sept sorties), dans SON ordre de priorité :
+#: ``kwh_mensuel_declare`` (kWh mensuel déclaré au lead), ``releve_kwh``
+#: (relevés de factures du lead), ``facture_hiver_mad`` (une facture d'hiver
+#: convertie) et ``bill_kwh`` (repli QJR662) manquaient — la couverture
+#: imprimait alors « non résolue » à côté d'une couverture chiffrée.
+CLES_CONSOMMATION = ("kwh_mensuels", "consommation", "kwh_mensuel_declare",
+                     "factures_mad", "releve_kwh", "registres_mt",
+                     "kwh_annuel", "facture_hiver_mad", "bill_kwh")
 
 #: ``detail`` d'une provenance qui vaut FACTURE relevée (contrat CIQ2).
 DETAILS_FACTURE = frozenset({"facture", "mesure_visite"})
