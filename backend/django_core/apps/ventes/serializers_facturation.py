@@ -11,6 +11,7 @@ from .models import (
     MandatPaiement,
 )
 from .serializers import _fallback_taux_tva
+from core.mixins import SameCompanyFKSerializerMixin
 
 
 class BonCommandeSerializer(serializers.ModelSerializer):
@@ -103,7 +104,12 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         return str(totaux.ttc) if totaux is not None else None
 
 
-class LigneFactureSerializer(serializers.ModelSerializer):
+class LigneFactureSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    # ASEC27 (C-ASEC-005) — `produit` et `source_devis` bornés à la société
+    # de la requête : un id étranger = 400 « objet inexistant » (ACAL298).
+    same_company_fields = ('produit', 'source_devis')
+
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -318,11 +324,40 @@ class FactureSerializer(serializers.ModelSerializer):
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
-class FactureWriteSerializer(serializers.ModelSerializer):
-    """Création/modification sans lignes imbriquées."""
+class FactureWriteSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    """Création/modification sans lignes imbriquées.
+
+    ASEC27 (C-ASEC-005/009) — chaque FK inscriptible est BORNÉE à la société
+    de la requête (un id d'une autre société = 400 « objet inexistant »,
+    indiscernable d'un id absent) et les champs posés par le SERVEUR sont en
+    lecture seule : `statut` ne bouge que par les actions dédiées
+    (validation, paiement, abandon — AUD124/XFAC18). Liste `fields`
+    EXPLICITE (plus d'`exclude=`) : tout nouveau champ du modèle doit y être
+    ajouté consciemment."""
+    same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
+                           'entite', 'condition_paiement_ref')
+
     class Meta:
         model = Facture
-        exclude = ['reference', 'fichier_pdf']
+        fields = [
+            'id', 'bon_commande', 'devis', 'lead', 'type_facture',
+            'pourcentage', 'libelle', 'montant_ht', 'montant_tva',
+            'montant_ttc', 'client', 'statut', 'date_emission',
+            'date_echeance', 'taux_tva', 'remise_globale', 'arrondi_pas',
+            'arrondi_unites', 'note', 'date_livraison', 'conditions_paiement',
+            'retenue_garantie_mad', 'retenue_liberee_le', 'ventilation_tva',
+            'cle_tranche', 'reference_commande_client',
+            'condition_paiement_ref', 'prochaine_relance', 'exclu_relances',
+            'exclu_relances_jusquau', 'escompte_pct', 'escompte_jours',
+            'abandon_motif', 'abandon_montant', 'abandon_date',
+            'abandon_auto', 'abandon_par', 'revue_statut',
+            'statut_teledeclaration', 'created_by', 'pdf_render_meta',
+            'fichier_ubl', 'devise', 'taux_change', 'dgi_statut',
+            'dgi_reference', 'dgi_motif_rejet', 'periode_service_debut',
+            'periode_service_fin', 'updated_at', 'updated_by', 'entite',
+            'company',
+        ]
         # company is force-assigned in perform_create — never accept it from the body.
         # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par
         # `transmettre_facture` (action serveur), jamais depuis le corps.
@@ -334,6 +369,12 @@ class FactureWriteSerializer(serializers.ModelSerializer):
             'ventilation_tva',
             # ATOT5 — clé de tranche posée par le serveur, jamais le corps.
             'cle_tranche',
+            # ASEC27 — champs posés par le serveur (actions dédiées), jamais
+            # depuis le corps : un PATCH qui les porte est sans effet.
+            'statut', 'revue_statut', 'abandon_motif', 'abandon_montant',
+            'abandon_date', 'abandon_auto', 'abandon_par',
+            'retenue_liberee_le', 'statut_teledeclaration', 'fichier_ubl',
+            'pdf_render_meta', 'updated_by',
         ]
 
 

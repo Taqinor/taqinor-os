@@ -1032,35 +1032,35 @@
    "fields": {
     "abandon_auto": [
      "BooleanField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "abandon_date": [
      "DateTimeField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "abandon_montant": [
      "DecimalField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "abandon_motif": [
      "ChoiceField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "abandon_par": [
      "PrimaryKeyRelatedField",
-     false,
+     true,
      false,
      null,
      false
@@ -1080,7 +1080,7 @@
      false
     ],
     "bon_commande": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1094,7 +1094,7 @@
      false
     ],
     "client": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1108,7 +1108,7 @@
      false
     ],
     "condition_paiement_ref": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1150,7 +1150,7 @@
      false
     ],
     "devis": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1185,7 +1185,7 @@
      false
     ],
     "entite": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1221,7 +1221,7 @@
     ],
     "fichier_ubl": [
      "CharField",
-     false,
+     true,
      false,
      null,
      false
@@ -1234,7 +1234,7 @@
      false
     ],
     "lead": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,
@@ -1277,7 +1277,7 @@
     ],
     "pdf_render_meta": [
      "JSONField",
-     false,
+     true,
      false,
      null,
      false
@@ -1333,28 +1333,28 @@
     ],
     "retenue_liberee_le": [
      "DateField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "revue_statut": [
      "ChoiceField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "statut": [
      "ChoiceField",
-     false,
+     true,
      false,
      null,
      false
     ],
     "statut_teledeclaration": [
      "ChoiceField",
-     false,
+     true,
      false,
      null,
      false
@@ -1389,7 +1389,7 @@
     ],
     "updated_by": [
      "PrimaryKeyRelatedField",
-     false,
+     true,
      false,
      null,
      false
@@ -1554,7 +1554,7 @@
      false
     ],
     "produit": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      true,
      null,
@@ -1575,7 +1575,7 @@
      false
     ],
     "source_devis": [
-     "PrimaryKeyRelatedField",
+     "CompanyScopedPrimaryKeyRelatedField",
      false,
      false,
      null,

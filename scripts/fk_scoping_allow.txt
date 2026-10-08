@@ -88,8 +88,6 @@ backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.de
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.entite
 backend/django_core/apps/ventes/serializers_facturation.py::FactureSerializer.lead
 backend/django_core/apps/ventes/serializers_facturation.py::LigneAvoirSerializer.produit
-backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.produit
-backend/django_core/apps/ventes/serializers_facturation.py::LigneFactureSerializer.source_devis
 backend/django_core/apps/ventes/serializers_facturation.py::LigneNoteDebitSerializer.produit
 backend/django_core/apps/ventes/serializers.py::LignePrixListeSerializer.produit
 backend/django_core/apps/ventes/serializers_facturation.py::LigneRemiseEncaissementSerializer.paiement
