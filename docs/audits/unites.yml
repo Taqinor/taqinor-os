@@ -629,10 +629,10 @@ unites:
     I: 3
     score: 6
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APRF
     plan: null
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Tâches routées vers les propriétaires des fichiers touchés."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_SECURITE.md]
+    pr: 877
+    date: 2026-10-08
+    notes: "Tâches routées vers les propriétaires des fichiers touchés. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-performance.md) : 33 constats C14 mesurés (21 S2, 12 S3), 42 tâches APRF (en-tête du groupe dans PLAN_AUDIT_TRANSVERSE) ; tests de budget de requêtes désactivés alors que déclarés appliqués."
