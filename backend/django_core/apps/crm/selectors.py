@@ -530,7 +530,7 @@ def lead_ids_du_responsable(user):
         company_id=user.company_id, owner_id=user.pk).values('pk')
 
 
-def rechercher_leads_minimal(company, q, limit=10):
+def rechercher_leads_minimal(company, q, limit=10, *, user=None):
     """VTA16 — recherche de leads MINIMALE pour un consommateur cross-app.
 
     Renvoie une liste de dicts ``{id, nom, ville, telephone}`` — RIEN d'autre :
@@ -542,6 +542,11 @@ def rechercher_leads_minimal(company, q, limit=10):
     Bornée SOCIÉTÉ, corbeille exclue (``Lead.objects``), ``limit`` plafonnée.
     Une recherche vide ne renvoie RIEN — on n'énumère pas l'annuaire quand
     l'utilisateur n'a rien tapé.
+
+    ACRM30 — ``user`` borne la recherche aux leads VISIBLES de l'appelant
+    (``leads_visibles`` : portée propriétaire + périmètre d'entités) : la
+    recherche ne rend jamais un lead qui lui répond 404. ``None`` (appel
+    système sans utilisateur) = toute la société, comportement historique.
     """
     from django.db.models import Q
 
@@ -554,8 +559,9 @@ def rechercher_leads_minimal(company, q, limit=10):
         plafond = max(1, min(int(limit), 50))
     except (TypeError, ValueError):
         plafond = 10
-    lignes = (Lead.objects
-              .filter(company=company)
+    base = (leads_visibles(user, company) if user is not None
+            else Lead.objects.filter(company=company))
+    lignes = (base
               .filter(Q(nom__icontains=terme) | Q(telephone__icontains=terme))
               .order_by('nom', 'id')
               .values('id', 'nom', 'ville', 'telephone')[:plafond])

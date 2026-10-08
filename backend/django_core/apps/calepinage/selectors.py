@@ -145,7 +145,7 @@ def calepinages_visibles(user, *, inclure_archives=False, base=None,
     elif company is not None:
         base = base.filter(company=company)
     lignes = appliquer_filtres_liste(base, inclure_archives=inclure_archives,
-                                     company=company, **filtres)
+                                     company=company, user=user, **filtres)
     return restreindre_aux_siens(lignes, user)
 
 
@@ -191,8 +191,11 @@ _REFERENCE_AFFICHEE = re.compile(r'^CAL-(?:\d{4}-)?(\d{1,18})$',
                                  re.IGNORECASE)
 
 
-def _condition_recherche(terme, company):
-    """ACAL196 — la condition « q » : titre OU référence OU lead OU client."""
+def _condition_recherche(terme, company, user=None):
+    """ACAL196 — la condition « q » : titre OU référence OU lead OU client.
+
+    ACRM30 — ``user`` borne la part « lead » aux leads VISIBLES de
+    l'appelant (``crm.selectors.rechercher_leads_minimal(..., user=)``)."""
     from django.db.models import Q
 
     condition = (Q(titre__icontains=terme)
@@ -204,7 +207,8 @@ def _condition_recherche(terme, company):
         from apps.crm.selectors import rechercher_leads_minimal
 
         ids = [lead['id'] for lead in
-               rechercher_leads_minimal(company, terme, limit=50)]
+               rechercher_leads_minimal(company, terme, limit=50,
+                                        user=user)]
         if ids:
             condition |= Q(lead_id__in=ids)
     return condition
@@ -212,7 +216,8 @@ def _condition_recherche(terme, company):
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
                             statut=None, depuis=None, q=None,
-                            inclure_archives=False, company=None):
+                            inclure_archives=False, company=None,
+                            user=None):
     """CAL16 — LES filtres de la liste, écrits UNE fois.
 
     Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
@@ -246,7 +251,7 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
         lignes = lignes.filter(created_at__gte=depuis)
     terme = (q or '').strip()
     if terme:
-        lignes = lignes.filter(_condition_recherche(terme, company))
+        lignes = lignes.filter(_condition_recherche(terme, company, user))
     if not inclure_archives:
         lignes = lignes.filter(**_CONDITION_ACTIF)
     return lignes.order_by('-created_at', '-id')
