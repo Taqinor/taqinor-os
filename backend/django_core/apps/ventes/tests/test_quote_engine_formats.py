@@ -515,9 +515,19 @@ class TestPdfFormats1(TestPdfFormats):
         self.assertIn('Panneau mono 550W', html)
 
     def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
+        # APDF2 (C-APDF-001) — le RIB TAQINOR n'est plus imprimé sous le nom
+        # d'une société identifiée : la barre de virement porte le RIB DU
+        # PROFIL. On le renseigne donc pour prouver que le bloc paiement/RIB
+        # du devis final est bien rendu (et tient dans les 3 pages).
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.company)
+        CompanyProfile.objects.filter(pk=profil.pk).update(
+            rib='011 780 0000123456789012 34', banque='Banque Exemple')
         html, doc = self._render({'devis_final': True})
         self.assertEqual(len(doc.pages), 3)
-        self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
+        self.assertIn('Virement bancaire', html)  # bloc RIB présent
+        self.assertIn('RIB 011 780 0000123456789012 34', html)
+        self.assertNotIn('SGMBMAMCXXX', html)  # jamais le BIC Taqinor
 
     def test_monthly_chart_toggle_keeps_three_pages(self):
         _, doc_with = self._render({'show_monthly': True})
