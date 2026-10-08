@@ -263,5 +263,47 @@ class AgregateursChangesTests(unittest.TestCase):
                 self.assertIn(_verdict(self.jobs, nom, results, out), ("success", "skipped"))
 
 
+class CouplagesInterSurfacesTest(unittest.TestCase):
+    """ADEP11 - couplages inter-surfaces prouves : un test/une garde d'une surface lit un
+    fichier d'une autre ; l'edition seule de ce fichier doit declencher la surface qui lit."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rules = _parse_rules(_detect_step_script())
+
+    def test_apps_web_src_declenche_frontend(self):
+        r = _resolve(self.rules, ["apps/web/src/lib/roofPro2.ts"])
+        self.assertTrue(r["frontend"] and r["code"] and r["web"], r)
+
+    def test_apps_web_worker_declenche_frontend(self):
+        r = _resolve(self.rules, ["apps/web/worker/index.ts"])
+        self.assertTrue(r["frontend"] and r["web"], r)
+
+    def test_apps_web_public_reste_web_seul(self):
+        r = _resolve(self.rules, ["apps/web/public/robots.txt"])
+        self.assertTrue(r["web"])
+        self.assertFalse(r["frontend"] or r["code"], r)
+
+    def test_nginx_declenche_frontend(self):
+        r = _resolve(self.rules, ["backend/nginx/security-headers.conf.template"])
+        self.assertTrue(r["frontend"] and r["code"], r)
+
+    def test_contract_samples_declenche_frontend(self):
+        r = _resolve(self.rules, ["backend/django_core/apps/crm/contract_samples/x.json"])
+        self.assertTrue(r["frontend"] and r["backend"], r)
+
+    def test_baseline_docs_declenche_backend(self):
+        for doc in ("on-delete-financial-audit.md", "openapi-schema.yml",
+                    "money-fields-audit.md", "currency-audit.md"):
+            with self.subTest(doc=doc):
+                r = _resolve(self.rules, ["docs/" + doc])
+                self.assertTrue(r["backend"] and r["code"], r)
+                self.assertFalse(r["frontend"], r)
+
+    def test_docs_ordinaire_reste_leger(self):
+        r = _resolve(self.rules, ["docs/README.md", "docs/plans/PLAN_AUDIT_DEPLOY.md"])
+        self.assertFalse(any(r.values()), r)
+
+
 if __name__ == "__main__":
     unittest.main()

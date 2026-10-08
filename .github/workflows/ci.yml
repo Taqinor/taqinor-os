@@ -257,6 +257,18 @@ jobs:
             # job requis `web-build-test` (aucun nouveau contexte requis). Le
             # motif `^apps/web/` ne le couvre PAS (autre dossier).
             grep -qE '^apps/yanbow-web/' <<< "$changed" && yanbow=true || true
+            # ADEP11 — couplages inter-surfaces PROUVES (un test/une garde d'une
+            # surface lit un fichier d'une autre ; l'edition seule du fichier
+            # doit faire tourner la surface qui le lit) :
+            #  - apps/web/(src|worker) : importes par le front via @rooflib/@roofpro/
+            #    @roofbuilder (vite.config.js) et copies par Dockerfile.prod ;
+            #  - backend/nginx : lu par permissions-policy.test.mjs ;
+            #  - contract_samples : lus par frontend/src/test/fixtures/contractSamples.js ;
+            #  - baselines de gardes docs/* : lues par check_on_delete / check_openapi_schema.
+            grep -qE '^apps/web/(src|worker)/' <<< "$changed" && frontend=true || true
+            grep -qE '^backend/nginx/' <<< "$changed" && frontend=true || true
+            grep -qE '^backend/django_core/apps/[^/]+/contract_samples/' <<< "$changed" && frontend=true || true
+            grep -qE '^docs/(on-delete-financial-audit\.md|openapi-schema\.yml|money-fields-audit\.md|currency-audit\.md)' <<< "$changed" && backend=true || true
             # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
             # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
             # `backend == true` et lisent leur BASELINE ici
