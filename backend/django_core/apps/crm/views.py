@@ -1464,6 +1464,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
             tracer_opposition_registre(
                 new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
+        # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
+        # finalité de contact, dont la source nomme l'utilisateur.
+        if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
+            from .services import tracer_levee_opposition_registre
+            tracer_levee_opposition_registre(new_lead, self.request.user)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
         # est le meilleur signal d'achat qui existe. Les trois chemins de

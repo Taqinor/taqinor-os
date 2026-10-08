@@ -14286,24 +14286,86 @@ CONSENT_SOURCE_OPPOSITION_FICHE = 'case « Ne plus contacter » de la fiche'
 CONSENT_SOURCE_OPPOSITION_TOUCHE = 'réponse « Ne plus me contacter »'
 
 
+#: ACRM59 (C-ACRM-044) — les FINALITÉS DE CONTACT du registre : une
+#: opposition les refuse TOUTES (la prospection, et chaque canal recueilli à
+#: l'intake — WhatsApp —, plus l'e-mail et le SMS que le registre connaît).
+#: Aucune finalité nouvelle n'est inventée : ce sont celles que
+#: ``enregistrer_consentement_lead`` documente.
+FINALITES_CONTACT = (CONSENT_PURPOSE_PROSPECTION, 'whatsapp', 'email', 'sms')
+
+#: ACRM59 — la source d'une opposition LEVÉE depuis la fiche.
+CONSENT_SOURCE_OPPOSITION_LEVEE = 'opposition levée par {utilisateur}'
+
+
+def _identifiants_registre(lead):
+    """ACRM59 — CHAQUE identifiant de la personne (e-mail ET téléphone,
+    sans doublon) : une opposition lue sous le téléphone doit tenir autant
+    que sous l'e-mail."""
+    vus = []
+    for valeur in (getattr(lead, 'email', None),
+                   getattr(lead, 'telephone', None)):
+        valeur = (valeur or '').strip()
+        if valeur and valeur not in vus:
+            vus.append(valeur)
+    return vus
+
+
+def _ecrire_registre_contact(lead, *, granted, source, occurred_at=None):
+    """ACRM59 — une ligne par (identifiant, finalité de contact)."""
+    from core.models import ConsentRecord
+
+    quand = occurred_at or timezone.now()
+    lignes = [
+        ConsentRecord(
+            company=lead.company, subject_identifier=identifiant,
+            purpose=finalite, granted=granted, source=source[:120],
+            occurred_at=quand)
+        for identifiant in _identifiants_registre(lead)
+        for finalite in FINALITES_CONTACT]
+    if not lignes:
+        return None
+    ConsentRecord.objects.bulk_create(lignes)
+    return lignes[0]
+
+
+def tracer_levee_opposition_registre(lead, user, *, occurred_at=None):
+    """ACRM59 — décocher « ne plus contacter » sur la fiche inscrit au
+    registre une ligne ``granted=True`` par finalité de contact et par
+    identifiant, dont la source NOMME l'utilisateur (« opposition levée par
+    <utilisateur> »). Best-effort, comme l'opposition."""
+    try:
+        qui = getattr(user, 'username', '') or 'utilisateur inconnu'
+        return _ecrire_registre_contact(
+            lead, granted=True,
+            source=CONSENT_SOURCE_OPPOSITION_LEVEE.format(utilisateur=qui),
+            occurred_at=occurred_at)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'ACRM59 : levée d\'opposition non écrite au registre (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
+
+
 def tracer_opposition_registre(lead, *, source, occurred_at=None):
     """CAD91 — inscrit l'opposition au registre ``core.ConsentRecord``.
 
-    UNE entrée ``granted=False`` pour la prospection
-    (``CONSENT_PURPOSE_PROSPECTION``), datée de l'instant où elle est
-    recueillie, dont la ``source`` porte le geste ET la base légale. Même
-    porte d'entrée que CAD90 (``enregistrer_consentement_lead``) : le
-    registre reste un historique append-only, et l'état courant s'y lit sur
-    la ligne la plus récente.
+    ACRM59 — une entrée ``granted=False`` par FINALITÉ DE CONTACT
+    (``FINALITES_CONTACT`` : prospection, WhatsApp, e-mail, SMS) et sous
+    CHAQUE identifiant de la personne (e-mail ET téléphone) : la ligne
+    WhatsApp « accordée » posée à l'intake n'est plus la dernière, et un
+    lecteur qui interroge le téléphone voit l'opposition. Datée de
+    l'instant où elle est recueillie ; la ``source`` porte le geste ET la
+    base légale (une base légale CAD90 reste distincte par sa source). Le
+    registre reste un historique append-only.
 
     Best-effort intégral : l'opposition elle-même (case cochée, cadences
     arrêtées) ne tombe jamais parce que le registre n'a pas pu être écrit.
-    Renvoie l'entrée créée, ou ``None`` (lead sans e-mail ni téléphone, ou
-    écriture impossible)."""
+    Renvoie la première entrée créée, ou ``None`` (lead sans e-mail ni
+    téléphone, ou écriture impossible)."""
     try:
-        return enregistrer_consentement_lead(
-            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
-            source=f'{source} — {BASE_LEGALE_OPPOSITION}'[:120],
+        return _ecrire_registre_contact(
+            lead, granted=False,
+            source=f'{source} — {BASE_LEGALE_OPPOSITION}',
             occurred_at=occurred_at)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
