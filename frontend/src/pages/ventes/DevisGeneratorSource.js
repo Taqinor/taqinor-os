@@ -36,6 +36,7 @@ export const FILES = [
   'pages/ventes/generator/hooks/useApercuEtude.js',
   'pages/ventes/generator/ApercuSimulation.jsx',
   'pages/ventes/generator/BandeauxEdition.jsx',
+  'pages/ventes/generator/hooks/useBrouillonEcran.js',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.
