@@ -2,7 +2,7 @@
   "endpoint": "GET /api/django/sav/tickets/<int:pk>/",
   "forme_serveur": "partielle",
   "forme_serveur_provisoire": "Les cles `statuts_suivants` (ASAV43), `equipement_fin_garantie_effective` (ASAV44) et `je_suis_abonne` (ASAV39) sont AJOUTEES par ces taches backend ; la derniere des trois qui les sert remet `forme_serveur: complete`.",
-  "pourquoi": "ASAV1 (Groupe ASAV, audit sav L2 du 08/10/2026) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui `TicketSerializer` (apps/sav/serializers.py) sert `fields='__all__'` + des cles calculees, mais l'ecran lit `je_suis_abonne` (TicketAdvancedPanel.jsx) sans qu'il soit servi, et recalcule localement les transitions permises et la fin de garantie. Cles AJOUTEES (additives, aucune cle existante retiree ni renommee) : `statuts_suivants` = liste triee des statuts cibles acceptes par `machine_etats.statuts_suivants(ticket)` (le graphe serveur, jamais une copie front) ; `equipement_fin_garantie_effective` = date ISO max(garantie legale, garantie constructeur) de l'equipement lie, `null` sans equipement ; `je_suis_abonne` = `request.user` est suiveur (`TicketFollower`) du ticket. Consommateurs : ASAV42, ASAV45 (front), TicketAdvancedPanel.jsx. `exemple` = extrait representatif du detail (cles d'identite + les trois cles ajoutees) ; valeurs ILLUSTRATIVES.",
+  "pourquoi": "ASAV1 (Groupe ASAV, audit sav L2 du 08/10/2026) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui `TicketSerializer` (apps/sav/serializers.py) sert `fields='__all__'` + des cles calculees, mais l'ecran lit `je_suis_abonne` (TicketAdvancedPanel.jsx) sans qu'il soit servi, et recalcule localement les transitions permises et la fin de garantie. Cles AJOUTEES (additives, aucune cle existante retiree ni renommee) : `statuts_suivants` = liste triee des statuts cibles acceptes par `machine_etats.statuts_suivants(ticket)` (le graphe serveur, jamais une copie front) ; `equipement_fin_garantie_effective` = date ISO max(garantie legale, garantie constructeur) de l'equipement lie, `null` sans equipement ; `je_suis_abonne` = `request.user` est suiveur (`TicketFollower`) du ticket. Consommateurs : ASAV42, ASAV45 (front), TicketAdvancedPanel.jsx. `exemple` = extrait representatif du detail (cles d'identite + les trois cles ajoutees) ; valeurs ILLUSTRATIVES. ASAV14 : `date_resolution` (date ISO ou null) reste servie mais devient LECTURE SEULE — posee par le service de transition au passage a resolu/cloture (date locale Maroc), videe a la reouverture ; un PATCH qui l'envoie est ignore.",
   "exemple": {
     "id": 4812,
     "reference": "SAV-2026-10-0042",
@@ -20,8 +20,12 @@
     "sous_garantie_effectif": true,
     "sla_breach": false,
     "sla_due_at": "2026-10-15",
+    "date_resolution": null,
     "annule": false,
-    "statuts_suivants": ["planifie", "resolu"],
+    "statuts_suivants": [
+      "planifie",
+      "resolu"
+    ],
     "equipement_fin_garantie_effective": "2027-02-10",
     "je_suis_abonne": true
   },
@@ -42,8 +46,12 @@
     "sous_garantie_effectif": false,
     "sla_breach": false,
     "sla_due_at": "2026-10-20",
+    "date_resolution": null,
     "annule": false,
-    "statuts_suivants": ["en_cours", "planifie"],
+    "statuts_suivants": [
+      "en_cours",
+      "planifie"
+    ],
     "equipement_fin_garantie_effective": null,
     "je_suis_abonne": false
   }

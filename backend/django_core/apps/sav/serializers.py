@@ -405,6 +405,8 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             # (``TicketViewSet`` à la création), le coût interne hors du
             # corps d'un PATCH générique.
             'non_facturable', 'est_recidive', 'cout',
+            # ASAV14 — posée/vidée par le service de transition uniquement.
+            'date_resolution',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

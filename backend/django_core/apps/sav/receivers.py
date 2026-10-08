@@ -67,9 +67,7 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
         if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:
             return  # déjà résolu/clôturé/annulé — ne recule jamais.
 
-        if not ticket.date_resolution:
-            ticket.date_resolution = timezone.localdate()
-            ticket.save(update_fields=['date_resolution'])
+        # ASAV14 — date_resolution posée par le service (plus ici).
         ancien_statut = ticket.statut
         # ASAV12 — LE service unique de transition (même chaîne d'effets que
         # l'action ``resoudre`` : SLA, immobilisations, notification client,

@@ -1290,6 +1290,16 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
             ticket.canal_resolution = (
                 canal_resolution_defaut or old.canal_resolution_propose())
         update_fields.append('canal_resolution')
+    # ASAV14 — la date de résolution est posée par le SERVEUR (date locale
+    # Maroc) au passage à résolu/clôturé si vide, et vidée à la réouverture.
+    if ticket.statut in clotures and old.statut not in clotures:
+        if not ticket.date_resolution:
+            ticket.date_resolution = timezone.localdate()
+            update_fields.append('date_resolution')
+    elif old.statut in clotures and ticket.statut in Ticket.OPEN_STATUTS:
+        if ticket.date_resolution:
+            ticket.date_resolution = None
+            update_fields.append('date_resolution')
     ticket.save(update_fields=update_fields)
     emettre_ticket_resolu(
         ticket, company=ticket.company, user=user, ancien_statut=old.statut)
