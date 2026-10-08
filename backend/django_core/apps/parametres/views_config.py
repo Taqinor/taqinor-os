@@ -23,8 +23,9 @@ from rest_framework.response import Response
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 
 from .models import CompanyProfile, MessageTemplate, SettingsAuditLog
+from .models_documents import DEVIS_TEXT_KEYS, DocumentTemplates
+from .models_email import EmailTemplate
 from .models_statuses import StatutConfig
-from .models_documents import DocumentTemplates
 
 # Champs de profil EXPORTABLES — réglages métier reproductibles uniquement.
 # Volontairement SANS : identité légale (ice/rc/cnss…), coordonnées, secrets
@@ -69,13 +70,24 @@ PROFILE_CONFIG_FIELDS = [
     'lockout_max_attempts', 'lockout_duration_minutes', 'password_expiry_days',
 ]
 
-DOCUMENT_TEMPLATE_FIELDS = [
-    'validite_badge_p1', 'validite_onepage', 'cgv_titre', 'cgv_bullets',
-    'garantie_titre', 'garantie_detail', 'garantie_perf_label',
-    'bpa_titre',
-]
 
-CONFIG_VERSION = 1
+def champs_textes_documents():
+    """APAR30 — textes de documents exportés, DÉRIVÉS de la source
+    (``DEVIS_TEXT_KEYS`` + ``cgv_par_mode``) : la liste tenue à la main
+    oubliait ``bpa_mention``, ``acceptance_stamp`` et ``cgv_par_mode``."""
+    return list(DEVIS_TEXT_KEYS) + ['cgv_par_mode']
+
+
+#: Champs exportés d'un modèle de message (APAR30 — EN/AR compris).
+MESSAGE_FIELDS = ('corps_fr', 'corps_darija', 'corps_en', 'corps_ar')
+#: Champs exportés d'un modèle d'e-mail (APAR30).
+EMAIL_FIELDS = ('sujet', 'corps', 'sujet_en', 'corps_en', 'sujet_ar',
+                'corps_ar')
+
+#: APAR30 — v2 ajoute ``email_templates``, les textes EN/AR des messages et
+#: les textes de documents dérivés. Un bundle v1 reste lisible (clés absentes
+#: ignorées).
+CONFIG_VERSION = 2
 
 
 def _serialize_profile(profile):
@@ -90,7 +102,7 @@ def _serialize_document_templates(company):
     if row is None:
         return {}
     return {f: _jsonable(getattr(row, f, None))
-            for f in DOCUMENT_TEMPLATE_FIELDS}
+            for f in champs_textes_documents()}
 
 
 def _jsonable(value):
@@ -121,8 +133,15 @@ def _serialize_roles(company):
 
 def _serialize_message_templates(company):
     return [
-        {'cle': m.cle, 'corps_fr': m.corps_fr, 'corps_darija': m.corps_darija}
+        dict({'cle': m.cle}, **{f: getattr(m, f, '') for f in MESSAGE_FIELDS})
         for m in MessageTemplate.objects.filter(company=company)
+    ]
+
+
+def _serialize_email_templates(company):
+    return [
+        dict({'cle': e.cle}, **{f: getattr(e, f, '') for f in EMAIL_FIELDS})
+        for e in EmailTemplate.objects.filter(company=company)
     ]
 
 
@@ -166,6 +185,7 @@ def config_export(request):
         'document_templates': _serialize_document_templates(company),
         'roles': _serialize_roles(company),
         'message_templates': _serialize_message_templates(company),
+        'email_templates': _serialize_email_templates(company),
         'automation_rules': _serialize_automation_rules(company),
         'statuts': _serialize_statuts(company),
     }
@@ -229,21 +249,35 @@ def _import_profile(company, data, overwrite, user=None, request=None):
 
 
 def _import_document_templates(company, data, overwrite, user=None):
+    from django.db.models import F
+
+    from .serializers_documents import DocumentTemplatesSerializer
     if not data or not overwrite:
         return 0
     row, _ = DocumentTemplates.objects.get_or_create(company=company)
+    valeurs = {f: data[f] for f in champs_textes_documents() if f in data}
+    if not valeurs:
+        return 0
+    # APAR30 — mêmes validations que l'écran (``cgv_bullets`` liste,
+    # ``cgv_par_mode`` forme fermée).
+    ser = DocumentTemplatesSerializer(row, data=valeurs, partial=True)
+    if not ser.is_valid():
+        raise ImportInvalide(_prefixer('document_templates', ser.errors))
     changed = []
-    for f in DOCUMENT_TEMPLATE_FIELDS:
-        if f in data:
-            old = getattr(row, f, None)
-            new = data[f]
-            _log_config_import_change(
-                company, user, f'document_template.{f}',
-                f'Modèle de document — {f}', old, new)
-            setattr(row, f, new)
-            changed.append(f)
+    for f, new in ser.validated_data.items():
+        old = getattr(row, f, None)
+        if old == new:
+            continue
+        _log_config_import_change(
+            company, user, f'document_template.{f}',
+            f'Modèle de document — {f}', old, new)
+        setattr(row, f, new)
+        changed.append(f)
     if changed:
-        row.save()
+        row.save(update_fields=changed)
+        # APAR30 — nouvelle révision des textes, comme l'écran (N67).
+        DocumentTemplates.objects.filter(pk=row.pk).update(
+            version=F('version') + 1)
     return len(changed)
 
 
@@ -281,19 +315,28 @@ def _import_roles(company, rows, overwrite, user=None):
 
 
 def _import_message_templates(company, rows, overwrite, user=None):
+    from .views_messages import _unknown_placeholders, placeholders_autorises
     valid = {c.value for c in MessageTemplate.Cle}
     created = updated = 0
-    for r in rows or []:
+    for i, r in enumerate(rows or []):
         cle = r.get('cle')
         if cle not in valid:
             continue
+        # APAR30 — même liste blanche que l'écran Messages (APAR12).
+        for champ in MESSAGE_FIELDS:
+            inconnus = _unknown_placeholders(r.get(champ) or '', cle)
+            if inconnus:
+                raise ImportInvalide({
+                    f'message_templates[{i}].{champ}': [
+                        f'Placeholder non supporté : {", ".join(inconnus)}. '
+                        f'Placeholders autorisés : '
+                        f'{" ".join(placeholders_autorises(cle)) or "aucun"}.']})
         existing = MessageTemplate.objects.filter(
             company=company, cle=cle).first()
         if existing is None:
             MessageTemplate.objects.create(
                 company=company, cle=cle,
-                corps_fr=r.get('corps_fr', '') or '',
-                corps_darija=r.get('corps_darija', '') or '')
+                **{f: r.get(f, '') or '' for f in MESSAGE_FIELDS})
             _log_config_import_change(  # APAR29 — créations journalisées
                 company, user, f'message_template.{cle}',
                 f'Modèle de message « {cle} » — créé', None,
@@ -312,7 +355,61 @@ def _import_message_templates(company, rows, overwrite, user=None):
                 existing.corps_darija, new_darija)
             existing.corps_fr = new_fr
             existing.corps_darija = new_darija
-            existing.save(update_fields=['corps_fr', 'corps_darija'])
+            for f in ('corps_en', 'corps_ar'):  # APAR30 — EN/AR aussi
+                if f in r:
+                    nouveau = r.get(f) or ''
+                    _log_config_import_change(
+                        company, user, f'message_template.{cle}.{f}',
+                        f'Modèle de message « {cle} » — {f}',
+                        getattr(existing, f, ''), nouveau)
+                    setattr(existing, f, nouveau)
+            existing.save(update_fields=list(MESSAGE_FIELDS))
+            updated += 1
+    return created, updated
+
+
+def _import_email_templates(company, rows, overwrite, user=None):
+    """APAR30 — modèles d'e-mail (absents de l'export jusqu'ici), validés
+    comme l'écran : liste blanche de placeholders ET rendu (APAR13)."""
+    from .models_email import erreur_de_rendu
+    from .serializers_email import (
+        EMAIL_TEMPLATE_PLACEHOLDERS, _unknown_placeholders,
+    )
+    valid = {c.value for c in EmailTemplate.Cle}
+    created = updated = 0
+    for i, r in enumerate(rows or []):
+        cle = r.get('cle')
+        if cle not in valid:
+            continue
+        for champ in EMAIL_FIELDS:
+            texte = r.get(champ) or ''
+            erreur = erreur_de_rendu(texte)
+            inconnus = _unknown_placeholders(texte, cle)
+            if erreur or inconnus:
+                autorises = ' '.join(
+                    EMAIL_TEMPLATE_PLACEHOLDERS.get(cle, [])) or 'aucun'
+                raise ImportInvalide({f'email_templates[{i}].{champ}': [
+                    erreur or (f'Placeholder non supporté : '
+                               f'{", ".join(inconnus)}. Placeholders '
+                               f'autorisés : {autorises}.')]})
+        valeurs = {f: r.get(f, '') or '' for f in EMAIL_FIELDS if f in r}
+        existing = EmailTemplate.objects.filter(
+            company=company, cle=cle).first()
+        if existing is None:
+            EmailTemplate.objects.create(company=company, cle=cle, **valeurs)
+            _log_config_import_change(
+                company, user, f'email_template.{cle}',
+                f"Modèle d'e-mail « {cle} » — créé", None,
+                valeurs.get('sujet', ''))
+            created += 1
+        elif overwrite:
+            for f, v in valeurs.items():
+                _log_config_import_change(
+                    company, user, f'email_template.{cle}.{f}',
+                    f"Modèle d'e-mail « {cle} » — {f}",
+                    getattr(existing, f, ''), v)
+                setattr(existing, f, v)
+            existing.save()
             updated += 1
     return created, updated
 
@@ -429,6 +526,8 @@ def config_import(request):
                 company, data.get('roles'), overwrite, user=user)
             msg_c, msg_u = _import_message_templates(
                 company, data.get('message_templates'), overwrite, user=user)
+            mail_c, mail_u = _import_email_templates(
+                company, data.get('email_templates'), overwrite, user=user)
             rule_c, rule_u = _import_automation_rules(
                 company, data.get('automation_rules'), overwrite, user=user)
             stat_c, stat_u = _import_statuts(
@@ -446,6 +545,7 @@ def config_import(request):
         'mode': 'overwrite' if overwrite else 'merge',
         'roles': {'created': roles_c, 'updated': roles_u},
         'message_templates': {'created': msg_c, 'updated': msg_u},
+        'email_templates': {'created': mail_c, 'updated': mail_u},
         'automation_rules': {'created': rule_c, 'updated': rule_u},
         'statuts': {'created': stat_c, 'updated': stat_u},
         'profile_fields_changed': profile_changed,
