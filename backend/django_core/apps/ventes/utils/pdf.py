@@ -274,6 +274,41 @@ def generate_devis_pdf(devis_id):
     return key
 
 
+def _emettre_document_produit(source, company, pdf_bytes, reference, *,
+                              date=None, client_nom='', uploaded_by=None):
+    """WIR165 + ADOC74 — émet ``core.events.document_produit`` après le
+    stockage d'un PDF de facturation (facture, avoir, note de débit,
+    bordereau de remise).
+
+    Best-effort : sans ``RoutageDocumentaire`` configuré pour ``source``, le
+    receveur ged (apps/ged/receivers.py) est un no-op strict — la génération
+    de PDF est INCHANGÉE tant qu'un admin n'a rien réglé ; une exception est
+    journalisée, jamais propagée (le PDF est déjà stocké). ``ventes``
+    n'importe jamais ``apps.ged`` (frontière cross-app) : l'événement est le
+    seul canal. Idempotent par source+reference (router_document_module) ;
+    un rendu au contenu différent devient une nouvelle version (ADOC61).
+    """
+    try:
+        from django.core.files.base import ContentFile
+
+        from core.events import document_produit
+
+        filename = f'{reference}.pdf'
+        document_produit.send(
+            sender=None, source=source, company=company,
+            file=ContentFile(pdf_bytes, name=filename),
+            filename=filename, reference=reference,
+            contexte={
+                'annee': date.year if date else '',
+                'reference': reference,
+                'client': client_nom or '',
+            },
+            uploaded_by=uploaded_by)
+    except Exception:  # noqa: BLE001 — émission best-effort
+        logger.exception(
+            'document_produit (%s) — échec émission pour %s', source, reference)
+
+
 def generate_facture_pdf(facture_id):
     """Generate, upload and persist PDF for a Facture. Returns MinIO key."""
     from apps.ventes.models import Facture
@@ -335,32 +370,14 @@ def generate_facture_pdf(facture_id):
     logger.info('PDF facture généré : %s', key)
 
     # WIR165 — premier émetteur RÉEL de core.events.document_produit (ZGED6).
-    # Best-effort : sans RoutageDocumentaire configuré pour 'ventes_facture',
-    # le receveur ged (apps/ged/receivers.py) est un no-op strict — le
-    # comportement de génération de PDF ci-dessus est INCHANGÉ tant qu'un
-    # admin n'a rien réglé. `ventes` n'importe jamais `apps.ged` (frontière
-    # cross-app) : l'événement est le seul canal. Idempotent par
-    # source+reference (router_document_module) — régénérer le même PDF ne
-    # duplique jamais le document GED.
-    try:
-        from django.core.files.base import ContentFile
-
-        from core.events import document_produit
-
-        document_produit.send(
-            sender=None, source='ventes_facture', company=facture.company,
-            file=ContentFile(pdf_bytes, name=f'{facture.reference}.pdf'),
-            filename=f'{facture.reference}.pdf', reference=facture.reference,
-            contexte={
-                'annee': facture.date_emission.year if facture.date_emission else '',
-                'reference': facture.reference,
-                'client': getattr(facture.client, 'nom', '') or '',
-            },
-            uploaded_by=facture.created_by)
-    except Exception:  # pragma: no cover - défensif (émission best-effort)
-        logger.exception(
-            'document_produit (ventes_facture) — échec émission pour %s',
-            facture.reference)
+    # ADOC74 — l'émission est factorisée dans ``_emettre_document_produit``
+    # (helper unique des quatre générateurs facture/avoir/note de débit/
+    # bordereau de remise).
+    _emettre_document_produit(
+        'ventes_facture', facture.company, pdf_bytes, facture.reference,
+        date=facture.date_emission,
+        client_nom=getattr(facture.client, 'nom', '') or '',
+        uploaded_by=facture.created_by)
 
     return key
 
@@ -586,6 +603,12 @@ def generate_avoir_pdf(avoir_id):
     avoir.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF avoir généré : %s', key)
+    # ADOC74 — archivage GED (best-effort, no-op sans routage).
+    _emettre_document_produit(
+        'ventes_avoir', avoir.company, pdf_bytes, avoir.reference,
+        date=avoir.date_emission,
+        client_nom=getattr(avoir.client, 'nom', '') or '',
+        uploaded_by=avoir.created_by)
     return key
 
 
@@ -616,6 +639,12 @@ def generate_note_debit_pdf(note_debit_id):
     note_debit.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF note de débit généré : %s', key)
+    # ADOC74 — archivage GED (best-effort, no-op sans routage).
+    _emettre_document_produit(
+        'ventes_note_debit', note_debit.company, pdf_bytes,
+        note_debit.reference, date=note_debit.date_emission,
+        client_nom=getattr(note_debit.client, 'nom', '') or '',
+        uploaded_by=note_debit.created_by)
     return key
 
 
@@ -821,4 +850,10 @@ def generate_bordereau_remise_pdf(remise_id):
     remise.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF bordereau de remise généré : %s', key)
+    # ADOC74 — archivage GED (best-effort, no-op sans routage). Pas de
+    # client : un bordereau regroupe les encaissements d'un technicien.
+    _emettre_document_produit(
+        'ventes_remise', remise.company, pdf_bytes,
+        remise.reference or str(remise.id), date=remise.date_collecte,
+        uploaded_by=remise.created_by)
     return pdf_bytes
