@@ -449,6 +449,13 @@ GARDES = {
         ('Test the écrivains du layout calepinage (aucun écran hors atelier, ACAL317) checker itself',
          'python -m unittest scripts.tests.test_check_calepinage_ecrivains_layout -v',
          '.'),
+        # ACAL321 - écrivain unique de Calepinage.resultat (C-ACAL-055).
+        ('Check écrivain unique de Calepinage.resultat (ACAL321)',
+         'python scripts/check_resultat_ecrivain_unique.py',
+         '.'),
+        ('Test the écrivain unique de Calepinage.resultat (ACAL321) checker itself',
+         'python -m unittest scripts.tests.test_check_resultat_ecrivain_unique -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
