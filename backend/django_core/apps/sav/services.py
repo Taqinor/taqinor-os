@@ -2426,3 +2426,41 @@ def ensure_modele_entretien_ci(company):
             company=company, template=modele, cle=cle, libelle=libelle,
             ordre=i)
     return modele
+
+
+# ── ASAV2 — UNE décision « qui paie » pour toutes les portes ────────────────
+def decision_facturation(ticket, user, override=False):
+    """ASAV2 — LE service qui décide qui paie un ticket SAV, appelé par
+    ``generer-facture``, ``facturer`` et ``creer-devis`` (les trois portes
+    donnent la même réponse sur les mêmes cas).
+
+    Ordre : (1) récidive non facturable (XFSM15) → refus 403 sauf
+    ``override`` d'un responsable/admin ; (2) couverture : celle posée à la
+    main si elle l'est, sinon la couverture calculée (garantie, contrat —
+    quotas inclus —, facturable), jugée à l'ouverture du ticket (ASAV4).
+
+    Renvoie un dict ``{'refuse': bool, 'http': int|None, 'detail': str,
+    'couverture': str, 'couvert': bool}``. ``couvert`` = garantie ou contrat
+    : la facture est posée à 0 DH et aucun devis n'est créé."""
+    from .models import Ticket
+
+    if ticket.non_facturable:
+        est_responsable = (
+            getattr(user, 'is_admin_role', False)
+            or getattr(user, 'is_responsable', False))
+        if not override or not est_responsable:
+            return {
+                'refuse': True, 'http': 403,
+                'detail': ('Ticket récidive marqué non-facturable — '
+                           'override responsable requis.'),
+                'couverture': ticket.couverture, 'couvert': False,
+            }
+    couverture = ticket.couverture
+    if couverture == Ticket.Couverture.A_DETERMINER:
+        couverture = ticket.couverture_calculee()
+    return {
+        'refuse': False, 'http': None, 'detail': '',
+        'couverture': couverture,
+        'couvert': couverture in (
+            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT),
+    }

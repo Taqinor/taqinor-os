@@ -1785,40 +1785,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         (réutilise ``facture_id_ext`` si déjà posé) — jamais de double
         facture. Facture = PDF legacy (jamais /proposal, réservé aux devis
         client-facing — règle #4 CLAUDE.md)."""
-        ticket = self.get_object()
-        from apps.ventes.services import generer_facture_ticket_sav
-
-        # XFSM15 — un ticket récidive est non-facturable PAR DÉFAUT ; un
-        # responsable/admin peut lever l'exclusion via `override=true`
-        # explicite (l'un ne dispense jamais de l'autre : sans override,
-        # MÊME un admin reste bloqué ; avec override, seul un responsable/
-        # admin peut effectivement lever l'exclusion).
-        override = str(request.data.get('override') or '') in (
-            '1', 'true', 'True', 'on')
-        if ticket.non_facturable:
-            is_responsable = (
-                getattr(request.user, 'is_admin_role', False)
-                or getattr(request.user, 'is_responsable', False))
-            if not override or not is_responsable:
-                return Response({
-                    'detail': ('Ticket récidive marqué non-facturable — '
-                               'override responsable requis.'),
-                }, status=403)
-
-        sous_garantie = ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI
-        pieces = list(ticket.pieces.select_related('produit'))
-        facture = generer_facture_ticket_sav(
-            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
-            user=request.user)
-        activity.log_note(
-            ticket, request.user,
-            f'Facture {facture.reference} générée depuis le ticket '
-            f'(hors garantie : {not sous_garantie}).')
-        return Response({
-            'facture_id': facture.id,
-            'facture_reference': facture.reference,
-            'sous_garantie': sous_garantie,
-        }, status=201)
+        # ASAV2 — alias de ``facturer`` : même service de décision.
+        return self._facturer_ticket(request, self.get_object())
 
     @action(detail=True, methods=['post'], url_path='facturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1834,15 +1802,23 @@ class TicketViewSet(CompanyScopedModelViewSet):
         catalogue (jamais ``prix_achat`` — pièces au prix VENTE uniquement).
         Idempotent (réutilise ``facture_id_ext`` si déjà posé). Renvoie aussi
         la couverture retenue pour cette facturation."""
-        ticket = self.get_object()
+        return self._facturer_ticket(request, self.get_object())
+
+    def _facturer_ticket(self, request, ticket):
+        """ASAV2 — corps commun de ``facturer`` et ``generer-facture`` : la
+        décision « qui paie » vient de ``services.decision_facturation``."""
         from apps.ventes.services import generer_facture_ticket_sav
+        from .services import decision_facturation
 
-        couverture = ticket.couverture
-        if couverture == Ticket.Couverture.A_DETERMINER:
-            couverture = ticket.couverture_calculee()
-
-        sous_garantie = couverture in (
-            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT)
+        # XFSM15 — récidive : refus 403 sans ``override`` d'un responsable.
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        decision = decision_facturation(ticket, request.user, override)
+        if decision['refuse']:
+            return Response({'detail': decision['detail']},
+                            status=decision['http'])
+        couverture = decision['couverture']
+        sous_garantie = decision['couvert']
         pieces = list(ticket.pieces.select_related('produit'))
         facture = generer_facture_ticket_sav(
             ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
@@ -1855,6 +1831,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'facture_id': facture.id,
             'facture_reference': facture.reference,
             'couverture': couverture,
+            'sous_garantie': sous_garantie,
         }, status=201)
 
     @action(detail=True, methods=['post'], url_path='planifier-intervention',
@@ -2296,10 +2273,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``apps.ventes.services.create_devis_pour_ticket`` (cross-app write,
         jamais d'import direct du modèle ventes)."""
         ticket = self.get_object()
-        if ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI:
+        # ASAV2 — même décision que les deux portes de facture.
+        from .services import decision_facturation
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        decision = decision_facturation(ticket, request.user, override)
+        if decision['refuse']:
+            return Response({'detail': decision['detail']},
+                            status=decision['http'])
+        if decision['couvert']:
             return Response(
-                {'detail': 'Ticket sous garantie : aucun devis de '
-                           "réparation n'est nécessaire."},
+                {'detail': 'Ticket couvert (garantie ou contrat) : aucun '
+                           "devis de réparation n'est nécessaire."},
                 status=status.HTTP_400_BAD_REQUEST)
 
         from apps.ventes.services import create_devis_pour_ticket
