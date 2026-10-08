@@ -10038,7 +10038,8 @@ def _placement_devis_du_lot(company, lead_ids):
         return set(), {}
 
 
-def _decider_placements(company, maintenant, gabarits=None):
+def _decider_placements(company, maintenant, gabarits=None,
+                        leads_en_portee=None):
     """Phase de DÉCISION : QUI est candidat, QUI est écarté, QUELLE décision
     s'applique à chacun — et, pour les cadences positionnées, s'il leur reste
     seulement une touche à faire (sinon elles basculent en dormance ici même,
@@ -10053,11 +10054,17 @@ def _decider_placements(company, maintenant, gabarits=None):
     dictionnaire de travail que l'étalement puis l'exécution complètent
     (``creneau``…) — jamais un modèle enregistré."""
     gabarits = gabarits or _placement_gabarits(company)
-    candidats = list(
-        Lead.objects.filter(
-            company=company, is_archived=False, perdu=False,
-            ne_plus_contacter=False,
-        ).exclude(stage__in=[stages.COLD, stages.SIGNED]).order_by('pk'))
+    base = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False,
+        ne_plus_contacter=False,
+    ).exclude(stage__in=[stages.COLD, stages.SIGNED])
+    # ALEA25 — appelé depuis l'API, le placement est BORNÉ par la portée de
+    # l'utilisateur (``LeadViewSet._leads_en_portee``) : un Commercial ne
+    # voit ni ne place les leads d'un collègue hors équipe. ``None`` (la
+    # commande de gestion) = toute la société, comme avant.
+    if leads_en_portee is not None:
+        base = base.filter(pk__in=leads_en_portee.values('pk'))
+    candidats = list(base.order_by('pk'))
     total = len(candidats)
     ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0}
     if not candidats:
@@ -10586,7 +10593,7 @@ def _placement_limite(limite):
 
 
 def placer_anciens_leads(company, user, *, apply=False, maintenant=None,
-                         limite=None):
+                         limite=None, leads_en_portee=None):
     """Enveloppe de `_placer_anciens_leads_sans_cache` sous `horaires.cache_local()` :
     profil société et jours ouvrés lus UNE fois pour toute l'opération. Sans
     cela, dater les touches de 272 leads coûtait ~7 000 requêtes et 24 s en
@@ -10594,11 +10601,13 @@ def placer_anciens_leads(company, user, *, apply=False, maintenant=None,
     from . import horaires
     with horaires.cache_local():
         return _placer_anciens_leads_sans_cache(
-            company, user, apply=apply, maintenant=maintenant, limite=limite)
+            company, user, apply=apply, maintenant=maintenant, limite=limite,
+            leads_en_portee=leads_en_portee)
 
 
 def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
-                                     maintenant=None, limite=None):
+                                     maintenant=None, limite=None,
+                                     leads_en_portee=None):
     """MRY30 — Place les anciens leads d'une société dans les cadences du
     moteur de relances. Rapport = ``contract_samples/placement_anciens_leads``.
 
@@ -10628,7 +10637,7 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
     maintenant = maintenant or timezone.now()
     gabarits = _placement_gabarits(company)
     decisions, ignores, total = _decider_placements(
-        company, maintenant, gabarits)
+        company, maintenant, gabarits, leads_en_portee=leads_en_portee)
     # Lu SEULEMENT s'il y a un dormant : `cadence_pour` seede la cadence
     # absente, et une société sans aucun dormant n'a aucune raison de voir
     # naître un gabarit de réveil au passage d'un aperçu.
