@@ -1319,6 +1319,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # compta.ecriture_pour_avoir, jamais d'import de son service ici).
             from core.events import avoir_cree
             avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+            # ATOT8 — le statut de paiement suit le reste dû : un avoir qui
+            # solde la facture la passe PAYÉE (`facture_payee` émis une fois).
+            if mode != 'contre_passation':
+                from ..domain.encaissements import recalculer_statut_paiement
+                recalculer_statut_paiement(
+                    locked, user=request.user, source='avoir')
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf

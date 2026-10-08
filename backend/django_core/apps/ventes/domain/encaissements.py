@@ -110,6 +110,47 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     return True
 
 
+def recalculer_statut_paiement(facture, *, user=None, source=''):
+    """ATOT8 (C-ATOT-006) — LE service unique qui DÉRIVE le statut de
+    paiement d'une facture de son reste dû (D-ATOT-4) : « payée » si et
+    seulement si ``montant_du`` ≤ 0 (au centime).
+
+      * reste dû nul → bascule PAYÉE par ``marquer_facture_soldee`` (verrou,
+        idempotent, ``facture_payee`` émis UNE fois) ;
+      * reste EXIGIBLE > 0 (CIQ214 : une retenue de garantie non libérée ne
+        rouvre pas) → ÉMISE, ou EN_RETARD si l'échéance est dépassée — une
+        facture PAYÉE dont un avoir est annulé revient au recouvrement ;
+      * brouillon et annulée : jamais touchées.
+
+    Appelé après création ET annulation d'avoir, et au rejet d'un paiement
+    (réouverture extraite de ``recouvrement._rouvrir_facture_apres_rejet``).
+    Idempotent. Renvoie le statut résultant."""
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from apps.ventes.models import Facture
+
+    facture.refresh_from_db()
+    if facture.statut in (Facture.Statut.ANNULEE, Facture.Statut.BROUILLON):
+        return facture.statut
+    if facture.montant_du <= Decimal('0.01'):
+        marquer_facture_soldee(facture, user=user,
+                               source=source or 'recalcul_statut')
+        facture.refresh_from_db()
+        return facture.statut
+    if facture.montant_exigible <= 0:
+        return facture.statut
+    today = timezone.now().date()
+    nouveau = (Facture.Statut.EN_RETARD
+               if facture.date_echeance and facture.date_echeance < today
+               else Facture.Statut.EMISE)
+    if facture.statut != nouveau:
+        facture.statut = nouveau
+        facture.save(update_fields=['statut'])
+    return facture.statut
+
+
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
                          reference='', note=''):
     """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
