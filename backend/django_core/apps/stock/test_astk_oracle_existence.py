@@ -15,6 +15,7 @@ Run :
     python manage.py test apps.stock.test_astk_oracle_existence -v 2
 """
 import json
+import re
 from decimal import Decimal
 from pathlib import Path
 
@@ -48,7 +49,13 @@ def _neutralise(texte, pk):
     enveloppe = corps.get('error') if isinstance(corps, dict) else None
     if isinstance(enveloppe, dict) and 'request_id' in enveloppe:
         enveloppe['request_id'] = '<REQUEST_ID>'
-    return json.dumps(corps, ensure_ascii=False, sort_keys=True).replace(
+    texte = json.dumps(corps, ensure_ascii=False, sort_keys=True)
+    # L'id cité entre guillemets français, séparé par une espace, une espace
+    # insécable ou sa forme échappée (antislash-xa0 quand le message est le repr
+    # d'une ErrorDetail) : les trois formes sont neutralisées.
+    texte = re.sub(r'«((?:\\+xa0|\xa0| ))' + str(pk) + r'((?:\\+xa0|\xa0| ))»',
+                   r'«\1<ID>\2»', texte)
+    return texte.replace(
         f'« {pk} »', '« <ID> »').replace(
         f'« {pk} »', '« <ID> »').replace(f'"{pk}"', '"<ID>"').replace(
         f'\\"{pk}\\"', '\\"<ID>\\"').replace(f"'{pk}'", "'<ID>'")
