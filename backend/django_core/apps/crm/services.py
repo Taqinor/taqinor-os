@@ -9820,9 +9820,11 @@ def ajouter_note_lead_si_nouvelle(*, company, lead_id, user, body):
 # ─────────────────────────────────────────────────────────────────────────────
 # QX42 — Rétention PII des copies brutes d'intake (registre YOPSB10, core.retention)
 #
-# `WebsiteLeadPayload` (PII brute + IP, SET_NULL depuis Lead → l'effacement
-# RGPD d'un lead n'atteint JAMAIS ce payload brut) et `ChatSessionPublique`
-# s'accumulent INDÉFINIMENT. Le framework générique existe (`core.retention`)
+# `WebsiteLeadPayload` (PII brute + IP) et `ChatSessionPublique`
+# s'accumulaient INDÉFINIMENT. ACRM19 — l'effacement d'un lead
+# (`dsr_provider.anonymiser_lead`, DSR ET rétention) caviarde désormais LUI-MÊME
+# ces copies brutes : les purges par âge ci-dessous ne sont plus le seul
+# rempart, seulement le ménage de fond. Le framework générique existe (`core.retention`)
 # mais son registre est VIDE — aucune app n'y enregistre de politique. Ceci
 # enregistre la politique CRM (voir `CrmConfig.ready()`), fenêtre par défaut
 # 180 jours, override founder via `WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS` /
@@ -9879,7 +9881,13 @@ def purge_stale_chat_sessions(now, apply_) -> int:
     ``last_message_at`` — une session encore active récemment n'est jamais
     purgée même si ``created_at`` est ancien). Une session déjà liée à un
     Lead réel (``lead_id`` renseigné) garde son transcript — la conversation
-    fait partie de l'historique du lead, pas une trace anonyme jetable."""
+    fait partie de l'historique du lead, pas une trace anonyme jetable.
+
+    ACRM19 — SAUF celle d'un lead ANONYMISÉ : l'historique n'a plus de
+    personne à qui appartenir, l'exemption ne la protège plus."""
+    from django.db.models import Q
+
+    from .dsr_provider import LEAD_NOM_ANONYMISE
     from .models import ChatSessionPublique
 
     days = _retention_days(
@@ -9888,7 +9896,8 @@ def purge_stale_chat_sessions(now, apply_) -> int:
         return 0
     cutoff = now - timezone.timedelta(days=days)
     qs = ChatSessionPublique.objects.filter(
-        last_message_at__lt=cutoff, lead__isnull=True)
+        last_message_at__lt=cutoff).filter(
+            Q(lead__isnull=True) | Q(lead__nom=LEAD_NOM_ANONYMISE))
     count = qs.count()
     if apply_ and count:
         qs.delete()
