@@ -679,6 +679,10 @@ def _schedule_resume(rule, step, next_index, instance, company, context):
     return AutomationRun.Status.NOOP, message
 
 
+#: APAR26 — marqueur de contexte d'une échéance « envoi reporté hors fenêtre ».
+CLE_REPORT_FENETRE = '_report_fenetre'
+
+
 def resume_scheduled_step(scheduled, *, user=None):
     """NTEXT7 — reprend UNE séquence suspendue (échéance ``run_at`` atteinte).
 
@@ -706,6 +710,17 @@ def resume_scheduled_step(scheduled, *, user=None):
                  AutomationRun.Status.SKIPPED, message)
         return AutomationRun.Status.SKIPPED, message
     steps = _rule_steps(rule)
+    contexte = dict(scheduled.context or {})
+    if contexte.pop(CLE_REPORT_FENETRE, False):
+        # APAR26 — reprise d'UNE action reportée hors de la fenêtre des
+        # messages (``actions.reporter_hors_fenetre``) : seule cette action
+        # repart (le reste de la séquence s'est déjà déroulé).
+        if not steps:
+            return _execute(rule, rule, instance, company, contexte, user)
+        if scheduled.next_step_index < len(steps):
+            step = steps[scheduled.next_step_index]
+            return _execute(_StepView(rule, step), rule, instance, company,
+                            contexte, user)
     if scheduled.next_step_index >= len(steps):
         message = 'Séquence terminée : plus aucune étape à reprendre.'
         _log_run(rule, company, instance, AutomationRun.Status.NOOP, message)

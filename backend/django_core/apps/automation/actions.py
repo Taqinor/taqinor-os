@@ -292,6 +292,54 @@ def _message_body(rule, context, instance=None, company=None):
     return _substitute_variables(brut, valeurs)
 
 
+# ── APAR26 — fenêtre des messages de la société ────────────────────────────
+#
+# Décision fondateur « messages ≥ 8 h 30 » : un client ne reçoit pas un e-mail
+# d'automatisation à 23 h 30. Hors de la fenêtre (lecteur canonique
+# ``notifications.selectors.fenetre_notifications`` — jours ouvrés, fériés,
+# Ramadan, horaires ``crm.horaires``), l'envoi est REPORTÉ au prochain créneau
+# par une étape planifiée (mécanique NTEXT7, reprise par le beat
+# ``automation-process-due-steps``) — jamais sauté. Même interrupteur
+# d'urgence que les notifications (``NOTIFICATIONS_QUIET_HOURS_ENABLED``).
+
+def reporter_hors_fenetre(rule, instance, company, context):
+    """``None`` si l'envoi peut partir maintenant ; sinon planifie la reprise
+    au prochain créneau et rend ``(NOOP, motif)``. Best-effort : toute erreur
+    de lecture des horaires laisse partir l'envoi (jamais perdu)."""
+    if not getattr(settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
+        return None
+    try:
+        from apps.notifications.selectors import fenetre_notifications
+        fenetre = fenetre_notifications(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if fenetre.ouverte:
+        return None
+    try:
+        from django.utils import timezone
+
+        from .engine import CLE_REPORT_FENETRE, _json_safe, _model_label
+        from .models import AutomationScheduledStep
+        regle = getattr(rule, '_rule', rule)  # étape (_StepView) ou règle
+        index = 0
+        step = getattr(rule, 'step', None)
+        if step is not None:
+            index = [s.pk for s in regle.steps.all()].index(step.pk)
+        AutomationScheduledStep.objects.create(
+            company=company, rule=regle,
+            target_model=_model_label(instance),
+            target_id=getattr(instance, 'pk', None),
+            next_step_index=index, run_at=fenetre.prochaine_ouverture,
+            context={**_json_safe(context or {}), CLE_REPORT_FENETRE: True})
+        quand = timezone.localtime(fenetre.prochaine_ouverture)
+    except Exception:  # pragma: no cover - défensif : jamais d'envoi perdu
+        logger.exception('automation: report hors fenêtre impossible')
+        return None
+    return Status.NOOP, (
+        f'Hors de la fenêtre des messages : envoi reporté au '
+        f'{quand:%d/%m/%Y à %H:%M}.')
+
+
 #: APAR25 — résumé de la tâche qui porte le lien WhatsApp préparé.
 RESUME_TACHE_WHATSAPP = 'Envoyer ce WhatsApp'
 
@@ -342,6 +390,9 @@ def _send_whatsapp(rule, instance, company, context, user):
         rule, instance, company, context)
     if motif:
         return Status.NOOP, motif
+    report = reporter_hors_fenetre(rule, instance, company, context)
+    if report is not None:  # APAR26 — jamais en pleine nuit
+        return report
     try:
         _creer_tache(instance, company, user, RESUME_TACHE_WHATSAPP,
                      f'{body}\n\n{url}' if body else url)
@@ -373,6 +424,9 @@ def _send_email(rule, instance, company, context, user):
     if manquantes:
         return Status.SKIPPED, motif_variables(
             manquantes, 'e-mail non envoyé')
+    report = reporter_hors_fenetre(rule, instance, company, context)
+    if report is not None:  # APAR26 — aucun e-mail client en pleine nuit
+        return report
     from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or \
         getattr(settings, 'CONTACT_FROM_EMAIL', 'no-reply@taqinor.ma')
     try:
