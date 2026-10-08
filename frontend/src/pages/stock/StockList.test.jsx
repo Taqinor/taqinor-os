@@ -31,16 +31,25 @@ vi.mock('../../api/stockApi', () => ({
     etiquettesProduits: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
     etiquettesKanbanEmplacement: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
     resolveCode: vi.fn(() => Promise.resolve({ data: {} })),
+    // ASTK83 — « Annuler » un désarchivage ré-archive par PATCH.
+    patchProduit: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
+
+// ASTK83 — capture le rappel « Annuler » du toast de désarchivage.
+vi.mock('../../lib/toast', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toastWithUndo: vi.fn() }
+})
 
 vi.mock('../../features/stock/store/stockSlice', () => ({
   fetchProduits: () => ({ type: 'stock/fetchProduits/noop' }),
   fetchProduitsArchived: () => ({ type: 'stock/fetchProduitsArchived/noop' }),
   fetchCategories: () => ({ type: 'stock/fetchCategories/noop' }),
   updateProduit: () => ({ type: 'stock/updateProduit/noop' }),
-  deleteProduit: () => ({ type: 'stock/deleteProduit/noop' }),
-  unarchiveProduit: () => ({ type: 'stock/unarchiveProduit/noop' }),
+  deleteProduit: vi.fn(() => ({ type: 'stock/deleteProduit/noop' })),
+  // ASTK83 — thunk simulé : `dispatch(unarchiveProduit(id)).unwrap()`.
+  unarchiveProduit: () => () => ({ unwrap: () => Promise.resolve({}) }),
   forceDeleteArchivedProduit: () => ({ type: 'stock/forceDeleteArchivedProduit/noop' }),
 }))
 
@@ -81,6 +90,8 @@ vi.mock('../../features/uxviews/ViewsManagerPopover', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
+import { toastWithUndo } from '../../lib/toast'
+import { deleteProduit } from '../../features/stock/store/stockSlice'
 import { createViewMock } from '../../features/uxviews/useServerSavedViews'
 import StockList from './StockList.jsx'
 
@@ -117,12 +128,13 @@ function makeStore({
   role = 'admin', permissions = [],
   produits = [panneau, onduleur, orphelin],
   categories = [CAT_PANNEAUX, CAT_ONDULEURS],
+  produitsArchived = [],
 } = {}) {
   return configureStore({
     reducer: {
       auth: (s = { role, role_nom: role, permissions }) => s,
       stock: (s = {
-        produits, produitsArchived: [], categories, loading: false, error: null,
+        produits, produitsArchived, categories, loading: false, error: null,
       }) => s,
     },
   })
@@ -277,5 +289,26 @@ describe('StockList — export unique sur le moteur DataTable (STKCAT26)', () =>
     const toggle = screen.getByRole('button', { name: /Grouper par catégorie/ })
     fireEvent.click(toggle)
     expect(screen.getByRole('button', { name: /Catégories groupées/ })).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK83 (C-ASTK-017, S1) — « Annuler » un désarchivage RÉ-ARCHIVE le produit
+   (PATCH is_archived=true) ; il ne le SUPPRIME jamais (l'ancien onUndo
+   appelait deleteProduit : un produit sans relation disparaissait pour de bon).
+   ========================================================================== */
+describe('StockList — annuler un désarchivage (ASTK83)', () => {
+  it('annuler un désarchivage ré-archive sans supprimer', async () => {
+    const archive = baseProduit({ id: 7, nom: 'Ancien câble', sku: 'CAB-OLD', is_archived: true })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage({ produitsArchived: [archive] })
+    fireEvent.click(screen.getByRole('button', { name: /Archivés/ }))
+    fireEvent.click((await screen.findAllByLabelText('Désarchiver'))[0])
+    await waitFor(() => expect(toastWithUndo).toHaveBeenCalled())
+    const { onUndo } = toastWithUndo.mock.calls[0][0]
+    await onUndo()
+    expect(stockApi.patchProduit).toHaveBeenCalledWith(7, { is_archived: true })
+    expect(deleteProduit).not.toHaveBeenCalled()
+    window.confirm.mockRestore()
   })
 })

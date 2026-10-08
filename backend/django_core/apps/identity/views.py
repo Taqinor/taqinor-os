@@ -117,28 +117,29 @@ def _client_ip(request):
     return fwd or meta.get('REMOTE_ADDR', '') or ''
 
 
-def _banner_profile(username):
-    """Profil société résolu depuis un username (pré-auth), sinon le profil par
-    défaut (pk=1, convention historique) — best-effort, jamais d'exception."""
+def _banner_profile(request):
+    """ASEC14 — profil société de la bannière, résolu par l'HÔTE de la requête
+    (``TenantTheme.domaine``, même règle que le portail), JAMAIS par le
+    ``username`` reçu (qui énumérait l'appartenance d'un compte à une société)
+    ni par ``CompanyProfile pk=1``. Hôte non rattaché → ``None`` : bannière
+    plateforme neutre (vide). Best-effort, jamais d'exception."""
+    try:
+        from apps.portail.branding import company_pour_hote
+        company = company_pour_hote(request.get_host())
+    except Exception:  # noqa: BLE001 — hôte refusé/illisible → neutre
+        company = None
+    if company is None:
+        return None
     from apps.parametres.models_company import CompanyProfile
-    from authentication.models import CustomUser
-    uname = (username or '').strip()
-    if uname:
-        user = CustomUser.objects.filter(username__iexact=uname).first()
-        company = getattr(user, 'company', None) if user else None
-        if company is not None:
-            profile = CompanyProfile.objects.filter(company=company).first()
-            if profile is not None:
-                return profile, user
-    # Repli : instance par défaut (déploiement mono-société / username inconnu).
-    return CompanyProfile.objects.filter(pk=1).first(), None
+    return CompanyProfile.objects.filter(company=company).first()
 
 
 class LoginBannerView(APIView):
     """NTSEC28 — bannière/mention légale de connexion (pré-auth, AllowAny).
 
-    * ``GET  ?username=`` — renvoie le texte de bannière de la société de cet
-      utilisateur (ou du profil par défaut). Toujours 200 ; texte vide = aucun
+    * ``GET`` — renvoie le texte de bannière de la société résolue par l'HÔTE
+      (ASEC14 : le ``username`` éventuel est ignoré ; hôte non rattaché →
+      bannière neutre vide). Toujours 200 ; texte vide = aucun
       bandeau (écran de login inchangé). Le texte de bannière est une mention
       légale destinée à être affichée à tout visiteur — rien de sensible.
     * ``POST {username}`` — journalise l'accusé (AuditLog best-effort, IP/UA),
@@ -149,15 +150,14 @@ class LoginBannerView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        username = request.query_params.get('username', '')
-        profile, _ = _banner_profile(username)
+        profile = _banner_profile(request)
         text = getattr(profile, 'login_banner_text', '') if profile else ''
         return Response({'login_banner_text': text or ''})
 
     def post(self, request):
         username = (request.data.get('username') if hasattr(request, 'data')
                     else None) or ''
-        profile, user = _banner_profile(username)
+        profile = _banner_profile(request)
         text = getattr(profile, 'login_banner_text', '') if profile else ''
         if not text:
             # Aucune bannière configurée → rien à acquitter (inchangé).
@@ -169,7 +169,7 @@ class LoginBannerView(APIView):
             ua = (request.META.get('HTTP_USER_AGENT', '') or '')[:300]
             record(
                 AuditLog.Action.SECURITY_ALERT,
-                user=user,
+                user=None,
                 company=company,
                 actor_username=(username or None),
                 detail=('Bannière de connexion acquittée depuis '

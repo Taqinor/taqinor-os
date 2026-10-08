@@ -1,6 +1,6 @@
 """ADSENG-ODOO — Diagnostic LECTURE SEULE du connecteur Odoo.
 
-    python manage.py odoo_pull [--company <slug-ou-id>] [--since YYYY-MM-DD]
+    python manage.py odoo_pull --company <slug-ou-id> [--since YYYY-MM-DD]
 
 Vérifie la connexion après que le fondateur a posé les 4 variables ODOO_* :
 imprime « configuré ? / authentifié ? / N leads / N signés / dépense Meta /
@@ -8,7 +8,7 @@ coût-par-signature ». **N'ÉCRIT RIEN** — ni dans Odoo (connecteur lecture s
 ni dans la base ERP. Sans configuration, sort proprement en rappelant les
 variables à poser.
 """
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
@@ -18,8 +18,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             '--company', dest='company', default=None,
-            help="Slug ou id de la société pour la dépense Meta (défaut : "
-                 "première société).")
+            help="Slug ou id de la société ERP propriétaire du connecteur "
+                 "(ODOO_COMPANY_ID) — OBLIGATOIRE (ASEC40).")
         parser.add_argument(
             '--since', dest='since', default=None,
             help="Borne la lecture (YYYY-MM-DD) sur la date de création / "
@@ -32,25 +32,35 @@ class Command(BaseCommand):
             if company is None and str(raw).isdigit():
                 company = Company.objects.filter(pk=int(raw)).first()
             return company
-        return Company.objects.order_by('id').first()
+        # ASEC40 — plus de repli « première société » : la société est
+        # explicite et doit être la propriétaire du connecteur.
+        return None
 
     def handle(self, *args, **options):
         from apps.adsengine import odoo_client, odoo_selectors
 
-        configured = odoo_client.is_configured()
+        # ASEC40 — société EXPLICITE, propriétaire du connecteur.
+        company = self._resolve_company(options.get('company'))
+        if company is None:
+            raise CommandError(
+                "Société requise : passez --company <slug|id> (la société "
+                "ERP propriétaire du connecteur, ODOO_COMPANY_ID).")
+
+        configured = odoo_client.is_configured(company)
         self.stdout.write(f"Configuré ?      {'oui' if configured else 'non'}")
         if not configured:
             self.stdout.write(self.style.WARNING(
-                "Connecteur Odoo non configuré — posez ces 4 variables "
-                "d'environnement :\n"
-                "  ODOO_URL       (ex. https://taqinor-solutions.odoo.com)\n"
-                "  ODOO_DB        (ex. taqinor-solutions)\n"
-                "  ODOO_USERNAME  (le login utilisateur)\n"
-                "  ODOO_API_KEY   (la clé d'API Odoo)\n"
+                "Connecteur Odoo non configuré pour cette société — posez ces "
+                "5 variables d'environnement :\n"
+                "  ODOO_URL        (ex. https://taqinor-solutions.odoo.com)\n"
+                "  ODOO_DB         (ex. taqinor-solutions)\n"
+                "  ODOO_USERNAME   (le login utilisateur)\n"
+                "  ODOO_API_KEY    (la clé d'API Odoo)\n"
+                "  ODOO_COMPANY_ID (id de la société ERP propriétaire)\n"
                 "Rien n'a été lu (no-op propre)."))
             return
 
-        client = odoo_client.OdooClient.from_env()
+        client = odoo_client.OdooClient.from_env(company=company)
         since = options.get('since')
         try:
             uid = client.authenticate()
@@ -73,12 +83,6 @@ class Command(BaseCommand):
             self.stdout.write("Répartition par étape :")
             for label, count in sorted(stage_counts.items()):
                 self.stdout.write(f"  - {label} : {count}")
-
-        company = self._resolve_company(options.get('company'))
-        if company is None:
-            self.stdout.write(self.style.WARNING(
-                "Dépense Meta :   (aucune société — passez --company <slug|id>)"))
-            return
 
         from apps.adsengine.odoo_metrics import odoo_cost_per_signature
         result = odoo_cost_per_signature(company, since=since, client=client)

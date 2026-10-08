@@ -107,6 +107,19 @@ def expedier_transfert(transfert, user):
                     f'({ligne.quantite} disponible).')
             ligne.quantite -= transfert.quantite
             ligne.save(update_fields=['quantite'])
+        else:
+            # ASTK206 — le principal est DÉRIVÉ (total − non principaux − en
+            # transit) : dès l'expédition, la quantité passe « en transit » et
+            # en sort ; on ne peut pas expédier plus que ce qu'il détient.
+            from .services import stock_breakdown, verrouiller_produit
+            produit = verrouiller_produit(transfert.produit_id)
+            principal = next(
+                (ligne['quantite'] for ligne in stock_breakdown(produit)
+                 if ligne['is_principal']), 0)
+            if principal < transfert.quantite:
+                raise ValueError(
+                    f'Quantité insuffisante à « {source.nom} » '
+                    f'({principal} disponible).')
         transfert.statut = TransfertStock.Statut.EXPEDIE
         transfert.expedie_par = user
         from django.utils import timezone

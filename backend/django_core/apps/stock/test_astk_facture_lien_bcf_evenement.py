@@ -32,7 +32,10 @@ class LienBcfEvenementTests(TestCase):
             nom='astk99-co', slug='astk99-co')
         role = Role.objects.create(
             company=self.company, nom='r-astk99',
-            permissions=['stock_voir', 'stock_modifier'])
+            permissions=['stock_voir', 'stock_modifier',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username='astk99-user', password='x', company=self.company,
             role=role, role_legacy='responsable')

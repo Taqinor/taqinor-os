@@ -96,6 +96,8 @@ WIRING_ENV_KEYS = (
     'ODOO_DB',
     'ODOO_USERNAME',
     'ODOO_API_KEY',
+    # ASEC40 — société ERP propriétaire des données Odoo (sans elle, inactif).
+    'ODOO_COMPANY_ID',
     # PUB29 — webhook WhatsApp Cloud API (attribution CTWA, ADSDEEP24).
     'WHATSAPP_CLOUD_VERIFY_TOKEN',
     'WHATSAPP_CLOUD_APP_SECRET',
@@ -2705,7 +2707,8 @@ class MetricsDashboardView(APIView):
         # ``odoo_cost_per_signature`` ne lève jamais, cf. #417).
         try:
             from .odoo_client import is_configured as _odoo_configured
-            if _odoo_configured():
+            # ASEC40 — seulement pour la société propriétaire du connecteur.
+            if _odoo_configured(company):
                 from .odoo_metrics import odoo_cost_per_signature
                 odoo = odoo_cost_per_signature(company)
                 if odoo.get('signatures'):
@@ -2803,11 +2806,14 @@ class MetricsLeadsView(APIView):
         if metric in ('', 'signature', 'cost_per_signature'):
             try:
                 from .odoo_client import is_configured as _odoo_ok
-                if _odoo_ok():
+                # ASEC40 — les deals Odoo ne sont servis qu'à la société
+                # propriétaire (ODOO_COMPANY_ID) : toute autre société reçoit
+                # la liste CRM seule, sans aucun appel réseau à Odoo.
+                if _odoo_ok(company):
                     from .odoo_selectors import signed_deals
                     origin_fr = {'sale_order': 'Commande confirmée (Odoo)',
                                  'won_lead': 'Lead gagné (Odoo)'}
-                    for deal in signed_deals():
+                    for deal in signed_deals(company=company):
                         leads.append({
                             'id': None,
                             'nom': (deal.get('source_name')

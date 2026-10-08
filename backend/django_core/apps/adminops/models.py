@@ -302,7 +302,8 @@ class FactureLicence(TenantModel):
         prestataire. Le fondateur pointe manuellement « payée ».
 
     `company` (TenantModel) = le tenant FACTURÉ. La référence est produite par
-    `core.numbering.next_reference` (jamais un count()+1).
+    `core.numbering.create_with_reference` (jamais un count()+1) et UNIQUE par
+    société dès qu'elle est posée (ATOT32 ; un brouillon garde '').
     """
 
     class Statut(models.TextChoices):
@@ -338,6 +339,14 @@ class FactureLicence(TenantModel):
         indexes = [
             models.Index(fields=['company', 'statut'],
                          name='adminops_lic_co_statut'),
+        ]
+        constraints = [
+            # ATOT32 — un numéro de licence n'est jamais porté deux fois dans
+            # une société. Les brouillons (référence vide) sont hors contrainte.
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='adminops_facturelicence_reference_uniq'),
         ]
 
     def __str__(self):

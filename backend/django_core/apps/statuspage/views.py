@@ -160,7 +160,21 @@ def publier_postmortem(request, pk):
     # incidents SYSTÈME (``company=None``, cf. les vues publiques ci-dessus).
     # Sans ce filtre, un Directeur d'un tenant pouvait publier le post-mortem
     # d'un incident rattaché à une AUTRE société.
-    incident = get_object_or_404(IncidentPublic, pk=pk, company=None)
+    #
+    # ASEC44 — un incident PLATEFORME (``company=None``, affiché sur la page
+    # de statut publique de TOUS les tenants) n'est publié que par la
+    # plateforme (superuser) ; un Directeur/Administrateur de tenant ne
+    # publie que les incidents de SA société (jamais ceux d'une autre : 404).
+    user = request.user
+    portee = models.Q(company__isnull=True)
+    if getattr(user, 'company_id', None):
+        portee |= models.Q(company_id=user.company_id)
+    incident = get_object_or_404(IncidentPublic.objects.filter(portee), pk=pk)
+    if incident.company_id is None and not user.is_superuser:
+        return Response(
+            {'detail': "Incident plateforme : publication réservée à "
+                       "l'équipe plateforme."},
+            status=status.HTTP_403_FORBIDDEN)
     if incident.statut != IncidentPublic.Statut.RESOLVED:
         return Response(
             {'detail': "L'incident doit être résolu avant de publier un post-mortem."},

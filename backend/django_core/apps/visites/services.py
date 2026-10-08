@@ -378,8 +378,45 @@ def annuler_rendez_vous(lead, user, motif=''):
     return len(visites)
 
 
+MESSAGE_DATE_PASSEE = (
+    'La visite ne peut pas être planifiée dans le passé : choisir '
+    "aujourd'hui ou une date à venir.")
+MESSAGE_DATE_VISITE_REALISEE = (
+    'Visite déjà réalisée : sa date prévue ne se modifie plus (seule une '
+    'visite en brouillon se replanifie).')
+
+
+def erreur_date_passee(date_prevue):
+    """ALEA10 — LE validateur de date prévue, partagé par
+    ``planifier_visite`` et par le sérialiseur (édition) : message FR si la
+    date est dans le PASSÉ (la date du jour reste acceptée — on planifie
+    souvent pour l'après-midi), ``None`` sinon. Horloge serveur, fuseau du
+    projet."""
+    from django.utils import timezone
+
+    if date_prevue is not None and date_prevue < timezone.localdate():
+        return MESSAGE_DATE_PASSEE
+    return None
+
+
+def erreur_modification_date_prevue(visite, date_prevue):
+    """ALEA10 — message FR si ``date_prevue`` ne peut pas REMPLACER la date
+    de ``visite`` : seule une visite BROUILLON se replanifie (une visite
+    commencée, terminée ou renvoyée a eu lieu — rouvrir sa date réémettrait
+    ``visite_planifiee`` et annulerait « Préparer et envoyer le devis »), et
+    jamais vers une date passée. ``None`` si permis (ou date inchangée)."""
+    from .models import VisiteTerrain
+
+    if date_prevue == visite.date_prevue:
+        return None
+    if visite.statut != VisiteTerrain.Statut.BROUILLON:
+        return MESSAGE_DATE_VISITE_REALISEE
+    return erreur_date_passee(date_prevue)
+
+
 def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
-                     replanifier=False):
+                     replanifier=False, date_requise=True,
+                     assigne_par_defaut=None):
     """VISITE-CADENCE — POSE un rendez-vous de visite technique sur un lead.
 
     C'est la porte que le CRM appelle depuis la fiche lead (frontière M3 : il
@@ -414,18 +451,29 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
     à une autre date » DÉPLACE le rendez-vous en attente du lead
     (``visite_en_attente``) au lieu d'en créer un second ; mêmes gardes. S'il
     n'y en a aucun, la visite est créée comme d'habitude.
-    """
-    from django.utils import timezone
 
+    ALEA9 — c'est AUSSI la porte de ``POST /api/django/visites/visites/``
+    (écran « Planifier une visite », onglet Visite de la fiche) : une seule
+    fonction, donc les mêmes gardes et UNE seule note de chatter.
+    ``date_requise=False`` (création sans date depuis l'onglet de la fiche)
+    accepte une visite SANS date : ce n'est pas un rendez-vous, aucun
+    ``visite_planifiee`` n'est publié — le chatter garde alors la note
+    « Visite technique créée. » (seule trace de ce geste).
+    ``assigne_par_defaut`` n'assigne qu'une visite NOUVELLE quand
+    ``commercial`` est absent (le créateur, côté API) — jamais un rendez-vous
+    déplacé.
+    """
     from .models import VisiteTerrain
 
     erreurs = {}
     if date_prevue is None:
-        erreurs['date_prevue'] = ['Date de visite obligatoire (AAAA-MM-JJ).']
-    elif date_prevue < timezone.localdate():
-        erreurs['date_prevue'] = [
-            'La visite ne peut pas être planifiée dans le passé : choisir '
-            "aujourd'hui ou une date à venir."]
+        if date_requise:
+            erreurs['date_prevue'] = [
+                'Date de visite obligatoire (AAAA-MM-JJ).']
+    else:
+        message = erreur_date_passee(date_prevue)
+        if message:
+            erreurs['date_prevue'] = [message]
     if commercial is not None:
         if (getattr(commercial, 'company_id', None) != lead.company_id
                 or not getattr(commercial, 'is_active', False)):
@@ -435,16 +483,21 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
     if erreurs:
         return None, erreurs
 
-    if replanifier:
+    if replanifier and date_prevue is not None:
         en_attente = visite_en_attente(lead)
         if en_attente is not None:
             return (_deplacer_visite(en_attente, user, date_prevue,
                                      commercial, notes), {})
 
     visite = VisiteTerrain.objects.create(
-        company=lead.company, lead=lead, commercial=commercial,
+        company=lead.company, lead=lead,
+        commercial=commercial if commercial is not None else assigne_par_defaut,
         statut=VisiteTerrain.Statut.BROUILLON, date_prevue=date_prevue,
         notes=(notes or '').strip(), gabarit=gabarit_pour_lead(lead))
+    if date_prevue is None:
+        # ALEA9 — sans date, aucun ``visite_planifiee`` ne dira rien au
+        # chatter : la note de création est la seule trace du geste.
+        journaliser_visite(visite, user, 'creation')
     # PAS de ``journaliser_visite(..., 'creation')`` ici : l'abonné CRM de
     # ``visite_planifiee`` pose une note qui dit TOUT (la date ET l'assigné).
     # Les deux ensemble empileraient « Visite technique créée. » juste
@@ -470,6 +523,184 @@ def journaliser_visite(visite, user, moment, detail=''):
     from apps.crm import services as crm_services
 
     return crm_services.journaliser_visite(visite, user, moment, detail=detail)
+
+
+def codes_slots_toiture():
+    """Les slots photo qui NOURRISSENT l'assemblage du toit (catégorie
+    ``toiture`` de la checklist — ceux que lit ``tasks._photos_toiture``)."""
+    from . import visite_checklist as checklist
+
+    return {slot['code'] for slot in checklist.slots()
+            if slot['categorie'] == 'toiture'}
+
+
+def invalider_assemblage_toiture(visite):
+    """ALEA14 — dès qu'une photo d'un slot toiture est ajoutée, supprimée ou
+    renvoyée, l'image ASSEMBLÉE ne correspond plus aux photos : elle est
+    oubliée (``photo_toit_key`` vidée, ``assemblage_etat=aucun``,
+    ``texture_calage`` remis à zéro) jusqu'à un nouvel « Assembler ». Sans
+    cela, une revalidation sans réassemblage peignait l'ANCIEN panorama dans
+    l'atelier 3D / le calepinage. Rend True si quelque chose a été remis à
+    zéro."""
+    from .models import VisiteTerrain
+
+    champs = []
+    if visite.photo_toit_key:
+        visite.photo_toit_key = ''
+        champs.append('photo_toit_key')
+    if visite.assemblage_etat != VisiteTerrain.Assemblage.AUCUN:
+        visite.assemblage_etat = VisiteTerrain.Assemblage.AUCUN
+        champs.append('assemblage_etat')
+    if visite.assemblage_erreur:
+        visite.assemblage_erreur = ''
+        champs.append('assemblage_erreur')
+    if visite.texture_calage is not None:
+        visite.texture_calage = None
+        champs.append('texture_calage')
+    if champs:
+        visite.save(update_fields=champs)
+    return bool(champs)
+
+
+def invalider_assemblage_si_toiture(visite, slot_code):
+    """ALEA14 — invalide l'assemblage si ``slot_code`` est un slot toiture."""
+    if slot_code in codes_slots_toiture():
+        return invalider_assemblage_toiture(visite)
+    return False
+
+
+def supprimer_media(media):
+    """Retire UNE photo de visite (``VisiteMedia``).
+
+    Point unique de suppression d'un média : la route ``supprimer_photo`` et
+    le remplacement d'une photo « à refaire » (ALEA12) y passent tous deux.
+
+    ALEA13 — le média EST le fichier : sa pièce jointe (``records.Attachment``
+    rattachée au LEAD) est supprimée avec lui, et l'objet de stockage est
+    effacé par le service de ``records`` (``storage.delete_attachment``) une
+    fois la transaction validée — plus de photo fantôme dans le panneau
+    pièces jointes du lead. DÉCISION (ALEA13) : une photo REMPLACÉE (ALEA12)
+    ne garde PAS sa pièce jointe — elle a été rejetée par le bureau d'études,
+    la laisser sur le lead serait exactement le fantôme corrigé ici ; la trace
+    du renvoi (motif) reste au chatter du lead.
+    """
+    from django.db import transaction
+
+    attachment = media.attachment
+    cle = getattr(attachment, 'file_key', '') or ''
+    visite = media.visite
+    slot_code = media.slot_code
+    media.delete()
+    # ALEA14 — une photo toiture en moins : l'assemblage n'est plus juste.
+    invalider_assemblage_si_toiture(visite, slot_code)
+    if attachment is not None:
+        attachment.delete()
+    if cle:
+        transaction.on_commit(lambda: _effacer_objet_si_orphelin(cle))
+
+
+def _effacer_objet_si_orphelin(cle):
+    """ALEA13-revue — efface l'objet de stockage d'une photo retirée SAUF si
+    une version GED pointe encore sur la même clé (photo classée en GED) :
+    le document GED garderait sinon une version sans contenu. Vérifié au
+    moment de l'effacement (après validation de la transaction)."""
+    from apps.ged.selectors import cle_stockage_referencee
+    from apps.records.storage import delete_attachment
+
+    if cle_stockage_referencee(cle):
+        return
+    delete_attachment(cle)
+
+
+def remplacer_photo_a_refaire(visite, slot_code, *, nouvelle):
+    """ALEA12 — une NOUVELLE photo déposée dans un slot qui porte une photo
+    « à refaire » la REMPLACE : la plus ancienne photo à refaire du slot est
+    retirée (``supprimer_media``), donc elle n'est plus comptée, le slot
+    quitte l'état ``a_refaire`` et « Terminer » passe sans suppression
+    manuelle. Une photo saine du slot n'est jamais touchée. Rend la photo
+    remplacée (déjà retirée) ou ``None``."""
+    ancienne = (visite.medias
+                .filter(slot_code=slot_code, a_refaire=True)
+                .exclude(pk=nouvelle.pk)
+                .order_by('id').first())
+    if ancienne is None:
+        return None
+    supprimer_media(ancienne)
+    return ancienne
+
+
+# ── ALEA6 — LA TABLE DES TRANSITIONS DE STATUT (appliquée par le SERVEUR) ────
+#
+# Avant ALEA6, seul le bouton de l'écran bureau d'études empêchait de valider
+# un brouillon vide : un POST direct sur ``valider`` posait le feu vert sur 20
+# éléments manquants. UNE table dit, pour chaque geste de transition, depuis
+# quels statuts il est permis ; toute autre paire est refusée en NOMMANT
+# ``statut``. ``terminer`` garde sa propre porte (complétude + idempotence).
+
+#: Statuts de DÉPART autorisés, par action de transition.
+TRANSITIONS = {
+    'valider': frozenset({'terminee'}),
+    'renvoyer': frozenset({'validee', 'terminee'}),
+    # ALEA7 — ce qui part au CRM à « Terminer » (qualification, notes du
+    # retour terrain) ne change plus en silence : on corrige par un RENVOI du
+    # bureau d'études (``a_refaire``), jamais en réécrivant une visite
+    # terminée. (Une visite VALIDÉE est déjà gelée par VT3.)
+    'qualification': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
+    'notes': frozenset({'brouillon', 'en_cours', 'a_refaire'}),
+}
+
+_MESSAGE_TERMINEE = ("Visite terminée : demandez un renvoi au bureau "
+                     "d'études pour corriger.")
+
+#: Le message (FR) qui explique un refus de statut, par action.
+MESSAGES_TRANSITION = {
+    'valider': 'La visite doit être terminée avant validation.',
+    'renvoyer': ('Seule une visite terminée ou validée peut être renvoyée '
+                 'au commercial.'),
+    'qualification': _MESSAGE_TERMINEE,
+    'notes': _MESSAGE_TERMINEE,
+}
+
+
+def _corps_refus_statut(message):
+    """Le corps 400 qui NOMME ``statut`` — liste DRF + forme maison."""
+    return {'statut': [message], 'erreurs': {'statut': message}}
+
+
+def refus_transition(visite, action):
+    """ALEA6 — ``None`` si ``action`` est permise sur ``visite``, sinon le
+    CORPS de la réponse 400 :
+
+    * statut de départ hors ``TRANSITIONS`` → ``{'statut': [message]}``
+      (doublé de la forme maison ``{'erreurs': {'statut': message}}``) ;
+    * ``valider`` d'une visite terminée mais redevenue incomplète (photo
+      retirée après « terminer ») → ``{'manquants': [...]}``, la liste exacte
+      de ``visite_terrain_manquants`` — le feu vert ne se donne jamais sur un
+      dossier incomplet.
+
+    Une action absente de la table n'est pas une transition gérée ici
+    (``None``) : la table ne s'applique qu'aux gestes qu'elle déclare.
+    """
+    permis = TRANSITIONS.get(action)
+    if permis is None:
+        return None
+    if visite.statut not in permis:
+        message = MESSAGES_TRANSITION[action]
+        if action == 'valider' and visite.statut == 'validee':
+            message = 'Cette visite est déjà validée.'
+        return _corps_refus_statut(message)
+    if action == 'valider':
+        from . import selectors
+
+        manquants = selectors.visite_terrain_manquants(visite)
+        if manquants:
+            return {
+                'manquants': manquants,
+                'message': (
+                    'La visite ne peut pas être validée : '
+                    f'{len(manquants)} élément(s) manquent encore.'),
+            }
+    return None
 
 
 def valider_visite(visite, user):
@@ -563,6 +794,12 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
             touchee = True
     if touchee:
         visite.mesures = stockees
+
+    # ALEA14 — une photo toiture renvoyée sera reprise : l'image assemblée
+    # à partir de l'ancienne ne doit plus peindre le toit.
+    toiture = codes_slots_toiture()
+    if any(media.slot_code in toiture for media in medias):
+        invalider_assemblage_toiture(visite)
 
     visite.statut = VisiteTerrain.Statut.A_REFAIRE
     champs = ['statut', 'mesures'] if touchee else ['statut']

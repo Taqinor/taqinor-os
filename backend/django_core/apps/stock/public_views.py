@@ -80,10 +80,17 @@ def portail_fournisseur_confirmer_bcf_view(request, token, bcf_id):
     d'accès croisé)."""
     from .services import (
         resoudre_token_portail_fournisseur, confirmer_bcf_portail_fournisseur,
+        ConfirmationBcfInvalide, ConfirmationBcfRefusee,
     )
     token_obj = resoudre_token_portail_fournisseur(token)
     if token_obj is None:
         return _not_found()
+
+    # ASTK181 — un corps JSON non objet (liste, scalaire) : 400 nommé, jamais
+    # un AttributeError → 500 sur `.get`.
+    if not hasattr(request.data, 'get'):
+        return _noindex(Response({'detail': 'Corps JSON attendu.'},
+                                 status=status.HTTP_400_BAD_REQUEST))
 
     date_confirmee = request.data.get('date_confirmee_fournisseur')
     if not date_confirmee:
@@ -96,6 +103,14 @@ def portail_fournisseur_confirmer_bcf_view(request, token, bcf_id):
             token_obj, bcf_id, date_confirmee=date_confirmee,
             numero_confirmation=request.data.get(
                 'numero_confirmation_fournisseur', ''))
+    except ConfirmationBcfInvalide as exc:
+        # ASTK181 — valeur illisible : 400 nommant le champ, rien d'écrit.
+        return _noindex(Response(exc.erreurs,
+                                 status=status.HTTP_400_BAD_REQUEST))
+    except ConfirmationBcfRefusee as exc:
+        # ASTK180 — BCF non `envoye` ou déjà reçu : 409, rien d'écrit.
+        return _noindex(Response({'detail': str(exc)},
+                                 status=status.HTTP_409_CONFLICT))
     except ValueError:
         return _not_found()
 
@@ -301,8 +316,12 @@ def portail_fournisseur_reserver_creneau_view(request, token):
             chauffeur_nom=request.data.get('chauffeur_nom') or '',
             immatriculation=request.data.get('immatriculation') or '')
     except ValueError as exc:
-        return _noindex(Response({'detail': str(exc)},
-                                 status=status.HTTP_400_BAD_REQUEST))
+        # ASTK191 — un refus rattaché à un champ (créneau hors grille) répond
+        # `{champ: [message]}` ; les autres refus gardent `{detail}`.
+        champ = getattr(exc, 'champ', None)
+        corps = ({champ: [getattr(exc, 'message', str(exc))]} if champ
+                 else {'detail': str(exc)})
+        return _noindex(Response(corps, status=status.HTTP_400_BAD_REQUEST))
     return _noindex(Response({
         'id': rdv.id, 'quai': rdv.quai_id,
         'debut': rdv.date_heure_debut.isoformat(),

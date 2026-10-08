@@ -141,3 +141,25 @@ describe('FactureDetail — résoudre une exception (WIR192)', () => {
     expect(screen.queryByRole('button', { name: /Résoudre l'exception/ })).toBeNull()
   })
 })
+
+/* ASTK105 (C-ASTK-035) — la grille du détail boucle : TTC − payé − acomptes
+   imputés − avoirs imputés = solde dû (clés déjà servies par le serializer). */
+describe('FactureDetail — chaîne du solde (ASTK105)', () => {
+  it('la chaîne du solde boucle', () => {
+    const facture = {
+      id: 5, reference: 'FF-5', statut: 'partiellement_payee', statut_controle: 'normale',
+      fournisseur_nom: 'JA Solar', montant_ttc: '12000.00', total_paye: '1000.00',
+      total_acomptes_imputes: '3600.00', total_avoirs_imputes: '0.00', solde_du: '7400.00',
+      paiements: [],
+    }
+    render(<ThemeProvider>
+      <FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />
+    </ThemeProvider>)
+    const valeur = (libelle) => screen.getByText(libelle).parentElement.textContent
+    expect(valeur('Total TTC')).toMatch(/12\s?000,00/)
+    expect(valeur('Déjà payé')).toMatch(/1\s?000,00/)
+    expect(valeur('Acomptes imputés')).toMatch(/3\s?600,00/)
+    expect(valeur('Avoirs imputés')).toMatch(/0,00/)
+    expect(valeur('Solde dû')).toMatch(/7\s?400,00/)
+  })
+})

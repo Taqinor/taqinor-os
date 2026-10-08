@@ -3,6 +3,8 @@ from datetime import timedelta
 from rest_framework import serializers
 from django.utils import timezone
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
@@ -272,7 +274,12 @@ class TicketChecklistItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['cle', 'libelle', 'ordre', 'coche_par_nom', 'date_coche']
 
 
-class TicketSerializer(serializers.ModelSerializer):
+class TicketSerializer(SameCompanyFKSerializerMixin,
+                       serializers.ModelSerializer):
+    # ASEC34 — un id d'une autre société reçoit la réponse d'un id absent
+    # (400 « objet inexistant »), à la création comme au PATCH.
+    same_company_fields = (
+        'technicien_responsable', 'categorie', 'categorie_equipement')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     type_display = serializers.CharField(
@@ -393,6 +400,11 @@ class TicketSerializer(serializers.ModelSerializer):
             # NTSRV12 — mémoire d'idempotence des paliers d'escalade, écrite
             # par le balayage SLA uniquement.
             'sla_escalade_paliers_notifies',
+            # ASEC34 — posés côté serveur uniquement : la récidive et
+            # l'exclusion de facturation par la détection XFSM15
+            # (``TicketViewSet`` à la création), le coût interne hors du
+            # corps d'un PATCH générique.
+            'non_facturable', 'est_recidive', 'cout',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

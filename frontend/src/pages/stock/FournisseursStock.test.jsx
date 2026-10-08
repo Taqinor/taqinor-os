@@ -299,3 +299,25 @@ describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
     await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, true))
   })
 })
+
+/* ============================================================================
+   ASTK95 (C-ASTK-026) — créer un fournisseur dont le nom normalisé existe
+   déjà : le serveur crée (201, non bloquant) et renvoie
+   `avertissements.nom` ; la liste l'affiche après fermeture du formulaire.
+   ========================================================================== */
+describe('FournisseursStock — doublon de nom (ASTK95)', () => {
+  it("affiche l'avertissement de nom renvoyé par le serveur", async () => {
+    stockApi.createFournisseur.mockResolvedValueOnce({
+      data: {
+        id: 9, nom: 'acme',
+        avertissements: { nom: 'Un fournisseur « ACME » existe déjà.', ice: null },
+      },
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: /Nouveau fournisseur/ }))
+    await userEvent.type(document.getElementById('fou-nom'), 'acme')
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(stockApi.createFournisseur).toHaveBeenCalled())
+    expect(await screen.findByText('Un fournisseur « ACME » existe déjà.')).toBeInTheDocument()
+  })
+})

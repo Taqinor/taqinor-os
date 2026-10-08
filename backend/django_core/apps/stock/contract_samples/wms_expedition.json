@@ -1,0 +1,688 @@
+{
+  "endpoint": "GET /api/django/stock/expeditions/?statut=<brouillon|etiquette|expedie|livre|annule>",
+  "pourquoi": "ASTK163 (M0, PACT10, C-ASTK-045) — contrat posé SEUL sur main avant les écrans expédition / unités logistiques / plans de chargement / retours client / rebut (ASTK220 lit `exempleContrat('stock','wms_expedition')`). Fichier multi-routes : chaque entrée de `routes` porte `endpoint`, `pourquoi`, `exemple` (+ exemple_vide, erreurs, corps). Clés dérivées ligne à ligne des serializers/vues/services ; les formes d'erreur 400 (unité scellée non modifiable, parent cyclique) sont celles posées par ASTK31 et restent « à confirmer à la fusion » (tâches W1/W2 de C-ASTK-004 / WMS-14). Les textes des `exemple_erreur_400` autres que unité scellée / parent cyclique / casier introuvable / unité sans société sont ILLUSTRATIFS (clé `detail` seule contractuelle). Binaires (cmr-pdf, etiquette-pdf) déclarés par `content_type`. Aucun prix d'achat dans ce contrat (valeur_perte du rebut = valeur interne, voir sa note).",
+  "forme_serveur": "partielle",
+  "forme_serveur_pourquoi": "Fichier multi-routes : `endpoint`/`exemple` de tête = la route `expeditions`. Clés de chaque route lues dans les serializers/vues cités ; pas encore affirmées par APIClient (à confirmer à la fusion).",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 8,
+        "unite_logistique": 12,
+        "sscc": "000000000000000012",
+        "transporteur_provider": "aucun",
+        "transporteur": null,
+        "transporteur_nom": "",
+        "numero_suivi": "INT-0008",
+        "cout_reel": "85.00",
+        "statut": "etiquette",
+        "destination": "Casablanca",
+        "date_expedition": null,
+        "a_une_etiquette": true,
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "routes": {
+    "expeditions": {
+      "endpoint": "GET /api/django/stock/expeditions/?statut=<brouillon|etiquette|expedie|livre|annule>",
+      "pourquoi": "NTWMS9 — expéditions transporteur (`ExpeditionTransporteurViewSet`, views/wms.py ; ExpeditionTransporteurSerializer serializers_wms.py). Lecture tout rôle, écriture Responsable/Admin. POST {unite_logistique, transporteur_provider?, destination?, cout_reel?} renvoie CET objet (201) ; numero_suivi/statut/date_expedition posés par le serveur ; la clé MinIO de l'étiquette n'est jamais exposée (`a_une_etiquette` booléen).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 8,
+            "unite_logistique": 12,
+            "sscc": "000000000000000012",
+            "transporteur_provider": "aucun",
+            "transporteur": null,
+            "transporteur_nom": "",
+            "numero_suivi": "INT-0008",
+            "cout_reel": "85.00",
+            "statut": "etiquette",
+            "destination": "Casablanca",
+            "date_expedition": null,
+            "a_une_etiquette": true,
+            "created_at": "2026-10-12T09:00:00Z",
+            "updated_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 8,
+        "unite_logistique": 12,
+        "sscc": "000000000000000012",
+        "transporteur_provider": "aucun",
+        "transporteur": null,
+        "transporteur_nom": "",
+        "numero_suivi": "INT-0008",
+        "cout_reel": "85.00",
+        "statut": "etiquette",
+        "destination": "Casablanca",
+        "date_expedition": null,
+        "a_une_etiquette": true,
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Unité logistique introuvable."
+      }
+    },
+    "expeditions_cmr_pdf": {
+      "endpoint": "GET /api/django/stock/expeditions/<id>/cmr-pdf/",
+      "pourquoi": "NTWMS43 — lettre de voiture CMR simplifiée. RÉPONSE BINAIRE : `application/pdf` (inline, filename lettre-de-voiture-<numero_suivi|expedition-id>.pdf), aucun JSON en succès. Document transporteur : aucun prix d'achat.",
+      "exemple": {},
+      "content_type": "application/pdf"
+    },
+    "expeditions_generer_etiquette": {
+      "endpoint": "POST /api/django/stock/expeditions/<id>/generer-etiquette/",
+      "pourquoi": "Numéro de suivi + étiquette (connecteur NoOp interne sans intégration). Idempotent. Renvoie l'expédition (mêmes clés que `expeditions.exemple_element`) ; ValueError du service → 400 {detail}.",
+      "exemple": {
+        "id": 8,
+        "unite_logistique": 12,
+        "sscc": "000000000000000012",
+        "transporteur_provider": "aucun",
+        "transporteur": null,
+        "transporteur_nom": "",
+        "numero_suivi": "INT-0008",
+        "cout_reel": "85.00",
+        "statut": "etiquette",
+        "destination": "Casablanca",
+        "date_expedition": null,
+        "a_une_etiquette": true,
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Expédition introuvable."
+      }
+    },
+    "expeditions_tracking": {
+      "endpoint": "GET /api/django/stock/expeditions/<id>/tracking/",
+      "pourquoi": "État de suivi connu, LECTURE SEULE (views/wms.py `tracking`).",
+      "exemple": {
+        "numero_suivi": "INT-0008",
+        "transporteur_provider": "aucun",
+        "statut": "etiquette",
+        "destination": "Casablanca",
+        "date_expedition": null,
+        "a_une_etiquette": true
+      }
+    },
+    "expeditions_tarifs": {
+      "endpoint": "GET /api/django/stock/expeditions/tarifs/?unite_logistique=<id>&destination=",
+      "pourquoi": "NTWMS10 — comparatif coût/délai (selectors_wms.comparer_tarifs_transporteurs), trié du moins cher au plus cher. Unité inconnue/étrangère → 400.",
+      "exemple": {
+        "unite_logistique": 12,
+        "offres": [
+          {
+            "source": "interne",
+            "code": "3",
+            "libelle": "Transporteur interne",
+            "cout": "85.00",
+            "devise": "MAD",
+            "delai_jours": null
+          }
+        ]
+      },
+      "exemple_erreur_400": {
+        "detail": "Unité logistique introuvable dans cette société."
+      }
+    },
+    "unites_logistiques": {
+      "endpoint": "GET /api/django/stock/unites-logistiques/?statut=<en_preparation|scelle|expedie>&type_unite=<colis|palette>",
+      "pourquoi": "NTWMS6 — colis/palettes (UniteLogistiqueSerializer + UniteLogistiqueLigneSerializer). POST {type_unite?, parent?, vague?, poids_kg?, dimensions?} → 201 CET objet ; sscc posé par le serveur (GS1), jamais accepté du corps. PATCH refusé sur unité scellée/expédiée (ASTK31) : 400 {detail:[...]} ; parent qui forme un cycle → 400 {parent:[...]}. Formes d'erreur « à confirmer à la fusion » (tâches W1/W2 de C-ASTK-004 / WMS-14).",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 12,
+            "type_unite": "colis",
+            "sscc": "000000000000000012",
+            "parent": null,
+            "vague": 3,
+            "poids_kg": "18.500",
+            "dimensions": "120x80x40",
+            "statut": "en_preparation",
+            "bin_actuel": null,
+            "date_scellage": null,
+            "scelle_par": null,
+            "est_figee": false,
+            "nb_enfants": 0,
+            "lignes": [
+              {
+                "id": 31,
+                "unite": 12,
+                "produit": 5,
+                "produit_nom": "Panneau 550 W",
+                "quantite": 10,
+                "lot": null,
+                "numero_lot": "",
+                "ligne_picking": null,
+                "scanne_le": null,
+                "scanne_par": null
+              }
+            ],
+            "created_at": "2026-10-12T09:00:00Z",
+            "updated_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 12,
+        "type_unite": "colis",
+        "sscc": "000000000000000012",
+        "parent": null,
+        "vague": 3,
+        "poids_kg": "18.500",
+        "dimensions": "120x80x40",
+        "statut": "en_preparation",
+        "bin_actuel": null,
+        "date_scellage": null,
+        "scelle_par": null,
+        "est_figee": false,
+        "nb_enfants": 0,
+        "lignes": [
+          {
+            "id": 31,
+            "unite": 12,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 10,
+            "lot": null,
+            "numero_lot": "",
+            "ligne_picking": null,
+            "scanne_le": null,
+            "scanne_par": null
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400_scellee": {
+        "detail": [
+          "Unité scellée : elle ne peut plus être modifiée."
+        ]
+      },
+      "exemple_erreur_400_parent_cyclique": {
+        "parent": [
+          "Ce parent formerait un cycle (une unité ne peut pas se contenir elle-même)."
+        ]
+      }
+    },
+    "unites_logistiques_lignes": {
+      "endpoint": "POST /api/django/stock/unites-logistiques/<id>/lignes/",
+      "pourquoi": "Ajoute une ligne de contenu {produit, quantite, lot?} ; 201 + l'unité complète (clés de `unites_logistiques.exemple_element`). Unité scellée → 400 {detail}.",
+      "exemple": {
+        "id": 12,
+        "type_unite": "colis",
+        "sscc": "000000000000000012",
+        "parent": null,
+        "vague": 3,
+        "poids_kg": "18.500",
+        "dimensions": "120x80x40",
+        "statut": "en_preparation",
+        "bin_actuel": null,
+        "date_scellage": null,
+        "scelle_par": null,
+        "est_figee": false,
+        "nb_enfants": 0,
+        "lignes": [
+          {
+            "id": 31,
+            "unite": 12,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 10,
+            "lot": null,
+            "numero_lot": "",
+            "ligne_picking": null,
+            "scanne_le": null,
+            "scanne_par": null
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "produit": 5,
+        "quantite": 10,
+        "lot": null
+      },
+      "exemple_erreur_400": {
+        "detail": "Cette unité logistique est scellée : son contenu est figé."
+      }
+    },
+    "unites_logistiques_controler_scan": {
+      "endpoint": "POST /api/django/stock/unites-logistiques/<id>/controler-scan/",
+      "pourquoi": "NTWMS11 — contrôle BLOQUANT du poste d'emballage {produit, quantite}. 201 + l'unité (lignes horodatées `scanne_le`) ; produit hors vague/quantité > prélevé/unité scellée → 400 {detail}.",
+      "exemple": {
+        "id": 12,
+        "type_unite": "colis",
+        "sscc": "000000000000000012",
+        "parent": null,
+        "vague": 3,
+        "poids_kg": "18.500",
+        "dimensions": "120x80x40",
+        "statut": "en_preparation",
+        "bin_actuel": null,
+        "date_scellage": null,
+        "scelle_par": null,
+        "est_figee": false,
+        "nb_enfants": 0,
+        "lignes": [
+          {
+            "id": 31,
+            "unite": 12,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 10,
+            "lot": null,
+            "numero_lot": "",
+            "ligne_picking": null,
+            "scanne_le": null,
+            "scanne_par": null
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "produit": 5,
+        "quantite": 1
+      },
+      "exemple_erreur_400": {
+        "detail": "La quantité doit être positive."
+      }
+    },
+    "unites_logistiques_deplacer": {
+      "endpoint": "POST /api/django/stock/unites-logistiques/<id>/deplacer/",
+      "pourquoi": "NTWMS25 — déplace l'unité ENTIÈRE vers un casier ({bin_destination} ou ?bin_destination=). 200 ; casier étranger/unité vide/expédiée → 400 {detail}.",
+      "exemple": {
+        "unite_logistique": 12,
+        "sscc": "000000000000000012",
+        "bin_destination": 3,
+        "bin_code": "A-01-02",
+        "lignes_deplacees": 1,
+        "unites_deplacees": [
+          12
+        ]
+      },
+      "exemple_corps": {
+        "bin_destination": 3
+      },
+      "exemple_erreur_400": {
+        "detail": "Casier de destination introuvable dans cette société."
+      }
+    },
+    "unites_logistiques_sceller": {
+      "endpoint": "POST /api/django/stock/unites-logistiques/<id>/sceller/",
+      "pourquoi": "Fige le contenu et rend l'étiquette imprimable ; 200 + l'unité (statut `scelle`, `est_figee` true, `date_scellage`, `scelle_par` posés). ValueError → 400 {detail}.",
+      "exemple": {
+        "id": 12,
+        "type_unite": "colis",
+        "sscc": "000000000000000012",
+        "parent": null,
+        "vague": 3,
+        "poids_kg": "18.500",
+        "dimensions": "120x80x40",
+        "statut": "scelle",
+        "bin_actuel": null,
+        "date_scellage": "2026-10-12T10:00:00Z",
+        "scelle_par": 1,
+        "est_figee": true,
+        "nb_enfants": 0,
+        "lignes": [
+          {
+            "id": 31,
+            "unite": 12,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 10,
+            "lot": null,
+            "numero_lot": "",
+            "ligne_picking": null,
+            "scanne_le": null,
+            "scanne_par": null
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Cette unité logistique est vide : rien à sceller."
+      }
+    },
+    "unites_logistiques_etiquette_pdf": {
+      "endpoint": "GET /api/django/stock/unites-logistiques/<id>/etiquette-pdf/?sortie=html",
+      "pourquoi": "Étiquette SSCC GS1-128. RÉPONSE BINAIRE : `application/pdf` (inline, filename sscc-<sscc>.pdf) — ou `text/html; charset=utf-8` avec ?sortie=html. Aucun JSON en succès ; aucun prix.",
+      "exemple": {},
+      "content_type": "application/pdf"
+    },
+    "plans_chargement": {
+      "endpoint": "GET /api/django/stock/plans-chargement/?statut=<brouillon|valide|charge>",
+      "pourquoi": "NTWMS26 — plans de chargement (PlanChargementSerializer). POST {livraison?, expedition?, capacite_kg?, capacite_m3?, note?} → 201 CET objet ; reference posée par le serveur ; unités par l'action `unites` uniquement.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 4,
+            "reference": "PCH-2026-0004",
+            "livraison": null,
+            "expedition": null,
+            "unites_logistiques": [
+              12
+            ],
+            "nb_unites": 1,
+            "capacite_kg": "1000.00",
+            "capacite_m3": "12.000",
+            "statut": "brouillon",
+            "note": "",
+            "cree_par": 1,
+            "created_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 4,
+        "reference": "PCH-2026-0004",
+        "livraison": null,
+        "expedition": null,
+        "unites_logistiques": [
+          12
+        ],
+        "nb_unites": 1,
+        "capacite_kg": "1000.00",
+        "capacite_m3": "12.000",
+        "statut": "brouillon",
+        "note": "",
+        "cree_par": 1,
+        "created_at": "2026-10-12T09:00:00Z"
+      }
+    },
+    "plans_chargement_verifier_capacite": {
+      "endpoint": "GET /api/django/stock/plans-chargement/<id>/verifier-capacite/",
+      "pourquoi": "Poids/volume embarqués vs capacité (services_wms.verifier_capacite_plan). LECTURE SEULE. Sans capacité déclarée : pourcentages null, jamais de faux dépassement.",
+      "exemple": {
+        "plan": 4,
+        "nb_unites": 1,
+        "poids_kg": "18.500",
+        "volume_m3": "0.384",
+        "capacite_kg": "1000.00",
+        "capacite_m3": "12.000",
+        "poids_utilise_pct": "1.85",
+        "volume_utilise_pct": "3.20",
+        "depassement": false,
+        "avertissement": ""
+      }
+    },
+    "plans_chargement_unites": {
+      "endpoint": "POST /api/django/stock/plans-chargement/<id>/unites/",
+      "pourquoi": "Ajoute une unité {unite_logistique} et renvoie le contrôle de capacité (201) ; refus → 400 {detail}.",
+      "exemple": {
+        "plan": 4,
+        "nb_unites": 1,
+        "depassement": false,
+        "avertissement": ""
+      },
+      "exemple_corps": {
+        "unite_logistique": 12
+      },
+      "exemple_erreur_400": {
+        "detail": "Unité logistique introuvable."
+      }
+    },
+    "mouvements_rebut": {
+      "endpoint": "GET /api/django/stock/mouvements-rebut/?motif=<casse|perime|vol|erreur_reception>&produit=<id>",
+      "pourquoi": "NTWMS24 — déclarations de rebut (création seule : GET/POST). POST {produit, quantite, motif, bin?, note?} → 201 CET objet ; valeur_perte et mouvement posés par le serveur. `valeur_perte` est une valeur INTERNE (coût) servie par le serializer actuel : sa portée par rôle relève de C-ASTK-002 (tâches W1/W2), à confirmer à la fusion.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 6,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 2,
+            "motif": "casse",
+            "motif_libelle": "Casse",
+            "bin": null,
+            "bin_code": "",
+            "valeur_perte": "1800.00",
+            "mouvement": 44,
+            "note": "",
+            "declare_par": 1,
+            "created_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 6,
+        "produit": 5,
+        "produit_nom": "Panneau 550 W",
+        "quantite": 2,
+        "motif": "casse",
+        "motif_libelle": "Casse",
+        "bin": null,
+        "bin_code": "",
+        "valeur_perte": "1800.00",
+        "mouvement": 44,
+        "note": "",
+        "declare_par": 1,
+        "created_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Motif invalide."
+      }
+    },
+    "retours_client": {
+      "endpoint": "GET /api/django/stock/retours-client/?statut=<demande|en_transit|receptionne|inspecte|clos>&client=<id>",
+      "pourquoi": "NTWMS23 — retours client RMA (RetourClientSerializer + LigneRetourClientSerializer). POST {client, chantier?, ticket?, motif?, lignes:[{produit, quantite, etat_constate?, bin?}]} → 201 CET objet ; reference/statut posés par le serveur.",
+      "exemple": {
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": 2,
+            "reference": "RET-2026-0002",
+            "client": 7,
+            "client_nom": "Client Test",
+            "chantier": null,
+            "ticket": null,
+            "statut": "demande",
+            "motif": "Produit non conforme",
+            "date_reception": null,
+            "date_inspection": null,
+            "cree_par": 1,
+            "lignes": [
+              {
+                "id": 9,
+                "retour": 2,
+                "produit": 5,
+                "produit_nom": "Panneau 550 W",
+                "quantite": 1,
+                "etat_constate": "revendable",
+                "bin": null,
+                "bin_code": "",
+                "stock_mouvemente": false,
+                "note": ""
+              }
+            ],
+            "created_at": "2026-10-12T09:00:00Z",
+            "updated_at": "2026-10-12T09:00:00Z"
+          }
+        ]
+      },
+      "exemple_vide": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "exemple_element": {
+        "id": 2,
+        "reference": "RET-2026-0002",
+        "client": 7,
+        "client_nom": "Client Test",
+        "chantier": null,
+        "ticket": null,
+        "statut": "demande",
+        "motif": "Produit non conforme",
+        "date_reception": null,
+        "date_inspection": null,
+        "cree_par": 1,
+        "lignes": [
+          {
+            "id": 9,
+            "retour": 2,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 1,
+            "etat_constate": "revendable",
+            "bin": null,
+            "bin_code": "",
+            "stock_mouvemente": false,
+            "note": ""
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "client": 7,
+        "motif": "Produit non conforme",
+        "lignes": [
+          {
+            "produit": 5,
+            "quantite": 1,
+            "etat_constate": "revendable"
+          }
+        ]
+      },
+      "exemple_erreur_400": {
+        "detail": "Un retour doit contenir au moins une ligne."
+      }
+    },
+    "retours_client_receptionner": {
+      "endpoint": "POST /api/django/stock/retours-client/<id>/receptionner/",
+      "pourquoi": "Acte l'arrivée : seules les lignes `revendable` réintègrent le stock. 200 + le retour complet (clés de `retours_client.exemple_element`) ; refus → 400 {detail}.",
+      "exemple": {
+        "id": 2,
+        "reference": "RET-2026-0002",
+        "client": 7,
+        "client_nom": "Client Test",
+        "chantier": null,
+        "ticket": null,
+        "statut": "receptionne",
+        "motif": "Produit non conforme",
+        "date_reception": "2026-10-13T09:00:00Z",
+        "date_inspection": null,
+        "cree_par": 1,
+        "lignes": [
+          {
+            "id": 9,
+            "retour": 2,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 1,
+            "etat_constate": "revendable",
+            "bin": null,
+            "bin_code": "",
+            "stock_mouvemente": false,
+            "note": ""
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_erreur_400": {
+        "detail": "Ce retour est déjà réceptionné."
+      }
+    },
+    "retours_client_inspecter": {
+      "endpoint": "POST /api/django/stock/retours-client/<id>/inspecter/",
+      "pourquoi": "Acte le contrôle qualité {lignes:[{ligne, etat_constate, bin?, note?}]} ; 200 + le retour complet ; refus → 400 {detail}.",
+      "exemple": {
+        "id": 2,
+        "reference": "RET-2026-0002",
+        "client": 7,
+        "client_nom": "Client Test",
+        "chantier": null,
+        "ticket": null,
+        "statut": "inspecte",
+        "motif": "Produit non conforme",
+        "date_reception": "2026-10-13T09:00:00Z",
+        "date_inspection": "2026-10-14T09:00:00Z",
+        "cree_par": 1,
+        "lignes": [
+          {
+            "id": 9,
+            "retour": 2,
+            "produit": 5,
+            "produit_nom": "Panneau 550 W",
+            "quantite": 1,
+            "etat_constate": "revendable",
+            "bin": null,
+            "bin_code": "",
+            "stock_mouvemente": false,
+            "note": ""
+          }
+        ],
+        "created_at": "2026-10-12T09:00:00Z",
+        "updated_at": "2026-10-12T09:00:00Z"
+      },
+      "exemple_corps": {
+        "lignes": [
+          {
+            "ligne": 9,
+            "etat_constate": "a_reparer"
+          }
+        ]
+      },
+      "exemple_erreur_400": {
+        "detail": "Ce retour n'est pas réceptionné."
+      }
+    }
+  }
+}

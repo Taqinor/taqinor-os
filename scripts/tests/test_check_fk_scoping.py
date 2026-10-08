@@ -335,6 +335,57 @@ class TestScissionSPL72(BaseArbre):
                             for _, cls, _, _, couvert in sites), sites)
 
 
+SER_SCOPED_RELATIONS = '''
+from rest_framework import serializers
+from .models import Ligne
+
+
+class _CompanyScopedRelationsMixin:
+    scoped_relations: tuple = ()
+
+
+class LigneSerializer(_CompanyScopedRelationsMixin, serializers.ModelSerializer):
+    scoped_relations = ('produit', 'voisine')
+
+    class Meta:
+        model = Ligne
+        fields = ['id', 'produit', 'referentiel', 'voisine']
+'''
+
+
+class TestBornesDeclarees(BaseArbre):
+    """ALEA42 : `scoped_relations` borne ; une ligne d'allowlist inutile échoue."""
+
+    def test_scoped_relations_reconnu(self):
+        self._monter(SER_SCOPED_RELATIONS)
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        sites = cfs.collect_sites()
+        self.assertTrue(sites and all(couvert for *_, couvert in sites), sites)
+
+    def test_ligne_allowlist_inutile_echoue(self):
+        self._monter(
+            SER_SCOPED_RELATIONS,
+            allowlist="backend/django_core/apps/ao/serializers.py"
+                      "::LigneSerializer.produit\n")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("ligne d'allowlist inutile : "
+                      "backend/django_core/apps/ao/serializers.py"
+                      "::LigneSerializer.produit", out)
+        self.assertIn("la retirer", out)
+
+    def test_ligne_allowlist_utile_reste_toleree(self):
+        self._monter(
+            SER_NU,
+            allowlist="backend/django_core/apps/ao/serializers.py"
+                      "::LigneSerializer.produit\n"
+                      "backend/django_core/apps/ao/serializers.py"
+                      "::LigneSerializer.voisine\n")
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
+
 class TestDepotReel(unittest.TestCase):
     """Le dépôt RÉEL doit rester vert (allowlist à jour)."""
 

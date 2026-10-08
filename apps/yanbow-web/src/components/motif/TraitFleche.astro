@@ -1,0 +1,35 @@
+---
+// Trait de flèche décoratif (YBW40) — fût + pointe aux PROPORTIONS du logo
+// (mesures.ts). Décoratif : aria-hidden, aucune couleur hors jetons, dessin
+// statique par défaut ; `anime` (jamais sur l'élément LCP) trace le fût une
+// fois, coupé sous prefers-reduced-motion.
+import './motif.css';
+import { MESURES, RAPPORTS } from './mesures';
+
+interface Props {
+  /** Longueur du fût, en épaisseurs de fût (le logo : ≈ 9). */
+  longueur?: number;
+  /** Largeur CSS rendue (ex. « 100% », « 12rem »). */
+  largeur?: string;
+  anime?: boolean;
+  class?: string;
+}
+const { longueur = 9, largeur = '100%', anime = false, class: classe } = Astro.props;
+const e = MESURES.fut.epaisseur;
+const L = longueur * e;
+const pointe = RAPPORTS.pointeSurFut * e;
+const demiDos = (RAPPORTS.dosSurFut * e) / 2;
+const total = L + pointe;
+const r = (v: number) => Math.round(v * 100) / 100;
+---
+<svg
+  class:list={['motif', 'motif-fleche', { 'motif-anime': anime }, classe]}
+  viewBox={`0 ${r(-demiDos)} ${r(total)} ${r(2 * demiDos)}`}
+  style={`inline-size:${largeur}`}
+  aria-hidden="true"
+  focusable="false"
+  data-motif="trait-fleche"
+>
+  <path class="motif-trait" d={`M0 0H${r(L)}`} stroke-width={e} pathLength="1" />
+  <path class="motif-pointe" d={`M${r(L - 0.5)} ${r(-demiDos)}L${r(total)} 0L${r(L - 0.5)} ${r(demiDos)}Z`} />
+</svg>

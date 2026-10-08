@@ -1,0 +1,261 @@
+"""ASTK191 / ASTK192 — réservation de créneau fournisseur par jeton.
+
+ASTK191 : toute réservation est validée contre LA grille que propose
+``creneaux_disponibles`` (heure pleine, plage 08-18, horizon 30 j) — règle
+unique ``creneau_est_propose`` appelée par la génération ET la réservation.
+Sondes d'origine FOUR-11 (2099-01-01T03:17 → 201) et WMS-17 (vendredi 03:17
+→ créé, grille proposée 08:00/09:00/10:00).
+
+ASTK192 : chaque rendez-vous réservé par jeton porte son fournisseur et son BCF
+(posés côté serveur) et le nombre de rendez-vous futurs ouverts par fournisseur
+est plafonné (6ᵉ réservation → 400).
+
+Source réelle : services + endpoints publics réels, aucun mock.
+
+Run :
+    python manage.py test apps.stock.test_astk_creneaux -v 2
+"""
+import datetime
+import json
+from pathlib import Path
+
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.stock.models import (
+    BonCommandeFournisseur, EmplacementStock, Fournisseur,
+    PortailFournisseurToken,
+)
+from apps.stock.models_wms import Quai, RendezVousTransporteur
+from apps.stock.services_creneaux import (
+    HEURE_FERMETURE, HEURE_OUVERTURE, creneau_est_propose,
+    creneaux_disponibles,
+)
+from authentication.models import Company
+
+CONTRAT = (Path(__file__).resolve().parent / 'contract_samples'
+           / 'wms_quais.json')
+
+
+def _contrat(cle):
+    return json.loads(CONTRAT.read_text(encoding='utf-8'))['routes'][cle]
+
+
+def _aware(jour, heure, minute=0):
+    return timezone.make_aware(datetime.datetime.combine(
+        jour, datetime.time(hour=heure, minute=minute)))
+
+
+class _Base(TestCase):
+    slug = 'astk191'
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom=f'{self.slug}-co', slug=f'{self.slug}-co')
+        emplacement = EmplacementStock.objects.create(
+            company=self.company, nom=f'Dépôt {self.slug}', is_principal=True)
+        self.quai = Quai.objects.create(
+            company=self.company, nom=f'Quai R1 {self.slug}',
+            type_quai=Quai.TypeQuai.RECEPTION, emplacement=emplacement)
+        self.fournisseur = Fournisseur.objects.create(
+            company=self.company, nom=f'Fournisseur {self.slug}')
+        self.token = PortailFournisseurToken.objects.create(
+            company=self.company, fournisseur=self.fournisseur)
+        self.demain = timezone.localdate() + datetime.timedelta(days=1)
+        while self.demain.weekday() >= 5:  # ASTK191 : jours ouvrés seulement
+            self.demain += datetime.timedelta(days=1)
+        self.api = APIClient()
+
+    def _url(self, suffixe):
+        return ('/api/django/public/stock/portail-fournisseur/'
+                f'{self.token.token}/{suffixe}')
+
+    def _reserver(self, debut, **extra):
+        corps = {'quai': self.quai.id, 'debut': debut}
+        corps.update(extra)
+        return self.api.post(
+            self._url('reserver-creneau/'), corps, format='json')
+
+    def _vendredi_suivant(self):
+        jour = timezone.localdate() + datetime.timedelta(days=1)
+        while jour.weekday() != 4:
+            jour += datetime.timedelta(days=1)
+        return jour
+
+
+class GrilleTests(_Base):
+    slug = 'astk191'
+
+    def test_2099_0317_refuse(self):
+        avant = RendezVousTransporteur.objects.count()
+        reponse = self._reserver('2099-01-01T03:17')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(reponse.json(), {'debut': [
+            'Créneau non proposé : choisissez un créneau de la liste.']})
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+
+    def test_nuit_refusee(self):
+        avant = RendezVousTransporteur.objects.count()
+        debut = _aware(self._vendredi_suivant(), 3, 17).isoformat()
+        reponse = self._reserver(debut)
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertIn('debut', reponse.json())
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+
+    def test_heure_non_pleine_et_hors_plage_refusees(self):
+        avant = RendezVousTransporteur.objects.count()
+        for debut in (_aware(self.demain, 9, 30),
+                      _aware(self.demain, HEURE_FERMETURE),
+                      _aware(self.demain, HEURE_OUVERTURE - 1)):
+            reponse = self._reserver(debut.isoformat())
+            self.assertEqual(reponse.status_code, 400, (debut, reponse.content))
+            self.assertIn('debut', reponse.json())
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+
+    def test_hors_horizon_refuse(self):
+        from apps.stock.services_creneaux import FENETRE_MAX_JOURS
+        loin = (timezone.localdate()
+                + datetime.timedelta(days=FENETRE_MAX_JOURS + 1))
+        reponse = self._reserver(_aware(loin, 9).isoformat())
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertIn('debut', reponse.json())
+
+    def test_week_end_refuse(self):
+        """ASTK191 — un début un samedi/dimanche (heure pleine, dans la plage,
+        dans l'horizon) est refusé comme un début hors grille ; la génération
+        n'en propose aucun."""
+        jour = timezone.localdate() + datetime.timedelta(days=1)
+        while jour.weekday() != 5:
+            jour += datetime.timedelta(days=1)
+        avant = RendezVousTransporteur.objects.count()
+        for decalage in (0, 1):
+            debut = _aware(jour + datetime.timedelta(days=decalage), 9)
+            reponse = self._reserver(debut.isoformat())
+            self.assertEqual(reponse.status_code, 400, reponse.content)
+            self.assertEqual(reponse.json(), {'debut': [
+                'Créneau non proposé : choisissez un créneau de la liste.']})
+            self.assertFalse(creneau_est_propose(debut, company=self.company))
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+        propose = creneaux_disponibles(
+            self.company, date_debut=jour, periode_jours=2)
+        self.assertEqual(propose, [])
+
+    def test_creneau_propose_201(self):
+        liste = self.api.get(self._url('creneaux-disponibles/'), {
+            'date_debut': self.demain.isoformat(), 'periode': 1})
+        self.assertEqual(liste.status_code, 200, liste.content)
+        creneaux = liste.json()['creneaux']
+        self.assertTrue(creneaux)
+        self.assertEqual(creneaux[0]['debut'][11:16], '08:00')
+        reponse = self._reserver(creneaux[0]['debut'])
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        self.assertEqual(RendezVousTransporteur.objects.count(), 1)
+
+    def test_tout_creneau_genere_est_propose(self):
+        """Règle UNIQUE : tout ce que la génération propose est accepté par
+        la règle de réservation (et inversement une heure hors grille ne l'est
+        jamais)."""
+        generes = creneaux_disponibles(
+            self.company, date_debut=self.demain, periode_jours=3)
+        self.assertTrue(generes)
+        for creneau in generes:
+            debut = datetime.datetime.fromisoformat(creneau['debut'])
+            self.assertTrue(creneau_est_propose(debut, company=self.company), creneau)
+        self.assertFalse(creneau_est_propose(
+            _aware(self.demain, 9, 1), company=self.company))
+
+    def test_reponse_conforme_contrat(self):
+        contrat = _contrat('public_reserver_creneau')
+        attendu = contrat['nouveau_hors_grille_astk191']['exemple']
+        reponse = self._reserver('2099-01-01T03:17')
+        self.assertEqual(reponse.status_code,
+                         contrat['nouveau_hors_grille_astk191']['statut'])
+        self.assertEqual(set(reponse.json()), set(attendu))
+        for cle, messages in reponse.json().items():
+            self.assertIsInstance(messages, list)
+            self.assertTrue(all(isinstance(m, str) for m in messages))
+
+
+class QuotaTests(_Base):
+    slug = 'astk192'
+
+    def _bcf(self, statut=BonCommandeFournisseur.Statut.ENVOYE,
+             fournisseur=None):
+        return BonCommandeFournisseur.objects.create(
+            company=self.company, reference=f'BCF-{self.slug}-{statut}',
+            fournisseur=fournisseur or self.fournisseur, statut=statut)
+
+    def _creneau(self, heure):
+        return _aware(self.demain, heure).isoformat()
+
+    def test_rdv_porte_fournisseur_et_bcf(self):
+        bcf = self._bcf()
+        autre = Fournisseur.objects.create(
+            company=self.company, nom='Autre fournisseur ASTK192')
+        reponse = self._reserver(
+            self._creneau(9), bon_commande=bcf.id, fournisseur=autre.id)
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        rdv = RendezVousTransporteur.objects.get(pk=reponse.json()['id'])
+        # Posés côté serveur : le `fournisseur` du corps est ignoré.
+        self.assertEqual(rdv.fournisseur_id, self.fournisseur.id)
+        self.assertEqual(rdv.bon_commande_id, bcf.id)
+
+    def test_rdv_sans_bcf_porte_le_fournisseur(self):
+        reponse = self._reserver(self._creneau(10))
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        rdv = RendezVousTransporteur.objects.get(pk=reponse.json()['id'])
+        self.assertEqual(rdv.fournisseur_id, self.fournisseur.id)
+        self.assertIsNone(rdv.bon_commande_id)
+
+    def test_sixieme_reservation_400(self):
+        from apps.stock.services_creneaux import (
+            MAX_RDV_OUVERTS_PAR_FOURNISSEUR,
+        )
+        self.assertEqual(MAX_RDV_OUVERTS_PAR_FOURNISSEUR, 5)
+        for rang in range(MAX_RDV_OUVERTS_PAR_FOURNISSEUR):
+            reponse = self._reserver(self._creneau(8 + rang))
+            self.assertEqual(reponse.status_code, 201,
+                             (rang, reponse.content))
+        avant = RendezVousTransporteur.objects.count()
+        reponse = self._reserver(self._creneau(8 + 5))
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(reponse.json(), {
+            'detail': 'Nombre maximal de rendez-vous ouverts atteint (5).'})
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)
+
+    def test_le_quota_est_par_fournisseur(self):
+        """Un autre fournisseur n'est pas bloqué par le plafond du premier."""
+        autre = Fournisseur.objects.create(
+            company=self.company, nom='Autre fournisseur ASTK192')
+        jeton_autre = PortailFournisseurToken.objects.create(
+            company=self.company, fournisseur=autre)
+        for rang in range(5):
+            self.assertEqual(
+                self._reserver(self._creneau(8 + rang)).status_code, 201)
+        reponse = self.api.post(
+            '/api/django/public/stock/portail-fournisseur/'
+            f'{jeton_autre.token}/reserver-creneau/',
+            {'quai': self.quai.id, 'debut': self._creneau(14)},
+            format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+
+    def test_un_rdv_annule_ne_compte_pas(self):
+        for rang in range(5):
+            reponse = self._reserver(self._creneau(8 + rang))
+            self.assertEqual(reponse.status_code, 201)
+        RendezVousTransporteur.objects.filter(
+            pk=reponse.json()['id']).update(
+                statut=RendezVousTransporteur.Statut.ANNULE)
+        self.assertEqual(
+            self._reserver(self._creneau(15)).status_code, 201)
+
+    def test_bcf_recu_refuse(self):
+        bcf = self._bcf(BonCommandeFournisseur.Statut.RECU)
+        avant = RendezVousTransporteur.objects.count()
+        reponse = self._reserver(self._creneau(9), bon_commande=bcf.id)
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        corps = reponse.json()
+        self.assertEqual(list(corps), ['bon_commande'])
+        self.assertIsInstance(corps['bon_commande'], list)
+        self.assertEqual(RendezVousTransporteur.objects.count(), avant)

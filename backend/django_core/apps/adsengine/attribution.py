@@ -179,7 +179,7 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
     odoo_by_ad = {}
     try:
         from .odoo_client import is_configured as _odoo_configured
-        if _odoo_configured():
+        if _odoo_configured(company):  # ASEC40 — propriétaire seule
             from .odoo_metrics import odoo_signatures_by_ad
             odoo_res = odoo_signatures_by_ad(company)
             odoo_by_ad = {a['ad_id']: a for a in odoo_res.get('ads', [])}

@@ -70,6 +70,9 @@ const PERMISSION_GROUPS = [
       { code: 'ventes_pdf',       label: 'Générer PDF' },
       { code: 'ventes_export',    label: 'Exporter' },
       { code: 'ventes_reassign',  label: 'Réassigner' },
+      // ASEC9 / D-ASEC-1 — gestes d'argent (jamais Commercial terrain,
+      // Technicien(s) ni Admin RH : refus serveur).
+      { code: 'encaisser',        label: 'Encaisser (paiements, avoirs, abandon de solde)' },
     ],
   },
   {

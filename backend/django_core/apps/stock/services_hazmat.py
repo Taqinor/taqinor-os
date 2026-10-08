@@ -31,6 +31,26 @@ def casier_accepte_produit(company, bin_id, produit):
     return classe in classes_autorisees_casier(company, bin_id)
 
 
+def exiger_casier_compatible(company, bin_id, produit,
+                             champ='bin_destination'):
+    """ASTK200 (C-ASTK-048, WMS-12) — invariant hazmat au POINT D'ÉCRITURE du
+    casier : un produit dangereux qui ENTRE dans un casier non déclaré
+    compatible est refusé (400 nommant ``champ``). Garde UNIQUE appelée par
+    le poste scanner, le déplacement d'unité logistique et la réintégration
+    d'un retour client — jamais recopiée. Sans casier : no-op."""
+    if bin_id is None or casier_accepte_produit(company, bin_id, produit):
+        return
+    from rest_framework.exceptions import ValidationError
+    from .models import Produit
+    classe = (getattr(produit, 'classe_danger', '') or '').strip()
+    try:
+        libelle = Produit.ClasseDanger(classe).label
+    except ValueError:
+        libelle = classe
+    raise ValidationError({champ: [
+        f'Casier non autorisé pour la classe de danger « {libelle} ».']})
+
+
 def casiers_compatibles_ids(company, produit, bin_ids):
     """Sous-liste de ``bin_ids`` compatible avec ce produit (ordre préservé)."""
     return [bid for bid in (bin_ids or [])

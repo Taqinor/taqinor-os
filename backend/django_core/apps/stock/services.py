@@ -246,11 +246,49 @@ def get_or_create_emplacement_soustraitant(company, sous_traitant_nom):
     return emplacement
 
 
+LIBELLE_EN_TRANSIT = 'En transit'
+
+
+def quantite_en_transit(company, produit=None):
+    """ASTK206 (C-ASTK-052, MVT-18) — quantité partie d'un emplacement
+    (transfert EXPÉDIÉ) et pas encore reçue. Helper UNIQUE des trois
+    dérivations du dépôt principal (``stock_breakdown``,
+    ``stock_breakdown_map``, ``transfer_stock``) : la marchandise en transit
+    n'est plus comptée au principal. ``produit`` → un entier ; ``None`` →
+    ``{produit_id: quantite}``."""
+    from .models import TransfertStock
+
+    if company is None:
+        return 0 if produit is not None else {}
+    qs = TransfertStock.objects.filter(
+        company=company, statut=TransfertStock.Statut.EXPEDIE)
+    if produit is not None:
+        return sum(qs.filter(produit=produit)
+                   .values_list('quantite', flat=True))
+    carte = {}
+    for produit_id, quantite in qs.values_list('produit_id', 'quantite'):
+        carte[produit_id] = carte.get(produit_id, 0) + (quantite or 0)
+    return carte
+
+
+def _ligne_transit(quantite):
+    """ASTK206 — ligne additive « En transit » de la ventilation."""
+    return {
+        'emplacement_id': None,
+        'emplacement_nom': LIBELLE_EN_TRANSIT,
+        'is_principal': False,
+        'is_transit': True,
+        'quantite': quantite,
+    }
+
+
 def stock_breakdown(produit):
     """Ventilation du stock d'un produit par emplacement (non archivés).
 
     Renvoie [{emplacement_id, emplacement_nom, is_principal, quantite}] — le
-    principal détient total − somme(non principaux)."""
+    principal détient total − somme(non principaux) − en transit (ASTK206) ;
+    une ligne ``is_transit`` « En transit » s'ajoute quand un transfert
+    expédié n'est pas encore reçu."""
     from .models import EmplacementStock
     company = produit.company
     ensure_emplacements(company)
@@ -258,8 +296,9 @@ def stock_breakdown(produit):
         company=company, archived=False))
     records = {se.emplacement_id: se.quantite
                for se in produit.stocks_emplacement.all()}
+    transit = quantite_en_transit(company, produit)
     autres = sum(records.get(e.id, 0)
-                 for e in emplacements if not e.is_principal)
+                 for e in emplacements if not e.is_principal) + transit
     out = []
     for e in emplacements:
         # ERR94 — le principal détient le reste (total − non principaux), mais
@@ -273,6 +312,8 @@ def stock_breakdown(produit):
             'is_principal': e.is_principal,
             'quantite': qte,
         })
+    if transit > 0:
+        out.append(_ligne_transit(transit))
     return out
 
 
@@ -294,10 +335,14 @@ def stock_breakdown_map(company):
     for se in StockEmplacement.objects.filter(
             produit__company=company, emplacement__archived=False):
         records.setdefault(se.produit_id, {})[se.emplacement_id] = se.quantite
+    # ASTK206 — la marchandise en transit sort du principal dérivé.
+    transits = quantite_en_transit(company)
     out = {}
     for p in Produit.objects.filter(company=company).only('id', 'quantite_stock'):
         rec = records.get(p.id, {})
-        autres = sum(rec.get(e.id, 0) for e in emplacements if not e.is_principal)
+        transit = transits.get(p.id, 0)
+        autres = sum(rec.get(e.id, 0) for e in emplacements
+                     if not e.is_principal) + transit
         out[p.id] = [{
             'emplacement_id': e.id,
             'emplacement_nom': e.nom,
@@ -306,6 +351,8 @@ def stock_breakdown_map(company):
             'quantite': max(p.quantite_stock - autres, 0) if e.is_principal
             else rec.get(e.id, 0),
         } for e in emplacements]
+        if transit > 0:
+            out[p.id].append(_ligne_transit(transit))
     return out
 
 
@@ -359,9 +406,11 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
 
         records = {se.emplacement_id: se for se in
                    produit.stocks_emplacement.select_for_update()}
+        # ASTK206 — la marchandise en transit n'est plus au principal.
         non_principal_sum = sum(
             se.quantite for eid, se in records.items()
-            if eid in emps and not emps[eid].is_principal)
+            if eid in emps and not emps[eid].is_principal
+        ) + quantite_en_transit(company, produit)
 
         def current_qty(emp):
             if emp.is_principal:
@@ -472,23 +521,36 @@ def affecter_livraison_directe_chantier(
     un mécanisme parallèle. Best-effort : une erreur ne casse jamais la
     réception elle-même (le stock reste alors en dépôt principal, visible et
     corrigeable manuellement)."""
+    from django.db import transaction
     if quantite <= 0:
         return
     try:
         chantier = bc.chantier_livraison
-        record_stock_movement(
-            company=company, produit=produit,
-            type_mouvement=mouvement_type_sortie(),
-            quantite=quantite,
-            quantite_avant=produit.quantite_stock,
-            quantite_apres=produit.quantite_stock - quantite,
-            reference=reference,
-            note=(f'Livraison directe chantier {chantier.reference} '
-                  f'(BCF {bc.reference})'
-                  if chantier is not None else
-                  f'Livraison directe chantier (BCF {bc.reference})'),
-            created_by=user,
-        )
+        with transaction.atomic():
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=quantite,
+                quantite_avant=produit.quantite_stock,
+                quantite_apres=produit.quantite_stock - quantite,
+                reference=reference,
+                note=(f'Livraison directe chantier {chantier.reference} '
+                      f'(BCF {bc.reference})'
+                      if chantier is not None else
+                      f'Livraison directe chantier (BCF {bc.reference})'),
+                created_by=user,
+            )
+            # ASTK98 (C-ASTK-028) — « une vente = une sortie » : le matériel
+            # sorti ici pour le chantier SOLDE sa réservation N14, sinon
+            # « Installé » le sortait une seconde fois. Service UNIQUE du
+            # propriétaire chantiers (ASTK120), dans la transaction de la
+            # sortie ; idempotent par (référence, produit).
+            if chantier is not None:
+                from apps.installations.services import (
+                    solder_reservations_vente,
+                )
+                solder_reservations_vente(
+                    chantier, {produit.id: quantite}, reference, user=user)
         produit.refresh_from_db()
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.info(
@@ -1776,6 +1838,15 @@ def sortir_lot_entrepot(
             raise ValueError(
                 f'Quantité insuffisante dans le lot {frais.numero_lot} '
                 f'({frais.quantite_restante} restant).')
+        # ASTK199 — la part du lot en quarantaine (rappel produit, réception
+        # non conforme) ne sort pas tant que le blocage n'est pas levé.
+        from .services_wms import quantite_bloquee_par_lot
+        bloquee = quantite_bloquee_par_lot(
+            company, frais.produit).get(frais.id, 0)
+        if bloquee and quantite > frais.quantite_restante - bloquee:
+            raise ValueError(
+                f'Le lot {frais.numero_lot} est bloqué en quarantaine '
+                f'({bloquee} unité(s)) — sortie refusée.')
         parametres = AchatsParametres.for_company(company)
         if frais.est_perime and parametres.bloquer_stock_perime and not forcer:
             raise ValueError(
@@ -2406,11 +2477,31 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
             defaults={'company': company, 'quantite': 0})
         se.quantite = max(se.quantite - quantite, 0)
         se.save(update_fields=['quantite'])
+    _appliquer_casiers_mouvement(company, produit, quantite, mouvement)
     _notify_seuil_atteint_si_franchi(
         company=company, produit=produit,
         quantite_avant=quantite_avant, quantite_apres=quantite_apres)
     _emit_mouvement_stock_enregistre(mouvement, company)
     return mouvement
+
+
+def _appliquer_casiers_mouvement(company, produit, quantite, mouvement):
+    """ASTK195 (C-ASTK-046, WMS-7) — un mouvement portant ``bin_source`` /
+    ``bin_destination`` fait suivre la quantité PAR CASIER
+    (``installations.BinAffectation``) via LE seul écrivain du propriétaire
+    chantiers, ``installations.services.appliquer_mouvement_casier``
+    (ASTK194 ; source plafonnée à 0, destination créée au besoin) — import
+    fonction-local, frontière cross-app. Sans casier : no-op (comportement
+    historique). Toutes les écritures scannées (scanner, déplacement d'unité,
+    retour client, retour fournisseur scanné) passent ici."""
+    src = getattr(mouvement, 'bin_source_id', None)
+    dst = getattr(mouvement, 'bin_destination_id', None)
+    if not (src or dst) or not getattr(produit, 'pk', None):
+        return
+    from apps.installations.services import appliquer_mouvement_casier
+    appliquer_mouvement_casier(
+        company, produit.pk, quantite,
+        bin_source_id=src or None, bin_destination_id=dst or None)
 
 
 def _format_quantite_fr(valeur):
@@ -3822,7 +3913,6 @@ def comparer_fournisseurs(company, produit):
 def supplier_performance(company, fournisseur):
     """Scorecard performance fournisseur : délai moyen, taux de remplissage,
     taux de retour, dépenses totales. INTERNE."""
-    from decimal import Decimal
     from .models import BonCommandeFournisseur, RetourFournisseur
 
     bons = (BonCommandeFournisseur.objects
@@ -3831,14 +3921,16 @@ def supplier_performance(company, fournisseur):
             .prefetch_related('receptions', 'lignes'))
 
     nb_bons = bons.count()
-    total_achats = Decimal('0')
     lead_times = []
     fill_rates = []
 
-    for bc in bons:
-        # Dépense totale HT (prix d'achat interne)
-        total_achats += bc.total_achat or Decimal('0')
+    # ASTK189 — dépense totale HT = sélecteur UNIQUE des achats effectifs
+    # (ni brouillon ni annulé), le même que l'export conformité et le top
+    # fournisseurs.
+    from .selectors import achats_effectifs_fournisseur
+    total_achats = achats_effectifs_fournisseur(company, fournisseur.id)
 
+    for bc in bons:
         # Délai de livraison = date_reception - date_commande (en jours)
         if bc.date_commande:
             for rec in bc.receptions.filter(statut='confirme'):
@@ -4723,20 +4815,51 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
 
 
 # ── XPUR1 — conformité fournisseur : warning BCF + gate paiement ───────────
+def types_conformite_requis():
+    """ASTK188 — TYPES de pièces de conformité REQUIS de tout fournisseur
+    (constante, sans migration) : ARF, CNSS, RC, assurance."""
+    from .models import DocumentConformiteFournisseur
+    T = DocumentConformiteFournisseur.Type
+    return (T.ARF, T.CNSS, T.RC, T.ASSURANCE)
+
+
 def fournisseur_conformite_manquante(fournisseur):
-    """XPUR1 — liste les documents de conformité OBLIGATOIRES manquants ou
-    expirés d'un fournisseur (liste de dicts ``{type_document, motif}``).
-    Vide = fournisseur en règle (ou sans document requis renseigné). Ne lève
-    jamais d'exception : appelé au fil de l'eau (warning + gate paiement)."""
+    """XPUR1/ASTK188 — pièces de conformité REQUISES manquantes, expirées ou
+    à compléter d'un fournisseur (liste de dicts ``{type_document,
+    type_document_display, motif}``, un par TYPE requis non couvert).
+
+    ASTK188 (C-ASTK-043) : la définition part de la liste des TYPES requis
+    (``types_conformite_requis``) comparée aux pièces présentes ET valides —
+    un fournisseur sans aucune pièce n'est plus « en règle ». Une pièce sans
+    date d'expiration est « à compléter » (motif ``sans date``), jamais
+    valide. Vide = fournisseur en règle. Lu par bcf_warning_conformite,
+    check_paiement_conformite_gate et la vue-360 (une seule définition). Ne
+    lève jamais d'exception : appelé au fil de l'eau."""
+    from django.utils import timezone
+    from .models import DocumentConformiteFournisseur
+
+    aujourd_hui = timezone.now().date()
+    par_type = {}
+    for doc in fournisseur.documents_conformite.all():
+        par_type.setdefault(doc.type_document, []).append(doc)
+    libelles = dict(DocumentConformiteFournisseur.Type.choices)
     problemes = []
-    docs = list(fournisseur.documents_conformite.filter(obligatoire=True))
-    for doc in docs:
-        if not doc.est_valide():
-            problemes.append({
-                'type_document': doc.type_document,
-                'type_document_display': doc.get_type_document_display(),
-                'motif': 'expiré' if doc.date_expiration else 'sans date',
-            })
+    for type_requis in types_conformite_requis():
+        docs = par_type.get(type_requis, [])
+        if any(d.date_expiration is not None
+               and d.date_expiration >= aujourd_hui for d in docs):
+            continue
+        if not docs:
+            motif = 'manquante'
+        elif any(d.date_expiration is None for d in docs):
+            motif = 'sans date'
+        else:
+            motif = 'expiré'
+        problemes.append({
+            'type_document': str(type_requis),
+            'type_document_display': libelles[type_requis],
+            'motif': motif,
+        })
     return problemes
 
 
@@ -6792,43 +6915,33 @@ def resoudre_token_portail_fournisseur(token):
     return token_obj
 
 
+CLES_BCF_PORTAIL_JETON = (
+    'id', 'reference', 'statut', 'statut_display', 'date_commande',
+    'date_livraison_prevue', 'date_confirmee_fournisseur', 'lignes',
+)
+
+
 def portail_fournisseur_documents(token_obj):
     """XPUR22 — documents du fournisseur porteur de ce jeton : SES BCF en
     cours (référence, lignes, statut, date prévue), SES réceptions et SES
     factures avec statut de paiement. Isolation stricte : jamais les
     documents d'un autre fournisseur, jamais de marge (prix d'achat exposé —
     légitime, c'est ce que CE fournisseur nous vend). LECTURE SEULE."""
-    from .models import BonCommandeFournisseur, ReceptionFournisseur
+    from .models import ReceptionFournisseur
+    from .selectors import bcf_portail_fournisseur
 
     fournisseur = token_obj.fournisseur
     company = token_obj.company
 
-    bcf_qs = (BonCommandeFournisseur.objects
-              .filter(company=company, fournisseur=fournisseur)
-              .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
-              .prefetch_related('lignes__produit')
-              .order_by('-date_creation'))
-    bcf_data = []
-    for bc in bcf_qs:
-        bcf_data.append({
-            'id': bc.id,
-            'reference': bc.reference,
-            'statut': bc.statut,
-            'statut_display': bc.get_statut_display(),
-            'date_commande': bc.date_commande,
-            'date_livraison_prevue': bc.date_livraison_prevue,
-            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
-            'lignes': [
-                {
-                    'produit_nom': (
-                        ligne.produit.nom if ligne.produit_id
-                        else ligne.designation),
-                    'quantite': ligne.quantite,
-                    'quantite_recue': ligne.quantite_recue,
-                }
-                for ligne in bc.lignes.all()
-            ],
-        })
+    # ASTK193 (C-ASTK-044) — la porte à jeton sert la MÊME liste de BCF que
+    # la porte compte (survivant unique : selectors.bcf_portail_fournisseur,
+    # brouillon ET annulé exclus) ; le filtre local (annulé seul) laissait
+    # voir au fournisseur une commande que l'acheteur n'avait pas décidée.
+    # Projection sur les clés du contrat fournisseur_portail_jetons.json.
+    bcf_data = [
+        {cle: ligne[cle] for cle in CLES_BCF_PORTAIL_JETON}
+        for ligne in bcf_portail_fournisseur(company, fournisseur.id)
+    ]
 
     receptions = (ReceptionFournisseur.objects
                   .filter(company=company,
@@ -6890,6 +7003,72 @@ def confirmer_bcf_portail_fournisseur(
     return bc
 
 
+MSG_CONFIRMATION_BCF_REFUSEE = (
+    'Seul un bon de commande envoyé et non reçu peut être confirmé.')
+
+
+class ConfirmationBcfRefusee(ValueError):
+    """ASTK180 — confirmation fournisseur d'un BCF non `envoye` ou déjà
+    (partiellement) reçu → 409. Sous-classe de ValueError : un appelant qui
+    n'attrape que ValueError refuse toujours (jamais d'écriture, jamais de
+    500) en attendant de distinguer le 409."""
+
+
+class ConfirmationBcfInvalide(ValueError):
+    """ASTK181 — valeur de confirmation illisible : 400 nommant le champ
+    (``erreurs`` = {champ: [message]}), jamais un 500. Sous-classe de
+    ValueError pour la même raison que ``ConfirmationBcfRefusee``."""
+
+    def __init__(self, erreurs):
+        super().__init__(str(erreurs))
+        self.erreurs = erreurs
+
+
+NUMERO_CONFIRMATION_MAX = 100
+
+
+def _valider_confirmation_bcf(date_confirmee, numero_confirmation):
+    """ASTK181 — parse/borne UNIQUES des valeurs de confirmation (les deux
+    portes) : date AAAA-MM-JJ (ou objet date), numéro ≤ 100 caractères.
+    Renvoie (date, numero) ou lève ``ConfirmationBcfInvalide``."""
+    import datetime as _dt
+    from django.utils.dateparse import parse_date
+
+    erreurs = {}
+    if isinstance(date_confirmee, _dt.datetime):
+        date_ok = date_confirmee.date()
+    elif isinstance(date_confirmee, _dt.date):
+        date_ok = date_confirmee
+    else:
+        try:
+            date_ok = parse_date(str(date_confirmee or '').strip())
+        except ValueError:
+            date_ok = None
+        if date_ok is None:
+            erreurs['date_confirmee_fournisseur'] = [
+                'Date invalide (AAAA-MM-JJ).']
+    numero = '' if numero_confirmation is None else str(numero_confirmation)
+    if len(numero) > NUMERO_CONFIRMATION_MAX:
+        erreurs['numero_confirmation_fournisseur'] = [
+            f'{NUMERO_CONFIRMATION_MAX} caractères maximum.']
+    if erreurs:
+        raise ConfirmationBcfInvalide(erreurs)
+    return date_ok, numero
+
+
+def bcf_confirmable_par_fournisseur(bc):
+    """ASTK180 — vrai seulement pour un BCF `envoye` sans aucune quantité
+    reçue ni réception confirmée."""
+    from .models import BonCommandeFournisseur, ReceptionFournisseur
+    if bc.statut != BonCommandeFournisseur.Statut.ENVOYE:
+        return False
+    if bc.lignes.filter(quantite_recue__gt=0).exists():
+        return False
+    return not ReceptionFournisseur.objects.filter(
+        bon_commande=bc,
+        statut=ReceptionFournisseur.Statut.CONFIRME).exists()
+
+
 def _appliquer_confirmation_bcf_fournisseur(
         company, fournisseur_id, bcf_id, *, date_confirmee,
         numero_confirmation=''):
@@ -6908,8 +7087,18 @@ def _appliquer_confirmation_bcf_fournisseur(
     if bc is None:
         raise ValueError(
             "Ce bon de commande n'appartient pas à ce fournisseur.")
+    # ASTK180 (C-ASTK-041) — garde de statut dans le CŒUR (les deux portes) :
+    # seul un BCF `envoye` sans aucune réception se confirme ; la date
+    # confirmée est FIGÉE dès la première réception (sinon le fournisseur
+    # évalué réécrivait son propre score OTD a posteriori).
+    # ASTK181 — valeurs parsées/bornées ICI (400 nommant le champ), jamais
+    # passées brutes à bc.save (DateField illisible / CharField(100) → 500).
+    date_confirmee, numero_confirmation = _valider_confirmation_bcf(
+        date_confirmee, numero_confirmation)
+    if not bcf_confirmable_par_fournisseur(bc):
+        raise ConfirmationBcfRefusee(MSG_CONFIRMATION_BCF_REFUSEE)
     bc.date_confirmee_fournisseur = date_confirmee
-    bc.numero_confirmation_fournisseur = numero_confirmation or ''
+    bc.numero_confirmation_fournisseur = numero_confirmation
     bc.save(update_fields=[
         'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
     return bc
@@ -8426,6 +8615,8 @@ def produits_par_ids(company, ids):
 from .services_wms import (  # noqa: E402,F401
     FENETRE_ROTATION_JOURS,
     affecter_reception_cross_dock,
+    appliquer_quarantaine_rappel,
+    blocages_du_rappel,
     ajouter_ligne_unite_logistique,
     ajouter_unite_plan_chargement,
     assurer_plans_comptage_tournant,

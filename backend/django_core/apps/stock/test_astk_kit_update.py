@@ -67,3 +67,50 @@ class KitUpdateTests(TestCase):
             kit=self.kit, produit=self.p1).exists())
         nouveau = KitComposant.objects.get(kit=self.kit, produit=self.p2)
         self.assertEqual(nouveau.taux_perte_pct, Decimal('0'))
+
+
+class KitTauxPerteServiTests(TestCase):
+    """ASTK229 — ``taux_perte_pct`` est SERVI et INSCRIPTIBLE (écran des
+    nomenclatures) : création avec perte, relecture, réenregistrement sans
+    toucher → identique ; hors bornes → 400 nommé."""
+
+    setUp = KitUpdateTests.setUp
+    _put = KitUpdateTests._put
+
+    def test_taux_perte_servi_et_modifiable(self):
+        lu = self.api.get(f'/api/django/stock/kits/{self.kit.pk}/').json()
+        self.assertEqual(lu['composants'][0]['taux_perte_pct'], '5.00')
+        reponse = self._put([{'produit': self.p1.pk, 'quantite': '2',
+                              'taux_perte_pct': '7.50'}])
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(reponse.json()['composants'][0]['taux_perte_pct'],
+                         '7.50')
+        # Réenregistrer l'objet relu tel quel : rien ne bouge.
+        relu = self.api.get(f'/api/django/stock/kits/{self.kit.pk}/').json()
+        reponse = self._put([
+            {'produit': c['produit'], 'quantite': c['quantite'],
+             'taux_perte_pct': c['taux_perte_pct']}
+            for c in relu['composants']])
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(
+            KitComposant.objects.get(kit=self.kit, produit=self.p1)
+            .taux_perte_pct, Decimal('7.50'))
+
+    def test_creation_avec_taux_perte(self):
+        reponse = self.api.post('/api/django/stock/kits/', {
+            'nom': 'Kit neuf', 'composants': [
+                {'produit': self.p1.pk, 'quantite': '3',
+                 'taux_perte_pct': '5'},
+                {'produit': self.p2.pk, 'quantite': '1'}]}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        pertes = sorted(c['taux_perte_pct']
+                        for c in reponse.json()['composants'])
+        self.assertEqual(pertes, ['0.00', '5.00'])
+
+    def test_taux_perte_hors_bornes_400(self):
+        reponse = self._put([{'produit': self.p1.pk, 'quantite': '2',
+                              'taux_perte_pct': '150'}])
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(
+            reponse.json()['composants'][0]['taux_perte_pct'],
+            ['Le taux de perte doit être compris entre 0 et 100 %.'])

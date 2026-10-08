@@ -15,7 +15,9 @@ from rest_framework.decorators import (
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier,
+)
 from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_client
 from .models import SettingsAuditLog
 from .serializers import CompanyProfileSerializer
@@ -23,14 +25,22 @@ from .views_common import _audit_company, _profile
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminOrResponsableTier])
+# ASEC31 — écriture des réglages société : palier ET droit
+# `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
+# n'y touchent plus).
+@permission_classes([IsAdminOrResponsableTier,
+                     HasPermissionOrLegacy('parametres_modifier')])
 @parser_classes([MultiPartParser])
 def upload_logo(request):
     return _upload_image(request, field='logo_key', prefix='logos')
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminOrResponsableTier])
+# ASEC31 — écriture des réglages société : palier ET droit
+# `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
+# n'y touchent plus).
+@permission_classes([IsAdminOrResponsableTier,
+                     HasPermissionOrLegacy('parametres_modifier')])
 @parser_classes([MultiPartParser])
 def upload_signature(request):
     return _upload_image(
@@ -119,13 +129,21 @@ def _upload_image(request, field, prefix):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminOrResponsableTier])
+# ASEC31 — écriture des réglages société : palier ET droit
+# `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
+# n'y touchent plus).
+@permission_classes([IsAdminOrResponsableTier,
+                     HasPermissionOrLegacy('parametres_modifier')])
 def delete_logo(request):
     return _delete_image(request, field='logo_key')
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAdminOrResponsableTier])
+# ASEC31 — écriture des réglages société : palier ET droit
+# `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
+# n'y touchent plus).
+@permission_classes([IsAdminOrResponsableTier,
+                     HasPermissionOrLegacy('parametres_modifier')])
 def delete_signature(request):
     return _delete_image(request, field='signature_key')
 

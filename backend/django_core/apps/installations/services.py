@@ -518,7 +518,9 @@ def _rattacher_chantier_de_revision(devis, user, company):
     """QJR559 — si une version que ``devis`` REMPLACE (révision, lue par
     ``ventes.selectors.devis_predecesseurs_revision_ids``) a déjà un chantier,
     il passe sur ``devis`` (``installation.devis = v2``) avec une note de
-    trace. Renvoie le chantier rattaché, ou ``None``."""
+    trace ; ASTK177 — sa nomenclature et ses réservations sont réalignées sur
+    la V2 (``_realigner_nomenclature_revision``) tant qu'il n'est pas
+    « Installé ». Renvoie le chantier rattaché, ou ``None``."""
     from apps.ventes.selectors import devis_predecesseurs_revision_ids
 
     for pred_id in devis_predecesseurs_revision_ids(devis):
@@ -530,13 +532,86 @@ def _rattacher_chantier_de_revision(devis, user, company):
         ancienne_ref = getattr(chantier.devis, 'reference', None) or pred_id
         chantier.devis = devis
         chantier.save(update_fields=['devis'])
+        realigne = _realigner_nomenclature_revision(chantier, devis)
+        suite = ('nomenclature et réservations réalignées sur la révision'
+                 if realigne else 'nomenclature gelée inchangée')
         from . import activity
         activity.log_note(
             chantier, user,
             f'Chantier rattaché à la révision {devis.reference} '
-            f'(remplace {ancienne_ref}) — nomenclature gelée inchangée.')
+            f'(remplace {ancienne_ref}) — {suite}.')
         return chantier
     return None
+
+
+def _chantier_realignable(chantier):
+    """ASTK177 — un chantier se réaligne sur une révision tant qu'il n'est
+    ni annulé, ni clôturé, ni « Installé » (ou au-delà : réceptionné…)."""
+    if not chantier_peut_reserver(chantier):
+        return False
+    statut = Installation.canonical_statut(chantier.statut)
+    ordre = Installation.STATUT_ORDER
+    if statut not in ordre:
+        return True
+    return ordre.index(statut) < ordre.index(Installation.Statut.INSTALLE)
+
+
+def _realigner_nomenclature_revision(chantier, devis):
+    """ASTK177 (décision fondateur ASTK173 du 07/10/2026 : (a) « réaligner »,
+    remplace le « nomenclature V1 gelée » de QJR559) — à l'acceptation d'une
+    V2, regèle ``Installation.bom`` depuis la V2 (``_freeze_bom`` : option
+    retenue × N villas) tant que le chantier n'est pas « Installé », rejoue
+    ``seed_reservations`` et libère les réservations des SKU disparus.
+
+    Gardes :
+      * une réservation CONSOMMÉE n'est jamais touchée (``seed_reservations``
+        et ``release_reservations`` l'ignorent déjà) ;
+      * une quantité déjà SORTIE par la vente (réservation soldée par
+        ``solder_reservations_vente`` : réservé < nomenclature V1) n'est
+        jamais re-réservée — la V2 ne réserve que son besoin moins ce déjà
+        sorti ;
+      * mode de réservation « manuelle » sans aucune réservation posée :
+        la nomenclature est réalignée mais aucune réservation n'est créée
+        (le bouton explicite reste le déclencheur).
+    Le BC (``_bc_quantities``) lit la même ``Installation.bom`` : il suit la
+    V2 sans autre changement. Renvoie True si le chantier a été réaligné."""
+    if not _chantier_realignable(chantier):
+        return False
+    ancien_bom = _quantites_depuis_bom(chantier.bom)
+    deja_sorti = {}
+    actives = StockReservation.objects.filter(
+        installation=chantier, active=True, consomme=False)
+    for resa in actives:
+        ecart = ancien_bom.get(resa.produit_id, 0) - resa.quantite
+        if ecart > 0:
+            deja_sorti[resa.produit_id] = ecart
+    a_des_reservations = StockReservation.objects.filter(
+        installation=chantier).exists()
+
+    chantier.bom = _freeze_bom(devis)
+    chantier.save(update_fields=['bom'])
+    nouveaux = _bom_quantities(chantier)
+
+    if (not a_des_reservations
+            and methode_reservation_stock(chantier.company)
+            == METHODE_RESERVATION_MANUELLE):
+        return True
+    seed_reservations(chantier)
+    for produit_id, sorti in deja_sorti.items():
+        if produit_id not in nouveaux:
+            continue
+        reste = max(0, nouveaux[produit_id] - sorti)
+        (StockReservation.objects
+         .filter(installation=chantier, produit_id=produit_id,
+                 active=True, consomme=False)
+         .update(quantite=reste))
+    # SKU absents de la V2 : réservations non consommées libérées (jamais
+    # supprimées — trace conservée, comme `release_reservations`).
+    (StockReservation.objects
+     .filter(installation=chantier, active=True, consomme=False)
+     .exclude(produit_id__in=list(nouveaux))
+     .update(active=False))
+    return True
 
 
 def create_installation_from_devis(devis, user, company):
@@ -561,8 +636,10 @@ def create_installation_from_devis(devis, user, company):
     if existing is not None:
         return existing, False
     # QJR559 — V2 d'un devis signé (D-QJR5-2) : le chantier de la version
-    # remplacée est RATTACHÉ à la révision acceptée, jamais dupliqué. La
-    # nomenclature gelée (``bom``) reste intacte ; une note trace le geste.
+    # remplacée est RATTACHÉ à la révision acceptée, jamais dupliqué.
+    # ASTK177 (décision ASTK173 (a)) — tant que le chantier n'est pas
+    # « Installé », sa nomenclature et ses réservations sont RÉALIGNÉES sur
+    # la V2 ; une note trace le geste.
     rattache = _rattacher_chantier_de_revision(devis, user, company)
     if rattache is not None:
         return rattache, False

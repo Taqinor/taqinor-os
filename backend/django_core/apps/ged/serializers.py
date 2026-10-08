@@ -289,9 +289,12 @@ class DocumentVersionSerializer(SameCompanyFKSerializerMixin,
         # (un text/html déclaré serait servi inline).
         # ADOC23 — `size` en lecture seule : le quota ne lit jamais une
         # taille déclarée par le client.
+        # ASEC37 — `file_key`/`checksum` en lecture seule : la clé de stockage
+        # est TOUJOURS produite par le serveur (fichier téléversé dans la
+        # requête, préfixe société), l'empreinte calculée sur les octets reçus.
         read_only_fields = [
             'version', 'uploaded_by', 'restored_from', 'created_at', 'mime',
-            'size']
+            'size', 'file_key', 'checksum']
         # `version` est posé côté serveur (services.add_version). On retire le
         # UniqueTogetherValidator (document, version) auto-généré : il évaluerait
         # version à sa valeur par défaut (1) à chaque POST et rejetterait la 2e

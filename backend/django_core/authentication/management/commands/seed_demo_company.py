@@ -31,7 +31,14 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+# ASEC16 — la garde vit dans ``authentication.selectors`` (ASEC11-lint) :
+# ``reset_demo_company`` (atteint depuis ``core`` via ``authentication.tasks``)
+# ne doit pas importer CE module, qui tire apps.crm/apps.ventes...
+from authentication.selectors import refus_societe_non_demo
+
 DEMO_PASSWORD = 'DemoFull@2026!'
+
+
 # Seed fixe → un reset (NTDMO6) reproduit le même nombre d'enregistrements.
 RNG_SEED = 42
 
@@ -74,6 +81,10 @@ class Command(BaseCommand):
                 "à mot de passe connu. Relancez avec --force si vous ciblez "
                 "bien un environnement de démo.")
 
+        refus = refus_societe_non_demo(slug)
+        if refus:
+            raise CommandError(refus)
+
         rng = random.Random(RNG_SEED)
         company, admin, resp = self._ensure_company(slug)
 
@@ -102,12 +113,12 @@ class Command(BaseCommand):
         from authentication.models import Company, CustomUser
         from apps.parametres.models import CompanyProfile
 
+        # ASEC16 — ``est_demo`` est posé à la CRÉATION seulement : une société
+        # existante non démo est refusée en amont (``refus_societe_non_demo``),
+        # jamais convertie en démo en silence.
         company, _ = Company.objects.get_or_create(
-            slug=slug, defaults={'nom': 'TAQINOR Démo (complet)'})
-        # NTDMO8 — marque la société comme démo (idempotent).
-        if not company.est_demo:
-            company.est_demo = True
-            company.save(update_fields=['est_demo'])
+            slug=slug, defaults={'nom': 'TAQINOR Démo (complet)',
+                                 'est_demo': True})
 
         profile = CompanyProfile.get(company)
         profile.nom = 'TAQINOR Démo (complet)'

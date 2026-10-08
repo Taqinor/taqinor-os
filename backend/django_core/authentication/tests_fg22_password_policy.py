@@ -69,7 +69,10 @@ class FG22LockoutTest(TestCase):
         CompanyProfile.objects.create(company=other)
         u = User.objects.create_user(
             username='nolock', password='pw', company=other)
-        for _ in range(10):
+        # ASEC4 — le seuil SOCIÉTÉ est off par défaut, mais le plancher
+        # plateforme (10 échecs consécutifs) s'applique désormais : 9 échecs
+        # ne verrouillent toujours pas (tests_asec4_verrou_login couvre le 10e).
+        for _ in range(9):
             pp.register_failed_login(u)
         u.refresh_from_db()
         self.assertFalse(pp.is_locked(u))

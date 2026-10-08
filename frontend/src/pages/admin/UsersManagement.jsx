@@ -68,6 +68,7 @@ export default function UsersManagement() {
   const [editForm, setEditForm] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState(null)
+  const [editPasswordError, setEditPasswordError] = useState(null)
   const [avatarBusy, setAvatarBusy] = useState(false)
 
   const openEdit = (u) => {
@@ -82,7 +83,7 @@ export default function UsersManagement() {
       password2: '',
     })
   }
-  const closeEdit = () => { setEditUser(null); setEditForm(null); setEditError(null) }
+  const closeEdit = () => { setEditUser(null); setEditForm(null); setEditError(null); setEditPasswordError(null) }
 
   const saveEdit = async (e) => {
     e.preventDefault()
@@ -100,6 +101,7 @@ export default function UsersManagement() {
     }
     setEditSaving(true)
     setEditError(null)
+    setEditPasswordError(null)
     try {
       const payload = {
         email: editForm.email,
@@ -107,7 +109,22 @@ export default function UsersManagement() {
         poste: editForm.poste,
         is_active: editForm.is_active,
       }
-      if (editForm.password) payload.password = editForm.password
+      // ASEC3 — le mot de passe passe par l'action dédiée (politique serveur,
+      // sessions de l'employé révoquées) ; jamais dans le PATCH générique.
+      if (editForm.password) {
+        try {
+          await api.post(`/users/${editUser.id}/reinitialiser-mot-de-passe/`, {
+            password: editForm.password,
+          })
+        } catch (err) {
+          const pw = err.response?.data?.password
+          if (pw) {
+            setEditPasswordError(Array.isArray(pw) ? pw.join(' ') : String(pw))
+            return
+          }
+          throw err
+        }
+      }
       await api.patch(`/users/${editUser.id}/`, payload)
       closeEdit()
       toast.success('Utilisateur enregistré.')
@@ -649,8 +666,15 @@ export default function UsersManagement() {
                       type="password"
                       autoComplete="new-password"
                       value={editForm.password}
+                      aria-invalid={editPasswordError ? true : undefined}
+                      aria-describedby={editPasswordError ? 'edit-password-error' : undefined}
                       onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
                     />
+                    {editPasswordError && (
+                      <p id="edit-password-error" role="alert" className="text-sm text-destructive">
+                        {editPasswordError}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="edit-password2">Confirmer</Label>

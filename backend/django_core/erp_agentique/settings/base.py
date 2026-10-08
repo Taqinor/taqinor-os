@@ -1374,6 +1374,15 @@ TENANT_SIGNUP_ENABLED = os.environ.get('TENANT_SIGNUP_ENABLED', '0') == '1'
 # Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
 # Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.
 WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')
+
+# ASEC36 — webhook WhatsApp SAV entrant, FAIL-CLOSED : sans secret tout POST
+# est refusé ; un numéro destinataire absent de SAV_WHATSAPP_NUMEROS
+# (« <phone_number_id>=<company_id>,… ») ne se rattache à aucune société.
+SAV_WHATSAPP_APP_SECRET = os.environ.get('SAV_WHATSAPP_APP_SECRET', '')
+SAV_WHATSAPP_NUMEROS = os.environ.get('SAV_WHATSAPP_NUMEROS', '')
+# ASEC40 — société ERP propriétaire du connecteur Odoo lecture seule ; vide =
+# connecteur inactif pour tous (fail-closed).
+ODOO_COMPANY_ID = os.environ.get('ODOO_COMPANY_ID', '')
 # Tenant cible des leads web (id de Company) ; à défaut, la première Company.
 WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
 

@@ -250,6 +250,25 @@ def verifier_sku_libre(modele, company, sku, instance=None):
 
 MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
 
+# ASTK20 (D-ASTK-3) — prix de VENTE catalogue dont l'écriture exige
+# ``catalogue_prix_modifier`` (PATCH produit, édition en masse set_price).
+PRIX_CATALOGUE_CHAMPS = (
+    'prix_vente', 'paliers_prix_vente', 'prix_fixe_ht', 'prix_par_panneau_ht',
+)
+
+
+def peut_modifier_prix_catalogue(user):
+    """ASTK20 — helper UNIQUE (serializer + édition en masse) : même règle
+    que ``HasPermissionOrLegacy('catalogue_prix_modifier')`` — rôle fin →
+    le code ; compte légacy sans rôle fin → responsable/admin ; superuser."""
+    if not (user and getattr(user, 'is_authenticated', False)):
+        return False
+    if user.is_superuser:
+        return True
+    if getattr(user, 'role', None):
+        return user.has_erp_permission('catalogue_prix_modifier')
+    return bool(user.is_responsable)
+
 
 def valider_nom_sans_sku(company, nom, sku, archive, instance=None):
     """ASTK94 — garde d'unicité « produit ACTIF SANS SKU de ce nom » (contrainte
@@ -616,8 +635,29 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         return self._ecrire(lambda: super(
             ProduitSerializer, self).update(instance, validated_data))
 
+    def _garder_prix_catalogue(self, attrs):
+        """ASTK20 (D-ASTK-3) — changer un prix de VENTE catalogue
+        (``PRIX_CATALOGUE_CHAMPS``) exige ``catalogue_prix_modifier`` ; les
+        autres champs restent sous ``stock_modifier``. Seul un CHANGEMENT
+        effectif est refusé (un formulaire complet renvoyant le prix inchangé
+        passe). 403 levé avant toute écriture : aucun produit_modifie émis."""
+        if self.instance is None:
+            return
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or peut_modifier_prix_catalogue(user):
+            return
+        changes = [c for c in PRIX_CATALOGUE_CHAMPS
+                   if c in attrs and attrs[c] != getattr(self.instance, c)]
+        if changes:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Permission « catalogue_prix_modifier » requise pour modifier "
+                f"le prix catalogue ({', '.join(changes)}).")
+
     def validate(self, attrs):
         self._valider_nom_sans_sku(attrs)
+        self._garder_prix_catalogue(attrs)
         if (self.instance is None
                 and (attrs.get('quantite_stock') or 0) < 0):
             raise serializers.ValidationError(
@@ -2167,12 +2207,22 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
 
     class Meta:
         model = KitComposant
+        # ASTK229 — `taux_perte_pct` servi et inscriptible (écran des
+        # nomenclatures) ; absent d'un PUT, il est conservé (ASTK96).
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'prix_vente',
-                  'composant_kit', 'composant_kit_nom', 'quantite']
+                  'composant_kit', 'composant_kit_nom', 'quantite',
+                  'taux_perte_pct']
+        extra_kwargs = {'taux_perte_pct': {'required': False}}
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('La quantité doit être positive.')
+        return value
+
+    def validate_taux_perte_pct(self, value):
+        if value is not None and (value < 0 or value >= 100):
+            raise serializers.ValidationError(
+                'Le taux de perte doit être compris entre 0 et 100 %.')
         return value
 
     def validate(self, attrs):

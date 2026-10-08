@@ -144,3 +144,14 @@ class CustomUserAdmin(CompanyScopedAdminMixin, UserAdmin):
             return obj.role.nom
         return obj.role_legacy
     role_display.short_description = 'Role'
+
+
+# ── ASEC12 — connexion à l'admin Django par la même porte que l'API ────────
+# ``admin.site`` (monté par erp_agentique/urls.py) n'est PAS remplacé : on lui
+# pose le formulaire (mot de passe + verrou + TOTP + UserSession) et la règle
+# d'accès (superuser seulement). Voir ``authentication/admin_login.py``.
+from .admin_login import AdminLoginForm, admin_has_permission  # noqa: E402
+
+admin.site.login_form = AdminLoginForm
+admin.site.login_template = 'authentication/admin_login.html'
+admin.site.has_permission = admin_has_permission

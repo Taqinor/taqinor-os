@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
@@ -176,7 +177,11 @@ function OngletFactures({ fournisseurId }) {
   if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
   if (items.length === 0) return <Indisponible message="Aucune facture." />
 
-  const totalDu = items.reduce((s, f) => s + (Number(f.solde_du) || 0), 0)
+  // ASTK15 — soldes masqués (sans `prix_achat_voir`) : « — », jamais 0,00.
+  const soldesConnus = items.some((f) => f.solde_du !== undefined)
+  const totalDu = soldesConnus
+    ? items.reduce((s, f) => s + (Number(f.solde_du) || 0), 0)
+    : null
 
   return (
     <div className="flex flex-col gap-3">
@@ -989,6 +994,10 @@ export default function FournisseurFiche360({
   const canWriteViaPerm = useHasPermission('stock_modifier')
   const canWriteViaRole = useIsAdminOrResponsable()
   const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  // ASTK15 (D-ASTK-2) — « Accords de prix » et « Tarif » (export/import des
+  // prix d'achat) n'existent que pour un compte qui VOIT les prix d'achat :
+  // jamais montés (donc jamais de requête 403) sans `prix_achat_voir`.
+  const voitPrix = useVoitPrixAchat()
   // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
   const tel = telHref(fournisseurTelephone)
 
@@ -1061,10 +1070,10 @@ export default function FournisseurFiche360({
     // NTP2P29 — wizard d'onboarding (dossier NTP2P7). Contextuelle : atteinte
     // par la fiche fournisseur, jamais une route autonome.
     { value: 'onboarding', label: 'Onboarding', icon: ShieldCheck, Comp: OngletOnboarding },
-    { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix },
+    { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix, prix: true },
     // WIR268/XPUR14 — export/import xlsx du tarif fournisseur.
-    { value: 'tarif', label: 'Tarif', icon: Wallet, Comp: OngletTarif },
-  ]), [])
+    { value: 'tarif', label: 'Tarif', icon: Wallet, Comp: OngletTarif, prix: true },
+  ].filter((t) => voitPrix || !t.prix)), [voitPrix])
 
   if (!fournisseurId) {
     return (

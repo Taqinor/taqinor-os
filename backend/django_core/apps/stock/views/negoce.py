@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
 from core.viewsets import CompanyScopedModelViewSet
@@ -326,8 +326,10 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-periode_debut', '-id']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + WRITE_ACTIONS + [
-                'calcul', 'generer_avoir']:
+        if self.action == 'generer_avoir':
+            # ASTK19 (D-ASTK-3) — émettre l'avoir RFA = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
+        if self.action in READ_ACTIONS + WRITE_ACTIONS + ['calcul']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
@@ -473,21 +475,32 @@ class ParametresNegoceSerializer(CompanyScopedRelationsMixin,
         from ..models import ParametresNegoce as _ParametresNegoce
 
         model = _ParametresNegoce
+        # ASTK201 (C-ASTK-049) — seuls les réglages RÉELLEMENT lus sont
+        # exposés : `consignation_activee` (services_consignation) et
+        # `atp_horizon_jours` (selectors_negoce). Les cinq autres colonnes
+        # restent en base (aucune migration destructive) mais ne sont plus
+        # servies ; les écrire → 400 « Réglage non branché. ».
         fields = [
-            'id', 'consignation_activee', 'van_sales_active',
-            'seuil_alerte_rfa_pct', 'heures_tournee_defaut',
-            'atp_horizon_jours', 'seuil_alerte_marge_pct',
-            'cout_rupture_jour_mad', 'updated_at',
+            'id', 'consignation_activee', 'atp_horizon_jours', 'updated_at',
         ]
         # `company` n'est JAMAIS acceptée du corps : le singleton est résolu
         # depuis `request.user.company`.
         read_only_fields = ['updated_at']
 
-    def validate_seuil_alerte_rfa_pct(self, value):
-        if value is not None and value > 100:
-            raise serializers.ValidationError(
-                'Le seuil de progression RFA ne peut pas dépasser 100 %.')
-        return value
+    REGLAGES_NON_BRANCHES = (
+        'van_sales_active', 'seuil_alerte_rfa_pct', 'heures_tournee_defaut',
+        'seuil_alerte_marge_pct', 'cout_rupture_jour_mad',
+    )
+
+    def validate(self, attrs):
+        initial = getattr(self, 'initial_data', None) or {}
+        erreurs = {
+            champ: ['Réglage non branché.']
+            for champ in self.REGLAGES_NON_BRANCHES if champ in initial
+        }
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return attrs
 
 
 @extend_schema(request=None, responses={200: ParametresNegoceSerializer})
@@ -496,9 +509,9 @@ class ParametresNegoceSerializer(CompanyScopedRelationsMixin,
 def parametres_negoce_view(request):
     """NTDST30 — réglages négoce de LA société (singleton, créé à la demande).
 
-    Changer ``seuil_alerte_rfa_pct`` à 90 déplace le seuil de première alerte
-    RFA SANS redéploiement : toutes les fonctionnalités NTDST lisent ce
-    singleton au lieu de constantes codées en dur.
+    ASTK201 : seuls ``consignation_activee`` et ``atp_horizon_jours`` sont
+    exposés — ce sont les deux réglages réellement lus. Aucune alerte RFA
+    n'est branchée sur ce singleton.
     """
     from ..models import ParametresNegoce
 

@@ -720,3 +720,17 @@ forbidden_modules =
     core.middleware
     core.mixins
     authentication
+
+# ALEA41 (C-ALEA-011) — garde de la classe « alias temporaire qui importe les
+# vues d'un autre domaine » : le CRM n'importe ni les vues des visites ni celles
+# des ventes (ALEA15 : crm/urls.py ne réimporte plus apps.visites.views). Toute
+# exception de `ignore_imports` doit être NOMMÉE (module -> module), jamais un
+# joker (verrou : scripts/tests/test_importlinter_crm_vues.py).
+[importlinter:contract:crm-n-importe-pas-les-vues-d-autres-domaines]
+name = CRM never imports apps.visites.views / apps.ventes.views
+type = forbidden
+source_modules =
+    apps.crm
+forbidden_modules =
+    apps.visites.views
+    apps.ventes.views

@@ -132,8 +132,3 @@ def generer_avoir_rfa(accord, user):
     logger.info('NTDST5 avoir RFA %s genere pour accord=%s',
                 avoir.reference, accord.id)
     return avoir
-
-
-def progression_seuil_rfa(accord):
-    """Progression (%) vers le seuil, pour l'alerte NTDST19/NTDST32."""
-    return calculer_rfa_fournisseur(accord)['progression_pct']

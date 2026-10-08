@@ -89,8 +89,12 @@ class GuardTests(XGed18Base):
             company=self.co_a, folder=self.folder_a, nom='Lien',
             url_externe='https://example.com')
         api = auth(self.admin_a)
+        # ASEC37 — une version arrive comme fichier téléversé (multipart).
+        from django.core.files.uploadedfile import SimpleUploadedFile
         resp = api.post('/api/django/ged/versions/', {
-            'document': doc.pk, 'file_key': 'k', 'filename': 'x.pdf',
+            'document': doc.pk,
+            'file': SimpleUploadedFile(
+                'x.pdf', b'%PDF-1.4 lien', content_type='application/pdf'),
         })
         self.assertEqual(resp.status_code, 400)
 

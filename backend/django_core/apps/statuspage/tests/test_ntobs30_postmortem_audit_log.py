@@ -37,9 +37,10 @@ class PublierPostmortemAuditLogTest(TestCase):
         self.company = Company.objects.create(nom='Acme', slug='acme-nt30')
         self.role_directeur = Role.objects.create(
             company=self.company, nom='Directeur')
-        self.directeur = User.objects.create_user(
-            'directeur30', password='x', company=self.company,
-            role=self.role_directeur)
+        # ASEC44 — incident PLATEFORME (company=None) : publié par la
+        # plateforme (superuser), plus par le Directeur d'un tenant.
+        self.directeur = User.objects.create_superuser(
+            'directeur30', password='x', email='p-nt30@example.invalid')
         self.incident = IncidentPublic.objects.create(
             titre='Panne stockage', statut=IncidentPublic.Statut.RESOLVED,
             debute_le=timezone.now(), resolu_le=timezone.now(), company=None,
