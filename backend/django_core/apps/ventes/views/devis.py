@@ -78,6 +78,9 @@ class DevisViewSet(DevisEditionActionsMixin,
     queryset = Devis.objects.select_related(
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',
+        # APRF4 (C-APRF-002) — `updated_by_nom` et la société (profil,
+        # validité) lus PAR LIGNE de liste : un SELECT par devis sans eux.
+        'updated_by', 'company',
     ).prefetch_related(
         # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
         # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
@@ -89,7 +92,14 @@ class DevisViewSet(DevisEditionActionsMixin,
         # grandit avec le nombre de devis (même prefetch que
         # generate_premium_devis_pdf). Rend le total de liste O(1).
         'lignes', 'lignes__produit',
+        # APRF4 — la fiche technique de chaque produit (moteur d'affichage),
+        # et ce que `solde_devis` lit par facture : affectations de paiement
+        # (patron AUD157 de FactureViewSet), lignes de facture et d'avoir
+        # (totaux non figés). Sans eux : une requête par facture active.
+        'lignes__produit__fiche_technique',
         'factures', 'factures__paiements', 'factures__avoirs',
+        'factures__affectations_paiement__paiement', 'factures__lignes',
+        'factures__avoirs__lignes',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
@@ -326,7 +336,9 @@ class DevisViewSet(DevisEditionActionsMixin,
             nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
             from ..domain.taille import _AUTO_PANEL_WATT
             panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
-            taux_tva = _nombre('taux_tva', Decimal('20'))
+            # APAR49 — défaut = taux STANDARD de la société, jamais 20 codé.
+            from ..utils.company_settings import tva_standard
+            taux_tva = _nombre('taux_tva', tva_standard(company))
             mppt_paires = _nombre('mppt_paires', Decimal('1'))
             dimensionnement_avec = _dimensionnement_avec(
                 request.data.get('dimensionnement_avec'))
@@ -451,8 +463,10 @@ class DevisViewSet(DevisEditionActionsMixin,
         # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
         # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
         # de ck_devis_remise_globale_0_100 (500).
+        # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
+        from ..utils.company_settings import tva_standard
         taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', Decimal('20'))
+            request.data, 'taux_tva', tva_standard(company))
         remise, erreur_remise = _pourcentage_saisi(
             request.data, 'remise_globale', Decimal('0'))
         erreur = erreur or erreur_remise
@@ -548,8 +562,17 @@ class DevisViewSet(DevisEditionActionsMixin,
             return Response(
                 {'detail': 'Le pourcentage doit être strictement entre 0 et 100.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        ancien = profile.variante_pct
         profile.variante_pct = pct
         profile.save(update_fields=['variante_pct'])
+        # APAR60 (C-APAR-039) — journal avant/après, comme l'écran Profil
+        # (même champ, même libellé, section « profil »).
+        from apps.parametres.models import SettingsAuditLog
+        if ancien != profile.variante_pct:
+            SettingsAuditLog.log_change(
+                company, user, 'profil', 'variante_pct',
+                'Pourcentage des variantes de devis', ancien,
+                profile.variante_pct)
         return Response({'variante_pct': str(profile.variante_pct)})
 
     @action(detail=True, methods=['post'], url_path='revoquer-lien-public',

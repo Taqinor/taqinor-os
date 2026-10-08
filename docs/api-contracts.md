@@ -569,7 +569,7 @@
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link
     detail:inconnu, gamme:inconnu, niveau:inconnu, otp_lecture:inconnu, path:inconnu, path_interne:inconnu, sections:objet, token:inconnu, token_interne:inconnu
 - frontend/src/api/ventesApi.js :: simulerEtudeDevis -> /api/django/ventes/devis/<>/simuler
-    detail:texte, job_id:inconnu, status:texte, status_url:inconnu, zones:nombre
+    detail:inconnu, job_id:inconnu, revision_possible:inconnu, status:texte, status_url:inconnu, statut:inconnu, zones:nombre
 - frontend/src/api/ventesApi.js :: superiorContactStatus -> /api/django/ventes/devis/<>/superior-contact-status
     requested:booleen, requested_at:inconnu, seen:booleen, seen_by:inconnu
 - frontend/src/api/ventesApi.js :: whatsappDevis -> /api/django/ventes/devis/<>/whatsapp

@@ -192,6 +192,12 @@ class Devis(models.Model):
     remise_approuvee_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         blank=True, related_name='remises_approuvees')
+    # ADEV33 (C-ADEV-048) — la PROFONDEUR approuvée (remise effective en %, au
+    # moment de l'approbation) : une remise envoyée qui la dépasse exige une
+    # nouvelle approbation. ``None`` = approbation antérieure à ADEV33 (couvre
+    # comme avant, booléen seul).
+    remise_approuvee_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

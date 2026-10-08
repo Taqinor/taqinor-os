@@ -55,6 +55,21 @@ def oublier_echec_pdf_devis(devis_id):
     cache.delete(pdf_job_cache_key(devis_id))
 
 
+def _signaler_pdf_devis_genere(devis_id):
+    """ADEV22 — émet ``document_pdf_generated(kind='devis')`` pour le devis
+    rendu ; best-effort (un journal raté n'invalide pas un PDF rendu)."""
+    try:
+        from core.events import document_pdf_generated
+        from .models import Devis
+        devis = Devis.objects.filter(pk=devis_id).first()
+        if devis is not None:
+            document_pdf_generated.send(
+                sender=Devis, instance=devis, kind='devis')
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception('ADEV22 : audit PDF devis ignoré (devis %s)',
+                         devis_id)
+
+
 @shared_task(
     bind=True,
     name='ventes.generate_devis_pdf',
@@ -102,6 +117,9 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             from .utils.pdf import generate_devis_pdf
             key = generate_devis_pdf(devis_id)
         logger.info('task_generate_devis_pdf OK: %s', key)
+        # ADEV22 (C-ADEV-028) — l'entrée d'audit « PDF devis généré » est
+        # écrite au RENDU réussi (plus à la demande ``generer-pdf``).
+        _signaler_pdf_devis_genere(devis_id)
         # WIR217 — un rendu réussi PURGE l'échec précédent : un « Réessayer »
         # qui aboutit ne doit pas laisser l'écran en échec pendant 24 h.
         oublier_echec_pdf_devis(devis_id)
@@ -258,9 +276,29 @@ def _render_signature(devis_id, pdf_options):
     payload = json.dumps(
         {'devis': devis_id,
          'content': _content_version(devis_id, pdf_options),
-         'opts': pdf_options or {}},
+         'opts': pdf_options or {},
+         # APDF18 (C-APDF-003) — la langue RÉSOLUE du document : un rendu
+         # FR puis AR du même devis (client passé en arabe, ou ?langue=)
+         # ne ressert jamais le PDF de l'autre langue.
+         'langue': _langue_resolue(devis_id, pdf_options)},
         sort_keys=True, default=str)
     return 'devis-pdf:' + hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _langue_resolue(devis_id, pdf_options):
+    """APDF18 — la langue que le moteur rendra : ``langue_sortie``
+    explicite, sinon celle du client / repli société (même résolveur que
+    ``build_quote_data``, APDF7)."""
+    explicite = (pdf_options or {}).get('langue_sortie')
+    if explicite:
+        return explicite
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    from .models import Devis
+    devis = (Devis.objects.select_related('client', 'company')
+             .filter(pk=devis_id).first())
+    if devis is None:
+        return 'fr'
+    return resolve_langue_sortie(client=devis.client, company=devis.company)
 
 
 def _idempotent_cached_key(devis_id, pdf_options):
@@ -658,11 +696,18 @@ def task_devis_automatique_depuis_lead(lead_id, company_id):
 @shared_task(name='ventes.audit_coherence_nuit')
 def audit_coherence_nuit():
     from .coherence.moteur import run_audit
-    from .coherence.notification import notifier_nouvelles_violations
+    from .coherence.notification import (
+        notifier_nouvelles_violations, notifier_regles_sans_verdict)
 
     report = run_audit(persist=True)
     notifications = notifier_nouvelles_violations(report) if report.new \
         else 0
+    # AMOT61 (C-AMOT-037) — une règle restée SANS VERDICT n'est plus muette :
+    # digest aux admins (« N règles sans verdict ») APRÈS la persistance du
+    # rapport, puis la tâche échoue de façon visible. La commande
+    # ``audit_coherence`` garde, elle, son code de sortie 0 (qa-explorer).
+    if report.rule_errors:
+        notifications += notifier_regles_sans_verdict(report)
     resume = {
         'companies': len(report.companies),
         'checked': dict(report.checked),
@@ -674,4 +719,8 @@ def audit_coherence_nuit():
         'duration_s': round(report.duration_s, 1),
     }
     logger.info('audit_coherence_nuit : %s', resume)
+    if report.rule_errors:
+        raise RuntimeError(
+            'audit_coherence_nuit : %d règle(s) sans verdict — %s'
+            % (len({e.get('rule') for e in report.rule_errors}), resume))
     return resume

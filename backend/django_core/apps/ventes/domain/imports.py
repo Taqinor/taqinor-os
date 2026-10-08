@@ -109,7 +109,7 @@ def creer_devis_import(company, ligne, *, external_system=None, user=None):
     ``('erreur', motif, None)`` — jamais d'exception : une ligne fautive est
     SKIPPÉE par l'appelant, elle n'arrête jamais tout le lot.
     """
-    from core.numbering import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
 
     from apps.ventes.models import Devis
 
@@ -128,7 +128,7 @@ def creer_devis_import(company, ligne, *, external_system=None, user=None):
                   if ligne.get('reference_source') else ''),
         )
 
-    devis = create_with_reference(Devis, 'DEV', company, _create)
+    devis = create_numbered(Devis, company, 'devis', _create)
     return ('cree', '', devis)
 
 

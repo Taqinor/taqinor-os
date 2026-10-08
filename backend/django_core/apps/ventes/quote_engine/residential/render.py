@@ -84,6 +84,28 @@ def calepinage_demande(data: dict) -> bool:
                 and data.get("calepinage_svg"))
 
 
+def page_annexe_domicile(ctx) -> str:
+    """AMOT23 — page « Droit de rétractation » du gabarit résidentiel : le
+    corps légal partagé (``quote_engine.annexe_domicile``) dans le cadre de
+    page résidentiel. AUCUN montant."""
+    from ..annexe_domicile import corps_annexe_domicile
+    d, C = ctx["d"], ctx["C"]
+    serif = ctx["fonts"]["serif"]
+    ident = ctx["ident"]
+    corps = corps_annexe_domicile(
+        ref=theme._esc(d.get("ref") or ""),
+        vendeur=ident.get("brand_name") or "",
+        couleurs={"navy": C["navy"], "texte": C["ink"], "muet": C["muted"],
+                  "fond": C["paper"], "filet": C["line"]})
+    return f"""
+<div style="padding:11mm 14mm 0 14mm;">
+  <div style="font-size:8.5pt;letter-spacing:.24em;text-transform:uppercase;color:{C['gold']};font-weight:700;">Annexe</div>
+  <div style="font-family:{serif};font-weight:700;font-size:23pt;color:{C['navy']};line-height:1.04;margin:3px 0 8px;">Droit de rétractation</div>
+  {corps}
+</div>
+"""
+
+
 def page_calepinage(ctx) -> str:
     """QJR666 — page « Calepinage » du gabarit résidentiel : elle MET EN PAGE
     la planche cotée composée par le serveur (CAL171), sans rien dessiner ni
@@ -140,8 +162,13 @@ def build_html(data: dict, elastic: dict | None = None,
     # d'engagement (du commercial au technique, puis à la signature), comme
     # dans le moteur legacy : une page de plus, seulement sur demande.
     planche = [page_calepinage(ctx)] if calepinage_demande(data) else []
+    # AMOT23 (C-AMOT-021) — commande signée AU DOMICILE (BC, CAD122) : le
+    # formulaire détachable de rétractation suit la page d'engagement, comme
+    # dans le moteur legacy (même fonction ``annexe_domicile``).
+    annexe = ([page_annexe_domicile(ctx)]
+              if data.get("signe_au_domicile") else [])
     pages = ([cover.build(ctx)] + options.build_pages(ctx) + planche
-             + [trust.build(ctx)])
+             + [trust.build(ctx)] + annexe)
     total = len(pages)
     elastic = elastic or {}
     body = "".join(

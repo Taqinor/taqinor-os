@@ -2722,3 +2722,60 @@ class NTI18N5DocumentMultilingueTests(TestCase):
         self.assertTrue(montants['fr'], 'aucun montant lu dans le une-page')
         self.assertEqual(montants['en'], montants['fr'])
         self.assertEqual(montants['ar'], montants['fr'])
+
+
+class AcalResidentielEtudeSansPlancheAuto(TestCase):
+    """ACAL103 (C-ACAL-117, QJR666) — un devis RÉSIDENTIEL rendu avec
+    l'étude (moteur legacy) n'ajoute PAS la planche sous l'AUTO : seule une
+    demande explicite ``include_calepinage=1`` ajoute sa page. Moteur réel
+    (règle #4) ; seul le rendu WeasyPrint final est neutralisé, le compte de
+    pages lu est celui que le moteur numérote (``PAGES_TOTAL``).
+
+    Test-du-test : ``include_calepinage=1`` ⇒ une page de plus (le test
+    distingue les deux cas)."""
+
+    def setUp(self):
+        from apps.calepinage.models import Calepinage
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, [
+                ('Panneau Canadien Solar 710W', '14', '1272.73'),
+                ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+                ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+                ('Batterie Dyness 10 kWh', '1', '25000'),
+                ('Installation', '1', '4000'),
+            ], reference='DEV-ACAL103-1', etude_params=dict(DEUX_OPTIONS))
+        self.devis.mode_installation = 'residentiel'
+        self.devis.save(update_fields=['mode_installation'])
+        Calepinage.objects.create(
+            company=self.company, client=self.client_obj, devis=self.devis,
+            titre='Villa Anfa', roof_layout=LAYOUT_CAL182,
+            layout_hash='ab12cd34' * 8, version_moteur='2.1.0')
+
+    def _pages(self, options):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, clean_pdf_options)
+        data = build_quote_data(self.devis, clean_pdf_options(options))
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: None
+        try:
+            G.generate_premium_pdf(data, '/tmp/_acal103_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return data, G.PAGES_TOTAL
+
+    def test_acal_residentiel_include_etude_sans_planche_auto(self):
+        data_auto, auto = self._pages({'include_etude': True})
+        # Précondition : sous l'AUTO la planche EXISTE (sinon le test ne
+        # prouverait rien).
+        self.assertTrue(data_auto.get('calepinage_svg'))
+        self.assertNotIn('include_calepinage_demande', data_auto)
+        _d, sans = self._pages({'include_etude': True,
+                                'include_calepinage': False})
+        _d, avec = self._pages({'include_etude': True,
+                                'include_calepinage': True})
+        self.assertEqual(auto, sans)
+        self.assertEqual(avec, sans + 1)

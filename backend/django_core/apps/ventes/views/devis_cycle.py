@@ -371,9 +371,9 @@ class DevisCycleActionsMixin:
     def approuver_remise(self, request, pk=None):
         """Approbation admin de la remise (T17) — débloque l'envoi du devis."""
         devis = self.get_object()
-        devis.remise_approuvee = True
-        devis.remise_approuvee_par = request.user
-        devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
+        # ADEV33 — la profondeur approuvée est mémorisée avec le booléen.
+        from ..domain.tarification import approuver_remise_devis
+        approuver_remise_devis(devis, request.user)
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
