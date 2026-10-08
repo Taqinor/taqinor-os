@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -94,6 +94,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
         'produit', 'installation', 'installation__client', 'client_vente',
+        'categorie', 'created_by', 'remplace_par_ticket',
     ).all()
     serializer_class = EquipementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -105,6 +106,21 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # APRF30 — compteurs de tickets annotés (une seule requête pour la
+        # page) ; le serializer les lit et retombe sur ``.count()`` hors liste.
+        if self.action == 'list':
+            from datetime import timedelta
+            depuis = timezone.localdate() - timedelta(days=365)
+            qs = qs.annotate(
+                nb_tickets_ouverts_annote=Count(
+                    'tickets', distinct=True,
+                    filter=Q(tickets__statut__in=Ticket.OPEN_STATUTS,
+                             tickets__annule=False)),
+                nb_tickets_12m_annote=Count(
+                    'tickets', distinct=True,
+                    filter=Q(tickets__type=Ticket.Type.CORRECTIF,
+                             tickets__date_creation__date__gte=depuis)),
+            )
         # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, self.request.user, ['created_by'])
@@ -2837,7 +2853,9 @@ class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
 class CategorieEquipementViewSet(CompanyScopedModelViewSet):
     """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
-    queryset = CategorieEquipement.objects.all()
+    queryset = CategorieEquipement.objects.select_related(
+        'responsable', 'equipe_responsable',
+    ).annotate(nb_equipements_annote=Count('equipements', distinct=True))
     serializer_class = CategorieEquipementSerializer
 
     def get_permissions(self):

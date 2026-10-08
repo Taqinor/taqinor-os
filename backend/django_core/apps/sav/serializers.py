@@ -88,11 +88,17 @@ class EquipementSerializer(serializers.ModelSerializer):
         return value
 
     def get_nb_tickets_ouverts(self, obj):
+        annote = getattr(obj, 'nb_tickets_ouverts_annote', None)
+        if annote is not None:
+            return annote  # APRF30 — annoté par la liste.
         return obj.tickets.filter(
             statut__in=Ticket.OPEN_STATUTS, annule=False).count()
 
     def get_nb_tickets_12m(self, obj):
         """FG90 — compte les tickets correctifs des 12 derniers mois."""
+        annote = getattr(obj, 'nb_tickets_12m_annote', None)
+        if annote is not None:
+            return annote  # APRF30 — annoté par la liste.
         since = timezone.localdate() - timedelta(days=365)
         return obj.tickets.filter(
             type=Ticket.Type.CORRECTIF,
@@ -718,6 +724,9 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
     def get_nb_equipements(self, obj):
+        annote = getattr(obj, 'nb_equipements_annote', None)
+        if annote is not None:
+            return annote  # APRF30 — annoté par la liste.
         return obj.equipements.count()
 
     def _same_company(self, obj):
