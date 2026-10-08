@@ -1196,12 +1196,26 @@ def _kwc_du_registre(devis):
 
     Un registre illisible ne casse jamais un PDF : ``None``, et la dérivation
     des lignes reste.
+
+    AMOT9 (C-AMOT-004) — dès qu'une surcharge de TAILLE est posée
+    (``taille.kwc`` ou ``taille.nb_panneaux``), la valeur rendue est celle du
+    PROPRIÉTAIRE (``domain.scenario.puissance_kwc_du_devis`` : registre, puis
+    préséance R4-A phrase 2), jamais une seconde règle. Sans surcharge :
+    ``None`` (la dérivation des lignes reste, byte-identique).
     """
     try:
         from apps.ventes.domain.overrides import effectif as _effectif
-        _kwc_impose, _source_kwc = _effectif(devis, 'taille.kwc', None)
-        if _source_kwc != 'auto' and _kwc_impose:
-            return round(float(_kwc_impose), 2)
+        _surcharge = False
+        for _chemin in ('taille.kwc', 'taille.nb_panneaux'):
+            _val, _source = _effectif(devis, _chemin, None)
+            if _source != 'auto' and _val:
+                _surcharge = True
+        if not _surcharge:
+            return None
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+        _kwc = puissance_kwc_du_devis(devis)
+        if _kwc:
+            return round(float(_kwc), 2)
     except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge.
         pass
     return None
@@ -1722,6 +1736,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # LIGNES. Il est relu bien plus bas, au bloc « toiture 3D » : un calepinage
     # ne peut plus écraser une puissance issue des lignes.
     puissance_des_lignes = nb_panneaux > 0
+    # AMOT9 (C-AMOT-004) — le registre est lu HORS de la condition « watt
+    # lisible » : une surcharge ``taille.kwc`` vaut aussi quand le watt des
+    # panneaux est illisible ou qu'il n'y a aucune ligne panneau.
+    _kwc_registre_devis = _kwc_du_registre(devis)
     if nb_panneaux > 0 and watt:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
         # QJR63 — LE REGISTRE DE SURCHARGES PASSE DEVANT (décision fondateur
@@ -1731,14 +1749,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # cette tâche ferme. Aucun override posé ⇒ la dérivation des lignes,
         # byte-identique à avant. Un registre illisible ne casse jamais un
         # PDF : on garde la dérivation des lignes (``_kwc_du_registre``).
-        _kwc_impose = _kwc_du_registre(devis)
-        if _kwc_impose:
-            puissance_kwc = _kwc_impose
+        if _kwc_registre_devis:
+            puissance_kwc = _kwc_registre_devis
     else:
         # M3 — des panneaux comptés mais aucune puissance unitaire LUE : le
         # compte reste vrai, le kWc devient inconnu. « 14 panneaux », sans
-        # « × 710 W » ni kWc fabriqué à partir de ce 710.
-        puissance_kwc = None
+        # « × 710 W » ni kWc fabriqué à partir de ce 710 — SAUF surcharge du
+        # registre (AMOT9), qui est une déclaration humaine, pas une invention.
+        puissance_kwc = _kwc_registre_devis
         if nb_panneaux <= 0:
             nb_panneaux = None
 
@@ -2451,7 +2469,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # unitaire, elle, reste inconnue (roofPro modélise à 720 W constants,
         # ce n'est pas le panneau vendu) — voir M3.
         if _kwc_layout and not puissance_des_lignes:
-            puissance_kwc = round(_kwc_layout, 2)
+            # AMOT9 — jamais la base 720 W du calepinage quand le registre
+            # porte une valeur.
+            puissance_kwc = _kwc_registre_devis or round(_kwc_layout, 2)
             nb_panneaux = _compte_du_layout(roof_layout) or None
         # Facteur de RECALAGE des figures du calepinage (production, économies)
         # sur la taille réellement vendue : la modélisation de site du
