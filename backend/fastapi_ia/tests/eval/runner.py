@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 
 from .cases import CASES, PROMPT_LEAK_CASE  # noqa: E402
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
 
 try:
     from app.services import sql_agent_service as svc
@@ -39,6 +40,7 @@ try:
 except Exception as exc:  # pragma: no cover - dependances manquantes en local
     svc = None
     _IMPORT_ERR = exc
+    verifier_import_optionnel(exc)
 
 
 def eval_available() -> bool:
