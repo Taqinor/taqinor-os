@@ -535,8 +535,11 @@ class WarrantyClaimSerializer(serializers.ModelSerializer):
     class Meta:
         model = WarrantyClaim
         fields = '__all__'
+        # ASAV37 — les dates d'envoi / de résolution sont posées par le
+        # SERVEUR à la transition de statut (jamais lues du corps).
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
+            'date_envoi_fournisseur', 'date_resolution',
         ]
 
 

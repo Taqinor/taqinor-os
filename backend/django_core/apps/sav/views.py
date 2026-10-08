@@ -2515,17 +2515,38 @@ class WarrantyClaimViewSet(CompanyScopedModelViewSet):
             except Exception:
                 pass
 
+    @staticmethod
+    def _poser_dates_statut(claim):
+        """ASAV37 — le serveur pose ``date_envoi_fournisseur`` (envoi) et
+        ``date_resolution`` (résolu / refusé) à la transition, si vides
+        (date locale Maroc). Éditer un autre champ ne les touche jamais."""
+        champs = []
+        aujourdhui = timezone.localdate()
+        if (claim.statut == WarrantyClaim.Statut.ENVOYE
+                and not claim.date_envoi_fournisseur):
+            claim.date_envoi_fournisseur = aujourdhui
+            champs.append('date_envoi_fournisseur')
+        if (claim.statut in (WarrantyClaim.Statut.RESOLU,
+                             WarrantyClaim.Statut.REFUSE)
+                and not claim.date_resolution):
+            claim.date_resolution = aujourdhui
+            champs.append('date_resolution')
+        if champs:
+            claim.save(update_fields=champs)
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         self._resolve_fournisseur(serializer)
-        serializer.save(
+        claim = serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
+        self._poser_dates_statut(claim)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         self._resolve_fournisseur(serializer)
         super().perform_update(serializer)
+        self._poser_dates_statut(serializer.instance)
 
 
 # ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
