@@ -439,12 +439,30 @@ def reglements_facture_pdf(facture):
             'date': _date(getattr(r, 'attestation_date', None)),
             'mode': f'Retenue à la source ({r.get_type_retenue_display()})',
             'reference': '', 'montant': Decimal(str(r.montant))})
-    if not lignes:
+    # AFAC31 (C-AFAC-031) — les deux termes de `decomposition_du` que le
+    # bloc taisait : une note de débit AUGMENTE ce qui est dû (ligne
+    # « Note de débit +x »), un abandon de créance (arrondi espèces compris)
+    # le réduit (« Abandon de créance −x ») — le reste se recalcule à la main.
+    notes_debit = [
+        {'date': _date(nd.date_emission), 'reference': nd.reference or '',
+         'montant': Decimal(str(nd.total_ttc))}
+        for nd in sorted(facture.notes_debit.all(), key=lambda nd: nd.id)
+        if nd.statut == 'emise']
+    abandon = None
+    if facture.abandon_montant and facture.abandon_montant > 0:
+        abandon = {
+            'libelle': ('Arrondi espèces'
+                        if facture.abandon_motif == 'arrondi_caisse'
+                        else 'Abandon de créance'),
+            'montant': Decimal(str(facture.abandon_montant))}
+    if not lignes and not notes_debit and abandon is None:
         return None
     total = sum((li['montant'] for li in lignes), Decimal('0'))
     reste = Decimal(str(facture.montant_du))
     return {
         'lignes': lignes,
+        'notes_debit': notes_debit,
+        'abandon': abandon,
         'total_deja_paye': total,
         'reste_a_payer': reste,
         'soldee': reste <= 0,
@@ -520,6 +538,14 @@ def _reglements_empreinte(facture):
             for li in bloc['lignes']],
         'total_deja_paye': str(bloc['total_deja_paye']),
         'reste_a_payer': str(bloc['reste_a_payer']),
+        # AFAC31 — clés posées seulement si présentes : l'empreinte d'une
+        # facture sans note de débit ni abandon reste inchangée.
+        **({'notes_debit': [
+            {'reference': nd['reference'], 'montant': str(nd['montant'])}
+            for nd in bloc['notes_debit']]} if bloc['notes_debit'] else {}),
+        **({'abandon': {'libelle': bloc['abandon']['libelle'],
+                        'montant': str(bloc['abandon']['montant'])}}
+           if bloc['abandon'] else {}),
     }
 
 

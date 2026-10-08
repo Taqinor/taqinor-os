@@ -560,10 +560,10 @@ class Facture(TotauxDocumentMixin, models.Model):
         tolérance) solde le résiduel abandonné ; aucun abandon → comportement
         historique inchangé (abandon_montant vaut 0 par défaut)."""
         from decimal import Decimal
-        reste = (self.total_ttc + self.notes_debit_total
-                 - self.montant_paye_avec_retenues
-                 - self.avoirs_total
-                 - (self.abandon_montant or Decimal('0')))
+        d = decomposition_du(self)  # AFAC31 — UNE source, six termes
+        reste = (d['facture'] + d['notes_debit'] - d['paye']
+                 - d['retenues'] - d['avoirs']
+                 - d['abandons'])
         return reste if reste > 0 else Decimal('0')
 
     @property
@@ -1207,3 +1207,26 @@ class RelanceLog(models.Model):
 
     def __str__(self):
         return f'Relance {self.facture.reference} — {self.date}'
+
+
+def decomposition_du(facture):
+    """AFAC31 (C-AFAC-031, D-ATOT-4) — LA décomposition du reste dû d'une
+    facture, en SIX termes (Decimal) : ``facture`` (TTC) + ``notes_debit`` −
+    ``paye`` (paiements non rejetés + escomptes + avances ventilées) −
+    ``retenues`` (RAS subies) − ``avoirs`` (actifs) − ``abandons`` (abandon
+    de créance, arrondi espèces compris). ``montant_du`` en est la somme
+    (jamais négative) ; le relevé client (JSON, PDF, portail) et le bloc
+    « Déjà payé / Reste à payer » du PDF facture LISENT ces termes : chaque
+    document se rapproche à la main au centime.
+
+    Posée en fin de module (et non comme méthode) pour ne décaler aucune
+    ligne des modèles (listes figées par numéro de ligne)."""
+    from decimal import Decimal
+    return {
+        'facture': facture.total_ttc,
+        'notes_debit': facture.notes_debit_total,
+        'paye': facture.montant_paye,
+        'retenues': facture.retenues_subies_total,
+        'avoirs': facture.avoirs_total,
+        'abandons': facture.abandon_montant or Decimal('0'),
+    }

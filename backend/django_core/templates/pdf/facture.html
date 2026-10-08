@@ -241,7 +241,9 @@
     {# ZFAC11 — mention « Arrondi espèces » quand un écart d'arrondi de caisse a
        été appliqué (règlement espèces arrondi au pas société). Conditionnel :
        aucune mention si aucun arrondi → PDF strictement inchangé sinon. #}
-    {% if facture.abandon_motif == 'arrondi_caisse' and facture.abandon_montant %}
+    {# AFAC31 — l'arrondi espèces est désormais un cas de la ligne Abandon
+       du bloc ci-dessous (une seule impression, jamais deux). #}
+    {% if facture.abandon_motif == 'arrondi_caisse' and facture.abandon_montant and not reglements %}
     <div class="totaux-row remise">
       <span>Arrondi espèces</span>
       <span>−{{ "%.2f"|format(facture.abandon_montant) }} MAD</span>
@@ -252,6 +254,14 @@
        puis « Reste à payer » = Facture.montant_du. Aucun règlement →
        `reglements` vaut None et RIEN n'est imprimé (PDF inchangé). #}
     {% if reglements %}
+    {# AFAC31 — une note de débit AUGMENTE le dû : imprimée avant « Déjà
+       payé » pour que Facturé + ND − Déjà payé − Abandon = Reste à payer. #}
+    {% for nd in reglements.notes_debit %}
+    <div class="totaux-row">
+      <span>Note de débit{% if nd.reference %} · {{ nd.reference }}{% endif %}</span>
+      <span>+{{ "%.2f"|format(nd.montant) }} MAD</span>
+    </div>
+    {% endfor %}
     <div class="totaux-row deja-paye-titre">
       <span>Déjà payé</span>
       <span></span>
@@ -266,6 +276,12 @@
       <span>Total déjà payé</span>
       <span>{{ "%.2f"|format(reglements.total_deja_paye) }} MAD</span>
     </div>
+    {% if reglements.abandon %}
+    <div class="totaux-row remise">
+      <span>{{ reglements.abandon.libelle }}</span>
+      <span>−{{ "%.2f"|format(reglements.abandon.montant) }} MAD</span>
+    </div>
+    {% endif %}
     <div class="totaux-row reste-a-payer">
       {% if reglements.soldee %}
       <span>Facture soldée</span>
