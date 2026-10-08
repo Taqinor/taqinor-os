@@ -2795,6 +2795,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _economie_saisie = None
     if _economie_saisie:
         roi_kwargs["economie_imposee"] = _economie_saisie
+    if _corrige:
+        # AMOT58 — rendement aller-retour de la batterie déduit UNE fois.
+        roi_kwargs["rendement_une_fois"] = True
     roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
                                 **roi_kwargs)
     # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──

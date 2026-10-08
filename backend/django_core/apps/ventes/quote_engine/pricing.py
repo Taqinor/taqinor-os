@@ -1420,6 +1420,12 @@ def calculate_savings_roi(
     # courbe 25 ans, gain net et répartition mensuelle en découlent, chaque
     # option sur SON prix. ``None`` (défaut) ⇒ sortie byte-identique.
     economie_imposee: float | None = None,
+    # AMOT58 — le rendement aller-retour de la batterie n'est déduit qu'UNE
+    # fois : en modèle horaire l'énergie restituée est déjà nette du stockage
+    # (aucun second abattement dans le cashflow) ; en modèles factures /
+    # estimation l'économie « avec » IMPRIMÉE devient la valeur nette, et le
+    # cashflow la reprend telle quelle. ``False`` (défaut) ⇒ d'hier.
+    rendement_une_fois: bool = False,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1675,6 +1681,17 @@ def calculate_savings_roi(
         "escalation": TARIFF_ESCALATION,
         "inverter_replace_year": INVERTER_REPLACE_YEAR,
     }
+    if rendement_une_fois and _stockage and not economie_saisie:
+        if _h:
+            # Horaire : le restitué est déjà borné par le rendement
+            # (``etude_horaire``) — aucune seconde déduction.
+            _batt_part = 0.0
+        elif _batt_part > 0:
+            _rt_net = ((_h or {}).get("battery_roundtrip")
+                       or BATTERY_ROUNDTRIP)
+            economie_opt2 = round(
+                economie_opt2 * (1.0 - (1.0 - float(_rt_net)) * _batt_part))
+            _batt_part = 0.0
     cf_s = compute_cashflow_payback(
         total_sans, economie_opt1,
         inverter_replace_cost=inverter_cost_sans, **_cf_params)

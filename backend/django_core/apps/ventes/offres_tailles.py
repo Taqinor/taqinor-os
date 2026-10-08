@@ -974,10 +974,16 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                 carte['prix_par_kwc_ttc'] = prix_kwc
         if economie is not None:
             carte['economie_annuelle_mad'] = round(economie, 2)
+        # AMOT58 — l'économie du moteur horaire est DÉJÀ nette du stockage :
+        # aucune seconde déduction du rendement (part batterie 0) pour un
+        # devis aux règles corrigées.
+        from .domain.regles_calcul import calcul_corrige
+        _part = (_part_batterie(annuel) if variante == 'avec' else None)
+        if _part is not None and calcul_corrige(contexte.devis):
+            _part = 0.0
         _cashflow = dict(
             stockage=bool(variante == 'avec' and capacite),
-            part_batterie=(_part_batterie(annuel) if variante == 'avec'
-                           else None),
+            part_batterie=_part,
             cout_onduleur_ttc=_cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
                 contexte.facteur_remise))
