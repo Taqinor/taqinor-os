@@ -1,53 +1,19 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import {
+  definirProfil, rendreParametresEntreprise, updateProfile,
+} from '../../test/parametresEntrepriseHarness'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { diffProfilePayload } from './peConstants'
 
 /* APAR16 — l'écran Paramètres (profil société) n'envoie que le SEUL diff des
    champs modifiés + l'`updated_at` lu au chargement (verrou optimiste). Avant :
    `{...form}` complet → l'enregistrement de A réécrivait le RIB que B venait
    de changer. */
 
-vi.mock('../../lib/monitoring', () => ({
-  isMonitoringEnabled: () => false,
-  initMonitoring: () => Promise.resolve(false),
-  captureException: () => {},
-  bindCompany: () => {},
-}))
-
-const { PROFIL, updateProfile, apiProxy } = vi.hoisted(() => {
-  const PROFIL = {
-    id: 1, nom: 'Démo', rib: 'RIB-B', tva_standard: 20, tva_panneaux: 10,
-    ice: '', email: '', telephone: '', updated_at: '2026-10-08T10:00:00.123456Z',
-  }
-  const updateProfile = vi.fn((data) => Promise.resolve({ data: { ...PROFIL, ...data } }))
-  // Toute API appelée au montage répond vide ; seul le profil est réel.
-  const vide = () => Promise.resolve({ data: [] })
-  const apiProxy = (overrides = {}) => new Proxy(overrides, {
-    get: (t, k) => (k in t ? t[k] : (k === 'then' ? undefined : vi.fn(vide))),
-  })
-  return { PROFIL, updateProfile, apiProxy }
-})
-vi.mock('../../api/parametresApi', () => ({
-  default: apiProxy({
-    getProfile: () => Promise.resolve({ data: PROFIL }),
-    updateProfile: (d) => updateProfile(d),
-  }),
-}))
-vi.mock('../../api/crmApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/ventesApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/installationsApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/stockApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/customFieldsApi', () => ({ default: apiProxy() }))
-vi.mock('../../features/stock/store/stockSlice', () => ({
-  fetchCategories: () => ({ type: 'noop' }),
-  fetchFournisseurs: () => ({ type: 'noop' }),
-}))
-
-import parametresReducer from '../../features/parametres/store/parametresSlice'
-import ParametresEntreprise from './ParametresEntreprise'
-import { diffProfilePayload } from './peConstants'
+const PROFIL = {
+  id: 1, nom: 'Démo', rib: 'RIB-B', tva_standard: 20, tva_panneaux: 10,
+  ice: '', email: '', telephone: '', updated_at: '2026-10-08T10:00:00.123456Z',
+}
 
 describe('APAR16 — diffProfilePayload', () => {
   it('ne garde que les clés modifiées + updated_at', () => {
@@ -63,19 +29,14 @@ describe('APAR16 — diffProfilePayload', () => {
 })
 
 describe('APAR16 — Enregistrer envoie le seul champ modifié', () => {
-  afterEach(() => { cleanup(); updateProfile.mockClear() })
+  beforeEach(() => {
+    definirProfil(PROFIL)
+    updateProfile.mockImplementation((data) => Promise.resolve({ data: { ...PROFIL, ...data } }))
+  })
+  afterEach(() => { cleanup(); updateProfile.mockReset() })
 
   it('seul le champ modifié part (avec updated_at), jamais le RIB', async () => {
-    const store = configureStore({
-      reducer: {
-        parametres: parametresReducer,
-        stock: (s = { categories: [], fournisseurs: [] }) => s,
-        auth: (s = { role: 'admin', permissions: [], user: { company_est_demo: false } }) => s,
-      },
-    })
-    const { container } = render(
-      <Provider store={store}><MemoryRouter><ParametresEntreprise /></MemoryRouter></Provider>,
-    )
+    const { container } = rendreParametresEntreprise()
     await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
     const nom = container.querySelector('input[name="nom"]')
     fireEvent.change(nom, { target: { name: 'nom', value: 'Démo SARL' } })

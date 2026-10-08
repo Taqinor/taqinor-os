@@ -1,65 +1,18 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import {
+  definirProfil, rendreParametresEntreprise, updateProfile,
+} from '../../test/parametresEntrepriseHarness'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 /* APAR39 — le profil société envoie les valeurs TAPÉES telles quelles : vider
    « SLA lead » n'envoie plus 0 (SLA désactivé) en silence, taper 0 dans le
    tarif ONEE n'est plus remplacé par 1.75. Le serveur juge (400 sous le
    champ). */
 
-vi.mock('../../lib/monitoring', () => ({
-  isMonitoringEnabled: () => false,
-  initMonitoring: () => Promise.resolve(false),
-  captureException: () => {},
-  bindCompany: () => {},
-}))
-
-const { PROFIL, updateProfile, apiProxy } = vi.hoisted(() => {
-  const PROFIL = {
-    id: 1, nom: 'Démo', rib: 'RIB', tva_standard: 20, tva_panneaux: 10,
-    lead_sla_hours: 24, onee_tarif_kwh: 1.75, productible_kwh_kwc: 1600,
-    updated_at: '2026-10-08T10:00:00Z',
-  }
-  const updateProfile = vi.fn(() => Promise.reject({ response: { data: {
-    lead_sla_hours: ['Un nombre entier valide est requis.'] } } }))
-  const vide = () => Promise.resolve({ data: [] })
-  const apiProxy = (overrides = {}) => new Proxy(overrides, {
-    get: (t, k) => (k in t ? t[k] : (k === 'then' ? undefined : vi.fn(vide))),
-  })
-  return { PROFIL, updateProfile, apiProxy }
-})
-vi.mock('../../api/parametresApi', () => ({
-  default: apiProxy({
-    getProfile: () => Promise.resolve({ data: PROFIL }),
-    updateProfile: (d) => updateProfile(d),
-  }),
-}))
-vi.mock('../../api/crmApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/ventesApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/installationsApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/stockApi', () => ({ default: apiProxy() }))
-vi.mock('../../api/customFieldsApi', () => ({ default: apiProxy() }))
-vi.mock('../../features/stock/store/stockSlice', () => ({
-  fetchCategories: () => ({ type: 'noop' }),
-  fetchFournisseurs: () => ({ type: 'noop' }),
-}))
-
-import parametresReducer from '../../features/parametres/store/parametresSlice'
-import ParametresEntreprise from './ParametresEntreprise'
-
-function rendre() {
-  const store = configureStore({
-    reducer: {
-      parametres: parametresReducer,
-      stock: (s = { categories: [], fournisseurs: [] }) => s,
-      auth: (s = { role: 'admin', permissions: [], user: { company_est_demo: false } }) => s,
-    },
-  })
-  return render(
-    <Provider store={store}><MemoryRouter><ParametresEntreprise /></MemoryRouter></Provider>,
-  )
+const PROFIL = {
+  id: 1, nom: 'Démo', rib: 'RIB', tva_standard: 20, tva_panneaux: 10,
+  lead_sla_hours: 24, onee_tarif_kwh: 1.75, productible_kwh_kwc: 1600,
+  updated_at: '2026-10-08T10:00:00Z',
 }
 
 async function ouvrirOnglet(container, libelle, champ) {
@@ -70,10 +23,15 @@ async function ouvrirOnglet(container, libelle, champ) {
 }
 
 describe('APAR39 — valeurs tapées telles quelles', () => {
-  afterEach(() => { cleanup(); updateProfile.mockClear() })
+  beforeEach(() => {
+    definirProfil(PROFIL)
+    updateProfile.mockImplementation(() => Promise.reject({ response: { data: {
+      lead_sla_hours: ['Un nombre entier valide est requis.'] } } }))
+  })
+  afterEach(() => { cleanup(); updateProfile.mockReset() })
 
   it('SLA lead vidé : part vide (jamais 0 en silence)', async () => {
-    const { container } = rendre()
+    const { container } = rendreParametresEntreprise()
     const sla = await ouvrirOnglet(container, 'Leads', 'lead_sla_hours')
     fireEvent.change(sla, { target: { name: 'lead_sla_hours', value: '' } })
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
@@ -84,7 +42,7 @@ describe('APAR39 — valeurs tapées telles quelles', () => {
   })
 
   it('SLA 1.5 : part 1.5 (le serveur juge), jamais tronqué', async () => {
-    const { container } = rendre()
+    const { container } = rendreParametresEntreprise()
     const sla = await ouvrirOnglet(container, 'Leads', 'lead_sla_hours')
     fireEvent.change(sla, { target: { name: 'lead_sla_hours', value: '1.5' } })
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
@@ -93,7 +51,7 @@ describe('APAR39 — valeurs tapées telles quelles', () => {
   })
 
   it('tarif ONEE 0 : part 0, jamais 1.75', async () => {
-    const { container } = rendre()
+    const { container } = rendreParametresEntreprise()
     const onee = await ouvrirOnglet(container, 'Avancé', 'onee_tarif_kwh')
     fireEvent.change(onee, { target: { name: 'onee_tarif_kwh', value: '0' } })
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
