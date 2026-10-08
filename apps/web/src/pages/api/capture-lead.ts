@@ -128,7 +128,7 @@ export const POST: APIRoute = async ({ request }) => {
     // signale une panne CRM probable — jusqu'ici un tel silence pouvait durer
     // des jours sans que personne ne soit notifié. Best-effort, en mémoire par
     // isolat (cf. trackForwardLeadOutcome) : jamais bloquant pour le visiteur.
-    const { shouldAlert, streak } = trackForwardLeadOutcome(fw.delivered, fw.reason);
+    const { shouldAlert, streak } = trackForwardLeadOutcome(fw.delivered, fw.reason, import.meta.env.PROD === true);
     if (shouldAlert) {
       console.error(
         `[capture-lead][ALERT] ${streak} échecs de livraison CRM consécutifs (dernier motif: ${fw.reason}) — vérifier LEAD_WEBHOOK_URL / le récepteur taqinor-os.`,

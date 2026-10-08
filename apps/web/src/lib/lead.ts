@@ -1365,13 +1365,19 @@ export function resetForwardLeadFailureStreak(): void {
  * vis-à-vis de l'appelant : ne lève jamais, ne bloque jamais — un simple
  * indicateur pour décider de journaliser une ligne d'ALERTE plus visible.
  */
-export function trackForwardLeadOutcome(delivered: boolean, reason?: string): { shouldAlert: boolean; streak: number } {
+export function trackForwardLeadOutcome(
+  delivered: boolean,
+  reason?: string,
+  production: boolean = false,
+): { shouldAlert: boolean; streak: number } {
   if (delivered) {
     consecutiveForwardFailures = 0;
     return { shouldAlert: false, streak: 0 };
   }
   // Les états normaux (pas de panne) ne comptent jamais comme un échec de livraison.
-  if (reason === 'below-threshold' || reason === 'no-webhook-configured') {
+  // AACQ41 — `no-webhook-configured` est une PANNE de configuration en production
+  // (le lead n'est plus transmis au CRM) ; en développement c'est l'état normal.
+  if (reason === 'below-threshold' || (reason === 'no-webhook-configured' && !production)) {
     return { shouldAlert: false, streak: consecutiveForwardFailures };
   }
   consecutiveForwardFailures += 1;
@@ -1418,7 +1424,20 @@ export async function forwardLead(
     return { delivered: false, reason: 'below-threshold' };
   }
   const url = env.LEAD_WEBHOOK_URL?.trim();
-  if (!url) return { delivered: false, reason: 'no-webhook-configured' };
+  if (!url) {
+    // AACQ41 — URL absente/vide : ne PLUS jeter le lead. Avec la liaison
+    // `LEADS_DLQ`, le record complet est déposé en lettre morte (même file que
+    // l'échec réseau) et `resendDeadLetters` le renvoie dès que l'URL revient.
+    // Sans liaison : comportement historique (aucun dépôt, aucun avertissement).
+    if (env.LEADS_DLQ) {
+      const payload: LeadRecord = record.idempotencyKey
+        ? record
+        : { ...record, idempotencyKey: crypto.randomUUID() };
+      const deadLettered = await storeDeadLetter(env.LEADS_DLQ, payload);
+      if (deadLettered) return { delivered: false, reason: 'no-webhook-configured', deadLettered };
+    }
+    return { delivered: false, reason: 'no-webhook-configured' };
+  }
   try {
     // Secret statique attendu par le récepteur taqinor-os
     // (apps/crm/webhooks.py, en-tête X-Webhook-Secret). Sans secret
