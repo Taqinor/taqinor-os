@@ -7,7 +7,7 @@
 // dupliquer l'éditeur complet) — un repère le rappelle.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import customFieldsApi from '../../api/customFieldsApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Switch, Checkbox,
@@ -42,6 +42,8 @@ const blankDraft = () => ({
 })
 
 export default function ClientsSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [defs, setDefs] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -83,7 +85,7 @@ export default function ClientsSection() {
   }
 
   const delCf = async (d) => {
-    if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return
     try { await customFieldsApi.deleteDef(d.id); load() }
     catch (e) { toast.error(cfErr(e, 'Suppression impossible.')) }
   }

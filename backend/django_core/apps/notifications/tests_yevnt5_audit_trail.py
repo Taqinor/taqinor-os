@@ -103,7 +103,7 @@ class NotifyAuditTrailTests(TestCase):
                 notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
         entry = AuditLog.objects.filter(action=AuditLog.Action.EMAIL).first()
         self.assertIsNotNone(entry)
-        self.assertIn('échoué', entry.detail)
+        self.assertIn('(échec)', entry.detail)  # APAR19
 
     def test_audit_write_failure_never_blocks_notification(self):
         """L'échec de l'écriture d'audit n'empêche pas l'envoi de la

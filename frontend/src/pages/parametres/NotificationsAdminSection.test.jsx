@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event'
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     getRoutingRules: vi.fn(() => Promise.resolve({ data: [] })),
+    getPreferences: vi.fn(() => Promise.resolve({ data: [] })),  // APAR21
     saveRoutingRule: vi.fn(() => Promise.resolve({ data: {} })),
     deleteRoutingRule: vi.fn(() => Promise.resolve({ data: {} })),
     getWorkingHours: vi.fn(() => Promise.resolve({

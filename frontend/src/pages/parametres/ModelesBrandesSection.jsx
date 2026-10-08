@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FileText, Mail, MessageCircle, Plus, Trash2, Eye, Save } from 'lucide-react'
 import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
   EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -53,6 +53,8 @@ const CONTEXTE_EXEMPLE = {
 const VIDE = { kind: 'email', code: '', nom: '', sujet: '', corps: '' }
 
 export default function ModelesBrandesSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const canManage = useIsAdminOrResponsable()
 
   const [rows, setRows] = useState([])
@@ -171,7 +173,7 @@ export default function ModelesBrandesSection() {
   }
 
   const supprimer = async (row) => {
-    if (!window.confirm(`Supprimer le modèle « ${row.nom || row.code} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le modèle « ${row.nom || row.code} » ?` }))) return
     try {
       await api.delete(`/core/branded-templates/${row.id}/`)
       if (selectedId === row.id) { setSelectedId(null); setEdit(null); setApercu(null) }

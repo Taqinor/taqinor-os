@@ -42,8 +42,28 @@ def _ok() -> dict:
 # ── Maroc — ICE (Identifiant Commun de l'Entreprise) ───────────────────────
 # 15 chiffres exactement (format officiel marocain OMPIC) ; aucune clé de
 # contrôle publiquement documentée — la règle vérifiable est longueur+type.
+# APAR31 — chiffres arabo-indiens (U+0660-0669) et persans (U+06F0-06F9)
+# ramenés en ASCII ; séparateurs usuels d'une saisie humaine retirés.
+_CHIFFRES_ARABES = {
+    **{0x0660 + i: str(i) for i in range(10)},
+    **{0x06F0 + i: str(i) for i in range(10)},
+}
+_PREFIXE_ICE_RE = re.compile(r'^\s*ICE\s*[:°n.\-]*\s*', re.IGNORECASE)
+_SEPARATEURS_RE = re.compile(r'[\s.\-_/\u00a0\u202f]')
+
+
+def normaliser_ice(value) -> str:
+    """APAR31 — forme canonique d'un ICE saisi : préfixe « ICE » retiré,
+    chiffres arabo-indiens ASCII-isés, espaces/tirets/points/barres retirés.
+    « 001 234 567 000 089 » → « 001234567000089 ». Ne valide RIEN (la
+    longueur reste contrôlée par :func:`validate_ice_ma`)."""
+    texte = str(value or '').translate(_CHIFFRES_ARABES).strip()
+    texte = _PREFIXE_ICE_RE.sub('', texte)
+    return _SEPARATEURS_RE.sub('', texte)
+
+
 def validate_ice_ma(value) -> dict:
-    value = (value or '').strip()
+    value = normaliser_ice(value)
     if not value:
         return _ok()  # champ optionnel côté modèle : vide n'est jamais une erreur de format
     if not re.fullmatch(r'\d{15}', value):

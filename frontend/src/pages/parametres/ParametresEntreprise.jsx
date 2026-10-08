@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import { isDirty } from '../../ui/form-utils'
 import {
@@ -21,12 +22,12 @@ import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
   formReglagesPompage, payloadReglagesPompage, formReperes, payloadReperes,
-  CHAMP_ECART_RECETTE, nombreOuNull, payloadTermes,
+  CHAMP_ECART_RECETTE, nombreOuNull, payloadTermes, diffProfilePayload,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -108,6 +109,15 @@ const APPROBATIONS_POLITIQUES_TAB = { key: 'approbations_politiques', label: "Po
 // global `tours_actifs`). Ajouté localement, même logique que N96/N94/etc.
 const DEMO_ONBOARDING_TAB = { key: 'demo_onboarding', label: 'Démo & Onboarding', group: 'general' }
 
+// APAR38 — onglets qui ÉCRIVENT des réglages de la société (garde serveur
+// `parametres_modifier`) : en lecture seule pour un rôle qui ne le porte pas.
+// Les onglets personnels (2FA) ou gouvernés par d'autres droits (équipe,
+// rôles, API…) ne sont pas concernés.
+const TABS_ECRITURE_PARAMETRES = [
+  'societe', 'leads', 'devis', 'avance', 'messages', 'email', 'statuts',
+  'automatisations', 'notifications',
+]
+
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
 // seul <form> qui couvre tous les onglets — donc « Enregistrer » sauve TOUT,
@@ -115,6 +125,8 @@ const DEMO_ONBOARDING_TAB = { key: 'demo_onboarding', label: 'Démo & Onboarding
 // rendu par son propre composant de section ; les briques de présentation et les
 // constantes sont partagées via ./peComponents et ./peConstants.
 export default function ParametresEntreprise() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirm: confirmerAction, confirmDelete: confirmerSuppression } = useConfirmDialog()
   const dispatch = useDispatch()
   const { profile, loading, saving, uploading, error, saveSuccess } = useSelector(s => s.parametres)
   const { categories, fournisseurs } = useSelector(s => s.stock)
@@ -123,6 +135,8 @@ export default function ParametresEntreprise() {
   // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
   // de voir/modifier les champs sensibles.
   const canManageSensitive = useIsAdmin()
+  // APAR38 — droit d'écrire les réglages (aligné sur la garde serveur).
+  const canModifier = useCanModifierParametres()
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')
@@ -328,7 +342,7 @@ export default function ParametresEntreprise() {
     } catch (e) { toast.error(cfErr(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
-    if (!window.confirm(`Supprimer le champ « ${d.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return
     try { await customFieldsApi.deleteDef(d.id); loadCfDefs(cfModule) }
     catch { /* */ }
   }
@@ -408,7 +422,7 @@ export default function ParametresEntreprise() {
     } catch { /* */ }
   }
   const delEtape = async (et) => {
-    if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'étape « ${et.libelle} » ?` }))) return
     try { await installationsApi.deleteChecklistEtape(et.id); loadChecklistEtapes() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
   }
@@ -426,7 +440,7 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveCanal(c.id, { libelle }); loadCanaux() } catch { /* */ }
   }
   const delCanal = async (c) => {
-    if (!window.confirm(`Supprimer le canal « ${c.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le canal « ${c.libelle} » ?` }))) return
     try { await crmApi.deleteCanal(c.id); loadCanaux() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -448,7 +462,7 @@ export default function ParametresEntreprise() {
     try { await installationsApi.saveTypeIntervention(t.id, { libelle }); loadTypesItv() } catch { /* */ }
   }
   const delType = async (t) => {
-    if (!window.confirm(`Supprimer le type « ${t.libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le type « ${t.libelle} » ?` }))) return
     try { await installationsApi.deleteTypeIntervention(t.id); loadTypesItv() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -459,7 +473,7 @@ export default function ParametresEntreprise() {
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delMarque = async (m) => {
-    if (!window.confirm(`Supprimer la marque « ${m.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la marque « ${m.nom} » ?` }))) return
     try { await stockApi.deleteMarque(m.id); loadMarques() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -479,7 +493,7 @@ export default function ParametresEntreprise() {
   }
   // L776 — réinitialiser un modèle WhatsApp au texte par défaut (endpoint reset).
   const resetMessage = async (m) => {
-    if (!window.confirm(`Réinitialiser le message « ${m.label} » au modèle par défaut ?`)) return
+    if (!(await confirmerAction({ title: `Réinitialiser le message « ${m.label} » au modèle par défaut ?` }))) return
     try {
       const r = await parametresApi.saveMessage({ cle: m.cle, reset: true })
       setMessages(ms => ms.map(x => (x.cle === m.cle
@@ -506,7 +520,7 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveTag(t.id, { couleur }) } catch { /* */ }
   }
   const delTag = async (t) => {
-    if (!window.confirm(`Supprimer l'étiquette « ${t.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'étiquette « ${t.nom} » ?` }))) return
     // L780 — la suppression est bloquée (409) si l'étiquette est utilisée :
     // on remonte le message serveur (qui propose l'archivage).
     try { await crmApi.deleteTag(t.id); loadTags() }
@@ -527,7 +541,7 @@ export default function ParametresEntreprise() {
     try { await crmApi.saveMotifPerte(m.id, { nom }); loadMotifs() } catch { /* */ }
   }
   const delMotif = async (m) => {
-    if (!window.confirm(`Supprimer le motif « ${m.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le motif « ${m.nom} » ?` }))) return
     // L779 — bloqué (409) si le motif est utilisé : on remonte le message
     // serveur (qui propose l'archivage).
     try { await crmApi.deleteMotifPerte(m.id); loadMotifs() }
@@ -577,7 +591,7 @@ export default function ParametresEntreprise() {
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const delNiveau = async (n) => {
-    if (!window.confirm(`Supprimer le niveau « ${n.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le niveau « ${n.nom} » ?` }))) return
     try { await ventesApi.deleteNiveauRelance(n.id); loadNiveaux() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }
@@ -598,6 +612,8 @@ export default function ParametresEntreprise() {
   useEffect(() => {
     // Synchronisation du formulaire avec le profil chargé depuis le store
     if (!profile) return
+    // APAR39 — aucun défaut NUMÉRIQUE recopié ici : la valeur vient de
+    // `GET /parametres/` (le serveur a ses défauts) ; absente = vide.
     const next = {
       nom:               profile.nom               ?? '',
       adresse:           profile.adresse           ?? '',
@@ -621,8 +637,8 @@ export default function ParametresEntreprise() {
       // défaut serveur) priment : plus de pourcentages recopiés côté écran.
       payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}),
                        ...(profile.payment_terms_effectifs || {}) },
-      quote_validity_days: profile.quote_validity_days ?? 30,
-      agricole_pump_hours: profile.agricole_pump_hours ?? 7,
+      quote_validity_days: profile.quote_validity_days ?? '',
+      agricole_pump_hours: profile.agricole_pump_hours ?? '',
       // AGR108 — vide reste vide (aucun repli numérique).
       ...formReglagesPompage(profile),
       reperes_energie_agricole: formReperes(profile),
@@ -638,14 +654,14 @@ export default function ParametresEntreprise() {
       doc_numbering: Object.fromEntries(Object.keys(DEFAULT_NUMBERING).map(k => [
         k, { ...DEFAULT_NUMBERING[k], ...((profile.doc_numbering || {})[k] || {}) },
       ])),
-      tva_standard: profile.tva_standard ?? 20,
-      tva_panneaux: profile.tva_panneaux ?? 10,
-      onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
-      productible_kwh_kwc: profile.productible_kwh_kwc ?? 1600,
+      tva_standard: profile.tva_standard ?? '',
+      tva_panneaux: profile.tva_panneaux ?? '',
+      onee_tarif_kwh: profile.onee_tarif_kwh ?? '',
+      productible_kwh_kwc: profile.productible_kwh_kwc ?? '',
       discount_approval_threshold: profile.discount_approval_threshold ?? '',
       // CIQ639 — surcharges 82-21 et réglages C&I : vide = '' (aucun défaut).
       ...formReglagesCi(profile),
-      rendement_global: profile.rendement_global ?? 0.8,
+      rendement_global: profile.rendement_global ?? '',
       prix_cible_kwc_defaut: profile.prix_cible_kwc_defaut ?? '',
       remise_max_pct: profile.remise_max_pct ?? '',
       commission_mode: profile.commission_mode ?? 'off',
@@ -653,7 +669,7 @@ export default function ParametresEntreprise() {
       referral_enabled: profile.referral_enabled ?? false,
       referral_reward: profile.referral_reward ?? '',
       // WR12 — FG28 (SLA) + N105 (DGI) exposés en Paramètres.
-      lead_sla_hours: profile.lead_sla_hours ?? 24,
+      lead_sla_hours: profile.lead_sla_hours ?? '',
       dgi_export_actif: profile.dgi_export_actif ?? false,
       // MRY28/MRY8 — fenêtres de contact (message ≠ appel, 07/09/2026).
       message_heure_debut: profile.message_heure_debut ?? '08:30',
@@ -665,19 +681,19 @@ export default function ParametresEntreprise() {
       ramadan_fin: profile.ramadan_fin ?? '',
       ramadan_appel_debut: profile.ramadan_appel_debut ?? '10:00',
       ramadan_appel_fin: profile.ramadan_appel_fin ?? '14:00',
-      premier_contact_objectif_min: profile.premier_contact_objectif_min ?? 5,
+      premier_contact_objectif_min: profile.premier_contact_objectif_min ?? '',
       // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
       round_robin_leads_actif: profile.round_robin_leads_actif ?? false,
       round_robin_plafond_leads_ouverts:
-        profile.round_robin_plafond_leads_ouverts ?? 20,
+        profile.round_robin_plafond_leads_ouverts ?? '',
       // FG22 — politique de sécurité (défauts inertes).
-      password_min_length: profile.password_min_length ?? 8,
+      password_min_length: profile.password_min_length ?? '',
       password_require_complexity: profile.password_require_complexity ?? false,
-      lockout_max_attempts: profile.lockout_max_attempts ?? 0,
-      lockout_duration_minutes: profile.lockout_duration_minutes ?? 15,
-      password_expiry_days: profile.password_expiry_days ?? 0,
+      lockout_max_attempts: profile.lockout_max_attempts ?? '',
+      lockout_duration_minutes: profile.lockout_duration_minutes ?? '',
+      password_expiry_days: profile.password_expiry_days ?? '',
       // FG26 — rétention RGPD du journal d'audit.
-      audit_retention_days: profile.audit_retention_days ?? 0,
+      audit_retention_days: profile.audit_retention_days ?? '',
       // ZSTK13 — capacités stock (True = comportement actuel inchangé).
       stock_lots_series_actif: profile.stock_lots_series_actif ?? true,
       stock_colisage_actif: profile.stock_colisage_actif ?? true,
@@ -744,106 +760,117 @@ export default function ParametresEntreprise() {
 
   const handleSave = (e) => {
     e.preventDefault()
-    // L769 — taux de TVA : on PRÉSERVE la valeur tapée (y compris un 0
-    // délibéré) et on transmet le vide tel quel (le serveur le rejette avec
-    // une erreur claire au lieu d'un re-snap silencieux à 20/10).
-    const keepNum = (v) => (v === '' || v == null ? v : Number(v))
-    // Coercition douce : pourcentages en nombres ; FK '' → null.
-    const pt = {}
-    for (const mode of Object.keys(form.payment_terms || {})) {
-      const t = form.payment_terms[mode]
-      pt[mode] = payloadTermes(t)
-    }
-    // Coercition de la numérotation (D3) : largeur en nombre, période valide.
-    const dn = {}
-    for (const k of Object.keys(form.doc_numbering || {})) {
-      const e = form.doc_numbering[k] || {}
-      dn[k] = {
-        padding: Math.max(1, Number(e.padding) || 4),
-        reset: ['monthly', 'yearly', 'none'].includes(e.reset) ? e.reset : 'monthly',
+    // APAR16 — le payload est construit par la MÊME coercition pour l'état
+    // chargé (`initialSnapshot`) et pour la saisie : seuls les champs dont la
+    // valeur envoyée diffère partent, avec l'`updated_at` lu au chargement
+    // (verrou optimiste serveur → 409 si quelqu'un a écrit entre-temps).
+    const construire = (f) => {
+      // L769 — taux de TVA : on PRÉSERVE la valeur tapée (y compris un 0
+      // délibéré) et on transmet le vide tel quel (le serveur le rejette avec
+      // une erreur claire au lieu d'un re-snap silencieux à 20/10).
+      const keepNum = (v) => (v === '' || v == null ? v : Number(v))
+      // Coercition douce : pourcentages en nombres ; FK '' → null.
+      const pt = {}
+      for (const mode of Object.keys(f.payment_terms || {})) {
+        const t = f.payment_terms[mode]
+        pt[mode] = payloadTermes(t)
       }
+      // Coercition de la numérotation (D3) : largeur en nombre, période valide.
+      const dn = {}
+      for (const k of Object.keys(f.doc_numbering || {})) {
+        const e = f.doc_numbering[k] || {}
+        dn[k] = {
+          // APAR39 — largeur tapée telle quelle (le serveur juge).
+          padding: keepNum(e.padding),
+          reset: ['monthly', 'yearly', 'none'].includes(e.reset) ? e.reset : 'monthly',
+        }
+      }
+      const payload = {
+        ...f,
+        responsable_defaut_leads: f.responsable_defaut_leads === ''
+          ? null : f.responsable_defaut_leads,
+        default_installer: f.default_installer === ''
+          ? null : f.default_installer,
+        payment_terms: pt,
+        doc_numbering: dn,
+        // APAR39 — valeurs TAPÉES telles quelles (vide → vide, refusé par le
+        // serveur sous le champ) : plus aucun `Number(x) || défaut`.
+        quote_validity_days: keepNum(f.quote_validity_days),
+        agricole_pump_hours: keepNum(f.agricole_pump_hours),
+        // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
+        ...payloadReglagesPompage(f),
+        // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
+        reperes_energie_agricole: payloadReperes(f.reperes_energie_agricole),
+        // AGR607 — vide = null (écart affiché sans verdict) ; tapé = tel quel.
+        [CHAMP_ECART_RECETTE]: nombreOuNull(f[CHAMP_ECART_RECETTE]),
+        // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
+        // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
+        delai_visite_technique: (f.delai_visite_technique ?? '').trim(),
+        delai_installation: (f.delai_installation ?? '').trim(),
+        tva_standard: keepNum(f.tva_standard),
+        tva_panneaux: keepNum(f.tva_panneaux),
+        onee_tarif_kwh: keepNum(f.onee_tarif_kwh),
+        productible_kwh_kwc: keepNum(f.productible_kwh_kwc),
+        discount_approval_threshold: f.discount_approval_threshold === '' ? null : Number(f.discount_approval_threshold),
+        // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
+        ...payloadReglagesCi(f),
+        rendement_global: keepNum(f.rendement_global),
+        prix_cible_kwc_defaut: f.prix_cible_kwc_defaut === '' ? null : Number(f.prix_cible_kwc_defaut),
+        remise_max_pct: f.remise_max_pct === '' ? null : Number(f.remise_max_pct),
+        commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(f.commission_mode) ? f.commission_mode : 'off',
+        commission_valeur: f.commission_valeur === '' ? null : Number(f.commission_valeur),
+        referral_enabled: !!f.referral_enabled,
+        referral_reward: f.referral_reward === '' ? null : Number(f.referral_reward),
+        // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
+        // APAR39 — un champ vidé n'envoie plus 0 (SLA désactivé) en silence.
+        lead_sla_hours: keepNum(f.lead_sla_hours),
+        // MRY28/MRY8 — fenêtres de contact : dates Ramadan vides = null (jamais
+        // une période devinée), heures conservées telles quelles (« HH:MM »).
+        message_heure_debut: f.message_heure_debut || '08:30',
+        appel_heure_debut: f.appel_heure_debut || '09:00',
+        appel_heure_fin: f.appel_heure_fin || '20:00',
+        vendredi_pause_debut: f.vendredi_pause_debut || '11:30',
+        vendredi_pause_fin: f.vendredi_pause_fin || '15:00',
+        ramadan_debut: f.ramadan_debut || null,
+        ramadan_fin: f.ramadan_fin || null,
+        ramadan_appel_debut: f.ramadan_appel_debut || '10:00',
+        ramadan_appel_fin: f.ramadan_appel_fin || '14:00',
+        premier_contact_objectif_min: keepNum(f.premier_contact_objectif_min),
+        // XSAL11 — round-robin équilibré des leads entrants.
+        round_robin_leads_actif: !!f.round_robin_leads_actif,
+        round_robin_plafond_leads_ouverts: keepNum(f.round_robin_plafond_leads_ouverts),
+        // ZSTK13 — capacités stock (booléens simples, jamais désactivées
+        // silencieusement).
+        stock_lots_series_actif: f.stock_lots_series_actif !== false,
+        stock_colisage_actif: f.stock_colisage_actif !== false,
+        stock_scan_actif: f.stock_scan_actif !== false,
+      }
+      // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
+      // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
+      // pas les modifier ; on les retire du payload par sécurité (défense en
+      // profondeur — le backend reste l'autorité).
+      if (canManageSensitive) {
+        payload.commission_mode = ['off', 'pct_devis', 'par_kwc']
+          .includes(f.commission_mode) ? f.commission_mode : 'off'
+        payload.commission_valeur = f.commission_valeur === ''
+          ? null : Number(f.commission_valeur)
+        payload.dgi_export_actif = !!f.dgi_export_actif
+      } else {
+        delete payload.commission_mode
+        delete payload.commission_valeur
+        delete payload.dgi_export_actif
+      }
+      return payload
     }
-    const payload = {
-      ...form,
-      responsable_defaut_leads: form.responsable_defaut_leads === ''
-        ? null : form.responsable_defaut_leads,
-      default_installer: form.default_installer === ''
-        ? null : form.default_installer,
-      payment_terms: pt,
-      doc_numbering: dn,
-      quote_validity_days: Number(form.quote_validity_days) || 30,
-      agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
-      // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
-      ...payloadReglagesPompage(form),
-      // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
-      reperes_energie_agricole: payloadReperes(form.reperes_energie_agricole),
-      // AGR607 — vide = null (écart affiché sans verdict) ; tapé = tel quel.
-      [CHAMP_ECART_RECETTE]: nombreOuNull(form[CHAMP_ECART_RECETTE]),
-      // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
-      // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
-      delai_visite_technique: (form.delai_visite_technique ?? '').trim(),
-      delai_installation: (form.delai_installation ?? '').trim(),
-      tva_standard: keepNum(form.tva_standard),
-      tva_panneaux: keepNum(form.tva_panneaux),
-      onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
-      productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
-      discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
-      // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
-      ...payloadReglagesCi(form),
-      rendement_global: Number(form.rendement_global) || 0.8,
-      prix_cible_kwc_defaut: form.prix_cible_kwc_defaut === '' ? null : Number(form.prix_cible_kwc_defaut),
-      remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
-      commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(form.commission_mode) ? form.commission_mode : 'off',
-      commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
-      referral_enabled: !!form.referral_enabled,
-      referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
-      // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
-      lead_sla_hours: Math.max(0, Math.trunc(Number(form.lead_sla_hours) || 0)),
-      // MRY28/MRY8 — fenêtres de contact : dates Ramadan vides = null (jamais
-      // une période devinée), heures conservées telles quelles (« HH:MM »).
-      message_heure_debut: form.message_heure_debut || '08:30',
-      appel_heure_debut: form.appel_heure_debut || '09:00',
-      appel_heure_fin: form.appel_heure_fin || '20:00',
-      vendredi_pause_debut: form.vendredi_pause_debut || '11:30',
-      vendredi_pause_fin: form.vendredi_pause_fin || '15:00',
-      ramadan_debut: form.ramadan_debut || null,
-      ramadan_fin: form.ramadan_fin || null,
-      ramadan_appel_debut: form.ramadan_appel_debut || '10:00',
-      ramadan_appel_fin: form.ramadan_appel_fin || '14:00',
-      premier_contact_objectif_min: Math.max(
-        1, Math.trunc(Number(form.premier_contact_objectif_min) || 5)),
-      // XSAL11 — round-robin équilibré des leads entrants.
-      round_robin_leads_actif: !!form.round_robin_leads_actif,
-      round_robin_plafond_leads_ouverts: Math.max(
-        1, Math.trunc(Number(form.round_robin_plafond_leads_ouverts) || 20)),
-      // ZSTK13 — capacités stock (booléens simples, jamais désactivées
-      // silencieusement).
-      stock_lots_series_actif: form.stock_lots_series_actif !== false,
-      stock_colisage_actif: form.stock_colisage_actif !== false,
-      stock_scan_actif: form.stock_scan_actif !== false,
-    }
-    // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
-    // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
-    // pas les modifier ; on les retire du payload par sécurité (défense en
-    // profondeur — le backend reste l'autorité).
-    if (canManageSensitive) {
-      payload.commission_mode = ['off', 'pct_devis', 'par_kwc']
-        .includes(form.commission_mode) ? form.commission_mode : 'off'
-      payload.commission_valeur = form.commission_valeur === ''
-        ? null : Number(form.commission_valeur)
-      payload.dgi_export_actif = !!form.dgi_export_actif
-    } else {
-      delete payload.commission_mode
-      delete payload.commission_valeur
-      delete payload.dgi_export_actif
-    }
-    dispatch(saveProfile(payload))
+    dispatch(saveProfile(diffProfilePayload(
+      construire(initialSnapshot ?? form), construire(form), profile?.updated_at)))
   }
 
   const accent = form.couleur_principale || '#1d4ed8'
   // Le bouton d'enregistrement du profil n'apparaît que sur les onglets qui
   // portent des champs du profil (les autres réglages s'enregistrent seuls).
   const showSave = ['societe', 'leads', 'devis', 'avance'].includes(tab)
+  const lectureSeule = !canModifier && TABS_ECRITURE_PARAMETRES.includes(tab)
 
   if (loading) return (
     <div className="flex min-h-[200px] items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -856,7 +883,7 @@ export default function ParametresEntreprise() {
   // « Enregistrer » (contrat e2e) : pendant l'envoi le bouton est désactivé et
   // affiche un spinner, l'état « Enregistré ! » n'apparaît qu'après succès.
   const saveButton = (
-    <Button type="submit" loading={saving} disabled={saving}
+    <Button type="submit" loading={saving} disabled={saving || lectureSeule}
       variant={saved ? 'success' : 'default'} className="self-start">
       {saving ? 'Enregistrement…' : saved ? (
         <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
@@ -986,7 +1013,18 @@ export default function ParametresEntreprise() {
               noValidate (ERR28) : la validation HTML5 native (min/max/step) ne
               doit JAMAIS bloquer/snapper une valeur tapée — la coercition douce
               se fait en JS dans handleSave. ── */}
+        {lectureSeule && (
+          <p data-testid="parametres-lecture-seule"
+             className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-[13px] text-muted-foreground">
+            <Info className="size-3.5 shrink-0" aria-hidden="true" />
+            Lecture seule : votre rôle ne porte pas le droit « Modifier les paramètres ».
+          </p>
+        )}
         <form noValidate onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
+          {/* APAR38 — `fieldset disabled` : tous les contrôles d'écriture de
+              l'onglet sont inertes en lecture seule (le serveur refuse de
+              toute façon : 403). */}
+          <fieldset disabled={lectureSeule} className="contents">
 
           {/* FG16 — onglet « Prise en main » (checklist + rejeu du guide). */}
           {tab === 'onboarding' && <OnboardingSection />}
@@ -1051,6 +1089,7 @@ export default function ParametresEntreprise() {
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
+          </fieldset>
         </form>
 
           </div>

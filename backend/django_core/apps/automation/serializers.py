@@ -60,6 +60,15 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'action_type': (
                 "Canal SMS non disponible pour les automatisations : aucun "
                 "fournisseur n'est branché.")})
+        # APAR43 — déclencheur dont l'émetteur est parqué : refusé (une règle
+        # existante n'est ni supprimée ni bloquée tant qu'elle le garde).
+        from .selectors import DECLENCHEURS_PARQUES
+        if attrs.get('trigger_type') in DECLENCHEURS_PARQUES and (
+                self.instance is None
+                or self.instance.trigger_type != attrs['trigger_type']):
+            raise serializers.ValidationError({'trigger_type': (
+                'Déclencheur indisponible (module parqué) : rien ne peut '
+                'plus le déclencher.')})
         trigger_type = attrs.get(
             'trigger_type', getattr(self.instance, 'trigger_type', None))
         if trigger_type != TriggerType.RECORD_STATE_CHANGE:

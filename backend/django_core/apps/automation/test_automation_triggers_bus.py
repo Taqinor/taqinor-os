@@ -16,7 +16,6 @@ from apps.automation.models import (
 from authentication.models import Company
 from core.events import (
     demande_achat_approuvee, dossier_echeance_depassee, langue_changed,
-    rfq_attribuee,
 )
 
 
@@ -55,13 +54,6 @@ class AutomationTriggersBusTests(TestCase):
             montant_estime=1000)
         self.assertEqual(self._runs(rule).count(), 1)
 
-    def test_rfq_attribuee_declenche_une_regle(self):
-        rule = self._rule(TriggerType.RFQ_ATTRIBUEE, 'RFQ attribuée')
-        rfq_attribuee.send(
-            sender='x', rfq=_Minimal(), offre=_Minimal(pk=2),
-            company=self.co, user=None, bon_commande_id=5)
-        self.assertEqual(self._runs(rule).count(), 1)
-
     def test_langue_changed_declenche_une_regle(self):
         rule = self._rule(TriggerType.LANGUE_CHANGED, 'Langue changée')
         langue_changed.send(
@@ -89,7 +81,6 @@ class AutomationTriggersBusTests(TestCase):
         cas = [
             (demande_achat_approuvee,
              'automation_on_demande_achat_approuvee'),
-            (rfq_attribuee, 'automation_on_rfq_attribuee'),
             (langue_changed, 'automation_on_langue_changed'),
             (dossier_echeance_depassee,
              'automation_on_dossier_echeance_depassee'),

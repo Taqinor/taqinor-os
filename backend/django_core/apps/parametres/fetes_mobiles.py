@@ -21,16 +21,53 @@ from __future__ import annotations
 
 import datetime
 
-#: Les 4 fêtes hégiriennes attendues, dans l'ordre d'affichage de l'écran.
+#: Les 4 fêtes hégiriennes attendues, dans l'ordre d'affichage de l'écran
+#: (= l'ordre de l'année hégirienne : Fitr, Adha, Nouvel An, Mawlid).
 FETES_MOBILES_CLES = (
     'aid_el_fitr', 'aid_el_adha', '1er_moharram', 'aid_el_mawlid')
 
-FETES_MOBILES_LIBELLES = {
-    'aid_el_fitr': 'Aïd el-Fitr',
-    'aid_el_adha': 'Aïd el-Adha',
-    '1er_moharram': '1er Moharram',
-    'aid_el_mawlid': 'Aïd el-Mawlid',
+#: APAR36 — suffixe du lendemain des deux Aïd, tel que ``core.calendar`` le
+#: nomme (« Aïd al-Fitr (2e jour) »).
+SUFFIXE_DEUXIEME_JOUR = ' (2e jour)'
+
+#: APAR36 — fêtes qui durent deux jours au Maroc (le seeder pose le lendemain).
+FETES_DEUX_JOURS = ('aid_el_fitr', 'aid_el_adha')
+
+
+def _libelles_canoniques():
+    """APAR36 — les libellés CANONIQUES lus (jamais modifiés) dans
+    ``core.calendar.MOROCCAN_MOVABLE_HOLIDAYS`` — ceux que le seeder
+    ``seed_ma_holidays`` écrit : premiers jours, dans l'ordre des dates de la
+    première année connue, associés aux clés de l'écran."""
+    from core.calendar import MOROCCAN_MOVABLE_HOLIDAYS
+
+    premiere_annee = MOROCCAN_MOVABLE_HOLIDAYS[min(MOROCCAN_MOVABLE_HOLIDAYS)]
+    noms = [nom for _jour, nom in sorted(premiere_annee.items())
+            if not nom.endswith(SUFFIXE_DEUXIEME_JOUR)]
+    if len(noms) != len(FETES_MOBILES_CLES):  # pragma: no cover - garde
+        raise RuntimeError(
+            'core.calendar ne nomme pas exactement les 4 fêtes mobiles.')
+    return dict(zip(FETES_MOBILES_CLES, noms))
+
+
+#: Libellé UNIQUE de chaque fête (celui de ``core.calendar``) — écrit par
+#: l'écran ET par le seeder, lu par tous les détecteurs.
+FETES_MOBILES_LIBELLES = _libelles_canoniques()
+
+#: APAR36 — anciens libellés de l'écran (avant unification) : les lignes
+#: déjà saisies GARDENT leur libellé (aucune migration de données) et sont
+#: reconnues par cet alias.
+FETES_MOBILES_ALIAS = {
+    'aid_el_fitr': ('Aïd el-Fitr',),
+    'aid_el_adha': ('Aïd el-Adha',),
+    '1er_moharram': ('1er Moharram',),
+    'aid_el_mawlid': ('Aïd el-Mawlid',),
 }
+
+
+def noms_acceptes(cle):
+    """Libellés reconnus pour la fête ``cle`` : canonique d'abord, puis alias."""
+    return (FETES_MOBILES_LIBELLES[cle],) + FETES_MOBILES_ALIAS.get(cle, ())
 
 
 def _aujourd_hui():
@@ -145,8 +182,11 @@ def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
             libelle = FETES_MOBILES_LIBELLES[cle]
             # APAR15 — une fête mobile = UNE ligne par société + libellé +
             # année : une correction REMPLACE la date (jamais une 2e ligne).
+            # APAR36 — libellé canonique OU ancien alias (une ligne semée par
+            # ``seed_ma_holidays`` n'est jamais doublée par l'écran).
             lignes = list(Holiday.objects.select_for_update().filter(
-                company=company, nom=libelle, date__year=annee,
+                company=company, nom__in=noms_acceptes(cle),
+                date__year=annee,
                 recurrent_annuel=False).order_by('date', 'pk'))
             ancienne = lignes[0].date if lignes else None
             # Doublons hérités (même fête, même année) : retirés, tracés.
@@ -172,7 +212,32 @@ def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
                     old=ancienne.isoformat() if ancienne else '',
                     new=valeur.isoformat())
             resultats.append(obj)
+            if cle in FETES_DEUX_JOURS:
+                _poser_deuxieme_jour(company, libelle, ancienne, valeur)
     return resultats
+
+
+def _poser_deuxieme_jour(company, libelle, ancienne, valeur):
+    """APAR36 — le lendemain d'un Aïd est chômé : « <fête> (2e jour) » posé
+    (ou déplacé) au lendemain de la date saisie, comme le seeder."""
+    from django.db.models import Q
+
+    from apps.notifications.models import Holiday
+
+    nom = libelle + SUFFIXE_DEUXIEME_JOUR
+    lendemain = valeur + datetime.timedelta(days=1)
+    jours = Q(date=lendemain)
+    if ancienne is not None:
+        jours |= Q(date=ancienne + datetime.timedelta(days=1))
+    existante = Holiday.objects.select_for_update().filter(
+        jours, company=company, nom=nom,
+        recurrent_annuel=False).order_by('pk').first()
+    if existante is None:
+        Holiday.objects.create(
+            company=company, nom=nom, date=lendemain, recurrent_annuel=False)
+    elif existante.date != lendemain:
+        existante.date = lendemain
+        existante.save(update_fields=['date'])
 
 
 def fetes_mobiles_saisies(company, annee: int) -> dict:
@@ -181,11 +246,24 @@ def fetes_mobiles_saisies(company, annee: int) -> dict:
     silencieusement par le formulaire)."""
     from apps.notifications.models import Holiday
 
+    tous = [nom for cle in FETES_MOBILES_CLES for nom in noms_acceptes(cle)]
     lignes = Holiday.objects.filter(
         company=company, recurrent_annuel=False, date__year=annee,
-        nom__in=list(FETES_MOBILES_LIBELLES.values()))
-    par_nom = {ligne.nom: ligne.date for ligne in lignes}
-    return {
-        cle: (par_nom[libelle].isoformat() if libelle in par_nom else None)
-        for cle, libelle in FETES_MOBILES_LIBELLES.items()
-    }
+        nom__in=tous).order_by('date', 'pk')
+    par_nom = {}
+    for ligne in lignes:
+        par_nom.setdefault(ligne.nom, ligne.date)
+    resultat = {}
+    for cle in FETES_MOBILES_CLES:
+        date = next((par_nom[nom] for nom in noms_acceptes(cle)
+                     if nom in par_nom), None)
+        resultat[cle] = date.isoformat() if date else None
+    return resultat
+
+
+def fetes_mobiles_manquantes(company, annee: int) -> list:
+    """APAR36 — LE détecteur « fêtes saisies » : clés (ordre de
+    ``FETES_MOBILES_CLES``) encore sans date pour ``annee``. Partagé par
+    l'écran, la tâche de rappel de fin d'année et le rappel du calendrier."""
+    saisies = fetes_mobiles_saisies(company, annee)
+    return [cle for cle in FETES_MOBILES_CLES if not saisies.get(cle)]

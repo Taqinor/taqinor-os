@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ShieldAlert, Plus, Trash2 } from 'lucide-react'
 import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -52,6 +52,8 @@ const TIER_LABELS = Object.fromEntries(APPROVER_TIERS)
 const VIDE = { action_type: '', seuil: '', approver_tier: 'admin', note: '' }
 
 export default function ApprobationsPolitiquesSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const canManage = useIsAdminOrResponsable()
 
   const [rows, setRows] = useState([])
@@ -112,7 +114,7 @@ export default function ApprobationsPolitiquesSection() {
 
   const supprimer = async (row) => {
     const libelle = row.action_type_label || row.action_type
-    if (!window.confirm(`Supprimer la politique « ${libelle} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la politique « ${libelle} » ?` }))) return
     try {
       await api.delete(`/parametres/approbations/${row.id}/`)
       charger()
