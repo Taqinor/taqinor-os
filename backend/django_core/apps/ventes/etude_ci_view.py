@@ -43,12 +43,18 @@ EtudeCiPreviewResponse = inline_serializer('EtudeCiPreviewResponse', {
 })
 
 
-def _devis_de_la_societe(company, devis_id):
+def _devis_de_la_societe(company, devis_id, user=None):
+    """Le devis ``devis_id`` de la société, borné à la portée équipe de
+    ``user`` (ADEV21 — mêmes ``owner_fields`` que ``DevisViewSet``)."""
     if not devis_id or company is None:
         return None
     from .models import Devis
+    qs = Devis.objects.filter(company=company)
+    if user is not None:
+        from core.scoping import scope_queryset
+        qs = scope_queryset(qs, user, ['created_by'])
     try:
-        return Devis.objects.filter(company=company, pk=int(devis_id)).first()
+        return qs.filter(pk=int(devis_id)).first()
     except (TypeError, ValueError):
         return None
 
@@ -78,7 +84,11 @@ def etude_ci_preview(request):
 
     corps = request.data if isinstance(request.data, dict) else {}
     company = getattr(request.user, 'company', None)
-    devis = _devis_de_la_societe(company, corps.get('devis'))
+    devis = _devis_de_la_societe(company, corps.get('devis'), request.user)
+    if corps.get('devis') not in (None, '') and devis is None:
+        # ADEV21 — un devis désigné mais hors société ou hors portée : 404,
+        # jamais un calcul silencieux sur ses données.
+        return Response({'detail': 'Devis introuvable.'}, status=404)
     lead = _lead_de_la_societe(company, corps.get('lead'))
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
     etude = etudier_ci(company, entrees, devis=devis, lead=lead)

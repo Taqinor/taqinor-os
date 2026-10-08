@@ -78,7 +78,12 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         qs = viewsets.ModelViewSet.get_queryset(self)
         user = self.request.user
         if user.company_id:
-            return qs.filter(devis__company=user.company)
+            # ADEV21 (C-ADEV-025) — même portée équipe que ``DevisViewSet``
+            # (``owner_fields=['created_by']`` du devis parent) : une ligne
+            # d'un devis hors portée est introuvable (404), jamais modifiable.
+            from core.scoping import scope_queryset
+            return scope_queryset(qs.filter(devis__company=user.company),
+                                  user, ['devis__created_by'])
         if user.is_superuser:
             return qs
         return qs.none()
