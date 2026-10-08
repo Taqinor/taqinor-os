@@ -27,12 +27,27 @@ clé sans manifeste.
 from __future__ import annotations
 
 
+def _plan_effectif(profile):
+    """APAR55 — palier qui BORNE réellement les modules, ou ``None``.
+
+    Repli documenté « pas de plan » (accès complet) quand le palier est
+    INACTIF (``actif=False``) ou VIDE (``modules_inclus`` sans aucune clé) :
+    désactiver ou vider un palier dans l'admin ne doit jamais verrouiller en
+    silence tous les modules des sociétés qui y sont rattachées."""
+    plan = getattr(profile, 'plan', None)
+    if plan is None or not getattr(plan, 'actif', True):
+        return None
+    if not (plan.modules_inclus or []):
+        return None
+    return plan
+
+
 def has_feature(company, module_key):
     """Vrai si ``module_key`` est inclus dans le palier de licence de
     ``company``.
 
-    Sans société, sans profil ou sans plan assigné → ``True`` (accès complet,
-    comportement actuel préservé). Avec un plan assigné → ``True`` seulement
+    Sans société, sans profil, sans plan assigné, ou palier inactif/vide
+    (APAR55) → ``True`` (accès complet, comportement actuel préservé). Avec un plan assigné → ``True`` seulement
     si ``module_key`` figure dans ``PlanLicence.modules_inclus`` du palier.
     """
     if company is None:
@@ -41,7 +56,7 @@ def has_feature(company, module_key):
     # Lecture PURE : jamais ``CompanyProfile.get`` (get-or-CREATE) — un simple
     # contrôle de flag ne doit pas écrire une ligne en effet de bord.
     profile = CompanyProfile.objects.filter(company=company).first()
-    plan = getattr(profile, 'plan', None)
+    plan = _plan_effectif(profile)
     if plan is None:
         return True
     return module_key in (plan.modules_inclus or [])
@@ -50,6 +65,14 @@ def has_feature(company, module_key):
 # ---------------------------------------------------------------------------
 # SOL9 — branchement sur le chemin unique de `core.feature_flags`
 # ---------------------------------------------------------------------------
+
+def modules_installables():
+    """Clés de module INSTALLABLES (les seules qu'un plan puisse borner).
+
+    Public : lu aussi par la validation de ``modules_inclus`` dans l'admin des
+    paliers (APAR55, ``apps.adminops.admin.PlanLicenceAdminForm``)."""
+    return _modules_installables()
+
 
 def _modules_installables():
     """Clés de module INSTALLABLES (les seules qu'un plan puisse borner)."""
@@ -86,9 +109,9 @@ def modules_hors_plan(company):
         return set()
     from .models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
-    plan = getattr(profile, 'plan', None)
+    plan = _plan_effectif(profile)
     if plan is None:
-        return set()          # aucun plan assigné ⇒ accès complet
+        return set()          # aucun plan (ou palier inactif/vide) ⇒ accès complet
     inclus = set(plan.modules_inclus or [])
     return {k for k in _modules_installables() if k not in inclus}
 
