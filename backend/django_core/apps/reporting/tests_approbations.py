@@ -130,20 +130,21 @@ class TestApprobationsDecision(ApprobationsBase):
         return self._url() + 'decider/'
 
     def test_approve_automation_via_source_service(self):
+        # APAR46 — décider exige le palier approbateur : `resp_api`.
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
-        resp = self.api.post(self._decide_url(), {
+        resp = self.resp_api.post(self._decide_url(), {
             'source': 'automation', 'id': approval.id, 'decision': 'approuver',
         }, format='json')
         self.assertEqual(resp.status_code, 200)
         approval.refresh_from_db()
         self.assertEqual(approval.status, AutomationApproval.Status.APPROVED)
-        self.assertEqual(approval.decided_by_id, self.user.id)
+        self.assertEqual(approval.decided_by_id, self.resp_user.id)
 
     def test_reject_requires_motif(self):
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
-        resp = self.api.post(self._decide_url(), {
+        resp = self.resp_api.post(self._decide_url(), {
             'source': 'automation', 'id': approval.id, 'decision': 'refuser',
         }, format='json')
         self.assertEqual(resp.status_code, 400)
@@ -180,7 +181,7 @@ class TestApprobationsDecision(ApprobationsBase):
             company=self.company, status=AutomationApproval.Status.PENDING)
         a2 = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
-        resp = self.api.post(
+        resp = self.resp_api.post(  # APAR46 — palier approbateur requis
             self._url() + 'decider-en-masse/',
             {
                 'items': [
@@ -238,14 +239,20 @@ class TestVx101RoleGate(ApprobationsBase):
         sources = {it['source'] for it in resp.data['items']}
         self.assertIn('installations', sources)
 
-    def test_normal_role_can_still_decide_automation_workflow(self):
-        # Non-régression — le gate ne touche QUE installations.
+    def test_normal_role_cannot_decide_automation(self):
+        # APAR46 — RÉÉCRIT EXPLICITEMENT : ce test (« normal role can still
+        # decide automation/workflow ») FIGEAIT le contournement. Le contrôle
+        # « qui peut décider » vit désormais dans le SERVICE source : un rôle
+        # sans palier reçoit 403, la demande reste PENDING.
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
         resp = self.api.post(self._decide_url(), {
             'source': 'automation', 'id': approval.id, 'decision': 'approuver',
         }, format='json')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, AutomationApproval.Status.PENDING)
+        self.assertIsNone(approval.decided_by_id)
 
 
 class TestZctr9Facettes(ApprobationsBase):

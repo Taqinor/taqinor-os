@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: a775f9c99b9760d086f0c81a9db7996676813edf97f2be7c3580dcf58a73bd2a
-Plan fingerprint: 6cd6f0e676230155f3db1425a7efed9836fe1458fc5659b60ef51fa8eaab7290
+Structure fingerprint: d8ec1feb55d91cbbf70912d1f750fd06c63530a6c7dd99c909db51fad8a62f12
+Plan fingerprint: 39fab5bceb153b6f1ceb39d85bb72b26f6df94388ee4bb045063d81af25d4c65
 
 
 
@@ -250,7 +250,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |
 | `entites` | `entites/` | 1 | Intra-tenant org tree (`Entite`: holding/filiale/agence) with anti-cycle guard. |
 | `adminops` | `adminops/` | 12 | Health score, sandbox, config packages, adoption, `PlanLicence`/`FactureLicence`, impersonation, signup requests, product announcements. |
-| `notifications` | `notifications/` | 16 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs, push, `MessageAccueil`, working hours. |
+| `notifications` | `notifications/` | 17 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), push, `MessageAccueil`, working hours. |
 | `automation` | `automation/` | 13 | No-code rules + approvals: `AutomationRule`/`Run`/`Step`, `ApprovalRequest`/`Decision`/`Delegation`, incoming webhooks. |
 | `agent` | `agent/` | 1 | Agentic action catalogue (declared in code, `AgentActionLog` only) — metadata; the endpoint re-checks permissions. |
 | `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. |
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1152)**
+**Done (1153)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1164,6 +1164,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ663` — Recette MT : essais de limitation d'injection et de découplage exigés quand l'étude du…
 - `CIQ664` — Schéma unifilaire : un étage MT (transformateur, cellule, protection de découplage…
 - `CIQ665` — Aller-retour EN DIRECT du parcours site MT : visite avec supplément MT → chantier MT →…
+- `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes

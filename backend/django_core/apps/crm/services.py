@@ -4426,6 +4426,7 @@ _MERGE_FILL_FIELDS = [
     'projet_pompage', 'deja_beneficiaire_fda', 'pompe_hmt_source',
     # CIQ401 — colonnes du lead pro (contrat CIQ1) : préservées à la fusion.
     'tension_raccordement', 'tension_source', 'compteur_puissance_kva',
+    'contrat_electricite', 'option_tarifaire_bt',  # CIQ666
     'puissance_souscrite_source', 'categorie_commerciale',
     'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
     'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',

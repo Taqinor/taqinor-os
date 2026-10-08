@@ -8,10 +8,7 @@ borné à la société de l'utilisateur), jamais lue du corps. Querysets filtré
 import re
 import uuid
 
-from rest_framework import status
-from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
@@ -37,9 +34,114 @@ _PIECE_ETAPE = {
 }
 
 #: PV45 — code de la pièce « schéma unifilaire » du pack réglementaire. Elle
-#: était SEMÉE par ``generer-checklist`` (regulatory_docs) depuis FG267 mais
+#: était SEMÉE par ``generer_checklist_dossier`` (regulatory_docs) depuis FG267 mais
 #: jamais FOURNIE : ce module la produit enfin.
 CODE_SCHEMA = 'schema_unifilaire'
+
+
+# ADEV65 (C-ADEV-054) — les actions ``generer-checklist``, ``generer-schema``
+# et ``generer-declaration`` n'avaient AUCUN appelant de production (l'écran
+# n'utilise que ``getReglementaire`` / ``patchReglementaire``) ; elles sont
+# RETIRÉES (404). ``generer-declaration`` avançait en plus le statut d'une
+# régularisation sur une chaîne libre ``declaration_pdf`` jamais relue : le
+# statut n'avance plus que par les gestes câblés à l'écran (PATCH). Le métier
+# des deux premières reste ici, en fonctions de domaine testées directement.
+
+
+def generer_checklist_dossier(dossier):
+    """Crée les pièces manquantes du régime du dossier ; rend le nombre créé.
+
+    Idempotent : n'ajoute que les codes absents (jamais de doublon, jamais
+    de suppression). Aucun changement de statut de devis."""
+    pack = regulatory_docs.required_documents(dossier.regime_8221)
+    existing = set(
+        dossier.checklist_items.values_list('code', flat=True))
+    created = 0
+    for ordre, piece in enumerate(pack):
+        code = piece['code']
+        if code in existing:
+            continue
+        DossierChecklistItem.objects.create(
+            company=dossier.company, dossier=dossier, code=code,
+            libelle=piece['label'], obligatoire=piece.get('required', True),
+            # CIQ616 — l'étape vient de la pièce sourcée (repli historique).
+            etape=piece.get('etape') or _PIECE_ETAPE.get(code, 'depot'),
+            ordre=ordre)
+        created += 1
+    return created
+
+
+def joindre_schema_unifilaire(dossier, user=None):
+    """PV45 — produit et JOINT le schéma unifilaire du devis du dossier.
+
+    Rend le schéma du DEVIS en PDF (même planche que
+    ``/devis/<id>/schema-unifilaire/?format=pdf``, service PARTAGÉ
+    ``core.pdf.render_pdf``, ARC11), le range sous une clé scopée société,
+    l'attache au dossier par une ``records.Attachment`` (jamais un
+    ``FileField``, ARC26) et bascule la pièce ``schema_unifilaire`` en
+    « fourni ». IDEMPOTENT : re-jouer REMPLACE la pièce jointe existante
+    (même ligne, nouvelle clé) ; la pièce de checklist est créée si
+    absente. Rend ``(piece_jointe, item, remplacee)``.
+
+    Aucun statut de DEVIS n'est touché, aucun prix n'entre dans le schéma
+    (règle #4 : ``/proposal`` reste l'unique chemin du PDF client).
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+    from core.pdf import render_pdf
+    from ..diagram_views import _pdf_html
+    from ..single_line_diagram import (
+        build_single_line_svg, diagram_params_from_devis)
+
+    devis = dossier.devis
+    if devis is None:
+        raise ValidationError(
+            {'devis': "Ce dossier n'est rattaché à aucun devis : "
+                      "impossible d'en tirer un schéma unifilaire."})
+
+    svg = build_single_line_svg(diagram_params_from_devis(devis))
+    cle = 'ventes/%s/%s.pdf' % (dossier.company_id, uuid.uuid4().hex)
+    pdf, cle = render_pdf(html=_pdf_html(svg),
+                          company=dossier.company, upload_to=cle)
+
+    reference = re.sub(r'[^A-Za-z0-9_.-]+', '-',
+                       str(devis.reference or devis.pk))
+    nom_fichier = 'schema-unifilaire-%s.pdf' % reference
+    content_type = ContentType.objects.get_for_model(RegulatoryDossier)
+    piece_jointe = Attachment.objects.filter(
+        content_type=content_type, object_id=dossier.pk,
+        filename=nom_fichier).order_by('id').first()
+    if piece_jointe is None:
+        piece_jointe = Attachment.objects.create(
+            company=dossier.company, content_type=content_type,
+            object_id=dossier.pk, file_key=cle, filename=nom_fichier,
+            size=len(pdf or b''), mime='application/pdf',
+            uploaded_by=user)
+        remplacee = False
+    else:
+        piece_jointe.file_key = cle
+        piece_jointe.size = len(pdf or b'')
+        piece_jointe.uploaded_by = user
+        piece_jointe.save(
+            update_fields=['file_key', 'size', 'uploaded_by'])
+        remplacee = True
+
+    item = dossier.checklist_items.filter(code=CODE_SCHEMA).first()
+    if item is None:
+        libelle = next(
+            (piece['label'] for piece
+             in regulatory_docs.required_documents(dossier.regime_8221)
+             if piece['code'] == CODE_SCHEMA),
+            "Schéma unifilaire de l'installation")
+        item = DossierChecklistItem.objects.create(
+            company=dossier.company, dossier=dossier, code=CODE_SCHEMA,
+            libelle=libelle,
+            etape=_PIECE_ETAPE.get(CODE_SCHEMA, 'depot'))
+    if item.statut != DossierChecklistItem.Statut.FOURNI:
+        item.statut = DossierChecklistItem.Statut.FOURNI
+        item.save(update_fields=['statut', 'updated_at'])
+    return piece_jointe, item, remplacee
 
 
 def _company_or_none(user):
@@ -135,123 +237,6 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
         dossier = serializer.save(company=company)
         _figer_equipements(dossier)  # CIQ620
         _refleter_sur_chantier(dossier)  # CIQ617
-
-    @action(detail=True, methods=['post'], url_path='generer-checklist')
-    def generer_checklist(self, request, pk=None):
-        """POST /{id}/generer-checklist/ — crée les pièces manquantes du régime.
-
-        Idempotent : n'ajoute que les codes absents (jamais de doublon, jamais
-        de suppression). Aucun changement de statut de devis."""
-        dossier = self.get_object()
-        pack = regulatory_docs.required_documents(dossier.regime_8221)
-        existing = set(
-            dossier.checklist_items.values_list('code', flat=True))
-        created = 0
-        for ordre, piece in enumerate(pack):
-            code = piece['code']
-            if code in existing:
-                continue
-            DossierChecklistItem.objects.create(
-                company=dossier.company, dossier=dossier, code=code,
-                libelle=piece['label'], obligatoire=piece.get('required', True),
-                # CIQ616 — l'étape vient de la pièce sourcée (repli historique).
-                etape=piece.get('etape') or _PIECE_ETAPE.get(code, 'depot'),
-                ordre=ordre)
-            created += 1
-        dossier.refresh_from_db()
-        return Response(
-            {'created': created,
-             'dossier': self.get_serializer(dossier).data},
-            status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=['post'], url_path='generer-schema')
-    def generer_schema(self, request, pk=None):
-        """POST /{id}/generer-schema/ — produit et JOINT le schéma unifilaire.
-
-        La pièce ``schema_unifilaire`` était déclarée par le pack réglementaire
-        (FG267) et semée par ``generer-checklist``, mais rien ne la
-        FOURNISSAIT : l'utilisateur devait sortir le schéma à la main puis le
-        re-téléverser. Cette action ferme la boucle — elle rend le schéma du
-        DEVIS du dossier en PDF (même planche que
-        ``/devis/<id>/schema-unifilaire/?format=pdf``, service PARTAGÉ
-        ``core.pdf.render_pdf``, ARC11), le range dans le stockage objet sous
-        une clé scopée société, l'attache au dossier par une
-        ``records.Attachment`` (jamais un ``FileField``, ARC26) et bascule la
-        pièce en « fourni ».
-
-        IDEMPOTENT : re-jouer REMPLACE la pièce jointe existante (même ligne,
-        nouvelle clé) au lieu d'en empiler une seconde ; la pièce de checklist
-        est créée si ``generer-checklist`` n'a pas encore tourné.
-
-        Aucun statut de DEVIS n'est touché, aucun prix n'entre dans le schéma
-        (règle #4 : ``/proposal`` reste l'unique chemin du PDF client).
-        """
-        from django.contrib.contenttypes.models import ContentType
-
-        from apps.records.models import Attachment
-        from core.pdf import render_pdf
-        from ..diagram_views import _pdf_html
-        from ..single_line_diagram import (
-            build_single_line_svg, diagram_params_from_devis)
-
-        dossier = self.get_object()  # borné société par get_queryset
-        devis = dossier.devis
-        if devis is None:
-            raise ValidationError(
-                {'devis': "Ce dossier n'est rattaché à aucun devis : "
-                          "impossible d'en tirer un schéma unifilaire."})
-
-        svg = build_single_line_svg(diagram_params_from_devis(devis))
-        cle = 'ventes/%s/%s.pdf' % (dossier.company_id, uuid.uuid4().hex)
-        pdf, cle = render_pdf(html=_pdf_html(svg),
-                              company=dossier.company, upload_to=cle)
-
-        reference = re.sub(r'[^A-Za-z0-9_.-]+', '-',
-                           str(devis.reference or devis.pk))
-        nom_fichier = 'schema-unifilaire-%s.pdf' % reference
-        content_type = ContentType.objects.get_for_model(RegulatoryDossier)
-        piece_jointe = Attachment.objects.filter(
-            content_type=content_type, object_id=dossier.pk,
-            filename=nom_fichier).order_by('id').first()
-        if piece_jointe is None:
-            piece_jointe = Attachment.objects.create(
-                company=dossier.company, content_type=content_type,
-                object_id=dossier.pk, file_key=cle, filename=nom_fichier,
-                size=len(pdf or b''), mime='application/pdf',
-                uploaded_by=request.user)
-            remplacee = False
-        else:
-            piece_jointe.file_key = cle
-            piece_jointe.size = len(pdf or b'')
-            piece_jointe.uploaded_by = request.user
-            piece_jointe.save(
-                update_fields=['file_key', 'size', 'uploaded_by'])
-            remplacee = True
-
-        item = dossier.checklist_items.filter(code=CODE_SCHEMA).first()
-        if item is None:
-            libelle = next(
-                (piece['label'] for piece
-                 in regulatory_docs.required_documents(dossier.regime_8221)
-                 if piece['code'] == CODE_SCHEMA),
-                "Schéma unifilaire de l'installation")
-            item = DossierChecklistItem.objects.create(
-                company=dossier.company, dossier=dossier, code=CODE_SCHEMA,
-                libelle=libelle,
-                etape=_PIECE_ETAPE.get(CODE_SCHEMA, 'depot'))
-        if item.statut != DossierChecklistItem.Statut.FOURNI:
-            item.statut = DossierChecklistItem.Statut.FOURNI
-            item.save(update_fields=['statut', 'updated_at'])
-
-        dossier.refresh_from_db()
-        return Response(
-            {'attachment_id': piece_jointe.pk,
-             'file_key': piece_jointe.file_key,
-             'filename': piece_jointe.filename,
-             'remplacee': remplacee,
-             'piece': DossierChecklistItemSerializer(item).data,
-             'dossier': self.get_serializer(dossier).data},
-            status=status.HTTP_200_OK)
 
 
 class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
@@ -449,22 +434,3 @@ class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note c
             'devis', serializer.instance.devis)
         company = self._resolve_company(devis)
         serializer.save(company=company)
-
-    @action(detail=True, methods=['post'], url_path='generer-declaration')
-    def generer_declaration(self, request, pk=None):
-        """POST /{id}/generer-declaration/ — marque la déclaration générée.
-
-        Enregistre le chemin/clé du PDF de déclaration fourni et fait avancer le
-        statut vers ``declaration_generee`` (jamais un statut de DEVIS). Le rendu
-        PDF lui-même reste hors de ce endpoint."""
-        regul = self.get_object()
-        chemin = (request.data or {}).get('declaration_pdf')
-        if not chemin:
-            raise ValidationError(
-                {'declaration_pdf': 'Chemin/clé du PDF requis.'})
-        regul.declaration_pdf = chemin
-        if regul.statut == Regularisation8221.Statut.A_REGULARISER:
-            regul.statut = Regularisation8221.Statut.DECLARATION_GENEREE
-        regul.save(update_fields=['declaration_pdf', 'statut', 'updated_at'])
-        return Response(self.get_serializer(regul).data,
-                        status=status.HTTP_200_OK)

@@ -56,35 +56,35 @@ def _branded_html(company, sujet, corps):
 
 
 def is_email_configured():
-    """True si un compte d'envoi (Brevo ou SMTP) est réellement configuré.
+    """True SEULEMENT si un e-mail partira réellement : une clé d'envoi est
+    posée (Brevo/SendGrid, ``settings.ANYMAIL``) ET le backend RÉELLEMENT
+    chargé envoie.
 
-    Sert UNIQUEMENT à informer l'UI / décider d'un envoi réel ; l'absence de
-    configuration n'est jamais une erreur — on retombe sur le backend console
-    (NO-OP). On considère « configuré » : une clé Brevo, OU un backend non
-    console explicitement choisi (ex. SMTP avec hôte).
+    ADEP34 — la clé seule ne suffit plus (décision QW8 corrigée) : avec
+    ``BREVO_API_KEY`` posée mais ``EMAIL_BACKEND`` resté sur *console* (le
+    défaut du projet), ``send_mail`` imprime le message sur stdout — l'ERP
+    disait « configuré » alors que rien ne partait, et contredisait
+    ``public.payload_conditions`` (« backend sans envoi »). Une seule règle
+    désormais, lue par les deux :
 
-    QW8 — CORRECTIF : ``ANYMAIL`` (settings/base.py) ne pose JAMAIS de clé
-    littéralement nommée ``BREVO_API_KEY`` — la valeur de l'env var
-    ``BREVO_API_KEY`` est rangée sous ``SENDINBLUE_API_KEY`` (nom du backend
-    anymail pour Brevo, ex-Sendinblue) ; ce contrôle vérifiait donc une clé
-    qui n'existe JAMAIS dans ``ANYMAIL``, rendant l'email config-mort même
-    avec une vraie clé Brevo configurée en prod. On honore les DEUX clés
-    réellement posées par les settings (Sendinblue/Brevo ET SendGrid,
-    héritage)."""
-    anymail = settings.ANYMAIL or {}
-    if anymail.get('SENDINBLUE_API_KEY') or anymail.get('SENDGRID_API_KEY'):
+    * aucune clé → faux ;
+    * clé + backend console / dummy / filebased → faux (prédicat
+      ``core.checks.backend_email_envoie``, source unique posée par ADEP31) ;
+    * clé + backend qui envoie (anymail, SMTP…) → vrai ;
+    * clé + ``locmem`` → vrai : c'est le DOUBLE de test imposé par le lanceur
+      Django (``mail.outbox``), traité comme un backend qui envoie pour que
+      les tests voient la branche « configuré ».
+
+    QW8 — la clé Brevo est rangée sous ``SENDINBLUE_API_KEY`` dans
+    ``ANYMAIL`` (jamais sous ``BREVO_API_KEY``) ; on lit les clés réellement
+    posées via ``core.checks.cles_envoi_posees``."""
+    from core.checks import backend_email_envoie, cles_envoi_posees
+    if not cles_envoi_posees():
+        return False
+    backend = str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip()
+    if backend == 'django.core.mail.backends.locmem.EmailBackend':
         return True
-    backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
-    if 'console' in backend or 'dummy' in backend:
-        return False
-    if 'locmem' in backend:
-        # Backend de test : non « configuré » au sens d'un compte réel, mais on
-        # laisse l'envoi se faire (les tests vérifient le contenu via locmem).
-        return False
-    if 'smtp' in backend:
-        return bool(getattr(settings, 'EMAIL_HOST', ''))
-    # Tout autre backend explicitement choisi (anymail prod) → configuré.
-    return True
+    return backend_email_envoie(backend)
 
 
 def _from_email():
@@ -191,6 +191,28 @@ def _document_pdf(document):
     # juridique (loi 43-20) — le re-rendre le falsifierait. Les factures gardent
     # aussi leur chemin propre (règle #4 : seul le PDF de DEVIS a changé de
     # moteur).
+    # AFAC42 — une FACTURE passe, elle aussi, par sa clé GARANTIE à jour
+    # (``cle_facture_pdf_a_jour`` : empreinte comparée, re-rendu si les
+    # données — dont les paiements, donc le « Reste à payer » — ont bougé, et
+    # rendu initial si la facture n'a jamais été rendue). Sans ça, la pièce
+    # jointe imprimait le reste d'un rendu antérieur, ou manquait tout court
+    # alors que le corps promet « ci-joint ». Règle #4 : moteur LÉGATAIRE de
+    # la facture, jamais le moteur devis. Échec → (None, None) : l'appelant
+    # facture refuse alors l'envoi (``_pdf_facture_indisponible``).
+    from apps.ventes.models import Facture
+    if isinstance(document, Facture):
+        try:
+            from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
+            cle = cle_facture_pdf_a_jour(document)
+            data = download_pdf(cle) if cle else None
+        except Exception as exc:  # noqa: BLE001 — l'appelant refuse l'envoi
+            logger.warning(
+                'AFAC42: PDF facture indisponible pour %s (%s) — envoi refusé',
+                ref, exc)
+            return None, None
+        if not data:
+            return None, None
+        return data, f'{ref}.pdf'
     if not signed_key and key:
         try:
             from apps.ventes.models import Devis
@@ -216,6 +238,22 @@ def _document_pdf(document):
         return None, None
 
 
+PDF_FACTURE_INDISPONIBLE = (
+    "PDF indisponible : la facture promise « ci-joint » n'a pas pu être "
+    'produite — aucun e-mail envoyé.')
+
+
+def _refuser_sans_pdf_facture(log):
+    """AFAC42 — un e-mail de FACTURE qui promet le PDF « ci-joint » ne part
+    jamais sans lui : on consigne l'échec (EmailLog ``echec``, aucun message
+    envoyé) et on rend le log à l'appelant (400 / ``ok: false``)."""
+    log.statut = EmailLog.Statut.ECHEC
+    log.erreur = PDF_FACTURE_INDISPONIBLE
+    log.piece_jointe = ''
+    log.save()
+    return log
+
+
 def _chatter_note(devis, body, user):
     """Ajoute une note au chatter du devis (réutilise DevisActivity)."""
     try:
@@ -225,6 +263,42 @@ def _chatter_note(devis, body, user):
             kind=DevisActivity.Kind.NOTE, body=body)
     except Exception:  # pragma: no cover - le log email reste la source de vérité
         pass
+
+
+def _modele_email_personnalise(company, cle, client, reference, **contexte):
+    """APAR59 — sujet/corps du modèle d'e-mail ``cle`` que la SOCIÉTÉ a
+    personnalisé (``parametres.EmailTemplate``), rendus avec ses placeholders.
+
+    Renvoie un dict qui ne porte QUE les champs réellement personnalisés (non
+    vides) : sans ligne, ou champ laissé vide, la clé est absente et
+    l'appelant garde son texte codé actuel (repli octet pour octet — jamais le
+    défaut générique « au lien suivant : {lien} » de la table). Best-effort :
+    jamais d'exception (un e-mail ne casse pas sur un modèle illisible)."""
+    if company is None:
+        return {}
+    try:
+        from apps.parametres.models_email import EmailTemplate
+        ligne = EmailTemplate.objects.filter(company=company, cle=cle).first()
+        if ligne is None:
+            return {}
+        personnalise = {
+            champ for champ in ('sujet', 'corps')
+            if (getattr(ligne, champ, '') or '').strip()}
+        if not personnalise:
+            return {}
+        nom_client = civilite = ''
+        if client is not None:
+            nom_client = (
+                f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip())
+            civilite = getattr(client, 'civilite', '') or ''
+        contexte.setdefault('lien', '')
+        rendu = EmailTemplate.render(
+            company, cle, civilite=civilite, nom=nom_client,
+            reference=reference, **contexte)
+        return {champ: rendu[champ] for champ in personnalise if rendu[champ]}
+    except Exception as exc:  # noqa: BLE001 — repli sur le texte codé
+        logger.warning('APAR59: modèle e-mail %s illisible (%s)', cle, exc)
+        return {}
 
 
 def send_document_email(document, *, to_email=None, sujet=None, corps=None,
@@ -243,6 +317,15 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
     est_facture = isinstance(document, Facture)
     type_doc = 'facture' if est_facture else 'devis'
 
+    # APAR59 — le modèle éditable de la société (Paramètres › E-mails, clé
+    # ``facture`` / ``devis``) prime quand elle l'a personnalisé ; sinon le
+    # texte codé ci-dessous reste octet pour octet. Sujet/corps explicites de
+    # l'appelant priment toujours.
+    if not sujet or not corps:
+        modele = _modele_email_personnalise(
+            getattr(document, 'company', None), type_doc, client, reference)
+        sujet = sujet or modele.get('sujet')
+        corps = corps or modele.get('corps')
     if not sujet:
         sujet = (f'Votre facture {reference}' if est_facture
                  else f'Votre devis {reference}')
@@ -285,6 +368,9 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
         log.save()
         return log
 
+    if attach_pdf and est_facture and not attachment:
+        return _refuser_sans_pdf_facture(log)
+
     ok, err = _send(
         dest, sujet, corps, attachment, attachment_name,
         company=getattr(document, 'company', None))
@@ -307,9 +393,16 @@ def composer_relance_email(facture, *, niveau_nom='', message=''):
     """
     client = getattr(facture, 'client', None)
     reference = getattr(facture, 'reference', '') or ''
-    sujet = f'Rappel de paiement — facture {reference}'
+    # APAR59 — modèle éditable « relance » de la société (Paramètres ›
+    # E-mails) quand elle l'a personnalisé ; un niveau nommé / un message
+    # saisi (AUD129 : la note prime) restent plus spécifiques et priment.
+    modele = _modele_email_personnalise(
+        getattr(facture, 'company', None), 'relance', client, reference)
+    sujet = modele.get('sujet') or f'Rappel de paiement — facture {reference}'
     if niveau_nom:
         sujet = f'{niveau_nom} — facture {reference}'
+    if modele.get('corps') and not (message or '').strip():
+        return sujet, modele['corps']
 
     nom_client = ''
     if client is not None:
@@ -364,6 +457,9 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
         log.erreur = 'Aucune adresse email destinataire.'
         log.save()
         return log
+
+    if attach_pdf and not attachment:
+        return _refuser_sans_pdf_facture(log)
 
     ok, err = _send(
         dest, sujet, corps, attachment, attachment_name,

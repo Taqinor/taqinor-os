@@ -275,18 +275,49 @@ def _parse_client_ts(value):
         return None
 
 
-def _resolve_proposal_link(token):
+def _resolve_proposal_link(token, *, refuser_brouillon=True):
     """Return a valid devis-bearing ShareLink for this token, or None.
 
     L-INTPREV (25/08/2026) — accepte AUSSI le jeton d'aperçu interne (même
     devis, même page). ``link.via_interne`` (attribut dynamique, jamais
     persisté) dit aux appelants si CE jeton était l'interne — les endpoints
     qui doivent rester sans trace / refuser d'engager le client (lecture,
-    signature) le lisent explicitement."""
+    signature) le lisent explicitement.
+
+    ADEV11 (C-ADEV-004) — un BROUILLON n'est jamais servi au jeton CLIENT : un
+    lien frappé par ``share-link`` (ou par un rendu PDF) avant l'envoi n'ouvre
+    ni la lecture ni l'action — ``None`` (404 muet, aucun chiffre servi). Le
+    jeton INTERNE d'aperçu reste servi (c'est le commercial). Les endpoints
+    d'ACTION passent ``refuser_brouillon=False`` puis répondent le 409
+    ``brouillon`` du contrat ``proposal_accept.json`` (``_refus_brouillon``)."""
     link, via_interne = _resolve_share_link_by_token(
         token,
         select_related=('devis', 'devis__client', 'devis__company', 'company'))
     if link is None or not link.devis_id:
         return None
     link.via_interne = via_interne
+    if refuser_brouillon and lien_client_sur_brouillon(link):
+        return None
     return link
+
+
+def lien_client_sur_brouillon(link):
+    """ADEV11 — vrai quand ``link`` est résolu par le jeton CLIENT et que son
+    devis est encore BROUILLON (jamais envoyé)."""
+    from ..models import Devis
+    devis = getattr(link, 'devis', None)
+    return (not getattr(link, 'via_interne', False)
+            and devis is not None
+            and devis.statut == Devis.Statut.BROUILLON)
+
+
+def _refus_brouillon(link):
+    """ADEV11 — 409 ``{detail, code: "brouillon"}`` sur un endpoint d'ACTION
+    (acceptation, option, OTP, contact) appelé au jeton client d'un brouillon ;
+    ``None`` sinon. Posé AVANT tout effet de bord."""
+    if not lien_client_sur_brouillon(link):
+        return None
+    from ..domain.cycle_vie import BROUILLON_REFUS
+    return _noindex(Response(
+        {'detail': BROUILLON_REFUS, 'code': 'brouillon'},
+        status=status.HTTP_409_CONFLICT))

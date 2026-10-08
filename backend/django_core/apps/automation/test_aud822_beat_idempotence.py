@@ -15,9 +15,13 @@ Test ROUGE d'abord : sur l'arbre d'avant AUD822, deux appels successifs de
 `SEND_EMAIL` (deux mails dans `mail.outbox`).
 """
 from datetime import date, timedelta
+from decimal import Decimal
+
+from unittest import mock
 
 from django.core import mail
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.automation.beat_tasks import (
     MARQUEUR_PREFIXE, _marqueur, _trigger_facture_overdue,
@@ -67,11 +71,14 @@ class FactureOverdueIdempotenceTests(_Base):
             company=self.co, nom='Cli822', email=email)
         return Facture.objects.create(
             company=self.co, client=client, reference=reference,
-            statut='envoye', date_echeance=date.today() - timedelta(days=30))
+            statut='emise', montant_ttc=Decimal('1000'),  # APAR7 — relançable
+            date_echeance=date.today() - timedelta(days=30))
 
     def test_deux_passages_le_meme_jour_ne_declenchent_quune_fois(self):
-        self._regle(TriggerType.FACTURE_OVERDUE)
+        # APAR8 — facture créée AVANT la règle : le signal de création (qui
+        # partage désormais le marqueur) ne la consomme pas.
         self._facture()
+        self._regle(TriggerType.FACTURE_OVERDUE)
         self.assertEqual(_trigger_facture_overdue(self.co), 1)
         self.assertEqual(_trigger_facture_overdue(self.co), 0)
 
@@ -80,41 +87,52 @@ class FactureOverdueIdempotenceTests(_Base):
         self._regle(TriggerType.FACTURE_OVERDUE,
                     action_type=ActionType.SEND_EMAIL,
                     action_config={'subject': 'Relance', 'body': 'Bonjour'})
-        self._facture()
         mail.outbox = []
-        _trigger_facture_overdue(self.co)
-        _trigger_facture_overdue(self.co)
-        _trigger_facture_overdue(self.co)
+        # APAR8 — la règle existe AVANT la facture : le signal de création
+        # (``_facture_saved``) évalue déjà l'occurrence et pose le marqueur
+        # partagé. Son e-mail part au COMMIT (APAR10/APAR18) : on capture
+        # donc aussi la création, puis on compte TOUS les e-mails (création
+        # + 3 balayages) — une seule relance au total.
+        with self.captureOnCommitCallbacks(execute=True):
+            self._facture()
+        # APAR10 — l'e-mail part au COMMIT de chaque passage.
+        for _ in range(3):
+            with self.captureOnCommitCallbacks(execute=True):
+                _trigger_facture_overdue(self.co)
         self.assertEqual(len(mail.outbox), 1)
 
-    def test_le_marqueur_porte_le_jour_et_lobjet(self):
-        self._regle(TriggerType.FACTURE_OVERDUE)
+    def test_le_marqueur_porte_lecheance_et_lobjet(self):
+        """APAR8 — la clé est l'ÉCHÉANCE (occurrence métier), pas le jour."""
         facture = self._facture()
+        self._regle(TriggerType.FACTURE_OVERDUE)
         _trigger_facture_overdue(self.co)
         attendu = _marqueur(TriggerType.FACTURE_OVERDUE, 'ventes.facture',
-                            facture.pk, date.today())
+                            facture.pk, facture.date_echeance)
         marqueur = self._marqueurs().get()
         self.assertTrue(marqueur.message.startswith(attendu))
         self.assertIsNone(marqueur.rule_id)
         self.assertEqual(marqueur.status, AutomationRun.Status.NOOP)
 
-    def test_le_lendemain_la_relance_repart(self):
-        """Le marqueur est daté : un NOUVEAU jour redéclenche."""
+    def test_le_lendemain_aucune_relance_pour_la_meme_echeance(self):
+        """APAR8 — réécrit EXPLICITEMENT : ce test figeait le défaut (« le
+        lendemain la relance repart » = un e-mail par jour). Le marqueur est
+        clé sur l'échéance : le lendemain, même échéance ⇒ 0 relance ; une
+        NOUVELLE échéance (facture rééchelonnée) relance une fois."""
+        facture = self._facture()
         self._regle(TriggerType.FACTURE_OVERDUE)
-        self._facture()
-        _trigger_facture_overdue(self.co)
-        # Simule le passage au lendemain en vieillissant le marqueur d'un jour.
-        marqueur = self._marqueurs().get()
-        hier = (date.today() - timedelta(days=1)).isoformat()
-        marqueur.message = marqueur.message.replace(
-            date.today().isoformat(), hier)
-        marqueur.save(update_fields=['message'])
+        self.assertEqual(_trigger_facture_overdue(self.co), 1)
+        with mock.patch('django.utils.timezone.localdate',
+                        return_value=timezone.localdate() + timedelta(days=1)):
+            self.assertEqual(_trigger_facture_overdue(self.co), 0)
+        from apps.ventes.models import Facture
+        Facture.objects.filter(pk=facture.pk).update(
+            date_echeance=date.today() - timedelta(days=2))
         self.assertEqual(_trigger_facture_overdue(self.co), 1)
 
     def test_deux_factures_sont_traitees_independamment(self):
-        self._regle(TriggerType.FACTURE_OVERDUE)
         self._facture('F-AUD822-A')
         self._facture('F-AUD822-B')
+        self._regle(TriggerType.FACTURE_OVERDUE)
         self.assertEqual(_trigger_facture_overdue(self.co), 2)
         self.assertEqual(_trigger_facture_overdue(self.co), 0)
         self.assertEqual(self._marqueurs().count(), 2)
@@ -126,8 +144,8 @@ class FactureOverdueIdempotenceTests(_Base):
         self.assertEqual(AutomationRun.objects.filter(company=self.co).count(), 0)
 
     def test_la_tache_beat_complete_est_idempotente(self):
-        self._regle(TriggerType.FACTURE_OVERDUE)
         self._facture()
+        self._regle(TriggerType.FACTURE_OVERDUE)
         premier = time_triggers_daily()
         second = time_triggers_daily()
         self.assertGreaterEqual(premier, 1)

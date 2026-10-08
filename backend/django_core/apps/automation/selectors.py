@@ -29,6 +29,7 @@ def closed_rule_catalogue():
     Renvoie des types simples (listes/dicts de chaînes) — jamais les classes
     ``TriggerType``/``ActionType`` elles-mêmes — pour que l'appelant n'ait
     besoin d'aucune connaissance du modèle Django sous-jacent."""
+    from .actions import ACTIONS_INDISPONIBLES
     from .models import ActionType, DATE_TRIGGER_TARGETS, TriggerType
 
     date_targets = {
@@ -37,6 +38,9 @@ def closed_rule_catalogue():
     }
     return {
         'trigger_types': sorted(v for v, _ in TriggerType.choices),
-        'action_types': sorted(v for v, _ in ActionType.choices),
+        # APAR25 — une action sans fournisseur (SMS) n'est pas proposée.
+        'action_types': sorted(
+            v for v, _ in ActionType.choices
+            if v not in ACTIONS_INDISPONIBLES),
         'date_trigger_targets': date_targets,
     }

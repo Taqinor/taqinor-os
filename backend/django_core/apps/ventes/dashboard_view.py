@@ -9,7 +9,7 @@ Agrégation LECTURE SEULE, scopée société, sans aucune écriture. Renvoie :
 """
 from decimal import Decimal
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -42,6 +42,24 @@ def _period_filter(request):
     end_d = timezone.now().date()
     start_d = end_d - timedelta(days=365)
     return Q(date_creation__date__range=[start_d.isoformat(), end_d.isoformat()])
+
+
+def _period_bounds(request):
+    """(début, fin) en dates de la MÊME période que ``_period_filter``."""
+    import calendar
+    from datetime import date, timedelta
+    params = request.query_params
+    start, end, month = params.get('start'), params.get('end'), params.get('month')
+    try:
+        if start and end:
+            return date.fromisoformat(start), date.fromisoformat(end)
+        if month:
+            y, m = int(month[:4]), int(month[5:7])
+            return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])
+    except (ValueError, IndexError):
+        pass
+    end_d = timezone.now().date()
+    return end_d - timedelta(days=365), end_d
 
 
 def _ttc_affiche(devis):
@@ -121,7 +139,7 @@ def dashboard_quote_to_cash(request):
       ]
     }
     """
-    from .models import Devis, Facture, Paiement
+    from .models import Devis, Facture
     company = request.user.company
     periode = _period_filter(request)
 
@@ -199,18 +217,13 @@ def dashboard_quote_to_cash(request):
         annulees=Count('id', filter=Q(statut='annulee')),
     )
 
-    # Montant facturé (TTC) : montant_ttc quand figé, sinon on utilise montant_ttc.
-    # Pour les factures avec lignes non figées, une agrégation SQL exacte nécessiterait
-    # de joindre les lignes — on utilise la somme des montant_ttc quand disponible.
-    montant_facture_q = factures_qs.filter(
-        statut__in=('emise', 'payee', 'en_retard')
-    ).aggregate(s=Sum('montant_ttc'))
-    montant_facture = montant_facture_q['s'] or Decimal('0')
-
-    # Paiements encaissés.
-    paiements_qs = Paiement.objects.filter(company=company)
-    montant_encaisse_q = paiements_qs.aggregate(s=Sum('montant'))
-    montant_encaisse = montant_encaisse_q['s'] or Decimal('0')
+    # AFAC53 — Facturé / Encaissé / DSO sur les définitions du modèle et de la
+    # période (sélecteur unique, parité avec l'écran Factures).
+    from .selectors_facturation import kpis_q2c_periode
+    debut_p, fin_p = _period_bounds(request)
+    kpi_fac = kpis_q2c_periode(company, debut_p, fin_p)
+    montant_facture = kpi_fac['facture']
+    montant_encaisse = kpi_fac['encaisse']
 
     # ── Taux de conversion ───────────────────────────────────────────────────
     n_envoyes = agg_devis['envoyes']
@@ -228,13 +241,8 @@ def dashboard_quote_to_cash(request):
         return None
 
     # ── DSO ──────────────────────────────────────────────────────────────────
-    # DSO = encours TTC / (CA facturé / 30)
-    encours_ttc = factures_qs.filter(
-        statut__in=('emise', 'en_retard')
-    ).aggregate(s=Sum('montant_ttc'))['s'] or Decimal('0')
-    dso = None
-    if montant_facture > 0:
-        dso = round(float(encours_ttc) / float(montant_facture) * 30, 1)
+    # DSO = encours (Σ montant_du) / facturé × jours de la période (AFAC53).
+    dso = kpi_fac['dso_jours']
 
     # ── Cycle moyen quote-to-cash ─────────────────────────────────────────────
     # Jours entre creation du devis et date du dernier paiement.

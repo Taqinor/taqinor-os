@@ -22,8 +22,8 @@
 // Le prix de la pompe et le seuil société sont RESTAURÉS en afterAll (base
 // partagée, workers: 1). Le job `e2e-shard` de la CI énumère ses specs : ce
 // fichier n'y est pas encore (décision de budget CI, voir i18n-quote-journey).
-import { execFileSync } from 'node:child_process'
 import { test, expect } from '@playwright/test'
+import { connecterPortail, executerDansDjango, ouvrirJalonsChantier } from './helpers.js'
 
 const API = '/api/django'
 const MOT_DE_PASSE_PORTAIL = 'Portail-E2E-2026!'
@@ -52,13 +52,13 @@ async function textePdf(octets) {
   return texte
 }
 
-/** Pose le mot de passe du compte portail dans le conteneur Django local. */
+/** Pose le mot de passe du compte portail. Passe par `executerDansDjango`
+ *  (helpers.js) : le job e2e-full n'a PAS de docker (gunicorn sur l'hôte) —
+ *  l'ancien `docker compose exec` en dur rendait « spawnSync docker ENOENT ». */
 function poserMotDePassePortail(username) {
-  const [cmd, ...args] = (process.env.E2E_DJANGO_EXEC || 'docker compose exec -T django_core').split(' ')
-  const code = 'from django.contrib.auth import get_user_model as g; '
+  executerDansDjango('from django.contrib.auth import get_user_model as g; '
     + `u = g().objects.get(username=${JSON.stringify(username)}); `
-    + `u.set_password(${JSON.stringify(MOT_DE_PASSE_PORTAIL)}); u.save()`
-  execFileSync(cmd, [...args, 'python', 'manage.py', 'shell', '-c', code], { stdio: 'pipe' })
+    + `u.set_password(${JSON.stringify(MOT_DE_PASSE_PORTAIL)}); u.save()`)
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -168,20 +168,24 @@ test('AGR624 — seuil saisi en Paramètres, recette saisie à l’écran, comme
   expect(promis, 'le devis doit porter un débit promis (pompe à courbe chiffrée)').toBeGreaterThan(0)
   etat.mesure = Math.round((promis / 2) * 10) / 10
 
-  await page.goto(`/chantiers?id=${etat.chantierId}`)
+  // APX25 : la fiche de recette vit dans l'onglet « Jalons & gates ».
+  await ouvrirJalonsChantier(page, etat.chantierId)
   await page.getByRole('button', { name: /fiche de recette/ }).first().click()
   await page.locator('#recette-pompage-hmt_mesuree_m').fill('45')
   await page.locator('#recette-pompage-debit_mesure_m3h').fill(String(etat.mesure))
+  // AGR609 (d) : l'écart est jugé sur l'état APRÈS l'écriture — une mesure hors
+  // seuil SANS commentaire est refusée dès cet enregistrement (400 FR), et le
+  // message affiché sous le champ porte l'écart chiffré.
   await page.getByRole('button', { name: 'Enregistrer la fiche' }).click()
-  // L'écart est affiché ; hors seuil, le commentaire devient obligatoire.
-  await expect(page.getByTestId('cmp-ecart')).toContainText('%', { timeout: 20_000 })
-  await expect(page.getByTestId('commentaire-requis')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Enregistrer la fiche' }).click()
-  await expect(page.getByTestId('erreur-commentaire_ecart')).toBeVisible({ timeout: 20_000 })
+  const erreur = page.getByTestId('erreur-commentaire_ecart')
+  await expect(erreur).toBeVisible({ timeout: 20_000 })
+  await expect(erreur).toContainText('%')
   await page.locator('#recette-pompage-commentaire_ecart').fill('Vanne de refoulement partiellement fermée à l’essai.')
   await page.getByRole('button', { name: 'Enregistrer la fiche' }).click()
-  await expect(page.getByTestId('erreur-commentaire_ecart')).toHaveCount(0, { timeout: 20_000 })
+  await expect(erreur).toHaveCount(0, { timeout: 20_000 })
+  // Enregistrée : l'écart servi est affiché, hors seuil ⇒ commentaire obligatoire.
+  await expect(page.getByTestId('cmp-ecart')).toContainText('%', { timeout: 20_000 })
+  await expect(page.getByTestId('commentaire-requis')).toBeVisible()
 
   const relue = await json(await request.get(
     `${API}/installations/chantiers/${etat.chantierId}/recette-pompage/`), 'recette relue')
@@ -191,6 +195,14 @@ test('AGR624 — seuil saisi en Paramètres, recette saisie à l’écran, comme
 })
 
 test('AGR624 — PV de réception PDF : mesures et mention art. 3', async ({ request }) => {
+  // ADOC72 (documents/views.py `_refus_etat`) : les documents de chantier ne
+  // s'émettent qu'à partir du statut « installé » (409 sinon). Le chantier
+  // pompage hors réseau passe par « en cours » puis « installé » (aucune garde
+  // C&I raccordé — CIQ621 — ne s'y applique).
+  for (const statut of ['en_cours', 'installe']) {
+    await json(await request.patch(`${API}/installations/chantiers/${etat.chantierId}/`,
+      { data: { statut } }), `chantier « ${statut} »`)
+  }
   const pdf = await request.get(`${API}/documents/chantiers/${etat.chantierId}/pv-reception/`)
   expect(pdf.status(), 'PV de réception').toBe(200)
   const texte = await textePdf(await pdf.body())
@@ -227,11 +239,9 @@ test('AGR624 — portail client : recette visible, relevé m³ saisi ; la fiche 
   } catch (err) {
     throw new Error(`mot de passe du compte portail non posé (E2E_DJANGO_EXEC) : ${err.message}`)
   }
-  const portail = await playwright.request.newContext({ baseURL })
+  // AUD139 : le mot de passe temporaire doit être changé avant toute route portail.
+  const portail = await connecterPortail(playwright, baseURL, prov.username, MOT_DE_PASSE_PORTAIL)
   try {
-    const login = await portail.post(`${API}/token/`, {
-      data: { username: prov.username, password: MOT_DE_PASSE_PORTAIL } })
-    expect(login.status(), 'connexion du client portail').toBe(200)
 
     const detail = await json(await portail.get(`${API}/portail/mes-chantiers/${etat.chantierId}/`),
       'chantier côté client')

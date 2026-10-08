@@ -639,6 +639,43 @@ def pending_steps_for_company(company):
     )
 
 
+# ── APAR46 — « qui peut décider » porté par le SERVICE ────────────────────
+#
+# La garde de palier n'existait que sur certaines VUES : la boîte unifiée
+# (``reporting.approbations``), la décision en masse et le jeton push
+# appelaient ``decide_step`` sans aucun contrôle — un Commercial y approuvait.
+# Le contrôle vit désormais ICI, quel que soit le chemin. ``user=None`` =
+# décision SYSTÈME (escalade, moteur) : jamais refusée.
+
+MOTIF_PALIER = (
+    'Décision réservée au palier approbateur (Responsable ou Admin).')
+
+
+def a_palier_approbateur(user):
+    """Vrai si ``user`` porte le palier Responsable/Admin — même prédicat que
+    ``authentication.permissions.IsAdminOrResponsableTier`` (palier de menu
+    faisant autorité, jamais ``is_responsable`` qui laisse passer un rôle
+    personnalisé type « Commercial »)."""
+    if user is None:
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    return getattr(user, 'menu_tier', None) in ('admin', 'responsable')
+
+
+def verifier_decideur(user, *, on_behalf_of=None):
+    """APAR46 — lève ``PermissionDenied`` (403) si ``user`` n'a pas le palier
+    approbateur. Une décision prise AU NOM d'un délégant (NTWFL3) vaut le
+    palier du délégant. ``user=None`` (système) passe toujours."""
+    from django.core.exceptions import PermissionDenied
+
+    if user is None:
+        return
+    if a_palier_approbateur(user) or a_palier_approbateur(on_behalf_of):
+        return
+    raise PermissionDenied(MOTIF_PALIER)
+
+
 def decide_step(
         step, *, approve, user=None, commentaire='', now=None,
         on_behalf_of=None):
@@ -664,6 +701,7 @@ def decide_step(
     instance séquentielle classique (un seul membre en attente), ``step``
     EST déjà l'étape que ``etape_courante_de`` aurait résolue — comportement
     identique."""
+    verifier_decideur(user, on_behalf_of=on_behalf_of)  # APAR46
     if on_behalf_of is not None:
         commentaire = (
             f'[Décidé par {user} au nom de {on_behalf_of}] {commentaire}'
@@ -737,6 +775,7 @@ def approuver_en_masse(steps, *, user=None, commentaire='', now=None):
     Lève ``ValueError`` si la sélection est vide ou mélange plusieurs
     cohortes (types d'objet ou paliers différents) — aucune approbation
     « à peu près identique » n'est acceptée."""
+    verifier_decideur(user)  # APAR46 — avant tout : jamais un lot partiel
     moment = _resolve_now(now)
     selection = list(steps)
     if not selection:

@@ -24,6 +24,25 @@ def devis_for_lead(lead, ids):
         .order_by('id'))
 
 
+def devis_avec_totaux(qs):
+    """APRF7 (C-APRF-004) — LE préchargement unique de ce que lit
+    ``Devis.total_ttc`` / ``total_ht``, pour un devis mono-option ET un devis à
+    deux options : ``lignes__produit``.
+
+    ``Devis.total_*`` → ``domain.argent.totaux`` → ``utils.options.
+    option_effective`` → ``deux_options_declarees`` → ``lignes_avec_produit``,
+    puis (deux options) ``_lignes_du_devis(avec_produit=True)`` → encore
+    ``lignes_avec_produit``. Ce lecteur ne sert le cache que si CHAQUE ligne
+    porte déjà son produit : avec ``prefetch_related('lignes')`` seul, il
+    retombait sur ``select_related('produit')`` — +1 requête par devis mono,
+    +2 par devis deux options (sondes V_VA F/G/G2). ``lignes__produit`` peuple
+    les deux caches ; ``ligne.devis`` est reposé par le prefetch inverse.
+
+    Prend et rend un QUERYSET (chaînable, aucune évaluation). Aucun montant ne
+    change : mêmes lignes, même ordre, mêmes objets. Lecture seule."""
+    return qs.prefetch_related('lignes__produit')
+
+
 def devis_lecture_seule_pour_lead(lead):
     """VT3 — les devis d'un lead, en LECTURE SEULE, pour un panneau externe.
 
@@ -48,10 +67,9 @@ def devis_lecture_seule_pour_lead(lead):
 
     cent = Decimal('0.01')
     dossiers = []
-    devis_qs = (Devis.objects
-                .filter(lead=lead, company=lead.company)
-                .prefetch_related('lignes')
-                .order_by('-id'))
+    # APRF7 — préchargement unique des totaux (lignes ET leur produit).
+    devis_qs = devis_avec_totaux(
+        Devis.objects.filter(lead=lead, company=lead.company).order_by('-id'))
     for devis in devis_qs:
         lignes = []
         for ligne in devis.lignes.all():
@@ -672,7 +690,10 @@ def montants_devis(devis_ids, company):
     if not devis_ids:
         return {}
     out = {}
-    for devis in Devis.objects.filter(company=company, id__in=devis_ids):
+    # APRF7 — préchargement unique : requêtes constantes quel que soit le
+    # nombre de devis (mono ET deux options).
+    for devis in devis_avec_totaux(
+            Devis.objects.filter(company=company, id__in=devis_ids)):
         try:
             ht = Decimal(str(devis.total_ht or 0))
             ttc = Decimal(str(devis.total_ttc or 0))
@@ -1002,9 +1023,11 @@ def ca_par_entite(company, entite_ids):
         }
 
     out = {}
-    devis_qs = (Devis.objects
-                .filter(company=company, entite_id__in=ids)
-                .exclude(statut=Devis.Statut.REFUSE))
+    # APRF7 — préchargement unique des totaux (``total_ttc`` sommé plus bas).
+    devis_qs = devis_avec_totaux(
+        Devis.objects
+        .filter(company=company, entite_id__in=ids)
+        .exclude(statut=Devis.Statut.REFUSE))
     for devis in devis_qs:
         entry = out.setdefault(devis.entite_id, _vide())
         try:

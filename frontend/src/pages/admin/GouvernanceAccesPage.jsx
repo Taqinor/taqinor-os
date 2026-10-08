@@ -22,6 +22,12 @@ const asList = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
 
 const SEVERITE_TONE = { info: 'info', warning: 'warning', critique: 'danger' }
 
+// Le serveur fige le rôle dans un objet JSON {role_id, role_nom}
+// (accessreview.services.generate_items) : on affiche son libellé, jamais
+// l'objet brut (React #31 relevé par le marcheur aléatoire « parametres »).
+const libelleRole = (snapshot) => (snapshot && typeof snapshot === 'object'
+  ? (snapshot.role_nom || '—') : (snapshot || '—'))
+
 // ── Campagnes de revue d'accès ────────────────────────────────────────────────
 function CampagnesTab() {
   const [campaigns, setCampaigns] = useState([])
@@ -85,7 +91,7 @@ function CampagnesTab() {
                 {(c.items ?? []).map((it) => (
                   <div key={it.id} className="flex items-center gap-2 py-1 text-sm">
                     <span>Compte #{it.user}</span>
-                    <span className="text-muted-foreground">{it.role_snapshot}</span>
+                    <span className="text-muted-foreground">{libelleRole(it.role_snapshot)}</span>
                     <Badge tone={it.decision === 'revoque' ? 'danger' : it.decision === 'maintenu' ? 'success' : 'neutral'}>
                       {it.decision}
                     </Badge>

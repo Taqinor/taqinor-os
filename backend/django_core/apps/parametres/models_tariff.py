@@ -178,8 +178,8 @@ class TariffSettings(models.Model):
         return f'Tarification & ROI (v{self.version})'
 
     @classmethod
-    def get(cls, company=None):
-        """Retourne (ou crée) l'enregistrement pour une société donnée.
+    def _charger(cls, company=None):
+        """Lecture NON mémoïsée (ou création) — voir ``get`` (APRF2).
 
         Sans société, retombe sur l'instance pk=1 (rétro-compat, comme
         ``CompanyProfile.get`` / ``DocumentTemplates.get``)."""
@@ -188,6 +188,33 @@ class TariffSettings(models.Model):
             return obj
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+    @staticmethod
+    def _cle_memo_id(company_id):
+        """APRF2 — clé du mémo par requête ; porte TOUJOURS l'identité société
+        (aucune fuite multi-tenant)."""
+        return ('parametres.tariff_settings.get', company_id)
+
+    @classmethod
+    def get(cls, company=None):
+        """Retourne (ou crée) l'enregistrement pour une société donnée.
+
+        APRF2 — MÉMOÏSÉ PAR REQUÊTE (``core.request_cache``, même patron que
+        ``CompanyProfile.get``) : la liste des devis le lisait deux fois PAR
+        ligne. Hors requête (Celery, PDF, shell) le cache est inactif : une
+        requête par appel, comme avant. ``save()`` invalide le mémo."""
+        from core import request_cache
+        return request_cache.memoize(
+            cls._cle_memo_id(getattr(company, 'id', None)),
+            lambda: cls._charger(company))
+
+    def save(self, *args, **kwargs):
+        # APRF2 — toute écriture périme le mémo de CETTE requête (clé société
+        # ET clé sans société, qui peut viser la même ligne pk=1).
+        from core import request_cache
+        for company_id in {self.company_id, None}:
+            request_cache.forget(self._cle_memo_id(company_id))
+        return super().save(*args, **kwargs)
 
     def effective_tiers(self):
         """Liste de paliers à utiliser : surcharge si renseignée, sinon défaut.

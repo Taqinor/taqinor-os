@@ -35,8 +35,11 @@ User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
 
 
+# ADEP34 — ``confirmation_email`` suit ``is_email_configured`` : une clé
+# d'envoi posée ET un backend qui envoie (locmem, le double de test, compte).
 @override_settings(CACHES={'default': {
-    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
+    ANYMAIL={'SENDINBLUE_API_KEY': 'pv3-test-key'})
 class PreviewV3ConditionsPubliquesTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='PV3 Co')

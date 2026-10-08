@@ -219,7 +219,8 @@ class TestRobotNeNotifieJamais(TestCase):
         self.devis = Devis.objects.get_or_create(
             company=self.company, reference='DEV-QJR-N1',
             defaults={'client': self.client_obj, 'lead': self.lead,
-                      'taux_tva': Decimal('20')},
+                      'taux_tva': Decimal('20'),
+                      'statut': Devis.Statut.ENVOYE},
         )[0]
         self.link = ShareLink.objects.create(
             company=self.company, devis=self.devis)

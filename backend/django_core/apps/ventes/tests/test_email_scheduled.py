@@ -291,16 +291,22 @@ class TestQW8EmailConfigBugfix(TestCase):
     configured."""
 
     @override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''})
-    def test_sendinblue_key_detected_even_on_console_backend(self):
+    def test_sendinblue_key_on_console_backend_is_not_configured(self):
+        """ADEP34 — la clé Brevo est bien LUE (sous SENDINBLUE_API_KEY, QW8),
+        mais sur le backend console rien ne part : « non configuré »."""
         from apps.ventes import email_service
-        # Avant le correctif QW8 : is_email_configured() cherchait
-        # ANYMAIL['BREVO_API_KEY'] (jamais posée), retombait sur le backend
-        # (console → False) — un vrai déploiement Brevo configuré via
-        # BREVO_API_KEY seul (sans changer EMAIL_BACKEND) restait "non
-        # configuré".
+        self.assertFalse(email_service.is_email_configured())
+
+    @override_settings(
+        ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''},
+        EMAIL_BACKEND='anymail.backends.sendinblue.EmailBackend')
+    def test_sendinblue_key_detected_on_sending_backend(self):
+        from apps.ventes import email_service
         self.assertTrue(email_service.is_email_configured())
 
-    @override_settings(ANYMAIL={'SENDINBLUE_API_KEY': '', 'SENDGRID_API_KEY': 'sg-key'})
+    @override_settings(
+        ANYMAIL={'SENDINBLUE_API_KEY': '', 'SENDGRID_API_KEY': 'sg-key'},
+        EMAIL_BACKEND='anymail.backends.sendgrid.EmailBackend')
     def test_sendgrid_key_also_detected(self):
         from apps.ventes import email_service
         self.assertTrue(email_service.is_email_configured())
@@ -335,7 +341,8 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect QW8', telephone='+212600998877',
             owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
-        notify_lead_callback_requested(lead)
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify_lead_callback_requested(lead)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('owner@example.com', mail.outbox[0].to)
 
@@ -347,7 +354,8 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect QW8b', telephone='+212600998866',
             owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
-        notify_lead_callback_requested(lead)
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify_lead_callback_requested(lead)
         self.assertEqual(len(mail.outbox), 0)
 
     @override_settings(
@@ -365,7 +373,8 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect générique',
             telephone='+212600998855', owner=self.owner)
-        notify_new_lead(lead)
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify_new_lead(lead)
         self.assertEqual(len(mail.outbox), 1)
 
     def test_le_defaut_generique_reste_email_off(self):

@@ -16,12 +16,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 
 from .models import SettingsAuditLog
 from .models_statuses import StatutConfig
 from .serializers_statuses import StatutConfigSerializer
 from .statuses_defaults import VALID_DOMAINES, default_statuses
+from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
 
@@ -57,7 +60,8 @@ def effective_statuses(company, domaine):
     return rows
 
 
-class StatutConfigViewSet(TenantMixin, viewsets.ModelViewSet):
+class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
+                          viewsets.ModelViewSet):
     """Surcharges d'affichage des statuts métier (N58).
 
     Filtrée par `?domaine=`. La création/màj force `company` côté serveur via
@@ -65,11 +69,18 @@ class StatutConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = StatutConfig.objects.all()
     serializer_class = StatutConfigSerializer
+    # APAR28 — CRUD direct journalisé (le ``bulk`` garde son propre audit).
+    audit_section = 'statuts'
+    audit_libelle = 'Statut'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        # APAR5 — écriture des réglages société : palier ET droit
+        # `parametres_modifier` (même couple qu'ASEC31) — Admin RH,
+        # Technicien/Commercial responsable n'y écrivent plus.
+        return [IsAdminOrResponsableTier(),
+                HasPermissionOrLegacy('parametres_modifier')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

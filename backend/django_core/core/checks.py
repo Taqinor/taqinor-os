@@ -278,3 +278,197 @@ def verifier_secrets_publies():
                  '").',
             id=identifiant))
     return erreurs
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP30 — ``core.E_RLS`` : RLS allumé SANS garantie = fausse sécurité.
+# ─────────────────────────────────────────────────────────────────────────────
+#: Le middleware qui fait tenir le GUC ``app.current_company`` (execute_wrapper).
+MIDDLEWARE_TENANT = 'core.tenant_context.TenantContextMiddleware'
+
+ID_RLS = 'core.E_RLS'
+#: Le rôle runtime n'a pas pu être lu (base injoignable) — jamais bloquant.
+ID_RLS_INVERIFIABLE = 'core.W_RLS_INVERIFIABLE'
+
+
+def role_runtime_rls(environ=None):
+    """Le rôle Postgres sous lequel le process WEB lit les données, flag ON.
+
+    ``DB_APP_USER`` s'il est posé (bascule NTPLT3), sinon le rôle de
+    ``DATABASES['default']`` — qui est alors le rôle owner.
+    """
+    environ = os.environ if environ is None else environ
+    role = (environ.get('DB_APP_USER') or '').strip()
+    if role:
+        return role
+    return (settings.DATABASES.get('default', {}).get('USER') or '').strip()
+
+
+def lire_attributs_role(role):
+    """``(rolsuper, rolbypassrls)`` du rôle, ou ``None`` s'il n'existe pas."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = %s',
+            [role])
+        ligne = cursor.fetchone()
+    return None if ligne is None else (bool(ligne[0]), bool(ligne[1]))
+
+
+@register(Tags.security)
+def verifier_garantie_rls(app_configs=None, **kwargs):
+    """ADEP30 — refuse ``POSTGRES_RLS_ENABLED=1`` sans garantie réelle.
+
+    Deux états contradictoires deviennent des ERREURS (flag ON seulement ;
+    flag OFF, défaut → no-op total, aucune requête) :
+
+      * le middleware ``TenantContextMiddleware`` est absent de MIDDLEWARE :
+        la pose du GUC ne tient pas pendant les requêtes HTTP ;
+      * le rôle runtime (``DB_APP_USER``, sinon le rôle de connexion) est
+        superuser ou ``BYPASSRLS`` : les policies sont contournées, RLS n'est
+        qu'un affichage.
+
+    Sous ``manage.py test`` (``settings.TESTING``) le contrôle du RÔLE est
+    sauté : la suite RLS tourne délibérément sous le rôle propriétaire et
+    bascule par ``SET ROLE`` sur un rôle NOBYPASSRLS qu'elle crée elle-même.
+    Base injoignable → avertissement, jamais une erreur.
+    """
+    from django.core.checks import Warning as CheckWarning
+
+    from .tenant_context import rls_enabled
+
+    if not rls_enabled():
+        return []
+
+    messages = []
+    if MIDDLEWARE_TENANT not in list(getattr(settings, 'MIDDLEWARE', []) or []):
+        messages.append(Error(
+            'POSTGRES_RLS_ENABLED=1 mais TenantContextMiddleware est absent de '
+            'MIDDLEWARE : le GUC app.current_company n\'est jamais posé pendant '
+            'les requêtes HTTP — RLS allumé sans garantie.',
+            hint=f'Ajoutez « {MIDDLEWARE_TENANT} » à MIDDLEWARE (après '
+                 'l\'authentification), ou coupez POSTGRES_RLS_ENABLED.',
+            id=ID_RLS))
+
+    if getattr(settings, 'TESTING', False):
+        return messages
+
+    role = role_runtime_rls()
+    try:
+        attributs = lire_attributs_role(role)
+    except Exception as exc:  # noqa: BLE001 — base injoignable : signaler, pas bloquer
+        messages.append(CheckWarning(
+            f'POSTGRES_RLS_ENABLED=1 : impossible de vérifier les attributs du '
+            f'rôle runtime « {role} » ({type(exc).__name__}).',
+            hint='Relancez `manage.py check` avec la base joignable.',
+            id=ID_RLS_INVERIFIABLE))
+        return messages
+
+    if attributs is None:
+        messages.append(Error(
+            f'POSTGRES_RLS_ENABLED=1 mais le rôle runtime « {role} » n\'existe '
+            f'pas dans la base.',
+            hint='Provisionnez-le avec backend/db/rls_roles.sql, ou corrigez '
+                 'DB_APP_USER.',
+            id=ID_RLS))
+    elif attributs[0] or attributs[1]:
+        nature = 'superuser' if attributs[0] else 'BYPASSRLS'
+        messages.append(Error(
+            f'POSTGRES_RLS_ENABLED=1 mais le rôle runtime « {role} » est '
+            f'{nature} : il contourne les policies RLS, la défense est '
+            f'inopérante.',
+            hint='Posez DB_APP_USER=<rôle NOSUPERUSER NOBYPASSRLS> '
+                 '(backend/db/rls_roles.sql), ou coupez POSTGRES_RLS_ENABLED.',
+            id=ID_RLS))
+    return messages
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP31 — ``core.W_EMAIL`` / ``core.E_EMAIL`` : réglages e-mail contradictoires.
+# ─────────────────────────────────────────────────────────────────────────────
+ID_W_EMAIL = 'core.W_EMAIL'
+ID_E_EMAIL = 'core.E_EMAIL'
+
+#: Backends Django qui n'ENVOIENT rien (impression, mémoire, fichier, néant).
+BACKENDS_NON_ENVOYEURS = frozenset({
+    'django.core.mail.backends.console.EmailBackend',
+    'django.core.mail.backends.dummy.EmailBackend',
+    'django.core.mail.backends.locmem.EmailBackend',
+    'django.core.mail.backends.filebased.EmailBackend',
+})
+
+#: Les clés d'envoi lues par anymail (``settings.ANYMAIL``) et leur variable.
+CLES_ENVOI = (
+    ('SENDINBLUE_API_KEY', 'BREVO_API_KEY'),
+    ('SENDGRID_API_KEY', 'SENDGRID_API_KEY'),
+)
+
+
+def backend_email_envoie(backend=None):
+    """SOURCE UNIQUE — le backend e-mail chargé envoie-t-il réellement ?
+
+    Faux pour console / dummy / locmem / filebased (rien ne quitte le
+    process) ; vrai pour tout autre backend (anymail, SMTP…). Prédicat de la
+    fondation ``core``, réutilisable par les apps (jamais l'inverse).
+    """
+    if backend is None:
+        backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
+    return bool(backend) and backend not in BACKENDS_NON_ENVOYEURS
+
+
+def cles_envoi_posees():
+    """Les variables d'environnement des clés d'envoi posées (non vides)."""
+    anymail = getattr(settings, 'ANYMAIL', None) or {}
+    return [variable for cle, variable in CLES_ENVOI
+            if str(anymail.get(cle) or '').strip()]
+
+
+def expediteur_non_verifiable(expediteur=None):
+    """Vrai si ``DEFAULT_FROM_EMAIL`` est en ``*.local`` (jamais vérifiable)."""
+    if expediteur is None:
+        expediteur = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or ''
+    domaine = str(expediteur).strip().rstrip('>').rsplit('@', 1)[-1].lower()
+    return domaine == 'local' or domaine.endswith('.local')
+
+
+def contradictions_email():
+    """Les états e-mail contradictoires, en phrases (vide = état sain)."""
+    backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
+    constats = []
+    cles = cles_envoi_posees()
+    if cles and not backend_email_envoie(backend):
+        constats.append(
+            f'{", ".join(cles)} est posé mais EMAIL_BACKEND vaut « {backend} » '
+            f'— aucun e-mail ne part réellement (il est imprimé ou jeté) alors '
+            f'que la configuration semble prête à envoyer.')
+    expediteur = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or ''
+    if backend_email_envoie(backend) and expediteur_non_verifiable(expediteur):
+        constats.append(
+            f'EMAIL_BACKEND « {backend} » envoie réellement mais '
+            f'DEFAULT_FROM_EMAIL vaut « {expediteur} » (domaine .local) — '
+            f'aucun fournisseur ne peut vérifier cet expéditeur.')
+    return constats
+
+
+_INDICE_EMAIL = (
+    'Posez EMAIL_BACKEND selon le fournisseur (Brevo : '
+    'anymail.backends.sendinblue.EmailBackend ; SendGrid : '
+    'anymail.backends.sendgrid.EmailBackend) et DEFAULT_FROM_EMAIL=<expéditeur '
+    'vérifié>, ou retirez la clé d\'envoi pour rester en console.')
+
+
+@register(Tags.compatibility)
+def verifier_email_au_demarrage(app_configs=None, **kwargs):
+    """ADEP31 — avertissement au démarrage, JAMAIS bloquant (migrate passe)."""
+    from django.core.checks import Warning as CheckWarning
+
+    return [CheckWarning(constat, hint=_INDICE_EMAIL, id=ID_W_EMAIL)
+            for constat in contradictions_email()]
+
+
+@register(Tags.security, deploy=True)
+def verifier_email_deploiement(app_configs=None, **kwargs):
+    """ADEP31 — erreur sous ``manage.py check --deploy`` seulement."""
+    return [Error(constat, hint=_INDICE_EMAIL, id=ID_E_EMAIL)
+            for constat in contradictions_email()]

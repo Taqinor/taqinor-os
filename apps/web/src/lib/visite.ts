@@ -207,6 +207,20 @@ function safeLocalStorage(): SimpleStorage | undefined {
 }
 
 /**
+ * AACQ44 (C-AACQ-044) — le consentement `tq_consent` (localStorage, posé par
+ * ConsentBanner.astro) vaut-il 'granted' ? Même signal que le gate de
+ * `demarrerBalise`. Toute erreur de lecture (stockage bloqué, hors DOM) vaut
+ * « pas de consentement » : jamais un identifiant écrit par défaut.
+ */
+function consentementAccorde(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('tq_consent') === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Identifiant d'appareil ANONYME, stable par navigateur (localStorage +
  * cookie first-party partagé avec l'ERP, jamais un cookie tiers, jamais
  * dérivé d'une donnée de contact) : généré une seule fois puis relu.
@@ -222,11 +236,19 @@ function safeLocalStorage(): SimpleStorage | undefined {
  * l'écriture en localStorage échoue à une étape où elle est nécessaire, la
  * fonction redescend `''` (storage cassé = rien de stable à corréler),
  * même si le cookie a par ailleurs pu être écrit avec succès.
+ *
+ * AACQ44 — LA GARDE DE CONSENTEMENT VIT ICI : sans `tq_consent` = 'granted'
+ * (refus explicite OU bannière jamais répondue), la fonction rend `''` AVANT
+ * toute lecture/écriture — ni cookie `tq_appareil`, ni clé localStorage. Les
+ * appelants (tunnel FR/EN/AR, proposition, questionnaire, balise de visite)
+ * n'ont rien à changer : un `appareilId` vide est déjà lu comme absent par
+ * l'ERP (`crm/webhooks.py`).
  */
 export function appareilId(
   storage: SimpleStorage | undefined = safeLocalStorage(),
   cookies: SimpleCookieStore | undefined = safeDocumentCookieStore(),
 ): string {
+  if (!consentementAccorde()) return '';
   if (!storage) return '';
 
   let existing: string | null;
@@ -496,6 +518,9 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
     // dans le seul chemin qui démarre réellement la balise : ce point n'est
     // atteint qu'APRÈS le gate consentement ci-dessous (granted d'entrée, ou
     // tq:consent-change → granted). Jamais avant, jamais si denied/absent.
+    // AACQ44 — appareilId() porte désormais LUI-MÊME la garde de consentement ;
+    // ce gate local reste (défense en profondeur, il évite aussi d'armer le
+    // battement pour rien).
     id = appareilId(opts.storage);
     if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
     started = true;

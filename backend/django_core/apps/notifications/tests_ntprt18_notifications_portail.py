@@ -76,9 +76,10 @@ class PortailClientNotifyTests(TestCase):
         # (ANYMAIL vide, réglage de test par défaut), l'email est un no-op
         # silencieux — l'in-app reste créée.
         with override_settings(ANYMAIL={}):
-            notif = notify(
-                self.compte_client, EventType.PORTAIL_FACTURE_ECHUE,
-                'Facture FA-1 échue')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notif = notify(
+                    self.compte_client, EventType.PORTAIL_FACTURE_ECHUE,
+                    'Facture FA-1 échue')
         self.assertIsNotNone(notif)
         self.assertEqual(len(mail.outbox), 0)
 
@@ -91,10 +92,11 @@ class PortailClientNotifyTests(TestCase):
             user=self.compte_client,
             event_type=EventType.PORTAIL_JALON_CHANTIER_ATTEINT).exists())
 
-        notify(
-            self.compte_client, EventType.PORTAIL_JALON_CHANTIER_ATTEINT,
-            'Jalon atteint sur votre chantier',
-            body='La pose des panneaux est terminée.')
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify(
+                self.compte_client, EventType.PORTAIL_JALON_CHANTIER_ATTEINT,
+                'Jalon atteint sur votre chantier',
+                body='La pose des panneaux est terminée.')
 
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ['client@example.com'])
@@ -104,7 +106,8 @@ class PortailClientNotifyTests(TestCase):
         for event_type in PORTAIL_EVENT_TYPES:
             with self.subTest(event_type=event_type):
                 mail.outbox = []
-                notify(self.compte_client, event_type, 'Titre', body='x')
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    notify(self.compte_client, event_type, 'Titre', body='x')
                 self.assertEqual(len(mail.outbox), 1)
 
 

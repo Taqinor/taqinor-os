@@ -47,12 +47,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/tasks.py:2327` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
 | `backend/django_core/apps/adsengine/veille_decouverte.py:219` | get_or_create | VeilleAnnonceur.objects | company_id, page_id |
 | `backend/django_core/apps/adsengine/veille_decouverte.py:224` | get_or_create | VeillePubVue.objects | ad_archive_id, company_id, requete |
-| `backend/django_core/apps/adsengine/views.py:2397` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2610` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2617` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2413` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2626` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2633` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:221` | update_or_create | CtwaReferral.objects | company, wa_message_id |
-| `backend/django_core/apps/automation/templates.py:252` | get_or_create | AutomationRule.objects | company, nom |
-| `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
+| `backend/django_core/apps/automation/templates.py:253` | get_or_create | AutomationRule.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py:57` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py:90` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/calepinage/views/calepinages.py:148` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
@@ -60,10 +59,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py:320` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
 | `backend/django_core/apps/crm/services.py:223` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:12501` | get_or_create | Playbook.objects | company, nom |
-| `backend/django_core/apps/crm/services.py:12508` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/services.py:12510` | get_or_create | PlaybookTache.objects | etape, libelle |
-| `backend/django_core/apps/crm/services.py:12588` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
+| `backend/django_core/apps/crm/services.py:12502` | get_or_create | Playbook.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:12509` | get_or_create | PlaybookEtape.objects | playbook, stage |
+| `backend/django_core/apps/crm/services.py:12511` | get_or_create | PlaybookTache.objects | etape, libelle |
+| `backend/django_core/apps/crm/services.py:12589` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/views.py:3431` | get_or_create | LeadTag.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:3445` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:3457` | get_or_create | MotifPerte.objects | company, nom |
@@ -83,7 +82,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/services.py:4591` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
 | `backend/django_core/apps/ged/services.py:5307` | get_or_create | DocumentTag.objects | company, slug |
 | `backend/django_core/apps/ged/services.py:6669` | get_or_create | Folder.objects | cabinet, company, nom, parent |
-| `backend/django_core/apps/ged/views.py:2353` | get_or_create | DocumentLien.objects | content_type, document, object_id |
+| `backend/django_core/apps/ged/views.py:2380` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/installations/field_capture.py:77` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:332` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:389` | get_or_create | SafetySignoff.objects | intervention |
@@ -124,15 +123,14 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:63` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:75` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/selectors.py:254` | update_or_create | Holiday.objects | company, date, pays |
-| `backend/django_core/apps/notifications/services.py:1049` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1137` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1187` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
-| `backend/django_core/apps/notifications/services.py:1338` | update_or_create | SnoozedItem.objects | object_id, source, user |
+| `backend/django_core/apps/notifications/services.py:1057` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1145` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1195` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
+| `backend/django_core/apps/notifications/services.py:1346` | update_or_create | SnoozedItem.objects | object_id, source, user |
 | `backend/django_core/apps/notifications/views.py:153` | get_or_create | NotificationPreference.objects | event_type, user |
 | `backend/django_core/apps/notifications/views.py:237` | get_or_create | WorkingHoursConfig.objects | company |
 | `backend/django_core/apps/notifications/views.py:545` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
-| `backend/django_core/apps/parametres/fetes_mobiles.py:97` | update_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/parametres/models_company.py:1095` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:1100` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:108` | get_or_create | cls.objects | company |
@@ -145,11 +143,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_taxes.py:103` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/models_units.py:83` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/traductions_manquantes.py:63` | get_or_create | TraductionManquante.objects | cle, company, langue |
-| `backend/django_core/apps/parametres/views_config.py:213` | get_or_create | DocumentTemplates.objects | company |
-| `backend/django_core/apps/parametres/views_email.py:124` | get_or_create | EmailTemplate.objects | cle, company |
-| `backend/django_core/apps/parametres/views_messages.py:118` | get_or_create | MessageTemplate.objects | cle, company |
-| `backend/django_core/apps/parametres/views_messages.py:148` | get_or_create | MessageTemplate.objects | cle, company |
-| `backend/django_core/apps/parametres/views_statuses.py:138` | get_or_create | StatutConfig.objects | cle, company, domaine |
+| `backend/django_core/apps/parametres/views_config.py:257` | get_or_create | DocumentTemplates.objects | company |
+| `backend/django_core/apps/parametres/views_email.py:135` | get_or_create | EmailTemplate.objects | cle, company |
+| `backend/django_core/apps/parametres/views_messages.py:142` | get_or_create | MessageTemplate.objects | cle, company |
+| `backend/django_core/apps/parametres/views_messages.py:180` | get_or_create | MessageTemplate.objects | cle, company |
+| `backend/django_core/apps/parametres/views_statuses.py:149` | get_or_create | StatutConfig.objects | cle, company, domaine |
 | `backend/django_core/apps/parametres/views_translations.py:137` | get_or_create | TranslationOverride.objects | company, key, locale |
 | `backend/django_core/apps/portail/services.py:334` | get_or_create | ComptePortailClient.objects | client, company |
 | `backend/django_core/apps/portail/services.py:357` | get_or_create | Role.objects | company, nom |

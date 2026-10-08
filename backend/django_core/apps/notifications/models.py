@@ -946,3 +946,26 @@ class MessageAccueil(TenantModel):
 
     def __str__(self):
         return f'MessageAccueil → {self.destinataire_id} ({self.visible_a_partir_de})'
+
+
+class WhatsAppInboundMessage(TenantModel):
+    """APAR22 - marqueur d'idempotence des messages WhatsApp BSP entrants.
+
+    Une ligne par ``(company, wa_message_id)`` : le webhook ne route un message
+    vers le SAV qu'une fois, meme si Meta le renvoie (rejeu / retry).
+    """
+
+    wa_message_id = models.CharField(
+        max_length=255, verbose_name='ID message WhatsApp (wamid)')
+
+    class Meta:
+        verbose_name = 'Message WhatsApp entrant'
+        verbose_name_plural = 'Messages WhatsApp entrants'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'wa_message_id'],
+                name='nwa_inbound_company_wamid_uniq'),
+        ]
+
+    def __str__(self):
+        return f'WA-in:{self.wa_message_id}'

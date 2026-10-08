@@ -181,6 +181,10 @@ _CHAMPS_ENTETE_VISIBLES = (
     'client_id', 'date_validite', 'taux_tva', 'remise_globale', 'echeancier',
     'acompte_pct', 'acompte_montant',
 )
+#: ADEV18 — nom PUBLIC de la même liste : l'instantané restaurable
+#: (``historique_config.configuration_devis_contenu``) la lit pour porter
+#: chaque champ d'en-tête que l'empreinte compare — une seule source.
+CHAMPS_ENTETE_VISIBLES = _CHAMPS_ENTETE_VISIBLES
 _LIBELLES = {
     'lignes': 'lignes',
     'entete': 'en-tête',
@@ -193,6 +197,8 @@ _LIBELLES = {
 _OBJETS_NOMMES = {
     'calepinage': 'calepinage',
     'taille': "taille d'offre",
+    # ADEV19 — l'option activée par le CLIENT sur sa page publique.
+    'option client': 'option client',
 }
 
 

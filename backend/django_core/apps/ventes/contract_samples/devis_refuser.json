@@ -1,0 +1,44 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/refuser/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ADEV1 (C-ADEV-001, PACT10) — le geste « Refuser » de la liste des devis. Contrat posé SEUL sur main AVANT la vue et l'écran (ADEV44) : l'écran envoyait `motif_perte: <id>` + `motif: <note>` alors que la vue ne lisait que `motif`. Corps : `motif` = NOM d'un MotifPerte ACTIF de la société, validé par apps.crm.services.motif_refus_valide(company, nom) (comparaison sans casse ; un nom inconnu ou archivé = 400) — OPTIONNEL tant que la question fondateur AGRM37 (docs/PLAN.md : motif obligatoire pour tous les segments ?) est ouverte, voir `obligatoire_si` ; `note` texte libre ≤ 255 caractères ; `date` AAAA-MM-JJ (défaut = aujourd'hui) ; `marquer_lead_perdu` booléen (émet devis_refused → le CRM marque le lead perdu). Réponses : 200 = DevisSerializer du devis (statut « refuse », motif_refus = nom du motif, date_refus) ; 400 {motif: [message]} ; 409 {detail, code} où code vaut « statut » (devis ni brouillon ni envoyé) ou « version_remplacee » (servi par ADEV7).",
+  "corps": {
+    "motif": "Prix trop élevé",
+    "note": "Le client a reçu une offre concurrente moins chère.",
+    "date": "2026-10-08",
+    "marquer_lead_perdu": true
+  },
+  "champs_corps": {
+    "motif": {
+      "type": "texte",
+      "obligatoire": false,
+      "obligatoire_si": "AGRM37 = oui",
+      "valide_par": "apps.crm.services.motif_refus_valide(company, nom)",
+      "valeur": "NOM d'un MotifPerte actif (archived=False) de la société"
+    },
+    "note": {"type": "texte", "obligatoire": false, "max_longueur": 255},
+    "date": {"type": "date", "obligatoire": false, "format": "AAAA-MM-JJ", "defaut": "aujourd'hui"},
+    "marquer_lead_perdu": {"type": "booleen", "obligatoire": false, "defaut": false}
+  },
+  "exemple": {
+    "id": 413,
+    "reference": "DEV-202610-0012",
+    "statut": "refuse",
+    "motif_refus": "Prix trop élevé",
+    "date_refus": "2026-10-08"
+  },
+  "reponses": {
+    "200": "DevisSerializer du devis refusé (extrait dans `exemple`)",
+    "400": {"motif": ["Choisissez un motif de refus de la liste."]},
+    "409": {
+      "statut": {
+        "detail": "Seul un devis en cours (brouillon ou envoyé) peut être refusé ; statut actuel : « Accepté ».",
+        "code": "statut"
+      },
+      "version_remplacee": {
+        "detail": "Cette version du devis a été remplacée par une révision : refusez la version en cours.",
+        "code": "version_remplacee"
+      }
+    }
+  }
+}

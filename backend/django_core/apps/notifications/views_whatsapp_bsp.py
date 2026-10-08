@@ -60,6 +60,15 @@ from django.views.decorators.csrf import csrf_exempt
 logger = logging.getLogger(__name__)
 
 
+# APAR22 - rang des statuts de livraison (failed terminal).
+_STATUS_RANK = {
+    "sent": 1,
+    "delivered": 2,
+    "read": 3,
+    "failed": 4,
+}
+
+
 def _whatsapp_actif():
     """Toggle générique WhatsApp Business Cloud (Meta). OFF par défaut.
 
@@ -244,9 +253,16 @@ class WhatsAppBspWebhookView(View):
                         new_status = status_map.get(raw_status)
                         if new_status is None:
                             continue
+                        # APAR22 : un statut ne regresse jamais
+                        # (sent < delivered < read ; failed terminal).
+                        rang = _STATUS_RANK[new_status]
+                        bloques = [
+                            st for st, r in _STATUS_RANK.items()
+                            if r >= rang or st == "failed"
+                        ]
                         updated = WhatsAppMessageLog.objects.filter(
                             external_id=external_id
-                        ).update(status=new_status)
+                        ).exclude(status__in=bloques).update(status=new_status)
                         if updated:
                             logger.debug(
                                 "WhatsApp BSP : statut '%s' applique a %s log(s) "
@@ -325,10 +341,31 @@ class WhatsAppBspWebhookView(View):
         est un NO-OP strict (le chemin lead XKB33 disparaît avec compta/chat).
         Best-effort : un échec de routage ne doit jamais planter le webhook.
         """
+        marqueur = None
         try:
+            from django.db import IntegrityError, transaction
+
+            from .models import WhatsAppInboundMessage
+            # APAR22 : idempotence - un wamid n'est route qu'une fois.
+            try:
+                with transaction.atomic():
+                    marqueur = WhatsAppInboundMessage.objects.create(
+                        company=company, wa_message_id=wa_message_id)
+            except IntegrityError:
+                logger.debug(
+                    "Webhook BSP WhatsApp : message %s deja traite.",
+                    wa_message_id)
+                return
             from apps.sav.services import router_whatsapp_entrant_vers_ticket
             router_whatsapp_entrant_vers_ticket(
                 company=company, expediteur=expediteur, texte=texte)
         except Exception as exc:  # pragma: no cover - defensif
+            if marqueur is not None:
+                # Routage echoue : liberer le marqueur pour qu'un rejeu Meta
+                # puisse reessayer.
+                try:
+                    marqueur.delete()
+                except Exception:
+                    pass
             logger.warning(
                 "Webhook BSP WhatsApp : routage SAV echoue : %s", exc)

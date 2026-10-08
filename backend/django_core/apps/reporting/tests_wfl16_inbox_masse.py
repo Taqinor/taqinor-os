@@ -36,8 +36,10 @@ class Wfl16InboxMasseTests(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
             slug='wfl16-inbox-co', defaults={'nom': 'WFL16 Inbox Co'})[0]
+        # APAR46 — décider exige le palier approbateur (Responsable/Admin).
         self.user = User.objects.create_user(
-            username='wfl16_inbox_u', password='x', company=self.company)
+            username='wfl16_inbox_u', password='x', company=self.company,
+            role_legacy='responsable')
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')

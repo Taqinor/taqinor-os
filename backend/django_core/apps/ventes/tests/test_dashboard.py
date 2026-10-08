@@ -193,11 +193,15 @@ class TestDashboardAggregation(TestCase):
         self.assertGreaterEqual(enc, 6000)
 
     def test_dso_calculation(self):
-        # DSO = encours / (montant_facture / 30)
-        _facture(self.co, self.cli, statut='emise', ttc=Decimal('3000'))
-        r = self.api.get(URL)
+        # AFAC53 — DSO = encours (Σ montant_du) / facturé × JOURS DE LA PÉRIODE
+        # (bornes incluses), plus l'ancien « / 30 » figé quelle que soit la
+        # période. Période explicite de 30 jours, facture émise dedans.
+        from datetime import date
+        f = _facture(self.co, self.cli, statut='emise', ttc=Decimal('3000'))
+        Facture.objects.filter(pk=f.pk).update(date_emission=date(2026, 1, 15))
+        r = self.api.get(URL, {'start': '2026-01-01', 'end': '2026-01-30'})
         dso = r.data['dso_jours']
-        # encours = 3000, montant_facture = 3000 → DSO = 30
+        # encours = 3000, facturé = 3000, période = 30 jours → DSO = 30
         self.assertIsNotNone(dso)
         self.assertAlmostEqual(dso, 30.0, delta=1.0)
 

@@ -106,6 +106,19 @@ describe('ChantierGateTimeline (CH6)', () => {
     expect(screen.getByText(/Aucune étape de cycle de vie configurée/)).toBeInTheDocument()
     expect(screen.queryByTestId('ch6-gate-timeline')).toBeNull()
   })
+
+  it('sans étape configurée, la recette et le pack de remise restent saisissables (CAD177)', async () => {
+    // AUD313 : la lecture n'amorce plus le cycle — une société non amorcée
+    // devait quand même pouvoir saisir sa fiche de recette à l'écran.
+    api.getEtapesChantier.mockResolvedValue({
+      data: { installation: 1, reference: 'CH-001', etape_courante: null, etapes: [] },
+    })
+    render(<ChantierGateTimeline installationId={1} />)
+    await waitFor(() => expect(api.getRecette).toHaveBeenCalledWith(1))
+    expect(await screen.findByTestId('ch6-recette')).toHaveTextContent('Recette de mise en service')
+    expect(screen.getByRole('button', { name: /fiche de recette/ })).toBeInTheDocument()
+    expect(screen.getByTestId('ch6-pack-remise')).toHaveTextContent('Pack de remise client')
+  })
 })
 
 describe('ChantierGateTimeline — AGR604 hors réseau (contrat parcours_etapes_chantier)', () => {

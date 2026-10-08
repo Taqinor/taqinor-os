@@ -43,7 +43,7 @@ from core.events import (
     langue_changed, rfq_attribuee,
 )
 
-from .engine import evaluate
+from .engine import evaluate, motif_etat_metier
 from .models import TriggerType
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,11 @@ def _facture_saved(sender, instance, created, **kwargs):
     # laisse la facture dans cet état.
     statut = getattr(instance, 'statut', None)
     echeance = getattr(instance, 'date_echeance', None)
-    if statut == 'payee' or echeance is None:
+    if echeance is None:
+        return
+    # APAR7 — prédicat d'état métier UNIQUE (engine) : une facture annulée,
+    # non émise ou soldée n'est jamais relancée, même échue.
+    if motif_etat_metier(TriggerType.FACTURE_OVERDUE, instance):
         return
     # Bucket Africa/Casablanca : comparer à la date LOCALE, pas à la date UTC,
     # sinon FACTURE_OVERDUE peut se déclencher un jour trop tôt/tard à minuit.
@@ -145,7 +149,10 @@ def _facture_saved(sender, instance, created, **kwargs):
     # Évite de re-déclencher si déjà en retard au save précédent (même statut).
     if not created and old == statut:
         return
-    evaluate(TriggerType.FACTURE_OVERDUE, instance, instance.company)
+    # APAR8 — même marqueur d'occurrence que le balayage : un changement de
+    # statut à 07:00 puis le balayage de 08:05 ne relancent qu'UNE fois.
+    from .beat_tasks import evaluer_facture_overdue_une_fois
+    evaluer_facture_overdue_une_fois(instance, instance.company)
 
 
 _facture_saved = _safe(_facture_saved)

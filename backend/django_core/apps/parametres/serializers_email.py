@@ -3,7 +3,9 @@ import re
 
 from rest_framework import serializers
 
-from .models_email import EMAIL_TEMPLATE_PLACEHOLDERS, EmailTemplate
+from .models_email import (
+    EMAIL_TEMPLATE_PLACEHOLDERS, EmailTemplate, erreur_de_rendu,
+)
 
 
 # Repère tout token de la forme {foo} dans un sujet/corps.
@@ -38,6 +40,11 @@ class EmailTemplateSerializer(serializers.ModelSerializer):
         for champ, libelle in (('sujet', 'sujet'), ('corps', 'corps')):
             if champ not in attrs:
                 continue
+            # APAR13 — validé par le RENDU réel : une accolade non appariée
+            # (« Total 5 } », « Réf {abc ») est refusée sous le champ.
+            erreur = erreur_de_rendu(attrs.get(champ) or '')
+            if erreur:
+                raise serializers.ValidationError({champ: erreur})
             inconnus = _unknown_placeholders(attrs.get(champ) or '', cle)
             if inconnus:
                 autorises = ' '.join(

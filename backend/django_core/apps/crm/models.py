@@ -735,6 +735,21 @@ class Lead(SoftDeleteModel):
         MT = 'mt', 'Moyenne tension (MT)'
         NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
 
+    # CIQ666 (décision fondateur 08/10/2026) — le CONTRAT d'électricité
+    # déclaré du site pro : même vocabulaire que ``etude_params.tarif_declare
+    # .contrat`` (CIQ222, ``parametres.tarifs_officiels.CONTRATS``) ; « ne sait
+    # pas » = aucun contrat transmis au moteur (jamais un contrat supposé).
+    class ContratElectricite(models.TextChoices):
+        BT_DOMESTIQUE = 'bt_domestique', 'BT domestique'
+        BT_PATENTE = 'bt_patente', 'BT patenté'
+        BT_FORCE_MOTRICE = 'bt_force_motrice', 'BT force motrice'
+        MT_GENERAL = 'mt_general', 'MT (Tarif Général)'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
+
+    class OptionTarifaireBt(models.TextChoices):
+        NORMALE = 'normale', 'Option normale (tranches)'
+        BI_HORAIRE = 'bi_horaire', 'Option bi-horaire (HP / HN)'
+
     class TensionSource(models.TextChoices):
         DECLARE = 'declare', 'Déclarée'
         SITE_WEB = 'site_web', 'Saisie sur le site'
@@ -2063,6 +2078,21 @@ class Lead(SoftDeleteModel):
     tension_source = models.CharField(
         max_length=20, choices=TensionSource.choices, null=True, blank=True,
         verbose_name='Provenance de la tension')
+    contrat_electricite = models.CharField(
+        max_length=20, choices=ContratElectricite.choices, null=True,
+        blank=True, verbose_name="Contrat d'électricité",
+        help_text="Question à l'appel : « Quel est votre contrat "
+                  "d'électricité : basse tension patenté, force motrice, "
+                  'domestique, ou moyenne tension ? Il est écrit sur votre '
+                  'facture. » (CIQ666 ; vide = pas encore posée, « ne sait '
+                  "pas » = aucun contrat transmis au devis automatique).")
+    option_tarifaire_bt = models.CharField(
+        max_length=12, choices=OptionTarifaireBt.choices, null=True,
+        blank=True, verbose_name='Option tarifaire BT',
+        help_text="Question à l'appel : « En force motrice, êtes-vous en "
+                  'option normale ou en option bi-horaire ? » (CIQ666 ; '
+                  'seule la force motrice ouvre le bi-horaire ; vide = pas '
+                  'encore posée).')
     puissance_souscrite_source = models.CharField(
         max_length=14, choices=PuissanceSouscriteSource.choices, null=True,
         blank=True, verbose_name='Provenance de la puissance souscrite')

@@ -57,7 +57,7 @@ class ContactRequestBase(TestCase):
         self.devis = Devis.objects.create(
             company=self.company, reference='DEV-QJ27-0001',
             client=self.client_obj, lead=self.lead,
-            statut=Devis.Statut.BROUILLON, created_by=self.owner)
+            statut=Devis.Statut.ENVOYE, created_by=self.owner)
         self.link = ShareLink.for_devis(self.devis)
         self.api = APIClient()
 

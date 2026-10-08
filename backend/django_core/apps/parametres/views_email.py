@@ -18,7 +18,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
+)
 
 from .models import SettingsAuditLog
 from .models_email import (
@@ -27,6 +29,7 @@ from .models_email import (
     EmailTemplate,
 )
 from .serializers_email import EmailTemplateSerializer
+from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
 
@@ -60,7 +63,8 @@ def effective_email_templates(company):
     return out
 
 
-class EmailTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
+                           viewsets.ModelViewSet):
     """Modèles d'e-mail éditables (FG17).
 
     Filtrée et company forcée côté serveur (TenantMixin). L'upsert par clé est
@@ -68,11 +72,18 @@ class EmailTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = EmailTemplate.objects.all()
     serializer_class = EmailTemplateSerializer
+    # APAR28 — CRUD direct journalisé (le ``bulk`` garde son propre audit).
+    audit_section = 'emails'
+    audit_libelle = "Modèle d'e-mail"
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        # APAR5 — écriture des réglages société : palier ET droit
+        # `parametres_modifier` (même couple qu'ASEC31) — Admin RH,
+        # Technicien/Commercial responsable n'y écrivent plus.
+        return [IsAdminOrResponsableTier(),
+                HasPermissionOrLegacy('parametres_modifier')()]
 
     def _audit(self, field, label, old, new):
         company = self.request.user.company if (

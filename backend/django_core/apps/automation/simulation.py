@@ -47,28 +47,58 @@ def _effet(action_type, effet, **details):
 def _decrire_email(source, instance, company, context):
     from . import actions
 
+    from .models import CanalMessage, ModeleMessage
+
     destinataire = actions._resolve_email(instance)
-    corps = actions._message_body(source, context)
     if not destinataire:
         return _effet(source.action_type,
                       'Aucune adresse email : rien ne partirait.',
-                      destinataire='')
+                      destinataire='', statut_prevu='noop')
+    # APAR6 — même résolveur que ``actions._send_email`` : la simulation
+    # affiche le sujet et le corps RÉELLEMENT envoyés (ou le refus).
+    tmpl_objet, tmpl_corps = ModeleMessage.resolve(
+        company, CanalMessage.EMAIL)
+    sujet, manque_sujet = actions.rendre_texte(
+        (source.action_config or {}).get('subject') or tmpl_objet
+        or actions.SUJET_EMAIL_DEFAUT, instance, company, context)
+    corps, manque_corps = actions.rendre_texte(
+        actions._texte_brut(source, company) or tmpl_corps,
+        instance, company, context)
+    manquantes = sorted(set(manque_sujet) | set(manque_corps))
+    if manquantes:
+        return _effet(source.action_type,
+                      actions.motif_variables(
+                          manquantes, 'rien ne partirait'),
+                      destinataire=destinataire, statut_prevu='skipped')
     return _effet(source.action_type,
                   f'Un email partirait à {destinataire}.',
-                  destinataire=destinataire, corps=corps)
+                  destinataire=destinataire, sujet=sujet, corps=corps,
+                  statut_prevu='success')
 
 
 def _decrire_message(source, instance, company, context):
     from . import actions
 
-    destinataire = actions._resolve_phone(instance)
-    corps = actions._message_body(source, context)
-    if not destinataire:
+    from .models import ActionType
+
+    if source.action_type in actions.ACTIONS_INDISPONIBLES:
+        # APAR25 — même conclusion que ``actions._send_sms`` : aucun envoi.
         return _effet(source.action_type,
-                      'Aucun numéro : rien ne partirait.', destinataire='')
+                      'Canal SMS non configuré : rien ne partirait.',
+                      statut_prevu='noop')
+    if source.action_type != ActionType.SEND_WHATSAPP:  # pragma: no cover
+        return _decrire_defaut(source, instance, company, context)
+    # APAR25 — même prédicat que ``actions._send_whatsapp``.
+    motif, phone, url, corps = actions.preparer_whatsapp(
+        source, instance, company, context)
+    if motif:
+        return _effet(source.action_type, motif, destinataire=phone or '',
+                      statut_prevu='noop')
     return _effet(source.action_type,
-                  f'Un message partirait au {destinataire}.',
-                  destinataire=destinataire, corps=corps)
+                  f'Une tâche « {actions.RESUME_TACHE_WHATSAPP} » serait '
+                  f'créée (lien pour {phone}).',
+                  destinataire=phone, corps=corps, lien=url,
+                  statut_prevu='success')
 
 
 def _decrire_set_field(source, instance, company, context):
@@ -102,7 +132,7 @@ def _decrire_assign(source, instance, company, context):
         source.action_type,
         f"L'enregistrement serait assigné à l'utilisateur {user_id}."
         if user_id else 'Aucun utilisateur configuré.',
-        user_id=user_id)
+        user_id=user_id, statut_prevu='success' if user_id else 'noop')
 
 
 def _decrire_activite(source, instance, company, context):
@@ -110,15 +140,37 @@ def _decrire_activite(source, instance, company, context):
 
     cfg = source.action_config or {}
     corps = actions._substitute_variables(cfg.get('body') or '', context)
+    # APAR25 — dérivé du même prédicat que ``actions._create_activity`` (plus
+    # « Une activité serait créée. » inconditionnel).
+    if instance is None or getattr(instance, 'pk', None) is None:
+        return _effet(source.action_type,
+                      'Aucune fiche cible : aucune activité ne serait créée.',
+                      statut_prevu='noop')
     return _effet(source.action_type,
-                  'Une activité serait créée.', corps=corps)
+                  'Une activité serait créée.', corps=corps,
+                  statut_prevu='success')
 
 
 def _decrire_ticket(source, instance, company, context):
+    from . import actions
+
     cfg = source.action_config or {}
+    # APAR25 — même résolution du client que le handler (un lead sans client
+    # lié en recevrait un : le handler le résout/crée, la simulation non).
+    if (actions.client_de_la_fiche(instance) is None
+            and actions._model_name(instance) != 'lead'):
+        return _effet(source.action_type,
+                      'Aucun client résolu : aucun ticket ne serait créé.',
+                      statut_prevu='noop')
+    description, manquantes = actions.rendre_texte(
+        cfg.get('description') or '', instance, company, context)
+    if manquantes:
+        return _effet(source.action_type, actions.motif_variables(
+            manquantes, 'aucun ticket ne serait créé'), statut_prevu='skipped')
     return _effet(
         source.action_type, 'Un ticket SAV serait créé.',
-        type=cfg.get('type', ''), priorite=cfg.get('priorite', ''))
+        type=cfg.get('type', ''), priorite=cfg.get('priorite', ''),
+        description=description, statut_prevu='success')
 
 
 def _decrire_custom_record(source, instance, company, context):

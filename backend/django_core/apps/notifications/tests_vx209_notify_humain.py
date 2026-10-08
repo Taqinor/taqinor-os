@@ -74,7 +74,8 @@ class NotifyQuietHoursTests(TestCase):
                     'apps.notifications.services._dispatch_email') as email, \
                 mock.patch(
                     'apps.notifications.services._dispatch_whatsapp') as wa:
-                n = notify(self.user, EventType.DIGEST, 'Récap')
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    n = notify(self.user, EventType.DIGEST, 'Récap')
         self.assertIsNotNone(n)
         self.assertEqual(Notification.objects.count(), 1)
         self.assertIsNotNone(n.programmee_pour)
@@ -88,7 +89,8 @@ class NotifyQuietHoursTests(TestCase):
             with mock.patch(
                     'apps.notifications.services._dispatch_email',
                     return_value=True) as email:
-                notify(self.user, EventType.DIGEST, 'Récap')
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    notify(self.user, EventType.DIGEST, 'Récap')
         email.assert_called_once()
 
     def test_critical_event_at_23h_is_deferred_too(self):
@@ -103,7 +105,8 @@ class NotifyQuietHoursTests(TestCase):
             with mock.patch(
                     'apps.notifications.services._dispatch_email',
                     return_value=True) as email:
-                n = notify(self.user, EventType.INCIDENT_CRITICAL, 'Incident !')
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    n = notify(self.user, EventType.INCIDENT_CRITICAL, 'Incident !')
         email.assert_not_called()
         self.assertIsNotNone(n.programmee_pour)
 
@@ -114,8 +117,9 @@ class NotifyQuietHoursTests(TestCase):
             with mock.patch(
                     'apps.notifications.services._dispatch_email',
                     return_value=True) as email:
-                notify(self.user, EventType.DIGEST, 'Récap',
-                       respect_quiet_hours=False)
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    notify(self.user, EventType.DIGEST, 'Récap',
+                           respect_quiet_hours=False)
         email.assert_called_once()
 
 

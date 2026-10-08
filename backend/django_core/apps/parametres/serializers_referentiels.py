@@ -14,7 +14,59 @@ from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 
 
-class TauxTVASerializer(serializers.ModelSerializer):
+class UniciteSocieteMixin:
+    """APAR37 — unicité PAR SOCIÉTÉ validée au sérialiseur (400 sous le champ)
+    au lieu d'un 500 ``IntegrityError``.
+
+    La société est posée côté serveur (``core.mixins`` la force après la
+    validation), si bien que le ``UniqueTogetherValidator`` de DRF — qui
+    exige tous les champs dans le corps — ne s'applique jamais. On relit ici
+    chaque ``unique_together`` / ``UniqueConstraint`` NON conditionnelle du
+    modèle qui inclut ``company``, avec la société de la REQUÊTE."""
+
+    #: Message sous le champ (surchargé par sérialiseur).
+    message_doublon = 'Cette valeur existe déjà pour votre société.'
+
+    def _contraintes_societe(self):
+        meta = self.Meta.model._meta
+        groupes = [tuple(g) for g in (meta.unique_together or ())]
+        for c in meta.constraints:
+            champs = tuple(getattr(c, 'fields', ()) or ())
+            if champs and getattr(c, 'condition', None) is None:
+                groupes.append(champs)
+        return [g for g in groupes if 'company' in g]
+
+    def run_validation(self, data=serializers.empty):
+        attrs = super().run_validation(data)
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return attrs
+        for groupe in self._contraintes_societe():
+            lookup = {'company': company}
+            for champ in groupe:
+                if champ == 'company':
+                    continue
+                if champ in attrs:
+                    lookup[champ] = attrs[champ]
+                elif self.instance is not None:
+                    lookup[champ] = getattr(self.instance, champ)
+                else:
+                    field = self.Meta.model._meta.get_field(champ)
+                    lookup[champ] = field.get_default()
+            qs = self.Meta.model.objects.filter(**lookup)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                cible = next(c for c in groupe if c != 'company')
+                raise serializers.ValidationError(
+                    {cible: [self.message_doublon]})
+        return attrs
+
+
+class TauxTVASerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+    message_doublon = 'Un taux avec ce code existe déjà.'  # APAR37
+
     class Meta:
         model = TauxTVA
         fields = ['id', 'code', 'libelle', 'taux', 'defaut', 'actif']
@@ -36,7 +88,9 @@ class TauxTVASerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ConditionPaiementSerializer(serializers.ModelSerializer):
+class ConditionPaiementSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+    message_doublon = 'Cette condition existe déjà.'  # APAR37
+
     class Meta:
         model = ConditionPaiement
         fields = [
@@ -51,7 +105,9 @@ class ConditionPaiementSerializer(serializers.ModelSerializer):
         return value
 
 
-class UniteMesureSerializer(serializers.ModelSerializer):
+class UniteMesureSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
+    message_doublon = 'Une unité avec ce code existe déjà.'  # APAR37
+
     class Meta:
         model = UniteMesure
         fields = ['id', 'code', 'libelle', 'actif']
@@ -74,11 +130,13 @@ class UniteMesureSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
+class CadenceRelanceEtapeSerializer(UniciteSocieteMixin, serializers.ModelSerializer):
     """RELANCE FOUNDATION — gabarit de cadence de relance (Paramètres → CRM).
 
     Purement un ordonnancement de rappels internes (délai + canal + libellé),
     jamais un chiffre affiché au client."""
+
+    message_doublon = 'Cette cadence a déjà une étape à cet ordre.'  # APAR37
 
     class Meta:
         model = CadenceRelanceEtape

@@ -94,6 +94,7 @@ def onboarding_localisation(request):
         devise=request.data.get('devise'),
         fuseau_horaire=request.data.get('fuseau_horaire'),
         langue_repli=request.data.get('langue_repli'),
+        user=request.user,  # APAR29 — acteur du journal
     )
     return Response({
         'profile': CompanyProfileSerializer(resultat['profile']).data,

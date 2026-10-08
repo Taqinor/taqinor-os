@@ -49,6 +49,9 @@ class TestAcceptationGamme(GammeBase):
         """Le jeton de la gamme choisie signe SON devis (loi 53-05) et
         effondre l'autre gamme (« variante non retenue », YDOCF3)."""
         source, soeur = self._paire('DEV-GAM-040', nom='Premium')
+        # ADEV11 : l'acceptation par jeton client exige un devis envoyé.
+        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
+            statut=Devis.Statut.ENVOYE)
         lien_soeur = ShareLink.for_devis(soeur)
         resp = APIClient().post(url_accept(lien_soeur.token), {
             'nom': 'Salma Alaoui',

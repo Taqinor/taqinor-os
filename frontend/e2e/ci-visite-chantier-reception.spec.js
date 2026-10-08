@@ -28,7 +28,7 @@ import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, lireJson, listeDe, telephoneFixeUnique, isoDansJours, textePdf, uniq,
   creerDevisCommercialDepuisLead, mesuresContratVisite, planifierVisiteDepuisLead,
-  remplirVisiteCi, ajouterDocumentsHse, contextePortailClient, PNG_1PX,
+  remplirVisiteCi, ajouterDocumentsHse, contextePortailClient, PNG_1PX, ouvrirJalonsChantier,
 } from './helpers.js'
 
 const jeton = String(Date.now()).slice(-9)
@@ -201,8 +201,11 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
       { data: { devis: etat.devisId } }), 'chantier redemandé')
     expect((await dossiersDuDevis(request)).length, 'jamais un second dossier').toBe(1)
 
-    await page.goto(`/chantiers?id=${chantier.id}`)
-    await expect(page.getByTestId('ch6-gate-timeline')).toBeVisible({ timeout: 30_000 })
+    // APX25 : le parcours vit dans l'onglet « Jalons & gates ». Le stepper
+    // `ch6-gate-timeline` n'existe que si la société a AMORCÉ son cycle
+    // (AUD313 : `POST /etapes-chantier/amorcer/`, Directeur) — état partagé
+    // qu'un spec ne mute pas ; la fiche ouverte montre sa recette dans les deux cas.
+    await ouvrirJalonsChantier(page, chantier.id)
     await testInfo.attach('ciq650-chantier-ci', {
       body: await page.screenshot({ fullPage: true }), contentType: 'image/png',
     })
@@ -247,7 +250,7 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
 
   test('5. recette à l’écran : essai raté → « non conforme » calculé ; corrigée avec une réserve', async ({ page, request }, testInfo) => {
     test.setTimeout(240_000)
-    await page.goto(`/chantiers?id=${etat.chantierId}`)
+    await ouvrirJalonsChantier(page, etat.chantierId)
     await page.getByRole('button', { name: /fiche de recette/ }).first().click()
     const fiche = page.getByRole('dialog')
     await expect(fiche.getByText('Fiche de recette (IEC 62446-1)')).toBeVisible({ timeout: 30_000 })
