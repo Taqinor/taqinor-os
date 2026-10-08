@@ -1493,10 +1493,14 @@ test('QJ31 mode B — groupes villas : sous-total par villa + total général', 
   const r = multiPropertyPreviewTTC(lines, {})
   assert.equal(r.mode, 'villas')
   assert.deepEqual(r.groupes.map(g => g.label), ['Équipement commun', 'Villa A', 'Villa B'])
+  // ATOT24 — chaque villa = chaîne canonique de SES lignes (HT persisté au
+  // centime → TVA → TTC, comme `multi_villa_totaux`) ; total général = chaîne
+  // canonique de toutes les lignes au palier ARRONDI-100.
   assert.equal(r.groupes[0].totalTtc, 6000)
-  assert.equal(r.groupes[1].totalTtc, 34000) // 20000 + 14000
-  assert.equal(r.groupes[2].totalTtc, 22200) // 11000 + 11200
-  assert.equal(r.grandTotalTtc, 62200) // somme des trois groupes
+  assert.equal(r.groupes[1].totalTtc, totauxCanoniquesTtc(lines.slice(1, 3), 0, 0)) // ≈ 20000 + 14000
+  assert.equal(r.groupes[2].totalTtc, totauxCanoniquesTtc(lines.slice(3), 0, 0)) // ≈ 11000 + 11200
+  assert.equal(r.grandTotalTtc, totauxCanoniquesTtc(lines, 0, PAS_ARRONDI_DEVIS))
+  assert.equal(r.grandTotalTtc, 62200)
 })
 
 test('QJ31 mode B — libellé par défaut quand groupeLabel vide (Villa N / Équipement commun)', () => {

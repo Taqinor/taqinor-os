@@ -1900,13 +1900,28 @@ export function fusionnerVariantes(lignesSans, lignesAvec) {
 //       HT→TVA→TTC (backend, qui reste la source AUTORITAIRE au moment du PDF).
 // Retourne null quand aucun des deux modes n'est utilisé (aperçu inchangé).
 const _foisN = (ttc, n) => (Math.round((Number(ttc) || 0) * 100) * n) / 100
-export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct } = {}) {
+// ATOT24 — l'aperçu suit la CHAÎNE DU RAIL : (A) l'option EFFECTIVE (celle
+// que le rail affiche) et le scénario (même population que `optionTotalsTTC`
+// du rail : accessoires Huawei retirés d'un « Les deux ») ; (B) chaque villa =
+// totaux canoniques de SES lignes (HT → remise → TVA → TTC, option exclue),
+// les lignes sans groupe forment le groupe « Hors groupe », et le total
+// général est la chaîne canonique de TOUTES les lignes au palier
+// ARRONDI-100 — exactement `multi_villa_totaux` (selectors.py).
+export function multiPropertyPreviewTTC(lines, {
+  nombreProprietes, discountPct, scenario, option,
+} = {}) {
   const n = parseInt(nombreProprietes, 10)
   if (Number.isFinite(n) && n > 1) {
-    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct)
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario })
+    const opt = option === 'avec' || option === 'sans'
+      ? option : (scenario === 'Avec batterie' ? 'avec' : 'sans')
+    const totalUnitaire = opt === 'avec' ? totalAvec : totalSans
     return {
       mode: 'multiplicateur',
       nombreProprietes: n,
+      option: opt,
+      totalUnitaire,
+      totalMulti: _foisN(totalUnitaire, n),
       totalUnitaireSans: totalSans, totalUnitaireAvec: totalAvec,
       // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N AU CENTIME, comme le backend
       // (`selectors.totaux_multi_proprietes` / `builder._scale_tot`) : ce
@@ -1917,10 +1932,11 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
     }
   }
 
-  const grouped = lines.filter(l => l.groupeIndex != null)
+  const tous = lines || []
+  const grouped = tous.filter(l => l.groupeIndex != null)
   if (!grouped.length) return null
 
-  const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  const pct = parseFloat(discountPct) || 0
   const byIndex = new Map()
   for (const l of grouped) {
     const idx = l.groupeIndex
@@ -1931,14 +1947,17 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
   }
   const groupes = [...byIndex.keys()].sort((a, b) => a - b).map(idx => {
     const bucket = byIndex.get(idx)
-    const totalTtc = bucket.lignes.reduce((s, l) => s + ttc(l), 0)
     return {
       index: idx,
       label: bucket.label || (idx === 0 ? 'Équipement commun' : `Villa ${idx}`),
-      totalTtc: Math.round(totalTtc),
+      totalTtc: totauxCanoniquesTtc(bucket.lignes, pct, 0),
     }
   })
-  const grandTotalTtc = Math.round(groupes.reduce((s, g) => s + g.totalTtc, 0))
+  const horsGroupe = tous.filter(l => l.groupeIndex == null && ligneCompteDansTotaux(l))
+  if (horsGroupe.length) {
+    groupes.push({ index: null, label: 'Hors groupe', totalTtc: totauxCanoniquesTtc(horsGroupe, pct, 0) })
+  }
+  const grandTotalTtc = totauxCanoniquesTtc(tous, pct, PAS_ARRONDI_DEVIS)
   return { mode: 'villas', groupes, grandTotalTtc }
 }
 

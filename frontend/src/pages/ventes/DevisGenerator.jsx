@@ -1024,8 +1024,12 @@ export default function DevisGenerator({
     () => multiPropertyPreviewTTC(lines, {
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
       discountPct,
+      // ATOT24 — la chaîne du rail : scénario + option effective (celle de
+      // `kpiTotal`), jamais l'option « sans » inconditionnelle.
+      scenario,
+      option: avecRec && showAvec ? 'avec' : 'sans',
     }),
-    [lines, multiMode, nombreProprietes, discountPct],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, avecRec, showAvec],
   )
 
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
