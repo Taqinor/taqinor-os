@@ -333,6 +333,22 @@ def _plafond_demandes_otp_atteint(prefixe, link_token):
     return compte > OTP_DEMANDES_MAX_PAR_JOUR
 
 
+#: ADEV20 (C-ADEV-021) — message du 409 ``aucun_canal`` (contrat
+#: ``proposal_accept.json``, bloc ``otp.reponse_409`` — ADEV2), rendu par les
+#: deux demandes d'OTP quand AUCUN code n'est réellement parti.
+OTP_AUCUN_CANAL = "Aucun moyen d'envoyer le code : contactez votre conseiller."
+
+
+def canal_otp_disponible(client):
+    """ADEV20 — vrai si un code peut réellement partir vers ``client``.
+
+    Le seul canal câblé est l'e-mail : WhatsApp est un STUB (QX10,
+    ``_send_otp_whatsapp`` rend toujours False tant qu'aucun BSP n'est
+    branché). Sert à refuser ``otp_lecture`` au ``share-link`` d'un client
+    injoignable — sinon le lien serait illisible pour toujours."""
+    return bool((getattr(client, 'email', '') or '').strip())
+
+
 def request_esign_otp(link):
     """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
 
@@ -381,8 +397,11 @@ def request_esign_otp(link):
         logger.warning(
             'QJ11: OTP généré pour %s mais aucun canal disponible (phone=%s, email=%s)',
             devis.reference, bool(phone), bool(email))
-    else:
-        logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
+        # ADEV20 — aucun code n'est parti : aucun code ne reste en cache, et
+        # la vue répond 409 ``aucun_canal`` au lieu de « Code envoyé. ».
+        cache.delete(cache_key)
+        return OTP_AUCUN_CANAL
+    logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
     return None
 
 
@@ -519,8 +538,10 @@ def request_otp_lecture(link):
         logger.warning(
             'L-NIV: OTP lecture généré pour %s mais aucun canal disponible '
             '(phone=%s, email=%s)', devis.reference, bool(phone), bool(email))
-    else:
-        logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
+        # ADEV20 — même règle que l'OTP de signature (jumeau).
+        cache.delete(_otp_lecture_cache_key(link.token))
+        return OTP_AUCUN_CANAL
+    logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
     return None
 
 

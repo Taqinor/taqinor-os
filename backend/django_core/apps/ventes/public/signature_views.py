@@ -26,6 +26,19 @@ from .noyau import (
 from .paiement_views import _deposit_success_payload
 
 
+def _refus_aucun_canal(err):
+    """ADEV20 (C-ADEV-021) — « Code envoyé. » seulement si un code est
+    réellement parti : quand le service rend ``OTP_AUCUN_CANAL``, 409
+    ``{detail, code: "aucun_canal"}`` (contrat ``proposal_accept.json``, bloc
+    ``otp``) ; ``None`` sinon."""
+    from ..domain.cycle_vie import OTP_AUCUN_CANAL
+    if err != OTP_AUCUN_CANAL:
+        return None
+    return _noindex(Response(
+        {'detail': OTP_AUCUN_CANAL, 'code': 'aucun_canal'},
+        status=status.HTTP_409_CONFLICT))
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -156,6 +169,9 @@ def proposal_request_otp(request, token):
         return refus
     from ..services import request_esign_otp
     err = request_esign_otp(link)
+    refus = _refus_aucun_canal(err)
+    if refus is not None:
+        return refus
     if err:
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
@@ -203,6 +219,9 @@ def proposal_request_otp_lecture(request, token):
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from ..services import request_otp_lecture
     err = request_otp_lecture(link)
+    refus = _refus_aucun_canal(err)
+    if refus is not None:
+        return refus
     if err:
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
