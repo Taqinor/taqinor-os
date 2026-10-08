@@ -893,6 +893,30 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'slot': slot_cle, 'phase': phase,
         }, status=status.HTTP_201_CREATED)
 
+    def _motif_suppression(self, interv):
+        """ACHT41 — motif de suppression d'une pièce de preuve. Renvoie
+        ``(motif, reponse_409)`` : sur une intervention terminée/validée le
+        motif est OBLIGATOIRE (409 sinon) ; en cours il reste optionnel."""
+        motif = (self.request.data.get('motif') or '').strip()
+        if not motif and interv.statut in (
+                Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE):
+            return motif, Response(
+                {'detail': 'Intervention terminée : indiquez le motif de '
+                           'la suppression.'},
+                status=status.HTTP_409_CONFLICT)
+        return motif, None
+
+    def _tracer_suppression(self, interv, libelle, motif):
+        """ACHT41 — ligne d'historique « <libellé> — motif : … — par <nom> »
+        (aucune suppression de preuve ne laisse l'historique muet)."""
+        user = self.request.user
+        nom = (getattr(user, 'get_full_name', lambda: '')()
+               or getattr(user, 'username', '?'))
+        corps = libelle
+        if motif:
+            corps += f" — motif : {motif}"
+        intervention_activity.log_note(interv, user, f"{corps} — par {nom}")
+
     @action(detail=True, methods=['post'], url_path='supprimer-photo',
             permission_classes=[IsResponsableOrAdmin])
     def supprimer_photo(self, request, pk=None):
@@ -909,8 +933,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
+        slot = field_services._slot_of_attachment(att)
         delete_attachment(att.file_key)
         att.delete()
+        self._tracer_suppression(
+            interv, f"Photo supprimée{(' — ' + slot) if slot else ''}", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F9 — n° de série par composant (+ OCR swappable no-op) ───────────────
@@ -1030,7 +1060,12 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if serial.pousse_parc:  # ACHT37
             return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
                             status=status.HTTP_409_CONFLICT)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
+        numero = serial.numero_serie or '—'
         serial.delete()
+        self._tracer_suppression(interv, f"N° de série {numero} supprimé", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F10 — annotation d'une photo (dessin + légende) ─────────────────────
@@ -1172,7 +1207,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Seules les lignes hors-nomenclature sont supprimables.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
+        designation = ligne.designation
         ligne.delete()
+        self._tracer_suppression(
+            interv, f"Ligne de consommation {designation} supprimée", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='valider-consommation',
@@ -1338,10 +1379,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if memo is None:
             return Response({'detail': 'Mémo inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
         if memo.audio_id:
             delete_attachment(memo.audio.file_key)
             memo.audio.delete()
         memo.delete()
+        self._tracer_suppression(interv, 'Mémo vocal supprimé', motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F15 — temps d'équipe ─────────────────────────────────────────────────
