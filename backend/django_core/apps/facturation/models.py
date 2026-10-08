@@ -166,6 +166,15 @@ class Facture(TotauxDocumentMixin, models.Model):
     # historiques, factures à lignes) = comportement d'hier, octet-identique.
     ventilation_tva = models.JSONField(
         null=True, blank=True, verbose_name='Ventilation TVA par taux')
+    # ATOT5 (C-ATOT-003) — CLÉ de la tranche d'échéancier facturée
+    # (``echeancier.cles_tranches`` : la clé normalisée, suffixée ``#n`` quand
+    # elle se répète). La tranche suivante est la première clé non couverte
+    # par une facture active de même clé — plus jamais la position (annuler
+    # l'acompte puis régénérer refacturait « matériel » une seconde fois).
+    # Vide = facture historique ou hors échéancier (repli positionnel).
+    cle_tranche = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name="Clé de tranche d'échéancier")
     # CIQ216 — numéro de commande du client, hérité du devis (facture de BC,
     # facture de tranche) ; imprimé sous « Facturé à » quand il est rempli.
     reference_commande_client = models.CharField(

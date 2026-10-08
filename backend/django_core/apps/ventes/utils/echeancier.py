@@ -692,6 +692,19 @@ def _tranche_type(key, is_last=False):
     return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
 
 
+def cles_tranches(tranches) -> list:
+    """ATOT5 — la CLÉ unique de chaque tranche normalisée : sa ``key``,
+    suffixée ``#2``, ``#3``… quand la même clé se répète (échéancier
+    personnalisé à deux tranches « intermédiaire »)."""
+    vues = {}
+    cles = []
+    for t in tranches:
+        k = t['key']
+        vues[k] = vues.get(k, 0) + 1
+        cles.append(k if vues[k] == 1 else f'{k}#{vues[k]}')
+    return cles
+
+
 def next_tranche(devis, lignes=None, option=None):
     """Décrit la prochaine tranche à facturer, ou None si l'échéancier est complet.
 
@@ -716,13 +729,24 @@ def next_tranche(devis, lignes=None, option=None):
     """
     tranches = tranches_normalisees(devis)
     existantes = list(factures_actives(devis))
-    index = len(existantes)
-    if index >= len(tranches):
+    # ATOT5 — la tranche suivante est la PREMIÈRE CLÉ non couverte par une
+    # facture active de même clé (plus jamais ``tranches[len(existantes)]`` :
+    # annuler l'acompte puis régénérer refacturait le matériel). Une facture
+    # sans clé (historique) occupe, dans l'ordre, la première clé libre.
+    cles = cles_tranches(tranches)
+    couvertes = {f.cle_tranche for f in existantes if f.cle_tranche}
+    sans_cle = sum(1 for f in existantes if not f.cle_tranche)
+    libres = [i for i, c in enumerate(cles) if c not in couvertes][sans_cle:]
+    if not libres:
         return None
+    index = libres[0]
 
     tranche = tranches[index]
     key, valeur, unite = tranche['key'], tranche['valeur'], tranche['unite']
-    is_last = index == len(tranches) - 1
+    # Le type suit la position déclarée (CIQ212) ; le RESTE exact va à la
+    # dernière tranche RESTANTE (Σ factures − avoirs = total du devis).
+    is_last_position = index == len(tranches) - 1
+    is_last = len(libres) == 1
 
     # A3 — l'option acceptée est autoritative : on facture UNIQUEMENT les lignes
     # de l'option retenue (batterie exclue/incluse selon le choix), au centime.
@@ -738,12 +762,24 @@ def next_tranche(devis, lignes=None, option=None):
     pourcentage = Decimal(str(valeur))
     if is_last:
         # Le solde = reste exact pour que la somme égale le total du devis.
-        deja_ht = sum((Decimal(str(f.total_ht)) for f in existantes), Decimal('0'))
-        deja_tva = sum((Decimal(str(f.total_tva)) for f in existantes), Decimal('0'))
-        deja_ttc = sum((Decimal(str(f.total_ttc)) for f in existantes), Decimal('0'))
+        # ATOT5 — net des AVOIRS actifs des factures existantes (un avoir de
+        # révision rend du « facturable ») ; un reste nul ou négatif =
+        # échéancier soldé (None), jamais une facture <= 0 (contrainte
+        # ck_facture_montants_positifs -> 500).
+        avoirs = [a for f in existantes for a in f.avoirs.all()
+                  if a.statut != 'annulee']
+        zero = Decimal('0')
+        deja_ht = (sum((Decimal(str(f.total_ht)) for f in existantes), zero)
+                   - sum((Decimal(str(a.total_ht)) for a in avoirs), zero))
+        deja_tva = (sum((Decimal(str(f.total_tva)) for f in existantes), zero)
+                    - sum((Decimal(str(a.total_tva)) for a in avoirs), zero))
+        deja_ttc = (sum((Decimal(str(f.total_ttc)) for f in existantes), zero)
+                    - sum((Decimal(str(a.total_ttc)) for a in avoirs), zero))
         ht = _q(total_ht - deja_ht)
         tva = _q(total_tva - deja_tva)
         ttc = _q(total_ttc - deja_ttc)
+        if ttc <= 0:
+            return None
         if unite == UNITE_MONTANT:
             # Un montant déclaré n'est PAS un pourcentage : la dernière tranche
             # vaut le reste, on n'en publie donc que le poids réel.
@@ -773,8 +809,9 @@ def next_tranche(devis, lignes=None, option=None):
 
     sortie = {
         'key': key,
+        'cle': cles[index],
         'label': tranche['libelle'],
-        'type': _tranche_type(key, is_last),
+        'type': _tranche_type(key, is_last_position),
         'pourcentage': pourcentage,
         'ht': ht,
         'tva': tva,
@@ -823,7 +860,9 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
 
     tr = next_tranche(devis)
     if tr is None:
-        raise ValueError("Toutes les tranches de l'échéancier sont déjà facturées.")
+        raise ValueError(
+            "Échéancier soldé : toutes les tranches de l'échéancier sont déjà "
+            "facturées (avoirs compris).")
 
     # CIQ213 — une tranche ``payeur: tiers`` est facturée à l'organisme
     # financeur du devis (``Facture.client`` = financeur) ; ``Facture.devis``
@@ -879,6 +918,8 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             montant_ttc=tr['ttc'],
             taux_tva=blended_tva_pct(devis),
             ventilation_tva=ventilation,
+            # ATOT5 — la tranche est identifiée par sa CLÉ.
+            cle_tranche=tr['cle'],
             created_by=user,
             company=company,
         )
