@@ -1,0 +1,478 @@
+{
+  "replaceLignesDevis": [
+    [
+      31,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "8",
+          "prix_unitaire": "1200.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 102,
+          "designation": "Onduleur réseau 5kW Monophasé",
+          "quantite": "1",
+          "prix_unitaire": "9000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "sans",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 103,
+          "designation": "Onduleur hybride Deye 6kW",
+          "quantite": "1",
+          "prix_unitaire": "14000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 2,
+          "variante": "avec",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 104,
+          "designation": "Batterie lithium 5kWh",
+          "quantite": "1",
+          "prix_unitaire": "16000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 3,
+          "variante": "avec",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 105,
+          "designation": "Structures acier",
+          "quantite": "8",
+          "prix_unitaire": "375.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 4,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "residentiel",
+          "taux_tva": "20.00",
+          "remise_globale": "0.00",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Les deux (Sans + Avec)",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ],
+    [
+      32,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "140",
+          "prix_unitaire": "1200.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 107,
+          "designation": "Onduleur réseau 50kW Triphasé",
+          "quantite": "2",
+          "prix_unitaire": "52000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 105,
+          "designation": "Structures acier",
+          "quantite": "140",
+          "prix_unitaire": "375.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 2,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "industriel",
+          "taux_tva": "20.00",
+          "remise_globale": "0.00",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Sans batterie",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ],
+    [
+      34,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "16",
+          "prix_unitaire": "1200.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 201,
+          "designation": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+          "quantite": "1",
+          "prix_unitaire": "12500.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 202,
+          "designation": "VARIATEUR VEICHI SI23 7.5KW 380V",
+          "quantite": "1",
+          "prix_unitaire": "3333.33",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 2,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 203,
+          "designation": "AFFICHEUR VARIATEUR SI22",
+          "quantite": "1",
+          "prix_unitaire": "350.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 3,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "agricole",
+          "taux_tva": "20.00",
+          "remise_globale": "0.00",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Sans batterie",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ]
+  ],
+  "createDevisAtomic": [],
+  "patchEtudeParams": [
+    [
+      31,
+      {
+        "scenario": "Les deux (Sans + Avec)",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "factures_mensuelles_reelles": [
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000
+        ],
+        "conso_annuelle": 21149,
+        "distributeur": "onee"
+      }
+    ],
+    [
+      32,
+      {
+        "scenario": "Sans batterie",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "mode": "industriel",
+        "site": {
+          "ville": "Kénitra",
+          "lat": null,
+          "lon": null
+        },
+        "tension": "mt",
+        "phases": "tri",
+        "puissance_souscrite_kva": 250,
+        "consommation": {
+          "kwh_mensuels": [
+            9000,
+            8800,
+            9100,
+            9500,
+            9900,
+            10400,
+            11000,
+            11200,
+            10100,
+            9600,
+            9200,
+            9000
+          ],
+          "kwh_annuel": null,
+          "factures_mad": [],
+          "registres_mt": null
+        },
+        "rythme": {
+          "jours_ouverts": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false
+          ],
+          "plages": {
+            "ouvre": [
+              [
+                7,
+                19
+              ]
+            ]
+          },
+          "equipes": "1x8",
+          "debut_equipe_h": 7,
+          "fermetures": [],
+          "ramadan": null,
+          "talon": {
+            "kw": 12,
+            "part_pct": null,
+            "inconnu": false
+          },
+          "categorie_commerciale": null,
+          "reponses_categorie": null
+        },
+        "courbe_mesuree": null,
+        "toit": {
+          "type_pose": "bac_acier",
+          "surface_utile_m2": 1200,
+          "surface_type": "declaree",
+          "pente_deg": null,
+          "azimut_deg": null,
+          "couverture": "tôle",
+          "charge_admissible_kg_m2": null,
+          "charge_admissible_source": null
+        },
+        "contraintes": {
+          "revente_choisie": false,
+          "nb_points_raccordement": null,
+          "longueur_dc_m": null,
+          "longueur_ac_m": null,
+          "besoin_cellule_mt": null
+        },
+        "options": {
+          "batterie_souhaitee": null,
+          "om": null
+        },
+        "taille_explicite_kwc": null,
+        "tarif_declare": null,
+        "saisies_economie_ci": null
+      }
+    ],
+    [
+      34,
+      {
+        "scenario": "Sans batterie",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "mode_pompe": null,
+        "plaque": null,
+        "besoin": {
+          "mode": null,
+          "volume_m3_jour": null,
+          "debit_souhaite_m3h": null,
+          "mois_pointe": null,
+          "debit_actuel_m3h": null,
+          "heures_actuelles_jour": null,
+          "cultures": [],
+          "region": null
+        },
+        "source": {
+          "debit_exploitation_m3h": null,
+          "debit_exploitation_origine": null,
+          "debit_exploitation_date": null,
+          "debit_autorise_m3h": null,
+          "volume_annuel_autorise_m3": null,
+          "compteur": null,
+          "niveau_dynamique_m": null,
+          "diametre_tubage_mm": null,
+          "profondeur_calage_m": null,
+          "volume_reservoir_m3": null,
+          "niveau_statique_m": null,
+          "rabattement_m": null,
+          "profondeur_forage_m": null
+        },
+        "hmt_entrees": {
+          "saisie_m": null,
+          "denivele_m": null,
+          "conduite": null,
+          "pertes_singulieres_m": null,
+          "pression_service_bar": null
+        },
+        "alim": null,
+        "type_pompe": null,
+        "localisation": {
+          "ville": null,
+          "lat": null,
+          "lon": null
+        },
+        "distance_champ_m": null,
+        "options_cochees": [],
+        "taille": null,
+        "saisies_economie_pompage": null,
+        "attestation_usage_agricole": null
+      }
+    ]
+  ],
+  "poserOverrides": [],
+  "regenererOverride": []
+}
