@@ -184,6 +184,16 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
         self.assertIn('scheduled.py::relance_reminders', out)
         self.assertIn('active_companies()', out)
 
+    def test_shared_task_modele_metier_sans_societes_actives_refusee(self):
+        """AFAC44 — même règle, vue depuis une `@shared_task` de module de tâches périodiques."""
+        code, out = self._lancer(
+            "@shared_task\ndef rappels():\n    for f in Facture.objects.filter(statut='x'):\n"
+            "        notifier(f)\n\n\n@shared_task\ndef rappels_scopes():\n"
+            "    return Facture.objects.filter(company_id__in=active_company_ids())\n")
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled.py::rappels ', out + ' ')
+        self.assertNotIn('rappels_scopes', out)
+
     def test_boucle_active_companies_acceptee(self):
         code, out = self._lancer(
             "def relance_reminders():\n    for c in active_companies():\n"
