@@ -1,0 +1,13 @@
+{
+  "endpoint": "POST /api/django/ventes/factures/<int:pk>/lien-paiement/",
+  "pourquoi": "AFAC20 (C-AFAC-017) — le lien « Payer en ligne » d'une facture. `pay_url` est l'adresse ABSOLUE de la page CLIENT `/payer/<token>` (https://…/payer/<token>), jamais un chemin `/api/…` relatif : c'est ce que l'opérateur copie et envoie au client (AFAC21). `montant` = la trace figée à la création ; `montant_a_payer` = ce que le client paiera réellement à l'instant T (AFAC24 : le montant exigible). `statut` ∈ en_attente|paye|expire|annule. Montants en texte décimal.",
+  "exemple": {
+    "token": "Yp2m8Vq4Rk7sT1wZ3xC6bN9dF0gH5jLe",
+    "statut": "en_attente",
+    "montant": "15000.00",
+    "montant_a_payer": "15000.00",
+    "provider": "noop",
+    "pay_url": "https://erp.taqinor.ma/payer/Yp2m8Vq4Rk7sT1wZ3xC6bN9dF0gH5jLe",
+    "expires_at": "2026-11-07T10:30:00+00:00"
+  }
+}
