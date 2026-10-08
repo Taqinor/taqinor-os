@@ -64,6 +64,76 @@ def contexte_clauses_devis(devis):
 #: (``doc_texts['cgv_bullets']``) — jamais deux fois.
 TYPE_CGV_GELEES = 'cgv_gelees'
 
+#: ADEV30 (C-ADEV-041, D-ASTK-1) — type de l'entrée qui porte le BARÈME des
+#: forfaits au panneau (``prix_fixe_ht`` / ``prix_par_panneau_ht`` par
+#: produit) gelé à l'envoi : un envoyé dont le nombre de panneaux change est
+#: re-tarifé sur CE barème, jamais sur celui du jour. Entrée INTERNE : jamais
+#: imprimée comme clause particulière.
+TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
+
+#: Les entrées de ``Devis.clauses_appliquees`` qui ne sont PAS des clauses
+#: particulières ``cpq`` (gels internes) : ``builder`` ne les imprime pas dans
+#: le bloc « Clauses particulières », et un re-gel cpq ne les efface jamais.
+TYPES_GELS_INTERNES = frozenset({TYPE_CGV_GELEES, TYPE_BAREMES_GELES})
+
+
+def est_gel_interne(entree):
+    """Vrai si ``entree`` (de ``clauses_appliquees``) est un gel INTERNE et
+    non une clause particulière à imprimer."""
+    return isinstance(entree, dict) and entree.get('type') in TYPES_GELS_INTERNES
+
+
+def _decimal_texte(valeur):
+    return None if valeur is None else str(valeur)
+
+
+def figer_baremes_forfaits(devis):
+    """ADEV30 — GÈLE, au passage brouillon → envoyé (appelé par
+    :func:`mark_devis_sent` seulement, donc une fois par envoi), le barème de
+    chaque forfait au panneau porté par les lignes du devis
+    (``{produit_id: {prix_fixe_ht, prix_par_panneau_ht}}``). Une entrée
+    héritée (copie d'une V1 par révision/clonage) est REMPLACÉE : le brouillon
+    suivait le barème du jour, c'est celui-là que le client reçoit. Les
+    corrections sur place d'un envoyé ne le rappellent jamais. Rend ``True``
+    quand l'entrée a été (ré)écrite. Ne touche jamais au statut (règle #4)."""
+    from apps.ventes.domain.catalogue import porte_bareme_par_panneau
+    from apps.ventes.models import LigneDevis
+
+    existant = [c for c in (devis.clauses_appliquees or [])
+                if not (isinstance(c, dict)
+                        and c.get('type') == TYPE_BAREMES_GELES)]
+    produits = {}
+    lignes = (LigneDevis.objects.filter(devis_id=devis.pk, type_ligne='produit')
+              .select_related('produit'))
+    for ligne in lignes:
+        produit = ligne.produit
+        if produit is None or not porte_bareme_par_panneau(produit):
+            continue
+        produits[str(produit.pk)] = {
+            'prix_fixe_ht': _decimal_texte(produit.prix_fixe_ht),
+            'prix_par_panneau_ht': _decimal_texte(produit.prix_par_panneau_ht),
+        }
+    if not produits:
+        if existant != list(devis.clauses_appliquees or []):
+            devis.clauses_appliquees = existant
+            devis.save(update_fields=['clauses_appliquees'])
+            return True
+        return False
+    devis.clauses_appliquees = existant + [
+        {'type': TYPE_BAREMES_GELES, 'produits': produits}]
+    devis.save(update_fields=['clauses_appliquees'])
+    return True
+
+
+def baremes_forfaits_geles(devis):
+    """ADEV30 — le barème gelé à l'envoi ``{produit_id(str): {...}}``, ou
+    ``{}`` (devis envoyé avant ce gel, ou brouillon)."""
+    for c in (getattr(devis, 'clauses_appliquees', None) or []):
+        if isinstance(c, dict) and c.get('type') == TYPE_BAREMES_GELES:
+            produits = c.get('produits')
+            return produits if isinstance(produits, dict) else {}
+    return {}
+
 
 def clauses_applicables_devis(devis):
     """QJR668 — les clauses PARTICULIÈRES du catalogue ``cpq`` qui s'appliquent
@@ -112,7 +182,11 @@ def figer_clauses_devis(devis):
         return isinstance(c, dict) and c.get('type') == TYPE_CGV_GELEES
 
     cgv = [c for c in existant if _est_cgv(c)]
-    particulieres = [c for c in existant if not _est_cgv(c)]
+    # ADEV30 — les autres gels internes (barème des forfaits) sont conservés
+    # tels quels : un re-gel cpq ne les efface jamais.
+    autres_gels = [c for c in existant
+                   if est_gel_interne(c) and not _est_cgv(c)]
+    particulieres = [c for c in existant if not est_gel_interne(c)]
     if not cgv:
         # CIQ218 — un devis C&I gèle la variante de SON mode (sinon l'autre
         # variante C&I) ; sans variante, les puces société comme hier.
@@ -125,7 +199,7 @@ def figer_clauses_devis(devis):
     cpq = clauses_applicables_devis(devis)
     if cpq is not None:
         particulieres = cpq
-    cible = particulieres + cgv
+    cible = particulieres + cgv + autres_gels
     if cible == existant or (not cible and not existant):
         return False
     devis.clauses_appliquees = cible
@@ -190,6 +264,8 @@ def mark_devis_sent(*, devis, user=None):
     refresh_marge_snapshot(devis)
     # QJR668 — fige les clauses/CGV de l'affaire au moment de l'envoi.
     figer_clauses_devis(devis)
+    # ADEV30 — fige le barème des forfaits au panneau (D-ASTK-1).
+    figer_baremes_forfaits(devis)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)

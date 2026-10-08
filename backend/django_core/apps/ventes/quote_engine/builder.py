@@ -4395,9 +4395,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # posée que lorsqu'au moins une clause a été figée → un devis sans clause
     # reste octet-identique. Imprimées par tous les gabarits
     # (``clauses_cgv.bloc_clauses_html``).
+    # ADEV30 / APDF20 — les GELS INTERNES (CGV société, barème des forfaits,
+    # textes contractuels) ne sont jamais des clauses particulières.
+    from apps.ventes.domain.envoi import est_gel_interne as _gel_interne
     _clauses = [
         c for c in (getattr(devis, "clauses_appliquees", None) or [])
-        if isinstance(c, dict) and c.get("type") != "cgv_gelees"]
+        if isinstance(c, dict) and not _gel_interne(c)]
     if _clauses:
         data["clauses_cgv"] = [
             {
