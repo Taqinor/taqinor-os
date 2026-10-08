@@ -12,6 +12,7 @@ l'appel no-op proprement (aucune exception), donc rien ne casse ici.
 import logging
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 
 from .models import ApprovalDecision, ApprovalDelegation, ApprovalRequest
@@ -362,17 +363,48 @@ def create_draft_rule_from_agent(
     )
 
 
+class DecisionInterdite(PermissionDenied):
+    """APAR46 — le décideur n'a pas le palier approbateur, ou il est le
+    demandeur lui-même (séparation des tâches). Traduit en 403."""
+
+
+def verifier_decideur_approval(approval, user):
+    """APAR46 — « qui peut décider » une ``AutomationApproval`` : palier
+    Responsable/Admin ET séparation des tâches (le demandeur ne décide pas sa
+    propre demande ; override admin audité, YEVNT11). ``user=None`` = décision
+    système (jamais refusée)."""
+    from core.workflow import MOTIF_PALIER, a_palier_approbateur
+
+    from . import engine
+
+    if user is None:
+        return
+    if not a_palier_approbateur(user):
+        raise DecisionInterdite(MOTIF_PALIER)
+    try:
+        engine.enforce_requester_not_approver(
+            requester=approval.requested_by, approver=user,
+            company=approval.company, label=f'approval#{approval.pk}')
+    except engine.SodViolation as exc:
+        raise DecisionInterdite(str(exc)) from exc
+
+
 def decider_approval(approval, *, approve, user):
     """XKB1 — approuve/rejette une ``AutomationApproval`` en attente.
 
     Lève ``DecisionError`` si l'approbation n'est pas ``PENDING``. Une
     approbation relance l'action différée (``engine.run_approved``) ; un rejet
-    n'exécute jamais l'action."""
+    n'exécute jamais l'action.
+
+    APAR46 — lève ``DecisionInterdite`` (403) si ``user`` n'a pas le palier
+    approbateur ou s'il est le demandeur, QUEL QUE SOIT le chemin (boîte
+    unifiée, décision en masse, jeton push)."""
     from . import engine
     from .models import AutomationApproval
 
     if approval.status != AutomationApproval.Status.PENDING:
         raise DecisionError('Décision déjà prise.')
+    verifier_decideur_approval(approval, user)
 
     approval.status = (
         AutomationApproval.Status.APPROVED if approve
