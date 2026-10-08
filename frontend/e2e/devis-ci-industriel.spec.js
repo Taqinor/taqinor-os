@@ -182,10 +182,13 @@ test('CIQ346 — page /proposition : ni « heures les plus chères » ni « CBAM
 test('CIQ346 — signature entreprise (raison sociale, qualité, ICE) → copie signée complète', async ({ request }) => {
   test.setTimeout(180_000)
   expect(etat.token, 'le test du lien doit précéder').toBeTruthy()
+  // ADEV51 — la signature renvoie l'empreinte du contenu LU (servie par /data/).
+  const lu = await lireJson(await request.get(`${API}/public/proposal/${etat.token}/data/`), 'lecture de la proposition')
   const accepte = await lireJson(await request.post(`${API}/ventes/proposal/${etat.token}/accept/`, {
     data: {
       nom: 'Nadia E2E', option: '', consent_esign: true,
       signed_at_client: new Date().toISOString(), on_behalf_of: '', entreprise: ENTREPRISE,
+      empreinte_contenu: lu.empreinte_contenu,
     },
   }), 'acceptation entreprise')
   expect(accepte.statut).toBe('accepte')

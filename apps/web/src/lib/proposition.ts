@@ -252,6 +252,13 @@ export interface ProposalResponse {
    */
   economies_cumul_25_ans?: Partial<Record<OptionKey, number>>;
   /**
+   * ADEV51 (C-ADEV-018) — empreinte du CONTENU signable au moment de la
+   * lecture. La page la renvoie telle quelle à `/accept/` ; si le devis a été
+   * corrigé entre-temps, le serveur répond 409 `empreinte_perimee`. Absente
+   * quand rien n'est signable.
+   */
+  empreinte_contenu?: string;
+  /**
    * PREVIEW-V3 (16/09/2026) — la PREMIÈRE tranche de l'échéancier, telle que
    * le devis la facturera (`apps/ventes/utils/echeancier.next_tranche`, LE
    * même helper que l'écran de succès post-signature). Clé ADDITIVE : absente
@@ -1825,6 +1832,17 @@ export interface AcceptResult {
   accepte_par_nom?: string;
   /** CIW305 — le champ que le serveur désigne en 400 (« entreprise.ice »…), pour l'afficher sous le bon champ. */
   champ?: string;
+  /** ADEV51 — code FERMÉ d'un 409 (`proposal_accept.json` › `codes_409`), ex. `empreinte_perimee`. */
+  code?: string;
+}
+
+/** ADEV51 — le 409 qui dit « la proposition a changé depuis votre lecture ». */
+export const CODE_EMPREINTE_PERIMEE = 'empreinte_perimee';
+
+/** ADEV51 — vrai quand le serveur refuse la signature parce que le contenu a changé : la page recharge. */
+export function estEmpreintePerimee(status: number, payload: unknown): boolean {
+  const code = (payload as { code?: unknown } | null | undefined)?.code;
+  return status === 409 && code === CODE_EMPREINTE_PERIMEE;
 }
 
 export function normalizeAcceptResponse(status: number, payload: unknown): AcceptResult {
@@ -1849,7 +1867,8 @@ export function normalizeAcceptResponse(status: number, payload: unknown): Accep
           ? 'La demande est invalide. Vérifiez votre saisie.'
           : 'Une erreur est survenue. Veuillez réessayer.';
   const champ = typeof body.champ === 'string' && body.champ.trim() ? body.champ.trim() : undefined;
-  return { ok: false, status, detail: detail || fallback, ...(champ ? { champ } : {}) };
+  const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim() : undefined;
+  return { ok: false, status, detail: detail || fallback, ...(champ ? { champ } : {}), ...(code ? { code } : {}) };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2634,6 +2653,8 @@ export function whatsappLinkForIntent(
 // ── WJ11 · Payload d'acceptation enrichi (rétro-compatible) ──────────────────
 
 export interface SignSignatureMeta {
+  /** ADEV51 — empreinte du contenu LU (`empreinte_contenu` servi par `/data/`), renvoyée telle quelle. */
+  empreinte_contenu?: string;
   /** Image PNG de la signature manuscrite (data URL), ou chaîne vide. */
   signature_data_url?: string;
   /** Consentement explicite à la signature électronique. */
@@ -2684,6 +2705,10 @@ export function buildAcceptBodyRich(
   // WJ108 — idem : omis quand vide (jamais un champ vide envoyé sans raison).
   if (typeof meta.otp_code === 'string' && meta.otp_code.trim()) {
     body.otp_code = meta.otp_code.trim();
+  }
+  // ADEV51 — l'empreinte du contenu lu, relayée telle quelle (omise si absente).
+  if (typeof meta.empreinte_contenu === 'string' && meta.empreinte_contenu.trim()) {
+    body.empreinte_contenu = meta.empreinte_contenu.trim();
   }
   return body;
 }

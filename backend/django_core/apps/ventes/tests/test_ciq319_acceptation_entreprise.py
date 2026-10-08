@@ -66,8 +66,11 @@ class AcceptationEntreprise(TestCase):
         return devis
 
     def _post(self, devis, entreprise=None):
+        from apps.ventes.public.signature_views import empreinte_contenu
         link = ShareLink.for_devis(devis)
-        corps = {'nom': 'Karim Exemple', 'consent_esign': True}
+        # ADEV51 — le corps renvoie l'empreinte du contenu lu.
+        corps = {'nom': 'Karim Exemple', 'consent_esign': True,
+                 'empreinte_contenu': empreinte_contenu(devis)}
         if entreprise is not None:
             corps['entreprise'] = entreprise
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):

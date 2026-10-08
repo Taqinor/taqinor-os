@@ -29,6 +29,7 @@ from apps.ventes.services import (
     validate_esign_otp,
 )
 from apps.ventes.domain.cycle_vie import _esign_otp_enabled, _otp_cache_key
+from apps.ventes.public.signature_views import empreinte_contenu
 
 User = get_user_model()
 
@@ -224,7 +225,9 @@ class TestProposalAcceptOtp(TestCase):
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '0'}):
             resp = self.api.post(
                 f'/api/django/public/proposal/{link.token}/accept/',
-                {'nom': 'M. Test', 'consent_esign': True}, format='json')
+                {'nom': 'M. Test', 'consent_esign': True,
+                 'empreinte_contenu': empreinte_contenu(devis)},
+                format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')
@@ -249,7 +252,9 @@ class TestProposalAcceptOtp(TestCase):
             resp = self.api.post(
                 f'/api/django/public/proposal/{link.token}/accept/',
                 {'nom': 'M. Test', 'otp_code': '777777',
-                 'consent_esign': True}, format='json')
+                 'consent_esign': True,
+                 'empreinte_contenu': empreinte_contenu(devis)},
+                format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')

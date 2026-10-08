@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.public.payload_variantes import _gammes_public
 from apps.ventes.services import gamme_soeur
+from apps.ventes.public.signature_views import empreinte_contenu
 from apps.ventes.tests._gammes_offre_common import GammeBase, url_accept
 
 
@@ -41,6 +42,7 @@ class TestAcceptationChoix(GammeBase):
         lien_soeur = ShareLink.for_devis(soeur)
         APIClient().post(url_accept(lien_soeur.token), {
             'nom': 'Salma Alaoui', 'consent_esign': True,
+            'empreinte_contenu': empreinte_contenu(soeur),
         }, format='json')
         soeur.refresh_from_db()
         self.assertIsNone(gamme_soeur(soeur))

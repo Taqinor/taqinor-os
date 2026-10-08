@@ -2160,6 +2160,8 @@ const signConfig = ok
       acompteMontants: acompteMontantsFmt,
       // CIW305 — commercial / industriel : les quatre champs d'identité d'entreprise sont requis.
       entrepriseRequise,
+      // ADEV51 — l'empreinte du contenu LU, renvoyée à la signature.
+      empreinte: data?.empreinte_contenu ?? '',
     })
   : null;
 
@@ -7897,6 +7899,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     signStampLabel,
     localizedStamp,
     mapAcceptResponseToUiState,
+    estEmpreintePerimee,
     type OptionKey,
     type SignFormState,
     type PropLang as SignPropLang,
@@ -7969,6 +7972,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
      *  servable (clé `sans_batterie`/`avec_batterie`). Option absente de la
      *  table ⇒ le montant est masqué, seul le pourcentage reste affiché. */
     acompteMontants?: Record<string, string>;
+    /** ADEV51 — empreinte du contenu lu (`empreinte_contenu` de `/data/`), renvoyée à `/accept/`. */
+    empreinte?: string;
   }
 
   // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
@@ -9072,6 +9077,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           signed_at_client: signedAtIso,
           on_behalf_of: onBehalfOf,
           otp_code: otpCode,
+          empreinte_contenu: cfg.empreinte ?? '',
         });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',
@@ -9088,9 +9094,17 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           detail?: string;
           accepte_par_nom?: string;
           champ?: string;
+          code?: string;
         };
         if (res.ok && data.ok) {
           showSuccess(data.accepte_par_nom || nom.trim(), signedAt, signatureDataUrl, true);
+          return;
+        }
+        // ADEV51 — la proposition a été corrigée depuis la lecture : on dit
+        // pourquoi, puis on RECHARGE la page (le client relit avant de signer).
+        if (estEmpreintePerimee(res.status, data)) {
+          showError(data.detail ?? '');
+          window.setTimeout(() => window.location.reload(), 2500);
           return;
         }
         // 400 / 409 / 404 : message backend inline. 409 = déjà accepté →

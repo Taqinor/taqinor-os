@@ -1696,6 +1696,15 @@ def proposal_data(request, token):
         _conditions = _conditions_publiques(data, devis)
         if _conditions is not None:
             payload['conditions'] = _conditions
+        # ADEV51 (C-ADEV-018) — l'empreinte du contenu SIGNABLE au moment de
+        # la lecture : la page la renvoie à ``/accept/``, qui refuse (409
+        # ``empreinte_perimee``) si le devis a été corrigé entre-temps.
+        # Additive : absente quand rien n'est signable (aperçu interne,
+        # brouillon, remplacé, accepté…).
+        from .public.signature_views import (
+            empreinte_contenu, signable_au_jeton)
+        if not link.via_interne and signable_au_jeton(devis):
+            payload['empreinte_contenu'] = empreinte_contenu(devis)
         payload['paiement_moyens'] = list(PAIEMENT_MOYENS_PUBLICS)
         payload['confirmation_email'] = _confirmation_email_publique(devis)
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
