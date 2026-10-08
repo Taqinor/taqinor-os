@@ -33,6 +33,18 @@ class TotauxListeTests(TestCase):
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
         self.n = 0
+        # Les réglages PAR SOCIÉTÉ que le moteur lit (profil — identité DC1,
+        # modèles de documents, barème) sont des singletons créés à la
+        # PREMIÈRE lecture (``Model.get`` = get_or_create, comportement
+        # antérieur à APRF3). En production ils existent depuis longtemps ;
+        # la fixture les pose ici pour que ``test_zero_ecriture`` mesure ce
+        # qu'une liste écrit À CHAQUE affichage, pas l'amorçage d'une société
+        # neuve.
+        from apps.parametres.models import CompanyProfile, TariffSettings
+        from apps.parametres.models_documents import DocumentTemplates
+        CompanyProfile.get(company=self.company)
+        DocumentTemplates.get(company=self.company)
+        TariffSettings.get(company=self.company)
 
     def _creer(self, nombre):
         for i in range(nombre):
