@@ -32,7 +32,10 @@ test('archivage bascule actif sans supprimer (distinct de la suppression défini
 
 test('suppression définitive demande confirmation (jamais silencieuse)', () => {
   const delBody = SRC.slice(SRC.indexOf('const delEquipe ='), SRC.indexOf('return ('))
-  assert.match(delBody, /window\.confirm\(/)
+  // APAR41 — dialogue de confirmation MAISON (useConfirmDialog), jamais window.confirm ;
+  // la suppression n'est appelée qu'après un accord explicite.
+  assert.match(delBody, /if \(!\(await confirmerSuppression\(/)
+  assert.doesNotMatch(delBody, /window\.confirm\(/)
 })
 
 test('LeadsSection monte EquipesCommercialesSection avec les assignables déjà chargés', () => {

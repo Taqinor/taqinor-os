@@ -2,9 +2,15 @@
 groupe Fiabilité (``IncidentPublic``/``SlaSnapshot``/``MaintenanceWindow`` —
 NTOBS1/3/9). Ces timestamps sont stockés en UTC (standard Django) mais
 affichés bruts aujourd'hui : cet utilitaire les reformate dans le fuseau
-choisi par la société (``apps.parametres.models_company.CompanyProfile.
-timezone_affichage``, défaut ``Africa/Casablanca``, éditable en Paramètres
-généraux — PAS seulement Fiabilité).
+choisi par la société.
+
+APAR53 — UN SEUL réglage de fuseau par société :
+``apps.parametres.models_company.CompanyProfile.fuseau_horaire`` (validé IANA
+par le sérialiseur, éditable dans Paramètres › Localisation, défaut
+``Africa/Casablanca``) — le même que lit l'écran (``useCompanyTimeZone``) et le
+calepinage. L'ancien ``timezone_affichage`` (NTOBS23) n'est plus lu ici et
+passe en lecture seule au PATCH du profil (suppression de la colonne = tâche
+ultérieure).
 
 ``core`` reste une couche de FONDATION : ``apps.parametres`` EST une app de
 fondation exemptée (CLAUDE.md, contrat import-linter
@@ -34,8 +40,8 @@ def _company_timezone_name(company):
     except ImportError:  # pragma: no cover — apps.parametres toujours présente
         return DEFAULT_TIMEZONE
 
-    profile = CompanyProfile.objects.filter(company=company).first()
-    nom = getattr(profile, 'timezone_affichage', None) if profile else None
+    nom = (CompanyProfile.objects.filter(company=company)
+           .values_list('fuseau_horaire', flat=True).first())
     return nom or DEFAULT_TIMEZONE
 
 

@@ -73,6 +73,15 @@ MENTION_BT = (
 )
 
 
+def _aujourdhui_casablanca():
+    """AMOT28 — la date du jour à Casablanca (fuseau du marché)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return _dt.datetime.now(ZoneInfo("Africa/Casablanca")).date()
+    except Exception:  # noqa: BLE001 — base tz absente : date UTC
+        return _dt.datetime.now(_dt.timezone.utc).date()
+
+
 def tarif_excedent_en_vigueur(date_signature_prevue=None):
     """Tarif d'excédent applicable à une convention signée à cette date.
 
@@ -91,6 +100,11 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
             d = None
     if isinstance(d, _dt.datetime):
         d = d.date()
+    if d is None:
+        # AMOT28 (C-AMOT-029) — sans date de signature prévue, la date du
+        # JOUR (Africa/Casablanca) fait foi : après le 28/02/2027 la garde
+        # d'expiration s'arme d'elle-même, jamais un tarif extrapolé.
+        d = _aujourdhui_casablanca()
     if d is not None and d > fin:
         return None, (
             "Tarif d'excédent après le 28/02/2027 non publié : aucune "

@@ -354,7 +354,8 @@ describe('DevisList — WR1/QX26 : refus passe par l\'action dédiée refuser() 
     await user.click(screen.getByText('Trop cher'))
     await user.click(screen.getByRole('button', { name: /Confirmer le refus/ }))
     await waitFor(() => {
-      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif_perte: '5', motif: undefined })
+      // ADEV44 — le NOM du motif (contrat devis_refuser.json), plus son id.
+      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif: 'Trop cher' })
     })
   })
 })

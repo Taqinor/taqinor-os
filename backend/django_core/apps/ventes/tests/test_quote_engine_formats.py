@@ -515,9 +515,19 @@ class TestPdfFormats1(TestPdfFormats):
         self.assertIn('Panneau mono 550W', html)
 
     def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
+        # APDF2 (C-APDF-001) — le RIB TAQINOR n'est plus imprimé sous le nom
+        # d'une société identifiée : la barre de virement porte le RIB DU
+        # PROFIL. On le renseigne donc pour prouver que le bloc paiement/RIB
+        # du devis final est bien rendu (et tient dans les 3 pages).
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.company)
+        CompanyProfile.objects.filter(pk=profil.pk).update(
+            rib='011 780 0000123456789012 34', banque='Banque Exemple')
         html, doc = self._render({'devis_final': True})
         self.assertEqual(len(doc.pages), 3)
-        self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
+        self.assertIn('Virement bancaire', html)  # bloc RIB présent
+        self.assertIn('RIB 011 780 0000123456789012 34', html)
+        self.assertNotIn('SGMBMAMCXXX', html)  # jamais le BIC Taqinor
 
     def test_monthly_chart_toggle_keeps_three_pages(self):
         _, doc_with = self._render({'show_monthly': True})
@@ -1834,8 +1844,16 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # donc jamais épinglé à la main) : le HTML d'avant ne dépendait pas de
         # la demande full/onepage (AGR312) et AGR313 le change. Ré-épinglée
         # depuis le run CI 37341683181 (2026-10-05, PR #810 vague 2).
+        # Vague dev-all-9 (PR #886, 2026-10-08) — CHANGEMENTS VOULUS du
+        # lot A : ADEV68 (un BROUILLON n'imprime plus de lien « signer » ni
+        # de QR — la fixture est un brouillon), AMOT17 (société identifiée
+        # sans contact : la ligne de contact TAQINOR est omise — le profil
+        # auto-créé porte le nom « TAQINOR Fixture QJR307 »), ADEV67 (le
+        # premium agricole imprime clauses/CGV gelées). Ré-épinglée depuis
+        # le message d'échec du run CI de la PR #886 (shard fast tier) —
+        # jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            'cba880aaa37496a9abebaae6eb86b1e327df07c0ebd441190e1a9259484dc233')
+            '9ece669334e9ed5db57aff6372bd52a2fb7e3ba986a18afb9dcc3c012efe39aa')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
@@ -2722,3 +2740,66 @@ class NTI18N5DocumentMultilingueTests(TestCase):
         self.assertTrue(montants['fr'], 'aucun montant lu dans le une-page')
         self.assertEqual(montants['en'], montants['fr'])
         self.assertEqual(montants['ar'], montants['fr'])
+
+
+class AcalResidentielEtudeSansPlancheAuto(TestCase):
+    """ACAL103 (C-ACAL-117, QJR666) — un devis RÉSIDENTIEL rendu avec
+    l'étude (moteur legacy) n'ajoute PAS la planche sous l'AUTO : seule une
+    demande explicite ``include_calepinage=1`` ajoute sa page. Moteur réel
+    (règle #4) ; seul le rendu WeasyPrint final est neutralisé, le compte de
+    pages lu est celui que le moteur numérote (``PAGES_TOTAL``).
+
+    Test-du-test : ``include_calepinage=1`` ⇒ une page de plus (le test
+    distingue les deux cas)."""
+
+    def setUp(self):
+        from apps.calepinage.models import Calepinage
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, [
+                ('Panneau Canadien Solar 710W', '14', '1272.73'),
+                ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+                ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+                ('Batterie Dyness 10 kWh', '1', '25000'),
+                ('Installation', '1', '4000'),
+            ], reference='DEV-ACAL103-1', etude_params=dict(DEUX_OPTIONS))
+        self.devis.mode_installation = 'residentiel'
+        self.devis.save(update_fields=['mode_installation'])
+        Calepinage.objects.create(
+            company=self.company, client=self.client_obj, devis=self.devis,
+            titre='Villa Anfa', roof_layout=LAYOUT_CAL182,
+            layout_hash='ab12cd34' * 8, version_moteur='2.1.0')
+
+    def _pages(self, options):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, clean_pdf_options)
+        # Le drapeau SERVEUR que ``generate_premium_devis_pdf`` pose sur le
+        # chemin de rendu (hors whitelist ``clean_pdf_options``) — sans lui
+        # la planche n'est jamais composée (CAL182) et la précondition
+        # « sous l'AUTO la planche EXISTE » ne pourrait pas tenir.
+        opts = dict(clean_pdf_options(options),
+                    _embed_calepinage_planche=True)
+        data = build_quote_data(self.devis, opts)
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: None
+        try:
+            G.generate_premium_pdf(data, '/tmp/_acal103_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return data, G.PAGES_TOTAL
+
+    def test_acal_residentiel_include_etude_sans_planche_auto(self):
+        data_auto, auto = self._pages({'include_etude': True})
+        # Précondition : sous l'AUTO la planche EXISTE (sinon le test ne
+        # prouverait rien).
+        self.assertTrue(data_auto.get('calepinage_svg'))
+        self.assertNotIn('include_calepinage_demande', data_auto)
+        _d, sans = self._pages({'include_etude': True,
+                                'include_calepinage': False})
+        _d, avec = self._pages({'include_etude': True,
+                                'include_calepinage': True})
+        self.assertEqual(auto, sans)
+        self.assertEqual(avec, sans + 1)

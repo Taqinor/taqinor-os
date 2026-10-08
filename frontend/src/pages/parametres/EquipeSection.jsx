@@ -5,6 +5,7 @@
 // hiérarchie pilote la visibilité des enregistrements (qui voit quoi).
 import { useEffect, useState } from 'react'
 import api from '../../api/axios'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Card, CardContent, Skeleton, EmptyState } from '../../ui'
 import { SectionTitle } from './peComponents'
 
@@ -119,8 +120,11 @@ export default function EquipeSection() {
   const load = async () => {
     setLoading(true)
     try {
-      const { data } = await api.get('/users/')
-      setUsers(data.results ?? data)
+      // APAR40 — TOUTES les pages (plus seulement la première).
+      const res = await fetchAllPages(
+        (page) => api.get('/users/', { params: { page, page_size: 200 } })
+          .then((r) => r?.data))
+      setUsers(Array.isArray(res) ? res : (res?.results ?? []))
       setError(null)
     } catch {
       setError('Impossible de charger l\'équipe.')

@@ -159,8 +159,9 @@ def _dispatch_email(user, title, body):
         html = _branded_html(getattr(user, 'company', None), title, corps)
         if html:
             msg.attach_alternative(html, 'text/html')
-        msg.send(fail_silently=True)
-        return True
+        # APAR19 — le VRAI résultat du backend (nombre de messages remis ;
+        # 0 quand l'envoi échoue en ``fail_silently``), plus un True d'office.
+        return bool(msg.send(fail_silently=True))
     except Exception as exc:  # pragma: no cover - dépend du backend réel
         logger.warning('Notification email échouée vers %s : %s', dest, exc)
         return False
@@ -184,10 +185,19 @@ def _whatsapp_link(user, title, body):
         return None
 
 
+#: APAR19 — statut journalisé d'une diffusion WhatsApp : aucun transport
+#: serveur n'existe (BSP GATED fondateur, ``whatsapp_bsp.py``) ; le lien wa.me
+#: est seulement PRÉPARÉ, jamais « envoyé ».
+STATUT_WHATSAPP_NON_ENVOYE = 'non envoyé : canal non configuré'
+
+
 def _dispatch_whatsapp(user, title, body):
-    """Best-effort : prépare le lien WhatsApp (no-op si numéro absent)."""
-    url = _whatsapp_link(user, title, body)
-    return bool(url)
+    """Prépare le lien WhatsApp (no-op si numéro absent) — n'ENVOIE rien.
+
+    APAR19 — renvoie toujours ``False`` : sans transport serveur, aucun
+    message ne part ; le journal dit « non envoyé » au lieu de « envoyé »."""
+    _whatsapp_link(user, title, body)
+    return False
 
 
 def resolve_vapid_keys():
@@ -359,6 +369,58 @@ def _dispatch_webpush(user, title, body, link=None, approval_action=None):
     return sent
 
 
+#: APAR21 — événements ROUTABLES : ceux dont l'émetteur résout ses
+#: destinataires « managers » par ``resolve_recipients`` / ``sweeps._managers``
+#: (une règle de routage y est donc LUE). Un événement notifié directement à
+#: une personne (ex. ``lead_assigned`` → le propriétaire) n'est pas routable :
+#: une règle sur lui serait sans effet. UNIQUE liste, lue par le serializer
+#: des règles (400 « événement non routable ») ET servie à l'écran
+#: (``merged_preferences`` → clé ``routable``).
+EVENEMENTS_ROUTABLES = frozenset({
+    EventType.APPROVAL_REQUESTED, EventType.APPROVAL_DECIDED,
+    EventType.APPROVAL_REMINDER, EventType.APPROVAL_ESCALATED,
+    EventType.WARRANTY_EXPIRING, EventType.MAINTENANCE_DUE,
+    EventType.SAV_TICKET_BREACHING, EventType.SAV_TICKET_OPENED,
+    EventType.SAV_TICKET_RESOLU, EventType.SAV_EQUIPEMENT_REMPLACE,
+    EventType.SAV_ACTIVITE_DUE, EventType.CHANTIER_DUE,
+    EventType.FACTURE_OVERDUE, EventType.DA_SOUMISE_STALE,
+    EventType.STOCK_EXPIRATION_SOON, EventType.STOCK_LOW,
+    EventType.HOT_LEAD_UNREAD, EventType.DIGEST,
+    EventType.BON_COMMANDE_CREE, EventType.SECURITY_ALERT,
+    EventType.TRANCHE_A_FACTURER, EventType.API_WEBHOOK_DESACTIVE,
+    EventType.MONITORING_RAPPORT,
+})
+
+
+def palier_utilisateur(user):
+    """APAR21 — palier FAISANT AUTORITÉ ('admin'/'responsable'/'normal'),
+    dérivé du Role (``menu_tier``), ``role_legacy`` seulement en repli pour
+    un compte sans rôle. Best-effort : ``None`` si illisible."""
+    try:
+        return user.menu_tier
+    except Exception:  # pragma: no cover - défensif
+        return getattr(user, 'role_legacy', None)
+
+
+def est_manager(user):
+    """APAR21 — manager = administrateur ou palier admin/responsable."""
+    try:
+        if getattr(user, 'is_admin_role', False):
+            return True
+    except Exception:  # pragma: no cover - défensif
+        pass
+    return palier_utilisateur(user) in ('admin', 'responsable')
+
+
+def regle_de_routage_active(company, event_type):
+    """APAR21 — True si une règle ACTIVE existe pour (société, événement)."""
+    try:
+        return NotificationRoutingRule.objects.filter(
+            company=company, event_type=event_type, enabled=True).exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
 def resolve_recipients_reason(company, event_type):
     """VX212(a) — la raison (`models.NotificationReason`) qu'appliquera
     `resolve_recipients` pour cet événement+société : `'regle_de_routage'`
@@ -381,12 +443,13 @@ def resolve_recipients(company, event_type):
     Si des `NotificationRoutingRule` actives existent pour cet événement et
     cette société, on les consulte pour construire la liste des destinataires :
       - règle avec `target_user` → cet utilisateur directement ;
-      - règle avec `target_role` → tous les utilisateurs actifs de la société
-        ayant ce `role_legacy`.
+      - règle avec `target_role` → tous les utilisateurs INTERNES actifs de
+        la société de ce PALIER (APAR21 : ``menu_tier`` dérivé du Role,
+        ``role_legacy`` seulement en repli).
 
     Si AUCUNE règle n'est configurée pour cet événement + société, on retombe
-    sur le comportement historique : les managers (role_legacy in admin/responsable)
-    actifs de la société.
+    sur le comportement historique : les managers (palier admin/responsable)
+    internes actifs de la société.
 
     Retourne un QuerySet d'utilisateurs (peut être vide). Best-effort :
     toute erreur renvoie un QuerySet vide plutôt que de propager l'exception."""
@@ -398,11 +461,15 @@ def resolve_recipients(company, event_type):
             company=company, event_type=event_type, enabled=True
         ).select_related('target_user'))
 
+        from .selectors import utilisateurs_internes_actifs
+        internes = utilisateurs_internes_actifs(company)
         if not rules:
-            # Comportement historique : managers actifs de la société.
-            return User.objects.filter(
-                company=company, is_active=True,
-                role_legacy__in=['admin', 'responsable'])
+            # Comportement historique : managers actifs de la société
+            # (APAR20 — internes seulement, jamais un compte portail ;
+            # APAR21 — palier faisant autorité, plus `role_legacy`).
+            return internes.filter(pk__in=[
+                u.pk for u in internes.select_related('role')
+                if est_manager(u)])
 
         # Construire l'ensemble des PKs destinataires depuis les règles actives.
         user_pks = set()
@@ -416,7 +483,11 @@ def resolve_recipients(company, event_type):
         from django.db.models import Q
         q = Q(pk__in=user_pks)
         if role_targets:
-            q |= Q(company=company, is_active=True, role_legacy__in=role_targets)
+            # APAR20 — la branche RÔLE ne vise que les comptes internes ;
+            # APAR21 — par PALIER (Role), plus par `role_legacy`.
+            q |= Q(pk__in=[
+                u.pk for u in internes.select_related('role')
+                if palier_utilisateur(u) in role_targets])
         return User.objects.filter(q, company=company, is_active=True)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('resolve_recipients échoué : %s', exc)
@@ -513,7 +584,8 @@ def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
             logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
         _audit_notify(
             user, company, event_type, channel='whatsapp', ok=wa_ok,
-            instance=instance)
+            instance=instance,
+            statut=None if wa_ok else STATUT_WHATSAPP_NON_ENVOYE)
 
     # Web push (N92) : best-effort, opt-in par APPAREIL (pas seulement un
     # toggle d'événement). NO-OP total sans clés VAPID ni abonnement — donc
@@ -729,8 +801,12 @@ _AUDIT_CHANNEL_ACTION = {
 }
 
 
-def _audit_notify(user, company, event_type, *, channel, ok, instance=None):
+def _audit_notify(user, company, event_type, *, channel, ok, instance=None,
+                  statut=None):
     """Écrit une ligne d'audit best-effort pour UN canal d'un envoi `notify()`.
+
+    APAR19 — ``statut`` force le libellé (ex. « non envoyé : canal non
+    configuré ») ; par défaut « envoyé » / « échec » selon ``ok``.
 
     Ne bloque JAMAIS l'envoi : toute erreur d'écriture d'audit est absorbée
     par `audit.recorder.record` lui-même (best-effort), et on l'entoure ici
@@ -738,7 +814,8 @@ def _audit_notify(user, company, event_type, *, channel, ok, instance=None):
     try:
         from apps.audit import recorder
         action = _AUDIT_CHANNEL_ACTION.get(channel, 'notify')
-        statut = 'envoyé' if ok else 'échoué'
+        if statut is None:
+            statut = 'envoyé' if ok else 'échec'
         detail = (
             f'Notification {event_type} → {channel} ({statut}) '
             f'destinataire={getattr(user, "username", user)}'
@@ -787,6 +864,8 @@ def merged_preferences(user):
                 'event_type': value, 'event_label': label,
                 'in_app': p.in_app, 'whatsapp': p.whatsapp, 'email': p.email,
                 'push': p.push,
+                # APAR21 — l'écran des règles de routage ne propose que ceux-ci.
+                'routable': value in EVENEMENTS_ROUTABLES,
             })
         else:
             d = default_prefs_for(value)
@@ -794,6 +873,7 @@ def merged_preferences(user):
                 'event_type': value, 'event_label': label,
                 'in_app': d['in_app'], 'whatsapp': d['whatsapp'],
                 'email': d['email'], 'push': d['push'],
+                'routable': value in EVENEMENTS_ROUTABLES,
             })
     return out
 
@@ -998,9 +1078,11 @@ def annonce_recipients(annonce):
     Best-effort : renvoie toujours un QuerySet/liste (jamais d'exception)."""
     from .models import Annonce
     try:
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        base = User.objects.filter(company=annonce.company, is_active=True)
+        from .selectors import utilisateurs_internes_actifs
+        # APAR20 — « Toute la société » = les comptes INTERNES actifs ; un
+        # compte portail ne lit jamais une annonce interne (sinon le rapport
+        # de conformité ne peut jamais atteindre 100 %).
+        base = utilisateurs_internes_actifs(annonce.company)
         if annonce.cible_type == Annonce.Cible.ROLE:
             if not annonce.cible_role:
                 return base.none()
@@ -1228,7 +1310,7 @@ def _sweep_one_pending_approval(company, instance, *, approver, requester,
         from .sweeps import _managers
         title = "Approbation escaladée"
         body = f'{description} reste en attente depuis {escalade_days}+ jours ouvrés.'
-        for admin in _managers(company):
+        for admin in _managers(company, EventType.APPROVAL_ESCALATED):
             notify(admin, EventType.APPROVAL_ESCALATED, title, body=body,
                    link=link, company=company, approval_action=approval_action)
         state.palier = 2
@@ -1267,7 +1349,7 @@ def sweep_approval_reminders(company, *, today=None):
         for approval in pending:
             try:
                 from .sweeps import _managers
-                approvers = _managers(company)
+                approvers = _managers(company, EventType.APPROVAL_REMINDER)
                 approver = approvers[0] if approvers else None
                 count += _sweep_one_pending_approval(
                     company, approval, approver=approver,
@@ -1318,10 +1400,12 @@ def sweep_workflow_step_reminders(company, *, now=None):
             # NTWFL15 — deep-link « un clic » : /approbations/:source/:id
             # (le push mobile ouvre directement la carte de décision).
             link = f'/approbations/workflow/{step.pk}'
-            for approver in _managers(company):
+            for approver in _managers(company, EventType.APPROVAL_REMINDER):
                 notify(
                     approver, EventType.APPROVAL_REMINDER, title, body=body,
-                    link=link, company=company, reason='manager',
+                    link=link, company=company,
+                    reason=resolve_recipients_reason(
+                        company, EventType.APPROVAL_REMINDER),
                     approval_action={'source': 'workflow', 'id': step.pk})
             core_workflow.marquer_rappel_envoye(step, now=moment)
             count += 1

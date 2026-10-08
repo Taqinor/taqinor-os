@@ -98,7 +98,10 @@ def _roof_photo_data_uri(devis) -> str:
         from django.contrib.contenttypes.models import ContentType
         from apps.records.models import Attachment
         from apps.records.storage import fetch_attachment
-        ct = ContentType.objects.get(app_label='ventes', model='devis')
+        # APRF3 — ``get_for_model`` lit le cache de ContentType (une seule
+        # requête par processus), plus une par devis.
+        from apps.ventes.models import Devis as _Devis
+        ct = ContentType.objects.get_for_model(_Devis)
         keys = ('toiture', 'calepinage', 'implantation', 'roof', 'panneaux')
         att = None
         for a in (Attachment.objects
@@ -118,6 +121,25 @@ def _roof_photo_data_uri(devis) -> str:
                 + base64.b64encode(data).decode())
     except Exception:
         return ""
+
+
+class _PasDeLienSigner(Exception):
+    """ADEV68 — signal interne : aucun lien « signer » pour ce rendu."""
+
+
+def cle_toit_de_la_societe(devis, key=None) -> bool:
+    """ASEC24 (C-ASEC-008) — la clé de toit ``key`` (défaut : ``roof_image``
+    du devis) est-elle sous le préfixe de la SOCIÉTÉ du devis
+    (``roofs/<company_id>/``, le seul que la porte d'écriture produit) ?
+    ``False`` pour toute autre clé (autre société, chemin relatif, préfixe
+    absent) : le lecteur ne la télécharge pas."""
+    key = (key if key is not None
+           else (getattr(devis, "roof_image", None) or "")).strip()
+    company_id = getattr(devis, "company_id", None)
+    if not key or company_id is None:
+        return False
+    prefixe = "roofs/%s/" % company_id
+    return key.startswith(prefixe) and ".." not in key[len(prefixe):]
 
 
 def _roof_render_data_uri(devis) -> str:
@@ -146,6 +168,13 @@ def _roof_render_data_uri(devis) -> str:
     """
     key = (getattr(devis, "roof_image", None) or "").strip()
     if not key:
+        return ""
+    # ASEC24 — jamais une image hors du préfixe de la société du devis : la
+    # page se rend sans toit, l'anomalie est journalisée (sans la clé).
+    if not cle_toit_de_la_societe(devis, key):
+        logger.warning(
+            "ASEC24 : clé de toit hors société ignorée (société %s, devis %s)",
+            getattr(devis, "company_id", None), getattr(devis, "pk", None))
         return ""
     try:
         import base64
@@ -829,11 +858,17 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     ligne_taux = getattr(ligne, "taux_tva", None)
     if ligne_taux is None:
         ligne_taux = taux_tva
-    pu_ht = Decimal(ligne.prix_unitaire) * (Decimal(1) - Decimal(ligne.remise) / Decimal(100))
+    # AMOT12 (C-AMOT-007) — même tolérance que le noyau monnaie : une ligne
+    # produit SANS prix ou SANS quantité (``null=True`` au modèle) vaut 0 et
+    # est DITE par ``avertissements_internes`` (``lignes_sans_montant``) —
+    # jamais un 500 au rendu.
+    _prix = ligne.prix_unitaire if ligne.prix_unitaire is not None else 0
+    _remise = getattr(ligne, "remise", None) or 0
+    pu_ht = Decimal(_prix) * (Decimal(1) - Decimal(_remise) / Decimal(100))
     pu_ttc = pu_ht * (Decimal(1) + Decimal(ligne_taux) / Decimal(100))
     produit = getattr(ligne, "produit", None)
     produit_nom = getattr(produit, "nom", "") or ""
-    return {
+    item = {
         "designation": ligne.designation,
         "marque": (getattr(produit, "marque", "") or ""),
         "description": (getattr(produit, "description", "") or ""),
@@ -847,7 +882,7 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "garantie_mois": getattr(produit, "garantie_mois", None),
         "garantie_production_mois": getattr(
             produit, "garantie_production_mois", None),
-        "quantite": float(ligne.quantite),
+        "quantite": float(ligne.quantite or 0),
         # QJR410 (b) / S8-F8 — LE PRIX UNITAIRE REMISÉ N'EST PLUS ARRONDI
         # AVANT D'ÊTRE MULTIPLIÉ. Il l'était à 2 décimales ici, et
         # ``_LigneArgentPdf`` alimentait ensuite le noyau monnaie
@@ -879,6 +914,22 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "courbe_pompe": (getattr(produit, "courbe_pompe", None) or None),
         "_produit_nom": produit_nom,
     }
+    # AMOT12 — une ligne SANS quantité (``None``) reste IMPRIMÉE à 0,00 avec
+    # sa désignation (une quantité 0 SAISIE reste, elle, omise de la liste
+    # comme avant). Clé interne posée SEULEMENT dans ce cas : toute autre
+    # ligne garde un item octet-identique.
+    if getattr(ligne, "quantite", None) is None:
+        item["_sans_quantite"] = True
+    return item
+
+
+def lignes_sans_montant(lignes) -> list:
+    """AMOT12 — désignations des lignes PRODUIT sans prix ou sans quantité."""
+    return [getattr(li, "designation", "") or "ligne sans désignation"
+            for li in lignes
+            if getattr(li, "type_ligne", "produit") in (None, "", "produit")
+            and (getattr(li, "prix_unitaire", None) is None
+                 or getattr(li, "quantite", None) is None)]
 
 
 def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
@@ -1523,10 +1574,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
+    # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
+    # rien n'est lu hors préchargement — ni pièce jointe (affiche de toiture),
+    # ni révision remplacée, ni lien de partage. Le mode DOCUMENT est
+    # inchangé (drapeau serveur, jamais dans la whitelist des options).
+    _totaux_seuls = bool((pdf_options or {}).get("_totaux_seuls"))
     # PV11 — la fiche technique du produit est jointe ici : la résolution du
     # wattage panneau la lit sans requête supplémentaire par ligne.
-    lignes = list(
-        devis.lignes.select_related("produit", "produit__fiche_technique").all())
+    # APRF3 — lignes servies depuis le PRÉCHARGEMENT de l'appelant
+    # (``lignes__produit__fiche_technique``) quand il le DÉCLARE
+    # (``_lignes_prechargees`` : une page de liste fraîchement chargée) ;
+    # sinon la requête d'hier, mot pour mot — un devis dont les lignes ont pu
+    # bouger depuis son chargement n'est jamais servi depuis un cache périmé.
+    _cache_lignes = getattr(devis, "_prefetched_objects_cache", None) or {}
+    if ((pdf_options or {}).get("_lignes_prechargees")
+            and "lignes" in _cache_lignes):
+        lignes = list(devis.lignes.all())
+    else:
+        lignes = list(devis.lignes.select_related(
+            "produit", "produit__fiche_technique").all())
 
     # ── XSAL14 — Lignes de section/note : rendues HORS totaux, à part ─────────
     # Une ligne de section (intertitre) ou de note (texte sans prix) ne porte NI
@@ -1730,6 +1796,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         sans_lignes = list(lignes)
 
     opts = clean_pdf_options(pdf_options)
+    # APDF7 (C-APDF-003) — LA langue du document est résolue ICI quand
+    # l'appelant n'en passe pas (envoi, lien public, copie signée, Celery,
+    # generer-pdf) : client (``langue_document``), puis repli société, puis
+    # français. Un ``langue_sortie`` explicite (``?langue=``) reste
+    # prioritaire. Lecture seule (règle #4) ; un client FR sans repli
+    # société reste FR, octet pour octet.
+    if not opts.get('langue_sortie'):
+        try:
+            from apps.parametres.i18n_resolver import resolve_langue_sortie
+            _langue = resolve_langue_sortie(
+                client=getattr(devis, 'client', None),
+                company=getattr(devis, 'company', None))
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            _langue = None
+        if _langue in LANGUES_SORTIE_PDF and _langue != 'fr':
+            opts['langue_sortie'] = _langue
     mode = devis.mode_installation or ""
     # CIQ301 — commercial / industriel : leurs économies ne sortent JAMAIS du
     # modèle résidentiel/BT (``calculate_savings_roi``) ni d'une étude JS.
@@ -1821,6 +1903,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avertissements_internes.append(
             f"onduleur {_famille_sans_batterie} sans ligne batterie — "
             "document rendu en option unique (aucune batterie n'est inventée)")
+    # AMOT12 — une ligne produit sans prix / sans quantité est imprimée à
+    # 0,00 et DITE au vendeur (jamais au client).
+    for _desig in lignes_sans_montant(lignes):
+        avertissements_internes.append(
+            f"ligne sans prix ou sans quantité : {_desig} — imprimée à 0,00")
     for _desig in _variante_contradictions:
         # L-2OPT — trace INTERNE : la variante déclarée sur la ligne contredit
         # sa nature lue par mots-clés (une batterie marquée « sans »…). La
@@ -3034,10 +3121,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _tarif_txt, _util_name, _savings_estimated))
     # QRES55 — formulations COMPACTES (le fondateur veut la même transparence
     # « en plus petit ») : une idée, une ligne courte.
+    # AMOT25 (C-AMOT-025) — LA mention sourcée unique (``constants_82_21``,
+    # identique au C&I, CIQ201) : plus de « plafond d'injection 20 %
+    # intégré » ni de « rachat BT non publié », phrases que le calcul ne fait
+    # pas.
+    from .constants_82_21 import MENTION_BT as _MENTION_BT
     hypotheses.append(
-        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — le "
-        "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
-        "intégré, rachat BT non publié).")
+        f"{_MENTION_BT}. Seuls les kWh autoconsommés réduisent la facture.")
     if _prod_net_kwc:
         # Production NETTE affichée, la même que TOUS les calculs du document :
         # pertes système de 20 % AU TOTAL (ordre fondateur 18/08). Le chiffre
@@ -3348,11 +3438,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     all_items = [
         {
-            **{k: v for k, v in it.items() if k != "_produit_nom"},
+            **{k: v for k, v in it.items()
+               if k not in ("_produit_nom", "_sans_quantite")},
             "marque": it["marque"] or _parse_marque(
                 it["designation"], it.get("_produit_nom", "")),
         }
-        for it in onepage_source if it["quantite"] > 0
+        for it in onepage_source
+        if it["quantite"] > 0 or it.get("_sans_quantite")
     ]
 
     # ── QJRREM — CHAQUE LIGNE PORTE LA REMISE GLOBALE ───────────────────────
@@ -3480,6 +3572,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     for rows in (sans_items, avec_items):
         for r in rows:
             r.pop("_produit_nom", None)
+            r.pop("_sans_quantite", None)
 
     inst_type = {
         "residentiel": "Résidentielle",
@@ -3605,7 +3698,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.ventes.models import ShareLink
         from apps.ventes.utils.client_links import chemin_proposition
         _pk = getattr(devis, "pk", None)
-        if _pk is not None:
+        # APRF3 — aucun lien de partage lu sur le chemin des totaux de liste.
+        if _pk is not None and not _totaux_seuls:
             # ── QRP1/A5 — LE QR SUIT LE LIEN QUI SERT CE DOCUMENT ────────────
             # ``ShareLink.for_devis`` rend le lien à l'EXPIRATION LA PLUS
             # LOINTAINE, sans regarder son niveau : un PDF rendu au niveau
@@ -3626,7 +3720,29 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                     devis=devis, token=_tok,
                     expires_at__gt=_tz.now()).first()
             if _share is None:
-                _share = ShareLink.for_devis(devis)
+                # ADEV68 (C-ADEV-004) — un BROUILLON rendu (aperçu, /proposal,
+                # generer-pdf) ne frappe ni n'imprime de lien « signer » : un
+                # PDF de brouillon transmis par erreur ne mène à aucune page
+                # signable. Seul un appelant qui PASSE le jeton d'un lien déjà
+                # créé (envoi par e-mail, juste avant ``mark_devis_sent``) le
+                # voit imprimé. Lecture du statut seulement (règle #4).
+                if getattr(devis, "statut", None) == "brouillon":
+                    raise _PasDeLienSigner()
+                # AMOT13 (C-AMOT-010) — LECTURE PURE : le lien valide EXISTANT
+                # (même règle que ``ShareLink.for_devis`` : non révoqué, non
+                # expiré ou prolongé par le suivi), jamais créé ni prolongé
+                # par un rendu (GET de liste, de détail, page publique,
+                # /proposal). Aucun lien ⇒ aucun « signer » imprimé ; le geste
+                # d'ENVOI, lui, frappe et prolonge (``views/devis_envoi``).
+                from django.db.models import Q as _Q
+                from django.utils import timezone as _tz_lien
+                _share = (ShareLink.objects.filter(
+                    _Q(expires_at__gt=_tz_lien.now())
+                    | _Q(suivi_prolonge_le__isnull=False),
+                    devis=devis, revoque_le__isnull=True)
+                    .order_by('-expires_at').first())
+                if _share is None:
+                    raise _PasDeLienSigner()
             if _tenant_site:
                 _signer_base = "https://" + _tenant_site
             else:
@@ -3635,6 +3751,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 _signer_base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
             # PV84 — chemin partagé, nom du client inclus (cosmétique).
             links["signer"] = f"{_signer_base}{chemin_proposition(devis, _share.token)}"
+    except _PasDeLienSigner:
+        links = {}
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         links = {}
 
@@ -3669,12 +3787,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QJR628 — marquage de correction : « Document mis à jour le … »
         # (correction après envoi, D-QJR5-1) et « Remplace le devis … »
         # (révision). '' = rien à imprimer (octet-identique).
-        "mis_a_jour_le": date_correction_apres_envoi(devis),
-        "remplace_reference": reference_remplacee(devis),
+        "mis_a_jour_le": ("" if _totaux_seuls
+                          else date_correction_apres_envoi(devis)),
+        "remplace_reference": ("" if _totaux_seuls
+                               else reference_remplacee(devis)),
         "client_name": client_name or "Client",
         # QRES39 — vraie toiture du client (pièce jointe image du devis dont
         # le nom évoque la toiture) ; '' → schéma illustratif.
-        "roof_photo": _roof_photo_data_uri(devis),
+        "roof_photo": "" if _totaux_seuls else _roof_photo_data_uri(devis),
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
@@ -4229,6 +4349,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         for li in option_lignes:
             it = _line_to_item(li, taux_tva)
             it.pop("_produit_nom", None)
+            it.pop("_sans_quantite", None)
             qte = float(li.quantite or 0)
             _avec_opt = _totaux_opt(
                 devis, vue=_VueOpt.AFFICHAGE,
@@ -4545,6 +4666,20 @@ _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
                         "accepte_par_nom", "note_client")
 
 
+def _echapper_chaines(valeur, echapper):
+    """AMOT42 — copie de ``valeur`` dont chaque chaîne FEUILLE (valeurs de
+    dict, éléments de liste) est échappée ; clés, nombres et booléens
+    intacts."""
+    if isinstance(valeur, dict):
+        return {cle: _echapper_chaines(val, echapper)
+                for cle, val in valeur.items()}
+    if isinstance(valeur, list):
+        return [_echapper_chaines(val, echapper) for val in valeur]
+    if isinstance(valeur, str):
+        return echapper(valeur)
+    return valeur
+
+
 def echapper_textes_client(data: dict) -> dict:
     """Copie de ``data`` dont les textes CONTRÔLÉS PAR L'UTILISATEUR sont
     échappés HTML, pour les renderers qui écrivent leur HTML à la main
@@ -4642,6 +4777,12 @@ def echapper_textes_client(data: dict) -> dict:
             ({**li, "designation": _e(li.get("designation"))}
              if isinstance(li, dict) else li)
             for li in sortie["om_ci_lignes"]]
+    # AMOT42 (C-AMOT-053) — le bloc ``economie_ci`` porte des textes SAISIS
+    # (``saisies_economie_ci`` : prêteur, référence d'offre, source du taux)
+    # recomposés en libellés par ``economie_ci`` : il est parcouru ici, UNE
+    # fois, comme le reste (les clés et les nombres sont intacts).
+    if isinstance(sortie.get("economie_ci"), dict):
+        sortie["economie_ci"] = _echapper_chaines(sortie["economie_ci"], _e)
     # CIQ218 — conditions générales C&I : texte saisi par la société.
     if isinstance(sortie.get("cgv_ci"), list):
         sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]
@@ -4654,12 +4795,16 @@ def echapper_textes_client(data: dict) -> dict:
     return sortie
 
 
-def display_totals(devis) -> dict:
+def display_totals(devis, *, lignes_prechargees=False) -> dict:
     """Total d'affichage canonique pour la liste des devis — calculé par le
     MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
     au document au dirham près. Repli sûr sur le total stocké."""
     try:
-        data = build_quote_data(devis, {"pdf_mode": "onepage"})
+        # APRF3 — drapeau serveur « totaux seuls » : aucune lecture hors
+        # préchargement (affiche, révision, lien), mêmes totaux au centime.
+        data = build_quote_data(devis, {
+            "pdf_mode": "onepage", "_totaux_seuls": True,
+            "_lignes_prechargees": bool(lignes_prechargees)})
         # ERR-QAC-MULTIVILLA-TOTAL-XN — la liste, le Kanban, la salle de vente
         # et la page publique des gammes affichent le total ×N que le
         # document imprime et que l'ERP facture (décision fondateur
@@ -4715,7 +4860,7 @@ def _compte_du_layout(roof_layout) -> int:
         return 0
 
 
-def _pdf_key(devis, *, watermark=False, variante=None) -> str:
+def _pdf_key(devis, *, watermark=False, variante=None, apercu=False) -> str:
     """MinIO key, scoped by company to avoid cross-tenant collisions.
 
     L-NIV (24/08/2026) — ``watermark=True`` (PDF public niveau standard)
@@ -4734,6 +4879,12 @@ def _pdf_key(devis, *, watermark=False, variante=None) -> str:
     suffixe = "__pub-standard" if watermark else ""
     if variante in VARIANTES_PDF:
         suffixe += f"__opt-{variante}"
+    # AMOT14 (C-AMOT-012) — un rendu NON persisté (aperçu interne avec ses
+    # paramètres, pièce jointe d'e-mail, PDF public) part sous une clé
+    # d'APERÇU distincte : il n'écrase jamais le fichier mémorisé
+    # (``devis.fichier_pdf``) que « Télécharger » sert tel quel.
+    if apercu and not suffixe:
+        suffixe = "__apercu"
     return f"devis/{company_id}/{devis.reference}{suffixe}.pdf"
 
 
@@ -4973,7 +5124,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # servir le document complet du commercial).
     _variante_rendue = clean_pdf_options(pdf_options).get('variante_option')
     key = _pdf_key(devis, watermark=_filigrane_actif,
-                   variante=_variante_rendue)
+                   variante=_variante_rendue, apercu=not persist)
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)
 
@@ -5045,6 +5196,12 @@ def cle_pdf_a_jour(devis, pdf_options=None) -> str:
         options = pdf_options
     options = clean_pdf_options(options)
     empreinte_stockee = meta.get("empreinte")
+    # AMOT14 — des options DEMANDÉES différentes de celles du dernier rendu
+    # persisté ne servent jamais l'ancien fichier (format, langue…).
+    options_memorisees = (clean_pdf_options(meta.get("options"))
+                          if isinstance(meta.get("options"), dict) else None)
+    if options_memorisees is not None and options != options_memorisees:
+        empreinte_stockee = None
     if devis.fichier_pdf and empreinte_stockee:
         try:
             # CALEPDF/A8 — l'empreinte STOCKÉE est celle des données RENDUES,

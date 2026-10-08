@@ -15,9 +15,13 @@ import {
 // PushToggle) d'un opt-in PAR CATÉGORIE d'événement sur cet appareil : décocher
 // une ligne (ex. tous les évènements SAV) arrête le push pour cette catégorie
 // sans affecter les autres, sans dupliquer l'opt-in device.
+// APAR19 — `indisponible` : canal SANS transport serveur (aucun envoi
+// WhatsApp automatique tant que le fournisseur n'est pas branché). La colonne
+// est grisée, aucune case cochable ; la préférence stockée n'est pas effacée.
+const WHATSAPP_INDISPONIBLE = 'Non disponible : aucun envoi WhatsApp automatique n’est configuré.'
 const CHANNELS = [
   { key: 'in_app', label: 'In-app' },
-  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'whatsapp', label: 'WhatsApp', indisponible: WHATSAPP_INDISPONIBLE },
   { key: 'email', label: 'Email' },
   { key: 'push', label: 'Push sur cet appareil' },
 ]
@@ -150,8 +154,13 @@ export default function NotificationsPreferences() {
                 <tr>
                   <th scope="col">Événement</th>
                   {CHANNELS.map((c) => (
-                    <th key={c.key} scope="col" className="np-channel-head">
+                    <th key={c.key} scope="col" className="np-channel-head"
+                        title={c.indisponible || undefined}
+                        style={c.indisponible ? { opacity: 0.55 } : undefined}>
                       {c.label}
+                      {c.indisponible && (
+                        <span className="block text-[11px] font-normal">non disponible</span>
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -164,12 +173,14 @@ export default function NotificationsPreferences() {
                         : undefined}>
                     <td>{r.event_label}</td>
                     {CHANNELS.map((c) => (
-                      <td key={c.key} className="np-channel-cell">
+                      <td key={c.key} className="np-channel-cell"
+                          title={c.indisponible || undefined}>
                         <Switch
-                          checked={Boolean(r[c.key])}
-                          disabled={savingKey === `${r.event_type}:${c.key}`}
+                          checked={c.indisponible ? false : Boolean(r[c.key])}
+                          disabled={Boolean(c.indisponible)
+                            || savingKey === `${r.event_type}:${c.key}`}
                           onCheckedChange={(v) => toggle(r.event_type, c.key, v)}
-                          aria-label={`${r.event_label} — ${c.label}`} />
+                          aria-label={`${r.event_label} — ${c.label}${c.indisponible ? ' (non disponible)' : ''}`} />
                       </td>
                     ))}
                   </tr>
@@ -178,8 +189,9 @@ export default function NotificationsPreferences() {
             </table>
           )}
           <p className="np-note">
-            Les notifications in-app sont toujours disponibles. WhatsApp et email
-            ne sont envoyés que si le canal correspondant est configuré.
+            Les notifications in-app sont toujours disponibles. L’email n’est
+            envoyé que si le canal est configuré. WhatsApp n’est pas encore
+            disponible (aucun envoi automatique).
           </p>
         </CardContent>
       </Card>

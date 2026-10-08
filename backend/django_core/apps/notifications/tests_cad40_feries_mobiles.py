@@ -142,10 +142,19 @@ class RienNEstCalculeTests(_Base):
         self.assertIn('Fêtes mobiles', message)
 
     def test_le_rappel_se_tait_une_fois_l_annee_saisie(self):
+        # APAR36 — les QUATRE fêtes (détecteur unique), pas une seule ligne.
+        for mois, nom in ((1, 'Aïd al-Fitr'), (3, 'Aïd al-Adha'),
+                          (4, 'Nouvel An hégirien'), (6, 'Aïd al-Mawlid')):
+            Holiday.objects.create(
+                company=self.company, date=datetime.date(2031, mois, 20),
+                nom=nom, recurrent_annuel=False)
+        self.assertIsNone(rappel_fetes_mobiles(self.company, 2031))
+
+    def test_une_seule_fete_ne_fait_pas_taire_le_rappel(self):
         Holiday.objects.create(
             company=self.company, date=datetime.date(2031, 1, 20),
             nom='Aïd al-Fitr', recurrent_annuel=False)
-        self.assertIsNone(rappel_fetes_mobiles(self.company, 2031))
+        self.assertIsInstance(rappel_fetes_mobiles(self.company, 2031), str)
 
     def test_un_ferie_FIXE_recurrent_ne_fait_pas_taire_le_rappel(self):
         """Neuf lignes récurrentes ne prouvent pas que les fêtes lunaires de

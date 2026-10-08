@@ -9,8 +9,11 @@ import {
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import crmApi from '../../api/crmApi'
+import { useConfirmDialog } from '../../ui/confirm'
 
 export default function EquipesCommercialesSection({ assignables = [] }) {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [equipes, setEquipes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -77,7 +80,7 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
   }
 
   const delEquipe = async (equipe) => {
-    if (!window.confirm(`Supprimer l'équipe « ${equipe.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'équipe « ${equipe.nom} » ?` }))) return
     await crmApi.deleteEquipe(equipe.id).catch(() => {})
     load()
   }

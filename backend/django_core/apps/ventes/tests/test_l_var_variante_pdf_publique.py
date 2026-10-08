@@ -322,8 +322,10 @@ class TestPdfReelParVariante(_Base):
         cles = {v: self._rendu(v)[1]
                 for v in (None, 'sans', 'avec', 'les_deux')}
         self.assertEqual(len(set(cles.values())), 4, cles)
-        # La clé historique (aucune variante) est inchangée.
-        self.assertEqual(cles[None], _pdf_key(self.devis))
+        # Aucune variante, rendu NON persisté (persist=False) : la clé
+        # d'APERÇU (AMOT14) — jamais celle du fichier mémorisé du devis.
+        self.assertEqual(cles[None], _pdf_key(self.devis, apercu=True))
+        self.assertNotEqual(cles[None], _pdf_key(self.devis))
 
     def test_une_variante_n_est_jamais_persistee_sur_le_devis(self):
         """Le bouton interne « Télécharger » doit toujours pointer sur le

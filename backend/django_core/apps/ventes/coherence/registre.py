@@ -73,6 +73,8 @@ TOLERANCES = {
     'I6_eco_vs_facture': 1.001,     # économie annuelle ≤ facture actuelle
     'I7_kwc_ratio': 0.02,           # kWc du bloc horaire vs kWc du devis
     'I10_ratio': 0.03,              # total graphe mensuel vs carte option
+    # ACAL346 — kWc dessiné au calepinage vs kWc du devis (2 %).
+    'kwc_calepinage_ratio': 0.02,
 }
 
 
@@ -167,4 +169,4 @@ def regles_selectionnees(ids=None):
 def charger_regles():
     """Importe les modules de règles (l'import les enregistre)."""
     from . import (regles_documents, regles_etude, regles_crm,  # noqa: F401
-                   regles_securite)
+                   regles_securite, regles_calepinage)

@@ -87,13 +87,19 @@ class TestDC1CompanyIdentity(TestCase):
         html = self._capture_html(data)
         self.assertIn('#123456', html)
 
-    def test_no_identity_fields_keeps_default_rib(self):
-        # Un profil dont seuls les champs d'identité légale sont vides garde le
-        # RIB par défaut (BIC Taqinor) — le repli reste fonctionnel.
+    def test_nom_only_profile_prints_no_foreign_rib(self):
+        # APDF2 (C-APDF-001, P0) — remplace l'ancien « profil vierge garde le
+        # RIB Taqinor ». Un profil qui porte un NOM (créé avec la raison
+        # sociale de la société) identifie la société : sans RIB ni banque,
+        # AUCUNE barre « Virement bancaire » — jamais le RIB TAQINOR sous le
+        # nom d'un autre tenant. Le repli historique ne vaut plus que SANS
+        # AUCUN profil (``RegleUniqueTests.test_sans_profil_ligne_historique``).
         from apps.ventes.quote_engine.builder import build_quote_data
         # profil vierge (nom = nom de la société, tout le reste vide)
         data = build_quote_data(self._devis())
+        self.assertTrue(data['entreprise']['nom'])
         data['devis_final'] = True
         html = self._capture_html(data)
-        # RIB par défaut conservé (aucun RIB/banque société renseigné)
-        self.assertIn('SGMBMAMCXXX', html)
+        self.assertNotIn('SGMBMAMCXXX', html)
+        self.assertNotIn('TAQINOR SOLUTION', html)
+        self.assertNotIn('Virement bancaire', html)

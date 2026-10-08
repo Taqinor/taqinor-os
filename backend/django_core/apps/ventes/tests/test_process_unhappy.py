@@ -17,7 +17,7 @@ Run:
 """
 from decimal import Decimal
 
-from apps.crm.models import Lead
+from apps.crm.models import Lead, MotifPerte
 from apps.crm.stages import QUOTE_SENT, SIGNED
 from apps.ventes.models import Avoir, BonCommande, Devis, Facture, LigneFacture
 from testkit.base import TenantAPITestCase
@@ -28,6 +28,8 @@ class TestDevisRefuseUnhappyPath(TenantAPITestCase):
     def test_refuse_never_advances_lead_to_signed(self):
         """Un devis refusé ne fait JAMAIS avancer le lead à SIGNED."""
         api = self.client_as(role='responsable')
+        # ADEV44 — le motif est le NOM d'un MotifPerte actif de la société.
+        MotifPerte.objects.create(company=self.company, nom='Prix trop élevé')
         lead = Lead.objects.create(
             company=self.company, nom='Lead Refuse E2E', stage=QUOTE_SENT)
         devis = DevisFactory(

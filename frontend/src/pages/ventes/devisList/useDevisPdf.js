@@ -21,6 +21,35 @@ import { echeancierAvecAcompte } from '../../../features/ventes/echeancierEditio
 import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../../features/ventes/solar.js'
 import { frenchError } from './devisListHelpers.js'
 
+// Les options PDF envoyées à `generer-pdf` (whitelist `clean_pdf_options`)
+// depuis l'état de la modale — fonction PURE (testable sans React).
+export function optionsPdfDepuisModale({
+  pdfMode, showMonthly, devisFinal, includeEtude, includeCalepinage,
+  includeNoteCalcul,
+}, d) {
+  const options = {
+    pdf_mode: pdfMode,
+    show_monthly: showMonthly,
+    devis_final: devisFinal,
+    // T12/T13 — étude uniquement si premium ET données d'étude présentes.
+    include_etude: pdfMode === 'full' && includeEtude
+      && !(d?.mode_installation === 'commercial' || d?.mode_installation === 'industriel')
+      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
+    // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
+    // `null` = auto (le serveur ajoute la planche si le devis en porte une),
+    // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
+    include_calepinage: includeCalepinage === 'auto'
+      ? null : includeCalepinage === 'oui',
+  }
+  // AMOT68 — annexe « Note de calcul » (dossier FDA, AGR319) : agricole SEUL,
+  // document complet seul ; la clé n'est posée que pour un devis agricole
+  // (tout autre corps reste byte-identique).
+  if (d?.mode_installation === 'agricole') {
+    options.include_note_calcul = pdfMode === 'full' && !!includeNoteCalcul
+  }
+  return options
+}
+
 // `selectedIds` / `setSelectedIds` (sélection du lot) et `devis` restent dans
 // le composant principal : le lot les lit ici.
 export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
@@ -70,6 +99,8 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // DÉTAIL, pour ne pas faire de la liste un N+1). Dire « oui » ou « non » ici
   // serait donc une supposition ; 'auto' laisse décider celui qui sait.
   const [includeCalepinage, setIncludeCalepinage] = useState('auto')
+  // AMOT68 — « Joindre la note de calcul (dossier FDA) » : agricole seul.
+  const [includeNoteCalcul, setIncludeNoteCalcul] = useState(false)
   // Incident fondateur 01/09 round 2 — préselection gracieuse (voir import
   // solar.js ci-dessus) : posé UNIQUEMENT quand l'ouverture de la modale a dû
   // rabattre 'full' sur 'onepage' faute d'onduleur classifié sur les lignes.
@@ -118,6 +149,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     // client reçoit le premium. L'étude C&I est intégrée au document.
     setIncludeEtude(false)
     setIncludeCalepinage('auto')
+    setIncludeNoteCalcul(false)
   }
 
   // Ouvre la modale PDF pour le lot sélectionné (format partagé).
@@ -132,6 +164,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     setCustomAcompte('')
     setIncludeEtude(false)
     setIncludeCalepinage('auto')
+    setIncludeNoteCalcul(false)
   }
 
   // T10 — Aperçu PDF en application : récupère le blob /proposal et l'ouvre dans
@@ -167,20 +200,10 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   }, [previewDevis])
 
   // Construit les options PDF depuis l'état de la modale (partagé une page / lot).
-  const buildPdfOptions = (d) => ({
-    pdf_mode: pdfMode,
-    show_monthly: showMonthly,
-    devis_final: devisFinal,
-    // T12/T13 — étude uniquement si premium ET données d'étude présentes.
-    include_etude: pdfMode === 'full' && includeEtude
-      && !(d?.mode_installation === 'commercial' || d?.mode_installation === 'industriel')
-      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
-    // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
-    // `null` = auto (le serveur ajoute la planche si le devis en porte une),
-    // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
-    include_calepinage: includeCalepinage === 'auto'
-      ? null : includeCalepinage === 'oui',
-  })
+  const buildPdfOptions = (d) => optionsPdfDepuisModale({
+    pdfMode, showMonthly, devisFinal, includeEtude, includeCalepinage,
+    includeNoteCalcul,
+  }, d)
 
   // QG1 — Lance la génération d'un PDF + polling silencieux jusqu'à fichier
   // prêt. Le PDF s'ouvre/télécharge AUTOMATIQUEMENT dès qu'il est prêt (plus
@@ -429,6 +452,8 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
     setIncludeEtude,
     includeCalepinage,
     setIncludeCalepinage,
+    includeNoteCalcul,
+    setIncludeNoteCalcul,
     pdfModeAutoOnepage,
     targetHasEtude,
     targetIsCi,

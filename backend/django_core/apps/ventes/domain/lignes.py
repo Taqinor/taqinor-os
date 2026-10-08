@@ -774,7 +774,32 @@ def _comptes_panneaux(lignes):
     return comptes
 
 
-def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
+def comptes_panneaux_du_devis(devis):
+    """ADEV30 — le compte de panneaux de chaque vue, relu EN BASE (à capturer
+    AVANT un geste et à transmettre à :func:`retarifer_forfaits_par_panneau`
+    en ``comptes_avant``)."""
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return None
+    from apps.ventes.models import LigneDevis
+    lignes = list(LigneDevis.objects.filter(
+        devis_id=devis.pk, type_ligne='produit').select_related('produit'))
+    return _comptes_panneaux(lignes)
+
+
+def _statut_en_base(devis):
+    # Un devis jamais enregistré (pk None) n'a AUCUN statut en base : on ne
+    # l'interroge pas (filter(pk=None) ferait une requête inutile — et
+    # interdite dans les tests purs SimpleTestCase de QJR83).
+    pk = getattr(devis, 'pk', None)
+    if pk is None:
+        return None
+    from apps.ventes.models import Devis
+    return (Devis.objects.filter(pk=pk)
+            .values_list('statut', flat=True).first())
+
+
+def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
+                                   comptes_avant=None):
     """QJR83 — remet au barème les lignes de forfait TARIFÉES AU PANNEAU.
 
     Ne touche QUE les lignes dont le produit porte un barème
@@ -805,10 +830,21 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None):
     * ``LigneDevisViewSet`` (ajout / modification / suppression d'UNE ligne).
 
     Les deux l'appellent désormais, APRÈS toutes leurs écritures de lignes.
+
+    ADEV30 (C-ADEV-041, D-ASTK-1) — SEULES les lignes d'un BROUILLON suivent
+    le catalogue du jour. Sur un devis NON brouillon (envoyé corrigé sur
+    place), le forfait n'est re-tarifé QUE si le geste a CHANGÉ le nombre de
+    panneaux : l'appelant transmet ``comptes_avant``
+    (:func:`comptes_panneaux_du_devis` capturé avant ses écritures) ; absent
+    ou identique au compte courant ⇒ AUCUNE écriture (une retouche sans
+    rapport, ou un événement catalogue, ne change plus le TTC d'un envoyé).
     """
     messages = avertissements if isinstance(avertissements, list) else []
     lignes = _lignes_produit(devis)
     comptes = _comptes_panneaux(lignes)
+    if _statut_en_base(devis) not in (None, 'brouillon'):
+        if comptes_avant is None or comptes_avant == comptes:
+            return messages
     for ligne in lignes:
         produit = getattr(ligne, 'produit', None)
         if not porte_bareme_par_panneau(produit):
@@ -983,6 +1019,9 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     classes_avant = {c for c in (
         _classe_completable(li) for li in LigneDevis.objects.filter(
             devis_id=devis.pk).select_related('produit')) if c}
+    # ADEV30 — compte de panneaux AVANT le remplacement (un envoyé n'est
+    # re-tarifé que si ce compte change).
+    comptes_avant = comptes_panneaux_du_devis(devis)
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
     # QJR667 — un ``lot`` n'est accepté que s'il appartient à CE devis (donc
@@ -1100,7 +1139,8 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     # QJR83 — les forfaits AU PANNEAU suivent le compte réellement écrit
     # ci-dessus (jamais celui que l'appelant croyait envoyer).
     return retarifer_forfaits_par_panneau(devis,
-                                          avertissements=avertissements)
+                                          avertissements=avertissements,
+                                          comptes_avant=comptes_avant)
 
 
 # ── ACAL90 (C-ACAL-111, D-ACAL-22) — LE KIT RETIRÉ À LA MAIN ────────────────

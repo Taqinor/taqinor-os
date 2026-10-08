@@ -42,11 +42,21 @@ def _companies():
         return []
 
 
-def _managers(company):
-    """Gérants/staff de la société (même logique que digests._recipients)."""
+def _managers(company, event_type=None):
+    """Gérants/staff de la société (même logique que digests._recipients).
+
+    APAR21 — quand ``event_type`` est donné et qu'une règle de routage ACTIVE
+    existe pour cet événement (Paramètres › Notifications), ses destinataires
+    (``resolve_recipients``) remplacent la liste par défaut : la règle est
+    LUE par tous les émetteurs de l'app, plus seulement par quelques-uns."""
+    if event_type is not None:
+        from .services import regle_de_routage_active, resolve_recipients
+        if regle_de_routage_active(company, event_type):
+            return list(resolve_recipients(company, event_type))
     try:
-        from authentication.models import CustomUser
-        base = CustomUser.objects.filter(company=company, is_active=True)
+        from .selectors import utilisateurs_internes_actifs
+        # APAR20 — internes seulement (jamais un compte portail).
+        base = utilisateurs_internes_actifs(company)
         mgrs = [u for u in base if _is_manager(u)]
         return mgrs if mgrs else list(base)
     except Exception:  # pragma: no cover
@@ -54,12 +64,10 @@ def _managers(company):
 
 
 def _is_manager(user):
-    try:
-        if getattr(user, 'is_admin_role', False):
-            return True
-        return getattr(user, 'role_tier', None) in ('admin', 'responsable')
-    except Exception:
-        return False
+    # APAR21 — palier faisant autorité (``menu_tier``) : l'ancien
+    # ``role_tier`` n'existait pas sur le modèle (toujours None).
+    from .services import est_manager
+    return est_manager(user)
 
 
 def _notify_user_or_managers(user, company, event_type, title, body, link=''):
@@ -67,7 +75,7 @@ def _notify_user_or_managers(user, company, event_type, title, body, link=''):
     if user is not None and getattr(user, 'pk', None):
         notify(user, event_type, title, body=body, link=link, company=company)
         return
-    for mgr in _managers(company):
+    for mgr in _managers(company, event_type):
         notify(mgr, event_type, title, body=body, link=link, company=company)
 
 
@@ -123,7 +131,7 @@ def _sweep_warranty_expiring(company):
                     notify(owner, EventType.WARRANTY_EXPIRING, title,
                            body=body, link=link, company=company)
                 else:
-                    for mgr in _managers(company):
+                    for mgr in _managers(company, EventType.WARRANTY_EXPIRING):
                         notify(mgr, EventType.WARRANTY_EXPIRING, title,
                                body=body, link=link, company=company)
                 count += 1
@@ -177,7 +185,7 @@ def _sweep_maintenance_due(company):
                     notify(owner, EventType.MAINTENANCE_DUE, title,
                            body=body, link=link, company=company)
                 else:
-                    for mgr in _managers(company):
+                    for mgr in _managers(company, EventType.MAINTENANCE_DUE):
                         notify(mgr, EventType.MAINTENANCE_DUE, title,
                                body=body, link=link, company=company)
                 count += 1
@@ -282,7 +290,7 @@ def _sweep_chantier_due(company):
                 # WIR176 — `/installations/<pk>` n'existe pas côté front ;
                 # InstallationsPage (`/chantiers`) consomme `?id=<pk>`.
                 link = f'/chantiers?id={chantier.pk}'
-                for mgr in _managers(company):
+                for mgr in _managers(company, EventType.CHANTIER_DUE):
                     notify(mgr, EventType.CHANTIER_DUE, title,
                            body=body, link=link, company=company)
                 count += 1
@@ -298,20 +306,52 @@ def _sweep_chantier_due(company):
 
 # ── FACTURE_OVERDUE sweep (YEVNT3) ────────────────────────────────────────────
 
+def _reserver_emission(company, event_type, cle, periode=''):
+    """APAR23 — réserve l'émission ``(event_type, cle, periode)`` pour la
+    société. True = première fois (le balayage diffuse), False = déjà émise.
+
+    Marqueur INDÉPENDANT des préférences de canal (``MarqueurEmissionBalayage``)
+    : in-app coupé, aucune ligne ``Notification`` ne reste, mais le marqueur,
+    lui, reste. L'unicité en base rend deux passages concurrents sûrs.
+    Best-effort : une erreur de lecture/écriture laisse diffuser (False
+    négatif plutôt qu'une alerte perdue)."""
+    from django.db import IntegrityError, transaction
+
+    from .models import MarqueurEmissionBalayage
+    try:
+        with transaction.atomic():
+            _obj, cree = MarqueurEmissionBalayage.objects.get_or_create(
+                company=company, event_type=event_type, cle=cle[:255],
+                periode=periode)
+        return cree
+    except IntegrityError:
+        return False
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('sweeps: marqueur d\'émission illisible', exc_info=True)
+        return True
+
+
 def _already_notified_today(company, event_type, link):
-    """True si une notification `event_type` avec ce `link` a déjà été émise
-    AUJOURD'HUI pour cette société — idempotence stricte (une notif/jour),
-    plus stricte que les autres sweeps de ce fichier (qui tolèrent une
-    ré-émission par exécution)."""
+    """True si `event_type` pour ce `link` a déjà été émis AUJOURD'HUI pour
+    cette société — idempotence stricte (une émission/jour), plus stricte que
+    les autres sweeps de ce fichier (qui tolèrent une ré-émission par
+    exécution).
+
+    APAR23 — lu sur le marqueur d'émission (réservé ici : un False RÉSERVE
+    l'émission du jour), plus sur la présence d'une ``Notification`` (absente
+    quand l'in-app est coupé). Une notification du jour émise AVANT le
+    marqueur compte encore (pas de re-diffusion au déploiement)."""
     try:
         from .models import Notification
         today = date.today()
-        return Notification.objects.filter(
-            company=company, event_type=event_type, link=link,
-            created_at__date=today,
-        ).exists()
+        if Notification.objects.filter(
+                company=company, event_type=event_type, link=link,
+                created_at__date=today).exists():
+            return True
     except Exception:  # pragma: no cover - défensif
-        return False
+        pass
+    return not _reserver_emission(
+        company, event_type, link, periode=date.today().isoformat())
 
 
 def _sweep_facture_overdue(company):
@@ -402,7 +442,7 @@ def _sweep_da_soumise_stale(company):
                     f"La demande d'achat « {da.reference} » ({da.objet}) est "
                     f"soumise depuis {anciennete} jour(s) sans décision."
                 )
-                for mgr in _managers(company):
+                for mgr in _managers(company, EventType.DA_SOUMISE_STALE):
                     notify(mgr, EventType.DA_SOUMISE_STALE, title,
                            body=body, link=link, company=company)
                 count += 1
@@ -486,7 +526,7 @@ def _sweep_stock_expiration_soon(company):
                     f"({lot.quantite_restante} restant(s)) expire dans "
                     f"{delta} jours ({lot.date_peremption})."
                 )
-                for mgr in _managers(company):
+                for mgr in _managers(company, EventType.STOCK_EXPIRATION_SOON):
                     notify(mgr, EventType.STOCK_EXPIRATION_SOON, title,
                            body=body, link='/stock', company=company)
                 count += 1
@@ -655,17 +695,34 @@ def _lead_id_from_link(link):
     return int(m.group(1)) if m else None
 
 
+def _cle_lead(lead_pk):
+    return f'lead:{lead_pk}'
+
+
 def _leads_deja_escalades(company):
     """Ids des leads dont le filet a DÉJÀ sonné (une escalade par lead, comme
-    le marqueur de l'escalade premier-contact) — lus sur les notifications
-    elles-mêmes, lues ou non : leur état de lecture ne décide plus de rien."""
-    from .models import Notification
+    le marqueur de l'escalade premier-contact).
 
+    APAR23 — lus sur le MARQUEUR d'émission (indépendant des préférences de
+    canal : in-app coupé, aucune notification ne reste) ; les notifications
+    déjà émises avant le marqueur comptent encore (lues ou non : leur état de
+    lecture ne décide de rien)."""
+    from .models import MarqueurEmissionBalayage, Notification
+
+    ids = set()
+    for cle in MarqueurEmissionBalayage.objects.filter(
+            company=company, event_type=EventType.HOT_LEAD_UNREAD,
+            periode='').values_list('cle', flat=True):
+        try:
+            ids.add(int(cle.split(':', 1)[1]))
+        except (IndexError, ValueError):
+            continue
     liens = Notification.objects.filter(
         company=company, event_type=EventType.HOT_LEAD_UNREAD,
         title=HOT_LEAD_TITRE,
     ).values_list('link', flat=True)
-    return {i for i in (_lead_id_from_link(lien) for lien in liens) if i}
+    ids |= {i for i in (_lead_id_from_link(lien) for lien in liens) if i}
+    return ids
 
 
 def _sweep_hot_leads(company, now=None):
@@ -738,8 +795,12 @@ def _sweep_hot_leads(company, now=None):
                 continue
             if ecoulees <= minutes:
                 continue
+            # APAR23 — une escalade par lead, réservée AVANT la diffusion.
+            if not _reserver_emission(
+                    company, EventType.HOT_LEAD_UNREAD, _cle_lead(lead.pk)):
+                continue
             if managers is None:
-                managers = _managers(company)
+                managers = _managers(company, EventType.HOT_LEAD_UNREAD)
             destinataires = list(managers)
             owner = getattr(lead, 'owner', None)
             if owner is not None and owner.pk not in {

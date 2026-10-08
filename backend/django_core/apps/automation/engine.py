@@ -137,15 +137,9 @@ def _trigger_matches(rule, instance, context):
             return True
         return getattr(instance, 'statut', None) == wanted
 
-    if rule.trigger_type in (
-            TriggerType.PROJET_STATUS_CHANGE, TriggerType.PROJET_PHASE_CHANGE):
-        # XPRJ23 — enums PROPRES à gestion_projet (jamais STAGES.py, règle
-        # #2) ; émis DEPUIS le module (pas de signal Django ici), donc le
-        # nouveau statut/phase est TOUJOURS fourni dans ``context``.
-        wanted = cfg.get('statut')
-        if not wanted:
-            return True
-        return ctx.get('new_statut') == wanted
+    # APAR43 — branche PROJET_STATUS_CHANGE / PROJET_PHASE_CHANGE retirée :
+    # leur émetteur (gestion_projet) est parqué, aucune évaluation n'arrive
+    # plus (``selectors.DECLENCHEURS_PARQUES``).
 
     if rule.trigger_type == TriggerType.RECORD_STATE_CHANGE:
         # ARC34 — déclencheur générique : le couple (model, field) de la règle

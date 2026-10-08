@@ -362,14 +362,15 @@ def rappel_fetes_mobiles(company, annee=None):
     except (TypeError, ValueError):
         return None
     try:
-        from .models import Holiday
-        existe = Holiday.objects.filter(
-            company=company, recurrent_annuel=False,
-            date__year=annee).exists()
+        # APAR36 — LE détecteur partagé (libellés canoniques de
+        # ``core.calendar`` + anciens alias de l'écran) : les 4 fêtes, pas
+        # « au moins une ligne non récurrente ».
+        from apps.parametres.fetes_mobiles import fetes_mobiles_manquantes
+        manquantes = fetes_mobiles_manquantes(company, annee)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('calendar_utils: rappel_fetes_mobiles échoué : %s', exc)
         return None
-    if existe:
+    if not manquantes:
         return None
     return (
         f'Les fêtes mobiles de {annee} (Aïd al-Fitr, Aïd al-Adha, Nouvel An '
