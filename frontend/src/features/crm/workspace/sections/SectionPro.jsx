@@ -25,6 +25,13 @@ const TENSION_SOURCE = {
   declare: 'Déclarée', site_web: 'Saisie sur le site', site_defaut_visible: 'Défaut visible du site',
   facture: 'Lue sur la facture', mesure_visite: 'Mesurée en visite',
 }
+// source-choix: crm.Lead.contrat_electricite
+const CONTRAT_ELECTRICITE = {
+  bt_domestique: 'BT domestique', bt_patente: 'BT patenté', bt_force_motrice: 'BT force motrice',
+  mt_general: 'MT (Tarif Général)', ne_sait_pas: 'Ne sait pas',
+}
+// source-choix: crm.Lead.option_tarifaire_bt
+const OPTION_TARIFAIRE_BT = { normale: 'Option normale (tranches)', bi_horaire: 'Option bi-horaire (HP / HN)' }
 // source-choix: crm.Lead.puissance_souscrite_source
 const PUISSANCE_SOURCE = {
   declare: 'Déclarée', facture: 'Lue sur la facture', contrat: 'Lue sur le contrat',
@@ -67,6 +74,8 @@ const MOIS = [
 const QUESTIONS_PRO = {
   tension_raccordement: "« Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave. »",
   tension_source: "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par notre technicien lors de la visite",
+  contrat_electricite: "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. » — CIQ666 (décision fondateur 08/10/2026) : vocabulaire de `tarifs_ci.json` (`tarif_declare.contrat`) ; « ne sait pas » = aucun contrat transmis, jamais un contrat supposé",
+  option_tarifaire_bt: "(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? » — le bi-horaire n'est transmis au moteur que pour la force motrice",
   compteur_puissance_kva: '« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »',
   puissance_souscrite_source: "(posée avec la puissance) « Vous l'avez trouvée sur la facture, sur le contrat, ou c'est une estimation ? »",
   categorie_commerciale: '« Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? »',
@@ -425,6 +434,12 @@ export default function SectionPro({ state, setField, errors = {} }) {
         <div className="form-row">
           <Choix data-field-anchor="lf-tension-raccordement" cle="tension_raccordement" ctx={ctx} choix={TENSION} />
           <Choix data-field-anchor="lf-tension-source" cle="tension_source" ctx={ctx} choix={TENSION_SOURCE} />
+        </div>
+        {/* CIQ666 — le contrat déclaré : le devis automatique C&I en résout
+            la grille ONEE (« ne sait pas » = aucun contrat transmis). */}
+        <div className="form-row">
+          <Choix data-field-anchor="lf-contrat-electricite" cle="contrat_electricite" ctx={ctx} choix={CONTRAT_ELECTRICITE} />
+          <Choix data-field-anchor="lf-option-tarifaire-bt" cle="option_tarifaire_bt" ctx={ctx} choix={OPTION_TARIFAIRE_BT} />
         </div>
         <div className="form-row">
           <Nombre data-field-anchor="lf-compteur-puissance-kva" cle="compteur_puissance_kva" ctx={ctx} placeholder="ex: 60" />

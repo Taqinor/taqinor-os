@@ -122,13 +122,17 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   // Le moteur n'invente aucun horaire : sans plage ni équipe déclarée il refuse
   // (« profil déclaré exigé », D-CIQ autoconso heure par heure sur profil
   // DÉCLARÉ) — le lead porte donc ses jours et heures d'ouverture.
+  // CIQ666 (décision fondateur 08/10/2026) — et son CONTRAT d'électricité :
+  // sans lui le moteur refuse (« tarif_omis », aucun prix plat supposé).
   const lead = await json(await request.post(`${API}/crm/leads/`, {
     data: {
       nom: uniq('Commerce CIQ127'), ville: 'Casablanca', telephone: telephoneMobileUnique(),
       type_installation: 'commercial', conso_mensuelle_kwh: '12000', taille_souhaitee_kwc: '20',
       jours_ouverture: [1, 2, 3, 4, 5, 6], heure_debut: 8, heure_fin: 18,
+      contrat_electricite: 'bt_patente',
     },
   }), 'lead commercial')
+  expect(lead.contrat_electricite).toBe('bt_patente')
   leadIds.push(lead.id)
   await page.goto(`/crm/leads/${lead.id}`)
   const appel = page.waitForResponse((r) => r.request().method() === 'POST'
@@ -142,4 +146,6 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   expect(devis.statut).toBe('brouillon')
   expect((devis.lignes || []).length).toBeGreaterThan(0)
   for (const k of CLES_V1) expect(devis.etude_params || {}, `clé v1 ${k}`).not.toHaveProperty(k)
+  // Le contrat déclaré du lead est celui que le moteur a chiffré.
+  expect(devis.etude_params?.tarif_declare?.contrat).toBe('bt_patente')
 })
