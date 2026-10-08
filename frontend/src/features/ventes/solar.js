@@ -1883,10 +1883,24 @@ export function fusionnerRecomposition(anciennes, generees) {
   const fusionnees = gens.map((g, gi) => {
     const file = g?.produit ? files.get(String(g.produit)) : null
     const oi = file && file.length ? file.shift() : null
-    const base = { ...g, compose: true }
-    if (oi == null) return base
+    if (oi == null) return { ...g, compose: true }
     appariee.set(oi, gi)
     const o = olds[oi]
+    // AGNR20 — la ligne ANCIENNE appariée est la base : la composition
+    // n'écrase que ce qu'elle POSSÈDE — le produit, la quantité (si elle
+    // n'est pas figée), la variante et le prix (s'il n'est pas tapé). Taux
+    // de TVA (0 % + base légale), désignation, remise de ligne, groupe villa,
+    // lot, rôle… restent ceux du vendeur. Une clé que seule la composition
+    // porte est reprise d'elle.
+    const base = {
+      ...g,
+      ...o,
+      compose: true,
+      produit: g.produit,
+      variante: g.variante ?? '',
+      quantite: g.quantite,
+      prix_unit_ttc: g.prix_unit_ttc,
+    }
     if (o.prixManuel) {
       base.prix_unit_ttc = o.prix_unit_ttc
       base.prixManuel = true
