@@ -604,7 +604,8 @@ class FactureOverdueTimezoneTests(TestCase):
 
 class ModeleMessageTests(TestCase):
     """DC18 — sujet/corps d'email résolus depuis un modèle stocké éditable,
-    avec repli sur l'ancien défaut codé en dur (« Notification Taqinor »)."""
+    avec repli sur « Notification {entreprise} » (APAR6 — rendu à la raison
+    sociale de LA société, plus « Notification Taqinor » pour tous)."""
 
     def setUp(self):
         self.co = make_company('auto-mm', 'Auto MM')
@@ -626,7 +627,7 @@ class ModeleMessageTests(TestCase):
 
     def test_resolve_falls_back_to_default_subject_when_absent(self):
         objet, corps = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
         self.assertEqual(corps, '')
 
     def test_resolve_uses_stored_template(self):
@@ -641,14 +642,14 @@ class ModeleMessageTests(TestCase):
         ModeleMessage.objects.create(
             company=self.co, canal=CanalMessage.EMAIL, objet='', corps='')
         objet, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
 
     def test_resolve_disabled_template_ignored(self):
         ModeleMessage.objects.create(
             company=self.co, canal=CanalMessage.EMAIL,
             objet='Désactivé', corps='x', enabled=False)
         objet, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
 
     def test_resolve_per_channel(self):
         ModeleMessage.objects.create(
@@ -656,7 +657,7 @@ class ModeleMessageTests(TestCase):
             objet='WA', corps='wa body')
         # Le modèle WhatsApp ne fuit pas sur le canal email.
         objet_email, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
-        self.assertEqual(objet_email, 'Notification Taqinor')
+        self.assertEqual(objet_email, 'Notification {entreprise}')
         objet_wa, corps_wa = ModeleMessage.resolve(
             self.co, CanalMessage.WHATSAPP)
         self.assertEqual(objet_wa, 'WA')
@@ -668,7 +669,7 @@ class ModeleMessageTests(TestCase):
             objet='Modèle A', corps='a')
         # Une autre société ne voit pas le modèle de self.co → défaut.
         objet, _ = ModeleMessage.resolve(self.co_b, CanalMessage.EMAIL)
-        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(objet, 'Notification {entreprise}')
 
     # ── Intégration avec actions._send_email ────────────────────────────
 
@@ -678,7 +679,7 @@ class ModeleMessageTests(TestCase):
         mail.outbox = []
         status, _ = engine.run_action(rule, devis, self.co)
         self.assertEqual(status, AutomationRun.Status.SUCCESS)
-        self.assertEqual(mail.outbox[-1].subject, 'Notification Taqinor')
+        self.assertEqual(mail.outbox[-1].subject, 'Notification Auto MM')
 
     def test_send_email_uses_stored_subject(self):
         ModeleMessage.objects.create(

@@ -47,22 +47,39 @@ def _effet(action_type, effet, **details):
 def _decrire_email(source, instance, company, context):
     from . import actions
 
+    from .models import CanalMessage, ModeleMessage
+
     destinataire = actions._resolve_email(instance)
-    corps = actions._message_body(source, context)
     if not destinataire:
         return _effet(source.action_type,
                       'Aucune adresse email : rien ne partirait.',
                       destinataire='')
+    # APAR6 — même résolveur que ``actions._send_email`` : la simulation
+    # affiche le sujet et le corps RÉELLEMENT envoyés (ou le refus).
+    tmpl_objet, tmpl_corps = ModeleMessage.resolve(
+        company, CanalMessage.EMAIL)
+    sujet, manque_sujet = actions.rendre_texte(
+        (source.action_config or {}).get('subject') or tmpl_objet
+        or actions.SUJET_EMAIL_DEFAUT, instance, company, context)
+    corps, manque_corps = actions.rendre_texte(
+        actions._texte_brut(source, company) or tmpl_corps,
+        instance, company, context)
+    manquantes = sorted(set(manque_sujet) | set(manque_corps))
+    if manquantes:
+        return _effet(source.action_type,
+                      actions.motif_variables(
+                          manquantes, 'rien ne partirait'),
+                      destinataire=destinataire)
     return _effet(source.action_type,
                   f'Un email partirait à {destinataire}.',
-                  destinataire=destinataire, corps=corps)
+                  destinataire=destinataire, sujet=sujet, corps=corps)
 
 
 def _decrire_message(source, instance, company, context):
     from . import actions
 
     destinataire = actions._resolve_phone(instance)
-    corps = actions._message_body(source, context)
+    corps = actions._message_body(source, context, instance, company)
     if not destinataire:
         return _effet(source.action_type,
                       'Aucun numéro : rien ne partirait.', destinataire='')
@@ -115,10 +132,18 @@ def _decrire_activite(source, instance, company, context):
 
 
 def _decrire_ticket(source, instance, company, context):
+    from . import actions
+
     cfg = source.action_config or {}
+    description, manquantes = actions.rendre_texte(
+        cfg.get('description') or '', instance, company, context)
+    if manquantes:
+        return _effet(source.action_type, actions.motif_variables(
+            manquantes, 'aucun ticket ne serait créé'))
     return _effet(
         source.action_type, 'Un ticket SAV serait créé.',
-        type=cfg.get('type', ''), priorite=cfg.get('priorite', ''))
+        type=cfg.get('type', ''), priorite=cfg.get('priorite', ''),
+        description=description)
 
 
 def _decrire_custom_record(source, instance, company, context):
