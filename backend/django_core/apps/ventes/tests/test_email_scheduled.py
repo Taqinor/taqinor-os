@@ -341,7 +341,8 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect QW8', telephone='+212600998877',
             owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
-        notify_lead_callback_requested(lead)
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify_lead_callback_requested(lead)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('owner@example.com', mail.outbox[0].to)
 
@@ -353,7 +354,8 @@ class TestQW8CallbackEmailDefaultOn(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect QW8b', telephone='+212600998866',
             owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
-        notify_lead_callback_requested(lead)
+        with self.captureOnCommitCallbacks(execute=True):  # APAR18
+            notify_lead_callback_requested(lead)
         self.assertEqual(len(mail.outbox), 0)
 
     @override_settings(

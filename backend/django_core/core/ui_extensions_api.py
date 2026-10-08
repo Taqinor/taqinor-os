@@ -125,6 +125,14 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': '« target_model » et « target_id » sont requis.'},
                 status=400)
+        # APAR47 — un bouton posé sur une fiche ne vise QUE son modèle cible :
+        # sans ce contrôle, un bouton « crm.lead » exécutait sa règle sur un
+        # devis (ou tout autre modèle) choisi par l'appelant.
+        cible = (bouton.cible or '').strip().lower()
+        if cible and target_model.lower() != cible:
+            return Response(
+                {'detail': '« bouton » : cible non autorisée pour ce bouton.'},
+                status=400)
         ok, message = ui_extensions.declencher_bouton(
             bouton, target_model, target_id, user=request.user)
         return Response({'ok': ok, 'message': message})

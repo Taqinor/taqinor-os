@@ -146,8 +146,10 @@ class PiloteTicketSavTests(TestCase):
             company=self.co, reference='ARC34-SAV-1', client=client,
             statut=Ticket.Statut.NOUVEAU, description='Panne onduleur')
 
-        resp = self.api.post(
-            f'/api/django/sav/tickets/{ticket.pk}/demarrer/')
+        # APAR10 — l'e-mail de la règle part au COMMIT de la requête.
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.api.post(
+                f'/api/django/sav/tickets/{ticket.pk}/demarrer/')
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
 
         ticket.refresh_from_db()

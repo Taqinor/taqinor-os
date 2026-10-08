@@ -117,25 +117,28 @@ class SequenceTests(TestCase):
             company=self.co, nom='Client séquence',
             email='sequence@example.com', stage='NEW')
         lead.stage = 'SIGNED'
-        lead.save()
+        # APAR10 — l'étape e-mail part (et se journalise) au COMMIT ; les
+        # deux autres s'exécutent tout de suite, dans l'ordre.
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save()
 
         runs = runs_of(self.co)
         self.assertEqual(len(runs), 3)
         self.assertEqual(
             [r.status for r in runs],
             [AutomationRun.Status.SUCCESS] * 3)
-        # 1) email réellement remis
-        self.assertIn('sequence@example.com',
-                      [addr for m in mail.outbox for addr in m.to])
-        self.assertIn('sequence@example.com', runs[0].message)
-        # 2) ticket SAV créé pour le client résolu depuis le lead
+        # 1) ticket SAV créé pour le client résolu depuis le lead
         self.assertEqual(
             Ticket.objects.filter(company=self.co).count(), 1)
-        self.assertIn('Ticket SAV', runs[1].message)
-        # 3) lead assigné
+        self.assertIn('Ticket SAV', runs[0].message)
+        # 2) lead assigné
         lead.refresh_from_db()
         self.assertEqual(lead.owner_id, self.cible.pk)
-        self.assertIn('Assigné', runs[2].message)
+        self.assertIn('Assigné', runs[1].message)
+        # 3) email réellement remis, journalisé au commit
+        self.assertIn('sequence@example.com',
+                      [addr for m in mail.outbox for addr in m.to])
+        self.assertIn('sequence@example.com', runs[2].message)
 
     def test_execution_order_follows_ordre_not_creation_order(self):
         rule = rule_signed(self.co, nom='Ordre inversé')

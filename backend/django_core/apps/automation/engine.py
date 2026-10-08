@@ -16,6 +16,8 @@ comportement par défaut).
 import logging
 import threading
 
+from django.db import transaction
+
 from .models import (
     ActionType, AutomationApproval, AutomationRule, AutomationRun,
     AutomationStep, TriggerType,
@@ -169,6 +171,14 @@ def _trigger_matches(rule, instance, context):
             return evaluate_condition_group(conditions, ctx)
         return True
 
+    if rule.trigger_type == TriggerType.WEBHOOK_INBOUND:
+        # APAR9 — un webhook entrant n'exécute QUE la règle de son jeton
+        # (``rule_id`` posé par la vue publique) : sans cette garde, un POST
+        # sur le jeton A tirait toutes les règles WEBHOOK_INBOUND de la
+        # société, y compris celles dont le déclencheur est désactivé ou
+        # protégé par HMAC.
+        return ctx.get('rule_id') == rule.pk
+
     if rule.trigger_type == TriggerType.CUSTOM_RECORD_SAVED:
         # NTEXT27 — ``object_code`` posé dans le contexte par le signal
         # (``signals._custom_record_saved``) : vide ⇒ matche tout objet
@@ -183,6 +193,65 @@ def _trigger_matches(rule, instance, context):
     # STOCK_BELOW_THRESHOLD : la condition est déjà tranchée par l'émetteur du
     # signal (le moteur n'est appelé que quand l'événement s'est produit).
     return True
+
+
+# ── APAR7 — prédicat d'état MÉTIER des déclencheurs temporels ─────────────
+# FACTURE_OVERDUE et DATE_ECHEANCE_CHAMP réagissent à une DATE ; la date seule
+# ne dit pas si la relance a encore un objet. Une facture annulée, un brouillon
+# jamais émis ou une facture déjà soldée ne se relancent pas ; un devis accepté,
+# refusé ou resté brouillon ne reçoit pas « toujours d'actualité ? ». Ce
+# prédicat UNIQUE est lu par le signal, le balayage ET la reprise après
+# approbation (``run_approved``) — jamais trois copies divergentes.
+
+#: Statuts de facture qui peuvent faire l'objet d'une relance.
+FACTURE_STATUTS_RELANCABLES = ('emise', 'en_retard')
+
+
+def _motif_facture(facture):
+    statut = getattr(facture, 'statut', None)
+    if statut == 'payee':
+        return 'Facture soldée : relance sans objet.'
+    if statut == 'annulee':
+        return 'Facture annulée : relance sans objet.'
+    if statut not in FACTURE_STATUTS_RELANCABLES:
+        return (f'Facture non émise ({statut or "sans statut"}) : '
+                f'relance sans objet.')
+    try:
+        reste = facture.montant_exigible
+    except Exception:  # pragma: no cover - défensif (facture détachée)
+        reste = None
+    if reste is not None and reste <= 0:
+        return 'Facture soldée : relance sans objet.'
+    return None
+
+
+def motif_etat_metier(trigger_type, instance):
+    """Motif (français) pour lequel l'état MÉTIER de ``instance`` interdit
+    l'action d'un déclencheur temporel, ou ``None`` si l'action a un objet.
+
+    - FACTURE_OVERDUE : seule une facture ``emise``/``en_retard`` dont le
+      reste exigible est > 0 est relancée ;
+    - DATE_ECHEANCE_CHAMP : sur un devis, seul un devis ``envoye`` est ciblé ;
+      sur un lead, un lead perdu est exclu.
+    Ne lève jamais.
+    """
+    if instance is None:
+        return None
+    try:
+        if trigger_type == TriggerType.FACTURE_OVERDUE:
+            return _motif_facture(instance)
+        if trigger_type == TriggerType.DATE_ECHEANCE_CHAMP:
+            label = _model_label(instance)
+            if label == 'ventes.devis':
+                statut = getattr(instance, 'statut', None)
+                if statut != 'envoye':
+                    return (f'Devis {statut or "sans statut"} : relance sans '
+                            f'objet (seul un devis envoyé est relancé).')
+            elif label == 'crm.lead' and getattr(instance, 'perdu', False):
+                return 'Lead perdu : relance sans objet.'
+    except Exception:  # pragma: no cover - défensif
+        logger.exception("automation: prédicat d'état métier en échec")
+    return None
 
 
 # ── Approbation (N73) ─────────────────────────────────────────────────────
@@ -303,8 +372,33 @@ def _rule_steps(rule):
         return []
 
 
-def _execute(action_source, rule, instance, company, context, user):
-    """Exécute UNE action (règle mono-action ou étape) et journalise son run."""
+# ── APAR10 — frontière transactionnelle du moteur ──────────────────────────
+#
+# 1) Chaque action tourne dans son POINT DE SAUVEGARDE (``transaction.atomic``):
+#    une erreur SQL d'une action (valeur trop longue…) annule l'action seule ;
+#    sans lui, la transaction de l'ÉMETTEUR (la requête qui a changé l'étape du
+#    lead) était avortée et sa requête suivante levait
+#    ``TransactionManagementError``.
+# 2) Les actions d'ENVOI (e-mail, futurs canaux) partent en
+#    ``transaction.on_commit`` et sont journalisées AU COMMIT : un fait annulé
+#    (rollback de l'émetteur) n'envoie rien et ne journalise rien. Hors bloc
+#    atomique (beat, autocommit), ``on_commit`` exécute immédiatement : le
+#    statut rendu est alors le statut réel.
+
+#: Actions dont l'effet SORT de l'application (jamais rattrapable par un
+#: rollback) : exécutées au commit de la transaction de l'émetteur.
+ACTIONS_ENVOI = frozenset({ActionType.SEND_EMAIL})
+
+#: Statut rendu quand l'envoi attend le commit de l'émetteur (le run réel est
+#: journalisé à l'exécution, au commit).
+MESSAGE_ENVOI_DIFFERE = (
+    "Envoi programmé : il partira à la validation de l'opération.")
+
+
+def _run_isole(action_source, instance, company, context, user):
+    """Exécute ``actions.run`` sous la garde anti-récursion ET dans un point
+    de sauvegarde. Une erreur SQL annule l'action seule ; le message du
+    handler (s'il a déjà conclu FAILED) est conservé. Ne lève jamais."""
     from . import actions
     # Marque la fenêtre d'exécution : tout ``instance.save()` déclenché par
     # l'action (SET_FIELD / ASSIGN_RECORD) ré-émet le post_save, mais
@@ -312,13 +406,51 @@ def _execute(action_source, rule, instance, company, context, user):
     # récursion.
     previous = _in_automation()
     _GUARD.active = True
+    resultat = None
     try:
-        status, message = actions.run(
-            action_source, instance, company, context, user)
+        with transaction.atomic():
+            resultat = actions.run(
+                action_source, instance, company, context, user)
+    except Exception as exc:
+        # Le point de sauvegarde est annulé : la transaction de l'émetteur
+        # reste UTILISABLE. On garde le message du handler s'il a déjà
+        # conclu à l'échec (ex. « value too long »), sinon celui de l'erreur.
+        if not (resultat and resultat[0] == AutomationRun.Status.FAILED):
+            resultat = (AutomationRun.Status.FAILED, str(exc))
     finally:
         _GUARD.active = previous
+    return resultat
+
+
+def _execute(action_source, rule, instance, company, context, user):
+    """Exécute UNE action (règle mono-action ou étape) et journalise son run.
+
+    APAR10 — une action d'envoi est différée au commit (et journalisée là) ;
+    les autres s'exécutent tout de suite, isolées dans un point de sauvegarde.
+    """
+    if action_source.action_type in ACTIONS_ENVOI:
+        return _execute_au_commit(
+            action_source, rule, instance, company, context, user)
+    status, message = _run_isole(
+        action_source, instance, company, context, user)
     _log_run(rule, company, instance, status, message)
     return status, message
+
+
+def _execute_au_commit(action_source, rule, instance, company, context, user):
+    """APAR10 — programme l'envoi au commit de la transaction en cours."""
+    resultat = {}
+
+    def _envoyer():
+        status, message = _run_isole(
+            action_source, instance, company, context, user)
+        _log_run(rule, company, instance, status, message)
+        resultat['run'] = (status, message)
+
+    transaction.on_commit(_envoyer)
+    if 'run' in resultat:  # autocommit : exécuté immédiatement
+        return resultat['run']
+    return AutomationRun.Status.NOOP, MESSAGE_ENVOI_DIFFERE
 
 
 def run_action(rule, instance, company, *, context=None, user=None):
@@ -547,6 +679,10 @@ def _schedule_resume(rule, step, next_index, instance, company, context):
     return AutomationRun.Status.NOOP, message
 
 
+#: APAR26 — marqueur de contexte d'une échéance « envoi reporté hors fenêtre ».
+CLE_REPORT_FENETRE = '_report_fenetre'
+
+
 def resume_scheduled_step(scheduled, *, user=None):
     """NTEXT7 — reprend UNE séquence suspendue (échéance ``run_at`` atteinte).
 
@@ -574,6 +710,17 @@ def resume_scheduled_step(scheduled, *, user=None):
                  AutomationRun.Status.SKIPPED, message)
         return AutomationRun.Status.SKIPPED, message
     steps = _rule_steps(rule)
+    contexte = dict(scheduled.context or {})
+    if contexte.pop(CLE_REPORT_FENETRE, False):
+        # APAR26 — reprise d'UNE action reportée hors de la fenêtre des
+        # messages (``actions.reporter_hors_fenetre``) : seule cette action
+        # repart (le reste de la séquence s'est déjà déroulé).
+        if not steps:
+            return _execute(rule, rule, instance, company, contexte, user)
+        if scheduled.next_step_index < len(steps):
+            step = steps[scheduled.next_step_index]
+            return _execute(_StepView(rule, step), rule, instance, company,
+                            contexte, user)
     if scheduled.next_step_index >= len(steps):
         message = 'Séquence terminée : plus aucune étape à reprendre.'
         _log_run(rule, company, instance, AutomationRun.Status.NOOP, message)
@@ -595,6 +742,13 @@ def run_approved(approval, *, user=None):
         return
     instance = _resolve_target(
         approval.target_model, approval.target_id, approval.company)
+    # APAR7 — l'état métier a pu changer entre la demande et la décision
+    # (facture payée entre-temps) : l'action différée n'a plus d'objet.
+    motif = motif_etat_metier(rule.trigger_type, instance)
+    if motif:
+        _log_run(rule, approval.company, instance,
+                 AutomationRun.Status.SKIPPED, motif)
+        return
     run_action(rule, instance, approval.company,
                context=approval.context, user=user)
 
