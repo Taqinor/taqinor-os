@@ -29,6 +29,17 @@ _LOCMEM_CACHE = {
 _BON = 'Bon-mdp-123!'
 
 
+def _corps(resp):
+    """Corps de la réponse sans ``error.request_id`` — identifiant de
+    corrélation unique PAR requête (ACAL315 : jamais null, uuid4 sinon) ;
+    tout le reste doit être identique."""
+    corps = dict(resp.data)
+    if isinstance(corps.get('error'), dict):
+        corps['error'] = {
+            k: v for k, v in corps['error'].items() if k != 'request_id'}
+    return corps
+
+
 @override_settings(CACHES=_LOCMEM_CACHE)
 class EnumerationLoginTests(TestCase):
     def setUp(self):
@@ -71,7 +82,7 @@ class EnumerationLoginTests(TestCase):
         faux = self._login('asec14_normal', 'faux-mot-de-passe')
         r = self._login('asec14_verrou', _BON)
         self.assertEqual(r.status_code, 401, r.data)
-        self.assertEqual(dict(r.data), dict(faux.data))
+        self.assertEqual(_corps(r), _corps(faux))
         self.assertNotIn('compte_verrouille', str(r.data))
         self.assertNotIn('access_token', r.cookies)
 

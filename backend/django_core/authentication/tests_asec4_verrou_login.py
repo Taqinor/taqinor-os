@@ -31,6 +31,17 @@ _URL = '/api/django/token/'
 _BON = 'Bon-mdp-123!'
 
 
+def _corps(resp):
+    """Corps de la réponse sans ``error.request_id`` — identifiant de
+    corrélation unique PAR requête (ACAL315 : jamais null, uuid4 sinon) ;
+    tout le reste doit être identique."""
+    corps = dict(resp.data)
+    if isinstance(corps.get('error'), dict):
+        corps['error'] = {
+            k: v for k, v in corps['error'].items() if k != 'request_id'}
+    return corps
+
+
 @override_settings(CACHES=_LOCMEM_CACHE)
 class VerrouLoginTests(TestCase):
     def setUp(self):
@@ -64,7 +75,7 @@ class VerrouLoginTests(TestCase):
         # Identifiant inconnu : même statut, même corps.
         r2 = self._post(username='asec4_inconnu', password='faux')
         self.assertEqual(r2.status_code, 401)
-        self.assertEqual(r.data, r2.data)
+        self.assertEqual(_corps(r), _corps(r2))
 
     def test_seuil_societe_verrouille(self):
         for _ in range(3):
@@ -78,7 +89,7 @@ class VerrouLoginTests(TestCase):
         faux = self._post(username='asec4_inconnu', password='faux')
         r = self._post(username='asec4_u3', password=_BON)
         self.assertEqual(r.status_code, 401)
-        self.assertEqual(r.data, faux.data)
+        self.assertEqual(_corps(r), _corps(faux))
 
     def test_otp_faux_compte(self):
         self.u3.totp_secret = pyotp.random_base32()
@@ -105,7 +116,7 @@ class VerrouLoginTests(TestCase):
         faux = self._post(ip='203.0.113.9', username='asec4_x', password='y')
         r = self._post(ip='203.0.113.9', username='asec4_u0', password=_BON)
         self.assertEqual(r.status_code, 401)
-        self.assertEqual(r.data, faux.data)
+        self.assertEqual(_corps(r), _corps(faux))
         # Le titulaire, depuis une autre IP, se connecte normalement.
         r2 = self._post(ip='198.51.100.7', username='asec4_u0', password=_BON)
         self.assertEqual(r2.status_code, 200, r2.data)
