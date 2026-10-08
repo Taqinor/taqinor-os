@@ -197,6 +197,35 @@ def seuil_approbation_remise(company):
     return CompanyProfile.get(company).discount_approval_threshold
 
 
+def _approbation_couvre(devis, remise):
+    """ADEV33 — l'approbation posée couvre-t-elle ``remise`` ? Booléen ET
+    profondeur : une approbation à 15 % ne couvre pas une remise de 60 %.
+    Une approbation sans profondeur mémorisée (antérieure à ADEV33) couvre
+    comme avant."""
+    if not getattr(devis, 'remise_approuvee', False):
+        return False
+    profondeur = getattr(devis, 'remise_approuvee_pct', None)
+    if profondeur is None:
+        return True
+    return Decimal(str(remise or 0)) <= Decimal(str(profondeur))
+
+
+def _poser_approbation(devis, user, remise):
+    """ADEV33 — approbation (admin) : booléen, approbateur ET profondeur."""
+    devis.remise_approuvee = True
+    devis.remise_approuvee_par = user
+    devis.remise_approuvee_pct = Decimal(str(remise or 0)).quantize(
+        Decimal('0.01'))
+    devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par',
+                              'remise_approuvee_pct'])
+
+
+def approuver_remise_devis(devis, user):
+    """ADEV33 — l'action « Approuver la remise » : mémorise la profondeur
+    effective approuvée."""
+    _poser_approbation(devis, user, profondeur_remise_effective(devis))
+
+
 def exiger_approbation_remise(devis, user, *, remise_globale=None,
                               enregistrer=True):
     """QJR539 — T17 : refuse l'envoi d'un devis dont la remise EFFECTIVE
@@ -217,15 +246,18 @@ def exiger_approbation_remise(devis, user, *, remise_globale=None,
     if seuil is None:
         return
     remise = profondeur_remise_effective(devis, remise_globale=remise_globale)
-    if (remise or 0) <= seuil or devis.remise_approuvee:
+    if (remise or 0) <= seuil or _approbation_couvre(devis, remise):
         return
     if getattr(user, 'is_admin_role', False):
         if enregistrer:
-            devis.remise_approuvee = True
-            devis.remise_approuvee_par = user
-            devis.save(update_fields=['remise_approuvee',
-                                      'remise_approuvee_par'])
+            _poser_approbation(devis, user, remise)
         return
+    profondeur = getattr(devis, 'remise_approuvee_pct', None)
+    if devis.remise_approuvee and profondeur is not None:
+        raise RemiseNonApprouvee(
+            f'Remise de {remise} % > {profondeur} % approuvés : une nouvelle '
+            "approbation d'un administrateur est requise avant l'envoi.",
+            remise=remise, seuil=seuil)
     raise RemiseNonApprouvee(
         f'Remise de {remise} % supérieure au seuil de {seuil} % : '
         "l'approbation d'un administrateur est requise avant l'envoi.",
@@ -249,10 +281,12 @@ def reverifier_remise_apres_correction(devis, user, *, avant,
     apres = profondeur_remise_effective(devis, remise_globale=remise_globale)
     if apres <= seuil or apres <= Decimal(str(avant or 0)):
         return
+    # ADEV33 — une remise restée sous la profondeur APPROUVÉE passe.
+    if (getattr(devis, 'remise_approuvee_pct', None) is not None
+            and _approbation_couvre(devis, apres)):
+        return
     if getattr(user, 'is_admin_role', False):
-        devis.remise_approuvee = True
-        devis.remise_approuvee_par = user
-        devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
+        _poser_approbation(devis, user, apres)
         return
     raise RemiseNonApprouvee(
         f'Remise de {apres} % supérieure au seuil de {seuil} % : la '

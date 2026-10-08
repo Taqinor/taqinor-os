@@ -147,6 +147,29 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
                 'devis': "Une ligne ne change pas de devis : supprimez-la et "
                          "ajoutez-la sur l'autre devis."})
 
+    def _sauver_sous_garde_t17(self, serializer, devis):
+        """ADEV33 — la garde T17 s'applique aussi aux lignes d'un ENVOYÉ :
+        une remise de ligne qui porte la profondeur au-delà du seuil (et de
+        la profondeur approuvée) est refusée en 400 nommant ``remise``, sans
+        écriture (transaction annulée). Hors envoyé : simple ``save``."""
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+        if devis is None or devis.statut != 'envoye':
+            serializer.save()
+            return
+        from ..domain.tarification import (
+            RemiseNonApprouvee, profondeur_remise_effective,
+            reverifier_remise_apres_correction)
+        avant = profondeur_remise_effective(devis)
+        try:
+            with transaction.atomic():
+                serializer.save()
+                devis.refresh_from_db()
+                reverifier_remise_apres_correction(
+                    devis, self.request.user, avant=avant)
+        except RemiseNonApprouvee as erreur:
+            raise ValidationError({'remise': erreur.message})
+
     def perform_create(self, serializer):
         from ..domain.modifiabilite import (
             debut_de_geste_devis, fin_de_geste_devis)
@@ -156,7 +179,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         avant_geste = debut_de_geste_devis(
             serializer.validated_data.get('devis'), self.request.user)
         comptes_avant = _comptes_avant(serializer.validated_data.get('devis'))
-        serializer.save()
+        self._sauver_sous_garde_t17(
+            serializer, serializer.validated_data.get('devis'))
         # ACAL90 — une ligne de kit AJOUTÉE à la main sort du marqueur.
         from ..domain.lignes import noter_ligne_ajoutee
         noter_ligne_ajoutee(serializer.instance)
@@ -185,7 +209,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         avant_geste = debut_de_geste_devis(
             serializer.instance.devis, self.request.user)
         comptes_avant = _comptes_avant(serializer.instance.devis)
-        serializer.save()
+        self._sauver_sous_garde_t17(serializer, serializer.instance.devis)
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
         _retarifer_forfaits(serializer.instance.devis, comptes_avant)
