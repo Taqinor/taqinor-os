@@ -42,7 +42,11 @@
     tbody td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
     .text-right { text-align: right; }
 
-    .totaux { margin-left: auto; width: 300px; margin-bottom: 30px; position: relative; z-index: 1; }
+    {# ATOT16 — le libellé « Total TTC (indicatif) » (16 px gras) ne tient pas avec son montant dans
+       300 px : il se coupait en deux lignes et collait au montant (« (indicatif)6900.00 MAD »). #}
+    .totaux { margin-left: auto; width: 360px; margin-bottom: 30px; position: relative; z-index: 1; }
+    .totaux-row span { white-space: nowrap; }
+    .totaux-row span + span { padding-left: 12px; }
     .totaux-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
     .totaux-row.total-ttc { font-size: 16px; font-weight: bold; color: {{ couleur_principale }}; border-top: 2px solid {{ couleur_principale }}; border-bottom: none; padding-top: 10px; margin-top: 4px; }
 
