@@ -6830,13 +6830,20 @@ def _notifier_prochaine_etape_approbation_achat(demande):
             demande.company, EventType.APPROVAL_REQUESTED)
         reason = resolve_recipients_reason(
             demande.company, EventType.APPROVAL_REQUESTED)
+        # ACHT16 — le montant (estimation d'achat) n'est écrit que si TOUS
+        # les destinataires voient les prix d'achat (`prix_achat_voir`).
+        recipients = list(recipients)
+        montant_ligne = (
+            f'Montant estimé : {demande.montant_estime} DH.\n'
+            if all(getattr(u, 'can_view_buy_prices', False)
+                   for u in recipients) else '')
         notify_many(
             recipients, EventType.APPROVAL_REQUESTED,
             title=(f'Étape {etape.niveau} à approuver — réquisition '
                    f'{demande.reference}'),
             body=(f'La réquisition {demande.reference} attend votre '
                   f'approbation (étape {etape.niveau}).\n'
-                  f'Montant estimé : {demande.montant_estime} DH.\n'
+                  f'{montant_ligne}'
                   f'Objet : {demande.objet}'),
             link='/approbations?source=installations',
             company=demande.company, reason=reason)

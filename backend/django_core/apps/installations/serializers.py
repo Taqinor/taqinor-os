@@ -1221,6 +1221,23 @@ class SousTraitantSerializer(serializers.Serializer):
         }
 
 
+def _retirer_estimations_achat(serializer, fields):
+    """ACHT16 (D-ACHT / ACHT90 option a) — sans `prix_achat_voir`
+    (`can_view_buy_prices`), les estimations d'achat d'une demande sont
+    retirées de la sortie (comme `prix_achat` sur le produit stock) ; la
+    saisie de `prix_estime` reste acceptée (champ écriture seule)."""
+    request = serializer.context.get('request') if hasattr(
+        serializer, 'context') else None
+    user = getattr(request, 'user', None)
+    if user is not None and not getattr(user, 'can_view_buy_prices', True):
+        for nom in ('total_estime', 'montant_estime'):
+            fields.pop(nom, None)
+        champ = fields.get('prix_estime')
+        if champ is not None:
+            champ.write_only = True
+    return fields
+
+
 class DemandeAchatLigneSerializer(serializers.ModelSerializer):
     """FG310 — ligne d'une demande d'achat (produit catalogue OU désignation
     libre, quantité, prix estimé INTERNE)."""
@@ -1235,6 +1252,9 @@ class DemandeAchatLigneSerializer(serializers.ModelSerializer):
             'id', 'demande', 'produit', 'produit_nom', 'designation',
             'quantite', 'prix_estime', 'total_estime',
         ]
+
+    def get_fields(self):
+        return _retirer_estimations_achat(self, super().get_fields())
 
     def validate_quantite(self, value):
         # ACHT11 — quantité finie et strictement positive.
@@ -1296,6 +1316,11 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
             'date_decision', 'motif_refus', 'created_by', 'date_creation',
             'date_modification', 'archivee', 'date_archivage',
         ]
+
+    def get_fields(self):
+        # ACHT16 — estimations masquées sans `prix_achat_voir` (la ligne
+        # imbriquée applique la même règle via son propre get_fields).
+        return _retirer_estimations_achat(self, super().get_fields())
 
     def validate_objet(self, value):
         value = (value or '').strip()

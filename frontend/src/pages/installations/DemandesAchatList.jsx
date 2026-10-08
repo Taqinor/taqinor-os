@@ -538,7 +538,7 @@ export default function DemandesAchatList() {
                   <div>Priorité : <span className="text-foreground">{PRIORITE_LABEL[detail.priorite] || detail.priorite}</span></div>
                   <div>Besoin le : <span className="text-foreground">{detail.date_besoin ? formatDate(detail.date_besoin) : '—'}</span></div>
                   <div>Chantier : <span className="text-foreground">{chantiers.find((c) => c.id === detail.chantier)?.nom || '—'}</span></div>
-                  <div>Montant estimé : <span className="text-foreground">{formatMAD(detail.montant_estime)}</span></div>
+                  <div>Montant estimé : <span className="text-foreground">{detail.montant_estime == null ? '—' : formatMAD(detail.montant_estime)}</span></div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -556,8 +556,8 @@ export default function DemandesAchatList() {
                         <tr key={l.id} className="border-b border-border/60">
                           <td className="py-1.5 pr-2">{l.designation || l.produit_nom || '—'}</td>
                           <td className="py-1.5 pr-2 text-right tabular-nums">{l.quantite}</td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">{formatMAD(l.prix_estime)}</td>
-                          <td className="py-1.5 text-right tabular-nums">{formatMAD(l.total_estime)}</td>
+                          <td className="py-1.5 pr-2 text-right tabular-nums">{l.prix_estime == null ? '—' : formatMAD(l.prix_estime)}</td>
+                          <td className="py-1.5 text-right tabular-nums">{l.total_estime == null ? '—' : formatMAD(l.total_estime)}</td>
                         </tr>
                       ))}
                       {(!detail.lignes || detail.lignes.length === 0) && (
