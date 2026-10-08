@@ -206,6 +206,7 @@ import PanneauAgricole from './generator/PanneauAgricole'
 // est utilisé par `DevisLineRow`, pas ici.
 // ATOT25 — désormais via `solar.lignesRemiseesParPanier` (répartition par panier).
 import { usePersistanceDevis } from '../../features/ventes/quote/hooks/usePersistanceDevis'
+import { normaliserNombreEntete } from '../../features/ventes/quote/etatDevis'
 import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeurEdition'
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
@@ -379,6 +380,9 @@ export default function DevisGenerator({
   // AGNR21 — l'enregistrement PARTIEL (lignes écrites, étude ou registre
   // refusés) : bandeau persistant, l'écran reste sur le formulaire.
   const [reserveEnregistrement, setReserveEnregistrement] = useState(null)
+  // AGNR33 — refus 400 « par champ » de l'en-tête et notes de normalisation
+  // (AGNR8), affichés sous LE champ concerné.
+  const [erreursChamps, setErreursChamps] = useState({})
   // QJR549 (contrat QJR503) — VERROU OPTIMISTE. `jetonRef` = `updated_at` du
   // devis tel que l'écran le connaît : capturé au chargement `?edit=` (et à
   // chaque rechargement), ré-armé depuis la réponse de CHAQUE écriture de cet
@@ -2114,7 +2118,7 @@ export default function DevisGenerator({
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
-    setEditDevis, setReserveEnregistrement,
+    setEditDevis, setReserveEnregistrement, setErreursChamps,
   })
 
   // Réinitialiser : recharge la page, comme le bouton du simulateur
@@ -2151,6 +2155,16 @@ export default function DevisGenerator({
   // propose l'action SUIVANTE évidente. « Envoyer par WhatsApp » ouvre la liste
   // sur ce devis précis AVEC l'aperçu WhatsApp déjà ouvert (le flux existant de
   // DevisList, jamais un second) — un clic ici, un clic « Ouvrir WhatsApp ».
+  // AGNR33 — une saisie que l'enregistrement NORMALISERA (AGNR8 : 2
+  // décimales) est dite sous son champ dès la frappe (« 12,345 → 12,35 »).
+  const notesNormalisation = {}
+  for (const [champ, valeur] of [['remise_globale', discountPct], ['taux_tva', tauxTva], ['prix_cible_kwc', prixCible]]) {
+    const n = normaliserNombreEntete(valeur)
+    if (n.change) {
+      notesNormalisation[champ] = `${String(n.tape).replace('.', ',')} → `
+        + (n.envoye == null ? 'non envoyé (nombre illisible)' : String(n.envoye).replace('.', ','))
+    }
+  }
   const lignesQuantiteNulle = lines.filter(l => l.typeLigne !== 'section' && l.typeLigne !== 'note'
     && l.produit && !(parseFloat(l.quantite) > 0) && (l.prixManuel || !l.compose))
   const avisQuantiteNulle = !lignesQuantiteNulle.length ? null
@@ -2523,6 +2537,11 @@ export default function DevisGenerator({
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}
                      onChange={e => setDateValidite(e.target.value)} />
+              {erreursChamps.date_validite && (
+                <p className="text-xs text-destructive" data-testid="erreur-champ-date_validite">
+                  {erreursChamps.date_validite}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -3427,6 +3446,8 @@ export default function DevisGenerator({
         >
           <RailArgent
             remiseParPanier={remiseParPanier}
+            erreursChamps={erreursChamps}
+            notesNormalisation={notesNormalisation}
             showSans={showSans}
             showAvec={showAvec}
             sansRec={sansRec}

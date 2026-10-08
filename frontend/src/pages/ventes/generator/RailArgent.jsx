@@ -25,7 +25,23 @@ export default function RailArgent({
   // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
   // commercial » qui sépare Σ lignes affichées du total (palier ARRONDI-100).
   remiseParPanier = null,
+  // AGNR33 — refus 400 par champ et notes de normalisation (AGNR8).
+  erreursChamps = {}, notesNormalisation = {},
 }) {
+  const sousChamp = (champ) => (
+    <>
+      {erreursChamps[champ] && (
+        <span className="text-destructive ml-1.5" style={{ fontSize: 11 }} data-testid={`erreur-champ-${champ}`}>
+          {erreursChamps[champ]}
+        </span>
+      )}
+      {notesNormalisation[champ] && (
+        <span className="text-muted-foreground ml-1.5" style={{ fontSize: 11 }} data-testid={`note-champ-${champ}`}>
+          {notesNormalisation[champ]}
+        </span>
+      )}
+    </>
+  )
   const arrondiSans = remiseParPanier?.sans?.arrondi ?? 0
   const arrondiAvec = remiseParPanier?.avec?.arrondi ?? 0
   return (
@@ -53,6 +69,7 @@ export default function RailArgent({
           <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                  value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
           <span style={{ fontWeight: 700 }}>%</span>
+          {sousChamp('remise_globale')}
           {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
             /* VX17 — couleur d'avertissement via token de thème. */
             <span className="text-warning ml-1.5" style={{ fontSize: 11 }}>
@@ -65,6 +82,7 @@ export default function RailArgent({
           <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                  value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
           <span style={{ fontWeight: 700 }}>%</span>
+          {sousChamp('taux_tva')}
         </div>
         {parseFloat(discountPct) > 0 && showSans && (
           <div className="gen-total-item gen-tier-3">
@@ -125,6 +143,7 @@ export default function RailArgent({
           <input type="number" min="0" step="any" className="gen-discount-input"
                  style={{ width: 100 }} placeholder="ex: 9000"
                  value={prixCible} onChange={e => setPrixCible(e.target.value)} />
+          {sousChamp('prix_cible_kwc')}
           <Button type="button" size="sm" variant="outline"
                   onClick={applyPrixCible}
                   disabled={!(kwp > 0) || prixCible === ''}>

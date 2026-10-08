@@ -19,9 +19,29 @@ import { toast } from '../../../../ui/confirm'
 import { ecartsAuRegistre } from '../overrides'
 import crmApi from '../../../../api/crmApi'
 import { fetchAllPages } from '../../../../utils/fetchAllPages'
+import { getApiError } from '../../../../lib/apiError'
 import { erreursBaseLegaleServeur, lignesServeurVersEcran } from '../lignesEcran'
 import { useState } from 'react'
 import { withKeys } from '../ligneFabrique.js'
+
+// AGNR33 — les champs d'en-tête dont un refus 400 se lit sous le champ.
+const LIBELLES_CHAMPS_ENTETE = {
+  remise_globale: 'Réduction',
+  taux_tva: 'TVA',
+  date_validite: 'Date de validité',
+  prix_cible_kwc: 'Prix cible / kWc',
+  statut: 'Statut',
+  etude_params: 'Étude',
+}
+const champsEntete = (err) => {
+  const { fieldErrors } = getApiError(err)
+  if (!fieldErrors) return null
+  const out = {}
+  for (const champ of Object.keys(LIBELLES_CHAMPS_ENTETE)) {
+    if (fieldErrors[champ]) out[champ] = fieldErrors[champ]
+  }
+  return Object.keys(out).length ? out : null
+}
 
 export function usePersistanceDevis(ctx) {
   const {
@@ -38,7 +58,7 @@ export function usePersistanceDevis(ctx) {
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
-    setEditDevis, setReserveEnregistrement,
+    setEditDevis, setReserveEnregistrement, setErreursChamps,
   } = ctx
 
   // ── Sauvegarde ──
@@ -381,6 +401,7 @@ export function usePersistanceDevis(ctx) {
       // (`etatVersEcritures`), le même que l'aller-retour testé.
       const ecritures = etatVersEcritures(etatEcran())
       const payload = { ...ecritures.entete }
+      setErreursChamps({})
       // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
       // TTC saisi au taux DE LA LIGNE, groupe villa en mode « villas »).
       // XSAL14 — lignes retenues : produits utilisables + lignes de section/note
@@ -543,6 +564,13 @@ export function usePersistanceDevis(ctx) {
         setLines(ls => ls.map(l => (parLigne[l._key]
           ? { ...l, _erreurBaseLegale: parLigne[l._key] } : l)))
         msg = raw.detail
+      } else if (champsEntete(err)) {
+        // AGNR33 — un refus 400 « par champ » de l'en-tête s'affiche SOUS le
+        // champ et le bandeau le NOMME (jamais la phrase générique).
+        const parChamp = champsEntete(err)
+        setErreursChamps(parChamp)
+        msg = Object.entries(parChamp)
+          .map(([champ, texte]) => `${LIBELLES_CHAMPS_ENTETE[champ]} : ${texte}`).join(' · ')
       } else if (typeof raw?.detail === 'string') {
         msg = raw.detail
       } else {
