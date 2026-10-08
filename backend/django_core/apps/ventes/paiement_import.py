@@ -288,7 +288,7 @@ def _marquer_doublons(decisions, company):
             d['candidats'] = []
 
 
-def dry_run(file_bytes, filename, company, max_preview=10, user=None):
+def dry_run(file_bytes, filename, company, max_preview=None, user=None):
     """Aperçu + DÉCISIONS jetonnées. Aucune écriture d'argent.
 
     AUD121 — le dry-run persiste désormais la liste COMPLÈTE des décisions
@@ -301,7 +301,9 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
       - ``token``         : jeton à repasser au commit (usage unique)
       - ``columns``       : mapping en-tête → champ reconnu
       - ``unmapped``      : en-têtes non reconnus
-      - ``preview``       : jusqu'à max_preview lignes avec statut
+      - ``preview``       : TOUTES les lignes avec leur statut (AFAC6 —
+        plus de troncature à 10 : l'opérateur valide ce qu'il voit ;
+        ``max_preview`` reste un plafond optionnel pour un appelant)
       - ``revue``         : la FILE DE REVUE — toutes les lignes ambiguës ou
         sans donneur d'ordre identifié, jamais affectées automatiquement
       - ``total_rows``    : nombre total de lignes dans le fichier
@@ -408,7 +410,8 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
         'token': session.token,
         'columns': {h: f for h, f in col_to_field.items()},
         'unmapped': unmapped,
-        'preview': decisions[:max_preview],
+        'preview': (decisions if max_preview is None
+                    else decisions[:max_preview]),
         'revue': revue,
         'total_rows': len(rows),
         'matched': sum(1 for d in decisions if d.get('facture_id')),
@@ -418,6 +421,68 @@ def dry_run(file_bytes, filename, company, max_preview=10, user=None):
             company=company, fichier_hash=fichier_hash,
             consomme_at__isnull=False).exists(),
     }
+
+
+def _appliquer_resolutions(session, company, lignes):
+    """AFAC6 — lit ``lignes`` (numéros ou ``{ligne, facture_reference}``).
+
+    Renvoie l'ensemble des numéros de ligne demandés (None = toutes les
+    lignes importables). Une forme objet RÉSOUT une ligne en revue
+    (``ambigu`` / ``client_non_identifie``) en choisissant UNE facture parmi
+    ses ``candidats`` : la décision de la session est réécrite (facture
+    choisie, ``match_type: "manuel"``, statut ``a_importer`` — les gardes
+    reste/sur-paiement du commit s'appliquent ensuite comme à toute ligne).
+    Lève ``ValueError`` (400, message français) pour une forme invalide, une
+    ligne inconnue, une ligne non ambiguë sous forme objet ou une facture
+    hors candidates — avant toute écriture."""
+    from .models import Facture
+    if lignes is None:
+        return None
+    par_ligne = {d.get('ligne'): d for d in (session.decisions or [])}
+    demandees = set()
+    for element in lignes:
+        if isinstance(element, dict):
+            try:
+                numero = int(element.get('ligne'))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    'Résolution invalide : chaque objet porte un numéro de '
+                    '« ligne » et une « facture_reference ».')
+            choix = str(element.get('facture_reference') or '').strip()
+            decision = par_ligne.get(numero)
+            if decision is None:
+                raise ValueError(f'Ligne {numero} : absente de ce relevé.')
+            if decision.get('statut') not in ('ambigu', 'client_non_identifie'):
+                raise ValueError(
+                    f'Ligne {numero} : seule une ligne en revue (ambiguë ou '
+                    "sans donneur d'ordre identifié) se résout en choisissant "
+                    'une facture ; transmettez son numéro seul.')
+            candidats = list(decision.get('candidats') or [])
+            if choix not in candidats:
+                raise ValueError(
+                    f'Ligne {numero} : la facture {choix or "(vide)"} ne fait '
+                    'pas partie des candidates de cette ligne '
+                    f'({", ".join(candidats) or "aucune"}).')
+            facture = Facture.objects.filter(
+                company=company, reference=choix).first()
+            if facture is None:
+                raise ValueError(
+                    f'Ligne {numero} : facture {choix} introuvable.')
+            decision.update({
+                'statut': STATUT_IMPORTABLE,
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'match_type': 'manuel',
+            })
+            demandees.add(numero)
+        else:
+            try:
+                demandees.add(int(element))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    'lignes doit contenir des numéros de ligne ou des objets '
+                    '{ligne, facture_reference}.')
+    return demandees
 
 
 def commit(company, user, token, lignes=None):
@@ -434,7 +499,10 @@ def commit(company, user, token, lignes=None):
     ``lignes`` (optionnel) restreint l'import aux numéros de ligne que
     l'opérateur a cochés ; par défaut, toutes les lignes importables. Une
     ligne en file de revue (``ambigu``/``client_non_identifie``) n'est
-    JAMAIS écrite, même explicitement demandée.
+    JAMAIS écrite sur son seul numéro : AFAC6 — l'opérateur la RÉSOUT en
+    transmettant ``{ligne, facture_reference}`` (une facture parmi ses
+    candidates, voir ``_appliquer_resolutions``). Chaque ligne créée est
+    nommée dans ``results`` (``facture_reference`` + ``paiement_id``).
 
     Renvoie un dict : {created, skipped, errors, results[{ligne, statut}]}.
     Chaque paiement est créé dans sa propre transaction (pas de rollback global).
@@ -465,13 +533,16 @@ def commit(company, user, token, lignes=None):
                 consomme_at__isnull=False).exists():
             raise ValueError(
                 'Ce relevé a déjà été importé (contenu identique).')
+        # AFAC6 — les lignes ambiguës RÉSOLUES par l'opérateur sont
+        # validées (refus 400 avant toute écriture, jeton non consommé) puis
+        # réécrites dans la session (facture choisie, match « manuel »).
+        demandees = _appliquer_resolutions(session, company, lignes)
         session.consomme_at = dj_timezone.now()
-        session.save(update_fields=['consomme_at', 'updated_at'])
+        session.save(update_fields=['consomme_at', 'decisions', 'updated_at'])
 
     cles = _cles_idempotence(session.decisions or [])
 
     OPEN_STATUTS = (Facture.Statut.EMISE.value, Facture.Statut.EN_RETARD.value)
-    demandees = None if lignes is None else {int(x) for x in lignes}
 
     created = 0
     skipped = 0
@@ -571,6 +642,8 @@ def commit(company, user, token, lignes=None):
             results.append({
                 'ligne': i + 2, 'statut': 'created',
                 'facture': facture.reference,
+                'facture_reference': facture.reference,
+                'paiement_id': paiement.id,
                 'montant': str(montant),
                 'match_type': match_type})
         except IntegrityError:
