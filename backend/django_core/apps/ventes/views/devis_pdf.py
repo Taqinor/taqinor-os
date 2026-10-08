@@ -18,6 +18,11 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.roles.permissions import IsInternalWriterOrPortalClientOwner
 
 
+#: ADEV31 — le seul texte servi quand le rendu de ``/proposal`` échoue.
+MSG_PROPOSITION_INDISPONIBLE = (
+    'Génération de la proposition momentanément indisponible.')
+
+
 def _signaler_pdf_devis_genere(devis):
     """ADEV22 — émet ``document_pdf_generated(kind='devis')`` (journal
     d'audit) ; jamais bloquant pour le rendu."""
@@ -156,9 +161,14 @@ class DevisPdfActionsMixin:
             key = generate_premium_devis_pdf(
                 devis.id, clean_pdf_options(raw), persist=False)
             pdf_bytes = download_pdf(key)
-        except Exception as exc:
+        except Exception:
+            # ADEV31 (C-ADEV-043) — jamais le texte brut de l'exception au
+            # client (hôte, bucket, chemin) : message neutre, pile au journal.
+            import logging
+            logging.getLogger(__name__).exception(
+                '/proposal : rendu échoué (devis %s)', devis.pk)
             return Response(
-                {'detail': f'Génération de la proposition échouée : {exc}'},
+                {'detail': MSG_PROPOSITION_INDISPONIBLE},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         # ADEV22 — audit au RENDU réussi (M4 : ventes émet, le satellite audit
