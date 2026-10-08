@@ -40,6 +40,12 @@ class ResteUniqueTests(TestCase):
         self.admin = User.objects.create_user(
             username=f'atot7_admin_{_nxt()}', password='x',
             role_legacy='admin', company=self.company)
+        # La ligne produit du devis porte son produit du catalogue
+        # (`LigneFacture.produit` est NOT NULL : sans lui, facturer-complet → 500).
+        from apps.stock.models import Produit
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Kit ATOT7', sku=f'ATOT7-{_nxt()}',
+            prix_vente=Decimal('125000'), quantite_stock=10)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
@@ -51,7 +57,8 @@ class ResteUniqueTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal('20.00'), mode_installation='residentiel')
         self.ligne = LigneDevis.objects.create(
-            devis=devis, designation='Centrale PV', quantite=Decimal('1'),
+            devis=devis, produit=self.produit, designation='Centrale PV',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('125000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
         return devis
