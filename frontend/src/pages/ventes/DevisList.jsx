@@ -382,6 +382,11 @@ export default function DevisList() {
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptEntreprise, setAcceptEntreprise] = useState(ENTREPRISE_VIDE)
   const [acceptBusy, setAcceptBusy] = useState(false)
+  // ADEV15 — refus 403 serveur (avertissement de vente bloquant / blocage
+  // crédit) : { nature: 'sale_warning'|'credit_hold', detail } ; le serveur
+  // reste juge (ADEV14), le bouton « Passer outre » n'est qu'une commodité
+  // pour Administrateur / Responsable.
+  const [acceptBlocage, setAcceptBlocage] = useState(null)
 
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
@@ -401,6 +406,7 @@ export default function DevisList() {
     setAcceptOption('sans_batterie')
     setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)
+    setAcceptBlocage(null)
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
@@ -608,7 +614,7 @@ export default function DevisList() {
   }
 
   // T9 — Acceptation via la modale inline (nom / date / option).
-  const submitAccept = async () => {
+  const submitAccept = async (overrides = {}) => {
     const d = acceptTarget
     if (!d) return
     const corps = corpsAcceptation({
@@ -628,12 +634,25 @@ export default function DevisList() {
     })
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, corps)
+      await ventesApi.accepterDevis(d.id, { ...corps, ...overrides })
+      setAcceptBlocage(null)
     } catch (err) {
+      const data = err?.response?.data
       // Déjà accepté (réponse précédente perdue) = c'est signé : on garde la fête.
       if (!acceptationDejaFaite(err)) {
         effacerAffaireSignee()
-        toast.error(frenchError(err, 'Acceptation impossible.'))
+        if (err?.response?.status === 403 && (data?.sale_warning || data?.credit_hold)) {
+          // ADEV15 × décision 08/10 — la fête partie au clic est retirée, la
+          // modale ROUVRE sur ce devis (saisie conservée) avec le motif serveur ;
+          // « Passer outre » (admin/responsable) relance submitAccept(overrides).
+          setAcceptBlocage({
+            nature: data.credit_hold ? 'credit_hold' : 'sale_warning',
+            detail: data.detail || 'Acceptation bloquée.',
+          })
+          setAcceptTarget(d)
+        } else {
+          toast.error(frenchError(err, 'Acceptation impossible.'))
+        }
       }
     } finally {
       setAcceptBusy(false)
@@ -934,13 +953,28 @@ export default function DevisList() {
         footer={(
           <>
             <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
-            <Button onClick={submitAccept} loading={acceptBusy}>
+            {acceptBlocage && peutNoter && (
+              <Button
+                variant="outline"
+                loading={acceptBusy}
+                onClick={() => submitAccept(acceptBlocage.nature === 'credit_hold'
+                  ? { override_credit: true } : { override_avertissement: true })}
+              >
+                Passer outre
+              </Button>
+            )}
+            <Button onClick={() => submitAccept()} loading={acceptBusy}>
               <Check /> Confirmer l'acceptation
             </Button>
           </>
         )}
       >
           <div className="flex flex-col gap-4">
+            {acceptBlocage && (
+              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                {acceptBlocage.detail}
+              </div>
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
               <Input id="accept-nom" value={acceptNom}
