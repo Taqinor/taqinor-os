@@ -23,6 +23,7 @@ export const FILES = [
   'features/ventes/quote/ligneFabrique.js',
   'features/ventes/quote/ecranDefauts.js',
   'features/ventes/quote/hooks/usePersistanceDevis.js',
+  'features/ventes/quote/hooks/useChargeurEdition.js',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.
