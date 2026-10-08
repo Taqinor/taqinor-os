@@ -578,6 +578,30 @@ export function computeROI({
     }
   }
 
+  // AGNR25 — chemin « estimation » : l'apport batterie se calcule sur
+  // l'ANNÉE par `autoconsoAvecRatio` (part diurne + capacité × 1 cycle/jour ×
+  // 365, plafonné production / conso), exactement `calculate_savings_roi`
+  // (production arrondie × taux × tarif) — plus la borne MENSUELLE du
+  // stockable, qui sous-estimait les grosses batteries (12 408 au lieu de
+  // 12 854 MAD/an). La série mensuelle « avec » est répartie depuis l'annuel.
+  if (savingsModel === 'estimation' && (parseFloat(batteryKwh) || 0) > 0 && productionCanonique > 0) {
+    const ratioAvec = Math.max(
+      autoconsoAvecRatio(productionCanonique, batteryKwh, { base: dayPct, consoAnnuelleKwh }),
+      autoconsoSansEff)
+    // Invariant « avec ≥ sans » (la part sans batterie de l'écran porte la
+    // production non arrondie).
+    ecoAnnuelleAvec = Math.max(productionCanonique * ratioAvec * PRICE, ecoAnnuelleSans)
+    batteryShiftAnnuel = Math.max(0, (ratioAvec - autoconsoSansEff) * productionCanonique)
+    autoconsoAvecEff = ratioAvec
+    const sommeAvec = ecoAvecMonthly.reduce((acc, v) => acc + v, 0)
+    if (sommeAvec > 0) {
+      for (let i = 0; i < 12; i++) {
+        ecoAvecMonthly[i] = ecoAvecMonthly[i] * (ecoAnnuelleAvec / sommeAvec)
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
+    }
+  }
+
   // Q1 — prix TTC RÉEL des lignes onduleur de CHAQUE option (miroir builder.py
   // sans_items/avec_items : « sans » exclut batterie + onduleur hybride,
   // « avec » exclut l'onduleur réseau — mêmes filtres que optionTotalsTTC).
