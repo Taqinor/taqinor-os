@@ -28,6 +28,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from . import dossiers as dossiers_service
+from .mixins import SameCompanyFKSerializerMixin
 from .models import (
     Dossier, DossierActivity, DossierChecklistItem, DossierLien,
 )
@@ -83,7 +84,11 @@ class DossierWorkflowChecklistItemSerializer(serializers.ModelSerializer):
                             'created_at', 'updated_at']
 
 
-class DossierSerializer(serializers.ModelSerializer):
+class DossierSerializer(SameCompanyFKSerializerMixin,
+                        serializers.ModelSerializer):
+    # ASEC18 — le propriétaire est un utilisateur de LA société de la requête :
+    # l'id d'un utilisateur voisin échoue comme un id absent (POST et PATCH).
+    same_company_fields = ('proprietaire',)
     type_dossier_label = serializers.CharField(
         source='get_type_dossier_display', read_only=True)
     statut_label = serializers.CharField(
