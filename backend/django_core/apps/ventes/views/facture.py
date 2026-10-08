@@ -1319,107 +1319,18 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
-        def _create(ref, source):
-            avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, taux_tva=facture.taux_tva,
-                # AUD106 — la remise globale de la facture SUIT sur l'avoir.
-                # Elle n'était jamais reprise : l'avoir total recopiait les
-                # lignes BRUTES alors que la facture facture le NET, donc il
-                # créditait plus que ce qui avait été facturé.
-                remise_globale=facture.remise_globale,
-                # ARRONDI-100 — l'avoir TOTAL (lignes de la facture recopiées)
-                # reprend son palier : il crédite exactement le facturé. Un
-                # avoir PARTIEL (lignes saisies) n'arrondit jamais.
-                arrondi_pas=(0 if clean_lignes
-                             else getattr(source, 'arrondi_pas', 0) or 0),
-                arrondi_unites=(1 if clean_lignes
-                                else getattr(source, 'arrondi_unites', 1) or 1),
-                created_by=request.user)
-            if clean_lignes:
-                for ligne in clean_lignes:
-                    LigneAvoir.objects.create(avoir=avoir, **ligne)
-            else:
-                f_lignes = list(source.lignes.all())
-                if f_lignes:
-                    for ligne in f_lignes:
-                        LigneAvoir.objects.create(
-                            avoir=avoir, produit=ligne.produit,
-                            designation=ligne.designation,
-                            quantite=ligne.quantite,
-                            prix_unitaire=ligne.prix_unitaire,
-                            remise=ligne.remise, taux_tva=ligne.taux_tva)
-                else:
-                    # Facture de tranche sans lignes : montants figés.
-                    avoir.montant_ht = source.total_ht
-                    avoir.montant_tva = source.total_tva
-                    avoir.montant_ttc = source.total_ttc
-                    avoir.save(update_fields=[
-                        'montant_ht', 'montant_tva', 'montant_ttc'])
-            # ATOT6 — autant de paniers TVA que la facture d'origine.
-            from ..domain.facturation_ops import (
-                ventiler_document_depuis_facture,
-            )
-            ventiler_document_depuis_facture(
-                avoir, source, partiel=bool(clean_lignes),
+        # AFAC27 — LE constructeur unique (`creer_avoir_facture`) : verrou de
+        # la facture, plafond lu SOUS le verrou (AUD126), remise globale et
+        # palier repris, ventilation TVA (ATOT6), chatter, `avoir_cree`,
+        # contre-passation (ZFAC5) et recalcul du statut (ATOT8).
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        try:
+            avoir = creer_avoir_facture(
+                facture=facture, user=request.user, motif=motif, mode=mode,
                 lignes_saisies=clean_lignes)
-            return avoir
-
-        # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
-        # n'avait ni `transaction.atomic` ni `select_for_update` : deux
-        # requêtes concurrentes (double-clic, deux gestionnaires) lisaient
-        # chacune l'ancien `reste_creditable` et passaient toutes deux la
-        # garde, créditant le client de deux fois le plafond. C'est le motif
-        # que `enregistrer-paiement` a déjà corrigé sous ERR72 ; le même
-        # correctif est porté ici — verrou de ligne sur la Facture PUIS
-        # lecture du reste, création et contrôle du plafond dans la même
-        # transaction.
-        with transaction.atomic():
-            locked = Facture.objects.select_for_update().get(pk=facture.pk)
-            reste_creditable = locked.total_ttc - locked.avoirs_total
-            avoir = create_numbered(
-                Avoir, company, 'avoir', lambda ref: _create(ref, locked))
-            # Garde plafond : si l'avoir créé dépasse le reste créditable, on
-            # le supprime (avec ses lignes) et on refuse — un avoir partiel
-            # correct passe inchangé. Tolérance d'un centime pour les arrondis.
-            if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-                avoir.lignes.all().delete()
-                avoir.delete()
-                return Response(
-                    {'detail': "L'avoir dépasse le montant restant de la "
-                               f"facture ({reste_creditable:.2f} MAD)."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            # Chatter facture : trace la création de l'avoir (acteur côté
-            # serveur, jamais lu du corps de la requête).
-            from .. import activity
-            activity.log_facture_avoir(locked, request.user, avoir)
-            if mode == 'contre_passation':
-                # ZFAC5 — annulation NETTE : la facture d'origine passe
-                # annulee, avec un FactureActivity liant les deux pièces.
-                from ..models import FactureActivity
-                ancien_statut = locked.statut
-                locked.statut = Facture.Statut.ANNULEE
-                locked.save(update_fields=['statut'])
-                FactureActivity.objects.create(
-                    company=company, facture=locked, user=request.user,
-                    kind=FactureActivity.Kind.MODIFICATION,
-                    field='statut', field_label='Statut',
-                    old_value=ancien_statut,
-                    new_value=Facture.Statut.ANNULEE,
-                    body=(f"Facture annulée par contre-passation — avoir "
-                          f"miroir {avoir.reference}."),
-                )
-            # YLEDG1 — événement documentaire générique (pose du seam pour
-            # compta.ecriture_pour_avoir, jamais d'import de son service ici).
-            from core.events import avoir_cree
-            avoir_cree.send(sender=Avoir, instance=avoir, company=company)
-            # ATOT8 — le statut de paiement suit le reste dû : un avoir qui
-            # solde la facture la passe PAYÉE (`facture_payee` émis une fois).
-            if mode != 'contre_passation':
-                from ..domain.encaissements import recalculer_statut_paiement
-                recalculer_statut_paiement(
-                    locked, user=request.user, source='avoir')
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
@@ -1575,7 +1486,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        company = facture.company
         motif = (request.data.get('motif') or '').strip()
         if not motif:
             return Response(
@@ -1588,121 +1498,19 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Au moins une ligne retournée est requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-        reste_creditable = facture.total_ttc - facture.avoirs_total
-
-        # Quantité déjà retournée par produit (avoirs actifs déjà émis sur
-        # cette facture) — pour ne jamais accepter un retour au-delà du vendu.
-        deja_retourne = {}
-        for a in facture.avoirs.filter(statut=Avoir.Statut.EMISE):
-            for lig in a.lignes.all():
-                if lig.produit_id:
-                    deja_retourne[lig.produit_id] = (
-                        deja_retourne.get(lig.produit_id, Decimal('0'))
-                        + lig.quantite)
-
-        vendu_par_produit = {}
-        for lig in facture.lignes.all():
-            if lig.produit_id:
-                vendu_par_produit[lig.produit_id] = (
-                    vendu_par_produit.get(lig.produit_id, Decimal('0'))
-                    + lig.quantite)
-
-        clean_lignes = []
-        for i, ligne in enumerate(lignes, start=1):
-            if not isinstance(ligne, dict):
-                return Response(
-                    {'detail': f'Ligne {i} invalide.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            produit_id = ligne.get('produit') or None
-            if produit_id is None:
-                return Response(
-                    {'detail': f'Ligne {i} : produit requis.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            from apps.stock.selectors import get_produit_scoped
-            produit = get_produit_scoped(company, produit_id)
-            if produit is None:
-                return Response(
-                    {'detail': f'Ligne {i} : produit inconnu.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            try:
-                qte = Decimal(str(ligne.get('quantite')))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response(
-                    {'detail': f'Ligne {i} : quantité numérique requise.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if qte <= 0:
-                return Response(
-                    {'detail': f'Ligne {i} : quantité > 0 requise.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            vendu = vendu_par_produit.get(produit_id, Decimal('0'))
-            deja = deja_retourne.get(produit_id, Decimal('0'))
-            disponible_retour = vendu - deja
-            if qte > disponible_retour:
-                return Response(
-                    {'detail': (
-                        f'Ligne {i} : quantité retournée ({qte}) supérieure '
-                        f'à la quantité vendue restant retournable '
-                        f'({disponible_retour}) pour « {produit.nom} ».')},
-                    status=status.HTTP_400_BAD_REQUEST)
-            f_ligne = next(
-                (lig for lig in facture.lignes.all()
-                 if lig.produit_id == produit_id), None)
-            prix_unitaire = f_ligne.prix_unitaire if f_ligne else Decimal('0')
-            remise = f_ligne.remise if f_ligne else Decimal('0')
-            taux_tva = f_ligne.taux_tva if f_ligne else None
-            designation = (
-                f_ligne.designation if f_ligne else produit.nom)[:255]
-            clean_lignes.append({
-                'produit': produit, 'produit_id': produit_id,
-                'designation': designation, 'quantite': qte,
-                'prix_unitaire': prix_unitaire, 'remise': remise,
-                'taux_tva': taux_tva,
-            })
-
-        def _create(ref):
-            avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, motif_retour=motif, restocke=restocker,
-                taux_tva=facture.taux_tva, created_by=request.user)
-            for ligne in clean_lignes:
-                LigneAvoir.objects.create(
-                    avoir=avoir, produit=ligne['produit'],
-                    designation=ligne['designation'],
-                    quantite=ligne['quantite'],
-                    prix_unitaire=ligne['prix_unitaire'],
-                    remise=ligne['remise'], taux_tva=ligne['taux_tva'])
-            return avoir
-
-        avoir = create_numbered(Avoir, company, 'avoir', _create)
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-            avoir.lignes.all().delete()
-            avoir.delete()
-            return Response(
-                {'detail': "Le retour dépasse le montant restant de la "
-                           f"facture ({reste_creditable:.2f} MAD)."},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        if restocker:
-            for ligne in clean_lignes:
-                produit = ligne['produit']
-                produit.refresh_from_db()
-                qte_entiere = int(Decimal(ligne['quantite']).quantize(
-                    Decimal('1'), rounding=ROUND_HALF_UP))
-                qte_avant = produit.quantite_stock
-                qte_apres = qte_avant + qte_entiere
-                record_stock_movement(
-                    company=company, produit=produit,
-                    type_mouvement=mouvement_type_entree(),
-                    quantite=qte_entiere, quantite_avant=qte_avant,
-                    quantite_apres=qte_apres, reference=avoir.reference,
-                    note=f'Retour client — {motif} (facture {facture.reference})',
-                    created_by=request.user,
-                )
-
-        from .. import activity
-        activity.log_facture_avoir(facture, request.user, avoir)
+        # AFAC27 (C-AFAC-024) — LE constructeur unique d'avoir : quantités
+        # retournables, prix/remise/TVA FACTURÉS, remise globale et palier
+        # d'arrondi de la facture (au prorata, le dernier retour porte le
+        # solde au centime), plafond SOUS verrou, re-stockage dans la même
+        # transaction, `avoir_cree`, recalcul du statut (ATOT8).
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        try:
+            avoir = creer_avoir_facture(
+                facture=facture, user=request.user, motif=motif,
+                retour_lignes=lignes, restocker=restocker)
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)

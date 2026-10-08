@@ -1463,3 +1463,270 @@ def _add_months(d, months):
     day = min(d.day, calendar.monthrange(year, month)[1])
     from datetime import date
     return date(year, month, day)
+
+
+# ── AFAC27 (C-AFAC-024) : LE constructeur unique d'avoir client ─────────────
+class AvoirRefuse(Exception):
+    """AFAC27 — refus métier de création d'avoir (message FR, prêt 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def _quantites_retour(facture):
+    """(vendu, déjà retourné) par produit — lus sur la facture VERROUILLÉE.
+
+    Déjà retourné = lignes des avoirs ÉMIS (un avoir annulé rend ses unités
+    retournables à nouveau)."""
+    from ..models import Avoir
+    vendu, deja = {}, {}
+    for lig in facture.lignes.all():
+        if lig.produit_id:
+            vendu[lig.produit_id] = (
+                vendu.get(lig.produit_id, Decimal('0')) + lig.quantite)
+    for a in facture.avoirs.filter(statut=Avoir.Statut.EMISE):
+        for lig in a.lignes.all():
+            if lig.produit_id:
+                deja[lig.produit_id] = (
+                    deja.get(lig.produit_id, Decimal('0')) + lig.quantite)
+    return vendu, deja
+
+
+def _lignes_retour(facture, company, demandes):
+    """Valide les lignes d'un retour CONTRE la facture verrouillée et les
+    complète des prix/remise/TVA FACTURÉS. Renvoie ``(lignes, epuise)`` où
+    ``epuise`` dit si ce retour rend TOUTES les unités vendues."""
+    from decimal import InvalidOperation
+
+    from apps.stock.selectors import get_produit_scoped
+    vendu, deja = _quantites_retour(facture)
+    retour = {}
+    lignes = []
+    for i, ligne in enumerate(demandes, start=1):
+        if not isinstance(ligne, dict):
+            raise AvoirRefuse(f'Ligne {i} invalide.')
+        produit_id = ligne.get('produit') or None
+        if produit_id is None:
+            raise AvoirRefuse(f'Ligne {i} : produit requis.')
+        produit = get_produit_scoped(company, produit_id)
+        if produit is None:
+            raise AvoirRefuse(f'Ligne {i} : produit inconnu.')
+        produit_id = produit.id
+        try:
+            qte = Decimal(str(ligne.get('quantite')))
+        except (InvalidOperation, TypeError, ValueError):
+            raise AvoirRefuse(f'Ligne {i} : quantité numérique requise.')
+        if qte <= 0:
+            raise AvoirRefuse(f'Ligne {i} : quantité > 0 requise.')
+        disponible = (vendu.get(produit_id, Decimal('0'))
+                      - deja.get(produit_id, Decimal('0'))
+                      - retour.get(produit_id, Decimal('0')))
+        if qte > disponible:
+            raise AvoirRefuse(
+                f'Ligne {i} : quantité retournée ({qte}) supérieure à la '
+                f'quantité vendue restant retournable ({disponible}) pour '
+                f'« {produit.nom} ».')
+        retour[produit_id] = retour.get(produit_id, Decimal('0')) + qte
+        f_ligne = next((lig for lig in facture.lignes.all()
+                        if lig.produit_id == produit_id), None)
+        lignes.append({
+            'produit': produit, 'produit_id': produit_id,
+            'designation': (f_ligne.designation if f_ligne
+                            else produit.nom)[:255],
+            'quantite': qte,
+            'prix_unitaire': (f_ligne.prix_unitaire if f_ligne
+                              else Decimal('0')),
+            'remise': f_ligne.remise if f_ligne else Decimal('0'),
+            'taux_tva': f_ligne.taux_tva if f_ligne else None,
+        })
+    epuise = bool(vendu) and all(
+        deja.get(pid, Decimal('0')) + retour.get(pid, Decimal('0')) >= q
+        for pid, q in vendu.items())
+    return lignes, epuise
+
+
+def _figer_avoir_retour(avoir, facture, *, epuise, reste_creditable):
+    """Palier d'arrondi de la facture repris AU PRORATA sur un avoir de retour.
+
+    La facture arrondie au palier (ARRONDI-100) facture moins que la somme de
+    ses lignes ; un retour au prix des lignes créditait donc plus que ce qui
+    a été facturé pour ces unités. TTC de l'avoir = TTC facturé × (valeur
+    des unités retournées / valeur non arrondie de la facture) ; le retour
+    qui ÉPUISE les quantités porte le SOLDE au centime (Σ avoirs = TTC
+    facturé). Sans palier, seul le dernier retour absorbe un écart d'arrondi
+    de quelques centimes."""
+    from core.money import quantize_mad
+    from ..selectors import _canonical_totaux
+
+    naturel = Decimal(str(avoir.total_ttc))
+    pas = getattr(facture, 'arrondi_pas', 0) or 0
+    if pas:
+        if epuise:
+            cible = reste_creditable
+        else:
+            brut = Decimal(str(_canonical_totaux(
+                list(facture.lignes.all()),
+                remise_globale_pct=facture.remise_globale,
+                fallback_taux=facture.taux_tva, arrondi_pas=0)['ttc']))
+            if not brut:
+                return
+            cible = Decimal(str(facture.total_ttc)) * naturel / brut
+    elif epuise and abs(naturel - reste_creditable) <= Decimal('0.05'):
+        cible = reste_creditable
+    else:
+        return
+    cible = quantize_mad(cible)
+    if cible == naturel:
+        return
+    ttc_f = Decimal(str(facture.total_ttc))
+    tva = (quantize_mad(cible * Decimal(str(facture.total_tva)) / ttc_f)
+           if ttc_f else Decimal('0'))
+    avoir.montant_ht = cible - tva
+    avoir.montant_tva = tva
+    avoir.montant_ttc = cible
+    avoir.save(update_fields=['montant_ht', 'montant_tva', 'montant_ttc'])
+
+
+def creer_avoir_facture(*, facture, user, motif, mode='correction',
+                        lignes_saisies=None, retour_lignes=None,
+                        restocker=False):
+    """AFAC27 (C-AFAC-024) — LE constructeur unique d'un avoir client.
+
+    Appelé par ``creer-avoir`` (correction totale/partielle, contre-
+    passation) ET ``retour-client`` : il n'existe plus deux ``_create``
+    locaux qui ne savaient pas la même chose (le retour ne reprenait ni la
+    remise globale ni le palier d'arrondi de la facture, lisait son plafond
+    hors transaction et n'émettait pas ``avoir_cree``).
+
+    Dans UNE transaction, facture VERROUILLÉE (``select_for_update``) :
+    validation des quantités retournables (retour), numérotation, lignes,
+    remise globale et palier repris (au prorata pour un retour, le dernier
+    retour portant le solde au centime), ventilation TVA (ATOT6), garde du
+    plafond, re-stockage, chatter, ``avoir_cree``, recalcul du statut de
+    paiement (ATOT8). Lève ``AvoirRefuse`` (400) — rien n'est alors écrit.
+    Renvoie l'avoir (PDF généré par l'appelant, hors transaction)."""
+    from django.db import transaction
+
+    from apps.stock.services import (
+        mouvement_type_entree, record_stock_movement,
+    )
+    from core.events import avoir_cree
+
+    from .. import activity
+    from ..models import Avoir, Facture, LigneAvoir
+    from ..utils.company_settings import create_numbered
+    from .encaissements import recalculer_statut_paiement
+
+    company = facture.company
+    est_retour = retour_lignes is not None
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        epuise = False
+        if est_retour:
+            lignes, epuise = _lignes_retour(locked, company, retour_lignes)
+        else:
+            lignes = lignes_saisies or None
+        reste_creditable = locked.total_ttc - locked.avoirs_total
+
+        def _create(ref):
+            avoir = Avoir.objects.create(
+                company=company, reference=ref, facture=locked,
+                client=locked.client, statut=Avoir.Statut.EMISE,
+                motif=motif, motif_retour=motif if est_retour else '',
+                restocke=bool(restocker and est_retour),
+                taux_tva=locked.taux_tva,
+                # AUD106 / AFAC27 — la remise globale de la facture SUIT
+                # sur TOUT avoir (le retour ne la reprenait pas : sur-crédit).
+                remise_globale=locked.remise_globale,
+                # ARRONDI-100 — l'avoir TOTAL reprend le palier ; un avoir
+                # partiel n'arrondit pas (un retour le reprend au prorata,
+                # `_figer_avoir_retour`).
+                arrondi_pas=(0 if lignes
+                             else getattr(locked, 'arrondi_pas', 0) or 0),
+                arrondi_unites=(1 if lignes
+                                else getattr(locked, 'arrondi_unites', 1) or 1),
+                created_by=user)
+            if lignes:
+                for ligne in lignes:
+                    LigneAvoir.objects.create(
+                        avoir=avoir, produit_id=ligne['produit_id'],
+                        designation=ligne['designation'],
+                        quantite=ligne['quantite'],
+                        prix_unitaire=ligne['prix_unitaire'],
+                        remise=ligne['remise'], taux_tva=ligne['taux_tva'])
+            else:
+                f_lignes = list(locked.lignes.all())
+                if f_lignes:
+                    for ligne in f_lignes:
+                        LigneAvoir.objects.create(
+                            avoir=avoir, produit=ligne.produit,
+                            designation=ligne.designation,
+                            quantite=ligne.quantite,
+                            prix_unitaire=ligne.prix_unitaire,
+                            remise=ligne.remise, taux_tva=ligne.taux_tva)
+                else:
+                    # Facture de tranche sans lignes : montants figés.
+                    avoir.montant_ht = locked.total_ht
+                    avoir.montant_tva = locked.total_tva
+                    avoir.montant_ttc = locked.total_ttc
+                    avoir.save(update_fields=[
+                        'montant_ht', 'montant_tva', 'montant_ttc'])
+            # ATOT6 — autant de paniers TVA que la facture d'origine ; à
+            # défaut, un retour reprend le palier de la facture au prorata.
+            ventile = ventiler_document_depuis_facture(
+                avoir, locked, partiel=bool(lignes), lignes_saisies=lignes)
+            if est_retour and not ventile:
+                _figer_avoir_retour(avoir, locked, epuise=epuise,
+                                    reste_creditable=reste_creditable)
+            return avoir
+
+        avoir = create_numbered(Avoir, company, 'avoir', _create)
+        # Garde plafond (au centime) — SOUS le verrou : deux avoirs/retours
+        # concurrents ne lisent plus chacun l'ancien reste.
+        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+            raise AvoirRefuse(
+                ('Le retour dépasse' if est_retour else "L'avoir dépasse")
+                + f' le montant restant de la facture '
+                  f'({reste_creditable:.2f} MAD).')
+        if restocker and est_retour:
+            for ligne in lignes:
+                produit = ligne['produit']
+                produit.refresh_from_db()
+                qte_entiere = int(Decimal(ligne['quantite']).quantize(
+                    Decimal('1'), rounding=ROUND_HALF_UP))
+                qte_avant = produit.quantite_stock
+                record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=mouvement_type_entree(),
+                    quantite=qte_entiere, quantite_avant=qte_avant,
+                    quantite_apres=qte_avant + qte_entiere,
+                    reference=avoir.reference,
+                    note=(f'Retour client — {motif} '
+                          f'(facture {locked.reference})'),
+                    created_by=user)
+        activity.log_facture_avoir(locked, user, avoir)
+        if mode == 'contre_passation':
+            # ZFAC5 — annulation NETTE : la facture d'origine passe annulee,
+            # avec un FactureActivity liant les deux pièces.
+            from ..models import FactureActivity
+            ancien_statut = locked.statut
+            locked.statut = Facture.Statut.ANNULEE
+            locked.save(update_fields=['statut'])
+            FactureActivity.objects.create(
+                company=company, facture=locked, user=user,
+                kind=FactureActivity.Kind.MODIFICATION,
+                field='statut', field_label='Statut',
+                old_value=ancien_statut,
+                new_value=Facture.Statut.ANNULEE,
+                body=(f"Facture annulée par contre-passation — avoir "
+                      f"miroir {avoir.reference}."),
+            )
+        # YLEDG1 — événement documentaire (compta.ecriture_pour_avoir) :
+        # émis pour TOUT avoir, retour compris (il ne l'était pas).
+        avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        # ATOT8 / AFAC29 — le statut de paiement suit le reste dû (un retour
+        # qui solde la facture la passe PAYÉE).
+        if mode != 'contre_passation':
+            recalculer_statut_paiement(locked, user=user, source='avoir')
+    return avoir
