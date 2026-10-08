@@ -538,8 +538,17 @@ class DevisViewSet(DevisEditionActionsMixin,
             return Response(
                 {'detail': 'Le pourcentage doit être strictement entre 0 et 100.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        ancien = profile.variante_pct
         profile.variante_pct = pct
         profile.save(update_fields=['variante_pct'])
+        # APAR60 (C-APAR-039) — journal avant/après, comme l'écran Profil
+        # (même champ, même libellé, section « profil »).
+        from apps.parametres.models import SettingsAuditLog
+        if ancien != profile.variante_pct:
+            SettingsAuditLog.log_change(
+                company, user, 'profil', 'variante_pct',
+                'Pourcentage des variantes de devis', ancien,
+                profile.variante_pct)
         return Response({'variante_pct': str(profile.variante_pct)})
 
     @action(detail=True, methods=['post'], url_path='revoquer-lien-public',
