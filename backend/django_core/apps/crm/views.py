@@ -2040,7 +2040,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         POURQUOI chaque groupe est rapproché et la décision reste humaine."""
         from .services import (
             find_duplicate_clusters, _completeness, cluster_match_keys,
-            _MERGE_FILL_FIELDS,
+            _MERGE_FILL_FIELDS, _est_vide,
         )
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
@@ -2069,9 +2069,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
             for field in _MERGE_FILL_FIELDS:
+                # ACRM13 — la MÊME règle « vide » que la fusion (un 0 saisi
+                # n'est jamais annoncé comme « complété »).
                 cur = getattr(suggested, field, None)
-                if cur in (None, '', False):
-                    if any(getattr(d, field, None) not in (None, '', False)
+                if _est_vide(suggested, field, cur):
+                    if any(not _est_vide(d, field, getattr(d, field, None))
                            for d in others):
                         champs_combles.append(field_labels.get(field, field))
             out.append({

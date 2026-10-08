@@ -4584,13 +4584,35 @@ def normalize_name(nom, prenom=None, societe=None):
     return key if len(key) >= 4 else ''
 
 
+def _est_vide(instance, champ, valeur):
+    """ACRM13 (C-ACRM-008) — LA règle « champ vide » de la fusion : ``None``
+    et ``''`` seulement ; ``False`` uniquement pour un booléen NON nullable
+    (son « non renseigné »). Un ``0`` saisi (toit plat, 0 étage) n'est JAMAIS
+    vide — l'idiome ``in (None, '', False)`` le confondait avec l'absence
+    (``0 == False``) et l'écrasait par la valeur de l'absorbé."""
+    if valeur is None:
+        return True
+    if isinstance(valeur, str):
+        return valeur == ''
+    if valeur is False:
+        try:
+            from django.db import models as dj_models
+            champ_modele = type(instance)._meta.get_field(champ)
+        except Exception:  # noqa: BLE001 — champ inconnu : jamais « vide »
+            return False
+        return (isinstance(champ_modele, dj_models.BooleanField)
+                and not champ_modele.null)
+    return False
+
+
 def _completeness(lead):
     """Score « complétude » d'un lead : nombre de champs de fond renseignés.
-    Sert à proposer par défaut le survivant le plus riche lors d'une fusion."""
+    Sert à proposer par défaut le survivant le plus riche lors d'une fusion.
+    ACRM13 — « renseigné » = non vide au sens de ``_est_vide`` (un 0 compte)."""
     score = 0
     for field in _MERGE_FILL_FIELDS:
         val = getattr(lead, field, None)
-        if val not in (None, '', False):
+        if not _est_vide(lead, field, val):
             score += 1
     return score
 
@@ -4934,12 +4956,13 @@ def merge_leads(survivor, others, user):
             # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
             if not survivor.client_id and absorbed.client_id:
                 survivor.client = absorbed.client
-            # 6) Compléter les champs VIDES du survivant.
+            # 6) Compléter les champs VIDES du survivant — ACRM13 : vide au
+            # sens de ``_est_vide`` (un 0 saisi du survivant SURVIT).
             for field in _MERGE_FILL_FIELDS:
                 cur = getattr(survivor, field, None)
-                if cur in (None, '', False):
+                if _est_vide(survivor, field, cur):
                     val = getattr(absorbed, field, None)
-                    if val not in (None, '', False):
+                    if not _est_vide(absorbed, field, val):
                         setattr(survivor, field, val)
             # 7) Fusionner les tags (union).
             tags = set()
