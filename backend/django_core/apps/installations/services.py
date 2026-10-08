@@ -5977,8 +5977,14 @@ def ventiler_stock_livraison(livraison, user):
     livraison vers l'emplacement van. No-op sûr (renvoie 0) si la livraison
     n'a pas de dépôt source, si son mode est `direct_site` (jamais passé par
     le dépôt — rien à décrémenter), ou si `stock_mouvemente` est déjà posé
-    (idempotent). Une ligne sans produit catalogue ou en stock insuffisant au
-    dépôt est ignorée (best-effort, ne bloque jamais l'expédition)."""
+    (idempotent). Une ligne sans produit catalogue est ignorée.
+
+    ACHT20 (C-ACHT-018) — EXACTE et ATOMIQUE : une ligne en stock
+    insuffisant au dépôt REFUSE l'expédition (`ExpeditionImpossible` nomme
+    la ligne : « Stock insuffisant pour B (3 < 4) ») et rien n'est transféré
+    (transaction annulée) — l'annulation peut donc contre-transférer
+    exactement les lignes."""
+    from django.db import transaction
     from .models_livraison import Livraison
     if livraison.stock_mouvemente:
         return 0
@@ -5991,21 +5997,46 @@ def ventiler_stock_livraison(livraison, user):
         return 0
     from apps.stock.services import transfer_stock
     transferred = 0
-    for ligne in livraison.lignes.select_related('produit').all():
-        if ligne.produit_id is None or not ligne.quantite:
-            continue
-        try:
-            transfer_stock(
-                company=livraison.company, user=user,
-                produit_id=ligne.produit_id, source_id=livraison.depot_id,
-                destination_id=van.id, quantite=ligne.quantite,
-                note=f'Expédition livraison {livraison.reference}')
+    with transaction.atomic():
+        for ligne in livraison.lignes.select_related('produit').all():
+            if ligne.produit_id is None or not ligne.quantite:
+                continue
+            try:
+                transfer_stock(
+                    company=livraison.company, user=user,
+                    produit_id=ligne.produit_id,
+                    source_id=livraison.depot_id,
+                    destination_id=van.id, quantite=ligne.quantite,
+                    note=f'Expédition livraison {livraison.reference}')
+            except ValueError as exc:
+                dispo = _quantite_emplacement(
+                    ligne.produit, livraison.depot_id)
+                detail = (f' ({dispo} < {ligne.quantite})'
+                          if dispo is not None else f' ({exc})')
+                raise ExpeditionImpossible(
+                    f'Stock insuffisant pour {ligne.produit.nom}'
+                    f'{detail}.') from exc
             transferred += 1
-        except ValueError:
-            continue  # best-effort : stock insuffisant, on n'échoue pas l'expédition.
-    livraison.stock_mouvemente = True
-    livraison.save(update_fields=['stock_mouvemente'])
+        livraison.stock_mouvemente = True
+        livraison.save(update_fields=['stock_mouvemente'])
     return transferred
+
+
+class ExpeditionImpossible(Exception):
+    """ACHT20 — une ligne de livraison ne peut pas être ventilée."""
+
+
+def _quantite_emplacement(produit, emplacement_id):
+    """ACHT20 — quantité d'un produit sur un emplacement (ventilation du
+    service stock), ou None si illisible."""
+    try:
+        from apps.stock.services import stock_breakdown
+        for ligne in stock_breakdown(produit):
+            if ligne.get('emplacement_id') == emplacement_id:
+                return ligne.get('quantite')
+    except Exception:  # pragma: no cover - défensif, lecture d'appoint
+        return None
+    return 0
 
 
 def contre_transferer_stock_livraison(livraison, user):

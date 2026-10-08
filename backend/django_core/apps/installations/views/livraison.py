@@ -22,9 +22,26 @@ from ..serializers import (
     LivraisonSerializer, LivraisonLigneSerializer, RetourLivraisonSerializer,
 )
 from ..services import (
-    ventiler_stock_livraison, contre_transferer_stock_livraison,
-    generer_retour_livraison,
+    ExpeditionImpossible, ventiler_stock_livraison,
+    contre_transferer_stock_livraison, generer_retour_livraison,
 )
+
+#: ACHT20 — message unique d'une livraison expédiée (lignes et en-tête figés).
+MESSAGE_LIVRAISON_FIGEE = (
+    "Livraison expédiée : annulez-la puis recréez-la.")
+#: ACHT20 — champs d'en-tête figés dès `stock_mouvemente=True`.
+CHAMPS_FIGES_LIVRAISON = ('depot', 'mode_acheminement', 'installation')
+
+
+def _exiger_lignes_modifiables(livraison):
+    """ACHT20 — les lignes d'une livraison ventilée sont figées."""
+    if livraison is not None and livraison.stock_mouvemente:
+        raise ValidationError({'livraison': MESSAGE_LIVRAISON_FIGEE})
+
+
+def _valeur(obj):
+    return getattr(obj, 'pk', obj)
+
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -112,6 +129,18 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        liv = serializer.instance
+        if liv.stock_mouvemente:
+            actuels = {'depot': liv.depot_id,
+                       'mode_acheminement': liv.mode_acheminement,
+                       'installation': liv.installation_id}
+            modifies = [
+                nom for nom in CHAMPS_FIGES_LIVRAISON
+                if nom in serializer.validated_data
+                and _valeur(serializer.validated_data[nom]) != actuels[nom]]
+            if modifies:  # ACHT20
+                raise ValidationError(
+                    {nom: MESSAGE_LIVRAISON_FIGEE for nom in modifies})
         serializer.save(company=self.request.user.company)
 
     def _set_statut(self, request, statut):
@@ -147,14 +176,20 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         """FG329 — passe la livraison en transit. YSTCK5 : ventile le stock
         dépôt → van (idempotent, best-effort). XSTK22 : notifie le client
         (best-effort, une seule fois)."""
+        from django.db import transaction
+
         liv = self.get_object()
         _exiger_transition_livraison(liv, Livraison.Statut.EN_TRANSIT)
-        liv.statut = Livraison.Statut.EN_TRANSIT
-        liv.save(update_fields=['statut', 'date_modification'])
+        # ACHT20 — ventilation exacte PUIS statut, dans la même transaction :
+        # une ligne en stock insuffisant refuse l'expédition (400 nommant la
+        # ligne), rien n'est transféré ni notifié.
         try:
-            ventiler_stock_livraison(liv, request.user)
-        except Exception:  # pragma: no cover - défensif, best-effort
-            pass
+            with transaction.atomic():
+                ventiler_stock_livraison(liv, request.user)
+                liv.statut = Livraison.Statut.EN_TRANSIT
+                liv.save(update_fields=['statut', 'date_modification'])
+        except ExpeditionImpossible as exc:
+            raise ValidationError({'lignes': str(exc)})
         self._notify_client(liv, Livraison.Statut.EN_TRANSIT, request)
         return Response(self.get_serializer(liv).data)
 
@@ -289,8 +324,16 @@ class LivraisonLigneViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         self._check_parent(serializer)
+        _exiger_lignes_modifiables(
+            serializer.validated_data.get('livraison'))  # ACHT20
         serializer.save()
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
+        _exiger_lignes_modifiables(serializer.instance.livraison)  # ACHT20
+        _exiger_lignes_modifiables(serializer.validated_data.get('livraison'))
         serializer.save()
+
+    def perform_destroy(self, instance):
+        _exiger_lignes_modifiables(instance.livraison)  # ACHT20
+        instance.delete()
