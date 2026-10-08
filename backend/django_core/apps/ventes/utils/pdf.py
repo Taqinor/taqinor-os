@@ -726,23 +726,6 @@ def generate_lettre_relance_pdf(facture, niveau, message):
     return _html_to_pdf(html)
 
 
-def _proforma_option(devis):
-    """QJR19 — l'option dont le pro-forma imprime l'argent.
-
-    MÊME règle que la chaîne canonique (``quote_engine.builder`` : deux vraies
-    options ⇒ l'option AVEC batterie, jamais la somme des deux ; l'option
-    ACCEPTÉE quand le client a tranché ; mono-option / pompage / liste libre ⇒
-    toutes les lignes). Rendre la somme des deux paniers imprimait un montant
-    qui n'existe dans AUCUN document.
-    """
-    from apps.ventes.utils.options import AVEC_BATTERIE, has_two_options
-
-    option = getattr(devis, 'option_acceptee', '') or ''
-    if option:
-        return option
-    return AVEC_BATTERIE if has_two_options(devis) else ''
-
-
 def generate_proforma_pdf(devis, reference):
     """XFAC10 — facture pro-forma NON comptabilisée (layout facture legacy,
     variante filigranée). Rendu à la volée, non stocké — ne touche jamais le
@@ -760,12 +743,18 @@ def generate_proforma_pdf(devis, reference):
     client, au centime. Le jour où la façade ``argent.totaux(vue=…)`` (QJR49)
     remplacera ``option_totaux``, la substitution est mécanique : ce module ne
     calcule RIEN lui-même.
+
+    ATOT10 (C-ATOT-015) — l'option vient d'``option_effective`` (acceptée,
+    sinon scénario mono déclaré, sinon option mise en avant — SANS pour un
+    C&I, CIQ302), exactement comme le BC : ``option_lines``/``option_totaux``
+    sans argument. Le pro-forma imprime donc ``Devis.total_ttc``, le total de
+    la liste et du PDF /proposal ; l'ancien ``_proforma_option`` (AVEC dès
+    qu'il y avait deux options) est supprimé.
     """
     from apps.ventes.utils.options import option_lines, option_totaux
 
-    option = _proforma_option(devis)
-    lignes = option_lines(devis, option)
-    totaux = option_totaux(devis, option, lignes=lignes)
+    lignes = option_lines(devis)
+    totaux = option_totaux(devis, lignes=lignes)
 
     context = _company_context(company=devis.company)
     context['devis'] = devis
