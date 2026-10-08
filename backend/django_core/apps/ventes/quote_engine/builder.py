@@ -2508,6 +2508,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 continue
             if not _stored.get(_cle):
                 _stored[_cle] = int(round(_nombre(_brut) * _recalage))
+                if _cle == "production_annuelle":
+                    # AMOT15 — figure POSÉE par le calepinage : sa provenance
+                    # est dite (copie rendue seulement), pour que la
+                    # production imprimée reste celle du moteur devis.
+                    _stored["production_source"] = PRODUCTION_CALEPINAGE
             elif _du_calepinage:
                 # Figure POSÉE par le calepinage (base 720 W) : recalée sur
                 # les lignes par SON propriétaire — une étude SAISIE (ou non
@@ -2821,8 +2826,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "avec": (_roi_a.get("savings_model", "estimation"),
                      bool(_roi_a.get("savings_estimated"))),
         }
+    # AMOT15 (C-AMOT-013, D-ACAL-6) — la production VUE PAR LE CLIENT est
+    # celle du moteur devis : une production posée par le CALEPINAGE
+    # (``production_source``) n'est plus recopiée ni dans ``roi`` ni dans
+    # l'étude rendue. Une production SAISIE par un humain reste souveraine.
+    from apps.ventes.domain.etude_schema import (
+        PRODUCTION_CALEPINAGE as _PROD_CALEPINAGE)
+    _prod_du_calepinage = (
+        (devis_etude_override or {}).get("production_source")
+        == _PROD_CALEPINAGE)
     if etude.get("production_annuelle"):
-        roi["prod_kwh"] = int(etude["production_annuelle"])
+        if not _prod_du_calepinage:
+            roi["prod_kwh"] = int(etude["production_annuelle"])
         # Une production SAISIE par un humain est UN chiffre, pas deux : elle
         # vaut pour les deux options (comme les économies d'étude juste en
         # dessous). Sans ce réalignement, le une-page aurait pu servir une
@@ -2848,17 +2863,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # jamais d'une clé d'étude reprise ni d'une saisonnalité résidentielle.
         if etude.get("economies_annuelles") and not _mode_ci:
             eco = int(etude["economies_annuelles"])
-            roi["eco_s_ann"] = eco
-            roi["eco_a_ann"] = eco
-            roi["eco_a_cumul"] = eco
-            roi["roi_s"] = round(_ref_total / eco, 1) if eco > 0 else 0.0
-            roi["roi_a"] = roi["roi_s"]
-            # Payback LINÉAIRE d'une étude saisie : toujours un vrai nombre.
-            roi["roi_s_jamais"] = roi["roi_a_jamais"] = False
-            _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                   0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
-            roi["eco_s_monthly"] = [round(eco * f) for f in _sf]
-            roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
+            # AMOT15 — l'économie saisie entre dans LA chaîne de calcul
+            # (``calculate_savings_roi(economie_imposee=…)``) : payback de
+            # chaque option = croisement de SA courbe (son prix, dégradation,
+            # provision onduleur), gain net = fin de courbe — plus de payback
+            # linéaire ni d'économie collée après coup.
+            _roi_eco = calculate_savings_roi(
+                puissance_kwc or 0, total_sans, total_avec,
+                **dict(roi_kwargs, economie_imposee=eco))
+            for _cle in ("eco_s_ann", "eco_a_ann", "eco_a_cumul", "roi_s",
+                         "roi_a", "roi_s_jamais", "roi_a_jamais",
+                         "eco_s_monthly", "eco_a_monthly", "cashflow_sans",
+                         "cashflow_avec", "net_gain_sans", "net_gain_avec"):
+                roi[_cle] = _roi_eco[_cle]
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
         etude["production_annuelle"] = roi["prod_kwh"]
         if etude.get("economies_annuelles") and not _mode_ci:
@@ -3069,10 +3086,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "facture_avec_solaire": None,
             "economie": _sm_eco_ref,
             "approximatif": False,
+            # AMOT15 — la phrase dit la source RÉELLE : économie SAISIE dans
+            # l'étude, retour et gain net CALCULÉS sur elle option par option.
             "ligne_methode": (
-                "Économies issues de l'étude de consommation enregistrée avec "
-                "ce devis (production et économies calculées sur votre profil "
-                "réel)."),
+                "Économies saisies dans l'étude de consommation enregistrée "
+                "avec ce devis ; le retour sur investissement et le gain net "
+                "sur 25 ans en sont calculés pour chaque option (prix de "
+                "l'option, dégradation des panneaux, remplacement de "
+                "l'onduleur)."),
             "exemple": None,
         }
     else:

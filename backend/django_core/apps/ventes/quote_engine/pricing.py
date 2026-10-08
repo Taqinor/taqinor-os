@@ -1387,6 +1387,13 @@ def calculate_savings_roi(
     # sortie byte-identique. C'est le seul chemin par lequel la note « douze
     # mois » devient atteignable depuis l'ERP.
     repartition_mensuelle=None,
+    # AMOT15 (C-AMOT-013) — économie annuelle SAISIE (étude du devis). Fournie
+    # (> 0), elle REMPLACE l'économie des deux options AVANT le cashflow : le
+    # payback de chaque option est le croisement de SA courbe (son prix, la
+    # dégradation, la provision onduleur), le gain net 25 ans en découle, la
+    # répartition mensuelle suit la clé de forme. Le chiffre saisi est NET (la
+    # perte de stockage n'est pas re-déduite). ``None`` ⇒ byte-identique.
+    economie_imposee: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1608,6 +1615,16 @@ def calculate_savings_roi(
     _batt_part = 0.0
     if autoconso_avec > 0:
         _batt_part = max(0.0, (autoconso_avec - autoconso_sans_eff)) / autoconso_avec
+    # AMOT15 — une économie SAISIE entre dans LA chaîne de calcul : mêmes
+    # cashflows, mêmes paybacks par croisement, aucune copie après coup.
+    try:
+        _eco_imposee = float(economie_imposee or 0)
+    except (TypeError, ValueError):
+        _eco_imposee = 0.0
+    if _eco_imposee > 0:
+        economie_opt1 = economie_opt2 = int(round(_eco_imposee))
+        eco_monthly_reel = None
+        _batt_part = 0.0
     # M9 (audit du 19/08/2026) — l'abattement ne s'applique QU'À une option qui
     # porte RÉELLEMENT du stockage : ``battery=True`` était codé en dur, donc un
     # devis sans batterie subissait quand même la perte d'un équipement absent.

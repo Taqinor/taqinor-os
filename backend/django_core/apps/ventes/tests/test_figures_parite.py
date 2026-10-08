@@ -439,13 +439,13 @@ class FiguresPariteSurfacesTests(_DevisReelMixin, TestCase):
         self._verifier('industriel_remise')
 
     def test_acal_production_recalee_decimale_haute(self):
-        """ACAL102 (C-ACAL-113) — la production imprimée (PDF /proposal et
-        proposition publique) est celle du calepinage RECALÉE sur les lignes
-        (8 × 715 W = 5,72 kWc pour un calepinage modélisé à 5,76 kWc), quelle
-        que soit la décimale : la provenance est la marque
-        ``production_source``, plus l'égalité ``int(round())`` qui ratait
-        8843,66 stockée tronquée à 8843."""
+        """ACAL102 (C-ACAL-113) puis AMOT15 (D-ACAL-6) — une production
+        marquée ``production_source='calepinage'`` n'est plus imprimée : PDF
+        /proposal et proposition publique impriment TOUS la production du
+        MOTEUR DEVIS (la même partout), jamais celle du calepinage, ni brute
+        ni recalée — quelle que soit la décimale stockée."""
         from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
         lignes = [
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '11700'),
             ('Panneau Canadien Solar 715W', '8', '1100'),
@@ -466,7 +466,11 @@ class FiguresPariteSurfacesTests(_DevisReelMixin, TestCase):
                     'result': {'panels': 8, 'kwc': 5.76,
                                'annualKwh': annuel}})
                 devis.refresh_from_db()
-                attendu = Decimal(int(round(annuel * 5.72 / 5.76)))
+                recalee = Decimal(int(round(annuel * 5.72 / 5.76)))
+                attendu = Decimal(int(build_quote_data(
+                    devis, {'pdf_mode': 'full'})['prod_kwh']))
+                self.assertNotEqual(attendu, recalee)
+                self.assertNotEqual(attendu, Decimal(int(annuel)))
                 surfaces, marches = self._surfaces(devis, spec)
                 lues = {
                     surface: [m.valeur for ident, mesures in figs.items()
