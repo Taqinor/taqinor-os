@@ -169,6 +169,14 @@ def _trigger_matches(rule, instance, context):
             return evaluate_condition_group(conditions, ctx)
         return True
 
+    if rule.trigger_type == TriggerType.WEBHOOK_INBOUND:
+        # APAR9 — un webhook entrant n'exécute QUE la règle de son jeton
+        # (``rule_id`` posé par la vue publique) : sans cette garde, un POST
+        # sur le jeton A tirait toutes les règles WEBHOOK_INBOUND de la
+        # société, y compris celles dont le déclencheur est désactivé ou
+        # protégé par HMAC.
+        return ctx.get('rule_id') == rule.pk
+
     if rule.trigger_type == TriggerType.CUSTOM_RECORD_SAVED:
         # NTEXT27 — ``object_code`` posé dans le contexte par le signal
         # (``signals._custom_record_saved``) : vide ⇒ matche tout objet

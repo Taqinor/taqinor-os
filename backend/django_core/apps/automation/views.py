@@ -25,14 +25,15 @@ from . import engine, services
 from .models import (
     ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRuleVersion, AutomationRun,
-    IncomingWebhookTrigger, creer_version_automation_rule,
+    IncomingWebhookTrigger, TriggerType, creer_version_automation_rule,
     restaurer_version_automation_rule,
 )
 from .serializers import (
-    ApprovalDelegationSerializer, ApprovalRequestSerializer,
-    ApprovalRequestTypeSerializer, AutomationApprovalSerializer,
-    AutomationRuleSerializer, AutomationRuleVersionSerializer,
-    AutomationRunSerializer, IncomingWebhookTriggerSerializer,
+    WEBHOOK_REGLE_INCOMPATIBLE, ApprovalDelegationSerializer,
+    ApprovalRequestSerializer, ApprovalRequestTypeSerializer,
+    AutomationApprovalSerializer, AutomationRuleSerializer,
+    AutomationRuleVersionSerializer, AutomationRunSerializer,
+    IncomingWebhookTriggerSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -511,11 +512,22 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
         if rule is None:
             return Response(
                 {'detail': 'Règle introuvable.'}, status=400)
-        trigger, _ = IncomingWebhookTrigger.objects.get_or_create(
-            rule=rule, defaults={
-                'company': company,
-                'hmac_secret': request.data.get('hmac_secret', '') or '',
-            })
+        # APAR9 — un webhook ne s'attache qu'à une règle WEBHOOK_INBOUND.
+        if rule.trigger_type != TriggerType.WEBHOOK_INBOUND:
+            return Response(
+                {'rule': [WEBHOOK_REGLE_INCOMPATIBLE]}, status=400)
+        hmac_secret = request.data.get('hmac_secret', '') or ''
+        existant = IncomingWebhookTrigger.objects.filter(rule=rule).first()
+        if existant is not None:
+            if hmac_secret:
+                # APAR9 — plus d'abandon silencieux du secret fourni.
+                return Response({'hmac_secret': [
+                    'Cette règle a déjà un webhook : modifiez-le pour '
+                    'changer son secret.']}, status=400)
+            return Response(
+                self.get_serializer(existant).data, status=201)
+        trigger = IncomingWebhookTrigger.objects.create(
+            rule=rule, company=company, hmac_secret=hmac_secret)
         return Response(
             self.get_serializer(trigger).data, status=201)
 

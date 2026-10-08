@@ -11,6 +11,11 @@ from .models import (
     IncomingWebhookTrigger, TriggerType, record_state_change_targets,
 )
 
+#: APAR9 — message unique (création et modification d'un webhook entrant).
+WEBHOOK_REGLE_INCOMPATIBLE = (
+    "Un webhook entrant ne s'attache qu'à une règle au déclencheur "
+    "« Webhook entrant ».")
+
 
 class AutomationRuleSerializer(serializers.ModelSerializer):
     trigger_type_display = serializers.CharField(
@@ -313,3 +318,10 @@ class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
 
     def get_url_path(self, obj):
         return f'/api/django/public/hooks/{obj.token}/'
+
+    def validate_rule(self, rule):
+        # APAR9 — un webhook entrant ne s'attache qu'à une règle WEBHOOK_INBOUND
+        # (aussi sur PATCH : jamais rebrancher un jeton sur une autre règle).
+        if rule is not None and rule.trigger_type != TriggerType.WEBHOOK_INBOUND:
+            raise serializers.ValidationError(WEBHOOK_REGLE_INCOMPATIBLE)
+        return rule
