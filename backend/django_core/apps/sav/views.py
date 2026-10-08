@@ -617,6 +617,10 @@ def _ticket_visible_du_corps(request, brut, champ='ticket'):
     raise ValidationError({champ: 'Ticket inconnu.'})
 
 
+class _ProduitNeufInconnu(Exception):
+    """ASAV9 — ``produit_neuf`` introuvable (annule le remplacement)."""
+
+
 class TicketEnDoubleError(APIException):
     """ASAV23 — création d'un ticket identique dans la fenêtre anti-doublon."""
     status_code = 409
@@ -1716,7 +1720,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from .services import (
             EquipementDejaRemplaceError, OperationDestinationIncoherenteError,
             RetraitHorsPerimetreError, RetraitProduitIncoherentError,
-            retirer_piece,
+            SerieNeuveDejaAuParcError, retirer_piece,
         )
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
@@ -1737,6 +1741,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if operation not in PieceRetiree.Operation.values:
             return Response({'detail': 'Opération invalide.'}, status=400)
         numero_serie = (request.data.get('numero_serie') or '').strip()
+        # ASAV9 — ``serie_neuve`` (optionnel) : l'appareil neuf entre au parc.
+        serie_neuve = (request.data.get('serie_neuve') or '').strip()
+        if serie_neuve:
+            from .models import Equipement
+            if Equipement.objects.filter(
+                    company=ticket.company,
+                    numero_serie=serie_neuve).exists():
+                return Response(
+                    {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
+                    status=400)
+            if not numero_serie or not Equipement.objects.filter(
+                    company=ticket.company,
+                    numero_serie=numero_serie).exists():
+                return Response(
+                    {'serie_neuve': ["Le numéro de série de l'appareil "
+                                     'remplacé doit exister au parc.']},
+                    status=400)
+        equipement_neuf = None
         try:
             with transaction.atomic():
                 piece = retirer_piece(
@@ -1744,6 +1766,26 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     quantite=quantite, numero_serie=numero_serie,
                     destination=destination, operation=operation,
                     user=request.user)
+                if serie_neuve and piece.equipement_remplace is not None:
+                    from .services import remplacer_equipement
+                    produit_neuf = produit
+                    if request.data.get('produit_neuf'):
+                        try:
+                            produit_neuf = get_produit_or_raise(
+                                ticket.company,
+                                request.data.get('produit_neuf'))
+                        except (produit_does_not_exist(), ValueError,
+                                TypeError):
+                            raise _ProduitNeufInconnu()
+                    equipement_neuf = remplacer_equipement(
+                        ticket=ticket, ancien=piece.equipement_remplace,
+                        produit_neuf=produit_neuf, serie_neuve=serie_neuve,
+                        date_pose=timezone.localdate(), user=request.user)
+        except _ProduitNeufInconnu:
+            return Response({'produit_neuf': ['Produit inconnu.']},
+                            status=404)
+        except SerieNeuveDejaAuParcError as exc:
+            return Response({'serie_neuve': [str(exc)]}, status=400)
         except OperationDestinationIncoherenteError as exc:
             return Response({'detail': str(exc)}, status=400)
         # ASAV8 — retrait borné au périmètre du ticket, une fois par équipement.
@@ -1761,7 +1803,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         activity.log_note(
             ticket, request.user,
             f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
-        return Response(PieceRetireeSerializer(piece).data, status=201)
+        data = dict(PieceRetireeSerializer(piece).data)
+        data['equipement_neuf'] = None if equipement_neuf is None else {
+            'id': equipement_neuf.id,
+            'numero_serie': equipement_neuf.numero_serie,
+            'statut': equipement_neuf.statut,
+            'installation': equipement_neuf.installation_id,
+            'client': equipement_neuf.client_vente_id,
+        }
+        return Response(data, status=201)
 
     @action(detail=True, methods=['get'], url_path='pieces-unifiees',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

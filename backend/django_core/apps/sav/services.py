@@ -886,6 +886,58 @@ class EquipementDejaRemplaceError(Exception):
     ni mouvement de stock, ni RMA, ni signal (409)."""
 
 
+class SerieNeuveDejaAuParcError(Exception):
+    """ASAV9 — la série de l'appareil neuf est déjà au parc (400 sous
+    ``serie_neuve``)."""
+
+
+def remplacer_equipement(*, ticket, ancien, produit_neuf, serie_neuve,
+                         date_pose, user):
+    """ASAV9 — entrée du NEUF au parc quand ``ancien`` vient d'être retiré
+    (ASAV8, ``retirer_piece``) : création par l'écrivain unique du parc
+    (ACHT46) sur le même chantier / client, substitution dans le registre des
+    contrats de maintenance, garantie selon D-ASAV-1 (repart à la date du
+    remplacement avec la durée du produit neuf, au moins la fin restante de
+    l'ancien — jamais moins que ce que le client avait).
+
+    Lève ``SerieNeuveDejaAuParcError`` (aucune écriture) si la série neuve
+    est déjà au parc. Renvoie l'équipement neuf."""
+    from .models import ContratMaintenance, Equipement
+
+    serie_neuve = (serie_neuve or '').strip()
+    company = ticket.company
+    if Equipement.objects.filter(
+            company=company, numero_serie=serie_neuve).exists():
+        raise SerieNeuveDejaAuParcError(
+            'Ce numéro de série est déjà au parc.')
+    date_pose = date_pose or timezone.localdate()
+    # quantite_ligne démesurée : un remplacement CRÉE toujours l'équipement,
+    # il ne remplit jamais le placeholder sans série d'une ligne de chantier.
+    statut, neuf = assurer_equipement_chantier(
+        company=company, installation=ancien.installation,
+        produit=produit_neuf or ancien.produit, numero_serie=serie_neuve,
+        quantite_ligne=10 ** 6, date_pose=date_pose, created_by=user)
+    if statut == 'doublon':
+        raise SerieNeuveDejaAuParcError(
+            'Ce numéro de série est déjà au parc.')
+    champs = []
+    if ancien.client_vente_id and not neuf.client_vente_id:
+        neuf.client_vente_id = ancien.client_vente_id
+        champs.append('client_vente')
+    reste = ancien.date_fin_garantie_effective
+    if reste and reste > date_pose:
+        if neuf.date_fin_garantie is None or neuf.date_fin_garantie < reste:
+            neuf.date_fin_garantie = reste
+            champs.append('date_fin_garantie')
+    if champs:
+        neuf.save(update_fields=champs)
+    for contrat in ContratMaintenance.objects.filter(
+            company=company, equipements=ancien):
+        contrat.equipements.add(neuf)
+        contrat.equipements.remove(ancien)
+    return neuf
+
+
 def _equipement_dans_perimetre_ticket(equipement, ticket):
     """ASAV8 — l'équipement appartient-il au chantier ou au client du ticket ?
 
