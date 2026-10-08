@@ -446,6 +446,9 @@ def decider_approval(approval, *, approve, user):
 
     if approval.status != AutomationApproval.Status.PENDING:
         raise DecisionError('Décision déjà prise.')
+    # APAR46 — « qui peut décider » AVANT la transaction : la ligne d'audit
+    # SOD (refus ou override) ne doit pas être annulée avec elle.
+    verifier_decideur_approval(approval, user)
     # APAR17 — la décision est VERROUILLÉE : la ligne est relue PENDING sous
     # ``select_for_update`` dans une transaction. Deux décisions concurrentes
     # (approuver + refuser lues avant la première) ne donnent plus qu'UNE
@@ -457,7 +460,6 @@ def decider_approval(approval, *, approve, user):
                   .first())
         if verrou is None:
             raise DecisionError('Décision déjà prise.')
-        verifier_decideur_approval(verrou, user)
         verrou.status = (
             AutomationApproval.Status.APPROVED if approve
             else AutomationApproval.Status.REJECTED)
