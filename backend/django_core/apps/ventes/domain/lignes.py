@@ -787,8 +787,14 @@ def comptes_panneaux_du_devis(devis):
 
 
 def _statut_en_base(devis):
+    # Un devis jamais enregistré (pk None) n'a AUCUN statut en base : on ne
+    # l'interroge pas (filter(pk=None) ferait une requête inutile — et
+    # interdite dans les tests purs SimpleTestCase de QJR83).
+    pk = getattr(devis, 'pk', None)
+    if pk is None:
+        return None
     from apps.ventes.models import Devis
-    return (Devis.objects.filter(pk=getattr(devis, 'pk', None))
+    return (Devis.objects.filter(pk=pk)
             .values_list('statut', flat=True).first())
 
 
