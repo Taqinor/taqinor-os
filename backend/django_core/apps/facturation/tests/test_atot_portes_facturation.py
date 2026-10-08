@@ -39,6 +39,13 @@ class PortesFacturationTests(TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Portes', prenom='ATOT2',
             email=f'atot2-{_nxt()}@example.invalid')
+        # Produit de la ligne du devis : `LigneFacture.produit` est NOT NULL
+        # et facturer-complet / consolider décomptent le stock (grand stock :
+        # chaque sous-test facture un nouveau devis).
+        from apps.stock.models import Produit
+        self.kit = Produit.objects.create(
+            company=self.company, nom='Kit ATOT2', sku=f'ATOT2K-{_nxt()}',
+            prix_vente=Decimal('125000'), quantite_stock=100000)
         self.user = User.objects.create_user(
             username=f'atot2_resp_{_nxt()}', password='x',
             role_legacy='responsable', company=self.company)
@@ -56,7 +63,8 @@ class PortesFacturationTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal('20.00'), mode_installation='residentiel')
         LigneDevis.objects.create(
-            devis=devis, designation='Centrale PV', quantite=Decimal('1'),
+            devis=devis, produit=self.kit, designation='Centrale PV',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('125000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
         return devis
