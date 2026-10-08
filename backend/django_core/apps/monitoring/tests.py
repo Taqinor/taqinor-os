@@ -953,8 +953,8 @@ class TestClientEnvironmentalPortal(TestCase):
         from apps.monitoring.selectors import client_environmental_dashboard
         d = client_environmental_dashboard(self.company, self.client_obj.id)
         self.assertEqual(d['total_production_kwh'], Decimal('2000.00'))
-        # 2000 × 1.4 = 2800 MAD ; 2000 × 0.81 = 1620 kg CO₂.
-        self.assertEqual(d['economies_mad'], Decimal('2800.00'))
+        # APDF43 : tarif du profil société (défaut 1.75) ; 2000 × 0.81 = 1620 kg CO₂.
+        self.assertEqual(d['economies_mad'], Decimal('3500.00'))
         self.assertEqual(d['co2_kg'], Decimal('1620.00'))
         self.assertEqual(d['systems_count'], 2)
 
