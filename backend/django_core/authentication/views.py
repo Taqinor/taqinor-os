@@ -150,11 +150,11 @@ def _maybe_trust_device(user, request, response):
 
 
 def _client_ip(request):
-    """Adresse IP du client (premier saut X-Forwarded-For, sinon REMOTE_ADDR)."""
-    xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    if xff:
-        return xff.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR') or None
+    """Adresse IP du client — ASEC15 : LA primitive ``ip_de_requete`` (saut
+    de confiance de X-Forwarded-For), jamais le premier saut choisi par
+    l'appelant. ``None`` quand illisible (champ ``UserSession.ip`` nullable)."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request) or None
 
 
 def _refresh_jti(refresh_raw):

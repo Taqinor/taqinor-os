@@ -87,10 +87,12 @@ class NetworkPolicyMiddlewareTests(TestCase):
         resp = self.mw(self._req(ip='203.0.113.5', user=self.admin))
         self.assertEqual(resp.status_code, 403)
 
-    def test_forwarded_for_first_hop_used(self):
+    def test_forwarded_for_trusted_hop_used(self):
+        # ASEC15 — le saut de CONFIANCE (dernier, ajouté par nginx) décide,
+        # jamais le premier saut choisi par l'appelant.
         self._policy(NetworkPolicy.Mode.ENFORCE)
         req = self.rf.get('/api/django/crm/leads/', REMOTE_ADDR='172.16.0.1')
-        req.META['HTTP_X_FORWARDED_FOR'] = '10.5.5.5, 172.16.0.1'
+        req.META['HTTP_X_FORWARDED_FOR'] = '203.0.113.5, 10.5.5.5'
         req.user = self.user
         resp = self.mw(req)
         self.assertEqual(resp.status_code, 200)
