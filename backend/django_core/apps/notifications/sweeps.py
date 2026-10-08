@@ -42,8 +42,17 @@ def _companies():
         return []
 
 
-def _managers(company):
-    """Gérants/staff de la société (même logique que digests._recipients)."""
+def _managers(company, event_type=None):
+    """Gérants/staff de la société (même logique que digests._recipients).
+
+    APAR21 — quand ``event_type`` est donné et qu'une règle de routage ACTIVE
+    existe pour cet événement (Paramètres › Notifications), ses destinataires
+    (``resolve_recipients``) remplacent la liste par défaut : la règle est
+    LUE par tous les émetteurs de l'app, plus seulement par quelques-uns."""
+    if event_type is not None:
+        from .services import regle_de_routage_active, resolve_recipients
+        if regle_de_routage_active(company, event_type):
+            return list(resolve_recipients(company, event_type))
     try:
         from .selectors import utilisateurs_internes_actifs
         # APAR20 — internes seulement (jamais un compte portail).
@@ -55,12 +64,10 @@ def _managers(company):
 
 
 def _is_manager(user):
-    try:
-        if getattr(user, 'is_admin_role', False):
-            return True
-        return getattr(user, 'role_tier', None) in ('admin', 'responsable')
-    except Exception:
-        return False
+    # APAR21 — palier faisant autorité (``menu_tier``) : l'ancien
+    # ``role_tier`` n'existait pas sur le modèle (toujours None).
+    from .services import est_manager
+    return est_manager(user)
 
 
 def _notify_user_or_managers(user, company, event_type, title, body, link=''):
@@ -68,7 +75,7 @@ def _notify_user_or_managers(user, company, event_type, title, body, link=''):
     if user is not None and getattr(user, 'pk', None):
         notify(user, event_type, title, body=body, link=link, company=company)
         return
-    for mgr in _managers(company):
+    for mgr in _managers(company, event_type):
         notify(mgr, event_type, title, body=body, link=link, company=company)
 
 
@@ -124,7 +131,7 @@ def _sweep_warranty_expiring(company):
                     notify(owner, EventType.WARRANTY_EXPIRING, title,
                            body=body, link=link, company=company)
                 else:
-                    for mgr in _managers(company):
+                    for mgr in _managers(company, EventType.WARRANTY_EXPIRING):
                         notify(mgr, EventType.WARRANTY_EXPIRING, title,
                                body=body, link=link, company=company)
                 count += 1
@@ -178,7 +185,7 @@ def _sweep_maintenance_due(company):
                     notify(owner, EventType.MAINTENANCE_DUE, title,
                            body=body, link=link, company=company)
                 else:
-                    for mgr in _managers(company):
+                    for mgr in _managers(company, EventType.MAINTENANCE_DUE):
                         notify(mgr, EventType.MAINTENANCE_DUE, title,
                                body=body, link=link, company=company)
                 count += 1
@@ -283,7 +290,7 @@ def _sweep_chantier_due(company):
                 # WIR176 — `/installations/<pk>` n'existe pas côté front ;
                 # InstallationsPage (`/chantiers`) consomme `?id=<pk>`.
                 link = f'/chantiers?id={chantier.pk}'
-                for mgr in _managers(company):
+                for mgr in _managers(company, EventType.CHANTIER_DUE):
                     notify(mgr, EventType.CHANTIER_DUE, title,
                            body=body, link=link, company=company)
                 count += 1
@@ -403,7 +410,7 @@ def _sweep_da_soumise_stale(company):
                     f"La demande d'achat « {da.reference} » ({da.objet}) est "
                     f"soumise depuis {anciennete} jour(s) sans décision."
                 )
-                for mgr in _managers(company):
+                for mgr in _managers(company, EventType.DA_SOUMISE_STALE):
                     notify(mgr, EventType.DA_SOUMISE_STALE, title,
                            body=body, link=link, company=company)
                 count += 1
@@ -487,7 +494,7 @@ def _sweep_stock_expiration_soon(company):
                     f"({lot.quantite_restante} restant(s)) expire dans "
                     f"{delta} jours ({lot.date_peremption})."
                 )
-                for mgr in _managers(company):
+                for mgr in _managers(company, EventType.STOCK_EXPIRATION_SOON):
                     notify(mgr, EventType.STOCK_EXPIRATION_SOON, title,
                            body=body, link='/stock', company=company)
                 count += 1
@@ -740,7 +747,7 @@ def _sweep_hot_leads(company, now=None):
             if ecoulees <= minutes:
                 continue
             if managers is None:
-                managers = _managers(company)
+                managers = _managers(company, EventType.HOT_LEAD_UNREAD)
             destinataires = list(managers)
             owner = getattr(lead, 'owner', None)
             if owner is not None and owner.pk not in {

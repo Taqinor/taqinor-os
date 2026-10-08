@@ -45,6 +45,14 @@ function RoutingRulesPanel() {
   const [rules, setRules] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ event_type: '', target_role: 'responsable' })
+  // APAR21 — seuls les événements ROUTABLES (liste unique du serveur, clé
+  // `routable` des préférences) sont proposés : plus de clé tapée à la main.
+  const [routables, setRoutables] = useState([])
+  useEffect(() => {
+    notificationsApi.getPreferences()
+      .then((r) => setRoutables((Array.isArray(r.data) ? r.data : []).filter((p) => p.routable)))
+      .catch(() => setRoutables([]))
+  }, [])
 
   const load = () => {
     setLoading(true)
@@ -80,9 +88,16 @@ function RoutingRulesPanel() {
       </p>
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div>
-          <Label>Événement (clé)</Label>
-          <Input value={form.event_type} placeholder="lead_assigned"
-                 onChange={(e) => setForm((f) => ({ ...f, event_type: e.target.value }))} />
+          <Label>Événement</Label>
+          <Select value={form.event_type || undefined}
+                  onValueChange={(v) => setForm((f) => ({ ...f, event_type: v }))}>
+            <SelectTrigger className="w-64" aria-label="Événement"><SelectValue placeholder="Choisir un événement" /></SelectTrigger>
+            <SelectContent>
+              {routables.map((p) => (
+                <SelectItem key={p.event_type} value={p.event_type}>{p.event_label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Label>Rôle cible</Label>

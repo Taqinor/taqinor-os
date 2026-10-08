@@ -43,7 +43,13 @@ def _recipients(company):
 
     Priorité aux comptes d'administration/responsables (ceux qui pilotent) ; à
     défaut, tous les utilisateurs actifs de la société. Toujours borné à la
-    société (multi-tenant), jamais d'utilisateur d'une autre société."""
+    société (multi-tenant), jamais d'utilisateur d'une autre société.
+
+    APAR21 — une règle de routage ACTIVE sur ``digest`` (Paramètres ›
+    Notifications) remplace cette liste par ses destinataires."""
+    from .services import regle_de_routage_active, resolve_recipients
+    if regle_de_routage_active(company, EventType.DIGEST):
+        return list(resolve_recipients(company, EventType.DIGEST))
     try:
         from .selectors import utilisateurs_internes_actifs
         # APAR20 — internes seulement (jamais un compte portail).
@@ -59,13 +65,10 @@ def _recipients(company):
 
 
 def _is_manager(user):
-    """True pour un compte d'administration/responsable (best-effort)."""
-    try:
-        if getattr(user, 'is_admin_role', False):
-            return True
-        return getattr(user, 'role_tier', None) in ('admin', 'responsable')
-    except Exception:  # pragma: no cover - défensif
-        return False
+    """True pour un compte d'administration/responsable (best-effort).
+    APAR21 — palier faisant autorité (``menu_tier``)."""
+    from .services import est_manager
+    return est_manager(user)
 
 
 # ── Sections du résumé (chacune défensive et bornée à la société) ────────────

@@ -37,7 +37,7 @@ import logging
 from django.db.models.signals import post_save, pre_save
 
 from .types_evenements import EventType
-from .services import notify
+from .services import notify, resolve_recipients_reason
 
 logger = logging.getLogger(__name__)
 
@@ -217,10 +217,11 @@ def workflow_etape_activee_receiver(sender, step, company, **kwargs):
         body = (f'L\'étape « {step.step_def.nom} » attend une décision '
                 '(processus BPM).')
         link = '/approbations?source=workflow'
-        for approver in _managers(company):
+        for approver in _managers(company, EventType.APPROVAL_REQUESTED):
             notify(
                 approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                link=link, company=company, reason='manager')
+                link=link, company=company, reason=resolve_recipients_reason(
+                    company, EventType.APPROVAL_REQUESTED))
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.exception(
             'notify APPROVAL_REQUESTED failed (workflow step %s)', step.pk)
@@ -256,7 +257,7 @@ def equipement_remplace_receiver(sender, equipement, ticket, company, user,
     try:
         from .sweeps import _managers
         numero = getattr(equipement, 'numero_serie', '') or f'#{equipement.pk}'
-        for mgr in _managers(company):
+        for mgr in _managers(company, EventType.SAV_EQUIPEMENT_REMPLACE):
             notify(
                 mgr, EventType.SAV_EQUIPEMENT_REMPLACE,
                 'Équipement SAV remplacé',
@@ -361,10 +362,11 @@ def automation_approval_post_save(sender, instance, created, **kwargs):
         if created:
             title = "Approbation demandée"
             body = instance.description or 'Une action attend votre approbation.'
-            for approver in _managers(company):
+            for approver in _managers(company, EventType.APPROVAL_REQUESTED):
                 notify(
                     approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                    link=link, company=company, reason='manager')
+                    link=link, company=company, reason=resolve_recipients_reason(
+                        company, EventType.APPROVAL_REQUESTED))
             return
 
         old = getattr(instance, _OLD_STATUT_ATTR, None)
@@ -430,10 +432,11 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
                 f'La réquisition {instance.reference} attend votre '
                 f'approbation.\nMontant estimé : {montant} DH.\n'
                 f'Objet : {instance.objet}')
-            for approver in _managers(company):
+            for approver in _managers(company, EventType.APPROVAL_REQUESTED):
                 notify(
                     approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                    link=link, company=company, reason='manager')
+                    link=link, company=company, reason=resolve_recipients_reason(
+                        company, EventType.APPROVAL_REQUESTED))
             return
 
         if old == instance.statut or old is None:
@@ -501,11 +504,12 @@ def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
                     body=body, link=link, company=company,
                     reason='assigne_a_vous')
             else:
-                for approver in _managers(company):
+                for approver in _managers(company, EventType.APPROVAL_REQUESTED):
                     notify(
                         approver, EventType.APPROVAL_REQUESTED, title,
                         body=body, link=link, company=company,
-                        reason='manager')
+                        reason=resolve_recipients_reason(
+                            company, EventType.APPROVAL_REQUESTED))
             return
 
         old = getattr(instance, _OLD_GED_DEMANDE_STATUT_ATTR, None)
