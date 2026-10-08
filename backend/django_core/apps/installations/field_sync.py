@@ -207,18 +207,22 @@ def _h_cocher_safety(company, user, payload):
 
 
 def _h_signer_client(company, user, payload):
-    """N91 — signature PV de réception / intervention. Last-write-wins : la
-    dernière signature synchronisée écrase (le terminal n'en file qu'une)."""
+    """N91 — signature PV de réception / intervention. ACHT28 : plus de
+    last-write-wins — une intervention déjà signée refuse l'op (erreur, la
+    re-signature motivée se fait en ligne)."""
+    from .signature_validation import (
+        SignatureRefusee, enregistrer_signature_intervention,
+    )
     iv = _intervention(company, payload, user)
-    sig = (payload.get('signature_client') or '').strip()
-    if not sig:
-        raise FieldOpError('Signature vide.')
-    iv.signature_client = sig
     nom = (payload.get('signataire_nom') or '').strip()
-    if nom:
-        iv.signataire_nom = nom
-    iv.signe_le = timezone.now()
-    iv.save(update_fields=['signature_client', 'signataire_nom', 'signe_le'])
+    # ACHT28 — même service que l'action `signer-client` : signature
+    # validée (jamais une URL), jamais d'écrasement silencieux d'une
+    # signature existante (l'op hors-ligne ne porte pas de motif).
+    try:
+        enregistrer_signature_intervention(
+            iv, user, payload.get('signature_client'), nom=nom)
+    except SignatureRefusee as exc:
+        raise FieldOpError(exc.message)
     intervention_activity.log_note(
         iv, user, f"Signature client enregistrée ({nom or 'anonyme'}, synchro hors-ligne).")
     return {'intervention': iv.id, 'signe_le': iv.signe_le.isoformat()}

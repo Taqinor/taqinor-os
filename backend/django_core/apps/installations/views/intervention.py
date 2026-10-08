@@ -1929,24 +1929,28 @@ class InterventionViewSet(CompanyScopedModelViewSet):
     def signer_client(self, request, pk=None):
         """FG69 — enregistre la signature client sur une intervention.
         Corps : {"signature_client": <data_url_ou_vecteur>, "signataire_nom": <str>}.
-        Pose `signe_le` côté serveur."""
-        from ..signature_validation import erreur_signature_client
+        Pose `signe_le` côté serveur.
+
+        ACHT28 — délègue au service unique `enregistrer_signature_intervention`
+        (validation ADOC78, re-signature refusée en 409 sans
+        `motif_override_signature`, champs suivis au chatter)."""
+        from ..signature_validation import (
+            SignatureRefusee, enregistrer_signature_intervention,
+        )
         interv = self.get_object()
-        brut = request.data.get('signature_client')
-        sig = brut.strip() if isinstance(brut, str) else ''
         nom = (request.data.get('signataire_nom') or '').strip()
-        # ADOC78 — même validateur que le chantier : la signature
-        # d'intervention est injectée dans <img src> de la fiche SAV.
-        erreur = erreur_signature_client(sig)
-        if erreur:
-            return Response({'signature_client': erreur},
+        motif = (request.data.get('motif_override_signature')
+                 or request.data.get('motif_override') or '')
+        try:
+            enregistrer_signature_intervention(
+                interv, request.user, request.data.get('signature_client'),
+                nom=nom, motif=motif)
+        except SignatureRefusee as exc:
+            if exc.code == 'deja_signee':
+                return Response({'detail': exc.message},
+                                status=status.HTTP_409_CONFLICT)
+            return Response({'signature_client': exc.message},
                             status=status.HTTP_400_BAD_REQUEST)
-        interv.signature_client = sig
-        if nom:
-            interv.signataire_nom = nom
-        interv.signe_le = timezone.now()
-        fields = ['signature_client', 'signataire_nom', 'signe_le']
-        interv.save(update_fields=fields)
         intervention_activity.log_note(
             interv, request.user,
             f"Signature client enregistrée ({nom or 'anonyme'}).")
