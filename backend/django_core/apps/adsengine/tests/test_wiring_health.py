@@ -116,10 +116,13 @@ class WiringHealthTests(TestCase):
         os.environ['ODOO_DB'] = 'x'
         os.environ['ODOO_USERNAME'] = 'x'
         os.environ['ODOO_API_KEY'] = SECRET
+        # AACQ25 — sans société propriétaire, le connecteur reste inactif.
+        os.environ['ODOO_COMPANY_ID'] = '1'
         try:
             resp = auth(self.viewer).get(URL)
         finally:
-            for k in ('ODOO_URL', 'ODOO_DB', 'ODOO_USERNAME', 'ODOO_API_KEY'):
+            for k in ('ODOO_URL', 'ODOO_DB', 'ODOO_USERNAME', 'ODOO_API_KEY',
+                      'ODOO_COMPANY_ID'):
                 del os.environ[k]
         body = json.dumps(resp.data)
         self.assertNotIn(SECRET, body)
