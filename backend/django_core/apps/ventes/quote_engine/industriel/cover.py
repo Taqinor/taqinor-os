@@ -289,10 +289,10 @@ def build(ctx):
         f'{texte(_puissance.get("textes") or {}, ci_blocs.langue(d))}</div>'
         if _puissance and (_puissance.get("textes") or {}).get("fr") else "")
 
+    # AMOT41 — ``ind_conso`` = la consommation du MOTEUR (Σ 12 mois) ; sans
+    # baseline moteur, la ligne est OMISE (une seule consommation par page).
     conso_line = (L("ci_ind_conso", "Consommation ≈ {kwh} kWh/an",
-                    kwh=fmt(round(conso))) if conso
-                  else L("ci_ind_conso_a_confirmer",
-                         "Consommation à confirmer (facture 12 mois)"))
+                    kwh=fmt(round(conso))) if conso else "")
     prod_line = (L("ci_ind_production_estimee",
                    "Production estimée ≈ {kwh} kWh/an",
                    kwh=fmt(round(prod)))
@@ -380,7 +380,7 @@ def build(ctx):
         "L'installation vise l'<b>autoconsommation</b> : la valeur porte "
         "d'abord sur\n      les <b>heures pleines</b> (production en journée).")
     baseline_titre = L("ci_ind_baseline", "Baseline énergétique") + suffixe
-    conso_prod = conso_line + ((' · ' + prod_line) if prod_line else '')
+    conso_prod = ' · '.join(x for x in (conso_line, prod_line) if x)
 
     html = f"""{css}
 <div class="i1-root">

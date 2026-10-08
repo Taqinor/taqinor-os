@@ -196,9 +196,42 @@ def _serie_kwh(valeur):
     return serie
 
 
-def _bloc_baseline(entrees):
+def _kwh_an_moteur(etude_ci):
+    """AMOT41 — la consommation annuelle de référence DU MOTEUR : la somme
+    des 12 mois résolus de son bilan (``bilan.par_mois[].consommation_kwh``).
+    ``None`` dès qu'un mois manque : jamais une somme partielle, jamais la
+    saisie d'écran ``etude.conso_annuelle``."""
+    par_mois = _dict(_dict(etude_ci).get("bilan")).get("par_mois")
+    if not isinstance(par_mois, (list, tuple)):
+        return None
+    mois = {}
+    for m in par_mois:
+        if not isinstance(m, dict):
+            continue
+        kwh = _num(m.get("consommation_kwh"))
+        numero = _num(m.get("mois"))
+        if kwh is None or numero is None:
+            continue
+        mois[int(numero)] = kwh
+    if sorted(mois) != list(range(1, 13)):
+        return None
+    return round(sum(mois.values()), 1)
+
+
+def _bloc_baseline(entrees, etude_ci=None):
     """``(bloc, motif)`` — la consommation de référence et sa source, lues
-    dans la provenance du moteur (jamais devinées)."""
+    dans la provenance du moteur (jamais devinées). AMOT41 : le bloc porte
+    aussi ``kwh_an`` (somme des 12 mois résolus du moteur) quand le bilan la
+    donne."""
+    bloc, motif = _bloc_baseline_source(entrees)
+    if bloc is not None:
+        kwh_an = _kwh_an_moteur(etude_ci)
+        if kwh_an is not None:
+            bloc["kwh_an"] = kwh_an
+    return bloc, motif
+
+
+def _bloc_baseline_source(entrees):
     for cle in CLES_CONSOMMATION:
         entree = _dict(entrees.get(cle))
         if not entree:
@@ -495,7 +528,7 @@ def synthese_ci(data):
         omissions.append({"bloc": "systeme.production_kwh_an",
                           "motif": MOTIF_PRODUCTION_ABSENTE})
 
-    baseline, motif = _bloc_baseline(entrees)
+    baseline, motif = _bloc_baseline(entrees, etude_ci)
     if baseline is not None:
         synthese["baseline"] = baseline
     else:
@@ -567,6 +600,7 @@ def chiffres_cles(synthese):
     servi : ``argent.indicateurs.retour_ans`` (celui du flux)."""
     s = _dict(synthese)
     systeme = _dict(s.get("systeme"))
+    baseline = _dict(s.get("baseline"))
     energie = _dict(s.get("energie"))
     argent = _dict(s.get("argent"))
     economie = _dict(argent.get("economie_annee1"))
@@ -586,6 +620,8 @@ def chiffres_cles(synthese):
     return {
         "kwc": _num(systeme.get("kwc")),
         "production_kwh_an": _num(systeme.get("production_kwh_an")),
+        # AMOT41 — la consommation de référence du MOTEUR (Σ 12 mois).
+        "conso_kwh_an": _num(baseline.get("kwh_an")),
         "taux_autoconso_pct": _num(energie.get("taux_autoconso_pct")),
         "taux_couverture_pct": _num(energie.get("taux_couverture_pct")),
         "methode": methode,

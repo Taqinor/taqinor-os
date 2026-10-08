@@ -99,7 +99,11 @@ def _augment(data: dict) -> dict:
     # QJR625 — la puissance DES LIGNES (``systeme.kwc`` en est la lecture).
     d["ind_kwc"] = chiffres["kwc"] or _num(d.get("puissance_kwc"))         or _num(etude.get("kwc"))
     d["ind_prod"] = chiffres["production_kwh_an"]
-    d["ind_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
+    # AMOT41 (C-AMOT-051) — la consommation imprimée est celle du MOTEUR C&I
+    # (``synthese_ci.baseline.kwh_an``, Σ des 12 mois résolus), jamais la
+    # saisie d'écran ``etude.conso_annuelle`` (sonde VC ci1 : « ≈ 1 kWh/an »
+    # à côté d'une production de 79 482 kWh). Absente ⇒ ligne omise.
+    d["ind_conso"] = chiffres["conso_kwh_an"]
     d["ind_autoconso"] = chiffres["taux_autoconso_pct"]
     d["ind_couverture"] = chiffres["taux_couverture_pct"]
     d["ind_methode"] = chiffres["libelle_methode"]

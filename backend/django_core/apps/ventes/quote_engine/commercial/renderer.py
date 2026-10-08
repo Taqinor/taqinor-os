@@ -102,7 +102,6 @@ def _augment(data: dict) -> dict:
     # CIQ331 — la production annuelle de la couverture : celle du moteur C&I
     # (``synthese_ci.systeme``), jamais la production « par ville ».
     d["com_production"] = chiffres["production_kwh_an"]
-    d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["com_autoconso"] = chiffres["taux_autoconso_pct"]
     d["com_couverture"] = chiffres["taux_couverture_pct"]
     d["com_methode"] = chiffres["libelle_methode"]
