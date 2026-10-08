@@ -2770,10 +2770,8 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
-// Heures de pompage effectives par défaut (champ 1.4× surdimensionné →
-// la pompe tourne à régime nominal bien au-delà des heures équivalentes
-// plein-soleil ; ~7 h/jour est l'hypothèse marché retenue — modifiable).
-export const HEURES_POMPAGE_DEFAUT = 7
+// AGNR26 — `HEURES_POMPAGE_DEFAUT` retiré : plus rien ne le lisait depuis
+// AGR114/AGR130 (production heure par heure côté serveur).
 
 // QJR546 — exporté : le générateur saute (et nomme) les lignes d'un modèle
 // dont le produit n'a plus de prix, avec la MÊME garde que l'auto-remplissage.

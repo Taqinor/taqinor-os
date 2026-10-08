@@ -92,7 +92,6 @@ Réservoir (m³)
 HMT saisie (m) — surcharge
 HMT retenue par le serveur : 58,7 m (calculée)
 Débit souhaité (m³/h)
-Heures de pompage effectives / jour
 Profondeur forage (m) — optionnel
 Distance champ → coffret (m)
 Détailler la HMT (dénivelé, conduite, pression)
@@ -342,14 +341,13 @@ gen-source-calage=
 gen-source-reservoir=
 gen-hmt=60
 gen-debit=
-gen-heures=7
 gen-profondeur=
 gen-distance=
 hmt-detail=on [ ]
 gen-farm-surface=
+#27=
 #28=
 #29=
-#30=
 gen-farm-static=
 gen-farm-drawdown=
 gen-farm-fuel=
@@ -367,7 +365,7 @@ mois-irr-9=on [ ]
 mois-irr-10=on [ ]
 mois-irr-11=on [ ]
 mois-irr-12=on [ ]
-#48=on [ ]
+#47=on [ ]
 gen-attestation-agricole=on [ ]
 gen-attestation-le=
 gen-attestation-signataire=
@@ -379,54 +377,49 @@ option-cable_descente=on [ ]
 gen-kwc-cible=9.94
 gen-nbpanneaux=14
 gen-panelw=710
-#60=on [ ]
-#61=Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)
+#59=on [ ]
+#60=Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)
 line-qty=1
-#63=0
-#64=20
+#62=0
+#63=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#66=VARIATEUR VEICHI SI23 7.5KW 380V
+#65=VARIATEUR VEICHI SI23 7.5KW 380V
 line-qty=1
-#68=0
-#69=20
+#67=0
+#68=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#71=Panneau 710W
+#70=Panneau 710W
 line-qty=14
-#73=0
-#74=20
+#72=0
+#73=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#76=Structure au sol
+#75=Structure au sol
 line-qty=14
-#78=0
-#79=20
+#77=0
+#78=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#81=Installation pompage
+#80=Installation pompage
 line-qty=1
-#83=0
-#84=20
+#82=0
+#83=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#86=Afficheur du variateur — prix à renseigner
+#85=Afficheur du variateur — prix à renseigner
 line-qty=1
-#88=0
-#89=20
+#87=0
+#88=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#91=Protections DC/AC — prix à renseigner
+#90=Protections DC/AC — prix à renseigner
 line-qty=1
-#93=0
-#94=20
+#92=0
+#93=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#96=0
-#97=20.00
+#95=0
+#96=20.00
+#97=
 #98=
-#99=
 == APPELS ==
 {
   "crmApi.getClients": [
-    [
-      {
-        "page": 1
-      }
-    ],
     [
       {
         "page": 1
@@ -438,11 +431,6 @@ Ligne optionnelle (add-on hors total)=on [ ]
       {
         "page": 1
       }
-    ],
-    [
-      {
-        "page": 1
-      }
     ]
   ],
   "stockApi.getProduits": [
@@ -450,15 +438,9 @@ Ligne optionnelle (add-on hors total)=on [ ]
       {
         "page": 1
       }
-    ],
-    [
-      {
-        "page": 1
-      }
     ]
   ],
   "parametresApi.getProfile": [
-    [],
     []
   ],
   "ventesApi.getPrixApplicable": [
@@ -472,138 +454,6 @@ Ligne optionnelle (add-on hors total)=on [ ]
       {
         "produit": "105",
         "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "41",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "42",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "51",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "52",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "12",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "61",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "71",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "72",
-        "quantite": "16"
-      }
-    ],
-    [
-      {
-        "produit": "81",
-        "quantite": "60"
-      }
-    ],
-    [
-      {
-        "produit": "82",
-        "quantite": "40"
-      }
-    ],
-    [
-      {
-        "produit": "91",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "92",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "93",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "94",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "106",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "105",
-        "quantite": "0"
-      }
-    ]
-  ],
-  "ventesApi.postEtudeHorairePreview": [
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia"
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia",
-        "kwc": 5.68,
-        "batterie_kwh": 5
-      },
-      {
-        "signal": {}
-      }
-    ]
-  ],
-  "ventesApi.composerDevis": [
-    [
-      {
-        "kwc": 5.68,
-        "panel_watt": 710,
-        "structure_type": "acier",
-        "lead": 77
       }
     ]
   ]

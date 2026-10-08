@@ -253,6 +253,10 @@ export async function attendreStable(container, act, { pas = 100, stables = 25, 
 // dans le fichier de test ; ces imports dynamiques en reçoivent les mocks.
 export async function charger() {
   vi.resetModules()
+  // Les modules mockés survivent à `resetModules` (registre de mocks) : sans
+  // remise à zéro, les appels d'un scénario s'ajouteraient à ceux des
+  // précédents et chaque capture dépendrait de l'ordre d'exécution.
+  vi.clearAllMocks()
   // Les API d'abord, une à une : l'écran importé ensuite reçoit ces instances.
   const crm = await import('../../api/crmApi')
   const stock = await import('../../api/stockApi')

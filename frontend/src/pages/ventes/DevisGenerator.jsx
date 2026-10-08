@@ -110,7 +110,6 @@ import {
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   kwcFactureDesLignes, kwcPourPanneaux,
   optionTotalsTTC, defaultProductLines,
-  HEURES_POMPAGE_DEFAUT,
   prixParKwc, discountForTarget,
   computeBuyCostDetail, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
@@ -675,7 +674,6 @@ export default function DevisGenerator({
   const [pompeDebit, setPompeDebit] = useState('')
   const [pompeProfondeur, setPompeProfondeur] = useState('')
   const [pompeDistance, setPompeDistance] = useState('')
-  const [pompeHeures, setPompeHeures] = useState(String(HEURES_POMPAGE_DEFAUT))
   // ── Exploitation agricole (données GUIDÉES, toutes optionnelles) — alimentent
   // le calcul FAO-56 (besoin en eau) et le redimensionnement/chiffrage du PDF.
   // Stockées dans etude_params sous ces clés exactes (le backend les relit).
@@ -746,7 +744,7 @@ export default function DevisGenerator({
     tensionRaccordement, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
-    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
 
@@ -760,7 +758,7 @@ export default function DevisGenerator({
     tensionRaccordement, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
-    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
   ])
@@ -901,7 +899,7 @@ export default function DevisGenerator({
     if (d.pompeDebit != null) setPompeDebit(d.pompeDebit)
     if (d.pompeProfondeur != null) setPompeProfondeur(d.pompeProfondeur)
     if (d.pompeDistance != null) setPompeDistance(d.pompeDistance)
-    if (d.pompeHeures != null) setPompeHeures(d.pompeHeures)
+    // AGNR26 — `pompeHeures` d'un brouillon ancien est ignoré (champ retiré).
     if (d.farmRegion != null) setFarmRegion(d.farmRegion)
     if (d.farmCrop != null) setFarmCrop(d.farmCrop)
     if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
@@ -1755,10 +1753,8 @@ export default function DevisGenerator({
       // côté du champ prix, jamais recopiés dedans).
       setReperesEnergie(data?.reperes_energie_agricole || {})
       setTermesEffectifs(data?.payment_terms_effectifs || null)
-      const heures = parseFloat(data?.agricole_pump_hours)
-      if (!editId && Number.isFinite(heures) && heures > 0) {
-        setPompeHeures(String(heures))
-      }
+      // AGNR26 — `agricole_pump_hours` reste un réglage SERVEUR (repli PVGIS
+      // du moteur pompage) : l'écran n'a plus de champ « heures » à pré-remplir.
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
       const kwh = parseFloat(data?.onee_tarif_kwh)
       const rend = parseFloat(data?.rendement_global)
@@ -2578,7 +2574,6 @@ export default function DevisGenerator({
           pompeAlim={pompeAlim} dispatchSizing={dispatchSizing}
           pompeHmt={pompeHmt} setPompeHmt={setPompeHmt}
           pompeDebit={pompeDebit} setPompeDebit={setPompeDebit}
-          pompeHeures={pompeHeures} setPompeHeures={setPompeHeures}
           pompeProfondeur={pompeProfondeur} setPompeProfondeur={setPompeProfondeur}
           pompeDistance={pompeDistance} setPompeDistance={setPompeDistance}
           farmSurfaceHa={farmSurfaceHa} setFarmSurfaceHa={setFarmSurfaceHa}

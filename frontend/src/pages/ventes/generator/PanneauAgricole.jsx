@@ -395,7 +395,7 @@ export default function PanneauAgricole({
   // ── Pompe et forage ──
   pompeCv, setPompeCv, pompeType, setPompeType,
   pompeAlim, dispatchSizing, pompeHmt, setPompeHmt, pompeDebit, setPompeDebit,
-  pompeHeures, setPompeHeures, pompeProfondeur, setPompeProfondeur,
+  pompeProfondeur, setPompeProfondeur,
   pompeDistance, setPompeDistance,
   // ── Votre exploitation (toutes optionnelles) ──
   farmSurfaceHa, setFarmSurfaceHa, farmCrop, setFarmCrop,
@@ -570,12 +570,8 @@ export default function PanneauAgricole({
                    placeholder="ex: 30" value={pompeDebit}
                    onChange={e => setPompeDebit(e.target.value)} />
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="gen-heures">Heures de pompage effectives / jour</Label>
-            <Input id="gen-heures" type="number" min="0" step="any"
-                   value={pompeHeures}
-                   onChange={e => setPompeHeures(e.target.value)} />
-          </div>
+          {/* AGNR26 — « Heures de pompage effectives / jour » retiré : plus rien
+              ne le lisait (production heure par heure côté serveur). */}
           <div className="grid gap-1.5">
             <Label htmlFor="gen-profondeur">Profondeur forage (m) — optionnel</Label>
             <Input id="gen-profondeur" type="number" min="0" step="any"

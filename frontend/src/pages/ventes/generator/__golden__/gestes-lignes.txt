@@ -260,39 +260,9 @@ gen-cond-acompte-financeur=
       {
         "page": 1
       }
-    ],
-    [
-      {
-        "page": 1
-      }
-    ],
-    [
-      {
-        "page": 1
-      }
-    ],
-    [
-      {
-        "page": 1
-      }
     ]
   ],
   "crmApi.getLeads": [
-    [
-      {
-        "page": 1
-      }
-    ],
-    [
-      {
-        "page": 1
-      }
-    ],
-    [
-      {
-        "page": 1
-      }
-    ],
     [
       {
         "page": 1
@@ -304,27 +274,9 @@ gen-cond-acompte-financeur=
       {
         "page": 1
       }
-    ],
-    [
-      {
-        "page": 1
-      }
-    ],
-    [
-      {
-        "page": 1
-      }
-    ],
-    [
-      {
-        "page": 1
-      }
     ]
   ],
   "parametresApi.getProfile": [
-    [],
-    [],
-    [],
     []
   ],
   "ventesApi.getOffresTaillesDevis": [
@@ -338,210 +290,6 @@ gen-cond-acompte-financeur=
     ]
   ],
   "ventesApi.getPrixApplicable": [
-    [
-      {
-        "produit": "106",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "105",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "41",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "42",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "51",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "52",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "12",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "61",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "71",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "72",
-        "quantite": "16"
-      }
-    ],
-    [
-      {
-        "produit": "81",
-        "quantite": "60"
-      }
-    ],
-    [
-      {
-        "produit": "82",
-        "quantite": "40"
-      }
-    ],
-    [
-      {
-        "produit": "91",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "92",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "93",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "94",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "106",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "105",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "106",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "105",
-        "quantite": "0"
-      }
-    ],
-    [
-      {
-        "produit": "41",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "42",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "51",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "52",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "12",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "61",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "71",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "72",
-        "quantite": "16"
-      }
-    ],
-    [
-      {
-        "produit": "81",
-        "quantite": "60"
-      }
-    ],
-    [
-      {
-        "produit": "82",
-        "quantite": "40"
-      }
-    ],
-    [
-      {
-        "produit": "91",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "92",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "93",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "94",
-        "quantite": "1"
-      }
-    ],
     [
       {
         "produit": "101",
@@ -615,54 +363,6 @@ gen-cond-acompte-financeur=
     [
       {
         "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia"
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia",
-        "kwc": 5.68,
-        "batterie_kwh": 5
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia"
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia",
-        "kwc": 5.68,
-        "batterie_kwh": 5
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
         "devis": 36
       },
       {
@@ -687,24 +387,6 @@ gen-cond-acompte-financeur=
       },
       {
         "signal": {}
-      }
-    ]
-  ],
-  "ventesApi.composerDevis": [
-    [
-      {
-        "kwc": 5.68,
-        "panel_watt": 710,
-        "structure_type": "acier",
-        "lead": 77
-      }
-    ],
-    [
-      {
-        "kwc": 5.68,
-        "panel_watt": 710,
-        "structure_type": "acier",
-        "lead": 77
       }
     ]
   ],
