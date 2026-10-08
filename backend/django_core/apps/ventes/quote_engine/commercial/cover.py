@@ -134,7 +134,8 @@ def build(ctx):
   border-radius:20px;padding:3px 11px;font-size:7pt;font-weight:700;}}
 .c1c-hbody{{margin-top:8mm;color:#fff;}}
 .c1c-catrow{{display:table;}}
-.c1c-caticon{{display:table-cell;vertical-align:middle;font-size:24pt;padding-right:10px;}}
+.c1c-caticon{{display:table-cell;vertical-align:middle;padding-right:10px;color:{gold};}}
+.c1c-caticon svg{{display:block;width:24pt;height:24pt;}}
 .c1c-catlab{{display:table-cell;vertical-align:middle;}}
 .c1c-kicker{{font-size:7.5pt;letter-spacing:2.4px;text-transform:uppercase;
   color:{gold};font-weight:700;}}
