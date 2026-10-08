@@ -15,6 +15,19 @@ def compter_devis(company):
     return Devis.objects.filter(company=company).count()
 
 
+def devis_en_jeu(qs):
+    """ADEV9 (C-ADEV-003) — LE filtre unique des devis « en jeu » : la version
+    COURANTE de chaque installation (``is_active=True``).
+
+    Un devis révisé garde sa V1 (``is_active=False``, ``superseded_by`` posé,
+    statut inchangé — souvent ``envoye``) à côté de sa V2 : tout lecteur
+    AGRÉGÉ (tableau de bord, KPI kWc, cartes de synthèse, relances) qui ne
+    filtre pas compte la même installation deux fois (1 envoyé → 2, 74 800 →
+    146 600 MAD). Tous ces lecteurs passent par CE sélecteur ; un devis jamais
+    révisé est ``is_active=True`` et compte comme avant. Lecture pure."""
+    return qs.filter(is_active=True)
+
+
 def devis_for_lead(lead, ids):
     """Devis d'un lead (dans la société du lead), pour les ids donnés, triés par
     id. Liste matérialisée — comportement identique au filtre inline d'origine."""
@@ -1058,9 +1071,9 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
     les lignes/produits (le calcul de conformité les parcourt)."""
     from .models import Devis
-    qs = Devis.objects.filter(
+    qs = devis_en_jeu(Devis.objects.filter(
         company=company, date_envoi__isnull=False,
-    ).select_related('client', 'created_by').prefetch_related(
+    )).select_related('client', 'created_by').prefetch_related(
         'lignes__produit__categorie')
     if date_debut:
         qs = qs.filter(date_envoi__date__gte=date_debut)
@@ -1084,9 +1097,9 @@ def devis_envoyes_en_attente(company, since=None):
     ``since`` est un datetime (borne basse sur ``date_envoi``, ouverte si
     absente)."""
     from .models import Devis
-    qs = Devis.objects.filter(
+    qs = devis_en_jeu(Devis.objects.filter(
         company=company, statut=Devis.Statut.ENVOYE,
-        date_envoi__isnull=False)
+        date_envoi__isnull=False))
     if since is not None:
         qs = qs.filter(date_envoi__gte=since)
     return qs.order_by('date_envoi', 'id')
@@ -1209,8 +1222,9 @@ def dernier_devis_relancable_du_lead(lead, brouillon_compris=False):
     exclus = [Devis.Statut.REFUSE, Devis.Statut.EXPIRE, Devis.Statut.ACCEPTE]
     if not brouillon_compris:
         exclus.append(Devis.Statut.BROUILLON)
-    return (Devis.objects
-            .filter(company_id=lead.company_id, lead=lead)
+    # ADEV9 — une version remplacée n'est jamais « le dernier devis » à relancer.
+    return (devis_en_jeu(Devis.objects
+                         .filter(company_id=lead.company_id, lead=lead))
             .exclude(statut__in=exclus)
             .order_by('-id').first())
 

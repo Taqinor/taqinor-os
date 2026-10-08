@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from ..models import Devis
+from ..domain.modifiabilite import ENVOYER
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 
@@ -48,6 +49,22 @@ class _RemiseEnvoiRefusee(APIException):
     """QJR539 — 400 ``{detail}`` : garde de remise T17 d'un envoi."""
     status_code = status.HTTP_400_BAD_REQUEST
     default_code = 'remise_non_approuvee'
+
+
+class _VersionRemplaceeConflit(APIException):
+    """ADEV7 — 409 ``{detail, code: "version_remplacee"}`` : geste d'envoi sur
+    une version remplacée par une révision (ou archivée)."""
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'version_remplacee'
+
+
+def _exiger_version_en_jeu(devis, geste):
+    """ADEV7 — lève ``_VersionRemplaceeConflit`` AVANT tout effet de bord
+    quand ``geste`` (ENVOYER, RELANCER…) vise une version hors jeu."""
+    from ..domain.modifiabilite import (
+        corps_version_remplacee, geste_cycle_permis)
+    if not geste_cycle_permis(devis, geste)[0]:
+        raise _VersionRemplaceeConflit(corps_version_remplacee(devis))
 
 
 def _exiger_remise_envoi(devis, user, *, enregistrer=True):
@@ -114,6 +131,8 @@ class DevisEnvoiActionsMixin:
                     status=status.HTTP_400_BAD_REQUEST)
         # QJR539 — garde T17 AVANT tout effet d'un ENVOI (gamme, mint, statut).
         if request.data.get('envoi'):
+            # ADEV7 — une version remplacée ne s'envoie plus (409).
+            _exiger_version_en_jeu(devis, ENVOYER)
             _exiger_remise_envoi(devis, request.user)
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
@@ -210,6 +229,8 @@ class DevisEnvoiActionsMixin:
         from ..utils.pdf import download_pdf
 
         devis = self.get_object()
+        # ADEV7 — une version remplacée ne s'envoie plus (409).
+        _exiger_version_en_jeu(devis, ENVOYER)
         # QJR539 — garde T17 AVANT tout effet (gamme, PDF, lien, `_send`).
         _exiger_remise_envoi(devis, request.user)
         to_email = (request.data.get('to_email') or '').strip() or None
@@ -452,6 +473,8 @@ class DevisEnvoiActionsMixin:
         from ..services import mark_devis_sent
 
         devis = self.get_object()
+        # ADEV7 — une version remplacée ne s'envoie plus (409).
+        _exiger_version_en_jeu(devis, ENVOYER)
         # QJR539 — garde T17 AVANT tout effet (gamme, lien, statut).
         _exiger_remise_envoi(devis, request.user)
         phone = devis_recipient_phone(devis)
@@ -507,6 +530,7 @@ class DevisEnvoiActionsMixin:
         from .. import activity
 
         devis = self.get_object()
+        _exiger_version_en_jeu(devis, ENVOYER)
         _exiger_remise_envoi(devis, request.user)
         etait_brouillon = devis.statut == Devis.Statut.BROUILLON
         mark_devis_sent(devis=devis, user=request.user)

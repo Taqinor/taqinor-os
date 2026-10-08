@@ -111,7 +111,7 @@ def dashboard_quote_to_cash(request):
         "acceptes": int,
         "refuses":  int,
         "expires":  int,
-        "taux_acceptation_pct": float | null,  # acceptés / envoyés × 100
+        "taux_acceptation_pct": float | null,  # acceptés / envoyés de la période × 100 (ADEV10)
         "valeur_pipeline": str,   # TTC des devis envoyés encore ouverts
       },
       "factures": {
@@ -140,11 +140,13 @@ def dashboard_quote_to_cash(request):
     }
     """
     from .models import Devis, Facture
+    from .selectors import devis_en_jeu
     company = request.user.company
     periode = _period_filter(request)
 
     # ── Devis ────────────────────────────────────────────────────────────────
-    devis_qs = Devis.objects.filter(company=company).filter(periode)
+    # ADEV9 — une installation révisée compte UNE fois (version courante).
+    devis_qs = devis_en_jeu(Devis.objects.filter(company=company)).filter(periode)
     agg_devis = devis_qs.aggregate(
         total=Count('id'),
         envoyes=Count('id', filter=Q(statut='envoye')),
@@ -182,7 +184,7 @@ def dashboard_quote_to_cash(request):
     # la même ligne ; un devis mono-option, l'écrasante majorité, ne paie rien
     # de plus (ses lignes viennent du prefetch).
     devis_pipeline = list(
-        Devis.objects.filter(company=company, statut='envoye')
+        devis_en_jeu(Devis.objects.filter(company=company, statut='envoye'))
         .filter(periode)
         .select_related('created_by')
         # QJR302 — ``lignes__produit`` et non ``lignes`` : la chaîne canonique
@@ -230,7 +232,7 @@ def dashboard_quote_to_cash(request):
     n_acceptes = agg_devis['acceptes']
     # Devis acceptés avec au moins une facture.
     devis_avec_facture = (
-        Devis.objects.filter(company=company, statut='accepte')
+        devis_en_jeu(Devis.objects.filter(company=company, statut='accepte'))
         .filter(factures__isnull=False)
         .distinct().count()
     )
@@ -239,6 +241,24 @@ def dashboard_quote_to_cash(request):
         if den and den > 0:
             return round(num / den * 100, 1)
         return None
+
+    # ADEV10 (C-ADEV-058) — LA BASE DES TAUX : les devis ENVOYÉS DANS LA
+    # PÉRIODE (``date_envoi`` dans la période, versions en jeu), et parmi eux
+    # ceux acceptés / facturés. Avant, le dénominateur était ``envoyes`` — le
+    # STOCK d'envoyés encore ouverts (un accepté n'y est plus) : 4 acceptés
+    # pour 1 envoyé ouvert donnaient 400 %. Numérateur ⊂ dénominateur ⇒ le
+    # taux reste entre 0 et 100 %. ``envoyes`` (stock ouvert) reste servi.
+    envoyes_periode_qs = devis_en_jeu(Devis.objects.filter(
+        company=company, date_envoi__date__range=[debut_p, fin_p]))
+    base_taux = envoyes_periode_qs.aggregate(
+        envoyes=Count('id'),
+        acceptes=Count('id', filter=Q(statut='accepte')),
+    )
+    n_envoyes_periode = base_taux['envoyes']
+    n_acceptes_periode = base_taux['acceptes']
+    factures_periode = (
+        envoyes_periode_qs.filter(statut='accepte', factures__isnull=False)
+        .distinct().count())
 
     # ── DSO ──────────────────────────────────────────────────────────────────
     # DSO = encours (Σ montant_du) / facturé × jours de la période (AFAC53).
@@ -249,7 +269,7 @@ def dashboard_quote_to_cash(request):
     # Calcul approximatif côté Python (pas de DeltaField SQL).
     cycle_list = []
     accepted_with_pmt = (
-        Devis.objects.filter(company=company, statut='accepte')
+        devis_en_jeu(Devis.objects.filter(company=company, statut='accepte'))
         .prefetch_related('factures__paiements')
         .select_related('created_by')
     )[:200]  # cap pour éviter un scan complet
@@ -296,7 +316,7 @@ def dashboard_quote_to_cash(request):
             'acceptes': n_acceptes,
             'refuses': agg_devis['refuses'],
             'expires': agg_devis['expires'],
-            'taux_acceptation_pct': _pct(n_acceptes, n_envoyes),
+            'taux_acceptation_pct': _pct(n_acceptes_periode, n_envoyes_periode),
             'valeur_pipeline': str(round(float(valeur_pipeline), 2)),
         },
         'factures': {
@@ -309,9 +329,11 @@ def dashboard_quote_to_cash(request):
             'montant_encaisse': str(round(montant_encaisse, 2)),
         },
         'conversion': {
-            'devis_envoye_vers_accepte_pct': _pct(n_acceptes, n_envoyes),
+            'devis_envoye_vers_accepte_pct': _pct(
+                n_acceptes_periode, n_envoyes_periode),
             'devis_accepte_vers_facture_pct': _pct(devis_avec_facture, n_acceptes),
-            'devis_envoye_vers_facture_pct': _pct(devis_avec_facture, n_envoyes),
+            'devis_envoye_vers_facture_pct': _pct(
+                factures_periode, n_envoyes_periode),
         },
         'dso_jours': dso,
         'cycle_moyen_jours': cycle_moyen,

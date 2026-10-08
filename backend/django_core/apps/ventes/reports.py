@@ -72,14 +72,16 @@ def kpi_ventes(company):
     AUCUN modèle d'``apps.ventes`` avant l'appel.
     """
     from .models import Devis
+    from .selectors import devis_en_jeu
 
     kwc_concus = []
     kwc_signes = []
     # PVUNI — ``prefetch_related`` évite un aller-retour DB par devis pour
     # ``kwc_concu_devis`` (lignes-d'abord) : la fiche technique du produit est
     # jointe dès ici, comme ``build_quote_data`` (PV11).
-    for devis in Devis.objects.filter(
-            company=company, roof_layout__isnull=False).only(
+    # ADEV9 — la V1 d'une révision ne compte pas ses kWc une seconde fois.
+    for devis in devis_en_jeu(Devis.objects.filter(
+            company=company, roof_layout__isnull=False)).only(
                 'etude_params', 'roof_layout', 'statut').prefetch_related(
                     'lignes__produit__fiche_technique'):
         kwc = kwc_concu_devis(devis)
