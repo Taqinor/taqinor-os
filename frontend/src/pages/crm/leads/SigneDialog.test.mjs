@@ -33,16 +33,17 @@ test('L423 : détail par option (kWc / total TTC) affiché à côté des radios'
 // onConfirmed() n'est appelé qu'à la fermeture de la carte (jamais avant que
 // le vendeur l'ait vue).
 test('VX40/VX155 : acceptation confirmée déclenche la carte de victoire', () => {
-  assert.match(SRC, /from '\.\.\/\.\.\/\.\.\/ui\/DealSignedCelebration'/)
+  // La fête est annoncée au bus global (hôte dans ShellGlobal, hors fenêtre
+  // lead) puis le dialogue se ferme — jamais rendue DANS le dialogue.
+  assert.match(SRC, /from '\.\.\/\.\.\/\.\.\/ui\/dealSignedBus'/)
+  assert.doesNotMatch(SRC, /<DealSignedCelebration\s/)
   assert.match(SRC, /corpsAcceptation\(\{ nom, date, option \}, selected, entreprise\)/)
   assert.match(SRC, /await ventesApi\.accepterDevis\(selected\.id, corps\)/)
   // WIR188 — la charge utile de la carte est nommée (`victoire`) : elle doit
   // ATTENDRE l'avertissement crédit quand il y en a un, donc être posée à deux
   // endroits (immédiatement en mode « aucun », après « J'ai compris » sinon).
   assert.match(SRC, /const victoire = \{/)
-  assert.match(SRC, /setCelebration\(victoire\)/)
-  assert.match(SRC, /<DealSignedCelebration/)
-  assert.match(SRC, /onClose=\{\(\) => \{ setCelebration\(null\); onConfirmed\?\.\(\) \}\}/)
+  assert.match(SRC, /annoncerAffaireSignee\(victoire\)\s*\n\s*onConfirmed\?\.\(\)/)
 })
 
 // LW5 — le défaut du champ date (L121) et la comparaison « date future »
