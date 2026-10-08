@@ -28,6 +28,8 @@ from apps.ventes.quote_engine.commercial import (
     render as c_render, renderer as c_renderer, sample_data as c_sample)
 from apps.ventes.quote_engine.industriel import (
     render as i_render, renderer as i_renderer, sample_data as i_sample)
+from apps.ventes.quote_engine.pricing import (
+    CLE_SOLAIRE_MENSUELLE, repartir_annuel)
 
 try:  # PyMuPDF — déjà une dépendance du backend ; jamais requis à l'import
     import fitz
@@ -36,8 +38,7 @@ except Exception:  # pragma: no cover - environnement sans PyMuPDF
 
 
 #: Fractions mensuelles RÉSIDENTIELLES de la branche « étude saisie ».
-_SF_RESIDENTIEL = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                   0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+_SF_RESIDENTIEL = list(CLE_SOLAIRE_MENSUELLE)
 
 #: Ce que le générateur persiste pour un C&I (``etudeMarcheBloc.js``) :
 #: JAMAIS ``economies_annuelles`` ; un ``payback`` calculé côté écran.
@@ -184,8 +185,8 @@ class TestBuilderBrancheEtudeHorsCI(_DevisCIMixin, TestCase):
         etude = {'production_annuelle': 9000, 'economies_annuelles': 12000}
         data = self._data(self._devis('residentiel', 'DEV-CIQ301-RES', etude))
         self.assertEqual(data['eco_s_ann'], 12000)
-        self.assertEqual(data['eco_s_monthly'],
-                         [round(12000 * f) for f in _SF_RESIDENTIEL])
+        # AMOT27 — forme GHI, Σ = annuel au dirham.
+        self.assertEqual(data['eco_s_monthly'], repartir_annuel(12000))
 
 
 class TestRenduHtmlReelCI(_DevisCIMixin, TestCase):

@@ -153,6 +153,10 @@ def build_html(data: dict, elastic: dict | None = None,
 
     ``compact_p3`` (ERR114) : resserre le rythme vertical de la page 3 sans en
     retirer le moindre bloc. Faux par défaut → HTML inchangé au bit près."""
+    # Décision fondateur 08/10/2026 — formats d'origine pour un devis envoyé
+    # avant les corrections (AMOT26 : arrondi des montants).
+    from ..montants import poser_regles_origine
+    poser_regles_origine((data or {}).get("regles_calcul_origine"))
     ctx = build_ctx(data, compact_p3=compact_p3)
     ident = ctx["ident"]
     # QRES17 — pagination variable : un devis chargé rend 2+ pages

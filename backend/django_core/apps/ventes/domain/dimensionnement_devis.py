@@ -343,12 +343,48 @@ def _compter_modules_batterie_generique(lignes_vue):
     return (total, module_kwh) if total > 0 else (0, None)
 
 
+def lignes_vendues(devis, option=None):
+    """AMOT31 (C-AMOT-032) — les seules lignes VENDUES de ce devis : lignes
+    produit chiffrées qui COMPTENT dans les totaux
+    (``LigneDevis.compte_dans_totaux`` : ni section/note, ni ligne
+    ``optionnelle`` non activée — XSAL5) et, si ``option`` (``'sans'`` /
+    ``'avec'``) est donnée, celles de cette variante (lignes communes
+    comprises). Une ligne optionnelle ne change donc aucune capacité, aucun
+    calibre, matériel, module ni facteur de remise, et « Appliquer » ne
+    l'écrit jamais. Ne lève jamais."""
+    try:
+        lignes = list(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        return []
+    vendues = []
+    for ligne in lignes:
+        compte = getattr(ligne, 'compte_dans_totaux', None)
+        if compte is None:
+            compte = (getattr(ligne, 'est_ligne_produit', True)
+                      and not getattr(ligne, 'optionnelle', False))
+        if not compte or ligne.quantite is None \
+                or ligne.prix_unitaire is None:
+            continue
+        variante = getattr(ligne, 'variante', '') or ''
+        if option and variante and variante != option:
+            continue
+        vendues.append(ligne)
+    return vendues
+
+
 def _lignes_produit_du_devis(devis):
     """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
 
     Les intertitres de section et les notes (``XSAL14``) ne portent ni prix ni
     quantité : ils ne comptent dans aucun total, donc dans aucune lecture de
-    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes)."""
+    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes).
+
+    AMOT31 — règles corrigées : :func:`lignes_vendues` (les lignes
+    optionnelles non activées sont exclues, comme des totaux). Devis aux
+    règles d'origine (décision fondateur 08/10/2026) : la lecture d'hier."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    if calcul_corrige(devis):
+        return lignes_vendues(devis)
     try:
         lignes = list(devis.lignes.all())
     except Exception:  # noqa: BLE001 — devis détaché / sans lignes
@@ -463,6 +499,31 @@ def facteur_remise_du_devis(devis) -> float:
     if not 0 < facteur < math.inf:
         return 1.0
     return facteur
+
+
+def prix_client_au_facteur(cout_catalogue, facteur_remise):
+    """AMOT59 — le prix de VENTE d'une composition catalogue : coût × facteur
+    de remise du devis, ramené au palier ``PAS_ARRONDI_DEVIS`` inférieur
+    (ARRONDI-100, comme le total de tout devis). ``None`` si illisible ; un
+    prix sous le palier passe tel quel."""
+    try:
+        prix = float(cout_catalogue) * float(facteur_remise)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(prix) or prix <= 0:
+        return None
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    pas = float(PAS_ARRONDI_DEVIS)
+    return float(math.floor(prix / pas) * pas) if prix >= pas else round(prix, 2)
+
+
+def prix_client_composition(cout_catalogue, devis):
+    """AMOT59 (C-AMOT-035) — LA fonction qui chiffre une composition
+    catalogue au prix CLIENT du devis (remise comprise, palier compris) :
+    partagée par l'échelle de paliers, le curseur de la page publique et les
+    cartes Éco/Max — un pack de plus ne fait plus « sauter » la remise."""
+    return prix_client_au_facteur(cout_catalogue,
+                                  facteur_remise_du_devis(devis))
 
 
 def capacite_batterie_des_lignes(devis, lignes=None):
@@ -801,7 +862,12 @@ def _echelle_paliers_batterie(devis):
     if not cibles:
         return []
 
-    etude_kwargs = {
+    # AMOT30 — même constructeur que les cartes et le devis ; la conso
+    # retenue ici (``conso``) prime.
+    from apps.ventes.etude_horaire import kwargs_moteur_horaire
+    etude_kwargs = dict(kwargs_moteur_horaire(entrees))
+    etude_kwargs.pop('source_conso', None)
+    etude_kwargs.update({
         'conso_kwh_mensuelles': conso, 'ville': entrees['ville'],
         'lat': entrees['lat'], 'lon': entrees['lon'],
         'occupation': entrees['occupation'],
@@ -818,7 +884,7 @@ def _echelle_paliers_batterie(devis):
         # ``EntreesMoteur`` que le tableau.
         'tranches': entrees['tranches'],
         'charges_fixes_mad': entrees['charges_fixes_mad'],
-    }
+    })
 
     sondes = {}
 
@@ -910,6 +976,22 @@ def _echelle_paliers_batterie(devis):
     capacite_retenue = capacite_batterie_des_lignes(devis)
     facteur_remise = facteur_remise_du_devis(devis)
 
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    _corrige = calcul_corrige(devis)
+
+    def _payback_publie(cout, economie):
+        """AMOT29 — le payback PUBLIÉ du palier : cashflow 25 ans
+        (``pricing.payback_publiable`` ; « jamais remboursé » ⇒ ``None``,
+        jamais la sentinelle), le ratio simple pour un devis aux règles
+        d'origine. L'économie horaire du palier est déjà nette du stockage."""
+        if not _corrige:
+            return _arrondi(_payback(cout, economie))
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        pub = payback_publiable(cout, economie)
+        if pub is None or pub['jamais_rembourse']:
+            return None
+        return _arrondi(pub['annees'])
+
     def rendu(entree, panneaux, remplissage_ok):
         """Un palier de l'échelle, au format EXACT du contrat."""
         vue, palier = entree['vue'], entree['palier']
@@ -918,6 +1000,10 @@ def _echelle_paliers_batterie(devis):
         # est brute, le devis est remisé. Sans ce facteur, l'écart entre deux
         # pilules d'un devis remisé était faux (bases mélangées).
         cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
+        if _corrige:
+            # AMOT59 — LE prix client d'une composition (palier compris).
+            cout = prix_client_au_facteur(vue.get('cout_ttc'),
+                                          facteur_remise) or cout
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
         # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :
@@ -937,7 +1023,7 @@ def _echelle_paliers_batterie(devis):
             'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
             'prix_ttc': cout,
             'economies_annuelles': economie,
-            'payback_annees': _arrondi(_payback(cout, economie)),
+            'payback_annees': _payback_publie(cout, economie),
             'remplissage_ok': bool(remplissage_ok),
             'retenu': bool(capacite_retenue is not None
                            and abs(capacite - _num(capacite_retenue)) < 0.05),

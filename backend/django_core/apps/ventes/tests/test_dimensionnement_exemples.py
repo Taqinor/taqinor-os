@@ -767,7 +767,7 @@ class ExemplesFondateurTest(TestCase):
                 kwc=kwc, conso_kwh_mensuelles=conso, ville=VILLE,
                 occupation=cas.occupation,
                 equipements=composer_equipements(cas.equipements),
-                batterie_kwh_utile=batterie, source_conso=source)
+                batterie_kwh_utile=batterie, source_conso=source, tranches=None, charges_fixes_mad=None)
             self.assertIsNotNone(etude, cas.libelle)
 
             print('')

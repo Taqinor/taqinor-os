@@ -2173,8 +2173,11 @@ from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402,F401
     contour_du_devis_lnglat,
     echelle_paliers_batterie,
     facteur_remise_du_devis,
+    lignes_vendues,
     module_batterie_du_devis,
     plafond_physique_du_devis,
     plafond_toit_du_devis,
     plus_grande_contenance,
+    prix_client_au_facteur,
+    prix_client_composition,
 )

@@ -212,11 +212,12 @@ def font_face_css() -> str:
 
 def fmt(n) -> str:
     """1234567 -> '1 234 567' (thin-space groups, FR style)."""
+    # AMOT26 — LE formateur unique HALF_UP (``montants.fmt_dirhams``).
+    from ..montants import fmt_dirhams
     try:
-        n = round(float(n))
+        return fmt_dirhams(n, "\u202f")
     except (TypeError, ValueError):
         return str(n)
-    return f"{n:,.0f}".replace(",", " ")
 
 
 # ── QRES5 — garanties canoniques (UNE source pour tout le document) ──────────

@@ -198,6 +198,14 @@ class Devis(models.Model):
     # comme avant, booléen seul).
     remise_approuvee_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
+    # ── RÈGLES DE CALCUL du rendu (décision fondateur 08/10/2026) ──
+    # Les corrections du moteur (AMOT8…AMOT60, ADEV28) changent des chiffres
+    # imprimés (payback, économies, totaux). Un devis DÉJÀ ENVOYÉ garde
+    # exactement ce que le client a reçu : la migration 0134 pose 1 (règles
+    # d'origine) sur tout devis envoyé à cette date ; tout devis créé ensuite
+    # (révision V2 comprise) naît en 2 (règles corrigées). Lu UNIQUEMENT par
+    # ``domain/regles_calcul.calcul_corrige`` — jamais un statut (règle #4).
+    regles_calcul = models.PositiveSmallIntegerField(default=2)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

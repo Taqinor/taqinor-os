@@ -126,7 +126,7 @@ class CalculerEtudeHoraireInchangeTest(SimpleTestCase):
     correcte depuis QJR137 — reste inchangée au centime par ce correctif."""
 
     def _commun(self):
-        return dict(kwc=KWC, conso_kwh_mensuelles=CONSO, ville=VILLE,
+        return dict(tranches=None, charges_fixes_mad=None, kwc=KWC, conso_kwh_mensuelles=CONSO, ville=VILLE,
                     occupation=CJ.OCCUPATION_PRESENCE,
                     batterie_kwh_utile=10.0)
 

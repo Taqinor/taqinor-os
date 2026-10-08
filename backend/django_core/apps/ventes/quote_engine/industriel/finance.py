@@ -204,6 +204,14 @@ def _p90_bancable(d):
     jamais dans la charge utile publique (``_sans_internes_bancables``)."""
     bank = (d.get("etude") or {}).get("bankable")
     pr = bank.get("pr") if isinstance(bank, dict) else None
+    if not d.get("regles_calcul_origine"):
+        # AMOT35 — une P90 n'est imprimée que si la simulation décrit le champ
+        # vendu et concorde avec la production imprimée (``ind_prod``).
+        from ..bankable import bankable_imprimable
+        ok, _motif = bankable_imprimable(
+            bank, d.get("ind_kwc") or d.get("puissance_kwc"), d.get("ind_prod"))
+        if not ok:
+            return None
     return _num((pr or {}).get("p90_kwh")) if isinstance(pr, dict) else None
 
 

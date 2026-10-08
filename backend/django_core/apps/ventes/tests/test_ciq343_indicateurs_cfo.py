@@ -26,7 +26,10 @@ SENSIBILITES = [
      "retour_ans": 5, "tri_pct": 24.2, "ecart_retour_ans": 1,
      "ecart_tri_pct": -2.8},
 ]
-BANCABLE = {"pr": {"p50_kwh": 340000, "p90_kwh": 312500,
+# AMOT35 — une simulation imprimable décrit le champ VENDU (250 kWc de
+# l'exemple industriel) : sans zones, la P90 est omise.
+BANCABLE = {"zones": [{"kwc": 250.0}],
+            "pr": {"p50_kwh": 340000, "p90_kwh": 312500,
                    "performance_ratio": 0.81}}
 
 

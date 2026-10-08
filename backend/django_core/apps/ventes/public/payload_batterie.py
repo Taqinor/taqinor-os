@@ -160,7 +160,7 @@ def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
         _config_vendue(devis))
 
 
-def _balayage_stockage_publique(dimensionnement):
+def _balayage_stockage_publique(dimensionnement, devis=None):
     """ORDRE FONDATEUR (24/08/2026, soir) — sous-ensemble PUBLIC, client-safe,
     du mini-balayage de stockage (``apps.ventes.dimensionnement`` DIM2) :
     ``dimensionnement.recommandation_avec.balayage_stockage`` (les paliers de
@@ -218,6 +218,30 @@ def _balayage_stockage_publique(dimensionnement):
             return None
         return valeur
 
+    # AMOT59 — prix de VENTE du palier (coût catalogue × remise du devis,
+    # palier ARRONDI-100) et payback publié sur CE prix (AMOT29) ; devis aux
+    # règles d'origine, ou devis absent : passe directe d'hier.
+    _corrige = False
+    if devis is not None:
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        _corrige = calcul_corrige(devis)
+
+    def _prix_et_payback(palier):
+        cout = palier.get('cout_ttc')
+        payback = _nombre_positif_ou_none(palier.get('payback_annees'))
+        if not _corrige:
+            return cout, payback
+        from apps.ventes.domain.dimensionnement_devis import (
+            prix_client_composition)
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        prix = prix_client_composition(cout, devis)
+        if prix is None:
+            return cout, payback
+        pub = payback_publiable(prix, palier.get('economie_mad'))
+        payback = (None if pub is None or pub['jamais_rembourse']
+                   else _nombre_positif_ou_none(round(pub['annees'], 2)))
+        return prix, payback
+
     paliers_public = []
     for palier in reco.get('balayage_stockage') or []:
         if not isinstance(palier, dict):
@@ -226,12 +250,13 @@ def _balayage_stockage_publique(dimensionnement):
         capacite = palier.get('capacite_kwh')
         if nb_packs is None or not isinstance(capacite, (int, float)):
             continue
+        _cout, _payback = _prix_et_payback(palier)
         paliers_public.append({
             'nb_packs': nb_packs,
             'capacite_kwh': capacite,
-            'cout_ttc': palier.get('cout_ttc'),
+            'cout_ttc': _cout,
             'remplissage_moyen_pct': _remplissage_moyen_pct(palier),
-            'payback_annees': _nombre_positif_ou_none(palier.get('payback_annees')),
+            'payback_annees': _payback,
             'economie_mad': _nombre_positif_ou_none(palier.get('economie_mad')),
         })
 

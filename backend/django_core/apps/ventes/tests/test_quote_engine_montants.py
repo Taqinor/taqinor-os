@@ -46,4 +46,5 @@ class TestFormateurUnique(SimpleTestCase):
                 mods.update(a.name.split(".")[0] for a in node.names)
             elif isinstance(node, ast.ImportFrom):
                 mods.add((node.module or "").split(".")[0])
-        self.assertEqual(mods - {"decimal"}, set())
+        # AMOT26 — contextvars (stdlib) porte le drapeau « règles d'origine ».
+        self.assertEqual(mods - {"decimal", "contextvars"}, set())
