@@ -570,9 +570,16 @@ merge per wave, pipelining, model routing, review, retro) EXCEPT:
   lane: bugs (ERROR_PLAN, WEB_ERROR_PLAN) → PLAN2 → PLAN → new_tasks_plan → `docs/plans/*` →
   WEB_PLAN → FRONTEND_GAP_PLAN. A collision-bound oversized lane (e.g. 270+ CIQ/AGR tasks unioned on
   shared `Files:`) stays ONE agent; the other slots fill around it — pooling never splits a lane.
-- **Exclusive.** This session owns every pooled file: never run it alongside another plan command
-  (work on the plan / `<domain>` / web plan / error plan). At start, a plan file touched by an open
-  PR (`gh pr list`) belongs to another live session → drop it from the pool for this run.
+- **Shared by claims, not exclusive (founder, 2026-10-08 — two PCs loop at once).** Several plan
+  sessions (on any machine) may run at once IF each holds a claim (`python scripts/plan_claims.py`,
+  atomic leases as refs `refs/plan-claims/*` on origin, 6 h TTL). Owner id = `<hostname>/<branch>`.
+  Before dispatching a lane: `claim file:<plan file> app:<each app its Files: touch>` (all or
+  nothing) — REFUSED → skip that lane, take another; `renew` your claims at every loop fire;
+  `release` them right after the wave's merge. `plan_claims.py list` at every refill. Sessions not
+  using claims (older runs): a plan file or app touched by an open PR or by a live `dev-*` branch
+  (`git diff --name-only origin/main...origin/<branch>`) belongs to them → drop it from the pool.
+  On a migration collision at merge time (same app, same number from the other session), add a
+  merge migration (`makemigrations --merge`), never renumber a migration already on `main`.
 - **Each task keeps its SOURCE file's rules**, exactly as its own command would apply them: domain
   ownership contracts + INTERDIT lists (outside → `[BLOCKED: hors périmètre …]`), WEB_PLAN /
   WEB_ERROR_PLAN tasks touch ONLY `apps/web/**`, bookkeeping per file (PLAN/PLAN2/ERROR_PLAN →
