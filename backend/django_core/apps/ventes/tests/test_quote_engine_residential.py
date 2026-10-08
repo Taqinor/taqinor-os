@@ -1367,6 +1367,10 @@ class TestRoofRenderDataUri(SimpleTestCase):
 
     class _Devis:
         pk = 1
+        # ASEC24 — le lecteur n'accepte qu'une clé sous ``roofs/<company_id>/``
+        # de la société du devis : la doublure porte donc sa société (1, celle
+        # des clés ``roofs/1/…`` ci-dessous).
+        company_id = 1
 
         def __init__(self, key):
             self.roof_image = key
