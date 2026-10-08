@@ -610,6 +610,8 @@ export default function ParametresEntreprise() {
   useEffect(() => {
     // Synchronisation du formulaire avec le profil chargé depuis le store
     if (!profile) return
+    // APAR39 — aucun défaut NUMÉRIQUE recopié ici : la valeur vient de
+    // `GET /parametres/` (le serveur a ses défauts) ; absente = vide.
     const next = {
       nom:               profile.nom               ?? '',
       adresse:           profile.adresse           ?? '',
@@ -633,8 +635,8 @@ export default function ParametresEntreprise() {
       // défaut serveur) priment : plus de pourcentages recopiés côté écran.
       payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}),
                        ...(profile.payment_terms_effectifs || {}) },
-      quote_validity_days: profile.quote_validity_days ?? 30,
-      agricole_pump_hours: profile.agricole_pump_hours ?? 7,
+      quote_validity_days: profile.quote_validity_days ?? '',
+      agricole_pump_hours: profile.agricole_pump_hours ?? '',
       // AGR108 — vide reste vide (aucun repli numérique).
       ...formReglagesPompage(profile),
       reperes_energie_agricole: formReperes(profile),
@@ -650,14 +652,14 @@ export default function ParametresEntreprise() {
       doc_numbering: Object.fromEntries(Object.keys(DEFAULT_NUMBERING).map(k => [
         k, { ...DEFAULT_NUMBERING[k], ...((profile.doc_numbering || {})[k] || {}) },
       ])),
-      tva_standard: profile.tva_standard ?? 20,
-      tva_panneaux: profile.tva_panneaux ?? 10,
-      onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
-      productible_kwh_kwc: profile.productible_kwh_kwc ?? 1600,
+      tva_standard: profile.tva_standard ?? '',
+      tva_panneaux: profile.tva_panneaux ?? '',
+      onee_tarif_kwh: profile.onee_tarif_kwh ?? '',
+      productible_kwh_kwc: profile.productible_kwh_kwc ?? '',
       discount_approval_threshold: profile.discount_approval_threshold ?? '',
       // CIQ639 — surcharges 82-21 et réglages C&I : vide = '' (aucun défaut).
       ...formReglagesCi(profile),
-      rendement_global: profile.rendement_global ?? 0.8,
+      rendement_global: profile.rendement_global ?? '',
       prix_cible_kwc_defaut: profile.prix_cible_kwc_defaut ?? '',
       remise_max_pct: profile.remise_max_pct ?? '',
       commission_mode: profile.commission_mode ?? 'off',
@@ -665,7 +667,7 @@ export default function ParametresEntreprise() {
       referral_enabled: profile.referral_enabled ?? false,
       referral_reward: profile.referral_reward ?? '',
       // WR12 — FG28 (SLA) + N105 (DGI) exposés en Paramètres.
-      lead_sla_hours: profile.lead_sla_hours ?? 24,
+      lead_sla_hours: profile.lead_sla_hours ?? '',
       dgi_export_actif: profile.dgi_export_actif ?? false,
       // MRY28/MRY8 — fenêtres de contact (message ≠ appel, 07/09/2026).
       message_heure_debut: profile.message_heure_debut ?? '08:30',
@@ -677,19 +679,19 @@ export default function ParametresEntreprise() {
       ramadan_fin: profile.ramadan_fin ?? '',
       ramadan_appel_debut: profile.ramadan_appel_debut ?? '10:00',
       ramadan_appel_fin: profile.ramadan_appel_fin ?? '14:00',
-      premier_contact_objectif_min: profile.premier_contact_objectif_min ?? 5,
+      premier_contact_objectif_min: profile.premier_contact_objectif_min ?? '',
       // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
       round_robin_leads_actif: profile.round_robin_leads_actif ?? false,
       round_robin_plafond_leads_ouverts:
-        profile.round_robin_plafond_leads_ouverts ?? 20,
+        profile.round_robin_plafond_leads_ouverts ?? '',
       // FG22 — politique de sécurité (défauts inertes).
-      password_min_length: profile.password_min_length ?? 8,
+      password_min_length: profile.password_min_length ?? '',
       password_require_complexity: profile.password_require_complexity ?? false,
-      lockout_max_attempts: profile.lockout_max_attempts ?? 0,
-      lockout_duration_minutes: profile.lockout_duration_minutes ?? 15,
-      password_expiry_days: profile.password_expiry_days ?? 0,
+      lockout_max_attempts: profile.lockout_max_attempts ?? '',
+      lockout_duration_minutes: profile.lockout_duration_minutes ?? '',
+      password_expiry_days: profile.password_expiry_days ?? '',
       // FG26 — rétention RGPD du journal d'audit.
-      audit_retention_days: profile.audit_retention_days ?? 0,
+      audit_retention_days: profile.audit_retention_days ?? '',
       // ZSTK13 — capacités stock (True = comportement actuel inchangé).
       stock_lots_series_actif: profile.stock_lots_series_actif ?? true,
       stock_colisage_actif: profile.stock_colisage_actif ?? true,
@@ -776,7 +778,8 @@ export default function ParametresEntreprise() {
       for (const k of Object.keys(f.doc_numbering || {})) {
         const e = f.doc_numbering[k] || {}
         dn[k] = {
-          padding: Math.max(1, Number(e.padding) || 4),
+          // APAR39 — largeur tapée telle quelle (le serveur juge).
+          padding: keepNum(e.padding),
           reset: ['monthly', 'yearly', 'none'].includes(e.reset) ? e.reset : 'monthly',
         }
       }
@@ -788,8 +791,10 @@ export default function ParametresEntreprise() {
           ? null : f.default_installer,
         payment_terms: pt,
         doc_numbering: dn,
-        quote_validity_days: Number(f.quote_validity_days) || 30,
-        agricole_pump_hours: Number(f.agricole_pump_hours) || 7,
+        // APAR39 — valeurs TAPÉES telles quelles (vide → vide, refusé par le
+        // serveur sous le champ) : plus aucun `Number(x) || défaut`.
+        quote_validity_days: keepNum(f.quote_validity_days),
+        agricole_pump_hours: keepNum(f.agricole_pump_hours),
         // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
         ...payloadReglagesPompage(f),
         // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
@@ -802,12 +807,12 @@ export default function ParametresEntreprise() {
         delai_installation: (f.delai_installation ?? '').trim(),
         tva_standard: keepNum(f.tva_standard),
         tva_panneaux: keepNum(f.tva_panneaux),
-        onee_tarif_kwh: Number(f.onee_tarif_kwh) || 1.75,
-        productible_kwh_kwc: Number(f.productible_kwh_kwc) || 1600,
+        onee_tarif_kwh: keepNum(f.onee_tarif_kwh),
+        productible_kwh_kwc: keepNum(f.productible_kwh_kwc),
         discount_approval_threshold: f.discount_approval_threshold === '' ? null : Number(f.discount_approval_threshold),
         // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
         ...payloadReglagesCi(f),
-        rendement_global: Number(f.rendement_global) || 0.8,
+        rendement_global: keepNum(f.rendement_global),
         prix_cible_kwc_defaut: f.prix_cible_kwc_defaut === '' ? null : Number(f.prix_cible_kwc_defaut),
         remise_max_pct: f.remise_max_pct === '' ? null : Number(f.remise_max_pct),
         commission_mode: ['off', 'pct_devis', 'par_kwc'].includes(f.commission_mode) ? f.commission_mode : 'off',
@@ -815,7 +820,8 @@ export default function ParametresEntreprise() {
         referral_enabled: !!f.referral_enabled,
         referral_reward: f.referral_reward === '' ? null : Number(f.referral_reward),
         // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
-        lead_sla_hours: Math.max(0, Math.trunc(Number(f.lead_sla_hours) || 0)),
+        // APAR39 — un champ vidé n'envoie plus 0 (SLA désactivé) en silence.
+        lead_sla_hours: keepNum(f.lead_sla_hours),
         // MRY28/MRY8 — fenêtres de contact : dates Ramadan vides = null (jamais
         // une période devinée), heures conservées telles quelles (« HH:MM »).
         message_heure_debut: f.message_heure_debut || '08:30',
@@ -827,12 +833,10 @@ export default function ParametresEntreprise() {
         ramadan_fin: f.ramadan_fin || null,
         ramadan_appel_debut: f.ramadan_appel_debut || '10:00',
         ramadan_appel_fin: f.ramadan_appel_fin || '14:00',
-        premier_contact_objectif_min: Math.max(
-          1, Math.trunc(Number(f.premier_contact_objectif_min) || 5)),
+        premier_contact_objectif_min: keepNum(f.premier_contact_objectif_min),
         // XSAL11 — round-robin équilibré des leads entrants.
         round_robin_leads_actif: !!f.round_robin_leads_actif,
-        round_robin_plafond_leads_ouverts: Math.max(
-          1, Math.trunc(Number(f.round_robin_plafond_leads_ouverts) || 20)),
+        round_robin_plafond_leads_ouverts: keepNum(f.round_robin_plafond_leads_ouverts),
         // ZSTK13 — capacités stock (booléens simples, jamais désactivées
         // silencieusement).
         stock_lots_series_actif: f.stock_lots_series_actif !== false,
