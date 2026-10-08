@@ -214,8 +214,9 @@ def _poser_approbation(devis, user, remise):
     """ADEV33 — approbation (admin) : booléen, approbateur ET profondeur."""
     devis.remise_approuvee = True
     devis.remise_approuvee_par = user
+    from decimal import ROUND_HALF_UP
     devis.remise_approuvee_pct = Decimal(str(remise or 0)).quantize(
-        Decimal('0.01'))
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
     devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par',
                               'remise_approuvee_pct'])
 
