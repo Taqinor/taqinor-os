@@ -32,7 +32,7 @@ export function useApercuEtude(ctx) {
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing,
+    sizing, dispatchSizing, produits,
   } = ctx
 
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
@@ -52,7 +52,7 @@ export function useApercuEtude(ctx) {
   // capacité utilisée en aval (ROI, étude horaire) peut être SOUS-estimée.
   // Signalé à l'écran plutôt que tu — jamais un chiffre qu'on tairait.
   const capaciteBatterieInconnue = useMemo(
-    () => batteryCapaciteInconnue(dLines), [dLines])
+    () => batteryCapaciteInconnue(dLines, produits), [dLines, produits])
 
   // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
   // client (barème par tranche du distributeur choisi). Alimente à la fois
@@ -160,10 +160,11 @@ export function useApercuEtude(ctx) {
       dayUsagePct: parseInt(dDayUsage) || 50,
       totalSans: dTotals.totalSans,
       totalAvec: dTotals.totalAvec,
-      batteryKwh: batteryKwhFromLines(dLines),
+      batteryKwh: batteryKwhFromLines(dLines, produits),
       // Q1 (fondateur 20/08/2026) — lignes RÉELLES pour la provision de
       // remplacement onduleur (prix TTC de la ligne, jamais 8 % forfaitaires).
       lines: dLines,
+      produits,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
       // QF5 — bascule sur le modèle « deux factures » par tranche (parité
@@ -178,7 +179,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits])
 
   // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
   // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
@@ -196,8 +197,9 @@ export function useApercuEtude(ctx) {
       dayUsagePct: parseInt(dDayUsage) || 50,
       totalSans: dTotals.totalSans,
       totalAvec: dTotals.totalAvec,
-      batteryKwh: batteryKwhFromLines(dLines),
+      batteryKwh: batteryKwhFromLines(dLines, produits),
       lines: dLines,
+      produits,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
       consoAnnuelleKwh: consoEcran,
@@ -207,7 +209,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits])
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
@@ -237,7 +239,7 @@ export function useApercuEtude(ctx) {
         raccordement: selectedLead?.raccordement || '',
         // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
         kwp: kwpLignes,
-        batterieKwh: batteryKwhFromLines(lines),
+        batterieKwh: batteryKwhFromLines(lines, produits),
       })
     : null
   // L-2OPT — l'étude horaire de la branche AVEC porte SON PROPRE kWc. Le corps
@@ -257,7 +259,7 @@ export function useApercuEtude(ctx) {
         ville: villeCalculLead,
         raccordement: selectedLead?.raccordement || '',
         kwp: kwpAvec,
-        batterieKwh: batteryKwhFromLines(lines),
+        batterieKwh: batteryKwhFromLines(lines, produits),
       })
     : null
   // QJR99 — `useSizingMoteur` (QJR90) enrobe `useEtudeHorairePreview` : il rend
@@ -391,15 +393,17 @@ export function useApercuEtude(ctx) {
   const paybackServeurSans = etudeHoraireSourceServeur
     ? paybackMoteurHoraire(totals.totalSans, apercuEcoSans, {
         annuel: etudeHoraireAnnuel,
-        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierSans)),
+        inverterReplaceCost: inverterCostFromLines(
+          lines.filter(l => appartientAuPanierSans(l, produits)), produits),
       })
     : null
   const paybackServeurAvec = etudeHoraireAnnuelAvec
     ? paybackMoteurHoraire(totals.totalAvec, apercuEcoAvec, {
         annuel: etudeHoraireAnnuelAvec,
         rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
-        stockage: batteryKwhFromLines(lines) > 0,
-        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierAvec)),
+        stockage: batteryKwhFromLines(lines, produits) > 0,
+        inverterReplaceCost: inverterCostFromLines(
+          lines.filter(l => appartientAuPanierAvec(l, produits)), produits),
       })
     : null
   const apercuPaybackSans = etudeHoraireSourceServeur

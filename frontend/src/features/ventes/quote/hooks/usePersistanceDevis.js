@@ -7,7 +7,7 @@
 import { erreursConditions } from '../../echeancierEdition'
 import {
   controlerFacturesSaisies,
-  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
+  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement,
   consoAnnuelleDepuisFactures,
   controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
 } from '../../solar'
@@ -47,7 +47,7 @@ export function usePersistanceDevis(ctx) {
   const {
     navigate, confirm, setClients, setLeads, setSaving, setErrors, setWarnings,
     facturesEcartConfirmeRef, finish, editId, editDevis, jetonRef, forcerSansJetonRef,
-    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg,
+    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur, messageErreurOverrides, leadId, setLeadId, clientId,
     setClientId, dateValidite, note, echeancierSaisie, echeancierAEnvoyer, conditions,
     conditionsServies, monthly, distributeur, realBillMode, realBillSaisi, distributeurChoisi,
@@ -123,7 +123,8 @@ export function usePersistanceDevis(ctx) {
       // main-d'œuvre seuls, ou toute composition hors calculateur), MÊME sur
       // un devis « Hors réseau » — cette garde ne dépend jamais de `horsReseau`.
       const usable = usableLines()
-      const has = (pred) => usable.some(l => pred(l.designation))
+      // AGNR36 — la garde classe chaque ligne sur désignation + produit lié.
+      const has = (pred) => usable.some(l => pred(texteClassement(l, produits)))
       if (modeInstallation === 'agricole') {
         // AGR130 — une pompe EXISTANTE n'a pas de ligne pompe (le kit n'en
         // pose pas) ; une pompe NEUVE exige une pompe ENREGISTRABLE — AGNR31 :

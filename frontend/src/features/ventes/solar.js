@@ -426,6 +426,9 @@ export function computeROI({
   // pourcentage de repli) — comportement inchangé pour un appelant qui ne les
   // fournit pas (encore).
   lines = [],
+  // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation +
+  // nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
+  produits = [],
 }) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
@@ -618,10 +621,10 @@ export function computeROI({
   // contradiction avec builder.py où la déclaration prime). Seule une ligne
   // SANS `variante` (tout devis hors « Les deux ») retombe sur les mots-clés,
   // exactement comme avant.
-  const linesSans = lines.filter(l => appartientAuPanierSans(l))
-  const linesAvec = lines.filter(l => appartientAuPanierAvec(l))
-  const inverterCostSans = inverterCostFromLines(linesSans)
-  const inverterCostAvec = inverterCostFromLines(linesAvec)
+  const linesSans = lines.filter(l => appartientAuPanierSans(l, produits))
+  const linesAvec = lines.filter(l => appartientAuPanierAvec(l, produits))
+  const inverterCostSans = inverterCostFromLines(linesSans, produits)
+  const inverterCostAvec = inverterCostFromLines(linesAvec, produits)
 
   // M9 — l'option 2 porte-t-elle RÉELLEMENT du stockage ? Dérivé des VRAIES
   // lignes (`batteryKwh` = `batteryKwhFromLines(...)` chez l'appelant), jamais
@@ -1277,27 +1280,38 @@ export const isPanel = (d, produitNom = '') => {
 // le PDF la facturait dans ce panier (F14 : écran et PDF divergeaient). Une
 // ligne SANS `variante` ('' — tout devis hors « Les deux ») retombe sur les
 // mots-clés, mot pour mot comme avant.
-export function appartientAuPanierSans(l) {
+// AGNR36 — LE texte qui classe une LIGNE : désignation + nom du produit lié,
+// miroir exact de `apps/ventes/utils/options.texte_classement` (QJR301). Une
+// désignation retouchée à la main (« Stockage Dyness 5 kWh ») ne fait plus
+// sortir la ligne de son panier. `produits` : catalogue de l'écran ; absent
+// (ou non tableau — un `.filter(fn)` passe l'index) ⇒ désignation seule.
+export function texteClassement(l, produits) {
+  const nom = (Array.isArray(produits) ? _produitDeLigne(l, produits)?.nom : null)
+    || l?.produit_nom || ''
+  return `${l?.designation ?? ''} ${nom}`
+}
+
+export function appartientAuPanierSans(l, produits) {
   const v = l?.variante
   if (v === 'avec') return false
   if (v === 'sans') return true
-  return !isBattery(l?.designation) && !isHybridInverter(l?.designation)
-    && !isOffgridInverter(l?.designation)
+  const t = texteClassement(l, produits)
+  return !isBattery(t) && !isHybridInverter(t) && !isOffgridInverter(t)
 }
-export function appartientAuPanierAvec(l) {
+export function appartientAuPanierAvec(l, produits) {
   const v = l?.variante
   if (v === 'sans') return false
   if (v === 'avec') return true
-  return !isReseauInverter(l?.designation)
+  return !isReseauInverter(texteClassement(l, produits))
 }
 
 // Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou `null` si aucune
 // identifiable. Miroir exact de builder.py `_cout_onduleur` : Σ qty × prix
 // unitaire TTC des lignes onduleur — jamais un pourcentage de repli.
-export function inverterCostFromLines(lines) {
+export function inverterCostFromLines(lines, produits) {
   let total = 0
   for (const l of lines || []) {
-    if (!isAnyInverter(l.designation)) continue
+    if (!isAnyInverter(texteClassement(l, produits))) continue
     const qty = parseFloat(l.quantite) || 0
     const pu = parseFloat(l.prix_unit_ttc) || 0
     if (qty > 0 && pu > 0) total += qty * pu
@@ -1567,16 +1581,17 @@ export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
 // lisible contribuait un défaut FABRIQUÉ de 5,0 kWh (jamais dérivé d'aucune
 // donnée réelle). Elle contribue désormais 0 — voir `batteryCapaciteInconnue`
 // ci-dessous pour SIGNALER ce cas à l'écran plutôt que de le taire.
-export function batteryKwhFromLines(lines) {
+export function batteryKwhFromLines(lines, produits) {
   return lines.reduce((sum, l) => {
-    if (!isBattery(l.designation)) return sum
+    const t = texteClassement(l, produits)
+    if (!isBattery(t)) return sum
     // L-2OPT — une ligne taguée 'sans' (voir fusionnerVariantes) porte une
     // quantité issue de la composition SANS batterie, jamais destinée à
     // compter dans quelque capacité que ce soit ; sans tag (comportement
     // historique) ce garde-fou est un no-op (`undefined !== 'sans'`).
     if (l.variante === 'sans') return sum
     const qty = parseFloat(l.quantite) || 0
-    return sum + qty * (parseKwh(l.designation) ?? 0)
+    return sum + qty * (parseKwh(t) ?? 0)
   }, 0)
 }
 
@@ -1587,10 +1602,11 @@ export function batteryKwhFromLines(lines) {
 // défaut inventé). Sert à afficher un avertissement honnête plutôt que de
 // laisser croire que le chiffre est complet. `false` = soit aucune ligne
 // batterie, soit toutes lisibles : comportement historique inchangé.
-export function batteryCapaciteInconnue(lines) {
-  return (lines || []).some(l =>
-    isBattery(l.designation) && l.variante !== 'sans'
-    && parseKwh(l.designation) == null)
+export function batteryCapaciteInconnue(lines, produits) {
+  return (lines || []).some(l => {
+    const t = texteClassement(l, produits)
+    return isBattery(t) && l.variante !== 'sans' && parseKwh(t) == null
+  })
 }
 
 // L-2OPT — nombre de PANNEAUX d'une option, avec la MÊME règle d'exclusion
@@ -1683,12 +1699,12 @@ const _estAccessoireHuawei = (d) => isSmartMeter(d) || isWifiDongle(d)
 // de `_panier_sert_huawei` : sans onduleur identifiable → False (on n'affiche
 // pas ces accessoires par défaut) ; le moindre onduleur non-Huawei dans le
 // panier suffit à les retirer (conservateur).
-function _panierSertHuawei(rows) {
-  const onduleurs = rows.filter(l => isAnyInverter(l?.designation))
+function _panierSertHuawei(rows, produits) {
+  const onduleurs = rows.filter(l => isAnyInverter(texteClassement(l, produits)))
   if (onduleurs.length === 0) return false
   let huaweiVu = false
   for (const l of onduleurs) {
-    if (_norm(l?.designation).includes('huawei')) {
+    if (_norm(texteClassement(l, produits)).includes('huawei')) {
       huaweiVu = true
     } else {
       return false
@@ -1699,9 +1715,9 @@ function _panierSertHuawei(rows) {
 
 // `rows` privé de ses accessoires Huawei orphelins — miroir exact de
 // `retirer_accessoires_huawei`.
-function _retirerAccessoiresHuawei(rows) {
-  if (_panierSertHuawei(rows)) return rows
-  return rows.filter(l => !_estAccessoireHuawei(l?.designation))
+function _retirerAccessoiresHuawei(rows, produits) {
+  if (_panierSertHuawei(rows, produits)) return rows
+  return rows.filter(l => !_estAccessoireHuawei(texteClassement(l, produits)))
 }
 
 // ── ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — miroir EXACT de
@@ -1753,12 +1769,12 @@ export const SCENARIOS_ALTERNATIVE = SCENARIOS_VALIDES
 // paniers (onduleur réseau d'un côté ; hybride avec batterie ou réseau, ou
 // autonome avec batterie, de l'autre). Seules les lignes produit non
 // optionnelles de quantité > 0 comptent, comme au noyau.
-export function alternativeDeclareeServable(lines, scenario) {
+export function alternativeDeclareeServable(lines, scenario, produits) {
   if (!SCENARIOS_ALTERNATIVE.includes(scenario)) return false
   const d = (lines || [])
     .filter(l => (parseFloat(l?.quantite) || 0) > 0 && !l?.optionnelle
       && l?.typeLigne !== 'section' && l?.typeLigne !== 'note')
-    .map(l => l.designation)
+    .map(l => texteClassement(l, produits))
   const hasReseau = d.some(isReseauInverter)
   const hasHybride = d.some(isHybridInverter)
   const hasOffgrid = d.some(isOffgridInverter)
@@ -1769,7 +1785,7 @@ export function alternativeDeclareeServable(lines, scenario) {
 
 // `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
 // comportement historique inchangé (QF9 réservée aux lignes variantées).
-export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
+export function optionTotalsTTC(lines, discountPct, { scenario, produits } = {}) {
   // QJR567 — MÊME population que le noyau (`ligne_compte_dans_totaux`) : une
   // ligne optionnelle (add-on non activé) et les sections / notes ne
   // comptent JAMAIS — sans ce filtre le rail, le prix/kWc, la marge et
@@ -1780,8 +1796,8 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   // miroir exact de builder.py `_repartir_options` et de
   // `apps/ventes/utils/options.py`). Une ligne SANS `variante` retombe sur
   // les mots-clés, mot pour mot comme avant.
-  let linesSans = lines.filter(appartientAuPanierSans)
-  let linesAvec = lines.filter(appartientAuPanierAvec)
+  let linesSans = lines.filter(l => appartientAuPanierSans(l, produits))
+  let linesAvec = lines.filter(l => appartientAuPanierAvec(l, produits))
   // QJR402/QJR300 — QF9 ne s'applique QUE sur un VRAI devis à deux options
   // DÉCLARÉES (miroir de `deux_options`/`alternative_declaree` au noyau) :
   // la seule trace, côté lignes, d'une alternative déclarée est `variante`
@@ -1796,9 +1812,9 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   // Meter + la clé Wi-Fi Huawei que le noyau et le PDF retirent (3 000 MAD
   // d'écart mesurés entre le formulaire et le devis persisté).
   if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')
-      || alternativeDeclareeServable(lines, scenario)) {
-    linesSans = _retirerAccessoiresHuawei(linesSans)
-    linesAvec = _retirerAccessoiresHuawei(linesAvec)
+      || alternativeDeclareeServable(lines, scenario, produits)) {
+    linesSans = _retirerAccessoiresHuawei(linesSans, produits)
+    linesAvec = _retirerAccessoiresHuawei(linesAvec, produits)
   }
   // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — LA CHAÎNE CANONIQUE DU NOYAU, plus
   // une somme de TTC arrondis ligne à ligne remisée ensuite. Le chiffre facturé
@@ -1834,15 +1850,15 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
 // `parLigne` est ALIGNÉ sur `lines` (montant TTC remisé, ou `null` pour une
 // ligne qui ne compte pas) — une ligne des deux paniers prend la valeur du
 // panier de l'option effective (`option`).
-export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans' } = {}) {
+export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans', produits } = {}) {
   const tous = lines || []
   const comptees = tous.filter(ligneCompteDansTotaux)
-  let lignesSans = comptees.filter(appartientAuPanierSans)
-  let lignesAvec = comptees.filter(appartientAuPanierAvec)
+  let lignesSans = comptees.filter(l => appartientAuPanierSans(l, produits))
+  let lignesAvec = comptees.filter(l => appartientAuPanierAvec(l, produits))
   if (comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
-      || alternativeDeclareeServable(comptees, scenario)) {
-    lignesSans = _retirerAccessoiresHuawei(lignesSans)
-    lignesAvec = _retirerAccessoiresHuawei(lignesAvec)
+      || alternativeDeclareeServable(comptees, scenario, produits)) {
+    lignesSans = _retirerAccessoiresHuawei(lignesSans, produits)
+    lignesAvec = _retirerAccessoiresHuawei(lignesAvec, produits)
   }
   const pct = parseFloat(discountPct) || 0
   const centimes = (v) => BigInt(Math.round((Number(v) || 0) * 100))
@@ -2914,12 +2930,14 @@ export function computeBuyCost(lines, produits) {
 export const MAX_HYBRID_UNITS = 8
 
 export function avecBatterieAvailability(lines, produits, kwp) {
+  // AGNR36 — chaque ligne classée sur désignation + nom du produit lié.
+  const t = (l) => texteClassement(l, produits)
   const hasHyb = lines.some(l =>
-    isHybridInverter(l.designation) && parseFloat(l.quantite) > 0)
+    isHybridInverter(t(l)) && parseFloat(l.quantite) > 0)
   const hasBat = lines.some(l =>
-    isBattery(l.designation) && parseFloat(l.quantite) > 0)
+    isBattery(t(l)) && parseFloat(l.quantite) > 0)
   const hasRes = lines.some(l =>
-    isReseauInverter(l.designation) && parseFloat(l.quantite) > 0)
+    isReseauInverter(t(l)) && parseFloat(l.quantite) > 0)
   if (hasHyb && hasBat) return { available: true, batterieDifferee: false }
   // BAT-DIFF (fondateur, 17/09/2026) — même règle que le noyau
   // (`utils.options.familles_servables`, testée là-bas et ici par

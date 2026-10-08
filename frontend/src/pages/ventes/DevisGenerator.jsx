@@ -843,8 +843,9 @@ export default function DevisGenerator({
   // devis à deux options (panier filtré + règle QF9). Sans lui, le formulaire
   // chiffrait l'option AVEC avec les accessoires Huawei que le serveur retire.
   const totals = useMemo(
-    () => optionTotalsTTC(lines, discountPct, { scenario }),
-    [lines, discountPct, scenario],
+    // AGNR36 — chaque ligne classée sur désignation + produit lié.
+    () => optionTotalsTTC(lines, discountPct, { scenario, produits }),
+    [lines, discountPct, scenario, produits],
   )
 
   // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
@@ -882,9 +883,9 @@ export default function DevisGenerator({
   // l'écart entre Σ lignes et le total affiché.
   const remiseParPanier = useMemo(
     () => lignesRemiseesParPanier(lines, discountPct, {
-      scenario, option: avecRec && showAvec ? 'avec' : 'sans',
+      scenario, option: avecRec && showAvec ? 'avec' : 'sans', produits,
     }),
-    [lines, discountPct, scenario, avecRec, showAvec],
+    [lines, discountPct, scenario, avecRec, showAvec, produits],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
@@ -920,7 +921,7 @@ export default function DevisGenerator({
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing,
+    sizing, dispatchSizing, produits,
   })
 
   // ── QJR641 — Marché → autoconsommation diurne par défaut (simulateur) ──
@@ -1522,7 +1523,7 @@ export default function DevisGenerator({
   } = usePersistanceDevis({
     navigate, confirm, setClients, setLeads, setSaving, setErrors, setWarnings,
     facturesEcartConfirmeRef, finish, editId, editDevis, jetonRef, forcerSansJetonRef,
-    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg,
+    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur, messageErreurOverrides, leadId, setLeadId, clientId,
     setClientId, dateValidite, note, echeancierSaisie, echeancierAEnvoyer, conditions,
     conditionsServies, monthly, distributeur, realBillMode, realBillSaisi, distributeurChoisi,

@@ -18,7 +18,7 @@ import { echeancierAvecAcompte } from '../../../features/ventes/echeancierEditio
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié : mêmes prédicats que la
 // garde de DevisGenerator.validate() (voir devisSansOnduleurClasse).
-import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../../features/ventes/solar.js'
+import { isReseauInverter, isHybridInverter, isOffgridInverter, texteClassement } from '../../../features/ventes/solar.js'
 import { frenchError } from './devisListHelpers.js'
 
 // Les options PDF envoyées à `generer-pdf` (whitelist `clean_pdf_options`)
@@ -124,9 +124,11 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // concerné ici.
   const devisSansOnduleurClasse = (d) =>
     d?.mode_installation !== 'agricole'
-    && !(d?.lignes ?? []).some(l =>
-      isReseauInverter(l.designation) || isHybridInverter(l.designation)
-      || isOffgridInverter(l.designation))
+    // AGNR36 — désignation + nom du produit servi sur la ligne (`produit_nom`).
+    && !(d?.lignes ?? []).some((l) => {
+      const t = texteClassement(l)
+      return isReseauInverter(t) || isHybridInverter(t) || isOffgridInverter(t)
+    })
 
   const openPdfModal = (d) => {
     setBatchPdf(false)

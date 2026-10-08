@@ -162,7 +162,7 @@ export function devisVersEtat(d, { bareme = null, produits = [] } = {}) {
     // jamais `/panneau/i` (20 × « JA Solar 550 Wc » rouvraient à 0).
     panneaux: comptePanneauxOption(lignes, 'sans', produits),
     // QJR526 — wattage, structure, hors-réseau, composition libre.
-    reouverture: deriverReouverture(lignes, { mode }),
+    reouverture: deriverReouverture(lignes, { mode, catalogue: produits }),
     scenario: e.scenario || undefined,
     leadValeursModifiees: Array.isArray(devis.lead_valeurs_modifiees)
       ? devis.lead_valeurs_modifiees : [],
