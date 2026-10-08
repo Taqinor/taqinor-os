@@ -356,13 +356,13 @@ unites:
     I: 4
     score: 12
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ACHT
     plan: docs/plans/PLAN_AUDIT_CHANTIERS.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc)."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 871
+    date: 2026-10-08
+    notes: "installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-chantiers.md) : 70 constats (4 S1 : double sortie de stock après pose terrain, saut d'« Installé » côté serveur, 2 fuites FK entre sociétés), 84 tâches ACHT ; contre-vérification sur origin/main : 40/40 tiennent."
 
   - id: J3
     rang: 11
