@@ -275,8 +275,8 @@ class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
         error_messages={
             'required': 'Le taux de RAS est requis.',
             'invalid': 'Taux de RAS invalide : un nombre est attendu.',
-            'min_value': 'Le taux de RAS doit être compris entre 0 et 100 %.',
-            'max_value': 'Le taux de RAS doit être compris entre 0 et 100 %.',
+            'min_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
+            'max_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
         })
     reference = serializers.CharField(
         required=False, allow_blank=True, default='', max_length=120)

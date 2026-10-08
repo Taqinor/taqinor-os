@@ -89,6 +89,8 @@ class XSAV9AffectationAutoTest(TestCase):
 
         resp = self.api.post('/api/django/sav/tickets/', {
             'client': self.client_obj.id, 'installation': self.inst.id,
+            # ASAV23 — distinct du ticket OPEN-A (sinon doublon 409).
+            'description': 'Nouvelle panne XSAV9',
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.data['technicien_responsable'], self.tech_b.id)

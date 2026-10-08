@@ -90,6 +90,9 @@ class XCTR3DroitsRestantsTest(TestCase):
         resp = api.post('/api/django/sav/tickets/', {
             'client': self.client_obj.pk, 'installation': self.inst.pk,
             'type': 'preventif', 'date_ouverture': '2026-03-01',
+            # ASAV23 — distinct des tickets Q1/Q2 posés juste avant
+            # (même client/chantier, description vide → doublon 409).
+            'description': 'Visite préventive de mars',
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         notes = TicketActivity.objects.filter(
