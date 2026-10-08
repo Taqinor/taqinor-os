@@ -9,9 +9,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+const gen = lireSourceGenerateur()
 const hook = readFileSync(path.join(__dirname, '..', '..', 'ui', 'useDraftAutosave.js'), 'utf8')
 
 const dirtyBloc = gen.slice(gen.indexOf('const lignesSaisies'), gen.indexOf('useDirtyGuard(dirty)'))
@@ -36,7 +37,12 @@ test('les signaux restent HONNÊTES : aucun défaut ne rend le formulaire sale',
 })
 
 test('le snapshot lui-même n’a pas bougé (il portait déjà les 4 champs)', () => {
-  const snap = gen.slice(gen.indexOf('const draftSnapshot = useMemo'), gen.indexOf('], [\r\n    leadId'))
+  // SPL42 — l'ancre suit le texte RÉEL (`}), [` puis `leadId`), insensible
+  // aux fins de ligne (git stocke LF ; l'ancienne `], [\r\n` valait -1 partout).
+  const debut = gen.indexOf('const draftSnapshot = useMemo')
+  const fin = debut + gen.slice(debut).search(/\}\),\s*\[\s*leadId/)
+  assert.ok(debut > -1 && fin > debut, 'bornes du snapshot introuvables')
+  const snap = gen.slice(debut, fin)
   for (const champ of ['lines', 'tauxTva', 'discountPct', 'villaGroups']) {
     assert.ok(snap.includes(champ), `${champ} absent du snapshot`)
   }

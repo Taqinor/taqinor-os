@@ -12,10 +12,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur, lireSourceCoquille } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const COMPOSANT = readFileSync(join(HERE, 'DevisOffresTailles.jsx'), 'utf8')
-const GENERATEUR = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const GENERATEUR = lireSourceGenerateur()
 
 // Les mêmes noms que backend/django_core/apps/ventes/offres_tailles.py::CHAMPS_DERIVES
 // (miroir manuel — aucun import cross-stack possible, même discipline que
@@ -83,12 +84,16 @@ test('DevisGenerator.jsx monte <DevisOffresTailles> UNE fois, avec editId/modeIn
 })
 
 test('le composant reste SOUS le montage recalcDim/Aperçu — coordination avec la lane du bouton « Recalculer le dimensionnement » (correction #5), jamais entrelacé', () => {
-  const idxAppercu = GENERATEUR.indexOf('Aperçu de la Simulation')
-  const idxTailles = GENERATEUR.indexOf('<DevisOffresTailles')
+  // SPL42 — l'ancre est le VRAI point de montage de la carte (son titre),
+  // lu dans la coquille : 'Aperçu de la Simulation' seul ne trouvait qu'un
+  // commentaire (région déplacée par SPL51).
+  const COQUILLE = lireSourceCoquille()
+  const idxAppercu = COQUILLE.indexOf('title="Aperçu de la Simulation"')
+  const idxTailles = COQUILLE.indexOf('<DevisOffresTailles')
   // QJR100 — la carte « Lignes de Produits » est montée par `<LigneTable/>`
   // (son titre vit dans `generator/LigneTable.jsx`) : l'ancre d'ordre suit le
   // point de montage, la contrainte de position est inchangée.
-  const idxLignes = GENERATEUR.indexOf('<LigneTable')
+  const idxLignes = COQUILLE.indexOf('<LigneTable')
   assert.ok(idxAppercu > -1 && idxTailles > -1 && idxLignes > -1)
   assert.ok(idxAppercu < idxTailles && idxTailles < idxLignes,
     'DevisOffresTailles doit être monté ENTRE la carte Aperçu de la Simulation et la carte Lignes de Produits')

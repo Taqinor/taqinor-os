@@ -16,13 +16,13 @@
 // Run : node --test src/pages/ventes/DevisGeneratorCartesValeurSignee.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { unwrap, moteur, apercu, saisie, absent, PUCE_APERCU } from '../../features/ventes/quote/valeur.js'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 
 // ── ROUGE → VERT (exécuté) : unwrap() refuse un nombre nu ───────────────────
 // Avant QJR426, AUCUNE des 13 cartes n'empruntait ce chemin (elles passaient

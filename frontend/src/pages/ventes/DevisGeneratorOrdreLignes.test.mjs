@@ -39,11 +39,12 @@ import { dirname, join } from 'node:path'
 import {
   deriveRoleOrderFromLines, orderLinesByRolePreference,
 } from '../../features/ventes/solar.js'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
-const DG = read('DevisGenerator.jsx')
+const DG = lireSourceGenerateur()
 const AQ = read('../../features/ventes/autoQuote.js')
 // QJR100 — la table des lignes (et son bouton « Enregistrer cet ordre ») est
 // extraite dans `generator/LigneTable.jsx` ; la DÉRIVATION et l'appel réseau,

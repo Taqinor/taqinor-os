@@ -28,9 +28,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 const LE = readFileSync(join(HERE, '../../features/ventes/quote/lignesEcran.js'), 'utf8')
 // QJR658 — l'Édition complète passe par le module pur `etatDevis.js` (son
 // aller-retour, prix_manuel compris, est EXÉCUTÉ par etatDevis.test.mjs).
