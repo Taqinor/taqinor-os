@@ -10,7 +10,7 @@ from rest_framework.renderers import (
 )
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .models import CustomUser, Company, UserSession
@@ -158,13 +158,19 @@ def _client_ip(request):
 
 
 def _refresh_jti(refresh_raw):
-    """Extrait le claim ``jti`` d'un jeton de rafraîchissement brut (ou None)."""
+    """Clé de la ligne ``UserSession`` d'un refresh brut (ou None).
+
+    ASEC49 — le refresh TOURNE à chaque rafraîchissement (nouveau ``jti``) ;
+    l'identifiant STABLE de la session est le claim ``sid`` (= ``jti`` de la
+    connexion), repli sur ``jti`` pour un jeton jamais tourné."""
     if not refresh_raw:
         return None
     try:
-        return RefreshToken(refresh_raw).get('jti')
+        token = RefreshToken(refresh_raw)
     except TokenError:
         return None
+    from .session_policy import SESSION_CLAIM
+    return token.get(SESSION_CLAIM) or token.get('jti')
 
 
 def _record_session(user, refresh_raw, request):
@@ -425,65 +431,122 @@ class CookieTokenRefreshView(APIView):
                 {'detail': 'Refresh token manquant.'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        try:
-            token = RefreshToken(refresh_raw)
-            # SCA18 — un tenant suspendu/en fermeture ne peut plus rafraîchir un
-            # jeton émis avant sa suspension : on rejette au refresh (message FR).
-            # Superuser (support) exempté. Tenant actif inchangé.
-            try:
-                uid = token.get('user_id')
-                u = CustomUser.objects.select_related('company').filter(
-                    pk=uid).first() if uid else None
-                if (u is not None and not u.is_superuser
-                        and u.company is not None
-                        and not u.company.est_operationnel):
-                    resp = Response(
-                        {'detail': 'Ce compte société est suspendu.'},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
-                    _clear_auth_cookies(resp)
-                    return resp
-            except Exception:
-                pass
-            # NTSEC10 — politique de session : refuser le refresh au-delà de la
-            # durée absolue / d'inactivité configurée par la société (inerte si
-            # non configurée). La session dépassée est révoquée côté serveur.
-            try:
-                from .session_policy import refresh_allowed
-                if not refresh_allowed(refresh_raw, u):
-                    resp = Response(
-                        {'detail': 'Session expirée par la politique de '
-                                   'sécurité. Reconnectez-vous.'},
-                        status=status.HTTP_401_UNAUTHORIZED,
-                    )
-                    _clear_auth_cookies(resp)
-                    return resp
-            except Exception:
-                pass
-            access_token = token.access_token
-            # XPLT19 — le claim ``active_company_id`` du refresh n'est PAS recopié
-            # d'office sur l'access dérivé (simplejwt ne propage que les claims
-            # enregistrés). On le reporte explicitement pour que la société active
-            # choisie survive au rafraîchissement transparent (sinon elle
-            # retomberait sur la société d'attache toutes les 30 min).
-            from authentication.active_company import ACTIVE_COMPANY_CLAIM
-            active = token.get(ACTIVE_COMPANY_CLAIM)
-            if active is not None:
-                access_token[ACTIVE_COMPANY_CLAIM] = active
-            access = str(access_token)
-            new_refresh = str(token) if settings.SIMPLE_JWT.get(
-                'ROTATE_REFRESH_TOKENS', False
-            ) else None
-            response = Response({'detail': 'Token rafraichi.'})
-            _set_auth_cookies(response, access, new_refresh)
-            return response
-        except TokenError:
-            resp = Response(
-                {'detail': 'Refresh token invalide ou expire.'},
+        access, new_refresh, refus = _rafraichir(refresh_raw)
+        if refus is not None:
+            _clear_auth_cookies(refus)
+            return refus
+        response = Response({'detail': 'Token rafraichi.'})
+        _set_auth_cookies(response, access, new_refresh)
+        return response
+
+
+def _rafraichir(refresh_raw):
+    """ASEC49 — LA politique de rafraîchissement, commune aux deux routes
+    (cookie ``/auth/token/refresh/`` et corps ``/token/refresh/``) : jamais
+    deux politiques.
+
+    Renvoie ``(access, nouveau_refresh, None)`` ou ``(None, None, réponse de
+    refus)``. Contrôles, dans l'ordre : jeton valide et non blacklisté ;
+    société suspendue (SCA18, 403) ; politique de session société (NTSEC10 :
+    durée absolue / inactivité, session révoquée → 401). Puis ROTATION
+    (``ROTATE_REFRESH_TOKENS``) : l'ancien refresh est mis en liste noire, un
+    NOUVEAU refresh (nouveau ``jti``, MÊME ``exp`` — la borne de 7 jours depuis
+    la connexion reste) est émis ; un rejeu de l'ancien lève ``TokenError`` →
+    401. Le claim ``sid`` (AUD408) — l'identifiant STABLE de la ligne
+    ``UserSession`` — est conservé d'une rotation à l'autre (posé depuis le
+    ``jti`` d'origine s'il manquait), si bien que révocation, durée absolue et
+    step-up retrouvent toujours la session.
+    """
+    try:
+        token = RefreshToken(refresh_raw)
+    except TokenError:
+        return None, None, Response(
+            {'detail': 'Refresh token invalide ou expire.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    u = None
+    # SCA18 — un tenant suspendu/en fermeture ne peut plus rafraîchir un
+    # jeton émis avant sa suspension : on rejette au refresh (message FR).
+    # Superuser (support) exempté. Tenant actif inchangé.
+    try:
+        uid = token.get('user_id')
+        u = CustomUser.objects.select_related('company').filter(
+            pk=uid).first() if uid else None
+        if (u is not None and not u.is_superuser
+                and u.company is not None
+                and not u.company.est_operationnel):
+            return None, None, Response(
+                {'detail': 'Ce compte société est suspendu.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+    except Exception:
+        pass
+    # NTSEC10 — politique de session : refuser le refresh au-delà de la
+    # durée absolue / d'inactivité configurée par la société (inerte si
+    # non configurée). La session dépassée est révoquée côté serveur.
+    try:
+        from .session_policy import refresh_allowed
+        if not refresh_allowed(refresh_raw, u):
+            return None, None, Response(
+                {'detail': 'Session expirée par la politique de '
+                           'sécurité. Reconnectez-vous.'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-            _clear_auth_cookies(resp)
-            return resp
+    except Exception:
+        pass
+    from .session_policy import SESSION_CLAIM
+    rotation = settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False)
+    if rotation and not token.get(SESSION_CLAIM):
+        # Jeton émis hors de ``get_token`` (2FA, SSO…) : on ancre la session
+        # sur son ``jti`` d'origine AVANT d'en changer.
+        token[SESSION_CLAIM] = token.get('jti')
+    access_token = token.access_token
+    # XPLT19 — le claim ``active_company_id`` du refresh n'est PAS recopié
+    # d'office sur l'access dérivé (simplejwt ne propage que les claims
+    # enregistrés). On le reporte explicitement pour que la société active
+    # choisie survive au rafraîchissement transparent (sinon elle
+    # retomberait sur la société d'attache toutes les 30 min).
+    from authentication.active_company import ACTIVE_COMPANY_CLAIM
+    active = token.get(ACTIVE_COMPANY_CLAIM)
+    if active is not None:
+        access_token[ACTIVE_COMPANY_CLAIM] = active
+    access = str(access_token)
+    if not rotation:
+        return access, None, None
+    if settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION', False):
+        try:
+            token.blacklist()
+        except AttributeError:  # app token_blacklist absente
+            pass
+    token.set_jti()
+    token.set_iat()
+    return access, str(token), None
+
+
+class BodyTokenRefreshView(TokenRefreshView):
+    """ASEC49 — route historique ``/api/django/token/refresh/`` (refresh dans
+    le CORPS). Gardée (contrat OpenAPI publié) mais soumise à la MÊME politique
+    que la route cookie via ``_rafraichir`` : rotation + liste noire, société
+    suspendue, durée absolue / inactivité de session. Réponse simplejwt
+    inchangée : ``{"access": …, "refresh": …}``."""
+
+    throttle_classes = [CookieRefreshThrottle]
+
+    def post(self, request, *args, **kwargs):
+        data = request.data if isinstance(request.data, dict) else {}
+        refresh_raw = data.get('refresh')
+        if not refresh_raw or not isinstance(refresh_raw, str):
+            return Response(
+                {'detail': 'Refresh token manquant.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        access, new_refresh, refus = _rafraichir(refresh_raw)
+        if refus is not None:
+            return refus
+        corps = {'access': access}
+        if new_refresh:
+            corps['refresh'] = new_refresh
+        return Response(corps)
 
 
 # ── XPLT19 — Bascule de société active (accès multi-sociétés) ──────
