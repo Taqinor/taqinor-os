@@ -29,6 +29,7 @@ from .models_email import (
     EmailTemplate,
 )
 from .serializers_email import EmailTemplateSerializer
+from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
 
@@ -62,7 +63,8 @@ def effective_email_templates(company):
     return out
 
 
-class EmailTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
+                           viewsets.ModelViewSet):
     """Modèles d'e-mail éditables (FG17).
 
     Filtrée et company forcée côté serveur (TenantMixin). L'upsert par clé est
@@ -70,6 +72,9 @@ class EmailTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = EmailTemplate.objects.all()
     serializer_class = EmailTemplateSerializer
+    # APAR28 — CRUD direct journalisé (le ``bulk`` garde son propre audit).
+    audit_section = 'emails'
+    audit_libelle = "Modèle d'e-mail"
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

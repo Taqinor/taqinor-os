@@ -18,15 +18,20 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models_realisations import Realisation
 from .serializers_realisations import RealisationSerializer
+from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RealisationViewSet(CompanyScopedModelViewSet):
-    """Catalogue des installations réelles de la société. ``?actif=true``."""
+class RealisationViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
+    """Catalogue des installations réelles de la société. ``?actif=true``.
+
+    APAR28 — chaque écriture est journalisée (``SettingsAuditedMixin``)."""
 
     queryset = Realisation.objects.all()
     serializer_class = RealisationSerializer
+    audit_section = 'realisations'
+    audit_libelle = 'Réalisation'
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

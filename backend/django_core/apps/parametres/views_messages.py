@@ -151,6 +151,14 @@ def _messages_save(request):
                 field=cle, field_label=f'Message {cle} (réinitialisé)',
                 old=before_fr, new=obj.corps_fr,
             )
+        if obj.corps_darija != before_darija:
+            # APAR28 — le texte Darija EFFACÉ par la réinitialisation reste
+            # lisible dans le journal (il n'était tracé nulle part).
+            SettingsAuditLog.log_change(
+                company=company, user=request.user, section='messages',
+                field=cle, field_label=f'Message {cle} (Darija réinitialisé)',
+                old=before_darija, new=obj.corps_darija,
+            )
         return Response({
             'cle': obj.cle, 'corps_fr': obj.corps_fr,
             'corps_darija': obj.corps_darija,
