@@ -463,7 +463,9 @@ class TestResidentialQRESRound(TestCase):
         LIGNE (le PDF ne les rend plus, QRES61)."""
         from apps.ventes.quote_engine.residential import sample_data
         items = sample_data.build("deux")["hypotheses"]["items"]
-        self.assertEqual(sum("82-21" in i for i in items), 1)
+        # AMOT25 — la mention sourcée unique MENTION_BT remplace la phrase 82-21.
+        self.assertEqual(sum("Revente du surplus non ouverte" in i for i in items), 1)
+        self.assertFalse(any("plafond d'injection" in i for i in items))
 
     def test_join_meta_dedups_repeated_fragments(self):
         """« casablanca, casablanca · casablanca » → « casablanca » (l'adresse
@@ -482,9 +484,12 @@ class TestResidentialQRESRound(TestCase):
         """Le builder réel dédoublonne : une seule formulation 82-21 dans le
         bloc hypothèses (il en cumulait deux, plus celle de la méthode)."""
         from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_BT
         notes = cashflow_assumptions()["notes"]
-        self.assertTrue(any("82-21" in n for n in notes))
-        self.assertTrue(any("injection" in n.lower() for n in notes))
+        # AMOT25 — LA mention sourcée unique (MENTION_BT), une seule fois,
+        # au lieu de « plafond d'injection 20 % intégré, rachat BT non publié ».
+        self.assertEqual(sum(MENTION_BT in n for n in notes), 1)
+        self.assertFalse(any("plafond d'injection" in n for n in notes))
         # plus de décimale anglaise dans les notes rendues au client
         joined = " ".join(notes)
         self.assertNotIn("0.5", joined)
