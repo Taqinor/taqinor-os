@@ -670,6 +670,13 @@ def create_payment_link(*, facture, provider=None):
         raise LinkError('Facture déjà payée : aucun lien de paiement.')
     if (facture.montant_du or Decimal('0')) <= Decimal('0'):
         raise LinkError('Cette facture est déjà soldée.')
+    # AFAC24 (C-AFAC-019) — le lien RÉCLAME de l'argent : il ne porte que ce
+    # qui est EXIGIBLE maintenant (CIQ214), jamais la retenue de garantie non
+    # libérée. Rien d'exigible ⇒ aucun lien.
+    if (facture.montant_exigible or Decimal('0')) <= Decimal('0'):
+        raise LinkError(
+            "Rien d'exigible maintenant : seule la retenue de garantie reste "
+            "due.")
 
     # Ferme d'abord ce qui est périmé : sinon un lien mort tiendrait la place
     # du lien actif et la contrainte partielle bloquerait la ré-émission.
@@ -687,7 +694,7 @@ def create_payment_link(*, facture, provider=None):
         company=facture.company,
         facture=facture,
         provider=(provider or 'noop'),
-        montant=facture.montant_du,
+        montant=facture.montant_exigible,
     )
 
 
@@ -833,7 +840,9 @@ def record_payment_from_link(*, link, payload=None):
         # règlement partiel le laisse ouvert pour le reste (la page affiche
         # alors le nouveau reste, `paye: false`).
         locked_link.provider_ref = (result.get('provider_ref') or '')[:200]
-        if facture.montant_du <= Decimal('0.01'):
+        # AFAC24 — « soldée » au sens de ce que le lien réclame : l'exigible
+        # (une retenue de garantie non libérée ne garde pas le lien ouvert).
+        if facture.montant_exigible <= Decimal('0.01'):
             locked_link.statut = PaymentLink.Statut.PAYE
             locked_link.paiement = paiement
             locked_link.paid_at = timezone.now()

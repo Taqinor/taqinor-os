@@ -727,11 +727,16 @@ class PaymentLink(models.Model):
         ``montant`` est la trace de ce qui était dû à la création ; l'afficher
         au client (page publique) après un règlement partiel lui réclamait un
         chiffre périmé. Le webhook borne déjà l'encaissement à ce reste dû —
-        c'est la même valeur, exposée au même endroit."""
+        c'est la même valeur, exposée au même endroit.
+
+        AFAC24 (C-AFAC-019) — « à payer maintenant » = ``montant_exigible``
+        (CIQ214 : ``montant_du`` − retenue de garantie non libérée), le même
+        chiffre que la lettre de relance et l'e-mail. Le webhook, lui, reste
+        borné à ``montant_du`` (une retenue payée volontairement est acceptée)."""
         from decimal import Decimal
 
         facture = self.facture
-        reste = getattr(facture, 'montant_du', None)
+        reste = getattr(facture, 'montant_exigible', None)
         return reste if reste is not None else Decimal('0')
 
 

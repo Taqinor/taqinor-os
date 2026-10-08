@@ -700,6 +700,12 @@ def lettre_relance_pdf(request, facture_id):
     if facture is None:
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
+    # AFAC24 (C-AFAC-019) — même garde que `relancer` : une facture payée,
+    # annulée, brouillon ou sans exigible ne reçoit pas de lettre de relance.
+    ok, motif = facture_relancable(facture)
+    if not ok:
+        return Response({'detail': motif},
+                        status=status.HTTP_400_BAD_REQUEST)
     levels = _levels(facture.company)
     niveau = _current_level(
         facture.jours_retard, levels, montant_du=montant_exigible(facture))

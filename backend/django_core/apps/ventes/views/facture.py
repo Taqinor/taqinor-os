@@ -1822,20 +1822,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..utils.company_settings import create_numbered
 
         facture = self.get_object()
-        levels = list(FollowupLevel.objects.filter(
-            company=facture.company).order_by('delai_jours', 'ordre'))
+        # AFAC24 (C-AFAC-040, base) — UNE formule : la pénalité facturée est
+        # la pénalité INDICATIVE de la lettre et de la liste des relances
+        # (`recouvrement._current_level`), calculée sur l'EXIGIBLE (CIQ214),
+        # jamais sur `montant_du` (qui compte la retenue de garantie).
+        from ..recouvrement import _current_level, _levels, montant_exigible
         jr = facture.jours_retard
-        niveau = None
-        for lvl in levels:
-            if jr >= lvl.delai_jours:
-                niveau = lvl
+        niveau = _current_level(
+            jr, _levels(facture.company),
+            montant_du=montant_exigible(facture))
         if niveau is None:
             return Response(
                 {'detail': "Aucun niveau de relance atteint pour "
                            "cette facture."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        penalite = niveau.calcul_penalite(facture.montant_du, jr)
+        penalite = Decimal(niveau['penalite'])
         if penalite <= 0:
             return Response(
                 {'detail': "Aucune pénalité à facturer (taux/frais à 0)."},
@@ -1843,7 +1845,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
         libelle = (
             f"Pénalités de retard — facture {facture.reference} "
-            f"({jr} jour(s) de retard, {niveau.nom})")
+            f"({jr} jour(s) de retard, {niveau['nom']})")
 
         def _create(ref):
             return Facture.objects.create(
