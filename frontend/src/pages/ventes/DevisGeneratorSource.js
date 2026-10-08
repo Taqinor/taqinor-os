@@ -28,6 +28,7 @@ export const FILES = [
   'pages/ventes/generator/IndicationRegistre.jsx',
   'pages/ventes/generator/PanneauSurcharges.jsx',
   'pages/ventes/generator/hooks/useLignesEcran.js',
+  'pages/ventes/generator/hooks/useCompositionEcran.js',
 ]
 
 //: Le marqueur posé avant le contenu de chaque fichier concaténé.
