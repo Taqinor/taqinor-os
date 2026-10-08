@@ -512,27 +512,34 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         if devis is None or devis.company_id != getattr(company, 'id', None):
             raise ValidationError({'devis': 'Devis inconnu pour cette société.'})
 
-        produit_ids = [
-            ligne.produit_id for ligne in devis.lignes.all()
-            if ligne.produit_id is not None]
-        from ..selectors import kit_map_for_produits_composes
-        kit_map = kit_map_for_produits_composes(company, produit_ids)
+        # ACHT23 (C-ACHT-021) — quantités VENDUES lues sur la nomenclature
+        # gelée du devis (option retenue × N villas, options non activées
+        # exclues), cumulées par produit : un ordre par kit.
+        from ..selectors import (
+            kit_map_for_produits_composes, quantites_nomenclature_devis,
+        )
+        from ..services import (
+            recreer_nomenclature_ordre_assemblage, snapshot_revision_kit,
+        )
+        quantites = quantites_nomenclature_devis(devis)
+        kit_map = kit_map_for_produits_composes(company, list(quantites))
         if not kit_map:
             return Response([])
 
         kits_by_id = {k.id: k for k in Kit.objects.filter(
             id__in=set(kit_map.values()), company=company)}
+        par_kit = {}
+        for produit_id, qte in quantites.items():
+            kit_id = kit_map.get(produit_id)
+            if kit_id is None or kit_id not in kits_by_id:
+                continue
+            par_kit[kit_id] = par_kit.get(kit_id, 0) + qte
 
         ordres = []
         any_created = False
-        for ligne in devis.lignes.all():
-            kit_id = kit_map.get(ligne.produit_id)
-            if kit_id is None:
-                continue
-            kit = kits_by_id.get(kit_id)
-            if kit is None:
-                continue
-            quantite = int(ligne.quantite) if ligne.quantite else 1
+        for kit_id, quantite in par_kit.items():
+            kit = kits_by_id[kit_id]
+            quantite = max(1, int(quantite))
             ordre = OrdreAssemblage.objects.filter(
                 company=company, devis=devis, kit=kit).first()
             if ordre is None:
@@ -543,9 +550,21 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                         reference=reference)
                 ordre = create_with_reference(
                     OrdreAssemblage, 'ASM', company, _save)
+                # Même gel de révision que `perform_create` (XMFG18).
+                revision, _created = snapshot_revision_kit(
+                    kit, user=request.user)
+                ordre.revision_kit_numero = revision.numero
+                ordre.save(update_fields=['revision_kit_numero'])
                 seed_lignes_assemblage(ordre)
                 seed_reservations_assemblage(ordre)
                 any_created = True
+            elif (ordre.statut == OrdreAssemblage.Statut.PLANIFIE
+                  and ordre.quantite != quantite):
+                # Devis modifié : l'ordre planifié suit (règle d'ACHT17).
+                ordre.quantite = quantite
+                ordre.save(update_fields=['quantite', 'date_modification'])
+                recreer_nomenclature_ordre_assemblage(
+                    ordre, user=request.user)
             ordres.append(ordre)
         return Response(
             OrdreAssemblageSerializer(ordres, many=True).data,

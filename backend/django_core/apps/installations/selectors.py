@@ -3284,13 +3284,30 @@ def quantites_nomenclature_chantier(installation, plafond=False):
       au plafond (ERR54 : commande prudente du besoin matériel du stock).
     Lecture pure ; ``services._bom_quantities`` lui délègue. Lisible par une
     autre app (stock) sans importer les services installations."""
-    import math
-    from decimal import Decimal, InvalidOperation
-    from .services import _freeze_bom, lignes_bom_entieres
+    from .services import _freeze_bom
 
     bom = installation.bom or []
     if not bom and getattr(installation, 'devis_id', None):
         bom = _freeze_bom(installation.devis)
+    return _quantites_bom(bom, plafond=plafond)
+
+
+def quantites_nomenclature_devis(devis, plafond=False):
+    """ACHT23 — mêmes quantités que ``quantites_nomenclature_chantier`` mais
+    lues sur le GEL d'un devis (option retenue × N villas, options non
+    activées exclues — ``services._freeze_bom``), pour un geste qui part du
+    devis (« Assembler à la commande »)."""
+    from .services import _freeze_bom
+    return _quantites_bom(_freeze_bom(devis), plafond=plafond)
+
+
+def _quantites_bom(bom, plafond=False):
+    """Cœur commun : ``{produit_id: quantité entière}`` d'une nomenclature
+    gelée (HALF_UP par ligne, ou plafond ERR54)."""
+    import math
+    from decimal import Decimal, InvalidOperation
+    from .services import lignes_bom_entieres
+
     besoins = {}
     if plafond:
         for ligne in bom:
