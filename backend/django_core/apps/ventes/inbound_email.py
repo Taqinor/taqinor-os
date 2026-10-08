@@ -21,7 +21,11 @@ logger = logging.getLogger(__name__)
 # Références documents reconnues : DEV-… (devis) et FAC-… (facture). On accepte
 # des séparateurs souples et on normalise en MAJUSCULES. La référence réelle est
 # ensuite confirmée par une recherche en base scopée société.
-_REF_RE = re.compile(r'\b((?:DEV|FAC)[-_/ ]?[A-Z0-9][A-Z0-9-]{2,})\b', re.I)
+# ADEV37 — la référence exige AU MOINS UN CHIFFRE après le préfixe : sans cette
+# exigence, « Re: Votre facture FAC-… » capturait le mot « FACTURE » (FAC+TURE)
+# et « Device » capturait « DEVICE » — le vrai numéro n'était jamais rattaché.
+_REF_RE = re.compile(
+    r'\b((?:DEV|FAC)[-_/ ]?(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]{2,})\b', re.I)
 
 
 def is_inbound_configured():
