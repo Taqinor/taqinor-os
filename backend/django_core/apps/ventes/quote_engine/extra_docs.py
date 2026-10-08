@@ -28,8 +28,9 @@ from pathlib import Path
 from .generate_devis_premium import (
     CA, CAL, CG1, CG2, CG4, CG7, CGR, CN,
     _DMSANS400, _DMSANS500, _DMSANS700, _DS400,
-    _font_face, fmt,
+    _font_face,
 )
+from .montants import fmt_centimes_mad
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -361,7 +362,8 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
         f'<span class="v">{escape(resume["date_echeance"] or "—")}</span></div>'
         f'{retard_row}'
         f'<div class="row due"><span>Montant restant dû</span>'
-        f'<span class="v">{escape(fmt(resume["montant_du"]))}</span></div>'
+        f'<span class="v">{escape(fmt_centimes_mad(resume["montant_du"]))}'
+        f'</span></div>'
         f'</div>'
     )
     body = (

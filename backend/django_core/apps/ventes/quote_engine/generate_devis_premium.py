@@ -1041,8 +1041,10 @@ def fmt(v):
     \u00e9tiquet\u00e9 EUR aurait affich\u00e9 des dirhams sous un signe euro. L'\u00e9tiquette
     suit d\u00e9sormais la r\u00e9alit\u00e9 des montants.
     """
+    # AMOT26 — LE formateur unique HALF_UP (``montants.fmt_dirhams``).
+    from .montants import fmt_dirhams
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
+        return fmt_dirhams(v, "\u202f") + "\u00a0MAD"
     except Exception:
         return str(v)
 
@@ -4786,6 +4788,8 @@ def apply_quote_data(data: dict) -> None:
     DISCOUNT_PCT      = float(data.get("discount_pct", 0))
     global REGLES_CORRIGEES
     REGLES_CORRIGEES = not data.get("regles_calcul_origine")
+    from .montants import poser_regles_origine
+    poser_regles_origine(data.get("regles_calcul_origine"))
     TOTAL_SANS_BEFORE = float(data.get("total_sans_before", TOTAL_SANS))
     TOTAL_AVEC_BEFORE = float(data.get("total_avec_before", TOTAL_AVEC))
     ECO_S_ANN    = int(data["eco_s_ann"])

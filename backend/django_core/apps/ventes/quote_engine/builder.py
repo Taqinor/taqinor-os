@@ -1600,6 +1600,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # envoyé avant les corrections AMOT/ADEV28 (``regles_calcul = 1``) est
     # rendu avec les règles d'origine, exactement ce que le client a reçu.
     _corrige = calcul_corrige(devis)
+    from .montants import poser_regles_origine
+    poser_regles_origine(not _corrige)
     client = devis.client
     # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un taux, pas une
     # absence : même règle que ``LigneDevis.taux_tva_effectif`` (``is not

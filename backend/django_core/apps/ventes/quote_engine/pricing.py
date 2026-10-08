@@ -976,7 +976,9 @@ def _fr_pct(v) -> str:
 
 def _fr_mad(v) -> str:
     """12345 -> '12 345' (espace fine insécable, format des documents)."""
-    return f"{int(round(float(v))):,}".replace(",", " ")
+    # AMOT26 — LE formateur unique HALF_UP (``montants.fmt_dirhams``).
+    from .montants import fmt_dirhams
+    return fmt_dirhams(v, "\u202f")
 
 
 def cashflow_assumptions(inverter_replace_cost=None,
