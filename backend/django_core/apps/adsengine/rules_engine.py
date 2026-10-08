@@ -35,7 +35,7 @@ from __future__ import annotations
 import datetime
 import logging
 
-from . import rule_templates
+from . import guardrails, rule_templates
 from .rule_templates import CADENCE_CRITICAL, CADENCE_DAILY, CADENCE_WEEKLY
 
 logger = logging.getLogger(__name__)
@@ -567,12 +567,22 @@ def _eval_metric_threshold(company, policy, template, *, now, config):
         return []
     ct = ContentType.objects.get_for_model(model)
 
+    # AACQ2 — seuil monétaire (``*_mad``) sur un compte non-MAD : non
+    # applicable, AUCUNE comparaison (porte unique ``guardrails``).
+    blocked = (guardrails.mad_threshold_blocked_reason(company)
+               if str(spec['threshold_param']).endswith('_mad') else None)
+
     findings = []
     for m in mirrors:
-        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
-        value, n = _derived_metric(snaps, metric)
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
+        if blocked:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': blocked,
+                             'computed': {'metric': metric}})
+            continue
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
+        value, n = _derived_metric(snaps, metric)
         if n < min_samples or value is None:
             findings.append({**base, 'fired': False, 'insufficient_data': True,
                              'computed': {'metric': metric, 'value': value,
@@ -1028,6 +1038,11 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run,
             company=company, meta_id=target_id).first()
         if adset is None or adset.budget is None:
             return None  # pas de base budget → alerte seule
+        # AACQ2 — budget du compte vs plafond MAD : non applicable hors MAD.
+        blocked = guardrails.mad_threshold_blocked_reason(company)
+        if blocked:
+            finding['blocked_fr'] = blocked
+            return None
         current_mad = float(adset.budget) / services.CENTIMES_PER_MAD
         if current_mad <= 0:
             return None
@@ -1352,9 +1367,15 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
                 'condition_fr': _condition_fr(template, finding)}
             if finding.get('insufficient_data'):
                 # Branche insufficient_data : ALERTE toujours (piège Madgicx).
+                if finding.get('blocked_fr'):
+                    # AACQ2 — raison de blocage (devise) consignée au journal.
+                    entry['blocked_fr'] = finding['blocked_fr']
                 _emit_alert(
                     company, template_key=policy.template_key, finding=finding,
-                    message=(f"{template['label_fr']} : données insuffisantes "
+                    message=(f"{template['label_fr']} : "
+                             f"{finding['blocked_fr']}"
+                             if finding.get('blocked_fr') else
+                             f"{template['label_fr']} : données insuffisantes "
                              f"pour {finding.get('target_meta_id', '?')} — "
                              f"vérification impossible (jamais un skip muet)."),
                     dry_run=policy.dry_run, insufficient=True)
