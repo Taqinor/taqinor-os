@@ -265,6 +265,42 @@ def _chatter_note(devis, body, user):
         pass
 
 
+def _modele_email_personnalise(company, cle, client, reference, **contexte):
+    """APAR59 — sujet/corps du modèle d'e-mail ``cle`` que la SOCIÉTÉ a
+    personnalisé (``parametres.EmailTemplate``), rendus avec ses placeholders.
+
+    Renvoie un dict qui ne porte QUE les champs réellement personnalisés (non
+    vides) : sans ligne, ou champ laissé vide, la clé est absente et
+    l'appelant garde son texte codé actuel (repli octet pour octet — jamais le
+    défaut générique « au lien suivant : {lien} » de la table). Best-effort :
+    jamais d'exception (un e-mail ne casse pas sur un modèle illisible)."""
+    if company is None:
+        return {}
+    try:
+        from apps.parametres.models_email import EmailTemplate
+        ligne = EmailTemplate.objects.filter(company=company, cle=cle).first()
+        if ligne is None:
+            return {}
+        personnalise = {
+            champ for champ in ('sujet', 'corps')
+            if (getattr(ligne, champ, '') or '').strip()}
+        if not personnalise:
+            return {}
+        nom_client = civilite = ''
+        if client is not None:
+            nom_client = (
+                f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip())
+            civilite = getattr(client, 'civilite', '') or ''
+        contexte.setdefault('lien', '')
+        rendu = EmailTemplate.render(
+            company, cle, civilite=civilite, nom=nom_client,
+            reference=reference, **contexte)
+        return {champ: rendu[champ] for champ in personnalise if rendu[champ]}
+    except Exception as exc:  # noqa: BLE001 — repli sur le texte codé
+        logger.warning('APAR59: modèle e-mail %s illisible (%s)', cle, exc)
+        return {}
+
+
 def send_document_email(document, *, to_email=None, sujet=None, corps=None,
                         user=None, attach_pdf=True, log_activity=True):
     """Envoie un document (Devis ou Facture) au client par email et consigne
@@ -281,6 +317,15 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
     est_facture = isinstance(document, Facture)
     type_doc = 'facture' if est_facture else 'devis'
 
+    # APAR59 — le modèle éditable de la société (Paramètres › E-mails, clé
+    # ``facture`` / ``devis``) prime quand elle l'a personnalisé ; sinon le
+    # texte codé ci-dessous reste octet pour octet. Sujet/corps explicites de
+    # l'appelant priment toujours.
+    if not sujet or not corps:
+        modele = _modele_email_personnalise(
+            getattr(document, 'company', None), type_doc, client, reference)
+        sujet = sujet or modele.get('sujet')
+        corps = corps or modele.get('corps')
     if not sujet:
         sujet = (f'Votre facture {reference}' if est_facture
                  else f'Votre devis {reference}')
@@ -348,9 +393,16 @@ def composer_relance_email(facture, *, niveau_nom='', message=''):
     """
     client = getattr(facture, 'client', None)
     reference = getattr(facture, 'reference', '') or ''
-    sujet = f'Rappel de paiement — facture {reference}'
+    # APAR59 — modèle éditable « relance » de la société (Paramètres ›
+    # E-mails) quand elle l'a personnalisé ; un niveau nommé / un message
+    # saisi (AUD129 : la note prime) restent plus spécifiques et priment.
+    modele = _modele_email_personnalise(
+        getattr(facture, 'company', None), 'relance', client, reference)
+    sujet = modele.get('sujet') or f'Rappel de paiement — facture {reference}'
     if niveau_nom:
         sujet = f'{niveau_nom} — facture {reference}'
+    if modele.get('corps') and not (message or '').strip():
+        return sujet, modele['corps']
 
     nom_client = ''
     if client is not None:
