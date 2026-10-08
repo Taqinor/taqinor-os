@@ -254,6 +254,33 @@ def residential_tranches_for(company) -> dict | None:
     return {"pairs": pairs, "selective_threshold": seuil, "boundary_tolerance": tol}
 
 
+def bareme_effectif(company) -> dict:
+    """AGNR11 — barème résidentiel EFFECTIF d'une société, forme du contrat
+    ``contract_samples/bareme_effectif.json`` : tranches réglées
+    (``residential_tranches_for``) + redevance compteur, ``source`` ``societe``
+    si l'une des deux est saisie, sinon ``national`` (tout à ``None`` : l'écran
+    garde ses constantes ONEE).
+    """
+    if company is None:
+        return {"source": "national", "tranches": None,
+                "redevance_compteur_mad_mois": None}
+    existant = _reglages_tarif_existants(company)
+    redevance = getattr(existant, "redevance_compteur_mad_mois", None)
+    tranches = residential_tranches_for(company)
+    if tranches is not None:
+        tranches = {**tranches,
+                    "pairs": [list(p) for p in tranches["pairs"]]}
+    if tranches is None and redevance is None:
+        return {"source": "national", "tranches": None,
+                "redevance_compteur_mad_mois": None}
+    return {
+        "source": "societe",
+        "tranches": tranches,
+        "redevance_compteur_mad_mois":
+            float(redevance) if redevance is not None else None,
+    }
+
+
 def _reglages_tarif_existants(company):
     """``TariffSettings`` DÉJÀ enregistré pour ``company``, ou ``None``.
 
