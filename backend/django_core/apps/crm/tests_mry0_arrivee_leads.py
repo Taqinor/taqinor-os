@@ -136,10 +136,13 @@ class TacheMiroirOdooTests(TestCase):
             self.assertEqual(tasks.sync_odoo_leads_task(),
                              {'skipped': 'lock'})
 
-    def test_transmet_no_align_quand_odoo_sync_align_vaut_zero(self):
+    def test_passe_planifiee_n_aligne_jamais_les_etapes(self):
+        # Décision fondateur 08/10/2026 : la passe planifiée ne touche
+        # JAMAIS l'étape d'un lead, même si ODOO_SYNC_ALIGN vaut 1 (ancien
+        # interrupteur) — sinon un lead mis en Froid revenait en Nouveau.
         env = {'ODOO_SYNC_URL': 'https://odoo.example',
                'ODOO_SYNC_API_KEY': 'k', 'ODOO_SYNC_COMPANY_SLUG': 'x',
-               'ODOO_SYNC_ALIGN': '0'}
+               'ODOO_SYNC_ALIGN': '1'}
         with mock.patch.dict(os.environ, env, clear=False), \
                 mock.patch('django.core.management.call_command') as appel:
             tasks.sync_odoo_leads_task()
