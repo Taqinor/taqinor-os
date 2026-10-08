@@ -456,6 +456,10 @@ def affecter_encaissement_groupe(
             for facture, part in parts:
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
+            # AFAC8 (C-AFAC-010) — Σ parts < montant encaissé : le reste
+            # était PERDU (seule la branche FIFO créait l'avance). Même
+            # traitement que FIFO ci-dessous.
+            restant = montant - total_parts
         else:
             # FIFO : échéance la plus ancienne d'abord (None en dernier) ; à
             # échéance égale, la facture la plus ancienne (pk) — sans ce
@@ -474,18 +478,19 @@ def affecter_encaissement_groupe(
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
                 restant -= part
-            # AUD120 — le reliquat n'est plus abandonné en silence : ce qui
-            # a été encaissé et que les factures listées n'absorbent pas
-            # devient une avance XFAC1 (Paiement sans facture, non affecté),
-            # ventilable plus tard par ``ventiler_avance``.
-            restant = quantize_mad(restant)
-            if restant > TOLERANCE_CENTIME:
-                paiements.append(enregistrer_avance(
-                    company=company, client=client, montant=restant,
-                    date_paiement=date_paiement, mode=mode,
-                    reference=reference,
-                    note="Reliquat d'encaissement groupé (XFAC1).",
-                    created_by=user))
+        # AUD120 / AFAC8 — le reliquat n'est plus abandonné en silence (ni
+        # en FIFO, ni en répartition explicite) : ce qui a été encaissé et
+        # que les factures listées n'absorbent pas devient une avance XFAC1
+        # (Paiement sans facture, non affecté), ventilable plus tard par
+        # ``ventiler_avance``. Un reliquat ≤ 1 centime ne crée rien.
+        restant = quantize_mad(restant)
+        if restant > TOLERANCE_CENTIME:
+            paiements.append(enregistrer_avance(
+                company=company, client=client, montant=restant,
+                date_paiement=date_paiement, mode=mode,
+                reference=reference,
+                note="Reliquat d'encaissement groupé (XFAC1).",
+                created_by=user))
 
         # AUD102 (P3) — la bascule passe par LE service unique : ce chemin
         # soldait en silence, sans `facture_payee`, donc sans lettrage compta.
