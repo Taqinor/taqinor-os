@@ -209,10 +209,18 @@ def build(ctx) -> str:
 
     def _lien_site(chemin):
         return f"{site_url}{chemin}" if site_url else ""
-    pay = d.get("payment_terms", {}) or {}
-    acompte = pay.get("acompte", 30)
-    materiel = pay.get("materiel", 60)
-    solde = pay.get("solde", 10)
+    # AMOT19 — les pourcentages IMPRIMÉS (``termes_paiement_imprimes``, même
+    # source que les cases) priment ; sans eux, le repli d'hier.
+    _imp = d.get("termes_paiement_imprimes")
+    if isinstance(_imp, dict) and _imp:
+        acompte = _imp.get("acompte")
+        materiel = _imp.get("materiel")
+        solde = _imp.get("solde")
+    else:
+        pay = d.get("payment_terms", {}) or {}
+        acompte = pay.get("acompte", 30)
+        materiel = pay.get("materiel", 60)
+        solde = pay.get("solde", 10)
     tva_note = (d.get("tva_note", "") or "").strip()
     # The builder's note already starts with "TVA :"; drop it so it doesn't
     # double the "TVA" key in the conditions table.
@@ -283,8 +291,10 @@ def build(ctx) -> str:
     )
 
     # ── Conditions (compact) ────────────────────────────────────────────────
-    paiement = (f"{acompte}% à la commande &middot; {materiel}% à la réception "
-                f"du matériel &middot; {solde}% à la mise en service")
+    paiement = (f"{acompte}% à la commande &middot; "
+                + (f"{materiel}% à la réception du matériel &middot; "
+                   if materiel else "")
+                + f"{solde}% à la mise en service")
     # QRES31 — échéance absolue partout où la validité s'affiche.
     # M7 — la date imprimée est celle du devis. `valid_until` est déjà posée
     # par le builder ; l'arithmétique de repli ne sert qu'aux appels sans elle.

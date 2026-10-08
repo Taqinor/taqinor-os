@@ -849,6 +849,24 @@ def _pct_echeance(valeur, defaut):
     return int(f) if f == int(f) else round(f, 2)
 
 
+def _pcts_imprimes(data):
+    """``(acompte, materiel, solde)`` tels que le document les IMPRIME.
+
+    AMOT19 — ``data['termes_paiement_imprimes']`` (builder : les cases de la
+    branche imprimée) prime ; ``materiel`` y vaut ``None`` pour un échéancier
+    à deux tranches. Sans elle, ``payment_terms`` et les défauts d'hier."""
+    imp = data.get("termes_paiement_imprimes")
+    if isinstance(imp, dict) and imp:
+        return (_pct_echeance(imp.get("acompte"), 0),
+                (_pct_echeance(imp.get("materiel"), 0)
+                 if imp.get("materiel") else None),
+                _pct_echeance(imp.get("solde"), 0))
+    terms = data.get("payment_terms") or {}
+    return (_pct_echeance(terms.get("acompte"), 30),
+            _pct_echeance(terms.get("materiel"), 60),
+            _pct_echeance(terms.get("solde"), 10))
+
+
 def _tva_note_par_defaut(tva_pct):
     """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
     tva_lbl = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
@@ -870,6 +888,10 @@ def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
     du remplissage."""
     out = []
     for raw in bullets or ():
+        # AMOT19 — échéancier sans tranche matériel (``materiel=None``) : la
+        # puce « matériel » est omise, jamais imprimée à 0 % ni à 60 %.
+        if materiel is None and "{materiel}" in str(raw):
+            continue
         try:
             txt = raw.format(
                 acompte=acompte, materiel=materiel, solde=solde,
@@ -906,11 +928,13 @@ def cgv_bullets_remplies(data):
         tva_pct = float(data.get("taux_tva", 20) or 20)
     except (TypeError, ValueError):
         tva_pct = 20.0
+    pay_a, pay_m, pay_s = _pcts_imprimes(data)
     return remplir_cgv_bullets(
         bullets,
-        acompte=_pct_echeance(terms.get("acompte"), 30),
-        materiel=_pct_echeance(terms.get("materiel"), 60),
-        solde=_pct_echeance(terms.get("solde"), 10),
+        acompte=pay_a if pay_a is not None else _pct_echeance(
+            terms.get("acompte"), 30),
+        materiel=pay_m,
+        solde=pay_s,
         tva_note=data.get("tva_note") or _tva_note_par_defaut(tva_pct),
         valid_until=(data.get("valid_until") or "").strip())
 
@@ -4426,7 +4450,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
       <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
-      <span style="margin-right:20px;">&#183; {PAY_M}&#37; {_L("a_la_reception_materiel")}</span>
+      {'' if PAY_M is None else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
       <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
       <span>&#183; {TVA_NOTE}</span>
       {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
@@ -4877,12 +4901,11 @@ def apply_quote_data(data: dict) -> None:
                 "generate_devis_premium: %s (%.2f) ne correspond pas au TTC "
                 "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
                 "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
-    _terms = data.get("payment_terms") or {}
     # QJR623 / QJR668 — même normalisation que la page publique de signature
     # (``_pct_echeance``, partagée avec ``cgv_bullets_remplies``).
-    PAY_A = _pct_echeance(_terms.get("acompte"), 30)
-    PAY_M = _pct_echeance(_terms.get("materiel"), 60)
-    PAY_S = _pct_echeance(_terms.get("solde"), 10)
+    # AMOT19 — les pourcentages IMPRIMÉS (cases de la branche imprimée) ;
+    # ``PAY_M`` vaut None sans tranche matériel (créneau omis du texte).
+    PAY_A, PAY_M, PAY_S = _pcts_imprimes(data)
     global MONTANTS_TRANCHES
     MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))

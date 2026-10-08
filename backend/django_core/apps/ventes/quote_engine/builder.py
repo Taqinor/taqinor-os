@@ -715,6 +715,35 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     }
 
 
+def branche_paiement_imprimee(d) -> str:
+    """La branche (« sans » | « avec ») dont le document imprime les
+    modalités de paiement — LA règle du moteur legacy et du gabarit
+    résidentiel (scénario, sinon option recommandée)."""
+    scenario = d.get("scenario")
+    if scenario == "Sans batterie":
+        return "sans"
+    if scenario == "Avec batterie":
+        return "avec"
+    if d.get("recommended") == "Sans batterie":
+        return "sans"
+    return "avec"
+
+
+def termes_paiement_imprimes(d):
+    """AMOT19 (C-AMOT-017) — les pourcentages que le TEXTE des conditions
+    imprime, lus dans ``montants_tranches`` de la branche imprimée : la MÊME
+    source que les cases du « Devis final ». Somme = 100 % ; un échéancier à
+    deux tranches (``deux_cases``) n'a PAS de clé ``materiel`` (aucun créneau
+    absent ni à 0 % imprimé). ``None`` sans montants."""
+    rep = (d.get("montants_tranches") or {}).get(branche_paiement_imprimee(d))
+    if not rep:
+        return None
+    if (rep.get("materiel") or 0) > 0:
+        return {"acompte": rep.get("pct_a"), "materiel": rep.get("pct_m"),
+                "solde": rep.get("pct_s")}
+    return {"acompte": rep.get("pct_a"), "solde": rep.get("pct_s2")}
+
+
 def tranches_echeancier_en_montant(devis):
     """QJR624 — les tranches normalisées de l'échéancier du devis quand il
     compte 2 ou 3 tranches dont au moins une déclarée en DIRHAMS, sinon
@@ -4402,6 +4431,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
             payment_terms, _tranches_montant)
         for branche in ("sans", "avec")}
+    if _corrige:
+        # AMOT19 — le texte des conditions (ligne « Paiement », puces CGV,
+        # une-page, page publique) lit CETTE clé quand elle existe.
+        _termes_imp = termes_paiement_imprimes(data)
+        if _termes_imp:
+            data["termes_paiement_imprimes"] = _termes_imp
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
     # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
