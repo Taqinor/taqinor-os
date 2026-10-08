@@ -965,26 +965,16 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         rendement, tarif, co2.
         """
         from django.http import HttpResponse
-        from datetime import datetime
         from .. import energy_report
         inst = self.get_object()
 
-        def _parse_date(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
-
-        qp = request.query_params
-        params = {
-            'nb_mois': qp.get('nb_mois'),
-            'date_debut': _parse_date(qp.get('date_debut')),
-            'date_fin': _parse_date(qp.get('date_fin')),
-            'production_annuelle_kwh': qp.get('production_annuelle_kwh'),
-            'rendement_kwh_par_kwc_an': qp.get('rendement'),
-            'tarif_mad_par_kwh': qp.get('tarif'),
-            'co2_kg_par_kwh': qp.get('co2'),
-        }
+        # ACHT49 — paramètres validés AVANT tout calcul : 400 FR nommant le
+        # champ, jamais un PDF à zéros, un 500 ou un défaut silencieux.
+        params, erreurs = energy_report.valider_parametres_rapport(
+            request.query_params, inst.puissance_installee_kwc)
+        if erreurs:
+            return Response({champ: [msg] for champ, msg in erreurs.items()},
+                            status=status.HTTP_400_BAD_REQUEST)
         pdf_bytes = energy_report.render_energy_report_pdf(inst, params)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
