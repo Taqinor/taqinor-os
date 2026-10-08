@@ -78,8 +78,10 @@ test('QJR426 — les 9 sites CarteMetrique du générateur portent `valeur=`, au
   }
 })
 
-test('QJR426 — `moteur`/`apercu` sont importés de quote/valeur.js dans DevisGenerator.jsx', () => {
-  assert.match(DG, /import \{ moteur, apercu \} from '\.\.\/\.\.\/features\/ventes\/quote\/valeur'/)
+test('QJR426 — `moteur`/`apercu` sont importés de quote/valeur.js dans le générateur', () => {
+  // SPL51 — `signerEcoOuRoi` (seul lecteur d'`apercu`) vit dans le hook
+  // `generator/hooks/useApercuEtude.js` : l'import y a suivi (profondeur relative).
+  assert.match(DG, /import \{ moteur, apercu \} from '(\.\.\/)+features\/ventes\/quote\/valeur'/)
 })
 
 // ── Marque de provenance là où elle n'est pas évidente (et nulle part une
