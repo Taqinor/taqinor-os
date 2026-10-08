@@ -458,13 +458,13 @@ unites:
     I: 4
     score: 12
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: APAR
     plan: docs/plans/PLAN_AUDIT_PARAMETRES.md
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_STOCK.md]
     pr: null
-    date: null
-    notes: "Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs."
+    date: 2026-10-08
+    notes: "Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-parametres.md) : 58 constats (2 S1, 19 S2), 67 tâches APAR ; purge d'audit sans plancher légal, tolérance kWh qui fait diverger facture et devis, textes vivants relus sur des devis envoyés."
 
   - id: D4
     rang: 14
