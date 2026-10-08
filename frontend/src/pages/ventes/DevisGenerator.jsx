@@ -2151,6 +2151,14 @@ export default function DevisGenerator({
   // propose l'action SUIVANTE évidente. « Envoyer par WhatsApp » ouvre la liste
   // sur ce devis précis AVEC l'aperçu WhatsApp déjà ouvert (le flux existant de
   // DevisList, jamais un second) — un clic ici, un clic « Ouvrir WhatsApp ».
+  const lignesQuantiteNulle = lines.filter(l => l.typeLigne !== 'section' && l.typeLigne !== 'note'
+    && l.produit && !(parseFloat(l.quantite) > 0) && (l.prixManuel || !l.compose))
+  const avisQuantiteNulle = !lignesQuantiteNulle.length ? null
+    : lignesQuantiteNulle.length === 1
+      ? `1 ligne à quantité 0 ne sera pas enregistrée : ${lignesQuantiteNulle[0].designation || '—'}`
+      : `${lignesQuantiteNulle.length} lignes à quantité 0 ne seront pas enregistrées : `
+        + lignesQuantiteNulle.map(l => l.designation || '—').join(', ')
+
   if (succes && !embedded) {
     return (
       <div className="page gen-page">
@@ -3456,6 +3464,15 @@ export default function DevisGenerator({
                            overridesErreur={overridesErreur} overridesReg={overridesReg}
                            regenererOverride={regenererOverride} />
 
+        {/* AGNR31 — une ligne produit saisie (prix tapé, ou ajoutée à la
+            main) à quantité 0 ou vide ne partira pas : annoncé AVANT l'envoi,
+            jamais bloquant (même filtre que `lignesEnvoyees`). */}
+        {avisQuantiteNulle && (
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+               data-testid="avis-quantite-nulle">
+            {avisQuantiteNulle}
+          </div>
+        )}
         {reserveEnregistrement && (
           <div role="alert" data-testid="reserve-enregistrement"
                className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">

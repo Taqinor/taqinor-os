@@ -77,8 +77,20 @@ export function usePersistanceDevis(ctx) {
     }
     const orphan = lines.find(l =>
       !l.produit && parseFloat(l.quantite) > 0 && parseFloat(l.prix_unit_ttc) > 0)
+    // AGNR31 — `validate()` DIT ce que `lignesEnvoyees` (quote/lignesEcran.js)
+    // ne gardera pas : une ligne « prix à renseigner » (sans produit) ne part
+    // jamais — elle bloque, nommée, au lieu de disparaître en silence.
+    const estStructureLigne = (l) => l.typeLigne === 'section' || l.typeLigne === 'note'
+    const sansPrix = lines.filter(l => !l.produit && !estStructureLigne(l)
+      && /prix à renseigner/i.test(l.designation || ''))
+    const nomLigne = (l) => (l.designation || '—').replace(/\s*—\s*prix à renseigner\s*$/i, '').trim()
     if (orphan) {
       e.lines = `Sélectionnez un produit du stock pour la ligne « ${orphan.designation || '—'} »`
+    } else if (sansPrix.length) {
+      e.lines = sansPrix.length === 1
+        ? `1 ligne « prix à renseigner » ne sera pas enregistrée : ${nomLigne(sansPrix[0])}`
+        : `${sansPrix.length} lignes « prix à renseigner » ne seront pas enregistrées : `
+          + sansPrix.map(nomLigne).join(', ')
     } else if (!usableLines().length) {
       e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
     } else if (!accessoiresOnly) {
@@ -93,11 +105,10 @@ export function usePersistanceDevis(ctx) {
       const has = (pred) => usable.some(l => pred(l.designation))
       if (modeInstallation === 'agricole') {
         // AGR130 — une pompe EXISTANTE n'a pas de ligne pompe (le kit n'en
-        // pose pas) ; une pompe NEUVE exige une pompe ou son placeholder
-        // « prix à renseigner » (ligne sans produit, jamais chiffrée à 0).
+        // pose pas) ; une pompe NEUVE exige une pompe ENREGISTRABLE — AGNR31 :
+        // son placeholder « prix à renseigner » ne compte plus (il ne part pas).
         const existante = pompageSaisie.mode_pompe === 'existante'
-        const placeholderPompe = lines.some(l => !l.produit && isPompe(l.designation))
-        if (!existante && !has(isPompe) && !placeholderPompe) {
+        if (!existante && !has(isPompe)) {
           e.lines = 'Un devis de pompage doit contenir au moins une pompe. '
             + 'Utilisez « Auto-remplir » ou ajoutez une pompe, ou cochez '
             + '« Composition libre ».'
@@ -157,6 +168,7 @@ export function usePersistanceDevis(ctx) {
       w.lead = `Attention : le lead « ${nom} » est ${flags}. `
         + 'Vous pouvez tout de même créer ce devis.'
     }
+
     setWarnings(w)
     setErrors(e)
     return Object.keys(e).length === 0
