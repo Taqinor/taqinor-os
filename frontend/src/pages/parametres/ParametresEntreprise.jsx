@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import { isDirty } from '../../ui/form-utils'
 import {
@@ -108,6 +109,15 @@ const APPROBATIONS_POLITIQUES_TAB = { key: 'approbations_politiques', label: "Po
 // global `tours_actifs`). Ajouté localement, même logique que N96/N94/etc.
 const DEMO_ONBOARDING_TAB = { key: 'demo_onboarding', label: 'Démo & Onboarding', group: 'general' }
 
+// APAR38 — onglets qui ÉCRIVENT des réglages de la société (garde serveur
+// `parametres_modifier`) : en lecture seule pour un rôle qui ne le porte pas.
+// Les onglets personnels (2FA) ou gouvernés par d'autres droits (équipe,
+// rôles, API…) ne sont pas concernés.
+const TABS_ECRITURE_PARAMETRES = [
+  'societe', 'leads', 'devis', 'avance', 'messages', 'email', 'statuts',
+  'automatisations', 'notifications',
+]
+
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
 // seul <form> qui couvre tous les onglets — donc « Enregistrer » sauve TOUT,
@@ -123,6 +133,8 @@ export default function ParametresEntreprise() {
   // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
   // de voir/modifier les champs sensibles.
   const canManageSensitive = useIsAdmin()
+  // APAR38 — droit d'écrire les réglages (aligné sur la garde serveur).
+  const canModifier = useCanModifierParametres()
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')
@@ -852,6 +864,7 @@ export default function ParametresEntreprise() {
   // Le bouton d'enregistrement du profil n'apparaît que sur les onglets qui
   // portent des champs du profil (les autres réglages s'enregistrent seuls).
   const showSave = ['societe', 'leads', 'devis', 'avance'].includes(tab)
+  const lectureSeule = !canModifier && TABS_ECRITURE_PARAMETRES.includes(tab)
 
   if (loading) return (
     <div className="flex min-h-[200px] items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -864,7 +877,7 @@ export default function ParametresEntreprise() {
   // « Enregistrer » (contrat e2e) : pendant l'envoi le bouton est désactivé et
   // affiche un spinner, l'état « Enregistré ! » n'apparaît qu'après succès.
   const saveButton = (
-    <Button type="submit" loading={saving} disabled={saving}
+    <Button type="submit" loading={saving} disabled={saving || lectureSeule}
       variant={saved ? 'success' : 'default'} className="self-start">
       {saving ? 'Enregistrement…' : saved ? (
         <><CheckCircle2 className="size-4" aria-hidden="true" /> Enregistré !</>
@@ -994,7 +1007,18 @@ export default function ParametresEntreprise() {
               noValidate (ERR28) : la validation HTML5 native (min/max/step) ne
               doit JAMAIS bloquer/snapper une valeur tapée — la coercition douce
               se fait en JS dans handleSave. ── */}
+        {lectureSeule && (
+          <p data-testid="parametres-lecture-seule"
+             className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-[13px] text-muted-foreground">
+            <Info className="size-3.5 shrink-0" aria-hidden="true" />
+            Lecture seule : votre rôle ne porte pas le droit « Modifier les paramètres ».
+          </p>
+        )}
         <form noValidate onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
+          {/* APAR38 — `fieldset disabled` : tous les contrôles d'écriture de
+              l'onglet sont inertes en lecture seule (le serveur refuse de
+              toute façon : 403). */}
+          <fieldset disabled={lectureSeule} className="contents">
 
           {/* FG16 — onglet « Prise en main » (checklist + rejeu du guide). */}
           {tab === 'onboarding' && <OnboardingSection />}
@@ -1059,6 +1083,7 @@ export default function ParametresEntreprise() {
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
+          </fieldset>
         </form>
 
           </div>
