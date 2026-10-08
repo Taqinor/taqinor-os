@@ -16,6 +16,7 @@ Les types d'intervention / étapes de checklist (app ``installations``) sont
 HORS périmètre de cet outil : ils ont leur propre amorçage et ne sont pas
 touchés ici (on ne franchit pas la frontière d'une autre app pour les écrire).
 """
+from django.db import transaction
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -183,21 +184,41 @@ def _log_config_import_change(company, user, field, field_label, old, new):
         field=field, field_label=field_label, old=old, new=new)
 
 
-def _import_profile(company, data, overwrite, user=None):
+class ImportInvalide(Exception):
+    """APAR29 — le bundle porte une valeur refusée par l'écran : l'import
+    entier est annulé (tout-ou-rien) et l'appelant reçoit 400 nommant chaque
+    champ."""
+
+    def __init__(self, erreurs):
+        super().__init__('Import de configuration invalide.')
+        self.erreurs = erreurs
+
+
+def _prefixer(prefixe, erreurs):
+    return {f'{prefixe}.{champ}': msg for champ, msg in erreurs.items()}
+
+
+def _import_profile(company, data, overwrite, user=None, request=None):
+    from .serializers_company import CompanyProfileSerializer
     from .views_profile import _PROFILE_AUDIT_FIELDS
+    # Politique simple : merge n'écrase JAMAIS un profil existant déjà créé ;
+    # overwrite applique. Comme un profil existe toujours (get_or_create),
+    # on n'applique le profil qu'en mode overwrite.
+    if not overwrite:
+        return 0
     profile = CompanyProfile.get(company)
+    valeurs = {f: data[f] for f in PROFILE_CONFIG_FIELDS if f in data}
+    if not valeurs:
+        return 0
+    # APAR29 — les MÊMES validations que ``PATCH /parametres/update/`` : une
+    # TVA négative ou une remise à 900 % n'entre plus par l'import.
+    ser = CompanyProfileSerializer(
+        profile, data=valeurs, partial=True, context={'request': request})
+    if not ser.is_valid():
+        raise ImportInvalide(_prefixer('profile', ser.errors))
     changed = []
-    for f in PROFILE_CONFIG_FIELDS:
-        if f not in data:
-            continue
-        # En merge, on ne touche que les champs encore au défaut ? Trop fragile.
-        # Politique simple : merge n'écrase JAMAIS un profil existant déjà créé ;
-        # overwrite applique. Comme un profil existe toujours (get_or_create),
-        # on n'applique le profil qu'en mode overwrite.
-        if not overwrite:
-            continue
+    for f, new in ser.validated_data.items():
         old = getattr(profile, f, None)
-        new = data[f]
         _log_config_import_change(
             company, user, f, _PROFILE_AUDIT_FIELDS.get(f, f), old, new)
         setattr(profile, f, new)
@@ -243,6 +264,9 @@ def _import_roles(company, rows, overwrite, user=None):
                 company=company, nom=nom,
                 permissions=list(r.get('permissions') or []),
                 est_systeme=False)
+            _log_config_import_change(  # APAR29 — créations journalisées
+                company, user, f'role.{nom}', f'Rôle « {nom} » — créé',
+                None, list(r.get('permissions') or []))
             created += 1
         elif overwrite and not existing.est_systeme:
             new_permissions = list(r.get('permissions') or [])
@@ -270,6 +294,10 @@ def _import_message_templates(company, rows, overwrite, user=None):
                 company=company, cle=cle,
                 corps_fr=r.get('corps_fr', '') or '',
                 corps_darija=r.get('corps_darija', '') or '')
+            _log_config_import_change(  # APAR29 — créations journalisées
+                company, user, f'message_template.{cle}',
+                f'Modèle de message « {cle} » — créé', None,
+                r.get('corps_fr', '') or '')
             created += 1
         elif overwrite:
             new_fr = r.get('corps_fr', '') or ''
@@ -314,6 +342,9 @@ def _import_automation_rules(company, rows, overwrite, user=None):
         )
         if existing is None:
             AutomationRule.objects.create(company=company, nom=nom, **payload)
+            _log_config_import_change(  # APAR29 — créations journalisées
+                company, user, f'automation_rule.{nom}',
+                f'Règle « {nom} » — créée', None, f'{trig} → {act}')
             created += 1
         elif overwrite:
             for k, v in payload.items():
@@ -327,26 +358,43 @@ def _import_automation_rules(company, rows, overwrite, user=None):
 
 
 def _import_statuts(company, rows, overwrite, user=None):
+    from .serializers_statuses import StatutConfigSerializer
     from .statuses_defaults import VALID_DOMAINES, default_keys
     created = updated = 0
-    for r in rows or []:
+    for i, r in enumerate(rows or []):
         domaine = r.get('domaine')
         cle = r.get('cle')
         if domaine not in VALID_DOMAINES or cle not in default_keys(domaine):
             continue
         existing = StatutConfig.objects.filter(
             company=company, domaine=domaine, cle=cle).first()
+        if existing is not None and not overwrite:
+            continue
+        # APAR29 — mêmes validations que l'écran (libellé ≤ 120…) ; une
+        # ligne refusée annule TOUT l'import.
+        ser = StatutConfigSerializer(data={
+            'domaine': domaine, 'cle': cle,
+            'libelle': r.get('libelle', '') or '',
+            'ordre': r.get('ordre') or 0,
+            'actif': bool(r.get('actif', True))})
+        if not ser.is_valid():
+            raise ImportInvalide(_prefixer(f'statuts[{i}]', ser.errors))
         if existing is None:
             StatutConfig.objects.create(
                 company=company, domaine=domaine, cle=cle,
-                libelle=r.get('libelle', '') or '',
-                ordre=r.get('ordre') or 0, actif=bool(r.get('actif', True)))
+                libelle=ser.validated_data.get('libelle', ''),
+                ordre=ser.validated_data.get('ordre', 0),
+                actif=ser.validated_data.get('actif', True))
+            _log_config_import_change(  # APAR29 — créations journalisées
+                company, user, f'statut.{domaine}.{cle}',
+                f'Statut « {domaine}/{cle} » — créé', None,
+                ser.validated_data.get('libelle', ''))
             created += 1
-        elif overwrite:
+        else:
             new_vals = {
-                'libelle': r.get('libelle', '') or '',
-                'ordre': r.get('ordre') or 0,
-                'actif': bool(r.get('actif', True)),
+                'libelle': ser.validated_data.get('libelle', ''),
+                'ordre': ser.validated_data.get('ordre', 0),
+                'actif': ser.validated_data.get('actif', True),
             }
             for k, v in new_vals.items():
                 _log_config_import_change(
@@ -373,18 +421,26 @@ def config_import(request):
     overwrite = request.query_params.get('mode') == 'overwrite'
 
     user = request.user
-    roles_c, roles_u = _import_roles(
-        company, data.get('roles'), overwrite, user=user)
-    msg_c, msg_u = _import_message_templates(
-        company, data.get('message_templates'), overwrite, user=user)
-    rule_c, rule_u = _import_automation_rules(
-        company, data.get('automation_rules'), overwrite, user=user)
-    stat_c, stat_u = _import_statuts(
-        company, data.get('statuts'), overwrite, user=user)
-    profile_changed = _import_profile(
-        company, data.get('profile') or {}, overwrite, user=user)
-    doc_changed = _import_document_templates(
-        company, data.get('document_templates') or {}, overwrite, user=user)
+    # APAR29 — TOUT-OU-RIEN : une valeur refusée annule l'import entier
+    # (transaction), et la réponse nomme chaque champ fautif.
+    try:
+        with transaction.atomic():
+            roles_c, roles_u = _import_roles(
+                company, data.get('roles'), overwrite, user=user)
+            msg_c, msg_u = _import_message_templates(
+                company, data.get('message_templates'), overwrite, user=user)
+            rule_c, rule_u = _import_automation_rules(
+                company, data.get('automation_rules'), overwrite, user=user)
+            stat_c, stat_u = _import_statuts(
+                company, data.get('statuts'), overwrite, user=user)
+            profile_changed = _import_profile(
+                company, data.get('profile') or {}, overwrite, user=user,
+                request=request)
+            doc_changed = _import_document_templates(
+                company, data.get('document_templates') or {}, overwrite,
+                user=user)
+    except ImportInvalide as exc:
+        return Response(exc.erreurs, status=400)
 
     return Response({
         'mode': 'overwrite' if overwrite else 'merge',
