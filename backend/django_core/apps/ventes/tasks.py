@@ -696,11 +696,18 @@ def task_devis_automatique_depuis_lead(lead_id, company_id):
 @shared_task(name='ventes.audit_coherence_nuit')
 def audit_coherence_nuit():
     from .coherence.moteur import run_audit
-    from .coherence.notification import notifier_nouvelles_violations
+    from .coherence.notification import (
+        notifier_nouvelles_violations, notifier_regles_sans_verdict)
 
     report = run_audit(persist=True)
     notifications = notifier_nouvelles_violations(report) if report.new \
         else 0
+    # AMOT61 (C-AMOT-037) — une règle restée SANS VERDICT n'est plus muette :
+    # digest aux admins (« N règles sans verdict ») APRÈS la persistance du
+    # rapport, puis la tâche échoue de façon visible. La commande
+    # ``audit_coherence`` garde, elle, son code de sortie 0 (qa-explorer).
+    if report.rule_errors:
+        notifications += notifier_regles_sans_verdict(report)
     resume = {
         'companies': len(report.companies),
         'checked': dict(report.checked),
@@ -712,4 +719,8 @@ def audit_coherence_nuit():
         'duration_s': round(report.duration_s, 1),
     }
     logger.info('audit_coherence_nuit : %s', resume)
+    if report.rule_errors:
+        raise RuntimeError(
+            'audit_coherence_nuit : %d règle(s) sans verdict — %s'
+            % (len({e.get('rule') for e in report.rule_errors}), resume))
     return resume
