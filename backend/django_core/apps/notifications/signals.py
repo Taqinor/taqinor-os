@@ -274,32 +274,11 @@ def equipement_remplace_receiver(sender, equipement, ticket, company, user,
             getattr(equipement, 'pk', '?'))
 
 
-# ── Projet — changement de statut → PROJET_STATUT_CHANGE (ARC37) ───────────
-# S'abonne à ``core.events.projet_status_change`` — reste câblé même après
-# SOLMVP19 : le signal est un couplage DÉCOUPLÉ (aucun import d'apps.gestion_
-# projet ici), et un autre test (apps.sav.tests_arc37_bus_emetteur) exige que
-# ce signal garde au moins un abonné réel tant que gestion_projet émet encore
-# (avant sa coquille, SOLMVP33).
-def projet_status_change_receiver(sender, projet, company, user,
-                                  ancien_statut, nouveau_statut, **kwargs):
-    responsable = getattr(projet, 'responsable', None)
-    if responsable is None:
-        return
-    try:
-        notify(
-            responsable, EventType.PROJET_STATUT_CHANGE,
-            'Statut de projet modifié',
-            body=(f'Le projet {projet.nom} est passé de {ancien_statut} à '
-                  f'{nouveau_statut}.'),
-            # WIR176 — `/gestion-projet/projets/<pk>` n'existe pas côté
-            # front ; la route réelle est `/projets/:id`.
-            link=f'/projets/{projet.pk}',
-            company=company,
-        )
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.exception(
-            'notify PROJET_STATUT_CHANGE failed (projet %s)',
-            getattr(projet, 'pk', '?'))
+# ── Projet — changement de statut (ARC37) : APAR43 — récepteur RETIRÉ ──────
+# ``core.events.projet_status_change`` n'a plus d'émetteur vivant (module
+# ``gestion_projet`` parqué) : un abonné que rien ne déclenche faisait croire
+# à une notification qui n'arrivait jamais. Signal réservé dans
+# ``core.event_coverage.ALLOWED_UNCONSUMED`` ; à recâbler au retour du module.
 
 
 # ── SAV Ticket → SAV_TICKET_OPENED (YEVNT4) ─────────────────────────────────
@@ -531,25 +510,9 @@ def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
             instance.pk)
 
 
-# ── Contrat signé → CONTRAT_SIGNE (ARC35) ────────────────────────────────────
-# S'abonne à ``core.events.contrat_signe`` (YDOCF5 — seam posé par
-# CONTRAT16/17, jusqu'ici SANS abonné, catalogué ``ALLOWED_UNCONSUMED``).
-# Notifie l'utilisateur qui a agi à la signature (``user``), sinon les
-# managers de la société (même repli que les autres producteurs de ce module).
-def contrat_signe_receiver(sender, contrat, user, company, **kwargs):
-    try:
-        from .sweeps import _notify_user_or_managers
-
-        ref = (contrat.reference or '').strip() or f'#{contrat.pk}'
-        _notify_user_or_managers(
-            user, company, EventType.CONTRAT_SIGNE,
-            'Contrat signé',
-            body=f'Le contrat {ref} a été intégralement signé.',
-            link=f'/contrats/{contrat.pk}',
-        )
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.exception(
-            'notify CONTRAT_SIGNE failed (contrat %s)', getattr(contrat, 'pk', '?'))
+# ── Contrat signé (ARC35) : APAR43 — récepteur RETIRÉ ───────────────────────
+# ``core.events.contrat_signe`` n'a plus d'émetteur vivant (module ``contrats``
+# parqué). Signal réservé dans ``core.event_coverage.ALLOWED_UNCONSUMED``.
 
 
 # ── Dossier transverse en retard → DOSSIER_ECHEANCE_DEPASSEE (NTWFL18) ─────
@@ -586,9 +549,9 @@ def connect():
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
     from core.events import (
-        bon_commande_cree, contrat_signe, devis_expired,
+        bon_commande_cree, devis_expired,
         dossier_echeance_depassee, equipement_remplace, facture_payee,
-        projet_status_change, ticket_resolu, workflow_etape_activee,
+        ticket_resolu, workflow_etape_activee,
     )
 
     pre_save.connect(lead_pre_save, sender=Lead,
@@ -610,8 +573,6 @@ def connect():
     workflow_etape_activee.connect(
         workflow_etape_activee_receiver,
         dispatch_uid='notifications_workflow_etape_activee')
-    contrat_signe.connect(contrat_signe_receiver,
-                          dispatch_uid='notifications_contrat_signe')
     # NTWFL18 — dossier transverse en retard (core.dossiers, balayage beat).
     dossier_echeance_depassee.connect(
         dossier_echeance_depassee_receiver,
@@ -621,9 +582,6 @@ def connect():
     equipement_remplace.connect(
         equipement_remplace_receiver,
         dispatch_uid='notifications_equipement_remplace')
-    projet_status_change.connect(
-        projet_status_change_receiver,
-        dispatch_uid='notifications_projet_status_change')
     post_save.connect(sav_ticket_post_save, sender=Ticket,
                       dispatch_uid='notifications_sav_ticket_opened')
     pre_save.connect(automation_approval_pre_save, sender=AutomationApproval,

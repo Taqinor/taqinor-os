@@ -40,7 +40,7 @@ from django.utils import timezone
 
 from core.events import (
     demande_achat_approuvee, devis_accepted, dossier_echeance_depassee,
-    langue_changed, rfq_attribuee,
+    langue_changed,
 )
 
 from .engine import evaluate, motif_etat_metier
@@ -218,16 +218,9 @@ def _on_demande_achat_approuvee(sender, demande, company, user=None,
 _on_demande_achat_approuvee = _safe(_on_demande_achat_approuvee)
 
 
-def _on_rfq_attribuee(sender, rfq, offre, company, user=None,
-                      bon_commande_id=None, **kwargs):
-    if company is None:
-        return
-    evaluate(TriggerType.RFQ_ATTRIBUEE, rfq, company, user=user,
-             context={'offre_id': getattr(offre, 'pk', None),
-                      'bon_commande_id': bon_commande_id})
-
-
-_on_rfq_attribuee = _safe(_on_rfq_attribuee)
+# APAR43 — ``_on_rfq_attribuee`` RETIRÉ : ``rfq_attribuee`` n'a plus
+# d'émetteur vivant (surface RFQ parquée) ; le déclencheur RFQ_ATTRIBUEE est
+# refusé à la création (``selectors.DECLENCHEURS_PARQUES``).
 
 
 def _on_langue_changed(sender, company, portee=None, client_id=None,
@@ -318,8 +311,6 @@ def connect():
     demande_achat_approuvee.connect(
         _on_demande_achat_approuvee,
         dispatch_uid='automation_on_demande_achat_approuvee')
-    rfq_attribuee.connect(
-        _on_rfq_attribuee, dispatch_uid='automation_on_rfq_attribuee')
     langue_changed.connect(
         _on_langue_changed, dispatch_uid='automation_on_langue_changed')
     dossier_echeance_depassee.connect(

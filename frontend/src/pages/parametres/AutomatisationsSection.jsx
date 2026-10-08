@@ -34,9 +34,12 @@ const TRIGGERS = [
   { key: 'date_echeance_champ', label: 'Échéance de champ (± N jours)' },
   { key: 'webhook_inbound', label: 'Webhook entrant' },
   { key: 'record_state_change', label: "Changement d'état d'un enregistrement" },
-  { key: 'projet_status_change', label: 'Changement de statut de projet' },
-  { key: 'projet_phase_change', label: 'Changement de phase de projet' },
+  // APAR43 — émetteur parqué (gestion_projet) : libellé gardé pour les règles
+  // existantes, jamais proposé à la création (refusé 400 côté serveur).
+  { key: 'projet_status_change', label: 'Changement de statut de projet', indisponible: true },
+  { key: 'projet_phase_change', label: 'Changement de phase de projet', indisponible: true },
 ]
+const TRIGGERS_PROPOSES = TRIGGERS.filter((t) => !t.indisponible)
 
 // Actions — clés EN alignées sur ActionType.
 const ACTIONS = [
@@ -393,7 +396,7 @@ export default function AutomatisationsSection() {
                       onValueChange={(v) => setAiDraft((d) => ({ ...d, trigger_type: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {TRIGGERS.map((t) => (
+                        {TRIGGERS_PROPOSES.map((t) => (
                           <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
                         ))}
                       </SelectContent>
@@ -482,7 +485,7 @@ export default function AutomatisationsSection() {
                   onValueChange={(v) => setDraft((d) => ({ ...d, trigger_type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {TRIGGERS.map((t) => (
+                    {TRIGGERS_PROPOSES.map((t) => (
                       <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
