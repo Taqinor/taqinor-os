@@ -101,7 +101,7 @@ def verifier_node(racine: Path) -> list[str]:
 
 
 def verifier(racine: Path) -> list[str]:
-    return verifier_apt(racine)
+    return verifier_apt(racine) + verifier_node(racine)
 
 
 def main(argv: list[str]) -> int:

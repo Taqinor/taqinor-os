@@ -44,6 +44,22 @@ class ParitePaquetsTests(unittest.TestCase):
             self.assertTrue(any('fonts-dejavu-core' in e for e in erreurs))
 
 
+class NodeTests(unittest.TestCase):
+    def test_node_majeure_divergente_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            erreurs = cp.verifier_node(_arbre(tmp, '', front='FROM node:20.18-alpine\n'))
+            self.assertTrue(any('node-version 22' in e for e in erreurs), erreurs)
+
+    def test_tag_flottant_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            erreurs = cp.verifier_node(_arbre(tmp, '', front='FROM node:22-alpine\n'))
+            self.assertTrue(any('flottant' in e for e in erreurs), erreurs)
+
+    def test_node_vert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(cp.verifier_node(_arbre(tmp, '')), [])
+
+
 class DepotReelTests(unittest.TestCase):
     def test_depot_reel_vert(self):
         self.assertEqual(cp.verifier(ROOT), [])
