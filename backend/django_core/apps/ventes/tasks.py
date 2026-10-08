@@ -276,7 +276,12 @@ def _render_signature(devis_id, pdf_options):
     payload = json.dumps(
         {'devis': devis_id,
          'content': _content_version(devis_id, pdf_options),
-         'opts': pdf_options or {},
+         # APDF18 — ``langue_sortie`` sort des options brutes : la langue
+         # entre UNE fois, RÉSOLUE, sous ``langue`` ci-dessous. Sinon un rendu
+         # auto-résolu en FR (option absente/None) et un FR explicite — le
+         # même document — auraient deux clés de cache.
+         'opts': {k: v for k, v in (pdf_options or {}).items()
+                  if k != 'langue_sortie'},
          # APDF18 (C-APDF-003) — la langue RÉSOLUE du document : un rendu
          # FR puis AR du même devis (client passé en arabe, ou ?langue=)
          # ne ressert jamais le PDF de l'autre langue.
