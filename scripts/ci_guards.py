@@ -442,6 +442,13 @@ GARDES = {
         ('Test the nightly alert-gate decision (CAD177)',
          'python -m unittest scripts.tests.test_nightly_alert_gate -v',
          '.'),
+        # ACAL317 - seul l'atelier réécrit le document entier (C-ACAL-044).
+        ('Check écrivains du layout calepinage (aucun écran hors atelier, ACAL317)',
+         'python scripts/check_calepinage_ecrivains_layout.py',
+         '.'),
+        ('Test the écrivains du layout calepinage (aucun écran hors atelier, ACAL317) checker itself',
+         'python -m unittest scripts.tests.test_check_calepinage_ecrivains_layout -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
