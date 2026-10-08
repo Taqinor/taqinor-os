@@ -4263,9 +4263,16 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
 
     Renvoie une liste de dicts ``{devis_id, reference, lead_id, lead_nom,
     date_expiration, total_ttc}``.
+
+    ACRM29 — l'échéance lue est la date EFFECTIVE de ventes
+    (``apps.ventes.selectors.date_validite_effective`` : ``date_validite``,
+    sinon création + ``quote_validity_days``) — celle qu'imprime le PDF
+    ``/proposal`` du même devis. Un devis envoyé sans ``date_validite``
+    apparaît donc à son échéance réelle au lieu d'être ignoré.
     """
     import datetime
     from core.dates import aujourd_hui_local
+    from apps.ventes.selectors import date_validite_effective
     from .models import Lead
 
     today = today or aujourd_hui_local()
@@ -4280,8 +4287,7 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
         for devis in lead.devis.all():
             if getattr(devis, 'statut', None) != 'envoye':
                 continue
-            exp = getattr(devis, 'date_expiration', None) or getattr(
-                devis, 'date_validite', None)
+            exp = date_validite_effective(devis)
             if exp is None or exp > limite:
                 continue
             out.append({
