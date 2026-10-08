@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4812, operations: 7594, components: 2211}
+counts: {paths: 4812, operations: 7594, components: 2213}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7861,6 +7861,7 @@ components:
 - CiviliteEnum
 - ClasseAbcEnum
 - ClasseAbcPlanComptageTournantEnum
+- ClasseDangerEnum
 - ClasseEnum
 - Classeur
 - ClasseurRequest
@@ -9218,6 +9219,7 @@ components:
 - PaymentTransactionRequest
 - PaymentTransactionStatutEnum
 - PeriodTypeEnum
+- PeriodiciteDefautEnum
 - PertesCalepinage
 - PhaseEnum
 - PickList

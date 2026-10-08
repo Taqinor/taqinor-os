@@ -14,7 +14,7 @@ import authReducer from '../../features/auth/store/authSlice'
 
 vi.mock('../../api/stockApi', () => ({
   default: {
-    getFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
+    getAllFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
     createFournisseur: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
     getCategoriesFournisseur: vi.fn(() => Promise.resolve({ data: [] })),
   },

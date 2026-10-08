@@ -14,6 +14,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // ZPUR3 — Modèles de bon de commande fournisseur (« purchase templates ») :
 // un nom + fournisseur optionnel + lignes produit/quantité par défaut.
@@ -220,6 +222,7 @@ function GenererModal({ modele, fournisseurs, onClose, onGenere }) {
 }
 
 export default function ModelesBcf() {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -238,7 +241,7 @@ export default function ModelesBcf() {
 
   useEffect(() => {
     reload()
-    stockApi.getFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
+    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
@@ -250,12 +253,12 @@ export default function ModelesBcf() {
   }
 
   const supprimer = useCallback(async (m) => {
-    if (!window.confirm(`Supprimer le modèle « ${m.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer le modèle « ${m.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     try {
       await stockApi.deleteModeleBcf(m.id)
       reload()
     } catch { setInfo('La suppression a échoué.') }
-  }, [])
+  }, [confirmer])
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 200, accessor: (m) => m.nom ?? '' },
@@ -336,6 +339,7 @@ export default function ModelesBcf() {
                         })
                       }} />
       )}
+      {dialogueConfirmation}
     </div>
   )
 }

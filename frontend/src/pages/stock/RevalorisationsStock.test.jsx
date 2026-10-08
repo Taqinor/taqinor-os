@@ -89,10 +89,16 @@ describe('RevalorisationsStock (WIR109)', () => {
     })
     stockApi.getProduits.mockResolvedValue({ data: [] })
     stockApi.validerRevalorisationStock.mockResolvedValue({ data: {} })
-    window.confirm = vi.fn(() => true)
+    const natif = vi.spyOn(window, 'confirm')
 
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Valider' }))
+    // ASTK231 — confirmation par l'AlertDialog commune, sans dialogue natif.
+    const dialog = await screen.findByRole('alertdialog')
+    expect(stockApi.validerRevalorisationStock).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
+    expect(natif).not.toHaveBeenCalled()
+    natif.mockRestore()
 
     await waitFor(() => {
       expect(stockApi.validerRevalorisationStock).toHaveBeenCalledWith(9)

@@ -1,5 +1,21 @@
 import api from './axios'
 
+// ASTK185 (C-ASTK-042, FOUR-8) — lit TOUTES les pages d'une liste DRF paginée
+// (StandardPagination : 50 par défaut, plafond serveur 200) en suivant `next`
+// jusqu'au bout. Renvoie `{ data: [...] }` : les appelants qui lisent
+// `r.data?.results ?? r.data` restent compatibles. Garde-fou : 500 pages.
+async function lireToutesLesPages(url, params) {
+  const tous = []
+  for (let page = 1; page <= 500; page += 1) {
+    const r = await api.get(url, { params: { page_size: 200, ...params, page } })
+    const d = r.data
+    if (Array.isArray(d)) return { data: d }
+    tous.push(...(d?.results ?? []))
+    if (!d?.next) break
+  }
+  return { data: tous }
+}
+
 const stockApi = {
   // Produits
   // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
@@ -57,6 +73,10 @@ const stockApi = {
 
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
+  // ASTK185 — liste COMPLÈTE (le 51ᵉ fournisseur n'est plus perdu en page 2).
+  getAllFournisseurs: (params) => lireToutesLesPages('/stock/fournisseurs/', params),
+  getAllFournisseursArchived: (params) =>
+    lireToutesLesPages('/stock/fournisseurs/', { ...params, show_archived: 'true' }),
   // WIR219 — fiche fournisseur unique (retrieve), lecture IsAnyRole. Manquait
   // jusqu'ici : FournisseurFiche360.jsx l'appelait déjà en optional-chaining
   // (`stockApi.getFournisseur?.(...)`), donc le badge de candidature/actions
@@ -65,6 +85,8 @@ const stockApi = {
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
+  // ASTK184 — « Supprimer » à l'écran = archivage (jamais de CASCADE).
+  archiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/`, { is_archived: true }),
   // WIR190 — fournisseur archivé (repli PROTECT), même patron que
   // ProduitViewSet (unarchive/force-delete/?show_archived=true).
   getFournisseursArchived: () =>
@@ -331,6 +353,9 @@ const stockApi = {
     api.post('/stock/documents-fournisseur/', data),
   televerserDocumentFournisseur: (id, formData) =>
     api.post(`/stock/documents-fournisseur/${id}/televerser/`, formData),
+  // ASTK225 — date d'expiration d'une pièce d'onboarding déjà créée.
+  updateDocumentFournisseur: (id, data) =>
+    api.patch(`/stock/documents-fournisseur/${id}/`, data),
   // Onglets détaillés — réutilisent les endpoints EXISTANTS déjà câblés
   // ailleurs (WR4/FG55/FG56/FG58/FG59, XPUR1, XPUR9), filtrés par fournisseur
   // côté frontend quand l'API ne filtre pas déjà nativement.
@@ -346,6 +371,33 @@ const stockApi = {
   // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
   getDocumentsConformiteFournisseur: (fournisseurId) =>
     api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  // ASTK225 — CRUD des pièces XPUR1 (écriture stock_modifier, suppression Admin).
+  createDocumentConformiteFournisseur: (data) =>
+    api.post('/stock/documents-conformite-fournisseur/', data),
+  updateDocumentConformiteFournisseur: (id, data) =>
+    api.patch(`/stock/documents-conformite-fournisseur/${id}/`, data),
+  deleteDocumentConformiteFournisseur: (id) =>
+    api.delete(`/stock/documents-conformite-fournisseur/${id}/`),
+  // ASTK226 — incidents qualité (NTSCM9), filtrés serveur par ?fournisseur=.
+  getIncidentsQualiteFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/incidents-qualite-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
+  createIncidentQualiteFournisseur: (data) =>
+    api.post('/stock/incidents-qualite-fournisseur/', data),
+  updateIncidentQualiteFournisseur: (id, data) =>
+    api.patch(`/stock/incidents-qualite-fournisseur/${id}/`, data),
+  // ASTK227 — accès fournisseur : compte portail (Admin) + liens à jeton
+  // (stock_modifier). Corps de la liste = TABLEAU NU (contrat
+  // fournisseur_portail_jetons.json).
+  getPortailTokensFournisseur: (id) =>
+    api.get(`/stock/fournisseurs/${id}/portail-tokens/`),
+  genererPortailTokenFournisseur: (id) =>
+    api.post(`/stock/fournisseurs/${id}/portail-tokens/`, {}),
+  revoquerPortailTokenFournisseur: (id, tokenId) =>
+    api.post(`/stock/fournisseurs/${id}/portail-tokens/${tokenId}/revoquer/`, {}),
+  provisionnerAccesFournisseur: (id) =>
+    api.post(`/stock/fournisseurs/${id}/provisionner-acces/`, {}),
+  revoquerAccesFournisseur: (id) =>
+    api.post(`/stock/fournisseurs/${id}/revoquer-acces/`, {}),
   // WIR26 — Paramètres → Achats (singleton par société). GET crée le réglage
   // si besoin (`AchatsParametres.for_company`) ; PATCH exige un `id` (route
   // détail du ViewSet), obtenu via le GET précédent.

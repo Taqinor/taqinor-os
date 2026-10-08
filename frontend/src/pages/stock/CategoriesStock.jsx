@@ -12,6 +12,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // L693/L694 — Écran de gestion des CATÉGORIES (renommer / ordre / type
 // d'équipement) et des MARQUES produit. Le free-text par société est préservé :
@@ -109,6 +111,7 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
 }
 
 export default function CategoriesStock() {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   // ARC47 — gating via le hook partagé. `hasFinePermissions` (présence de
   // codes ERP, PAS un droit) choisit la branche ; les deux hooks sont appelés
   // inconditionnellement (règle des hooks). Sémantique identique à l'origine.
@@ -262,7 +265,7 @@ export default function CategoriesStock() {
     const question = nb > 0
       ? `Catégorie utilisée par ${nb} produit${nb > 1 ? 's' : ''} — supprimer « ${c.nom} » ?`
       : `Supprimer la catégorie « ${c.nom} » ?`
-    if (!window.confirm(question)) return
+    if (!(await confirmer({ title: question, confirmLabel: 'Supprimer' }))) return
     setError(null); setInfo(null)
     try {
       await stockApi.deleteCategorie(c.id)
@@ -290,7 +293,7 @@ export default function CategoriesStock() {
       setError(`La marque « ${m.nom} » est utilisée par ${m.en_usage} produit(s) — archivez-la plutôt.`)
       return
     }
-    if (!window.confirm(`Supprimer la marque « ${m.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer la marque « ${m.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     setError(null); setInfo(null)
     try {
       await stockApi.deleteMarque(m.id)
@@ -509,6 +512,7 @@ export default function CategoriesStock() {
           </div>
         )}
       </section>
+      {dialogueConfirmation}
     </div>
   )
 }
