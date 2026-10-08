@@ -1,0 +1,248 @@
+---
+// Formulaire « Prendre rendez-vous » (YBW55) — UN composant FR + EN.
+// Champs = le registre `src/lib/rdv/champs.ts` (contrat YBW50) ; envoi par
+// `src/scripts/rendezVous.ts` vers le proxy même origine `POST /api/rendez-vous`
+// (YBW54) en JSON — jamais de donnée dans l'URL (méthode POST, aucun GET).
+// `noValidate` : les valeurs sont normalisées, jamais refusées pour leur
+// format ; chaque erreur s'affiche SOUS son champ et est nommée dans un
+// bandeau. Consentement NON pré-coché, lié à la page Confidentialité (lien
+// rendu seulement quand la page est publiable). Aucun pixel. Succès : bouton
+// WhatsApp seulement si Reda a fourni le numéro (YBWM4). Aucune promesse de
+// délai de réponse.
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { t } from '../i18n/utils';
+import { fr } from '../i18n/components/rendezVous.fr';
+import { en } from '../i18n/components/rendezVous.en';
+import { libelleProduit } from '../lib/brand';
+import { AIDE_MESSAGE, CHAMPS, POT_DE_MIEL } from '../lib/rdv/champs';
+import { lienWhatsApp, WHATSAPP } from '../lib/whatsapp';
+import LegalLinks from './LegalLinks.astro';
+
+interface Props {
+  locale?: Locale;
+  /** Préfixe des identifiants (plusieurs formulaires sur une page). */
+  id?: string;
+  /** Numéro WhatsApp — surcharge réservée aux tests (fixture). */
+  whatsapp?: string | null;
+  /** Routes juridiques complètes — surcharge réservée aux tests. */
+  completes?: readonly string[];
+}
+const { locale = DEFAULT_LOCALE, id = 'rdv', whatsapp = WHATSAPP, completes } = Astro.props;
+const dict = locale === 'en' ? en : fr;
+const wa = lienWhatsApp(whatsapp);
+
+type ChampSaisi = 'nom' | 'societe' | 'email' | 'telephone';
+const lignes: { cle: ChampSaisi; type: 'text' | 'email' | 'tel'; autocomplete: string; inputmode?: 'email' | 'tel' }[] = [
+  { cle: 'nom', type: 'text', autocomplete: 'name' },
+  { cle: 'societe', type: 'text', autocomplete: 'organization' },
+  { cle: 'email', type: 'email', autocomplete: 'email', inputmode: 'email' },
+  { cle: 'telephone', type: 'tel', autocomplete: 'tel', inputmode: 'tel' },
+];
+const libelles = {
+  nom: t(dict, 'champs.nom', locale),
+  societe: t(dict, 'champs.societe', locale),
+  email: t(dict, 'champs.email', locale),
+  telephone: t(dict, 'champs.telephone', locale),
+  produit: t(dict, 'champs.produit', locale),
+  message: t(dict, 'champs.message', locale),
+  consentement: t(dict, 'consentement', locale),
+};
+const fid = (cle: string) => `${id}-${cle}`;
+const eid = (cle: string) => `${id}-erreur-${cle}`;
+---
+<div class="rdv" data-rendez-vous-bloc>
+  <form
+    class="rdv-form"
+    method="post"
+    action="/api/rendez-vous"
+    novalidate
+    aria-label={t(dict, 'formulaire', locale)}
+    data-rendez-vous
+    data-langue={locale}
+    data-texte-envoyer={t(dict, 'envoyer', locale)}
+    data-texte-envoi={t(dict, 'envoiEnCours', locale)}
+    data-texte-reseau={t(dict, 'erreurReseau', locale)}
+    data-texte-limite={t(dict, 'erreurLimite', locale)}
+    data-libelles={JSON.stringify(libelles)}
+  >
+    <div class="rdv-bandeau" role="alert" tabindex="-1" data-bandeau hidden>
+      <p>{t(dict, 'bandeau', locale)}</p>
+      <ul data-bandeau-liste></ul>
+    </div>
+
+    {lignes.map((l) => {
+      const champ = CHAMPS[l.cle];
+      return (
+        <div class="rdv-champ" data-champ={l.cle}>
+          <label for={fid(l.cle)}>
+            {libelles[l.cle]}
+            {champ.obligatoire && <span class="rdv-requis"> ({t(dict, 'obligatoire', locale)})</span>}
+          </label>
+          <input
+            id={fid(l.cle)}
+            name={l.cle}
+            type={l.type}
+            autocomplete={l.autocomplete}
+            inputmode={l.inputmode}
+            maxlength={champ.max}
+            aria-required={champ.obligatoire ? 'true' : undefined}
+            aria-describedby={eid(l.cle)}
+          />
+          <p class="rdv-erreur" id={eid(l.cle)} data-erreur-pour={l.cle} hidden></p>
+        </div>
+      );
+    })}
+
+    <div class="rdv-champ" data-champ="produit">
+      <label for={fid('produit')}>
+        {libelles.produit}
+        <span class="rdv-requis"> ({t(dict, 'obligatoire', locale)})</span>
+      </label>
+      <select id={fid('produit')} name="produit" aria-required="true" aria-describedby={eid('produit')}>
+        <option value="">{t(dict, 'champs.produitChoisir', locale)}</option>
+        {CHAMPS.produit.valeurs.map((v) => <option value={v}>{libelleProduit(v, locale)}</option>)}
+      </select>
+      <p class="rdv-erreur" id={eid('produit')} data-erreur-pour="produit" hidden></p>
+    </div>
+
+    <div class="rdv-champ" data-champ="message">
+      <label for={fid('message')}>{libelles.message}</label>
+      <textarea id={fid('message')} name="message" rows="5" maxlength={CHAMPS.message.max} aria-describedby={`${fid('aide')} ${eid('message')}`}></textarea>
+      <p class="rdv-aide" id={fid('aide')} data-aide-message>{AIDE_MESSAGE[locale]}</p>
+      <p class="rdv-erreur" id={eid('message')} data-erreur-pour="message" hidden></p>
+    </div>
+
+    <div class="rdv-pot" aria-hidden="true">
+      <label for={fid(POT_DE_MIEL)}>{t(dict, 'potDeMiel', locale)}</label>
+      <input id={fid(POT_DE_MIEL)} name={POT_DE_MIEL} type="text" tabindex="-1" autocomplete="off" />
+    </div>
+
+    <div class="rdv-champ rdv-consentement" data-champ="consentement">
+      <input id={fid('consentement')} name="consentement" type="checkbox" value="oui" aria-required="true" aria-describedby={eid('consentement')} />
+      <label for={fid('consentement')}>{libelles.consentement}</label>
+      <LegalLinks locale={locale} pages={['confidentialite']} completes={completes} />
+      <p class="rdv-erreur" id={eid('consentement')} data-erreur-pour="consentement" hidden></p>
+    </div>
+
+    <button class="bouton rdv-envoyer" type="submit" data-envoyer>{t(dict, 'envoyer', locale)}</button>
+  </form>
+
+  <div class="rdv-succes" role="status" tabindex="-1" data-succes hidden>
+    <p class="rdv-succes-titre">{t(dict, 'succesTitre', locale)}</p>
+    <p>{t(dict, 'succesTexte', locale)}</p>
+    {wa && <a class="bouton rdv-whatsapp" href={wa} rel="noopener noreferrer" data-whatsapp>{t(dict, 'whatsapp', locale)}</a>}
+  </div>
+</div>
+
+<script>
+  import '../scripts/rendezVous';
+</script>
+
+<style>
+  /* `hidden` doit l'emporter sur les `display` ci-dessous (formulaire masqué au succès). */
+  .rdv [hidden] {
+    display: none !important;
+  }
+  .rdv-form {
+    display: grid;
+    gap: var(--espace-4);
+    max-inline-size: 40rem;
+  }
+  .rdv-champ {
+    display: grid;
+    gap: var(--espace-1);
+    min-inline-size: 0;
+  }
+  .rdv-champ input:not([type='checkbox']),
+  .rdv-champ select,
+  .rdv-champ textarea {
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-block-size: 2.75rem;
+    padding-block: var(--espace-2);
+    padding-inline: var(--espace-3);
+    font: inherit;
+    color: var(--texte);
+    background-color: var(--fond-surface);
+    border: 1px solid var(--texte-attenue);
+    border-radius: var(--rayon-1);
+  }
+  .rdv-champ [aria-invalid='true'] {
+    border-color: var(--accent-texte);
+    border-width: 2px;
+  }
+  .rdv-requis,
+  .rdv-aide {
+    color: var(--texte-attenue);
+    font-size: var(--texte-sm);
+  }
+  .rdv-aide,
+  .rdv-erreur {
+    margin: 0;
+  }
+  .rdv-erreur,
+  .rdv-bandeau {
+    color: var(--accent-texte);
+    font-weight: 600;
+  }
+  .rdv-bandeau {
+    border-inline-start: 4px solid var(--accent-graphique);
+    padding-inline-start: var(--espace-3);
+  }
+  .rdv-bandeau a {
+    display: inline-block;
+    min-block-size: 2.75rem;
+    line-height: 2.75rem;
+  }
+  .rdv-consentement {
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    column-gap: var(--espace-3);
+  }
+  .rdv-consentement input {
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    margin: 0;
+    accent-color: var(--accent-graphique);
+  }
+  .rdv-consentement > :not(input) {
+    grid-column: 2;
+  }
+  .rdv-consentement :global([data-liens-juridiques] a) {
+    display: inline-block;
+    min-block-size: 2.75rem;
+    line-height: 2.75rem;
+  }
+  .rdv-envoyer,
+  .rdv-whatsapp {
+    min-block-size: 2.75rem;
+    border: 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    justify-self: start;
+    display: inline-block;
+    text-decoration: none;
+  }
+  .rdv-envoyer[disabled] {
+    cursor: progress;
+  }
+  /* Pot de miel : motif CLIP (jamais `left: -9999px`). */
+  .rdv-pot {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rdv-pot input {
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+  }
+  .rdv-succes-titre {
+    font-size: var(--texte-lg);
+    font-weight: 600;
+  }
+</style>

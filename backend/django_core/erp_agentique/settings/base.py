@@ -1386,6 +1386,15 @@ ODOO_COMPANY_ID = os.environ.get('ODOO_COMPANY_ID', '')
 # Tenant cible des leads web (id de Company) ; à défaut, la première Company.
 WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
 
+# YBW51 — demandes de rendez-vous du site YanBow (apps/crm/webhooks.py::
+# demande_rdv_webhook). Format : ``id_cle:slug_societe:secret,…`` (secret =
+# ``secrets.token_hex(32)``). La société destinataire est CELLE du slug lié à
+# l'identifiant de clé reçu en ``X-Site-Cle`` — jamais un repli. Vide par
+# défaut = TOUT refusé (401).
+SITE_RDV_CLES = os.environ.get('SITE_RDV_CLES', '')
+# Limite PAR CLÉ (jamais par IP) : demandes acceptées par minute.
+SITE_RDV_LIMITE_PAR_MINUTE = int(os.environ.get('SITE_RDV_LIMITE_PAR_MINUTE') or 30)
+
 # URL publique par DÉFAUT de la plateforme (page proposition/suivi client). Un
 # tenant white-label pointe ses liens sur SON propre site (CompanyProfile.site_web,
 # cf. quote_engine.builder) ; SITE_URL n'est que le repli plateforme/fondateur,

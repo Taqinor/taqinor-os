@@ -23,6 +23,7 @@ automatique `scripts/check-launch-gates.mjs` (YBW85) lit cette liste ; cocher
 - [ ] CONSEIL — relecture des pages juridiques par un conseil (Maroc, France, Royaume-Uni) et décision sur le représentant UE (YBWM9)
 - [ ] EDITEUR — directeur de la publication désigné, responsable du traitement nommé, hébergeur confirmé (YBWM8)
 - [ ] JURIDIQUE — pages Mentions légales et Confidentialité complètes et routables (YBW27, YBW28)
+- [ ] RETENTION — anonymisation des prospects ARMÉE sur le serveur ERP (`CRM_LEAD_RETENTION_ACTIF`), puis `CONSERVATION_PROSPECTS.anonymisationArmee = true` et garanties de transfert (`commun.garantiesTransferts`, avis du conseil) dans `src/lib/legal.ts` — sans elles la page Confidentialité reste fermée (YBW27)
 - [ ] DOMAINE — domaine acheté et posé dans `src/lib/site.ts` (`ORIGINE_CANONIQUE`) (YBWM10)
 - [ ] DESIGN — candidat design choisi par Reda (YBWM12)
 - [ ] TEXTE-FR — texte français approuvé par Reda (YBWM13)
