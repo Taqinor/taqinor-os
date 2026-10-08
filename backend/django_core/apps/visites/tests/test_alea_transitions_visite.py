@@ -31,17 +31,24 @@ class TransitionsVisiteTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         return visite_id
 
-    def _assert_feu_vert_absent(self, visite_id):
+    def _effectuee(self):
+        return Lead.objects.get(pk=self.lead.pk).visite_effectuee
+
+    def _assert_feu_vert_absent(self, visite_id, effectuee_avant):
+        # ``Lead.visite_effectuee`` garde le sens « visite réalisée » : il est
+        # posé dès ``terminer`` (VISITE-CADENCE) — le feu vert refusé ne doit
+        # simplement pas le faire bouger.
         visite = VisiteTerrain.objects.get(pk=visite_id)
         self.assertIsNone(visite.validee_le)
         self.assertIsNone(visite.validee_par_id)
-        self.assertFalse(Lead.objects.get(pk=self.lead.pk).visite_effectuee)
+        self.assertEqual(self._effectuee(), effectuee_avant)
         self.assertIsNone(
             selectors.releve_pour_calepinage(self.lead)['visite_id'])
 
     def test_valider_brouillon_refuse(self):
         visite_id = self.creer_visite()
         avant = self._etat(visite_id)
+        self.assertFalse(self._effectuee())
         resp = self.api_bureau.post(URL.format(visite_id, 'valider'), {},
                                     format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
@@ -49,7 +56,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
                          ['La visite doit être terminée avant validation.'])
         # Persistance : rien n'a bougé.
         self.assertEqual(self._etat(visite_id), avant)
-        self._assert_feu_vert_absent(visite_id)
+        self._assert_feu_vert_absent(visite_id, effectuee_avant=False)
 
     def test_valider_incomplete_refuse(self):
         visite_id = self._terminee_complete()
@@ -62,6 +69,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
         self.assertEqual(supprime.status_code, 200, supprime.data)
         avant = self._etat(visite_id)
         self.assertEqual(avant[0], VisiteTerrain.Statut.TERMINEE)
+        effectuee_avant = self._effectuee()
 
         resp = self.api_bureau.post(URL.format(visite_id, 'valider'), {},
                                     format='json')
@@ -71,7 +79,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
         self.assertTrue(attendus)
         self.assertEqual(resp.data['manquants'], attendus)
         self.assertEqual(self._etat(visite_id), avant)
-        self._assert_feu_vert_absent(visite_id)
+        self._assert_feu_vert_absent(visite_id, effectuee_avant)
 
     def test_renvoyer_brouillon_refuse(self):
         visite_id = self.creer_visite()
