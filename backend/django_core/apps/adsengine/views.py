@@ -399,6 +399,83 @@ class GuardrailConfigViewSet(AdsengineViewSet):
     queryset = GuardrailConfig.objects.all()
     serializer_class = GuardrailConfigSerializer
 
+    def perform_create(self, serializer):
+        _assert_guardrail_fields_allowed(
+            self.request.user, None, serializer.validated_data)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        _assert_guardrail_fields_allowed(
+            self.request.user, serializer.instance, serializer.validated_data)
+        super().perform_update(serializer)
+
+
+# AACQ12 — champs de garde-fous à permission DISTINCTE de ``adsengine_manage``.
+# Les bascules ENG8 suppriment l'approbation humaine → ``adsengine_autonomy_
+# toggle`` (admin-seul) ; les plafonds bornent la dépense → ``adsengine_approve``.
+# Seul un CHANGEMENT de valeur est contrôlé : l'écran renvoie tout le formulaire,
+# un Commercial garde donc l'édition du reste (pacing, poids santé…).
+_GUARDRAIL_AUTONOMY_FIELDS = ('auto_rotate_creative', 'auto_rebalance_within_band')
+_GUARDRAIL_CEILING_FIELDS = (
+    'daily_budget_ceiling_mad', 'monthly_budget_ceiling_mad',
+    'weekly_change_pct_max')
+_MSG_RESERVE_AUTONOMIE = (
+    "Modification réservée à l'activation de l'autonomie "
+    "(permission « adsengine_autonomy_toggle »).")
+_MSG_RESERVE_APPROBATEUR = (
+    "Modification réservée à l'approbateur (permission « adsengine_approve »).")
+
+
+def _guardrail_changed(instance, validated_data, field):
+    if field not in validated_data:
+        return False
+    if instance is None:
+        default = GuardrailConfig._meta.get_field(field).get_default()
+        return validated_data[field] != default
+    return validated_data[field] != getattr(instance, field)
+
+
+def _assert_guardrail_fields_allowed(user, instance, validated_data):
+    """AACQ12 — 403 (``PermissionDenied``) si l'utilisateur CHANGE un champ
+    réservé sans la permission dédiée ; aucun effet sur les autres champs."""
+    from rest_framework.exceptions import PermissionDenied
+    # Bascule d'autonomie : seul l'ARMEMENT (→ True) est réservé ; la couper
+    # rétablit l'approbation humaine (geste de sécurité, ouvert à manage).
+    if any(_guardrail_changed(instance, validated_data, f)
+           and validated_data[f]
+           for f in _GUARDRAIL_AUTONOMY_FIELDS):
+        if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
+            raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
+    if any(_guardrail_changed(instance, validated_data, f)
+           for f in _GUARDRAIL_CEILING_FIELDS):
+        if not _user_has_or_legacy(user, 'adsengine_approve'):
+            raise PermissionDenied(_MSG_RESERVE_APPROBATEUR)
+
+
+def _rule_is_autonomous(mode, dry_run):
+    return mode == RulePolicy.Mode.AUTO and not dry_run
+
+
+def _assert_rule_autonomy_allowed(user, instance, validated_data):
+    """AACQ12 — une règle qui DEVIENT autonome (``mode='auto'`` hors
+    simulation) supprime l'approbation humaine → ``adsengine_autonomy_toggle``.
+    Proposition et simulation restent ouvertes à ``adsengine_manage``."""
+    from rest_framework.exceptions import PermissionDenied
+
+    def _default(field):
+        return RulePolicy._meta.get_field(field).get_default()
+
+    before = (_rule_is_autonomous(instance.mode, instance.dry_run)
+              if instance is not None else False)
+    mode = validated_data.get(
+        'mode', instance.mode if instance is not None else _default('mode'))
+    dry_run = validated_data.get(
+        'dry_run',
+        instance.dry_run if instance is not None else _default('dry_run'))
+    if _rule_is_autonomous(mode, dry_run) and not before:
+        if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
+            raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
+
 
 # PUB2 — Contexte MDE/coût par défaut de la file VoI. ``delta_plausible``/``p``/
 # ``cost`` ne sont PAS stockés sur le nœud (ils dépendent des volumes du test) :
@@ -1018,6 +1095,9 @@ class RulePolicyViewSet(AdsengineViewSet):
     serializer_class = RulePolicySerializer
 
     def perform_create(self, serializer):
+        # AACQ12 — une règle née autonome exige ``adsengine_autonomy_toggle``.
+        _assert_rule_autonomy_allowed(
+            self.request.user, None, serializer.validated_data)
         # ``company`` forcée par la base (TenantMixin) ; ``created_by`` posé ici.
         super().perform_create(serializer)
         if serializer.instance.created_by_id is None:
@@ -1030,6 +1110,8 @@ class RulePolicyViewSet(AdsengineViewSet):
         # le basculement dans le journal UNIFIÉ de l'ERP (``audit.recorder``,
         # ARC16 — même funnel que le reste de l'app, jamais un second système).
         old_enabled = serializer.instance.enabled
+        _assert_rule_autonomy_allowed(
+            self.request.user, serializer.instance, serializer.validated_data)
         super().perform_update(serializer)
         instance = serializer.instance
         if instance.enabled != old_enabled:
@@ -2645,6 +2727,9 @@ class GuardrailSingletonView(APIView):
                 errors = {screen_name.get(k, k): v
                           for k, v in serializer.errors.items()}
                 return Response(errors, status=400)
+            # AACQ12 — même contrôle de champs réservés que ``garde-fous/``.
+            _assert_guardrail_fields_allowed(
+                request.user, cfg, serializer.validated_data)
             serializer.save()
             cfg.refresh_from_db()
         return Response(self._payload(cfg))
