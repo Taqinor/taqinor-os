@@ -126,6 +126,74 @@ def texte_revente(langue="fr"):
     return texte(TEXTES_82_21, langue)
 
 
+# ── AMOT40 — les 6 mentions de revente servies par ``economie_ci.revente_ci``
+# (``revente.mentions``), trilingues. Le français EST la constante du moteur
+# (jamais recopiée ici) ; en/ar sont des traductions, mêmes chiffres, aucun
+# chiffre ajouté — à relire par le fondateur (patron CIQM22).
+TEXTES_NON_GARANTI = {
+    "en": ("Annual potential capped, not guaranteed: curtailment and "
+           "shutdowns without compensation (law 82-21 art. 32)."),
+    "ar": ("إمكانية سنوية مسقفة وغير مضمونة: تقليص الإنتاج والتوقفات دون "
+           "تعويض (القانون 82-21، المادة 32)."),
+}
+TEXTES_SECOND_COMPTEUR = {
+    "en": ("A second meter for the self-produced energy is required "
+           "(ANRE 04/26 art. 9)."),
+    "ar": "يُشترط عداد ثانٍ للطاقة المنتجة ذاتياً (الهيئة 04/26، المادة 9).",
+}
+TEXTES_TSS = {
+    "en": ("Any system-services charge (TSS) on the injected energy is not "
+           "deducted (ANRE 02/25 §4)."),
+    "ar": ("رسوم خدمات النظام المحتملة على الطاقة المحقونة غير مخصومة "
+           "(الهيئة 02/25، الفقرة 4)."),
+}
+TEXTES_TARIF_ARRETE = {
+    "en": ("Tariff fixed at the signature of the agreement then indexed on "
+           "the average general tariff (ANRE 04/26 art. 10) — held constant "
+           "here, no indexation assumed."),
+    "ar": ("تعريفة مثبتة عند توقيع الاتفاقية ثم مفهرسة على متوسط التعريفة "
+           "العامة (الهيئة 04/26، المادة 10) — ثابتة هنا، دون افتراض أي "
+           "فهرسة."),
+}
+
+
+def _table_revente():
+    """``{texte français servi: {fr, en, ar}}`` — les 6 mentions de
+    ``revente_ci`` (import paresseux : module pur à l'import)."""
+    from apps.ventes import economie_ci as eco
+    table = {
+        MENTION_82_21: TEXTES_82_21,
+        MENTION_ART13: TEXTES_ART13,
+    }
+    for francais, traductions in (
+            (eco.MENTION_NON_GARANTI, TEXTES_NON_GARANTI),
+            (eco.MENTION_SECOND_COMPTEUR, TEXTES_SECOND_COMPTEUR),
+            (eco.MENTION_TSS, TEXTES_TSS),
+            (eco.MENTION_TARIF_ARRETE, TEXTES_TARIF_ARRETE)):
+        table[francais] = dict(traductions, fr=francais)
+    return table
+
+
+def _sans_point(texte_):
+    return texte_.rstrip().rstrip(".")
+
+
+def mentions_revente(mentions, langue="fr"):
+    """AMOT40 — CHAQUE mention de revente servie, dans la langue du
+    document : une mention connue est traduite par la table, une mention
+    inconnue reste servie telle quelle (jamais retirée). Ponctuation finale
+    normalisée (un point)."""
+    table = {_sans_point(k): v for k, v in _table_revente().items()}
+    sortie = []
+    for m in mentions or []:
+        if not m:
+            continue
+        textes = table.get(_sans_point(str(m)))
+        brut = texte(textes, langue) if textes else str(m)
+        sortie.append(_sans_point(brut) + ".")
+    return sortie
+
+
 def _tension(data):
     etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
     tension = _dict(_dict(etude_ci.get("entrees_resolues")).get(

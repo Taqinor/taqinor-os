@@ -12,7 +12,7 @@ from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
-from ..ci.mentions import texte_revente
+from ..ci.mentions import mentions_revente, texte_revente
 from ..ci.synthese import chiffres_cles
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import langue as _langue, libelle as _libelle
@@ -222,12 +222,21 @@ def build(ctx):
     _inj = _num(chiffres_cles(_syn)["revente_mad_an"])
     injection_html = ""
     if _inj and _inj > 0:
+        # AMOT40 — CHAQUE mention servie par ``revente.mentions`` (dont
+        # « potentiel non garanti »), dans la langue du document ; la mention
+        # 82-21 seule en repli si le moteur n'en sert aucune.
+        _revente = ((_syn.get("argent") or {}).get("revente") or {}) \
+            if isinstance(_syn, dict) else {}
+        _mentions = mentions_revente(_revente.get("mentions"), _langue(d)) \
+            if isinstance(_revente, dict) else []
+        _mentions_txt = (" ".join(_mentions) if _mentions
+                         else texte_revente(_langue(d)) + ".")
         injection_html = (
             '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' '
             + L("ci_mad_an", "MAD/an") + '</b> — '
             + L("ci_surplus_injecte", "surplus injecté") + '. <span class="c2-inj-m">'
-            # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
-            + texte_revente(_langue(d)) + '.</span></div>')
+            # CIQ305 — les mentions sont LUES (une table), jamais recopiées.
+            + _mentions_txt + '</span></div>')
 
     # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
     # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.
