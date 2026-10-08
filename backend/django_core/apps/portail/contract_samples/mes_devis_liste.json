@@ -86,6 +86,56 @@
     ]
   },
   "deux_options": "ADOC110 (C-ADOC-043) — booléen ADDITIF sur chaque élément : verdict de `apps.ventes.utils.options.deux_options_declarees(devis)`, LE prédicat QJR55 que `accept_devis` relit (ventes/domain/cycle_vie.py:1376-1381). ADOC113 : SERVI par `devis_du_client_portail` (ventes/selectors_portail.py) — la clé est versée dans `exemple` (comparé clé à clé au sélecteur par test_portail_devis_mis_a_jour et test_adoc_devis_deux_options) ; `exemple_deux_options` reste l'illustration d'un devis à deux options.",
+  "conditions": "APDF1 (C-APDF-005, contrat d'abord PACT10) — deux clés ADDITIVES sur chaque élément NON brouillon : `conditions_titre` (chaîne, le titre du bloc CGV du PDF, « Conditions générales du devis » par défaut) et `conditions` (liste de textes : les puces CGV REMPLIES de CE devis — validité, acompte, matériel, solde, TVA… — ou null si rien). SOURCE UNIQUE : la même fonction que la page publique /proposition, `_conditions_publiques` (ventes/public/payload_conditions.py), qui relit les CGV GELÉES à l'envoi (QJR668) par la fonction de remplissage du moteur — jamais une copie locale du texte ; même forme de puces que `conditions` de la page publique (public_views.py). Aucun montant d'achat, aucun prix_achat. Tant qu'APDF35 (selectors_portail.devis_du_client_portail) ne les sert pas, les deux clés vivent dans `exemple_conditions` (PAS dans `exemple`, que test_portail_devis_mis_a_jour et test_adoc_devis_deux_options comparent clé à clé au sélecteur actuel — même précédent que CIQ9) ; APDF35 les verse dans `exemple` en même temps que le sélecteur qui les émet, APDF36 (PortailClientDevis.jsx) les affiche.",
+  "exemple_conditions": {
+    "results": [
+      {
+        "id": 413,
+        "reference": "DEV-202609-0012",
+        "statut": "envoye",
+        "statut_display": "Envoyé",
+        "date_creation": "2026-09-28T10:12:00+00:00",
+        "date_validite": "2026-10-28",
+        "total_ttc": "48500.00",
+        "accepte": false,
+        "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
+        "deux_options": true,
+        "options": [
+          {
+            "cle": "sans_batterie",
+            "libelle": "Sans batterie"
+          },
+          {
+            "cle": "avec_batterie",
+            "libelle": "Avec batterie"
+          }
+        ],
+        "exige_identite_entreprise": true,
+        "conditions_titre": "Conditions générales du devis",
+        "conditions": [
+          "Offre valable jusqu'au 28/10/2026",
+          "Acompte à la commande : 50%",
+          "50% à la réception du matériel"
+        ]
+      },
+      {
+        "id": 400,
+        "reference": "DEV-202609-0003",
+        "statut": "accepte",
+        "statut_display": "Accepté",
+        "date_creation": "2026-09-01T08:00:00+00:00",
+        "date_validite": "2026-10-01",
+        "total_ttc": "36000.00",
+        "accepte": true,
+        "mis_a_jour_le": null,
+        "deux_options": false,
+        "options": null,
+        "exige_identite_entreprise": false,
+        "conditions_titre": "Conditions générales du devis",
+        "conditions": null
+      }
+    ]
+  },
   "options": "ADOC110 — ADDITIF : null si mono-option (`deux_options` faux), sinon la liste fixe [{cle:'sans_batterie', libelle:'Sans batterie'}, {cle:'avec_batterie', libelle:'Avec batterie'}] (= Devis.OptionAcceptee) ; la `cle` est la valeur à renvoyer dans `option` à l'acceptation. AUCUN montant : le chiffrage par option reste le PDF /proposal (règle #4). Servi par ADOC113 avec `deux_options`.",
   "acceptation": {
     "endpoint": "POST /api/django/portail/mes-devis/{id}/accepter/",

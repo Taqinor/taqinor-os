@@ -95,20 +95,25 @@ class RegulatoryDossierApiTest(TestCase):
                 self.company.id)
 
     def test_generer_checklist_is_idempotent(self):
+        # ADEV65 — l'action HTTP ``generer-checklist`` (sans appelant de
+        # production) est retirée ; le métier est testé sur la fonction de
+        # domaine, mêmes assertions.
+        from apps.ventes.views.regulatory import generer_checklist_dossier
         dossier = RegulatoryDossier.objects.create(
             company=self.company, devis=self.devis,
             regime_8221='accord_raccordement')
-        url = f'{self.url}{dossier.id}/generer-checklist/'
-        resp1 = self.api.post(url, {}, format='json')
-        self.assertEqual(resp1.status_code, 200, resp1.content)
-        created1 = resp1.data['created']
+        created1 = generer_checklist_dossier(dossier)
         self.assertGreater(created1, 0)
         # 2e appel : rien de neuf (idempotent).
-        resp2 = self.api.post(url, {}, format='json')
-        self.assertEqual(resp2.data['created'], 0)
+        self.assertEqual(generer_checklist_dossier(dossier), 0)
         self.assertEqual(
             DossierChecklistItem.objects.filter(dossier=dossier).count(),
             created1)
+        # Pièces créées dans la société du dossier ; statut devis intact.
+        self.assertFalse(DossierChecklistItem.objects.filter(
+            dossier=dossier).exclude(company=self.company).exists())
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'brouillon')
 
     def test_checklist_item_scoped_and_step_filtered(self):
         dossier = RegulatoryDossier.objects.create(
