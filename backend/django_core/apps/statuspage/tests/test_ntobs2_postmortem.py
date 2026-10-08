@@ -26,6 +26,10 @@ class PublierPostmortemTest(TestCase):
         self.commercial = User.objects.create_user(
             'commercial', password='x', company=self.company,
             role=self.role_commercial)
+        # ASEC44 — l'incident ci-dessous est un incident PLATEFORME
+        # (company=None) : seule la plateforme (superuser) le publie.
+        self.plateforme = User.objects.create_superuser(
+            'plateforme-nt2', password='x', email='p-nt2@example.invalid')
         self.incident = IncidentPublic.objects.create(
             titre='Panne stockage', statut=IncidentPublic.Statut.RESOLVED,
             debute_le=timezone.now(), resolu_le=timezone.now(), company=None,
@@ -37,9 +41,9 @@ class PublierPostmortemTest(TestCase):
         c.force_authenticate(user)
         return c
 
-    def test_directeur_can_publish_postmortem(self):
+    def test_plateforme_can_publish_postmortem(self):
         url = f'/api/django/statuspage/incidents/{self.incident.pk}/publier-postmortem/'
-        resp = self._client(self.directeur).post(url)
+        resp = self._client(self.plateforme).post(url)
         self.assertEqual(resp.status_code, 200)
         self.incident.refresh_from_db()
         self.assertIsNotNone(self.incident.postmortem_publie_le)
@@ -53,7 +57,7 @@ class PublierPostmortemTest(TestCase):
         self.incident.statut = IncidentPublic.Statut.INVESTIGATING
         self.incident.save(update_fields=['statut'])
         url = f'/api/django/statuspage/incidents/{self.incident.pk}/publier-postmortem/'
-        resp = self._client(self.directeur).post(url)
+        resp = self._client(self.plateforme).post(url)
         self.assertEqual(resp.status_code, 400)
 
     def test_postmortem_hidden_until_published(self):
@@ -63,7 +67,7 @@ class PublierPostmortemTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['postmortem_markdown'], '')
 
-        self._client(self.directeur).post(
+        self._client(self.plateforme).post(
             f'/api/django/statuspage/incidents/{self.incident.pk}/publier-postmortem/')
         resp2 = client.get(
             f'/api/django/statuspage/public/incidents/{self.incident.pk}/')

@@ -97,6 +97,24 @@ describe('ZSTK7 — bascule Vue liste / Vue groupée', () => {
     expect(screen.getByRole('button', { name: /Vue liste/ })).toBeInTheDocument()
   })
 
+  it('affiche rebuts et ajustements', async () => {
+    // ASTK208 — le net = variation réelle (entrée 10, rebut 5 → net 5) ;
+    // rebuts et ajustements (signés) ont leurs colonnes.
+    stockApi.mouvementsAgregation.mockResolvedValue({
+      data: [
+        { libelle: 'Pa ASTK208', entrees: 10, sorties: 0, rebuts: 5, ajustements: 0, net: 5 },
+        { libelle: 'Pb ASTK208', entrees: 0, sorties: 0, rebuts: 0, ajustements: -2, net: -2 },
+      ],
+    })
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /Vue groupée/ }))
+    expect((await screen.findAllByText('Pa ASTK208'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Rebuts')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Ajustements')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('+5')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('-2')[0]).toBeInTheDocument()
+  })
+
   it('changer le regroupement recharge l\'agrégation avec le nouveau group_by', async () => {
     stockApi.mouvementsAgregation.mockResolvedValue({ data: [] })
     renderPage()

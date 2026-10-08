@@ -426,6 +426,17 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
 
     bin_source = _casier(bin_source_id)
     bin_destination = _casier(bin_destination_id)
+    if (type_mouvement == 'transfert' and bin_source is None
+            and bin_destination is None):
+        # ASTK196 — un transfert sans aucun casier ne déplace rien de
+        # traçable : refus nommant le champ (400).
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({'bin_source': [
+            'Un transfert scanné exige un casier source ou destination.']})
+    if type_mouvement in ('entree', 'transfert') and bin_destination:
+        # ASTK200 — invariant hazmat au point d'écriture du casier.
+        from .services_hazmat import exiger_casier_compatible
+        exiger_casier_compatible(company, bin_destination.id, produit)
 
     with transaction.atomic():
         verrouille = Produit.objects.select_for_update().get(id=produit.id)
@@ -439,13 +450,59 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             apres = avant - quantite
         else:  # transfert : déplacement physique, total inchangé
             apres = avant
-        return record_stock_movement(
+        mouvement = record_stock_movement(
             company=company, produit=verrouille,
             type_mouvement=getattr(
                 MouvementStock.TypeMouvement, type_mouvement.upper()),
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, created_by=user,
-            bin_source=bin_source, bin_destination=bin_destination)
+            bin_source=bin_source, bin_destination=bin_destination,
+            # ASTK196 — une SORTIE depuis le casier d'un emplacement non
+            # principal (camionnette) décrémente CET emplacement.
+            emplacement_source=(
+                _emplacement_du_casier(bin_source)
+                if type_mouvement == 'sortie' else None))
+        _ventiler_mouvement_scanne(
+            company, user, verrouille, type_mouvement, quantite,
+            bin_source, bin_destination, reference)
+        return mouvement
+
+
+def _emplacement_du_casier(casier):
+    """ASTK196 — résolution UNIQUE casier → ``EmplacementStock`` (partagée
+    par le poste scanner et ``deplacer_unite_logistique``). None = pas de
+    casier ou casier sans emplacement (dépôt principal implicite)."""
+    if casier is None:
+        return None
+    return getattr(casier, 'emplacement', None)
+
+
+def _ventiler_mouvement_scanne(company, user, produit, type_mouvement,
+                               quantite, bin_source, bin_destination,
+                               reference):
+    """ASTK196 (C-ASTK-046, WMS-8) — répercute un mouvement scanné sur la
+    ventilation par emplacement : ENTRÉE dans un casier d'emplacement non
+    principal → crédit de cet emplacement ; TRANSFERT entre casiers de deux
+    emplacements différents → ``transfer_stock`` (approbation NTWMS21 et
+    contrôles de quantité respectés — jamais un second chemin). La SORTIE
+    est imputée par ``record_stock_movement(emplacement_source=…)``."""
+    from .services import credit_emplacement_destination, transfer_stock
+
+    if type_mouvement == 'entree':
+        credit_emplacement_destination(
+            company, produit, _emplacement_du_casier(bin_destination),
+            quantite)
+    elif type_mouvement == 'transfert':
+        emp_src = _emplacement_du_casier(bin_source)
+        emp_dst = _emplacement_du_casier(bin_destination)
+        if (emp_src is not None and emp_dst is not None
+                and emp_src.id != emp_dst.id):
+            transfer_stock(
+                company=company, user=user, produit_id=produit.id,
+                source_id=emp_src.id, destination_id=emp_dst.id,
+                quantite=quantite,
+                note=f'Transfert scanné {reference} '
+                     f'({bin_source.code} → {bin_destination.code})')
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1870,8 +1927,9 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
     aucune quantité d'emplacement ne bouge, ce qui est correct.
 
     L'affectation produit↔casier de FG319 (``installations.BinAffectation``)
-    appartient à ``installations`` : elle n'est PAS écrite d'ici (frontière
-    inter-apps), le mouvement en porte la trace complète.
+    appartient à ``installations`` : elle n'est pas écrite DIRECTEMENT d'ici ;
+    ``record_stock_movement`` la tient à jour par le service installations
+    (ASTK195).
     """
     from django.db import transaction
 
@@ -1894,6 +1952,12 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
               for ligne in u.lignes.select_related('produit').all()]
     if not lignes:
         raise ValueError('Cette unité logistique est vide : rien à déplacer.')
+    # ASTK200 — invariant hazmat : chaque produit de l'unité doit être
+    # admis par le casier de destination, AVANT tout mouvement.
+    from .services_hazmat import exiger_casier_compatible
+    for ligne in lignes:
+        exiger_casier_compatible(
+            unite.company, bin_destination.id, ligne.produit)
 
     mouvements = []
     with transaction.atomic():
@@ -1916,9 +1980,12 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
                     bin_destination=bin_destination))
                 MouvementStock.objects.filter(
                     id=mouvements[-1].id).update(unite_logistique=u)
-                if (bin_source is not None
-                        and bin_source.emplacement_id
-                        != bin_destination.emplacement_id):
+                # ASTK196 — même résolution casier → emplacement que le
+                # poste scanner (`_emplacement_du_casier`, survivant unique).
+                emp_src = _emplacement_du_casier(bin_source)
+                emp_dst = _emplacement_du_casier(bin_destination)
+                if (emp_src is not None and emp_dst is not None
+                        and emp_src.id != emp_dst.id):
                     _ventiler_changement_emplacement(
                         u, produit, ligne.quantite, bin_source,
                         bin_destination, user)
@@ -2119,6 +2186,9 @@ def _reintegrer_ligne_retour(ligne, user=None):
     if ligne.etat_constate != LigneRetourClient.EtatConstate.REVENDABLE:
         return None
     produit = Produit.objects.select_for_update().get(id=ligne.produit_id)
+    # ASTK200 — invariant hazmat au point d'écriture du casier.
+    from .services_hazmat import exiger_casier_compatible
+    exiger_casier_compatible(ligne.company, ligne.bin_id, produit)
     avant = produit.quantite_stock
     mouvement = record_stock_movement(
         company=ligne.company, produit=produit,
@@ -2395,11 +2465,93 @@ def solde_portail_tiers(token_obj):
     }
 
 
-def cloturer_alerte_rappel(alerte):
-    """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert)."""
-    from django.utils import timezone
-    from .models_wms import AlerteRappel
+def _prefixe_blocage_rappel(alerte):
+    """ASTK199 — marque des blocages posés par UN rappel (motif préfixé ;
+    l'espace final empêche « RAPPEL-1 » de capter « RAPPEL-12 »). Aucune
+    colonne nouvelle : backend seul, sans migration."""
+    return f'RAPPEL-{alerte.id} '
 
+
+def blocages_du_rappel(alerte):
+    """ASTK199 — blocages qualité rattachés à un rappel (tous statuts)."""
+    from .models_wms import BlocageQualite
+
+    if alerte is None or not alerte.pk:
+        return BlocageQualite.objects.none()
+    return (BlocageQualite.objects
+            .filter(company_id=alerte.company_id, produit_id=alerte.produit_id,
+                    motif__startswith=_prefixe_blocage_rappel(alerte))
+            .order_by('id'))
+
+
+def quantite_bloquee_par_lot(company, produit):
+    """ASTK199 — ``{lot_id: quantité en quarantaine active}`` d'un produit."""
+    from .models_wms import BlocageQualite
+
+    carte = {}
+    for lot_id, quantite in (BlocageQualite.objects
+                             .filter(company=company, produit=produit,
+                                     statut=BlocageQualite.Statut
+                                     .EN_QUARANTAINE,
+                                     lot__isnull=False)
+                             .values_list('lot_id', 'quantite')):
+        carte[lot_id] = carte.get(lot_id, 0) + (quantite or 0)
+    return carte
+
+
+def appliquer_quarantaine_rappel(alerte, user=None):
+    """ASTK199 (C-ASTK-048, WMS-11) — un rappel MET EN QUARANTAINE le stock
+    restant du lot rappelé (ou de chaque lot du produit, ou du stock du
+    produit non suivi par lot), par ``mettre_en_quarantaine`` — la MÊME
+    fonction que la quarantaine de réception. Ne bloque jamais deux fois une
+    quantité déjà en quarantaine. Renvoie les blocages créés."""
+    from .models import LotEntrepot
+
+    company = alerte.company
+    produit = alerte.produit
+    if produit.company_id != alerte.company_id:
+        return []
+    motif = f'{_prefixe_blocage_rappel(alerte)}— {alerte.motif}'.strip()
+    if alerte.lot_id:
+        if alerte.lot.company_id != alerte.company_id:
+            return []
+        lots = [alerte.lot]
+    else:
+        lots = list(LotEntrepot.objects
+                    .filter(company=company, produit=produit,
+                            quantite_restante__gt=0)
+                    .order_by('id'))
+    crees = []
+    if lots:
+        deja = quantite_bloquee_par_lot(company, produit)
+        for lot in lots:
+            quantite = (lot.quantite_restante or 0) - deja.get(lot.id, 0)
+            if quantite > 0:
+                crees.append(mettre_en_quarantaine(
+                    company=company, produit=produit, quantite=quantite,
+                    user=user, lot=lot, motif=motif))
+        return crees
+    # Produit non suivi par lot : tout son stock encore disponible.
+    quantite = ((produit.quantite_stock or 0)
+                - quantite_en_quarantaine(company, produit=produit))
+    if quantite > 0:
+        crees.append(mettre_en_quarantaine(
+            company=company, produit=produit, quantite=quantite, user=user,
+            motif=motif))
+    return crees
+
+
+def cloturer_alerte_rappel(alerte, user=None):
+    """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert).
+
+    ASTK199 — la clôture LÈVE les blocages posés par ce rappel
+    (``lever_quarantaine``, idempotent)."""
+    from django.utils import timezone
+    from .models_wms import AlerteRappel, BlocageQualite
+
+    for blocage in blocages_du_rappel(alerte).filter(
+            statut=BlocageQualite.Statut.EN_QUARANTAINE):
+        lever_quarantaine(blocage=blocage, user=user)
     if alerte.statut == AlerteRappel.Statut.CLOS:
         return alerte
     alerte.statut = AlerteRappel.Statut.CLOS

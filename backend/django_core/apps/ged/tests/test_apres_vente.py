@@ -168,7 +168,8 @@ class ClasserApresVenteEndpointTests(ApresVenteBase):
             'nom': 'Rapport SAV',
             'source_type': 'sav.ticket',
             'source_id': 55,
-            'file_key': 'attachments/sav-endpoint.pdf',
+            # ASEC37 — clé sous le préfixe de la société appelante.
+            'file_key': f'attachments/{self.co_a.pk}/sav-endpoint.pdf',
         }, format='json')
         self.assertEqual(resp.status_code, 201, getattr(resp, 'data', resp))
         doc = Document.objects.get(pk=resp.data['id'])
@@ -182,7 +183,8 @@ class ClasserApresVenteEndpointTests(ApresVenteBase):
             'nom': 'Rapport SAV',
             'source_type': 'sav.ticket',
             'source_id': 77,
-            'file_key': 'attachments/x.pdf',
+            # ASEC37 — clé sous le préfixe de la société appelante.
+            'file_key': f'attachments/{self.co_a.pk}/x.pdf',
         }
         r1 = api.post(self.URL, body, format='json')
         r2 = api.post(self.URL, body, format='json')

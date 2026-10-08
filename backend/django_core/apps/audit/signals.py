@@ -80,7 +80,10 @@ def _diff_from_snapshot(instance, old_values):
             'old': _truncate_diff_value(old),
             'new': _truncate_diff_value(new),
         })
-    return changes or None
+    # ASEC8 — jamais la valeur d'un champ secret (mot de passe, TOTP, champ
+    # chiffré) : le changement reste tracé, caviardé.
+    from .redaction import caviarder
+    return caviarder(type(instance), changes) or None
 
 
 def _on_pre_save(sender, instance, **kwargs):

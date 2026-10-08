@@ -116,7 +116,11 @@ class ApiUsagePlanView(APIView):
     n'existe pas encore) le plan de LA société de l'utilisateur connecté.
     ``PATCH`` met à jour ses quotas/palier — la société est TOUJOURS forcée
     depuis ``request.user.company``, jamais lue du corps de requête (aucune
-    fuite/écriture inter-société possible)."""
+    fuite/écriture inter-société possible).
+
+    ASEC44 — le plan (palier, quotas) est une donnée de la PLATEFORME :
+    l'admin du tenant le LIT, seul un superuser plateforme le modifie
+    (``PATCH`` → 403 sinon, rien n'est écrit)."""
     permission_classes = [IsAdminOrResponsableTier]
 
     def get(self, request):
@@ -130,6 +134,11 @@ class ApiUsagePlanView(APIView):
         return Response(data)
 
     def patch(self, request):
+        if not request.user.is_superuser:
+            return Response(
+                {'detail': "Le plan d'API est géré par la plateforme : "
+                           'lecture seule pour la société.'},
+                status=status.HTTP_403_FORBIDDEN)
         plan = plan_pour_societe(request.user.company)
         serializer = ApiUsagePlanSerializer(
             plan, data=request.data, partial=True)

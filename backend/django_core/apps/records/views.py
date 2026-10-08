@@ -382,6 +382,13 @@ class ActivityViewSet(viewsets.ModelViewSet):
         chained = None
         suggestion = None
         first_close = not act.done
+        # ASEC6 — AVANT toute écriture : l'enchaînement et la suite demandée ne
+        # désignent qu'un type de la société de l'activité (400 sinon, rien
+        # n'est modifié, aucun libellé étranger renvoyé ; id inexistant = 400).
+        refus = _refus_types_hors_societe(act, request.data.get('next'),
+                                          first_close)
+        if refus is not None:
+            return refus
         if first_close:
             act.done = True
             act.done_at = timezone.now()
@@ -621,6 +628,29 @@ def _log_done_to_chatter(activity, user):
                 sav_activity.log_note(target, user, body)
     except Exception:
         pass
+
+
+def _refus_types_hors_societe(act, nxt, first_close):
+    """ASEC6 — 400 si le type suivant de l'enchaînement (à la première
+    clôture) ou ``next.activity_type`` n'appartient pas à la société de
+    l'activité (ou n'existe pas). None sinon."""
+    message = "Type d'activité introuvable."
+    atype = act.activity_type
+    if first_close and atype is not None and atype.type_suivant_id \
+            and atype.mode_enchainement != ActivityType.ModeEnchainement.AUCUN \
+            and atype.type_suivant.company_id != act.company_id:
+        return Response({'activity_type': [message]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if isinstance(nxt, dict) and nxt.get('activity_type'):
+        try:
+            ok = ActivityType.objects.filter(
+                pk=nxt['activity_type'], company_id=act.company_id).exists()
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            return Response({'next': {'activity_type': [message]}},
+                            status=status.HTTP_400_BAD_REQUEST)
+    return None
 
 
 def _appliquer_enchainement(activity, user):

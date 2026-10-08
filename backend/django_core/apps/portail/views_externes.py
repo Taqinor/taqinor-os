@@ -145,31 +145,28 @@ class MesBcfPortailFournisseurViewSet(viewsets.ViewSet):
     def confirmer(self, request, pk=None):
         """Confirme le BCF et propose une date d'arrivée.
 
-        Les erreurs NOMMENT le champ fautif (``date_confirmee``) : un
+        Les erreurs NOMMENT le champ fautif (``date_confirmee_fournisseur``,
+        ``numero_confirmation_fournisseur``) : un
         « Non enregistré » générique laisserait le fournisseur deviner.
         """
-        from django.utils.dateparse import parse_date
+        from apps.stock.services import (
+            ConfirmationBcfInvalide, ConfirmationBcfRefusee,
+            confirmer_bcf_compte_fournisseur,
+        )
 
-        from apps.stock.services import confirmer_bcf_compte_fournisseur
-
-        brute = str(request.data.get('date_confirmee') or '').strip()
-        if not brute:
-            return Response(
-                {'date_confirmee': "La date d'arrivée que vous confirmez est "
-                                   'obligatoire.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        date_confirmee = parse_date(brute)
-        if date_confirmee is None:
-            return Response(
-                {'date_confirmee': "Date invalide : utilisez le format "
-                                   'AAAA-MM-JJ.'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        numero = str(request.data.get('numero_confirmation') or '')[:100]
+        # ASTK182 — plus aucun parse local : la date et le numéro bruts vont
+        # au CŒUR stock (une seule validation pour les deux portes, ASTK181),
+        # qui nomme le champ fautif (400) ou refuse le statut (409).
         try:
             bc = confirmer_bcf_compte_fournisseur(
                 request.user.company, portal_scope_id(request.user), pk,
-                date_confirmee=date_confirmee, numero_confirmation=numero)
+                date_confirmee=request.data.get('date_confirmee'),
+                numero_confirmation=request.data.get('numero_confirmation'))
+        except ConfirmationBcfInvalide as exc:
+            return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
+        except ConfirmationBcfRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except ValueError:
             # Le BCF d'un autre fournisseur est INTROUVABLE, jamais « trouvé
             # puis refusé » : la réponse ne dit pas qu'il existe ailleurs.

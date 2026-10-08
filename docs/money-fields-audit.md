@@ -16,9 +16,9 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/achats/models.py:672` | LigneFactureFournisseur.taux_tva | 5 | 2 |
 | `backend/django_core/apps/achats/models.py:723` | PaiementFournisseur.montant | 14 | 2 |
 | `backend/django_core/apps/achats/models.py:733` | PaiementFournisseur.montant_ras_tva | 14 | 2 |
-| `backend/django_core/apps/adminops/models.py:321` | FactureLicence.montant_ht | 12 | 2 |
-| `backend/django_core/apps/adminops/models.py:323` | FactureLicence.tva | 12 | 2 |
-| `backend/django_core/apps/adminops/models.py:325` | FactureLicence.montant_ttc | 12 | 2 |
+| `backend/django_core/apps/adminops/models.py:322` | FactureLicence.montant_ht | 12 | 2 |
+| `backend/django_core/apps/adminops/models.py:324` | FactureLicence.tva | 12 | 2 |
+| `backend/django_core/apps/adminops/models.py:326` | FactureLicence.montant_ttc | 12 | 2 |
 | `backend/django_core/apps/crm/models.py:1178` | Lead.montant_estime | 12 | 2 |
 | `backend/django_core/apps/crm/models.py:1441` | Lead.carburant_prix_unitaire_mad | 8 | 2 |
 | `backend/django_core/apps/crm/models.py:3089` | ConcurrentPerte.concurrent_prix | 12 | 2 |
@@ -98,7 +98,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/stock/models_incident_fournisseur.py:57` | IncidentQualiteFournisseur.cout_impact_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models_negoce_params.py:44` | ParametresNegoce.cout_rupture_jour_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models_rfa.py:35` | AccordRFAFournisseur.montant_fixe | 14 | 2 |
-| `backend/django_core/apps/stock/models_wms.py:497` | ExpeditionTransporteur.cout_reel | 12 | 2 |
+| `backend/django_core/apps/stock/models_wms.py:507` | ExpeditionTransporteur.cout_reel | 12 | 2 |
 | `backend/django_core/apps/ventes/models.py:80` | Devis.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:83` | Devis.remise_globale | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:158` | Devis.acompte_pct | 5 | 2 |

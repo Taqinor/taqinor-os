@@ -9,6 +9,7 @@ import {
 import { Card, CardContent, Input, Button, IconButton, Switch } from '../../ui'
 import { SectionTitle, ReferentielBlock } from './peComponents'
 import NomenclaturesCodeBarresSection from './NomenclaturesCodeBarresSection'
+import { toastError } from '../../lib/toast'
 
 export default function StockSection({
   categories, fournisseurs, dispatch,
@@ -86,7 +87,10 @@ export default function StockSection({
           items={categories}
           onCreate={nom => dispatch(createCategorie({ nom })).unwrap()}
           onUpdate={(id, nom) => dispatch(updateCategorie({ id, data: { nom } })).unwrap()}
-          onDelete={id => dispatch(deleteCategorie(id)).unwrap()}
+          // ASTK83 — refus serveur (catégorie utilisée par N produits)
+          // affiché tel quel, jamais avalé.
+          onDelete={id => dispatch(deleteCategorie(id)).unwrap()
+            .catch((err) => toastError(err?.detail ?? 'Suppression de la catégorie impossible.'))}
         />
         <ReferentielBlock
           title="Fournisseurs"

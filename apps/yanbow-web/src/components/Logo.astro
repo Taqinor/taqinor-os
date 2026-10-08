@@ -1,0 +1,81 @@
+---
+// Logo (YBW36) — SVG en ligne tiré des variantes DÉRIVÉES (src/brand/derived/,
+// scripts/derive-logo-variants.mjs), jamais redessiné.
+//  - variante : `nom` (≥ 180 px de large), `symbole` (bascule AUTOMATIQUE sur
+//    la coupe small sous 64 px, et sur la coupe favicon à 32 px et moins),
+//    `slogan` (≥ 420 px, jamais dans l'en-tête — à l'appelant de le respecter).
+//  - fond : `clair` (fichiers colour) ou `sombre` (fichiers reversed, rectangle
+//    encre retiré) ; `mono` pour la version une couleur.
+//  - nom accessible = la marque ; avec le slogan, le slogan est du TEXTE RÉEL
+//    dans la langue de la page (visuellement masqué, lu et traduisible).
+//  - couleurs pilotables par `--logo-ink` / `--logo-arrow`.
+// Une taille sous le minimum lève une erreur au build (jamais un logo illisible).
+import { DEFAULT_LOCALE, LANG_HTML, type Locale } from '../i18n/config';
+import { MARQUE, SLOGAN } from '../lib/brand';
+
+type Variante = 'nom' | 'symbole' | 'slogan';
+interface Props {
+  variante?: Variante;
+  /** Largeur rendue en px (nom, slogan) ou côté du symbole en px. */
+  taille: number;
+  fond?: 'clair' | 'sombre';
+  mono?: boolean;
+  locale?: Locale;
+  class?: string;
+}
+
+const MINIMA: Record<Variante, number> = { nom: 180, symbole: 16, slogan: 420 };
+
+const { variante = 'nom', taille, fond = 'clair', mono = false, locale = DEFAULT_LOCALE, class: classe } = Astro.props;
+if (!(taille >= MINIMA[variante])) {
+  throw new Error(`Logo : la variante « ${variante} » exige au moins ${MINIMA[variante]} px (reçu ${taille}).`);
+}
+
+// Fichiers dérivés indexés par leur suffixe (famille-couleur), sans nommer la marque ici.
+const fichiers = import.meta.glob('../brand/derived/*.svg', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+const parSuffixe = Object.fromEntries(
+  Object.entries(fichiers).map(([chemin, svg]) => [chemin.replace(/^.*\/[a-z]+-/, '').replace(/\.svg$/, ''), svg]),
+);
+
+let famille: string;
+if (variante === 'nom') famille = 'wordmark';
+else if (variante === 'slogan') famille = 'tagline';
+else famille = taille <= 32 ? 'favicon16' : taille < 64 ? 'symbol-small' : 'symbol';
+
+// La coupe favicon n'existe qu'en colour/reversed ; la coupe small n'a pas de mono-reversed.
+let couleur = mono ? (fond === 'sombre' ? 'mono-reversed' : 'mono') : fond === 'sombre' ? 'reversed' : 'colour';
+if (famille === 'favicon16' && couleur.startsWith('mono')) couleur = fond === 'sombre' ? 'reversed' : 'colour';
+if (famille === 'symbol-small' && couleur === 'mono-reversed') couleur = 'reversed';
+
+const cle = `${famille}-${couleur}`;
+const source = parSuffixe[cle];
+if (!source) throw new Error(`Logo : variante dérivée introuvable (${cle}) — lancer node scripts/derive-logo-variants.mjs`);
+
+const vb = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(source);
+const ratio = vb ? Number(vb[4]) / Number(vb[3]) : 1;
+const [largeur, hauteur] = variante === 'symbole' ? [Math.round(taille / ratio), taille] : [taille, Math.round(taille * ratio)];
+const svg = source.replace(
+  '<svg ',
+  `<svg width="${largeur}" height="${hauteur}" aria-hidden="true" focusable="false" data-logo-cle="${cle}" `,
+);
+const texte = variante === 'slogan' ? `${MARQUE} — ${SLOGAN[locale]}` : MARQUE;
+---
+<span class:list={['logo', classe]} data-logo={variante}>
+  <Fragment set:html={svg} />
+  <span class="logo-texte" lang={variante === 'slogan' ? LANG_HTML[locale] : undefined}>{texte}</span>
+</span>
+
+<style>
+  .logo {
+    display: inline-flex;
+    line-height: 0;
+  }
+  .logo-texte {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+</style>

@@ -70,19 +70,22 @@ class Ntdst30ParametresTests(Ntdst30Base):
         self.assertEqual(ParametresNegoce.objects.filter(
             company=self.company).count(), 1)
 
-    def test_changer_le_seuil_rfa_a_90_deplace_le_seuil_sans_redeploiement(
-            self):
+    def test_changer_lhorizon_atp_sans_redeploiement(self):
+        # ASTK201 : `seuil_alerte_rfa_pct` n'a aucun lecteur — il n'est plus
+        # servi ; l'horizon ATP (lu par selectors_negoce) l'est.
+        res = auth(self.admin).patch(
+            URL, {'atp_horizon_jours': 90}, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['atp_horizon_jours'], 90)
+        self.assertEqual(
+            ParametresNegoce.get(self.company).atp_horizon_jours, 90)
+
+    def test_un_reglage_non_branche_est_refuse(self):
         res = auth(self.admin).patch(
             URL, {'seuil_alerte_rfa_pct': 90}, format='json')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data['seuil_alerte_rfa_pct'], 90)
-        self.assertEqual(
-            ParametresNegoce.get(self.company).seuil_alerte_rfa_pct, 90)
-
-    def test_un_seuil_superieur_a_100_est_refuse(self):
-        res = auth(self.admin).patch(
-            URL, {'seuil_alerte_rfa_pct': 150}, format='json')
         self.assertEqual(res.status_code, 400)
+        self.assertEqual(
+            ParametresNegoce.get(self.company).seuil_alerte_rfa_pct, 80)
 
     def test_la_societe_nest_jamais_lue_du_corps(self):
         auth(self.admin).patch(

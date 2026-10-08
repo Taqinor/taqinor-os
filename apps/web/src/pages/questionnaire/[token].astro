@@ -1379,6 +1379,7 @@ const estIndustriel =
   import {
     EQUIPEMENT_KEYS,
     buildQuestionnairePostBody,
+    prefillApresEnvoi,
     isEmptyPostBody,
     isValidPhotoDataUrl,
     isPhotoSection,
@@ -1926,6 +1927,8 @@ const estIndustriel =
         if (!result.ok) {
           return { ok: false, envoye: false, detail: result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
         }
+        // ALEA4 — ce qui vient d'être envoyé devient le « vu » du client.
+        init.prefill = prefillApresEnvoi(init.prefill, body.reponses);
         return { ok: true, envoye: true };
       } catch {
         return { ok: false, envoye: false, detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' };

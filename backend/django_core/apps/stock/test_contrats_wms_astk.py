@@ -496,6 +496,8 @@ class ContratWmsQuaisTests(WmsBase):
             company=self.company, fournisseur=self.fournisseur)
         self.anonyme = APIClient()
         self.demain = timezone.localdate() + datetime.timedelta(days=1)
+        while self.demain.weekday() >= 5:  # ASTK191 : jours ouvrés seulement
+            self.demain += datetime.timedelta(days=1)
 
     def _rdv(self, heure=9):
         from apps.stock.models_wms import RendezVousTransporteur
@@ -545,10 +547,12 @@ class ContratWmsQuaisTests(WmsBase):
         self.assertEqual(rep.status_code, 200, rep.content)
         corps = rep.json()
         self.assertMemesCles(corps, contrat['exemple'], 'liste')
-        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+        # ASTK192 — les clés NOUVELLES (fournisseur, fournisseur_nom,
+        # bon_commande, bon_commande_reference) sont désormais servies : la
+        # réponse réelle = le sur-ensemble déclaré par le contrat.
+        self.assertMemesCles(corps['results'][0],
+                             contrat['exemple_nouveau_astk192'],
                              'rendez-vous')
-        # Les clés NOUVELLES (ASTK192) sont un sur-ensemble déclaré : elles
-        # ne figurent pas encore dans la réponse réelle.
         nouvelles = set(contrat['exemple_nouveau_astk192']) - set(
             contrat['exemple_element'])
         self.assertEqual(nouvelles, set(contrat['cles_nouvelles_astk192']))
@@ -812,13 +816,11 @@ class ContratNegoceTests(WmsBase):
         rep = self.api.patch(url, {'atp_horizon_jours': 15}, format='json')
         self.assertEqual(rep.status_code, 200, rep.content)
         self.assertMemesCles(rep.json(), contrat['exemple'], 'PATCH')
-        rep = self.api.patch(url, {'seuil_alerte_rfa_pct': 150},
+        # ASTK201 : un réglage sans lecteur → 400 « Réglage non branché. ».
+        rep = self.api.patch(url, {'seuil_alerte_rfa_pct': 50},
                              format='json')
         self.assertEqual(rep.status_code, 400)
         self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
-        # Les DEUX réglages lus (ASTK201) existent déjà dans la forme réelle.
-        self.assertTrue(set(contrat['exemple_nouveau_astk201'])
-                        <= set(contrat['exemple']))
 
     def test_portails_tiers_et_solde_public(self):
         from apps.stock.models import (

@@ -1,0 +1,36 @@
+/** Dictionnaire de la page Mentions légales (YBW28). Libellés seulement : les valeurs viennent de `src/lib/legal.ts`. */
+export const fr = {
+  titre: 'Mentions légales',
+  description: 'Mentions légales du site : éditeur, société au Maroc, contact, publication et hébergement.',
+  h1: 'Mentions légales',
+  langue: 'Langue',
+  editeur: {
+    titre: 'Éditeur du site',
+    nom: 'Dénomination',
+    partie: 'Immatriculée en',
+    numero: "Numéro d'immatriculation",
+    siege: 'Siège social',
+    tva: 'Numéro de TVA',
+  },
+  maroc: {
+    titre: 'Société au Maroc',
+    denomination: 'Dénomination',
+    forme: 'Forme',
+    capital: 'Capital social',
+    siege: 'Siège social',
+    rc: 'Registre du commerce',
+    ice: 'Identifiant commun de l’entreprise (ICE)',
+    if: 'Identifiant fiscal',
+    gerant: 'Gérant',
+  },
+  commun: {
+    titre: 'Contact, publication et hébergement',
+    email: 'E-mail',
+    telephone: 'Téléphone',
+    directeurPublication: 'Directeur de la publication',
+    hebergeur: 'Hébergeur',
+    cndp: 'Récépissés de déclaration CNDP',
+    representantUe: "Représentant dans l'Union européenne",
+  },
+  foi: 'La version française de cette page fait foi.',
+} as const;

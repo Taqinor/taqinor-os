@@ -11,7 +11,8 @@ const entrepotCasiersApi = {
   deleteSeuil: (id) => api.delete(`/stock/seuils-reappro-casier/${id}/`),
   // Tâches de réappro interne.
   listTaches: (params) => api.get('/stock/taches-reappro-interne/', { params }),
-  // « Exécuter » : action serveur NOUVELLE (ASTK213) — non appelée tant qu'elle n'existe pas.
+  // « Exécuter » (ASTK213) : transfert casier source -> cible, idempotent (2e appel = 409).
+  executerTache: (id) => api.post(`/stock/taches-reappro-interne/${id}/executer/`),
   // Casiers sous seuil (GET = lecture ; POST = génère les tâches).
   casiersSousSeuil: () => api.get('/stock/casiers-a-reapprovisionner/'),
   genererTaches: () => api.post('/stock/casiers-a-reapprovisionner/'),

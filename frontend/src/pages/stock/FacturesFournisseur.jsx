@@ -5,6 +5,7 @@ import { ReceiptText, Plus, FileText, AlertTriangle, ShieldCheck,
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { usePermissionAchats, useVoitPrixAchat } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, StatusPill, DataTable, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -207,7 +208,14 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
 // est un PROP (jamais un hook Redux ici) : les tests existants (wr4ReceptionFacture)
 // montent ce composant sans Provider — le calcul du rôle reste à la charge du
 // parent (`FacturesFournisseur`), qui a bien le store.
-export function FactureDetail({ facture: factureProp, onClose, onSaved, canResoudre = false }) {
+// ASTK15 — `voitPrix` (PROP, même raison que `canResoudre`) : sans
+// `prix_achat_voir`, les montants absents s'affichent « — » et le PDF interne
+// (montants d'achat) n'est pas proposé.
+// ASTK21 — `peutPayer` (PROP, idem) : régler, résoudre une exception =
+// « payer » (achats_payer) côté serveur.
+export function FactureDetail({
+  facture: factureProp, onClose, onSaved, canResoudre = false, voitPrix = true, peutPayer = true,
+}) {
   const [facture, setFacture] = useState(factureProp)
   const [montant, setMontant] = useState('')
   const [datePaiement, setDatePaiement] = useState('')
@@ -289,11 +297,16 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
+        {/* ASTK105 (C-ASTK-035) — la chaîne boucle à l'écran : TTC − payé −
+            acomptes imputés − avoirs imputés = solde dû (même chaîne que le
+            PDF interne, clés servies par le serializer). */}
+        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm sm:grid-cols-5">
           <div><span className="text-muted-foreground">Total TTC</span><div className="font-semibold tabular-nums">{fmtMad(facture.montant_ttc)}</div></div>
           <div><span className="text-muted-foreground">Déjà payé</span><div className="font-semibold tabular-nums">{fmtMad(facture.total_paye)}</div></div>
+          <div><span className="text-muted-foreground">Acomptes imputés</span><div className="font-semibold tabular-nums">{fmtMad(facture.total_acomptes_imputes)}</div></div>
+          <div><span className="text-muted-foreground">Avoirs imputés</span><div className="font-semibold tabular-nums">{fmtMad(facture.total_avoirs_imputes)}</div></div>
           <div><span className="text-muted-foreground">Solde dû</span><div className="font-bold tabular-nums text-warning">{fmtMad(facture.solde_du)}</div></div>
-          <div className="sm:col-span-3 text-xs text-muted-foreground">
+          <div className="sm:col-span-5 text-xs text-muted-foreground">
             Échéance : {fmtDateFR(facture.date_echeance)}
             {facture.date_facture ? ` · Facture du ${fmtDateFR(facture.date_facture)}` : ''}
           </div>
@@ -313,7 +326,7 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
             <p className="text-xs text-muted-foreground">
               Le paiement est bloqué tant que cette exception n&apos;est pas résolue.
             </p>
-            {canResoudre && (
+            {canResoudre && peutPayer && (
               resolving ? (
                 <div className="flex flex-col gap-2">
                   <Textarea rows={2} value={commentaire} onChange={(e) => setCommentaire(e.target.value)}
@@ -398,7 +411,7 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
         )}
 
         {/* Saisie d'un nouveau paiement (si solde restant) */}
-        {solde > 0 && (
+        {peutPayer && solde > 0 && (
           <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <span className="text-sm font-semibold">Enregistrer un paiement</span>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -440,9 +453,11 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
         )}
 
         <DialogFooter className="flex-wrap">
-          <Button type="button" variant="outline" onClick={telechargerPdf}>
-            <FileText /> PDF (interne)
-          </Button>
+          {voitPrix && (
+            <Button type="button" variant="outline" onClick={telechargerPdf}>
+              <FileText /> PDF (interne)
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
@@ -455,6 +470,11 @@ export default function FacturesFournisseur() {
   // (même garde serveur que `resoudre_exception`). Calculé ICI (store
   // toujours présent dans l'app réelle) et transmis en PROP à FactureDetail.
   const canResoudre = useIsAdminOrResponsable()
+  // ASTK15 (D-ASTK-2) — files « comptes à payer » / « en exception » : leur
+  // objet EST un montant d'achat (403 sans `prix_achat_voir`) — non proposées.
+  const voitPrix = useVoitPrixAchat()
+  // ASTK21 (D-ASTK-3) — saisir/régler une facture fournisseur = « payer ».
+  const peutPayer = usePermissionAchats('achats_payer')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -560,14 +580,15 @@ export default function FacturesFournisseur() {
         icon={ReceiptText}
         title="Factures fournisseur"
         subtitle={`${items.length} facture(s)${aPayerSeul && totalDu != null ? ` — ${fmtMad(totalDu)} à payer` : ''}`}
-        actions={(
+        actions={peutPayer ? (
           <Button onClick={() => setCreating(true)}>
             <Plus /> Nouvelle facture
           </Button>
-        )}
+        ) : null}
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        {voitPrix && (<>
         <Button variant={aPayerSeul ? 'secondary' : 'outline'} size="sm"
                 onClick={() => { setEnExceptionSeul(false); setAPayerSeul((v) => !v) }}
                 title="N'afficher que les factures non soldées">
@@ -579,6 +600,7 @@ export default function FacturesFournisseur() {
                 title="N'afficher que les factures en exception de rapprochement 3 voies">
           <AlertTriangle className="size-3.5" /> En exception{enExceptionSeul ? ' (actif)' : ''}
         </Button>
+        </>)}
         {(aPayerSeul || enExceptionSeul) && (
           <Button variant="ghost" size="sm" onClick={() => { setAPayerSeul(false); setEnExceptionSeul(false) }}>
             Toutes les factures
@@ -644,7 +666,9 @@ export default function FacturesFournisseur() {
         onRowClick={openFacture}
         emptyTitle={aPayerSeul ? 'Aucune facture à payer' : 'Aucune facture fournisseur'}
         emptyDescription="Enregistrez une facture reçue d'un fournisseur avec « Nouvelle facture »."
-        emptyAction={<Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle facture</Button>}
+        emptyAction={peutPayer
+          ? <Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" /> Nouvelle facture</Button>
+          : undefined}
         aria-label="Factures fournisseur"
       />
 
@@ -653,7 +677,7 @@ export default function FacturesFournisseur() {
                          onClose={() => setCreating(false)} onSaved={onSaved} />
       )}
       {selected && (
-        <FactureDetail facture={selected} canResoudre={canResoudre}
+        <FactureDetail facture={selected} canResoudre={canResoudre} voitPrix={voitPrix} peutPayer={peutPayer}
                        onClose={() => setSelected(null)} onSaved={onSaved} />
       )}
     </div>

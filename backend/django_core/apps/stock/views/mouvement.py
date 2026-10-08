@@ -124,9 +124,11 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
 
         if request.query_params.get('export') == 'xlsx':
             from apps.records.xlsx import build_xlsx_response
-            headers = ['Groupe', 'Entrées', 'Sorties', 'Net']
+            headers = ['Groupe', 'Entrées', 'Sorties', 'Rebuts',
+                       'Ajustements', 'Net']
             xlsx_rows = [
-                [r['libelle'], r['entrees'], r['sorties'], r['net']]
+                [r['libelle'], r['entrees'], r['sorties'], r['rebuts'],
+                 r['ajustements'], r['net']]
                 for r in rows]
             return build_xlsx_response(
                 'mouvements-agregation.xlsx', headers, xlsx_rows,

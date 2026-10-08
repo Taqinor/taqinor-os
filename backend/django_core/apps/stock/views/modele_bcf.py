@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import (
@@ -34,7 +34,10 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # ASTK17 (D-ASTK-3) — créer/modifier/supprimer un modèle et `generer`
+        # un BCF depuis lui = « commander » : code fin ``achats_commander``
+        # (repli légacy responsable/admin pour les comptes sans rôle fin).
+        return [HasPermissionOrLegacy('achats_commander')()]
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

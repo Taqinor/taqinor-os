@@ -1,0 +1,69 @@
+{
+  "endpoint": "POST /api/django/crm/webhooks/demande-rdv/",
+  "forme_serveur": "partielle",
+  "pourquoi": "YBW50 (PACT10, CONTRAT D'ABORD) — la demande de rendez-vous du site public YanBow (`apps/yanbow-web`, proxy meme origine `POST /api/rendez-vous`, YBW54) relayee SIGNEE par le Worker vers l'ERP (recepteur dedie YBW51). Ce fichier est la SEULE source partagee entre les deux moities : le registre des champs du site (`apps/yanbow-web/src/lib/rdv/champs.ts` + jumeau `apps/yanbow-web/src/contract_samples/demande_rdv_site.json`, YBW53) et la vue Django (YBW51). Pose SEUL, AUCUNE vue : la route n'existe pas encore, la garde de forme s'abstient et le NOMME (ECHANTILLONS_POSES_AVANT_LEUR_VUE).",
+  "notes": {
+    "exemple": "`exemple` = l'objet REPONSE du recepteur : `statut` vaut `recu` (lead cree) ou `deja_recu` (rejeu de la meme `idempotency_key` : 200, aucun second lead). `id` = l'id du lead cree ou retrouve.",
+    "forme_serveur": "`partielle` (vocabulaire de `scripts/check_api_shapes.py`, QJR228), comme `tunnel_webhook_keys.json` : ce fichier decrit aussi un CORPS DE REQUETE (`corps`) et des en-tetes, que la garde de forme ne confronte jamais a une vue.",
+    "societe": "La societe ERP destinataire est tiree de la CLE (`X-Site-Cle` -> `SITE_RDV_CLES`, YBW51), JAMAIS du corps : toute cle de `refus` dans le corps = 400.",
+    "longueurs": "Longueurs maximales choisies sous les limites du modele `crm.Lead` (nom/societe CharField 255, email EmailField 254, telephone CharField 50, utm_* CharField 300 — `apps/crm/models.py`).",
+    "vie_privee": "AUCUNE IP ni agent utilisateur du visiteur n'est transmis (aucune finalite) ; aucun champ sensible (jamais de CIN)."
+  },
+  "exemple": {
+    "id": 4211,
+    "statut": "recu"
+  },
+  "statuts": ["recu", "deja_recu"],
+  "entetes": {
+    "X-Site-Cle": "identifiant de cle (pas le secret) ; la societe ERP est celle liee a cet identifiant dans SITE_RDV_CLES",
+    "X-Signature": "t=<epoch secondes>,v1=<hex> — HMAC-SHA256 du corps BRUT precede de \"<t>.\" (semantique de apps.publicapi.delivery.sign_payload / build_signature_v2), tolerance 300 s",
+    "Idempotency-Key": "FACULTATIF, simple MIROIR de corps.idempotency_key ; jamais utilise pour dedoublonner (la signature ne le couvre pas)",
+    "Content-Type": "application/json"
+  },
+  "corps": {
+    "idempotency_key": "6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+    "nom": "Nom Test",
+    "societe": "Societe Test",
+    "email": "test@example.invalid",
+    "telephone": "+33600000000",
+    "produit": "solarbow",
+    "message": "Message de test.",
+    "langue": "fr",
+    "consentement": true,
+    "consentement_le": "2026-10-07T09:00:00Z",
+    "page": "/rendez-vous/",
+    "utm_source": "test",
+    "utm_medium": "test",
+    "utm_campaign": "test",
+    "utm_term": "test",
+    "utm_content": "test"
+  },
+  "champs": {
+    "idempotency_key": {"type": "uuid", "obligatoire": true, "max": 36, "note": "DANS le corps pour que la signature le couvre : une requete capturee rejouee avec un autre en-tete ne cree pas un second lead"},
+    "nom": {"type": "texte", "obligatoire": true, "max": 120},
+    "societe": {"type": "texte", "obligatoire": true, "max": 160},
+    "email": {"type": "email", "obligatoire": true, "max": 254},
+    "telephone": {"type": "texte", "obligatoire": false, "max": 30},
+    "produit": {"type": "enum", "obligatoire": true, "valeurs": ["solarbow", "marketingbow", "sur_mesure"]},
+    "message": {"type": "texte", "obligatoire": false, "max": 2000},
+    "langue": {"type": "enum", "obligatoire": true, "valeurs": ["fr", "en"]},
+    "consentement": {"type": "booleen", "obligatoire": true, "note": "doit valoir true"},
+    "consentement_le": {"type": "date-heure ISO 8601 UTC", "obligatoire": true},
+    "page": {"type": "chemin", "obligatoire": false, "max": 200},
+    "utm_source": {"type": "texte", "obligatoire": false, "max": 300},
+    "utm_medium": {"type": "texte", "obligatoire": false, "max": 300},
+    "utm_campaign": {"type": "texte", "obligatoire": false, "max": 300},
+    "utm_term": {"type": "texte", "obligatoire": false, "max": 300},
+    "utm_content": {"type": "texte", "obligatoire": false, "max": 300}
+  },
+  "refus": ["company", "company_id", "societe_id"],
+  "jamais_transmis": ["ip", "user_agent"],
+  "vecteur_signature": {
+    "secret": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+    "t": 1791363600,
+    "corps_brut": "{\"idempotency_key\":\"6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f\",\"nom\":\"Nom Test\",\"societe\":\"Societe Test\",\"email\":\"test@example.invalid\",\"produit\":\"solarbow\",\"langue\":\"fr\",\"consentement\":true,\"consentement_le\":\"2026-10-07T09:00:00Z\"}",
+    "signature_hex": "f4181729ae7f8c47e139b6515d134b4d7f6a13d47cb05989c44cb66fbae081cf",
+    "x_signature": "t=1791363600,v1=f4181729ae7f8c47e139b6515d134b4d7f6a13d47cb05989c44cb66fbae081cf",
+    "commande": "cd backend/django_core && python -c \"import json,os,django;os.environ.setdefault('DJANGO_SETTINGS_MODULE','erp_agentique.settings.base');django.setup();from apps.publicapi.delivery import sign_payload;v=json.load(open('apps/crm/contract_samples/demande_rdv_site.json',encoding='utf-8'))['vecteur_signature'];print(sign_payload(v['secret'],v['corps_brut'].encode('utf-8'),timestamp=v['t']))\""
+  }
+}

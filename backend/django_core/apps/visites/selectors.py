@@ -1106,6 +1106,19 @@ def _releve_photos_retenues(medias):
     return photos
 
 
+def _visites_du_lead(company_id, lead_id):
+    """La requête de BASE des visites d'un lead, bornée à la société.
+
+    Partagée par ``releve_pour_calepinage`` et ``visite_feu_vert`` (ALEA5) :
+    une seule définition de « les visites de ce lead » — la société vient
+    toujours de l'appelant serveur, jamais d'un corps de requête.
+    """
+    from .models import VisiteTerrain
+
+    return VisiteTerrain.objects.filter(lead_id=lead_id,
+                                        company_id=company_id)
+
+
 def releve_pour_calepinage(lead):
     """CALX363 — le releve de terrain d'un lead, pour le calepinage.
 
@@ -1141,8 +1154,7 @@ def releve_pour_calepinage(lead):
     }
     if lead is None:
         return vide
-    visites = VisiteTerrain.objects.filter(lead=lead,
-                                           company_id=lead.company_id)
+    visites = _visites_du_lead(lead.company_id, lead.id)
     visite = (visites.filter(statut=VisiteTerrain.Statut.VALIDEE)
               .order_by('-id').first())
     if visite is None:
@@ -1164,3 +1176,35 @@ def releve_pour_calepinage(lead):
         # (une visite résidentielle garde exactement la forme historique).
         releve['zones_toiture'] = zones_toiture_saisies(visite)
     return releve
+
+
+def visite_feu_vert(company_id, lead_id):
+    """ALEA5 — le FEU VERT du bureau d'études pour un lead, ou ``None``.
+
+    Rend ``{visite_id, validee_le, validee_par_id}`` si et seulement si la
+    visite la PLUS RÉCENTE du lead (``-id`` : déterministe, aucune horloge)
+    est au statut ``validee``. ``None`` sinon : aucune visite, visite terminée
+    mais pas encore validée, ou visite renvoyée (``a_refaire``) après un feu
+    vert — une validation plus ancienne ne survit pas à un renvoi.
+
+    * bornée à ``company_id`` : un lead d'une autre société rend ``None`` ;
+    * ne lit JAMAIS ``Lead.visite_effectuee`` (qui garde le sens « visite
+      réalisée » côté CRM) ;
+    * LECTURE PURE : rien n'est écrit.
+
+    ``validee_le`` est l'objet ``datetime`` posé par ``valider_visite``
+    (``None`` pour une visite validée avant CIQ604 — jamais une date
+    inventée).
+    """
+    from .models import VisiteTerrain
+
+    if company_id is None or lead_id is None:
+        return None
+    visite = _visites_du_lead(company_id, lead_id).order_by('-id').first()
+    if visite is None or visite.statut != VisiteTerrain.Statut.VALIDEE:
+        return None
+    return {
+        'visite_id': visite.id,
+        'validee_le': visite.validee_le,
+        'validee_par_id': visite.validee_par_id,
+    }

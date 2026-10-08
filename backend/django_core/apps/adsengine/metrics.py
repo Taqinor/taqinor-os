@@ -473,11 +473,11 @@ def _signed_ca_daily(company, start_date, end_date):
     lecture Odoo échoue."""
     from .odoo_client import is_configured
 
-    if not is_configured():
+    if not is_configured(company):  # ASEC40 — société propriétaire seule
         return {'configured': False, 'daily': {}}
     try:
         from .odoo_selectors import signed_deals
-        deals = signed_deals(since=start_date)
+        deals = signed_deals(since=start_date, company=company)
     except Exception:  # noqa: BLE001 — jamais un 500 sur une panne Odoo
         return {'configured': True, 'daily': {}}
 

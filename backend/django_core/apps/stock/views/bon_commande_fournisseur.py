@@ -36,6 +36,11 @@ from authentication.permissions import (  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+# ASTK17 — gestes « commander » gardés par ``achats_commander``.
+COMMANDER_ACTIONS = WRITE_ACTIONS + [
+    'envoyer', 'annuler', 'rouvrir', 'confirmer', 'reviser', 'dupliquer',
+    'fusionner', 'whatsapp', 'envoyer_email',
+]
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -59,6 +64,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['date_creation', 'date_commande', 'statut', 'reference']
     ordering = ['-date_creation']
 
+    def get_queryset(self):
+        # ASTK178 — `?fournisseur=<id>` filtré côté serveur (fiche 360).
+        from ..selectors import filtrer_par_fournisseur
+        return filtrer_par_fournisseur(
+            super().get_queryset(),
+            self.request.query_params.get('fournisseur'))
+
     def get_permissions(self):
         # QS1 — le PDF (interne) est une LECTURE : il rend exactement les
         # données que `retrieve` expose déjà à tout rôle authentifié. Le
@@ -74,15 +86,19 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS + ['lignes_import']:
             return [IsAnyRole()]
-        elif self.action in ('whatsapp', 'envoyer_email'):
-            # QS3 — envois fournisseur : permission fine stock_modifier (repli
+        elif self.action in COMMANDER_ACTIONS:
+            # ASTK17 (D-ASTK-3) — « commander » : créer/modifier/envoyer/
+            # réviser/annuler/rouvrir/confirmer/dupliquer/fusionner un BCF et
+            # l'envoyer au fournisseur (whatsapp / envoyer-email, ex-QS3
+            # stock_modifier) exigent le code fin ``achats_commander`` (repli
             # légacy responsable/admin pour les comptes sans rôle fin).
-            return [HasPermissionOrLegacy('stock_modifier')()]
-        elif self.action in WRITE_ACTIONS + [
-            'envoyer', 'recevoir', 'annuler', 'rouvrir', 'confirmer',
-            'reviser', 'facturer', 'dupliquer', 'fusionner',
-        ]:
-            return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy('achats_commander')()]
+        elif self.action == 'recevoir':
+            # ASTK18 (D-ASTK-3) — recevoir un BCF = « réceptionner ».
+            return [HasPermissionOrLegacy('achats_receptionner')()]
+        elif self.action == 'facturer':
+            # ASTK19 (D-ASTK-3) — facturer un BCF = « payer ».
+            return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'en_retard':
             return [IsAnyRole()]
         elif self.action in (

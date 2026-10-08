@@ -132,14 +132,25 @@ def resoudre_allocation_picking(produit, quantite, strategie=None):
                 'id')
         else:
             lots = lots.order_by('date_creation', 'id')
+        # ASTK199 — la quantité d'un lot en quarantaine (rappel produit,
+        # réception non conforme) n'est jamais proposée au prélèvement.
+        from .services_wms import quantite_bloquee_par_lot
+        bloquees = quantite_bloquee_par_lot(company, produit)
+        lots = list(lots)
         restant = quantite
         plan = []
         for lot in lots:
             if restant <= 0:
                 break
-            prise = min(lot.quantite_restante, restant)
+            libre = lot.quantite_restante - bloquees.get(lot.id, 0)
+            if libre <= 0:
+                continue
+            prise = min(libre, restant)
             plan.append(_ligne(prise, lot=lot))
             restant -= prise
+        if not plan and lots:
+            # Lots présents mais tous bloqués : rien à prélever.
+            return []
         if not plan:
             # Produit non suivi par lot : ligne libre, jamais une erreur.
             return [_ligne(quantite)]

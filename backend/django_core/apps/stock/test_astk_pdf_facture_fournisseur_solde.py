@@ -33,7 +33,10 @@ class PdfSoldeTests(TestCase):
             nom='astk104-co', slug='astk104-co')
         role = Role.objects.create(
             company=self.company, nom='r-astk104',
-            permissions=['stock_voir', 'stock_modifier'])
+            permissions=['stock_voir', 'stock_modifier',
+                         # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
+                         'achats_commander', 'achats_receptionner',
+                         'achats_payer', 'catalogue_prix_modifier'])
         self.user = User.objects.create_user(
             username='astk104-user', password='x', company=self.company,
             role=role, role_legacy='responsable')

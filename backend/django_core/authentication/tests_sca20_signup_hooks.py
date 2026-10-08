@@ -8,6 +8,7 @@ Vérifie que :
 * ``manage.py seed_company`` rejoue les seeds sur une société existante.
 """
 from io import StringIO
+from django.test import override_settings
 
 from django.core.management import call_command
 from rest_framework.test import APIClient
@@ -46,6 +47,7 @@ class SignupHooksRegistryTest(TenantAPITestCase):
         self.assertIn('erreur', res['boom_sca20'])
 
 
+@override_settings(TENANT_SIGNUP_ENABLED=True)  # ASEC13 — inscription parquée par défaut
 class SignupSeedsCatalogueTest(TenantAPITestCase):
     def test_signup_neuf_obtient_roles_profil_catalogue(self):
         api = APIClient()

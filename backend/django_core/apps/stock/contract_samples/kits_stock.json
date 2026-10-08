@@ -116,10 +116,8 @@
         "quantite": "9.00",
         "taux_perte_pct": "5.00"
       },
-      "nouveau_taux_perte_pct": "NOUVEAU — non servi aujourd'hui : `composants[].taux_perte_pct` est dans le modèle mais pas dans KitComposantSerializer ; la tâche porteuse (C-ASTK-027 / ASTK96) l'expose, ou ASTK229 l'ajoute. Tant que ce n'est pas fait, le test de forme exige exactement cet écart.",
-      "cles_nouvelles_composant": [
-        "taux_perte_pct"
-      ],
+      "nouveau_taux_perte_pct": "Construit (ASTK229) : `composants[].taux_perte_pct` est servi et inscriptible par KitComposantSerializer (0 ≤ taux < 100, sinon 400 {composants:[{taux_perte_pct:['Le taux de perte doit être compris entre 0 et 100 %.']}]}) ; absent d'un PUT, il est conservé (ASTK96).",
+      "cles_nouvelles_composant": [],
       "corps_post": {
         "nom": "Kit résidentiel 5 kWc",
         "sku": "KIT5",
@@ -127,7 +125,8 @@
         "composants": [
           {
             "produit": 88,
-            "quantite": 9
+            "quantite": 9,
+            "taux_perte_pct": 5
           }
         ]
       },

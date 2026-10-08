@@ -294,7 +294,10 @@ def _serializer_facts(cls: ast.ClassDef):
         if not noms:
             continue
         value = getattr(stmt, "value", None)
-        if "same_company_fields" in noms:
+        # ALEA42 — ``scoped_relations`` (crm ``_CompanyScopedRelationsMixin``,
+        # ``scope_related_field``) re-scope société les champs nommés : borne
+        # déclarée au même titre que ``same_company_fields``.
+        if "same_company_fields" in noms or "scoped_relations" in noms:
             for f in (_str_list(value) or []):
                 same_company.add(f)
             continue
@@ -444,6 +447,18 @@ def main(argv):
         if couvert or cle in allow:
             continue
         offenders.append(f"{cle} -> {cible}")
+
+    # ALEA42 — une ligne d'allowlist qui désigne un site désormais BORNÉ est
+    # une tolérance morte : elle masquerait une régression future. Elle échoue.
+    inutiles = sorted(
+        f"{rel}::{cls}.{champ}" for rel, cls, champ, _c, couvert in sites
+        if couvert and f"{rel}::{cls}.{champ}" in allow)
+    if inutiles:
+        print("check_fk_scoping: lignes d'allowlist devenues inutiles "
+              "(scripts/fk_scoping_allow.txt) :")
+        for cle in inutiles:
+            print(f"  - ligne d'allowlist inutile : {cle} — la retirer")
+        return 1
 
     if offenders:
         print("check_fk_scoping: FK cross-app écrivable non validée "

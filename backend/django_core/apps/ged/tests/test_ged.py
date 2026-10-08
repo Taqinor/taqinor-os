@@ -9,6 +9,7 @@ Couvre :
 """
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -26,6 +27,13 @@ from apps.ged.models import (
 from apps.roles.models import Role
 
 User = get_user_model()
+
+
+def _pdf(nom, contenu):
+    """ASEC37 — une version GED arrive comme FICHIER téléversé (multipart) ;
+    une `file_key`/`checksum` du corps n'est jamais acceptée."""
+    return SimpleUploadedFile(
+        nom, b'%PDF-1.4 ' + contenu, content_type='application/pdf')
 
 
 def make_company(slug, nom):
@@ -449,15 +457,14 @@ class DocumentVersionTests(GedBase):
     def test_version_number_auto_increments(self):
         api = auth(self.admin_a)
         r1 = api.post('/api/django/ged/versions/', {
-            'document': self.doc_a.id, 'file_key': 'attachments/a.pdf',
-            'checksum': 'aaa', 'company': self.co_b.id,  # injection ignorée
-        }, format='json')
+            'document': self.doc_a.id, 'file': _pdf('a.pdf', b'aaa'),
+            'company': self.co_b.id,  # injection ignorée
+        }, format='multipart')
         self.assertEqual(r1.status_code, 201, r1.data)
         self.assertEqual(r1.data['version'], 1)
         r2 = api.post('/api/django/ged/versions/', {
-            'document': self.doc_a.id, 'file_key': 'attachments/b.pdf',
-            'checksum': 'bbb',
-        }, format='json')
+            'document': self.doc_a.id, 'file': _pdf('b.pdf', b'bbb'),
+        }, format='multipart')
         self.assertEqual(r2.data['version'], 2)
         v = DocumentVersion.objects.get(id=r1.data['id'])
         # company + uploaded_by posés côté serveur.
@@ -471,8 +478,8 @@ class DocumentVersionTests(GedBase):
             company=self.co_b, folder=folder_b, nom='Doc B')
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/versions/', {
-            'document': doc_b.id, 'file_key': 'attachments/x.pdf',
-        }, format='json')
+            'document': doc_b.id, 'file': _pdf('x.pdf', b'x'),
+        }, format='multipart')
         self.assertEqual(resp.status_code, 400)
 
     def test_checksum_compute_and_dedup(self):
@@ -497,12 +504,13 @@ class DocumentVersionTests(GedBase):
         identique au lieu de réutiliser la première."""
         existing = services.add_version(
             self.doc_a, file_key='attachments/orig.pdf', company=self.co_a,
-            checksum='dup-checksum', uploaded_by=self.admin_a)
+            checksum=services.compute_checksum(b'%PDF-1.4 meme contenu'),
+            uploaded_by=self.admin_a)
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/versions/', {
-            'document': self.doc_a.id, 'file_key': 'attachments/reupload.pdf',
-            'checksum': 'dup-checksum',
-        }, format='json')
+            'document': self.doc_a.id,
+            'file': _pdf('reupload.pdf', b'meme contenu'),
+        }, format='multipart')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['id'], existing.id)
         self.assertEqual(resp.data['file_key'], 'attachments/orig.pdf')
@@ -512,11 +520,11 @@ class DocumentVersionTests(GedBase):
     def test_upload_sans_checksum_ne_deduplique_pas(self):
         api = auth(self.admin_a)
         api.post('/api/django/ged/versions/', {
-            'document': self.doc_a.id, 'file_key': 'attachments/a.pdf',
-        }, format='json')
+            'document': self.doc_a.id, 'file': _pdf('a.pdf', b'contenu a'),
+        }, format='multipart')
         resp = api.post('/api/django/ged/versions/', {
-            'document': self.doc_a.id, 'file_key': 'attachments/b.pdf',
-        }, format='json')
+            'document': self.doc_a.id, 'file': _pdf('b.pdf', b'contenu b'),
+        }, format='multipart')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(
             DocumentVersion.objects.filter(document=self.doc_a).count(), 2)
@@ -2179,11 +2187,8 @@ class CheckoutCheckinTests(GedBase):
         api = auth(self.user_a2)
         resp = api.post('/api/django/ged/versions/', {
             'document': self.doc_a.id,
-            'file_key': 'docs/intrus.pdf',
-            'filename': 'intrus.pdf',
-            'size': 1,
-            'mime': 'application/pdf',
-        }, format='json')
+            'file': _pdf('intrus.pdf', b'intrus'),
+        }, format='multipart')
         self.assertIn(resp.status_code, (403, 409), resp.data)
         # Aucune version créée.
         self.assertEqual(self.doc_a.versions.count(), 0)
@@ -2195,11 +2200,8 @@ class CheckoutCheckinTests(GedBase):
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/versions/', {
             'document': self.doc_a.id,
-            'file_key': 'docs/v1.pdf',
-            'filename': 'v1.pdf',
-            'size': 100,
-            'mime': 'application/pdf',
-        }, format='json')
+            'file': _pdf('v1.pdf', b'v1'),
+        }, format='multipart')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(self.doc_a.versions.count(), 1)
 
@@ -2208,11 +2210,8 @@ class CheckoutCheckinTests(GedBase):
         api = auth(self.user_a2)
         resp = api.post('/api/django/ged/versions/', {
             'document': self.doc_a.id,
-            'file_key': 'docs/libre.pdf',
-            'filename': 'libre.pdf',
-            'size': 50,
-            'mime': 'application/pdf',
-        }, format='json')
+            'file': _pdf('libre.pdf', b'libre'),
+        }, format='multipart')
         self.assertEqual(resp.status_code, 201, resp.data)
 
     # ── État du verrou dans le serializer ────────────────────────────
@@ -2971,8 +2970,10 @@ class PartageGedTests(GedBase):
             r_none = APIClient().get(self._public_url(partage.token))
             self.assertEqual(r_none.status_code, 403)
             # Mauvais mot de passe.
+            # ASEC39 — mot de passe en en-tête (jamais en query string).
             r_bad = APIClient().get(
-                self._public_url(partage.token) + '?password=faux')
+                self._public_url(partage.token),
+                HTTP_X_PARTAGE_PASSWORD='faux')
         self.assertEqual(r_bad.status_code, 403)
         m.assert_not_called()
         # Aucun téléchargement comptabilisé sur un échec d'authentification.
@@ -2985,8 +2986,10 @@ class PartageGedTests(GedBase):
         fake = b'%PDF-ok'
         with mock.patch('apps.ged.views.fetch_attachment',
                         return_value=(fake, None)):
+            # ASEC39 — mot de passe en en-tête (jamais en query string).
             resp = APIClient().get(
-                self._public_url(partage.token) + '?password=mdp-correct')
+                self._public_url(partage.token),
+                HTTP_X_PARTAGE_PASSWORD='mdp-correct')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.content, fake)
 

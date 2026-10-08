@@ -258,9 +258,13 @@ function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
         // XPUR5 — catégorie référentielle (optionnelle).
         categorie: fields.categorie ? Number(fields.categorie) : null,
       }
-      if (isNew) await stockApi.createFournisseur(payload)
-      else await stockApi.updateFournisseur(fournisseur.id, payload)
-      onSaved?.()
+      const reponse = isNew
+        ? await stockApi.createFournisseur(payload)
+        : await stockApi.updateFournisseur(fournisseur.id, payload)
+      // ASTK95 (C-ASTK-026) — avertissement NON bloquant du serveur : un
+      // fournisseur au nom normalisé identique existe déjà ; affiché par la
+      // liste après fermeture (jamais stocké).
+      onSaved?.(reponse?.data?.avertissements?.nom ?? null)
       onClose()
     } catch (err) {
       setErrors((prev) => ({ ...prev, submit: frErr(err, "L'enregistrement a échoué.") }))
@@ -522,6 +526,8 @@ export default function FournisseursStock() {
   // reçues (`statut_validation`) mais jusqu'ici jamais validables/rejetables.
   const [filterEnAttente, setFilterEnAttente] = useState(false)
   const [decidingId, setDecidingId] = useState(null)
+  // ASTK95 — avertissement de nom en doublon renvoyé par le serveur.
+  const [avertissementNom, setAvertissementNom] = useState(null)
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
@@ -803,6 +809,11 @@ export default function FournisseursStock() {
           {error}
         </div>
       )}
+      {avertissementNom && (
+        <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+          {avertissementNom}
+        </div>
+      )}
 
       <DataTable
         data={rows}
@@ -851,7 +862,8 @@ export default function FournisseursStock() {
 
       {selected && (
         <FournisseurForm fournisseur={selected} categories={categories}
-                         onClose={() => setSelected(null)} onSaved={reload} />
+                         onClose={() => setSelected(null)}
+                         onSaved={(avertissement) => { setAvertissementNom(avertissement || null); reload() }} />
       )}
       {scorecard && (
         <ScorecardModal fournisseur={scorecard} onClose={() => setScorecard(null)} />
