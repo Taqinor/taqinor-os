@@ -67,7 +67,14 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
 
     def _facture(self, donnees, company, admin, client):
         from apps.ventes.domain.facturation_ops import facturer_devis_complet
+        from apps.stock.models import Produit
         from apps.ventes.models import Devis, LigneDevis
+        # Produit des lignes du devis : `LigneFacture.produit` est NOT NULL et
+        # facturer_devis_complet décompte le stock.
+        kit = Produit.objects.create(
+            company=company, nom='Kit ATOT13',
+            sku=f'ATOT13K-{uuid.uuid4().hex[:8]}',
+            prix_vente=Decimal('0'), quantite_stock=1_000_000)
         devis = Devis.objects.create(
             company=company, reference=f'DEV-ATOT13-{uuid.uuid4().hex[:8]}',
             client=client, statut=Devis.Statut.ACCEPTE,
@@ -75,7 +82,7 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
             remise_globale=donnees['remise_globale'])
         for i, li in enumerate(donnees['lignes']):
             LigneDevis.objects.create(
-                devis=devis, designation=f'Ligne {i}', **li)
+                devis=devis, produit=kit, designation=f'Ligne {i}', **li)
         facture, _ = facturer_devis_complet(
             devis=devis, user=admin, company=company, paiements=[])
         return facture

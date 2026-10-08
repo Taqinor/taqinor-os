@@ -37,6 +37,12 @@ class EntetePortesTests(TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Entete', prenom='ATOT4',
             email=f'atot4-{_nxt()}@example.invalid')
+        # Produit de la ligne du devis : `LigneFacture.produit` est NOT NULL
+        # et facturer-complet / consolider décomptent le stock.
+        from apps.stock.models import Produit
+        self.kit = Produit.objects.create(
+            company=self.company, nom='Kit ATOT4', sku=f'ATOT4K-{_nxt()}',
+            prix_vente=Decimal('125000'), quantite_stock=1000)
         self.user = User.objects.create_user(
             username=f'atot4_resp_{_nxt()}', password='x',
             role_legacy='responsable', company=self.company)
@@ -55,7 +61,8 @@ class EntetePortesTests(TestCase):
             retenue_garantie={'taux_pct': 5},
             reference_commande_client='BC-CLIENT-42')
         LigneDevis.objects.create(
-            devis=devis, designation='Centrale PV', quantite=Decimal('1'),
+            devis=devis, produit=self.kit, designation='Centrale PV',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('125000'), remise=Decimal('0'),
             taux_tva=Decimal('20.00'))
         return devis

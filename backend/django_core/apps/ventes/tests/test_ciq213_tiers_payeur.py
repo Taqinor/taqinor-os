@@ -123,20 +123,26 @@ class FacturationFinanceurTest(_Base):
         self.assertIn('organisme financeur', str(ctx.exception))
 
     def test_double_porte_aud112_respectee(self):
+        # ATOT2 — la porte tranche passe par LA garde unique
+        # `exiger_devis_facturable` (`factures_du_devis`, quatre portes) et
+        # non plus par `factures_via_bon_commande` : on rejoue la double porte
+        # AUD112 sur une VRAIE facture de bon de commande, sans mock.
+        from apps.ventes.models import BonCommande, Facture
+        from apps.ventes.selectors_facturation import DevisDejaFacture
         from apps.ventes.utils import echeancier
         devis = self._devis('DEV-CIQ213-0040', 10)
-
-        class _Existe:
-            def exists(self):
-                return True
-
-        from unittest import mock
-        with mock.patch('apps.ventes.selectors.factures_via_bon_commande',
-                        return_value=_Existe()):
-            with self.assertRaises(ValueError) as ctx:
-                echeancier.creer_facture_tranche(
-                    devis, self.user, self.company, lambda *a, **k: None)
-        self.assertIn('bon de commande', str(ctx.exception))
+        bc = BonCommande.objects.create(
+            company=self.company, reference='BC-CIQ213-0040', devis=devis,
+            client=self.client_final, statut=BonCommande.Statut.CONFIRME)
+        Facture.objects.create(
+            company=self.company, reference='FAC-CIQ213-BC-0040',
+            client=self.client_final, bon_commande=bc, devis=devis,
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20'))
+        with self.assertRaises(DevisDejaFacture) as ctx:
+            echeancier.creer_facture_tranche(
+                devis, self.user, self.company, lambda *a, **k: None)
+        self.assertIn('FAC-CIQ213-BC-0040', str(ctx.exception))
+        self.assertEqual(Facture.objects.filter(devis=devis).count(), 1)
 
 
 class TiersPayeurApiTest(_Base):
