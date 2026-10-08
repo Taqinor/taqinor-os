@@ -1269,7 +1269,7 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     if premiere_periodicite:
         kwargs['periodicite'] = premiere_periodicite
 
-    installation = getattr(devis, 'installation', None)
+    installation = _chantier_du_devis(devis)
     if installation is not None:
         kwargs['installation'] = installation
 
@@ -1319,6 +1319,17 @@ def _poser_om(contrat, devis, ligne_om):
         for type_, libelle in PRESTATIONS_OM_CI])
 
 
+def _chantier_du_devis(devis):
+    """ASAV6 — le chantier d'un devis, lu par le sélecteur d'installations.
+
+    Le devis n'a PAS d'attribut ``installation`` (le lien est porté par le
+    chantier, related_name ``installations``) : l'ancien ``getattr`` rendait
+    toujours None. Lecture inter-app scopée société, sans exception avalée.
+    """
+    from apps.installations.selectors import installation_for_devis
+    return installation_for_devis(devis, devis.company)
+
+
 def _creer_contrat_om(devis, ligne_om, marqueur):
     """CIQ640 — contrat O&M C&I d'un devis accepté SANS ligne récurrente :
     prix « à renseigner » (NULL), aucune facturation, prestations vides."""
@@ -1334,7 +1345,7 @@ def _creer_contrat_om(devis, ligne_om, marqueur):
         notes=f'Créé automatiquement depuis le devis {marqueur} '
               f'(ligne O&M — CIQ640 ; prix et fréquences à renseigner).',
     )
-    installation = getattr(devis, 'installation', None)
+    installation = _chantier_du_devis(devis)
     if installation is not None:
         kwargs['installation'] = installation
     contrat = ContratMaintenance.objects.create(**kwargs)
