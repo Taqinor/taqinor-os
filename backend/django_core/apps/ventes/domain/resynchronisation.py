@@ -895,11 +895,35 @@ def reconcilier(devis, intention):
             else:
                 lignes_hybride = conserves
 
+        def _phase_du_client(ligne):
+            """ADEV29 — raccordement DÉCLARÉ du lead, sinon la phase de
+            l'onduleur en place (le client a déjà ce raccordement)."""
+            from apps.ventes.compatibilites import (
+                PHASE_MONO, PHASE_TRI, est_triphase_produit)
+            from apps.ventes.domain.taille import phase_et_isolement_du_lead
+            lead = getattr(verrou, 'lead', None)
+            phase = phase_et_isolement_du_lead(lead)[0] if lead else None
+            if phase:
+                return phase
+            produit = getattr(ligne, 'produit', None)
+            if produit is None:
+                return None
+            return PHASE_TRI if est_triphase_produit(produit) else PHASE_MONO
+
         def _permuter_onduleur(ligne, predicat, role, motif_absence):
-            remplacant = _pick_product(verrou.company, predicat, role=role,
-                                       gamme=gamme)
+            # ADEV29 (C-ADEV-039) — la règle du composeur (≥ 0,8 × kWc, phase
+            # du client), plus jamais « le moins cher de la marque préférée ».
+            from apps.ventes.domain.catalogue import (
+                choisir_onduleur_permutation)
+            phase = _phase_du_client(ligne)
+            remplacant = choisir_onduleur_permutation(
+                verrou.company, predicat, kwc=kwc, phase=phase, role=role,
+                gamme=gamme)
             if remplacant is None:
-                avertissements.append(motif_absence)
+                avertissements.append(
+                    motif_absence + (
+                        ' Aucun modèle %s ne convient à ce devis.' % phase
+                        if phase else ''))
                 return False
             # QJR219 / D12 — ABSTENTION DITE sur un prix SAISI À LA MAIN. Sans
             # cette garde, le prix tapé était écrasé par le prix catalogue et
