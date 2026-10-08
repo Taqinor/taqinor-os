@@ -62,6 +62,10 @@ class GestesArgentTests(TestCase):
         self.produit = Produit.objects.create(
             company=self.company, nom='Avoir ASEC29', sku='ASEC29-P',
             prix_vente=Decimal('0'), quantite_stock=0)
+        # Produit de la ligne du devis : facturer-complet décompte le stock.
+        self.kit = Produit.objects.create(
+            company=self.company, nom='Kit ASEC29', sku='ASEC29-K',
+            prix_vente=Decimal('1000'), quantite_stock=1000)
 
     def _api(self, user):
         api = APIClient()
@@ -87,7 +91,7 @@ class GestesArgentTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal('20.00'), created_by=user)
         LigneDevis.objects.create(
-            devis=devis, produit=self.produit, designation='Centrale',
+            devis=devis, produit=self.kit, designation='Centrale',
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
             taux_tva=Decimal('20.00'))
         return devis

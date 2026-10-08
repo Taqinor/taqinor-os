@@ -85,6 +85,10 @@ class _Base(HypothesisDjangoTestCase):
         self.produit = Produit.objects.create(
             company=self.company, nom='Avoir ATOT14', sku=f'ATOT14-{jeton}',
             prix_vente=Decimal('0'), quantite_stock=0)
+        # Produit des lignes du devis : facturer-complet décompte le stock.
+        self.kit = Produit.objects.create(
+            company=self.company, nom='Kit ATOT14', sku=f'ATOT14K-{jeton}',
+            prix_vente=Decimal('0'), quantite_stock=1_000_000)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
@@ -100,7 +104,7 @@ class _Base(HypothesisDjangoTestCase):
         for i, li in enumerate(lignes):
             # Une ligne produit porte son produit du catalogue
             # (`LigneFacture.produit` est NOT NULL : sans lui → IntegrityError).
-            LigneDevis.objects.create(devis=devis, produit=self.produit,
+            LigneDevis.objects.create(devis=devis, produit=self.kit,
                                       designation=f'L{i}', **li)
         return Devis.objects.get(pk=devis.pk)
 
