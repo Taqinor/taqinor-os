@@ -1368,6 +1368,34 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
         if ticket.date_resolution:
             ticket.date_resolution = None
             update_fields.append('date_resolution')
+    # ASAV16 — cycle SLA attaché aux transitions : la résolution clôt la
+    # pause « en attente client » (jours figés, l'échéance cesse de glisser) ;
+    # la réouverture (D-ASAV-5 Q1) repart de la date de réouverture avec le
+    # délai de la priorité, remet les drapeaux d'alerte à False et ne
+    # réactive pas la pause.
+    if ticket.statut in clotures and old.statut not in clotures:
+        if ticket.en_attente_client:
+            ticket.reprendre_apres_attente()
+            update_fields += ['en_attente_client', 'attente_depuis',
+                              'jours_pause']
+    elif old.statut in clotures and ticket.statut in Ticket.OPEN_STATUTS:
+        due, echeance_at = compute_sla_echeance(
+            ticket.company, ticket.client, ticket.priorite,
+            timezone.localdate())
+        if due is not None:
+            ticket.sla_due_at = due
+            ticket.sla_echeance_at = echeance_at
+            update_fields += ['sla_due_at', 'sla_echeance_at']
+        ticket.en_attente_client = False
+        ticket.attente_depuis = None
+        ticket.jours_pause = 0
+        ticket.sla_pre_alert_notifiee = False
+        ticket.sla_escalade_notifiee = False
+        ticket.sla_escalade_paliers_notifies = None
+        update_fields += [
+            'en_attente_client', 'attente_depuis', 'jours_pause',
+            'sla_pre_alert_notifiee', 'sla_escalade_notifiee',
+            'sla_escalade_paliers_notifies']
     ticket.save(update_fields=update_fields)
     emettre_ticket_resolu(
         ticket, company=ticket.company, user=user, ancien_statut=old.statut)
