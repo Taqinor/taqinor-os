@@ -105,6 +105,20 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
                     {'resultat': RAISON_RESERVES_SANS_LISTE})
         return attrs
 
+    def validate_instrument_id(self, value):
+        """ACHT44 — l'instrument de la fiche appartient à l'outillage de la
+        société du demandeur (jamais un id étranger ni inexistant)."""
+        if value in (None, ''):
+            return value
+        from apps.outillage.models import Outillage
+        request = self.context.get('request')
+        company_id = getattr(getattr(request, 'user', None), 'company_id',
+                             None)
+        if not Outillage.objects.filter(
+                pk=value, company_id=company_id).exists():
+            raise serializers.ValidationError('Instrument inconnu.')
+        return value
+
     def validate_instruments_par_essai(self, value):
         """CIQ626 — ``{essai: instrument_id}`` ; chaque instrument doit
         appartenir à l'outillage de la société (jamais une autre société)."""
