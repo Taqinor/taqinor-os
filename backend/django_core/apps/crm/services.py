@@ -12212,25 +12212,84 @@ def libelle_rappel_subvention(approbation):
             f'{limite:%d/%m} (3 mois — Guide FDA 2024, p.22-23)')
 
 
-def poser_rappel_subvention(lead):
+#: ACRM45 (C-ACRM-040) — la CLÉ STABLE du rappel FDA : l'étape se retrouve
+#: par elle, jamais par son libellé (qui porte la date d'approbation et
+#: changeait donc à chaque correction de cette date — deux rappels ouverts).
+CLE_RAPPEL_FDA = 'rappel_fda'
+
+#: Le début du libellé d'avant ACRM45 (``cle`` vide) : une étape ouverte
+#: posée avant la clé est ADOPTÉE (sa clé est posée), jamais doublée.
+_PREFIXE_LIBELLE_RAPPEL_FDA = 'Approbation préalable du '
+
+
+def _rappel_fda_ouvert(lead):
+    """ACRM45 — l'étape « délai FDA » OUVERTE du lead (clé stable, ou
+    libellé d'avant la clé), ou ``None``."""
+    from django.db.models import Q
+
+    return (lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .filter(Q(cle=CLE_RAPPEL_FDA)
+                    | Q(cle='',
+                        libelle__startswith=_PREFIXE_LIBELLE_RAPPEL_FDA,
+                        libelle__contains='Guide FDA'))
+            .order_by('due_date', 'pk').first())
+
+
+def poser_rappel_subvention(lead, user=None):
     """AGR522 — pose (ou retrouve) l'étape MANUELLE du délai FDA pour demain.
 
-    Idempotent : l'étape se retrouve par son libellé (``_poser_etape_de_filet``
-    ne pose jamais deux fois la même étape ouverte), donc rejouer ne double
-    rien. Renvoie l'étape, ou None si le lead n'est pas « accordé » daté."""
-    if (lead is None
-            or lead.dossier_subvention != Lead.DossierSubvention.ACCORDE
-            or lead.dossier_subvention_le is None):
+    ACRM45 — l'étape se retrouve par sa CLÉ STABLE (``CLE_RAPPEL_FDA``) :
+      * « accordé » daté, aucune étape ouverte → elle est posée (demain) ;
+      * la date d'approbation CHANGE → l'étape ouverte est DÉPLACÉE (libellé
+        à la nouvelle date, échéance au prochain créneau de demain) — jamais
+        un second rappel ;
+      * le statut QUITTE « accordé » → l'étape ouverte est ANNULÉE (tracée).
+    Puis la file est recalée (``_recaler_file``). Renvoie l'étape ouverte, ou
+    ``None`` quand il n'y en a plus."""
+    if lead is None:
         return None
+    ouverte = _rappel_fda_ouvert(lead)
+    accorde = (lead.dossier_subvention == Lead.DossierSubvention.ACCORDE
+               and lead.dossier_subvention_le is not None)
+    if not accorde:
+        if ouverte is not None:
+            ouverte.statut = RelanceEtape.Statut.ANNULEE
+            ouverte.note = ('Annulée : le dossier de subvention n\'est plus '
+                            '« accordé ».')
+            ouverte.traite_le = timezone.now()
+            ouverte.save(update_fields=['statut', 'note', 'traite_le'])
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=('Rappel du délai FDA annulé : le dossier de subvention '
+                      'n\'est plus « accordé ».'))
+            _recaler_file(lead, user)
+        return None
+    from . import horaires
+
     libelle = libelle_rappel_subvention(lead.dossier_subvention_le)
-    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
-    if deja is not None:
-        return deja
-    return _poser_etape_de_filet(
+    if ouverte is not None:
+        if ouverte.libelle != libelle or ouverte.cle != CLE_RAPPEL_FDA:
+            ouverte.libelle = libelle
+            ouverte.cle = CLE_RAPPEL_FDA
+            ouverte.save(update_fields=['libelle', 'cle'])
+            quand = horaires.prochain_creneau_appel(
+                timezone.now() + datetime.timedelta(days=1), lead.company,
+                canal=ouverte.canal)
+            ouverte = deplacer_echeance_etape(ouverte, quand)
+        _recaler_file(lead, user)
+        return ouverte
+    etape = _poser_etape_de_filet(
         lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL,
         vise=timezone.now() + datetime.timedelta(days=1),
         note='Posée automatiquement : dossier de subvention accordé — délai '
              'interne, jamais écrit au client.')
+    if etape.cle != CLE_RAPPEL_FDA:
+        etape.cle = CLE_RAPPEL_FDA
+        etape.save(update_fields=['cle'])
+    _recaler_file(lead, user)
+    return etape
 
 
 # ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
@@ -14390,6 +14449,9 @@ def prolonger_validite_attente_accord(lead, user=None):
 #: va dans la note.
 LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
 
+#: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
+CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
+
 
 def texte_validite_a_renouveler(reference, validite, decision):
     """CIQ512 — le texte de l'étape « validité à renouveler »."""
@@ -14427,14 +14489,23 @@ def poser_etape_validite_a_renouveler(lead, decision):
         return None
     from . import horaires
     libelle = LIBELLE_VALIDITE_A_RENOUVELER.format(reference=devis.reference)
-    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
+    # ACRM45 (jumeau) — retrouvée par sa CLÉ STABLE + la référence du devis
+    # (libellé), ou par le libellé seul pour une étape d'avant la clé.
+    from django.db.models import Q
+    deja = lead.relance_etapes.filter(
+        Q(cle=CLE_VALIDITE_A_RENOUVELER) | Q(cle=''),
+        libelle=libelle).first()
     if deja is not None:
         return deja
     vise = datetime.datetime.combine(
         validite, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
-    return _poser_etape_de_filet(
+    etape = _poser_etape_de_filet(
         lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL, vise=vise,
         note=texte_validite_a_renouveler(devis.reference, validite, decision))
+    if etape.cle != CLE_VALIDITE_A_RENOUVELER:
+        etape.cle = CLE_VALIDITE_A_RENOUVELER
+        etape.save(update_fields=['cle'])
+    return etape
 
 
 # ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
