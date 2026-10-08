@@ -64,10 +64,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/services.py:12508` | get_or_create | PlaybookEtape.objects | playbook, stage |
 | `backend/django_core/apps/crm/services.py:12510` | get_or_create | PlaybookTache.objects | etape, libelle |
 | `backend/django_core/apps/crm/services.py:12588` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/views.py:3373` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3387` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3399` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3457` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/views.py:3431` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3445` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3457` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3515` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
