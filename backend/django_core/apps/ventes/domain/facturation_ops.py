@@ -1683,12 +1683,16 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
 
         avoir = create_numbered(Avoir, company, 'avoir', _create)
         # Garde plafond (au centime) — SOUS le verrou : deux avoirs/retours
-        # concurrents ne lisent plus chacun l'ancien reste.
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+        # concurrents ne lisent plus chacun l'ancien reste. AFAC34 — plafond
+        # = TTC + notes de débit − avoirs − abandons ACTIFS : une facture
+        # abandonnée ne se crédite plus une seconde fois.
+        plafond = (reste_creditable + locked.notes_debit_total
+                   - (locked.abandon_montant or Decimal('0')))
+        if avoir.total_ttc - plafond > Decimal('0.01'):
             raise AvoirRefuse(
                 ('Le retour dépasse' if est_retour else "L'avoir dépasse")
                 + f' le montant restant de la facture '
-                  f'({reste_creditable:.2f} MAD).')
+                  f'({max(plafond, Decimal("0")):.2f} MAD).')
         if restocker and est_retour:
             for ligne in lignes:
                 produit = ligne['produit']

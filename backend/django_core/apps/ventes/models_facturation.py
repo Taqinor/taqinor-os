@@ -578,6 +578,42 @@ class RetenueSubie(models.Model):
         return f'RAS {self.montant} MAD — {self.facture.reference}'
 
 
+class AbandonCreance(models.Model):
+    """AFAC34 (C-AFAC-030, D-AFAC-C6 option a) — un abandon de créance est un
+    ENREGISTREMENT daté, cumulable et réversible (miroir de ``RetenueSubie``),
+    plus un champ unique écrasé à chaque geste. ``Facture.abandon_montant``
+    reste la SOMME des abandons actifs (``annule_le`` vide), tenue à jour par
+    le service ``abandonner_solde_facture`` / ``reprendre_abandon_creance`` :
+    ``decomposition_du``/``montant_du`` la lisent sans requête de plus. La
+    reprise est MANUELLE, jamais automatique (D-AFAC-C6)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='abandons_creance')
+    facture = models.ForeignKey(
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: abandon sans objet si facture supprimée
+        related_name='abandons_creance')
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    motif = models.CharField(max_length=20, blank=True, default='')
+    auto = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='abandons_creance_crees')
+    date_abandon = models.DateTimeField(default=timezone.now)
+    annule_le = models.DateTimeField(null=True, blank=True)
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='abandons_creance_repris')
+    motif_reprise = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Abandon de créance'
+        verbose_name_plural = 'Abandons de créance'
+        ordering = ['date_abandon', 'id']
+
+    def __str__(self):
+        return f'Abandon {self.montant} MAD — {self.facture.reference}'
+
+
 class PromessePaiement(models.Model):
     """XFAC5 — engagement client tracé (« je paie le 15 ») qui SUSPEND les
     relances automatiques de la facture jusqu'à ``date_promise``. Le job beat

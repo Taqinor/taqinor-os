@@ -2530,6 +2530,7 @@ from apps.facturation.models import (  # noqa: E402,F401
 # ``Devis``/``LigneDevis`` définis plus haut.
 from .models_facturation import (  # noqa: E402,F401
     DELAI_RETRACTATION_DOMICILE_JOURS,
+    AbandonCreance,
     AcompteAvantDelaiLegal,
     AffectationPaiement,
     BonCommande,

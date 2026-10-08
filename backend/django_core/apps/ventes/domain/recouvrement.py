@@ -172,12 +172,22 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     reste = facture.montant_du
     if reste <= 0:
         return Decimal('0')
-    facture.abandon_motif = motif
-    facture.abandon_montant = reste
-    facture.abandon_date = timezone.now()
-    facture.abandon_auto = bool(auto)
-    facture.abandon_par = user if (
+    # AFAC34 (D-AFAC-C6) — un ENREGISTREMENT de plus, jamais un écrasement :
+    # un second abandon (après rejet d'un chèque) CUMULE avec le premier.
+    from ..models import AbandonCreance
+    _assurer_abandons_enregistres(facture)
+    auteur = user if (
         user and getattr(user, 'is_authenticated', False)) else None
+    maintenant = timezone.now()
+    AbandonCreance.objects.create(
+        company=facture.company, facture=facture, montant=reste,
+        motif=motif or '', auto=bool(auto), created_by=auteur,
+        date_abandon=maintenant)
+    facture.abandon_motif = motif
+    facture.abandon_montant = _somme_abandons_actifs(facture)
+    facture.abandon_date = maintenant
+    facture.abandon_auto = bool(auto)
+    facture.abandon_par = auteur
     facture.save(update_fields=[
         'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
         'abandon_par',
@@ -193,6 +203,99 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
     activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
     return reste
+
+
+def _assurer_abandons_enregistres(facture):
+    """AFAC34 — une facture dont ``abandon_montant`` a été posé AVANT les
+    enregistrements (donnée héritée non migrée, écriture directe) reçoit
+    d'abord l'enregistrement qui le porte : la somme ne perd jamais l'ancien
+    abandon."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from ..models import AbandonCreance
+    ancien = facture.abandon_montant or Decimal('0')
+    if ancien > 0 and not AbandonCreance.objects.filter(
+            facture=facture).exists():
+        AbandonCreance.objects.create(
+            company=facture.company, facture=facture, montant=ancien,
+            motif=facture.abandon_motif or '',
+            auto=bool(facture.abandon_auto),
+            created_by_id=facture.abandon_par_id,
+            date_abandon=facture.abandon_date or timezone.now())
+
+
+def _somme_abandons_actifs(facture):
+    """AFAC34 — Σ des abandons ACTIFS (``annule_le`` vide) de la facture."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from ..models import AbandonCreance
+    total = AbandonCreance.objects.filter(
+        facture=facture, annule_le__isnull=True).aggregate(
+            s=Sum('montant'))['s']
+    return total or Decimal('0')
+
+
+class RepriseAbandonRefusee(Exception):
+    """AFAC34 — reprise d'abandon impossible (message FR, prêt 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def reprendre_abandon_creance(facture, *, user=None, motif='',
+                              abandon_id=None):
+    """AFAC34 (D-AFAC-C6 option a) — REPRISE MANUELLE d'un abandon de
+    créance (jamais automatique) : l'abandon visé (par défaut le plus récent
+    encore actif) reçoit ``annule_le``/``annule_par``/``motif_reprise`` ; la
+    somme des abandons actifs est recopiée dans ``abandon_montant`` ; le
+    statut de paiement est re-dérivé (ATOT8 : la facture repasse ÉMISE / EN
+    RETARD si un reste est dû) — un paiement tardif peut alors s'encaisser.
+    Renvoie l'abandon repris. Lève ``RepriseAbandonRefusee``."""
+    from django.db import transaction
+    from django.utils import timezone
+    from ..models import AbandonCreance, Facture
+    motif = (motif or '').strip()
+    if not motif:
+        raise RepriseAbandonRefusee(
+            'Motif obligatoire pour reprendre un abandon de créance.')
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut == Facture.Statut.ANNULEE:
+            raise RepriseAbandonRefusee(
+                'Facture annulée : aucun abandon à reprendre.')
+        _assurer_abandons_enregistres(locked)
+        actifs = AbandonCreance.objects.select_for_update().filter(
+            facture=locked, annule_le__isnull=True)
+        if abandon_id not in (None, ''):
+            abandon = actifs.filter(pk=abandon_id).first()
+        else:
+            abandon = actifs.order_by('-date_abandon', '-id').first()
+        if abandon is None:
+            raise RepriseAbandonRefusee(
+                'Aucun abandon de créance actif à reprendre.')
+        abandon.annule_le = timezone.now()
+        abandon.annule_par = user if (
+            user and getattr(user, 'is_authenticated', False)) else None
+        abandon.motif_reprise = motif
+        abandon.save(update_fields=['annule_le', 'annule_par',
+                                    'motif_reprise'])
+        locked.abandon_montant = _somme_abandons_actifs(locked)
+        locked.save(update_fields=['abandon_montant'])
+        from ..models import FactureActivity
+        FactureActivity.objects.create(
+            company=locked.company, facture=locked, user=abandon.annule_par,
+            kind=FactureActivity.Kind.MODIFICATION,
+            field='abandon', field_label='Abandon de créance',
+            old_value=str(abandon.montant), new_value='repris',
+            body=(f"Abandon de créance de {abandon.montant} MAD repris "
+                  f"— motif : {motif}."))
+        # ATOT8 — la facture « payée » par l'abandon revient au
+        # recouvrement (ÉMISE / EN RETARD) dès qu'un reste est dû.
+        from .encaissements import recalculer_statut_paiement
+        recalculer_statut_paiement(
+            locked, user=user, source='reprise_abandon')
+    return abandon
 
 
 def anomalies_emission_facture(facture):

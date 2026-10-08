@@ -936,6 +936,30 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             {**FactureSerializer(locked).data, 'montant_abandonne': montant},
         )
 
+    @action(detail=True, methods=['post'], url_path='reprendre-abandon',
+            permission_classes=[PeutEncaisser])
+    def reprendre_abandon(self, request, pk=None):
+        """AFAC34 (D-AFAC-C6) — REPRISE MANUELLE d'un abandon de créance
+        (corps ``{motif, abandon?}`` ; sans ``abandon``, le plus récent actif).
+        L'abandon garde sa trace (``annule_le``) ; la facture revient au
+        recouvrement, un paiement tardif s'encaisse ensuite normalement."""
+        facture = self.get_object()
+        from ..domain.recouvrement import (
+            RepriseAbandonRefusee, reprendre_abandon_creance,
+        )
+        try:
+            abandon = reprendre_abandon_creance(
+                facture, user=request.user,
+                motif=(request.data or {}).get('motif'),
+                abandon_id=(request.data or {}).get('abandon'))
+        except RepriseAbandonRefusee as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        facture.refresh_from_db()
+        return Response({**FactureSerializer(facture).data,
+                         'abandon_repris': abandon.id,
+                         'montant_repris': str(abandon.montant)})
+
     @action(detail=True, methods=['post'], url_path='liberer-retenue',
             permission_classes=[IsResponsableOrAdmin])
     def liberer_retenue(self, request, pk=None):
