@@ -506,7 +506,7 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
     n'existait aucun chemin simple pour émettre SA facture. Ce service :
 
       1. refuse un devis non accepté, ou déjà facturé (échéancier OU bon de
-         commande — LE prédicat partagé ``factures_du_devis``, AUD112), en
+         commande, consolidée — LA garde ``exiger_devis_facturable``, ATOT2), en
          nommant les références existantes ;
       2. valide les paiements déjà reçus (``valider_paiements_saisis``) ;
       3. dans UNE transaction : réserve le stock comme la facturation directe
@@ -528,21 +528,20 @@ def facturer_devis_complet(*, devis, user, company, paiements=None):
 
     from apps.ventes.domain.encaissements import encaisser_sur_facture
     from apps.ventes.models import BonCommande, Facture
-    from apps.ventes.selectors import factures_du_devis
+    from apps.ventes.selectors_facturation import (
+        DevisDejaFacture, exiger_devis_facturable,
+    )
     from apps.ventes.utils.company_settings import create_numbered
 
     if devis.statut != devis.Statut.ACCEPTE:
         raise FacturationRefusee(
             'Seul un devis accepté peut être facturé : ce devis est au statut '
             f'« {devis.get_statut_display()} ».')
-    existantes = list(factures_du_devis(devis).order_by('id')
-                      .values_list('reference', flat=True))
-    if existantes:
-        refs = ', '.join(existantes)
-        pluriel = 'les factures' if len(existantes) > 1 else 'la facture'
-        raise FacturationRefusee(
-            f'Ce devis a déjà {pluriel} {refs} : ouvrez-la dans Ventes → '
-            'Factures pour y encaisser les paiements.')
+    # ATOT2 — LA garde unique des quatre portes (consolidée comprise).
+    try:
+        exiger_devis_facturable(devis, 'complete')
+    except DevisDejaFacture as exc:
+        raise FacturationRefusee(exc.motif) from exc
     saisis = valider_paiements_saisis(paiements)
 
     # Le bon de commande du devis est rattaché s'il n'a encore AUCUNE facture

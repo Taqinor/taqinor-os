@@ -916,6 +916,9 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
     from django.db import transaction
     from rest_framework.exceptions import ValidationError
     from ..models import Devis, Facture, FactureSource, LigneFacture
+    from ..selectors_facturation import (
+        DevisDejaFacture, exiger_devis_facturable,
+    )
     from ..utils.company_settings import create_numbered
 
     if not devis_ids or len(devis_ids) < 2:
@@ -939,12 +942,14 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                     f'Le devis {d.reference} doit être accepté pour être '
                     f'consolidé.'),
             })
-        deja_facture = Facture.objects.filter(
-            devis=d).exclude(statut=Facture.Statut.ANNULEE).exists() or \
-            FactureSource.objects.filter(devis=d).exists()
-        if deja_facture:
+        # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
+        # échéancier, complète, BC ET consolidée active) ; une consolidée
+        # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
+        try:
+            exiger_devis_facturable(d, 'consolidee')
+        except DevisDejaFacture as exc:
             raise ValidationError({
-                'devis_ids': f'Le devis {d.reference} est déjà facturé.',
+                'devis_ids': f'{d.reference} — {exc.motif}',
             })
 
     client = devis_qs[0].client

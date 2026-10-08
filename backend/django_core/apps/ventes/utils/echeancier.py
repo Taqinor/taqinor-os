@@ -814,11 +814,12 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     # facturé une SECONDE fois ici, et le client recevait deux fois la même
     # vente. Le prédicat est partagé avec l'autre porte (`selectors`), donc il
     # n'existe qu'UNE définition de « déjà facturé ».
-    from apps.ventes.selectors import factures_via_bon_commande
-    if factures_via_bon_commande(devis).exists():
-        raise ValueError(
-            "Ce devis est déjà facturé par son bon de commande : générer une "
-            "tranche d'échéancier facturerait la même vente une seconde fois.")
+    # ATOT2 — LES QUATRE PORTES : la garde unique refuse aussi une tranche
+    # après la facture COMPLÈTE ou une CONSOLIDÉE (qui n'étaient vues par
+    # personne : complète puis tranche = 240 000 facturés pour 150 000).
+    # ``DevisDejaFacture`` est une ValueError → 400 chez l'appelant.
+    from apps.ventes.selectors_facturation import exiger_devis_facturable
+    exiger_devis_facturable(devis, 'tranche')
 
     tr = next_tranche(devis)
     if tr is None:
@@ -942,6 +943,11 @@ def solde_devis(devis):
         Decimal('0'),
     )
     restant = total - paye - avoirs
+    # ATOT2 — ``tranches_facturees`` ne compte plus que les factures de
+    # TRANCHE (la complète et la facture de BC n'en sont pas) ; la porte
+    # suivante est DITE par le serveur (contrat ``devis_solde.json``).
+    from apps.ventes.selectors_facturation import est_facture_de_tranche
+    tranches = [f for f in actives if est_facture_de_tranche(f, devis)]
     return {
         'total_ttc': _q(total),
         'facture': _q(facture),
@@ -949,5 +955,30 @@ def solde_devis(devis):
         'avoirs': _q(avoirs),
         'restant': _q(restant),
         'tranches_total': len(schedule_for_devis(devis)),
-        'tranches_facturees': len(actives),
+        'tranches_facturees': len(tranches),
+        'porte_facturation': porte_facturation(devis, actives=actives),
     }
+
+
+def porte_facturation(devis, actives=None):
+    """ATOT2 — la porte de facturation encore ouverte sur ``devis`` :
+    ``'libre'`` (aucune facture active : facturer le devis entier),
+    ``'tranche'`` (un échéancier est en cours : seule la tranche suivante),
+    ``'aucune'`` (complète, BC, consolidée, ou échéancier soldé).
+
+    Lit les factures PRÉCHARGÉES du devis (``factures_actives``, liste sans
+    N+1) ; la consolidée (``devis=None``) n'est visible que par
+    ``FactureSource`` : une seule requête, et seulement pour un devis accepté
+    sans facture directe (seul cas où elle change la réponse)."""
+    from apps.ventes.selectors_facturation import est_facture_de_tranche
+    if actives is None:
+        actives = factures_actives(devis)
+    if any(not est_facture_de_tranche(f, devis) for f in actives):
+        return 'aucune'
+    if actives:
+        return 'tranche' if next_tranche(devis) is not None else 'aucune'
+    if devis.statut == devis.Statut.ACCEPTE:
+        from apps.ventes.selectors_facturation import factures_du_devis
+        if factures_du_devis(devis).exists():
+            return 'aucune'
+    return 'libre'
