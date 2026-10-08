@@ -1,5 +1,21 @@
 import api from './axios'
 
+// ASTK185 (C-ASTK-042, FOUR-8) — lit TOUTES les pages d'une liste DRF paginée
+// (StandardPagination : 50 par défaut, plafond serveur 200) en suivant `next`
+// jusqu'au bout. Renvoie `{ data: [...] }` : les appelants qui lisent
+// `r.data?.results ?? r.data` restent compatibles. Garde-fou : 500 pages.
+async function lireToutesLesPages(url, params) {
+  const tous = []
+  for (let page = 1; page <= 500; page += 1) {
+    const r = await api.get(url, { params: { page_size: 200, ...params, page } })
+    const d = r.data
+    if (Array.isArray(d)) return { data: d }
+    tous.push(...(d?.results ?? []))
+    if (!d?.next) break
+  }
+  return { data: tous }
+}
+
 const stockApi = {
   // Produits
   // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
@@ -57,6 +73,10 @@ const stockApi = {
 
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
+  // ASTK185 — liste COMPLÈTE (le 51ᵉ fournisseur n'est plus perdu en page 2).
+  getAllFournisseurs: (params) => lireToutesLesPages('/stock/fournisseurs/', params),
+  getAllFournisseursArchived: (params) =>
+    lireToutesLesPages('/stock/fournisseurs/', { ...params, show_archived: 'true' }),
   // WIR219 — fiche fournisseur unique (retrieve), lecture IsAnyRole. Manquait
   // jusqu'ici : FournisseurFiche360.jsx l'appelait déjà en optional-chaining
   // (`stockApi.getFournisseur?.(...)`), donc le badge de candidature/actions

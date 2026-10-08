@@ -547,7 +547,7 @@ export default function FournisseursStock() {
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
-    stockApi.getFournisseurs({ ordering: 'nom' })
+    stockApi.getAllFournisseurs({ ordering: 'nom' })
       .then((r) => setItems(r.data?.results ?? r.data ?? []))
       .catch(() => setError('Chargement des fournisseurs impossible.'))
       .finally(() => setLoading(false))
@@ -567,7 +567,7 @@ export default function FournisseursStock() {
     // ci-dessous ; poser `setLoadingArchived(true)` en microtask (jamais
     // synchrone dans l'appel) évite le cascading update détecté par la règle.
     Promise.resolve().then(() => setLoadingArchived(true))
-    stockApi.getFournisseursArchived()
+    stockApi.getAllFournisseursArchived()
       .then((r) => setItemsArchived(r.data?.results ?? r.data ?? []))
       .catch(() => toastError('Chargement des fournisseurs archivés impossible.'))
       .finally(() => setLoadingArchived(false))

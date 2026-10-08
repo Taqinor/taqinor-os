@@ -238,7 +238,7 @@ export default function ModelesBcf() {
 
   useEffect(() => {
     reload()
-    stockApi.getFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
+    stockApi.getAllFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 

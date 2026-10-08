@@ -20,7 +20,7 @@ import authReducer from '../../features/auth/store/authSlice'
 
 vi.mock('../../api/stockApi', () => ({
   default: {
-    getFournisseurs: vi.fn(() => Promise.resolve({
+    getAllFournisseurs: vi.fn(() => Promise.resolve({
       data: [
         { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
         {
@@ -28,6 +28,14 @@ vi.mock('../../api/stockApi', () => ({
           motif_blocage: 'Litige qualité', nb_produits: 0, nb_bons_commande: 0,
         },
       ],
+    })),
+    // ASTK185 — page 1 SEULE (50 lignes + next) : un écran qui l'appellerait
+    // encore perdrait le 51ᵉ fournisseur (test-du-test de « affiche le 51ᵉ »).
+    getFournisseurs: vi.fn(() => Promise.resolve({
+      data: {
+        count: 51, next: '?page=2',
+        results: Array.from({ length: 50 }, (_, i) => ({ id: 100 + i, nom: `Fournisseur ${i + 1}` })),
+      },
     })),
     // WIR219/NTPRT25 — décision (valider/rejeter) une candidature.
     deciderCandidatureFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
@@ -38,7 +46,7 @@ vi.mock('../../api/stockApi', () => ({
     archiveFournisseur: vi.fn(() => Promise.resolve({ data: { id: 1, is_archived: true } })),
     performanceFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     // WIR190 — fournisseurs archivés (repli PROTECT, patron StockList).
-    getFournisseursArchived: vi.fn(() => Promise.resolve({
+    getAllFournisseursArchived: vi.fn(() => Promise.resolve({
       data: [{ id: 3, nom: 'Archivé SARL', nb_produits: 1, nb_bons_commande: 2 }],
     })),
     unarchiveFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
@@ -147,7 +155,7 @@ describe('FournisseursStock — fournisseurs archivés (WIR190)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Archivés/ }))
     const grid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
     expect(grid).toBeInTheDocument()
-    expect(stockApi.getFournisseursArchived).toHaveBeenCalled()
+    expect(stockApi.getAllFournisseursArchived).toHaveBeenCalled()
     // Le DataTable double chaque ligne (grille desktop + carte mobile) : on
     // porte la requête sur la grille, comme le test « Réactiver » plus bas.
     expect(within(grid).getByText('Archivé SARL')).toBeInTheDocument()
@@ -221,7 +229,7 @@ describe('FournisseursStock — confirmations maison (ASTK184)', () => {
 
   it('aucun window.confirm sur les 4 gestes', async () => {
     const spy = vi.spyOn(window, 'confirm').mockImplementation(() => true)
-    stockApi.getFournisseurs.mockResolvedValueOnce({
+    stockApi.getAllFournisseurs.mockResolvedValueOnce({
       data: [
         { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
         { id: 4, nom: 'Candidat SARL', statut: 'actif',
@@ -316,7 +324,7 @@ describe('FournisseursStock — catégories fournisseur (WIR108)', () => {
 describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
   // `mockResolvedValueOnce` — n'affecte QUE ces tests, jamais la liste par
   // défaut consommée par les autres describe (WIR27 compte exactement 2 liens).
-  const listeAvecCandidature = () => stockApi.getFournisseurs.mockResolvedValueOnce({
+  const listeAvecCandidature = () => stockApi.getAllFournisseurs.mockResolvedValueOnce({
     data: [
       { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
       {
@@ -392,6 +400,23 @@ describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
    déjà : le serveur crée (201, non bloquant) et renvoie
    `avertissements.nom` ; la liste l'affiche après fermeture du formulaire.
    ========================================================================== */
+/* ============================================================================
+   ASTK185 (C-ASTK-042, FOUR-8) — la liste lit TOUTES les pages : le 51ᵉ
+   fournisseur est listé, cherchable et compté.
+   ========================================================================== */
+describe('FournisseursStock — liste complète (ASTK185)', () => {
+  it('affiche le 51ᵉ fournisseur', async () => {
+    const tous = Array.from({ length: 51 }, (_, i) => ({ id: 100 + i, nom: `Fournisseur ${i + 1}` }))
+    stockApi.getAllFournisseurs.mockResolvedValueOnce({ data: tous })
+    renderPage()
+    await screen.findByRole('grid', { name: 'Fournisseurs' })
+    expect(await screen.findByText('51 fournisseur(s)')).toBeInTheDocument()
+    // (Au-delà de 50 lignes le DataTable se virtualise — jsdom sans hauteur
+    // n'en rend aucune : le compteur d'en-tête est la preuve lisible ici.)
+    expect(stockApi.getAllFournisseurs).toHaveBeenCalledWith({ ordering: 'nom' })
+  })
+})
+
 describe('FournisseursStock — doublon de nom (ASTK95)', () => {
   it("affiche l'avertissement de nom renvoyé par le serveur", async () => {
     stockApi.createFournisseur.mockResolvedValueOnce({
