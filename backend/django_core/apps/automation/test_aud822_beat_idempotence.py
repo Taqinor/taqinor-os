@@ -87,8 +87,14 @@ class FactureOverdueIdempotenceTests(_Base):
         self._regle(TriggerType.FACTURE_OVERDUE,
                     action_type=ActionType.SEND_EMAIL,
                     action_config={'subject': 'Relance', 'body': 'Bonjour'})
-        self._facture()
         mail.outbox = []
+        # APAR8 — la règle existe AVANT la facture : le signal de création
+        # (``_facture_saved``) évalue déjà l'occurrence et pose le marqueur
+        # partagé. Son e-mail part au COMMIT (APAR10/APAR18) : on capture
+        # donc aussi la création, puis on compte TOUS les e-mails (création
+        # + 3 balayages) — une seule relance au total.
+        with self.captureOnCommitCallbacks(execute=True):
+            self._facture()
         # APAR10 — l'e-mail part au COMMIT de chaque passage.
         for _ in range(3):
             with self.captureOnCommitCallbacks(execute=True):
