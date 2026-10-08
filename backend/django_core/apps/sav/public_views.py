@@ -305,6 +305,19 @@ def equipement_public_signaler(request, token):
             return _noindex(Response(
                 {'reference': existant.reference}, status=status.HTTP_200_OK))
 
+    # ASAV28 — la photo est validée (format, taille) et stockée AVANT de
+    # créer le ticket : un refus donne 400 sous ``photo``, sans ticket ni
+    # numéro consommé (plus de pièce jointe jetée en silence).
+    photo = request.FILES.get('photo')
+    donnees_photo = None
+    if photo is not None:
+        from apps.records.storage import store_attachment
+
+        donnees_photo, erreur_photo = store_attachment(photo)
+        if donnees_photo is None:
+            return _noindex(Response(
+                {'photo': [erreur_photo]}, status=status.HTTP_400_BAD_REQUEST))
+
     from apps.ventes.utils.references import create_with_reference
 
     def _create(ref):
@@ -322,18 +335,14 @@ def equipement_public_signaler(request, token):
         Ticket, 'SAV', equipement.company, _create))
 
     # Photo optionnelle — pièce jointe MinIO (apps.records, foundation app).
-    photo = request.FILES.get('photo')
-    if photo is not None:
+    if donnees_photo is not None:
         from django.contrib.contenttypes.models import ContentType
         from apps.records.models import Attachment
-        from apps.records.storage import store_attachment
 
-        data, err = store_attachment(photo)
-        if data is not None:
-            Attachment.objects.create(
-                company=equipement.company,
-                content_type=ContentType.objects.get_for_model(Ticket),
-                object_id=ticket.pk, **data)
+        Attachment.objects.create(
+            company=equipement.company,
+            content_type=ContentType.objects.get_for_model(Ticket),
+            object_id=ticket.pk, **donnees_photo)
 
     return _noindex(Response(
         {'reference': ticket.reference}, status=status.HTTP_201_CREATED))
