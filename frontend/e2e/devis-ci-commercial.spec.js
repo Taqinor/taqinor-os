@@ -25,7 +25,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, KWH_COMMERCIAL, choisirMarche, declarerProfilCi, executerDansDjango,
-  lireJson, listeDe, textePdf,
+  lireJson, listeDe, nombrePagesPdf, textePdf,
 } from './helpers'
 
 const ANNEE = new Date().getFullYear()
@@ -38,11 +38,6 @@ const ENTREPRISE = {
 const devisIds = []
 const etat = { devisId: null, apercu: null, token: null, pdfTexte: null }
 
-/** Nombre de pages d'un PDF, lu sur ses objets /Type /Page (pas /Pages). */
-function nombrePages(octets) {
-  const texte = Buffer.from(octets).toString('latin1')
-  return (texte.match(/\/Type\s*\/Page(?![s\w])/g) || []).length
-}
 
 /** Un pourcentage (72.8) est-il imprimé, au format FR ou point, arrondi ou non ? */
 function pctImprime(texte, pct) {
@@ -142,7 +137,10 @@ test('CIQ334 — PDF : 3 pages avec ou sans étude, taux = dernier aperçu, dima
     const pdf = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full${suffixe}`)
     expect(pdf.status(), `/proposal${suffixe}`).toBe(200)
     const octets = await pdf.body()
-    expect(nombrePages(octets), `document commercial${suffixe} : 3 pages`).toBe(3)
+    // CAD177 — le moteur sert du PDF 1.7 à flux d'objets compressés : la
+    // regex « /Type /Page » comptait 0 (nocturne 37827548643) ; pdfjs lit
+    // le vrai nombre de pages, comme ci-site-mt-recette / devis-agricole.
+    expect(await nombrePagesPdf(octets), `document commercial${suffixe} : 3 pages`).toBe(3)
     if (!suffixe) etat.pdfTexte = await textePdf(octets)
   }
   const bilan = etat.apercu.bilan

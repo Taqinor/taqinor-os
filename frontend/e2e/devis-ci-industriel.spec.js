@@ -19,7 +19,7 @@
 // Base partagée, workers: 1 : nettoyage best-effort en afterAll.
 import { test, expect } from '@playwright/test'
 import {
-  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe, textePdf,
+  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe, nombrePagesPdf, textePdf,
 } from './helpers'
 
 const ANNEE_FACTURES = new Date().getFullYear() - 1
@@ -40,11 +40,6 @@ const ENTREPRISE = {
 const devisIds = []
 const etat = { devisId: null, token: null, pdfTexte: null }
 
-/** Nombre de pages d'un PDF, lu sur ses objets /Type /Page (pas /Pages). */
-function nombrePages(octets) {
-  const texte = Buffer.from(octets).toString('latin1')
-  return (texte.match(/\/Type\s*\/Page(?![s\w])/g) || []).length
-}
 
 /** Toutes les clés d'un objet JSON, à toute profondeur. */
 function clesProfondes(v, out = []) {
@@ -144,7 +139,10 @@ test('CIQ346 — PDF : 4 pages avec ou sans étude, « TRI sur 25 ans » et VAN'
     const pdf = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full${suffixe}`)
     expect(pdf.status(), `/proposal${suffixe}`).toBe(200)
     const octets = await pdf.body()
-    expect(nombrePages(octets), `document industriel${suffixe} : 4 pages`).toBe(4)
+    // CAD177 — le moteur sert du PDF 1.7 à flux d'objets compressés : la
+    // regex « /Type /Page » comptait 0 (nocturne 37827548643) ; pdfjs lit
+    // le vrai nombre de pages, comme ci-site-mt-recette / devis-agricole.
+    expect(await nombrePagesPdf(octets), `document industriel${suffixe} : 4 pages`).toBe(4)
     if (!suffixe) etat.pdfTexte = await textePdf(octets)
   }
   expect(etat.pdfTexte).toMatch(/TRI sur 25 ans/)
