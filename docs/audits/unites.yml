@@ -163,13 +163,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: AACQ
     plan: docs/plans/PLAN_AUDIT_ACQUISITION.md
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
     pr: null
-    date: null
-    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3)."
+    date: 2026-10-08
+    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-acquisition.md) : 53 constats reproduits (0 S1 confirmé), 65 tâches AACQ dont 3 décisions fondateur M1 ; action moteur modifiable après approbation, budget Meta jamais appliqué (méthode absente), seuils MAD comparés à de l'USD."
 
   - id: J1a
     rang: 5
