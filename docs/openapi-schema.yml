@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4812, operations: 7594, components: 2211}
+counts: {paths: 4806, operations: 7588, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3613,8 +3613,6 @@ operations:
 - get /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_retrieve
 - patch /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_partial_update
 - put /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_update
-- post /api/django/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> django_ventes_dossiers_reglementaires_generer_checklist_create
-- post /api/django/ventes/dossiers-reglementaires/{id}/generer-schema/ -> django_ventes_dossiers_reglementaires_generer_schema_create
 - post /api/django/ventes/economie-ci/preview/ -> django_ventes_economie_ci_preview_create
 - post /api/django/ventes/economie-pompage/preview/ -> django_ventes_economie_pompage_preview_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
@@ -3763,7 +3761,6 @@ operations:
 - get /api/django/ventes/regularisations-8221/{id}/ -> django_ventes_regularisations_8221_retrieve
 - patch /api/django/ventes/regularisations-8221/{id}/ -> django_ventes_regularisations_8221_partial_update
 - put /api/django/ventes/regularisations-8221/{id}/ -> django_ventes_regularisations_8221_update
-- post /api/django/ventes/regularisations-8221/{id}/generer-declaration/ -> django_ventes_regularisations_8221_generer_declaration_create
 - get /api/django/ventes/relances/ -> django_ventes_relances_retrieve
 - get /api/django/ventes/remises-encaissement/ -> django_ventes_remises_encaissement_list
 - post /api/django/ventes/remises-encaissement/ -> django_ventes_remises_encaissement_create
@@ -7414,8 +7411,6 @@ operations:
 - get /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_retrieve
 - patch /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_partial_update
 - put /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_update
-- post /api/v1/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> v1_ventes_dossiers_reglementaires_generer_checklist_create
-- post /api/v1/ventes/dossiers-reglementaires/{id}/generer-schema/ -> v1_ventes_dossiers_reglementaires_generer_schema_create
 - post /api/v1/ventes/economie-ci/preview/ -> v1_ventes_economie_ci_preview_create
 - post /api/v1/ventes/economie-pompage/preview/ -> v1_ventes_economie_pompage_preview_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
@@ -7564,7 +7559,6 @@ operations:
 - get /api/v1/ventes/regularisations-8221/{id}/ -> v1_ventes_regularisations_8221_retrieve
 - patch /api/v1/ventes/regularisations-8221/{id}/ -> v1_ventes_regularisations_8221_partial_update
 - put /api/v1/ventes/regularisations-8221/{id}/ -> v1_ventes_regularisations_8221_update
-- post /api/v1/ventes/regularisations-8221/{id}/generer-declaration/ -> v1_ventes_regularisations_8221_generer_declaration_create
 - get /api/v1/ventes/relances/ -> v1_ventes_relances_retrieve
 - get /api/v1/ventes/remises-encaissement/ -> v1_ventes_remises_encaissement_list
 - post /api/v1/ventes/remises-encaissement/ -> v1_ventes_remises_encaissement_create
