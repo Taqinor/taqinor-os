@@ -93,5 +93,6 @@ test("ÉCRITURE — le marqueur ne part QUE sur les lignes produit (une section/
 test('GARDE — refreshTarif protège toujours un prix manuel (la garde ne bouge pas, elle devient seulement atteignable après ?edit=)', () => {
   const start = DG.indexOf('const refreshTarif = useCallback(async (key, produitId, quantite) => {')
   assert.ok(start > -1, 'refreshTarif introuvable')
-  assert.match(DG.slice(start, start + 1200), /\(l\._key === key && !l\.prixManuel\)/)
+  // AGNR15 — fenêtre élargie : la conversion HT -> TTC (commentée) précède la garde.
+  assert.match(DG.slice(start, start + 2000), /\(l\._key === key && !l\.prixManuel\)/)
 })
