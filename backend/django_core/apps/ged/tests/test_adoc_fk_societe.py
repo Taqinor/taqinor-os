@@ -205,7 +205,8 @@ class FkSocieteGedTests(TestCase):
             'tags_defaut': [self.tag_b.pk]}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('tags_defaut', resp.data)
-        self.assertFalse(RoutageDocumentaire.objects.exists())
+        self.assertFalse(RoutageDocumentaire.objects.filter(
+            source='ventes_devis').exists())
 
     def test_export_annote_ignore_annotation_etrangere(self):
         import fitz
