@@ -403,6 +403,25 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     created_by=request.user,
                 )
 
+            # ERR-BC-LIVRER-PARTIEL-DOUBLE-SORTIE — « une vente = une
+            # sortie » : la sortie de CETTE livraison solde (même
+            # transaction) la réservation du chantier à hauteur des seules
+            # quantités livrées ; « Installé » ne ressort que le reliquat.
+            # Référence propre à la livraison : le solde est idempotent par
+            # (référence, produit), deux livraisons ne doivent pas s'annuler.
+            from ..domain.facturation_ops import (
+                solder_reservations_chantier_vente,
+            )
+            sorties_livraison = {}
+            for (_ld, produit, _q, qte_entiere, _qa, _qp) in validated:
+                sorties_livraison[produit.id] = (
+                    sorties_livraison.get(produit.id, 0) + qte_entiere)
+            solder_reservations_chantier_vente(
+                devis=bc.devis, company=bc.company,
+                sorties=sorties_livraison,
+                reference=f'{bc.reference} (livraison {livraison.id})',
+                user=request.user)
+
             # Solde intégral atteint sur toutes les lignes → passage LIVRE
             # (une seule fois — les side-effects existants de `marquer_livre`
             # NE sont PAS ré-exécutés ici : le statut est simplement posé).

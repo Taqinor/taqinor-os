@@ -51,6 +51,8 @@ CHEMINS_COUVERTS = {
         'bc_livre_toggle_off',
     'apps/stock/services.py::affecter_livraison_directe_chantier':
         'livraison_directe_chantier',
+    'apps/ventes/views/bon_commande.py::BonCommandeViewSet.livrer_partiel':
+        'bc_livraison_partielle',
 }
 
 #: La primitive elle-même (ses appelants sont classés un par un).
@@ -90,13 +92,8 @@ HORS_VENTE = {
 #: DETTE NOMMÉE (ne peut que rétrécir) : chemin de sortie d'une vente qui ne
 #: solde PAS encore la réservation du chantier — constat de cette garde, à
 #: corriger par une tâche dédiée puis à déplacer dans CHEMINS_COUVERTS.
-CHEMINS_EN_DETTE = {
-    'apps/ventes/views/bon_commande.py::BonCommandeViewSet.livrer_partiel':
-        'XSAL12 livraison partielle d\'un BC : SORTIE par record_stock_movement '
-        'sans solder_reservations_chantier_vente — « Installé » ressort le '
-        'matériel livré (constat ASTK129, tâche à ouvrir)',
-}
-CHEMINS_EN_DETTE_PLAFOND = 1
+CHEMINS_EN_DETTE = {}
+CHEMINS_EN_DETTE_PLAFOND = 0
 
 _CIBLES = {'decompter_stock_lignes', 'record_stock_movement'}
 _TYPES_NON_SORTIE = ('ENTREE', 'AJUSTEMENT', 'REBUT', 'TRANSFERT',
@@ -178,7 +175,8 @@ class TableDesCheminsTests(SimpleTestCase):
 class GardeSortieUnique(TestCase):
     #: Cas joués (les chemins couverts + ceux portés par installations).
     CAS = ('facture_directe', 'bc_livre_toggle_off', 'bc_livre_toggle_on',
-           'livraison_directe_chantier', 'consommation_terrain_f11')
+           'livraison_directe_chantier', 'consommation_terrain_f11',
+           'bc_livraison_partielle')
 
     def setUp(self):
         from apps.crm.models import Client
@@ -263,6 +261,21 @@ class GardeSortieUnique(TestCase):
 
     def _bc_livre_toggle_on(self, devis, inst, panneau):
         self._bc_livre(devis, toggle=True)
+
+    def _bc_livraison_partielle(self, devis, inst, panneau):
+        from apps.ventes.models import BonCommande, LigneDevis
+
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ASTK129-{self._suivant()}',
+            devis=devis, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME)
+        ligne = LigneDevis.objects.get(devis=devis, produit=panneau)
+        for quantite in (4, QUANTITE_VENDUE - 4):
+            rep = self.api.post(
+                f'/api/django/ventes/bons-commande/{bc.id}/livrer-partiel/',
+                {'lignes': [{'ligne_devis': ligne.id,
+                             'quantite': str(quantite)}]}, format='json')
+            self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
 
     def _livraison_directe_chantier(self, devis, inst, panneau):
         from apps.stock.models import BonCommandeFournisseur, Fournisseur
