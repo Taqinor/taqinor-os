@@ -333,6 +333,9 @@ CHIFFRES_CI = None
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
+# Décision fondateur 08/10/2026 — faux pour un devis envoyé avant les
+# corrections (``data['regles_calcul_origine']``) : formats d'origine.
+REGLES_CORRIGEES = True
 # QJR623 — cases « Modalités de paiement » calculées par le builder (par
 # branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
 MONTANTS_TRANCHES = {}
@@ -867,9 +870,18 @@ def _pcts_imprimes(data):
             _pct_echeance(terms.get("solde"), 10))
 
 
+def _pct_txt(v):
+    """AMOT24 — un pourcentage imprimé : ``montants.pct_fr`` (2,5 · 20) ;
+    format d'origine (« 2.5 ») pour un devis aux règles d'origine."""
+    if REGLES_CORRIGEES:
+        from .montants import pct_fr
+        return pct_fr(v)
+    return int(v) if v == int(v) else v
+
+
 def _tva_note_par_defaut(tva_pct):
     """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
-    tva_lbl = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
+    tva_lbl = _pct_txt(tva_pct)
     return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
             f"travaux.")
 
@@ -1547,7 +1559,7 @@ def _note_remise_par_ligne():
     """
     if DISCOUNT_PCT <= 0:
         return ""
-    pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+    pct = _pct_txt(DISCOUNT_PCT)
     return (f"Remise de {pct} % appliquée sur chaque ligne "
             f"— prix catalogue barrés, totaux après remise.")
 
@@ -1599,7 +1611,7 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     arrondi = totaux.get("arrondi") or 0
     rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        pct = _pct_txt(DISCOUNT_PCT)
         rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
     if arrondi > 0:
@@ -1612,12 +1624,12 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     buckets = totaux.get("tva_par_taux") or []
     if len(buckets) > 1:
         for b in buckets:
-            r = int(b["taux"]) if b["taux"] == int(b["taux"]) else b["taux"]
+            r = _pct_txt(b["taux"])
             rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]),
                         fig="tva_taux", taux=b["taux"])
     else:
         rate = buckets[0]["taux"] if buckets else TVA_PCT
-        tva_pct = int(rate) if rate == int(rate) else rate
+        tva_pct = _pct_txt(rate)
         rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva), fig="tva")
     # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
     # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
@@ -1812,7 +1824,7 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         tot_ht_s = (_cellule_prix_remise(qty * pu_ht, _item_total_ht_remise(it))
                     if pu_ht else dash)
         taux = it.get("taux_tva", TVA_PCT)
-        taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
+        taux_s = f"{_pct_txt(taux)}%"
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
                  f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
@@ -1954,7 +1966,9 @@ def page1():
         # d'arrondi que le total qu'il barre.
         _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
-        _disc_str = f"\u2212{int(DISCOUNT_PCT)}\u202f%"
+        _disc_str = (f"\u2212{_pct_txt(DISCOUNT_PCT)}\u202f%"
+                     if REGLES_CORRIGEES
+                     else f"\u2212{int(DISCOUNT_PCT)}\u202f%")
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_s_before}</div>'
@@ -4244,7 +4258,7 @@ def page_onepage(items, tronquees=0):
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
                 f'padding-left:6px;">&#10003; {gar}</div>')
         _taux = it.get("taux_tva", TVA_PCT)
-        _taux_s = f"{int(_taux)}&#37;" if _taux == int(_taux) else f"{_taux}&#37;"
+        _taux_s = f"{_pct_txt(_taux)}&#37;"
         rows_html += (
             f'<tr style="background:{bg};">'
             f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
@@ -4298,7 +4312,7 @@ def page_onepage(items, tronquees=0):
     totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
                             fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        _pct = _pct_txt(DISCOUNT_PCT)
         totals_html += _tot_line(
             f"{_L('remise')} ({_pct}&#8201;%)",
             "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True, fig="remise")
@@ -4316,13 +4330,13 @@ def page_onepage(items, tronquees=0):
     _buckets = totaux.get("tva_par_taux") or []
     if len(_buckets) > 1:
         for _b in _buckets:
-            _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
+            _r = _pct_txt(_b["taux"])
             totals_html += _tot_line(
                 f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD",
                 fig="tva_taux", taux=_b["taux"])
     else:
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
-        _tva_pct = int(_rate) if _rate == int(_rate) else _rate
+        _tva_pct = _pct_txt(_rate)
         totals_html += _tot_line(f"{_L('tva')} ({_tva_pct}&#8201;%)",
                                  _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
@@ -4770,6 +4784,8 @@ def apply_quote_data(data: dict) -> None:
     TOTAL_SANS        = float(data["total_sans"])
     TOTAL_AVEC        = float(data["total_avec"])
     DISCOUNT_PCT      = float(data.get("discount_pct", 0))
+    global REGLES_CORRIGEES
+    REGLES_CORRIGEES = not data.get("regles_calcul_origine")
     TOTAL_SANS_BEFORE = float(data.get("total_sans_before", TOTAL_SANS))
     TOTAL_AVEC_BEFORE = float(data.get("total_avec_before", TOTAL_AVEC))
     ECO_S_ANN    = int(data["eco_s_ann"])

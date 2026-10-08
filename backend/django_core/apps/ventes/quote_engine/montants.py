@@ -28,3 +28,16 @@ def fmt_centimes(v):
 def fmt_centimes_mad(v):
     """``fmt_centimes`` suffixé « MAD » — le format des lignes de total."""
     return fmt_centimes(v) + " MAD"
+
+
+def pct_fr(v):
+    """AMOT24 — UN pourcentage à la française : valeur EXACTE, virgule
+    décimale, sans zéros inutiles (2,5 · 20 · 12,25). Jamais tronqué en
+    entier (« −2 % » pour une remise de 2,5 %), jamais un point décimal."""
+    try:
+        d = Decimal(str(v))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(v)
+    if d == d.to_integral_value():
+        return str(int(d))
+    return format(d.normalize(), "f").replace(".", ",")

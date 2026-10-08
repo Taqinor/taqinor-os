@@ -4539,6 +4539,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
+    # Décision fondateur 08/10/2026 — les GABARITS lisent ce drapeau (posé
+    # seulement pour un devis envoyé avant les corrections) pour garder leurs
+    # formats d'origine : le client relit exactement ce qu'il a reçu.
+    if not _corrige:
+        data["regles_calcul_origine"] = True
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une
