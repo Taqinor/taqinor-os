@@ -360,11 +360,11 @@ class BonCommande(models.Model):
         # ERR-QAC-MULTIVILLA-MATERIEL-XN — devis « ×N villas » : N kits (N=1
         # inchangé). AFAC15 — SEUL le panier VENDU (`option_lines`, même panier
         # que la facture et la sortie) est livrable : jamais l'option écartée.
-        from .utils.options import option_lines
+        from .domain.argent import lignes_vendues
         from .multivilla import nombre_proprietes
         n_prop = nombre_proprietes(self.devis)
         out = []
-        for ligne in option_lines(self.devis):
+        for ligne in lignes_vendues(self.devis):
             if not ligne.compte_dans_totaux or ligne.quantite is None:
                 continue
             livre = livre_par_ligne.get(ligne.id) or 0
