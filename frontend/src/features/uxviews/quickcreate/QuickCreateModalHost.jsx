@@ -5,6 +5,8 @@
 // `<CommandPalette />`) — indépendant du cycle de vie de la palette (fermer
 // la palette ne démonte pas ce modal).
 import { useEffect, useState } from 'react'
+import { useDispatch } from 'react-redux'
+import { upsertTicket } from '../../sav/store/ticketsSlice'
 import LeadExpressModal from '../../../pages/crm/leads/LeadExpressModal'
 import ClientQuickCreateModal from '../../../pages/ventes/ClientQuickCreateModal'
 import ProduitQuickCreateModal from '../../../components/ProduitQuickCreateModal'
@@ -14,6 +16,7 @@ import { QUICK_CREATE_EVENT } from './quickCreateEvents'
 
 export default function QuickCreateModalHost() {
   const [type, setType] = useState(null)
+  const dispatch = useDispatch()
 
   useEffect(() => {
     const onEvent = (e) => setType(e.detail?.type || null)
@@ -51,7 +54,11 @@ export default function QuickCreateModalHost() {
     return (
       <TicketQuickCreateModal
         open onClose={close}
-        onCreated={() => { toast.success('Ticket créé.'); close() }}
+        onCreated={(ticket) => {
+          // ASAV60 — insère le ticket créé dans la liste /sav ouverte.
+          if (ticket?.id != null) dispatch(upsertTicket(ticket))
+          toast.success('Ticket créé.'); close()
+        }}
       />
     )
   }
