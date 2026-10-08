@@ -672,6 +672,38 @@ class OperationDestinationIncoherenteError(ValueError):
     ``stock_occasion`` (cohérence avec le restock XMFG10)."""
 
 
+class RetraitHorsPerimetreError(ValueError):
+    """ASAV8 — la série désigne un équipement hors du chantier / client du
+    ticket (400 sous ``numero_serie``)."""
+
+
+class RetraitProduitIncoherentError(ValueError):
+    """ASAV8 — le produit déclaré n'est pas celui de l'équipement trouvé
+    (400 sous ``produit``)."""
+
+
+class EquipementDejaRemplaceError(Exception):
+    """ASAV8 — l'équipement est déjà remplacé : un rejeu ne recrée ni retrait,
+    ni mouvement de stock, ni RMA, ni signal (409)."""
+
+
+def _equipement_dans_perimetre_ticket(equipement, ticket):
+    """ASAV8 — l'équipement appartient-il au chantier ou au client du ticket ?
+
+    Chantier du ticket = celui de l'équipement ; sinon client du ticket =
+    client du chantier de l'équipement ou client de sa vente comptoir."""
+    if ticket.installation_id and (
+            equipement.installation_id == ticket.installation_id):
+        return True
+    if not ticket.client_id:
+        return False
+    if equipement.client_vente_id == ticket.client_id:
+        return True
+    installation = equipement.installation
+    return bool(installation is not None
+                and installation.client_id == ticket.client_id)
+
+
 def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
                   destination, user, operation=None):
     """Trace une pièce RETIRÉE du ticket (`PieceRetiree`) et applique les
@@ -702,9 +734,29 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
 
     equipement_remplace = None
     if numero_serie:
-        equipement_remplace = Equipement.objects.filter(
-            company=company, numero_serie=numero_serie).first()
+        # ASAV8 — verrou de ligne : deux retraits concurrents de la même
+        # série ne peuvent pas basculer (ni restocker) deux fois.
+        from django.db import connection
+        equipements = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie)
+        if connection.in_atomic_block:
+            equipements = equipements.select_for_update()
+        equipement_remplace = equipements.first()
         if equipement_remplace is not None:
+            if not _equipement_dans_perimetre_ticket(
+                    equipement_remplace, ticket):
+                raise RetraitHorsPerimetreError(
+                    "Ce numéro de série est hors du chantier / client du "
+                    "ticket.")
+            if equipement_remplace.produit_id != produit.pk:
+                raise RetraitProduitIncoherentError(
+                    "Le produit ne correspond pas à celui de l'équipement "
+                    f"{numero_serie}.")
+            if equipement_remplace.statut == Equipement.Statut.REMPLACE:
+                ref = getattr(equipement_remplace.remplace_par_ticket,
+                              'reference', '') or '—'
+                raise EquipementDejaRemplaceError(
+                    f"Équipement déjà remplacé par {ref}.")
             equipement_remplace.statut = Equipement.Statut.REMPLACE
             equipement_remplace.remplace_par_ticket = ticket
             equipement_remplace.save(
@@ -721,7 +773,11 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
                     sender=None, equipement=equipement_remplace,
                     ticket=ticket, company=company, user=user)
             except Exception:  # pragma: no cover - défensif (best-effort)
-                pass
+                # ASAV8 — l'échec d'un abonné est journalisé, plus avalé.
+                logger.exception(
+                    'retirer_piece: envoi du signal equipement_remplace '
+                    'en échec (ticket %s, série %s)',
+                    ticket.reference, numero_serie)
 
     piece = PieceRetiree.objects.create(
         company=company, ticket=ticket, produit=produit, quantite=quantite,

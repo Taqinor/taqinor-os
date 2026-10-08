@@ -1639,7 +1639,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
-        from .services import OperationDestinationIncoherenteError, retirer_piece
+        from .services import (
+            EquipementDejaRemplaceError, OperationDestinationIncoherenteError,
+            RetraitHorsPerimetreError, RetraitProduitIncoherentError,
+            retirer_piece,
+        )
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
         except (InvalidOperation, TypeError):
@@ -1668,6 +1672,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     user=request.user)
         except OperationDestinationIncoherenteError as exc:
             return Response({'detail': str(exc)}, status=400)
+        # ASAV8 — retrait borné au périmètre du ticket, une fois par équipement.
+        except RetraitHorsPerimetreError as exc:
+            return Response({'numero_serie': [str(exc)]}, status=400)
+        except RetraitProduitIncoherentError as exc:
+            return Response({'produit': [str(exc)]}, status=400)
+        except EquipementDejaRemplaceError as exc:
+            return Response({'detail': str(exc)}, status=409)
         suffixe = {
             PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
             PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
