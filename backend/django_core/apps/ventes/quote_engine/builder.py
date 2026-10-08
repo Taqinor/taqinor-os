@@ -3593,7 +3593,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (``panneaux_et_watt_lu`` : désignation ET nom du produit lié). Au point où
     # ces puces étaient construites, la clé interne avait déjà été effacée —
     # d'où les deux lectures divergentes du même document.
-    def _bullets(rows):
+    # AMOT16 (C-AMOT-014/015) — rôle d'une ligne pour les puces : le rôle
+    # STOCKÉ (STKCAT23) d'abord, le classifieur catalogue en repli.
+    from apps.ventes.domain.catalogue import (
+        _sans_accents as _sa_puce, classer_produit as _classer_puce)
+
+    def _role_puce(r):
+        role = r.get("role_devis")
+        if role:
+            return role
+        return (_classer_puce(r.get("designation", ""))
+                or _classer_puce(r.get("_produit_nom", "")))
+
+    def _porte_structure_et_pose(rows):
+        vendues = [r for r in rows if (r.get("quantite") or 0) > 0]
+        structure = any(
+            (_role_puce(r) or "").startswith("structure")
+            or _role_puce(r) == "socle" for r in vendues)
+        pose = any(
+            _role_puce(r) == "installation"
+            or "pose" in _sa_puce(r.get("designation", "")).split()
+            or "main d'oeuvre" in _sa_puce(r.get("designation", ""))
+            for r in vendues)
+        return structure and pose
+
+    def _bullets(rows, watt_option=None):
+        # AMOT16 — la puissance de CETTE option (watt de ses lignes panneau),
+        # jamais un watt scalaire partagé par les deux cartes.
+        watt = watt_option
         out = []
         # QJR17 (b) — MÊME PRÉDICAT, MÊMES ENTRÉES que le total compté :
         # « Module PV 550 W » était compté comme panneau par le scalaire et
@@ -3626,11 +3653,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
         if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):
             out.append("Smart Meter + monitoring")
-        out.append("Structures + installation complète")
+        # AMOT16 — seulement si l'option porte une ligne de structure ET une
+        # ligne de pose (jamais une prestation que le devis ne vend pas).
+        if _porte_structure_et_pose(rows):
+            out.append("Structures + installation complète")
         return out[:6]
 
-    sans_bullets = _bullets(sans_items)
-    avec_bullets = _bullets(avec_items)
+    sans_bullets = _bullets(sans_items, _scal.get("watt_sans") or watt)
+    avec_bullets = _bullets(avec_items, _scal.get("watt_avec") or watt)
     if avec_batterie_differee:
         # BAT-DIFF — la carte de l'option « avec » DIT que la batterie est à
         # ajouter (aucune puce batterie ne sort de ``_bullets`` : la ligne est
