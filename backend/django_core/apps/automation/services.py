@@ -36,6 +36,46 @@ def _notify_best_effort(user, event_type, title, body='', company=None):
                      exc_info=True)
 
 
+# ── APAR27 — service UNIQUE d'écriture du journal de configuration ─────────
+#
+# Toute écriture de CONFIGURATION des automatisations (règle, recette
+# installée, webhook entrant, restauration de version, type de demande
+# d'approbation) laisse UNE ligne ``SettingsAuditLog`` (section
+# ``automatisations``) : qui, quand, avant/après. Un secret ou un jeton n'y
+# apparaît JAMAIS en clair (:func:`masquer_secret`).
+
+def masquer_secret(valeur):
+    """Rend un secret/jeton affichable : ``••••`` + 4 derniers caractères
+    (au-delà de 8 caractères), sinon ``••••`` ; vide si absent."""
+    texte = str(valeur or '')
+    if not texte:
+        return ''
+    return '••••' + texte[-4:] if len(texte) > 8 else '••••'
+
+
+def journaliser_config(user, field, label, old=None, new=None):
+    """APAR27 — écrit UNE ligne du Journal d'audit des Paramètres (section
+    ``automatisations``). Acteur + société côté serveur. Best-effort : ne
+    casse jamais l'écriture de configuration elle-même."""
+    try:
+        from apps.parametres.models import SettingsAuditLog
+        SettingsAuditLog.log_change(
+            company=getattr(user, 'company', None), user=user,
+            section='automatisations', field=field, field_label=label,
+            old=old, new=new)
+    except Exception:  # pragma: no cover - best-effort
+        logger.warning('automation: journal de configuration indisponible',
+                       exc_info=True)
+
+
+def resume_webhook(trigger):
+    """État AFFICHABLE d'un webhook entrant (jeton/secret masqués)."""
+    return (f'règle #{trigger.rule_id}, '
+            f'{"actif" if trigger.enabled else "inactif"}, '
+            f'jeton {masquer_secret(trigger.token)}, '
+            f'HMAC {masquer_secret(trigger.hmac_secret) or "aucun"}')
+
+
 class ApprovalError(Exception):
     """Erreur métier FR destinée à être renvoyée telle quelle en 400."""
 

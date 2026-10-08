@@ -66,16 +66,8 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         """FG18 — journalise une écriture de règle d'automatisation au Journal
         d'audit des Paramètres (section='automatisations'). Best-effort : ne
         casse jamais l'écriture de la règle. Acteur + société côté serveur."""
-        try:
-            from apps.parametres.models import SettingsAuditLog
-            actor = self.request.user
-            SettingsAuditLog.log_change(
-                company=getattr(actor, 'company', None), user=actor,
-                section='automatisations', field=field, field_label=label,
-                old=old, new=new,
-            )
-        except Exception:
-            pass
+        services.journaliser_config(  # APAR27 — service unique
+            self.request.user, field, label, old=old, new=new)
 
     def _audit_plateforme(self, identifiant, libelle, old=None, new=None):
         """NTEXT36 — MÊME écriture, vue « plateforme » : le Journal des
@@ -219,6 +211,10 @@ class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
         de règle ordinaire (Journal des paramètres + plateforme)."""
         version_row = self.get_object()
         rule = restaurer_version_automation_rule(version_row)
+        services.journaliser_config(  # APAR27
+            request.user, f'regle:{rule.pk}',
+            "Règle d'automatisation restaurée",
+            old=f'version {version_row.version}', new=rule.nom)
         try:
             from apps.customfields.audit_plateforme import journaliser_plateforme
             journaliser_plateforme(
@@ -319,6 +315,29 @@ class ApprovalRequestTypeViewSet(TenantMixin, viewsets.ModelViewSet):
         if enabled in ('0', '1', 'true', 'false'):
             qs = qs.filter(enabled=enabled in ('1', 'true'))
         return qs
+
+    # APAR27 — chaque écriture de configuration laisse une ligne d'audit.
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        services.journaliser_config(
+            self.request.user, f'type_demande:{serializer.instance.pk}',
+            "Type de demande d'approbation créé",
+            new=serializer.instance.nom)
+
+    def perform_update(self, serializer):
+        ancien = serializer.instance.nom
+        super().perform_update(serializer)
+        services.journaliser_config(
+            self.request.user, f'type_demande:{serializer.instance.pk}',
+            "Type de demande d'approbation modifié",
+            old=ancien, new=serializer.instance.nom)
+
+    def perform_destroy(self, instance):
+        pk, nom = instance.pk, instance.nom  # delete() remet pk à None
+        super().perform_destroy(instance)
+        services.journaliser_config(
+            self.request.user, f'type_demande:{pk}',
+            "Type de demande d'approbation supprimé", old=nom)
 
 
 class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -516,14 +535,37 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
                 self.get_serializer(existant).data, status=201)
         trigger = IncomingWebhookTrigger.objects.create(
             rule=rule, company=company, hmac_secret=hmac_secret)
+        services.journaliser_config(  # APAR27 — jeton/secret masqués
+            request.user, f'webhook:{trigger.pk}', 'Webhook entrant créé',
+            new=services.resume_webhook(trigger))
         return Response(
             self.get_serializer(trigger).data, status=201)
+
+    def perform_update(self, serializer):
+        ancien = services.resume_webhook(serializer.instance)
+        super().perform_update(serializer)
+        services.journaliser_config(  # APAR27
+            self.request.user, f'webhook:{serializer.instance.pk}',
+            'Webhook entrant modifié', old=ancien,
+            new=services.resume_webhook(serializer.instance))
+
+    def perform_destroy(self, instance):
+        pk, ancien = instance.pk, services.resume_webhook(instance)
+        super().perform_destroy(instance)
+        services.journaliser_config(  # APAR27
+            self.request.user, f'webhook:{pk}', 'Webhook entrant supprimé',
+            old=ancien)
 
     @action(detail=True, methods=['post'])
     def rotate(self, request, pk=None):
         """Régénère le token : l'ancien devient immédiatement invalide."""
         trigger = self.get_object()
+        ancien = services.masquer_secret(trigger.token)
         trigger.rotate_token()
+        services.journaliser_config(  # APAR27 — jamais le jeton en clair
+            request.user, f'webhook:{trigger.pk}',
+            'Jeton du webhook entrant régénéré', old=ancien,
+            new=services.masquer_secret(trigger.token))
         return Response(self.get_serializer(trigger).data)
 
 
@@ -613,6 +655,10 @@ def installer_modele_catalogue(request, code=None):
         return Response(
             {'detail': f'Modèle « {code} » inconnu du catalogue.'},
             status=404)
+    if cree:
+        services.journaliser_config(  # APAR27
+            request.user, f'regle:{rule.pk}',
+            "Recette d'automatisation installée", new=f'{code} → {rule.nom}')
     return Response({
         'rule': AutomationRuleSerializer(rule).data,
         'cree': cree,
