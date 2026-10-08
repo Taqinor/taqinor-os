@@ -57,6 +57,10 @@ export const buttonVariants = cva(
   },
 )
 
+// Fenêtre d'un double-tap involontaire (VX66) : au-delà, un nouveau clic est
+// une intention distincte même si aucun rendu n'a eu lieu entre-temps.
+const DOUBLE_CLICK_WINDOW_MS = 400
+
 export const Button = forwardRef(function Button(
   {
     className, variant, size, asChild = false, loading = false, disabled,
@@ -78,10 +82,18 @@ export const Button = forwardRef(function Button(
   // synchrone sans `loading` — jamais un verrou permanent pour les boutons
   // qui n'utilisent pas cette prop. `preventDoubleClick={false}` retire la
   // garde (opt-out) pour les cas qui exigent des clics rapprochés légitimes.
+  // CAD177 — le ré-armement « au rendu suivant » ne suffisait pas : un click
+  // qui ne change AUCUN état du bouton (ex. ouvrir une confirmation tenue par le
+  // ConfirmProvider racine, puis « Annuler ») ne provoque aucun rendu du bouton,
+  // qui restait verrouillé à vie — 2e clic sur « Passer en Industriel » ignoré
+  // (nocturne 37585800165, CIQ424/AGR423, reproduit CPU ralenti). Le verrou
+  // tombe donc aussi après la fenêtre d'un double-tap, rendu ou pas.
   const clickLockRef = useRef(false)
+  const unlockTimerRef = useRef(null)
   useEffect(() => {
     clickLockRef.current = false
   })
+  useEffect(() => () => clearTimeout(unlockTimerRef.current), [])
 
   const handleClick = (event) => {
     if (preventDoubleClick) {
@@ -90,6 +102,10 @@ export const Button = forwardRef(function Button(
         return
       }
       clickLockRef.current = true
+      clearTimeout(unlockTimerRef.current)
+      unlockTimerRef.current = setTimeout(() => {
+        clickLockRef.current = false
+      }, DOUBLE_CLICK_WINDOW_MS)
     }
     onClick?.(event)
   }

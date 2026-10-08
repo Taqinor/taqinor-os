@@ -92,6 +92,8 @@ CHEMINS_LEAD = {
     'toit.surface_utile_m2': 'surface_utile_m2',
     'toit.type_toiture': 'couverture',
     'tva_recuperable': 'tva_recuperable',
+    # CIQ666 — le contrat d'électricité déclaré au lead (vocabulaire CIQ222).
+    'tarif_declare': 'tarif_declare',
 }
 
 REGIMES_CONTRAT = {
@@ -185,6 +187,20 @@ def _uniques(*listes, cle=('code', 'champ')):
 
 # ── 1. RÉSOLUTION DES ENTRÉES (corps > devis > lead > réglage société) ───────
 
+def _avec_contrat_du_lead(tarif, precedent):
+    """CIQ666 — un tarif saisi SANS contrat (prix de facture seuls) garde le
+    contrat déclaré par une couche plus basse (le lead) : jamais un contrat
+    supposé, seulement celui que le client a déjà déclaré."""
+    if (tarif.get('contrat') or not isinstance(precedent, dict)
+            or not precedent.get('contrat')):
+        return tarif
+    fusion = dict(tarif)
+    fusion['contrat'] = precedent['contrat']
+    if 'option_bi_horaire' in precedent:
+        fusion['option_bi_horaire'] = precedent['option_bi_horaire']
+    return fusion
+
+
 class _Resolution:
     """``feuille → (valeur, provenance)`` ; une couche posée PLUS TARD
     (priorité plus haute) remplace la précédente."""
@@ -204,7 +220,8 @@ class _Resolution:
             self.poser(feuille, _lire(arbre, chemin), provenance)
         tarif = arbre.get('tarif') if 'tarif' in arbre else arbre.get('tarif_declare')
         if isinstance(tarif, dict) and '$contrat' not in tarif:
-            self.poser('tarif_declare', tarif, provenance)
+            self.poser('tarif_declare', _avec_contrat_du_lead(
+                tarif, self.valeur('tarif_declare')), provenance)
 
     def valeur(self, feuille):
         entree = self.valeurs.get(feuille)

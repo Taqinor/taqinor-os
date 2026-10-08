@@ -1802,7 +1802,8 @@ def entrees_ci_du_lead(lead):
 
     colonnes_lues = (
         'releve_conso', 'conso_mensuelle_kwh', 'bill_kwh', 'facture_hiver',
-        'tension_raccordement', 'raccordement', 'compteur_puissance_kva',
+        'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt',
+        'raccordement', 'compteur_puissance_kva',
         'jours_ouverture', 'heure_debut', 'heure_fin', 'regime_equipes',
         'fermeture_mois', 'categorie_commerciale', 'reponses_categorie',
         'secteur_industriel', 'type_surface', 'type_toiture',
@@ -1885,6 +1886,24 @@ def entrees_ci_du_lead(lead):
                 'tension', 'tension')
         if inconnue:
             manquants.append('tension_raccordement')
+
+    # 2 bis. CIQ666 (décision fondateur 08/10/2026) — le CONTRAT
+    # d'électricité DÉCLARÉ → ``tarif_declare`` (vocabulaire CIQ222) : le
+    # moteur résout la grille ONEE de CE contrat au lieu de refuser
+    # (« tarif_omis »). « Ne sait pas » = aucun contrat, jamais un supposé ;
+    # le bi-horaire n'est transmis que pour la force motrice. Un site MT sans
+    # contrat déclaré n'en manque pas (la MT n'a qu'un Tarif Général).
+    contrat = lead.contrat_electricite
+    if not _entree_vide(contrat) and contrat != 'ne_sait_pas':
+        tarif = {'contrat': contrat}
+        if contrat == 'bt_force_motrice' and not _entree_vide(
+                lead.option_tarifaire_bt):
+            tarif['option_bi_horaire'] = (
+                lead.option_tarifaire_bt == 'bi_horaire')
+        _entree('contrat_electricite', tarif, 'tarif_declare',
+                'tarif_declare')
+    elif tension != 'mt':
+        manquants.append('contrat_electricite')
 
     # 3. Phases (BT) et puissance souscrite.
     if not _entree_vide(lead.raccordement) and lead.raccordement in _CI_PHASES:

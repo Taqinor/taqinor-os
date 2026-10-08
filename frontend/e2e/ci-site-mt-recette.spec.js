@@ -21,7 +21,7 @@ import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, lireJson, listeDe, telephoneFixeUnique, isoDansJours, uniq,
   creerDevisIndustrielDepuisLead, mesuresContratVisite, planifierVisiteDepuisLead,
-  remplirVisiteCi,
+  remplirVisiteCi, nombrePagesPdf, ouvrirJalonsChantier,
 } from './helpers.js'
 
 const jeton = String(Date.now()).slice(-9)
@@ -44,12 +44,6 @@ const dossiersDuDevis = async (request) => listeDe(await lireJson(
   await request.get(`${API}/ventes/dossiers-reglementaires/?devis=${etat.devisId}`), 'dossiers du devis'))
 const fichesDuChantier = async (request) => listeDe(await lireJson(await request.get(
   `${API}/installations/recettes-commissioning/?installation=${etat.chantierId}`), 'fiche de recette'))
-
-/** Nombre de pages d'un PDF, lu sur ses objets /Type /Page (pas /Pages). */
-function nombrePages(octets) {
-  const texte = Buffer.from(octets).toString('latin1')
-  return (texte.match(/\/Type\s*\/Page(?![s\w])/g) || []).length
-}
 
 test.describe.configure({ mode: 'serial' })
 
@@ -147,7 +141,7 @@ test.describe('CIQ665 — site MT, de la visite à la recette', () => {
     devisIds.push(etat.devisId)
     const pdf = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full`)
     expect(pdf.status(), '/proposal').toBe(200)
-    expect(nombrePages(await pdf.body()), 'document industriel : 4 pages').toBe(4)
+    expect(await nombrePagesPdf(await pdf.body()), 'document industriel : 4 pages').toBe(4)
 
     await lireJson(await request.post(`${API}/ventes/devis/${etat.devisId}/accepter/`,
       { data: { nom: 'Directeur E2E' } }), 'acceptation du devis')
@@ -185,8 +179,11 @@ test.describe('CIQ665 — site MT, de la visite à la recette', () => {
       { data: {} }), 'schéma unifilaire BT')
     expect(btSchema.svg, 'sans étage MT, aucun bloc de découplage').not.toContain('Protection découplage')
 
-    await page.goto(`/chantiers?id=${chantier.id}`)
-    await expect(page.getByTestId('ch6-gate-timeline')).toBeVisible({ timeout: 30_000 })
+    // APX25 : le parcours vit dans l'onglet « Jalons & gates ». Le stepper
+    // `ch6-gate-timeline` n'existe que si la société a AMORCÉ son cycle
+    // (AUD313 : `POST /etapes-chantier/amorcer/`, Directeur) — état partagé
+    // qu'un spec ne mute pas ; la fiche ouverte montre sa recette dans les deux cas.
+    await ouvrirJalonsChantier(page, chantier.id)
     await testInfo.attach('ciq665-chantier-mt', {
       body: await page.screenshot({ fullPage: true }), contentType: 'image/png',
     })
@@ -225,7 +222,7 @@ test.describe('CIQ665 — site MT, de la visite à la recette', () => {
     expect(enCours.resultat, 'réglages imposés : le découplage est exigé').toBe('en_cours')
 
     // À l'écran : la section MT est servie, le résultat calculé est « en cours ».
-    await page.goto(`/chantiers?id=${etat.chantierId}`)
+    await ouvrirJalonsChantier(page, etat.chantierId)
     await page.getByRole('button', { name: /fiche de recette/ }).first().click()
     const fiche = page.getByRole('dialog')
     await expect(fiche.getByTestId('recette-mt')).toBeVisible({ timeout: 30_000 })

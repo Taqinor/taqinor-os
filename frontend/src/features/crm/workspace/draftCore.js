@@ -96,6 +96,7 @@ export const TRACKED_KEYS = [
   // CIQ418 — les colonnes pro du contrat `lead_pro.json` (CIQ1) saisies par la
   // section « Professionnel » (les colonnes réutilisées sont déjà plus haut).
   'tension_raccordement', 'tension_source', 'compteur_puissance_kva',
+  'contrat_electricite', 'option_tarifaire_bt',
   'puissance_souscrite_source', 'categorie_commerciale', 'reponses_categorie',
   'secteur_industriel', 'export_ue_declare', 'regime_equipes', 'jours_ouverture',
   'heure_debut', 'heure_fin', 'fermeture_mois', 'type_surface', 'surface_source',
@@ -269,7 +270,7 @@ export const SECTION_FIELDS = {
   // CIQ418 — « Professionnel » (lead commercial / industriel), contrat
   // `lead_pro.json`.
   pro: ['tension_raccordement', 'tension_source', 'compteur_puissance_kva',
-    'puissance_souscrite_source', 'categorie_commerciale', 'reponses_categorie',
+    'contrat_electricite', 'option_tarifaire_bt', 'puissance_souscrite_source', 'categorie_commerciale', 'reponses_categorie',
     'secteur_industriel', 'export_ue_declare', 'regime_equipes', 'jours_ouverture',
     'heure_debut', 'heure_fin', 'fermeture_mois', 'type_surface', 'surface_source',
     'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois',

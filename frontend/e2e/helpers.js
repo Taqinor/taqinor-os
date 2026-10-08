@@ -381,6 +381,27 @@ export async function posterWebhookSite(request, payload) {
   return { status: res.status(), corps }
 }
 
+/** Nombre de pages d'un PDF lu par pdfjs. Le moteur sert du PDF 1.7 à flux
+ *  d'objets compressés (`/Type /Page` n'apparaît plus en clair) : compter les
+ *  objets à la regex rendait 0 (nocturne 37585800165, CIQ665). */
+export async function nombrePagesPdf(octets) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(octets), useSystemFonts: true, disableFontFace: true,
+  }).promise
+  return doc.numPages
+}
+
+/** Ouvre la fiche chantier sur l'onglet « Jalons & gates » : depuis APX25 la
+ *  fiche est en 6 onglets et le parcours, la fiche de recette (CH3/AGR613) et
+ *  le pack de remise ne vivent que dans cet onglet (l'« Aperçu » s'ouvre par
+ *  défaut). */
+export async function ouvrirJalonsChantier(page, chantierId) {
+  await page.goto(`/chantiers?id=${chantierId}`)
+  await page.getByRole('tab', { name: /Jalons/ }).click({ timeout: 30_000 })
+  await expect(page.getByTestId('ch6-recette')).toBeVisible({ timeout: 30_000 })
+}
+
 /** Texte brut d'un PDF (pdfjs-dist, déjà une dépendance du frontend). */
 export async function textePdf(octets) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
@@ -608,9 +629,26 @@ export async function contextePortailClient(playwright, request, baseURL, client
     'from django.contrib.auth import get_user_model as g; '
     + `u = g().objects.get(username=${JSON.stringify(prov.username)}); `
     + `u.set_password(${JSON.stringify(motDePasse)}); u.save()`)
-  const portail = await playwright.request.newContext({ baseURL })
-  const login = await portail.post(`${API_DJANGO}/token/`,
-    { data: { username: prov.username, password: motDePasse } })
+  return connecterPortail(playwright, baseURL, prov.username, motDePasse)
+}
+
+/** Connecte un compte portail par le login JWT standard. Un compte provisionné
+ *  porte `must_change_password` (N96) et AUD139 refuse toute route portail
+ *  (403 `mot_de_passe_a_changer`) tant que le mot de passe temporaire n'est
+ *  pas remplacé : comme le vrai client à sa 1re session, on le change par
+ *  `/auth/change-password/` puis on se reconnecte avec le nouveau. */
+export async function connecterPortail(playwright, baseURL, username, motDePasse) {
+  const premier = await playwright.request.newContext({ baseURL })
+  const login = await premier.post(`${API_DJANGO}/token/`, { data: { username, password: motDePasse } })
   expect(login.status(), 'connexion du client portail').toBe(200)
+  const nouveau = `${motDePasse}-${Date.now().toString(36)}`
+  const change = await premier.post(`${API_DJANGO}/auth/change-password/`,
+    { data: { current_password: motDePasse, new_password: nouveau } })
+  expect(change.ok(), `changement du mot de passe portail → HTTP ${change.status()} ${await change.text()}`)
+    .toBeTruthy()
+  await premier.dispose()
+  const portail = await playwright.request.newContext({ baseURL })
+  const relogin = await portail.post(`${API_DJANGO}/token/`, { data: { username, password: nouveau } })
+  expect(relogin.status(), 'reconnexion du client portail').toBe(200)
   return portail
 }

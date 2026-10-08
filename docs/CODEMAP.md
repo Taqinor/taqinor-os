@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: b9ef6f0f22d09583f7511aff9b0c8da1dacd8e345ec543a05fee303d30735c89
-Plan fingerprint: 6cd6f0e676230155f3db1425a7efed9836fe1458fc5659b60ef51fa8eaab7290
+Structure fingerprint: d38d7fb6d9719aa4fbf1ae97d3a58b16b5e8ea9f391d5a5163de84c3e334c425
+Plan fingerprint: 39fab5bceb153b6f1ceb39d85bb72b26f6df94388ee4bb045063d81af25d4c65
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1152)**
+**Done (1153)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1164,6 +1164,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ663` — Recette MT : essais de limitation d'injection et de découplage exigés quand l'étude du…
 - `CIQ664` — Schéma unifilaire : un étage MT (transformateur, cellule, protection de découplage…
 - `CIQ665` — Aller-retour EN DIRECT du parcours site MT : visite avec supplément MT → chantier MT →…
+- `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
