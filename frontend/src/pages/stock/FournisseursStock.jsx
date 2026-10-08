@@ -20,6 +20,8 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+// ASTK184 — confirmation maison (AlertDialog) : plus aucune boîte native.
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
@@ -87,6 +89,8 @@ function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }
   const [nom, setNom] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  // ASTK184 — catégorie dont la suppression attend confirmation (AlertDialog).
+  const [aSupprimer, setASupprimer] = useState(null)
 
   const creer = async (ev) => {
     ev.preventDefault()
@@ -112,7 +116,7 @@ function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }
   }
 
   const supprimer = async (cat) => {
-    if (!window.confirm(`Supprimer la catégorie « ${cat.nom} » ?`)) return
+    setASupprimer(null)
     try {
       await stockApi.deleteCategorieFournisseur(cat.id)
       onChanged()
@@ -163,7 +167,7 @@ function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }
                   {isAdmin && (
                     <IconButton size="sm" variant="ghost" label="Supprimer"
                                 className="text-destructive hover:text-destructive"
-                                onClick={() => supprimer(c)}>
+                                onClick={() => setASupprimer(c)}>
                       <Trash2 className="size-4" aria-hidden="true" />
                     </IconButton>
                   )}
@@ -176,6 +180,14 @@ function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
+        <ConfirmDialog
+          open={!!aSupprimer}
+          onOpenChange={(o) => { if (!o) setASupprimer(null) }}
+          title="Supprimer la catégorie ?"
+          description={aSupprimer ? `La catégorie « ${aSupprimer.nom} » sera supprimée.` : ''}
+          confirmLabel="Supprimer"
+          onConfirm={() => supprimer(aSupprimer)}
+        />
       </DialogContent>
     </Dialog>
   )
@@ -528,6 +540,9 @@ export default function FournisseursStock() {
   const [decidingId, setDecidingId] = useState(null)
   // ASTK95 — avertissement de nom en doublon renvoyé par le serveur.
   const [avertissementNom, setAvertissementNom] = useState(null)
+  // ASTK184 — geste en attente de confirmation (AlertDialog maison) :
+  // { title, description, confirmLabel, severity, onConfirm } ou null.
+  const [confirmation, setConfirmation] = useState(null)
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
@@ -566,31 +581,45 @@ export default function FournisseursStock() {
   // réels). Le serveur répond 200 `{archived: true, detail}` dans ce cas —
   // jamais une erreur — donc on l'explique honnêtement plutôt que de
   // recharger la liste en silence.
-  const delFournisseur = async (f) => {
-    if (!window.confirm(`Supprimer le fournisseur « ${f.nom} » ?`)) return
+  // ASTK184 — « Supprimer » ARCHIVE toujours (PATCH is_archived) : un DELETE
+  // détruirait en CASCADE contacts, comptes portail, jetons et dossier
+  // d'onboarding d'un fournisseur sans BCF ni prix. La suppression définitive
+  // ne passe QUE par ForceDeleteFournisseurModal (nom à taper), depuis la
+  // liste des archivés.
+  const archiverFournisseur = async (f) => {
     setError(null)
     try {
-      const r = await stockApi.deleteFournisseur(f.id)
+      await stockApi.archiveFournisseur(f.id)
       reload()
-      if (r?.data?.archived) {
-        toastWithUndo({
-          message: r.data.detail || 'Fournisseur archivé.',
-          onUndo: async () => {
-            try { await stockApi.unarchiveFournisseur(f.id); reload() }
-            catch { toastError('Désarchivage impossible.') }
-          },
-        })
-        if (showArchived) reloadArchived()
-      } else {
-        toastSuccess('Fournisseur supprimé.')
-      }
+      toastWithUndo({
+        message: `Fournisseur « ${f.nom} » archivé (contacts et dossier conservés).`,
+        onUndo: async () => {
+          try { await stockApi.unarchiveFournisseur(f.id); reload() }
+          catch { toastError('Désarchivage impossible.') }
+        },
+      })
+      if (showArchived) reloadArchived()
     } catch (err) {
-      setError(frErr(err, 'Suppression impossible (fournisseur utilisé).'))
+      setError(frErr(err, 'Archivage impossible.'))
     }
   }
+  const delFournisseur = (f) => setConfirmation({
+    title: 'Archiver le fournisseur ?',
+    description: `« ${f.nom} » sera archivé : ses contacts, accès et dossier restent intacts `
+      + 'et il reste réactivable depuis « Archivés ». La suppression définitive se fait '
+      + 'depuis la liste des archivés.',
+    confirmLabel: 'Archiver',
+    onConfirm: () => archiverFournisseur(f),
+  })
 
-  const handleUnarchive = async (f) => {
-    if (!window.confirm(`Désarchiver le fournisseur « ${f.nom} » ?`)) return
+  const handleUnarchive = (f) => setConfirmation({
+    title: 'Désarchiver le fournisseur ?',
+    description: `« ${f.nom} » redeviendra actif dans les listes.`,
+    confirmLabel: 'Désarchiver',
+    severity: 'low',
+    onConfirm: () => doUnarchive(f),
+  })
+  const doUnarchive = async (f) => {
     try {
       await stockApi.unarchiveFournisseur(f.id)
       reloadArchived(); reload()
@@ -617,10 +646,16 @@ export default function FournisseursStock() {
   // Réservé Admin côté serveur (403 FR affiché tel quel si un rôle moindre
   // parvenait quand même jusqu'ici) ; idempotent (une candidature déjà
   // tranchée ne rejoue rien côté serveur).
-  const deciderCandidature = async (f, valider) => {
-    if (!window.confirm(valider
+  const deciderCandidature = (f, valider) => setConfirmation({
+    title: valider ? 'Valider la candidature ?' : 'Rejeter la candidature ?',
+    description: valider
       ? `Valider la candidature de « ${f.nom} » ? Le fournisseur intègre le sourcing.`
-      : `Rejeter la candidature de « ${f.nom} » ?`)) return
+      : `Rejeter la candidature de « ${f.nom} » ?`,
+    confirmLabel: valider ? 'Valider' : 'Rejeter',
+    severity: valider ? 'low' : 'medium',
+    onConfirm: () => doDeciderCandidature(f, valider),
+  })
+  const doDeciderCandidature = async (f, valider) => {
     setDecidingId(f.id)
     try {
       await stockApi.deciderCandidatureFournisseur(f.id, valider)
@@ -873,6 +908,15 @@ export default function FournisseursStock() {
                                      onClose={() => setShowCategories(false)}
                                      onChanged={reloadCategories} />
       )}
+      <ConfirmDialog
+        open={!!confirmation}
+        onOpenChange={(o) => { if (!o) setConfirmation(null) }}
+        severity={confirmation?.severity ?? 'medium'}
+        title={confirmation?.title ?? ''}
+        description={confirmation?.description}
+        confirmLabel={confirmation?.confirmLabel}
+        onConfirm={() => { const fn = confirmation?.onConfirm; setConfirmation(null); fn?.() }}
+      />
       {confirmForceDelete && (
         <ForceDeleteFournisseurModal
           fournisseur={confirmForceDelete}

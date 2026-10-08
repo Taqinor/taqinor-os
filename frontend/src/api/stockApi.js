@@ -65,6 +65,8 @@ const stockApi = {
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
+  // ASTK184 — « Supprimer » à l'écran = archivage (jamais de CASCADE).
+  archiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/`, { is_archived: true }),
   // WIR190 — fournisseur archivé (repli PROTECT), même patron que
   // ProduitViewSet (unarchive/force-delete/?show_archived=true).
   getFournisseursArchived: () =>
