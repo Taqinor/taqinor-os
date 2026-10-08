@@ -456,6 +456,13 @@ GARDES = {
         ('Test the écrivain unique de Calepinage.resultat (ACAL321) checker itself',
          'python -m unittest scripts.tests.test_check_resultat_ecrivain_unique -v',
          '.'),
+        # ACAL322 - saisies électriques admises branchées des deux côtés.
+        ('Check saisies électriques branchées (lecteur backend + écrivain d'écran, ACAL322)',
+         'python scripts/check_saisies_electriques_branchees.py',
+         '.'),
+        ('Test the saisies électriques branchées (lecteur backend + écrivain d'écran, ACAL322) checker itself',
+         'python -m unittest scripts.tests.test_check_saisies_electriques_branchees -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
