@@ -137,7 +137,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # retombe sur SES lignes dès que ses montants ne sont pas figés.
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande', 'devis', 'updated_by',
-        'company',
+        'company', 'devis__bon_commande',
     ).prefetch_related(
         'lignes', 'paiements', 'paiements__affectations',
         'avoirs', 'avoirs__lignes',
@@ -516,6 +516,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # AFAC9 — LA porte unique (acompte CAD122 avant J+7).
+        from ..domain.encaissements import motif_non_encaissable
+        motif_refus = motif_non_encaissable(facture)
+        if motif_refus:
+            return Response({'detail': motif_refus},
+                            status=status.HTTP_400_BAD_REQUEST)
         motif = ((request.data or {}).get('motif') or '').strip()
         if not motif:
             return Response(
@@ -684,6 +690,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             "Impossible de transférer vers une facture "
                             "annulée."
                         )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # AFAC9 — la facture CIBLE passe LA porte unique
+                # d'encaissement (brouillon, soldée, acompte CAD122).
+                from ..domain.encaissements import motif_non_encaissable
+                motif_cible = motif_non_encaissable(cible)
+                if motif_cible and cible.statut != Facture.Statut.PAYEE:
+                    return Response(
+                        {'detail': f'Facture cible : {motif_cible}'},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 # AUD125 — CE QUE LA CIBLE PEUT ABSORBER. Le transfert
@@ -894,9 +909,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             from ..services import abandonner_solde_facture
-            montant = abandonner_solde_facture(
-                locked, motif=motif, user=request.user, auto=False,
-            )
+            from ..domain.encaissements import FactureNonEncaissable
+            try:
+                montant = abandonner_solde_facture(
+                    locked, motif=motif, user=request.user, auto=False,
+                )
+            except FactureNonEncaissable as exc:
+                return Response({'detail': exc.motif},
+                                status=status.HTTP_400_BAD_REQUEST)
             locked.refresh_from_db()
         return Response(
             {**FactureSerializer(locked).data, 'montant_abandonne': montant},

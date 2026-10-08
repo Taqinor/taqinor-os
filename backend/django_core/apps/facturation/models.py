@@ -956,7 +956,7 @@ class Paiement(models.Model):
     def montant_disponible(self):
         """Solde de l'avance encore disponible pour ventilation."""
         from decimal import Decimal
-        if self.facture_id and not self.affectations.exists():
+        if (self.facture_id and not self.affectations.exists()) or self.statut == self.Statut.REJETE:  # AFAC9 : avance rejetée
             return Decimal('0')
         montant = self.montant if isinstance(self.montant, Decimal) \
             else Decimal(str(self.montant))

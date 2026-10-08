@@ -317,6 +317,24 @@ class FactureSerializer(serializers.ModelSerializer):
     # AVERTISSEMENT, ne bloque jamais l'émission.
     mentions_manquantes = serializers.ListField(
         child=serializers.CharField(), read_only=True)
+    # AFAC9 — contrat `facturation/contract_samples/facture_encaissable.json` :
+    # la règle « encaissable » vit au serveur (LA porte unique), l'écran la lit.
+    encaissable = serializers.SerializerMethodField()
+    motif_non_encaissable = serializers.SerializerMethodField()
+
+    def _motif_encaissement(self, obj):
+        # Même fonction que la porte serveur ; aucune requête hors le
+        # `devis.bon_commande` d'un ACOMPTE (préchargé par la liste).
+        from .domain.encaissements import motif_non_encaissable
+        return motif_non_encaissable(obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_encaissable(self, obj):
+        return self._motif_encaissement(obj) is None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_motif_non_encaissable(self, obj):
+        return self._motif_encaissement(obj)
 
     def get_tva_par_taux(self, obj):
         return [

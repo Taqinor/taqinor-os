@@ -164,6 +164,11 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     from decimal import Decimal
     from django.utils import timezone
     from ..models import Facture
+    if not auto and facture.statut != Facture.Statut.PAYEE:
+        # AFAC9 — LA porte unique : un brouillon, une facture annulée ou un
+        # acompte CAD122 avant J+7 ne s'abandonne pas (FactureNonEncaissable).
+        from .encaissements import exiger_facture_encaissable
+        exiger_facture_encaissable(facture)
     reste = facture.montant_du
     if reste <= 0:
         return Decimal('0')

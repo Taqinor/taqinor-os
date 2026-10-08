@@ -690,6 +690,13 @@
      null,
      false
     ],
+    "encaissable": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "entite": [
      "PrimaryKeyRelatedField",
      false,
@@ -828,6 +835,13 @@
      false,
      false,
      null,
+     false
+    ],
+    "motif_non_encaissable": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
      false
     ],
     "note": [
