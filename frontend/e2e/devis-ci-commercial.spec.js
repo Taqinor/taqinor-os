@@ -39,10 +39,12 @@ const devisIds = []
 const etat = { devisId: null, apercu: null, token: null, pdfTexte: null }
 
 
-/** Un pourcentage (72.8) est-il imprimé, au format FR ou point, arrondi ou non ? */
+/** Un pourcentage (72.8) est-il imprimé, au format FR ou point, arrondi ou non ?
+ *  CAD177 — pdfjs rend « 100   % » (items joints par une espace autour de
+ *  l'espace insécable imprimée) : `\s*`, plus `\s?` (nocturne 37843456809). */
 function pctImprime(texte, pct) {
   const formes = new Set([pct.toFixed(1).replace('.', ','), pct.toFixed(1), String(Math.round(pct))])
-  return [...formes].some((f) => new RegExp(`(^|[^\\d,.])${f.replace('.', '\\.')}\\s?%`).test(texte))
+  return [...formes].some((f) => new RegExp(`(^|[^\\d,.])${f.replace('.', '\\.')}\\s*%`).test(texte))
 }
 
 async function premierLead(request) {

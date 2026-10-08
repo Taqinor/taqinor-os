@@ -162,8 +162,12 @@ test('CIQ346 — lien public : synthese_ci.argent = celui du PDF, aucune clé P9
   const p90 = clesProfondes(synthese).filter((k) => /p90/i.test(k))
   expect(p90, 'aucune clé P90 servie').toEqual([])
   // La VAN servie est celle imprimée (chiffres comparés sans séparateurs).
-  const van = synthese.argent.van_mad
-  expect(typeof van, 'synthese_ci.argent.van_mad (taux déclaré)').toBe('number')
+  // CAD177 — la VAN vit sous `argent.indicateurs` (contrat proposal_data.json,
+  // bloc « argent.indicateurs.van_mad » ; lue ainsi par apps/web
+  // proposition.ts et CarteEconomieCi) — `argent.van_mad` n'a jamais été
+  // servi (nocturne 37843456809).
+  const van = synthese.argent.indicateurs?.van_mad
+  expect(typeof van, 'synthese_ci.argent.indicateurs.van_mad (taux déclaré)').toBe('number')
   const chiffresPdf = etat.pdfTexte.replace(/[\s.,]/g, '')
   expect(chiffresPdf, `VAN ${van} MAD imprimée`).toContain(String(Math.round(Math.abs(van))))
 })
