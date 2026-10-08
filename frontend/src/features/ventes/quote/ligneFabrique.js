@@ -30,6 +30,9 @@ export const withKeys = (rows) => rows.map(r => ({
   // resynchronisation, `domain/lignes`) doit lui aussi survivre au
   // rechargement d'un brouillon/devis, jamais retomber à False en silence.
   quantiteManuelle: !!r.quantiteManuelle,
+  // AGNR16 — marqueur d'ÉCRAN « prix relu du serveur » (jamais envoyé) :
+  // l'effet de tarif ne réécrit pas sans geste un prix déjà enregistré.
+  prixRelu: !!r.prixRelu,
   // L-2OPT (fondateur 24/08) — '' commun (défaut, comportement historique
   // inchangé) | 'sans' | 'avec' : posée par `fusionnerVariantes` quand les
   // deux optimiseurs résidentiels divergent, préservée au rechargement d'un

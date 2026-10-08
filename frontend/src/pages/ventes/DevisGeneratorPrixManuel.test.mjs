@@ -65,8 +65,15 @@ test('refreshTarif() ne réécrit prix_unit_ttc que si !l.prixManuel (lu au mome
   assert.doesNotMatch(body, /prix_unit_ttc: String\(data\.prix\)/)
 })
 
-test('l\'effet [clientId, lines.length] appelle refreshTarif sur toutes les lignes à produit (déclencheur du bug — reste inchangé, la garde vit dans refreshTarif)', () => {
+test('l\'effet [clientId, lines.length] ne résout que les lignes NOUVELLES (ou toutes au changement de client), jamais un prix relu (AGNR16)', () => {
   assert.match(DG, /\[clientId, lines\.length\]/)
-  const idx = DG.indexOf('lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })')
-  assert.ok(idx > -1, "l'effet listes-de-prix (déclencheur du bug N2) introuvable")
+  // AGNR16 — l'ancien effet rappelait refreshTarif sur TOUTES les lignes à
+  // produit (rouvrir ?edit= réécrivait 1 200,00 en 818,18 HT sans geste).
+  assert.equal(DG.indexOf('lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })'), -1,
+    "l'effet ne doit plus résoudre toutes les lignes sans condition")
+  const idx = DG.indexOf('const clesTarifVues = useRef(new Set())')
+  assert.ok(idx > -1, "l'effet listes-de-prix (AGNR16) introuvable")
+  const bloc = DG.slice(idx, idx + 700)
+  assert.match(bloc, /if \(!l\.produit \|\| l\.prixRelu\) return/)
+  assert.match(bloc, /if \(nouvelle \|\| clientChange\) refreshTarif\(l\._key, l\.produit, l\.quantite\)/)
 })

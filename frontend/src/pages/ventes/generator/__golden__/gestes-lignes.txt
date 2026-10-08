@@ -95,10 +95,10 @@ Sans batterie★ Recommandé
 9 224estimation d'exemple
 MAD / an
 ROI
-1.5 ansestimation d'exemple
+2.5 ansestimation d'exemple
 retour sur invest.
 Coût
-13 400
+22 900
 MAD TTC
 Économies mensuelles estimées (MAD / mois)
 Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
@@ -129,27 +129,23 @@ Libérer
 HT : 1 100 MAD
 12 100 MADHT : 11 000 MAD
 Onduleur réseau 5kW Monophasé
-Tarif : Revendeur
-HT : 1 100 MAD
-1 320 MADHT : 1 100 MAD
+HT : 9 000 MAD
+10 800 MADHT : 9 000 MAD
 — Produit —
 HT : 0 MAD
 0 MADHT : 0 MAD
 Total SANS batterie ⭐
-13 400 MAD
+22 900 MAD
 Réduction
 %
 TVA
 %
-Arrondi commercial
--20 MAD
 Prix / kWc
-1 874 MAD/kWc
+3 203 MAD/kWc
 Prix cible / kWc
 Appliquer via remise
 Marge indicative (interne)
--3 400 MAD (-25 %)
-Le total après remise est INFÉRIEUR au coût d'achat estimé — vous vendez à perte. Réduisez la remise ou le prix cible.
+6 100 MAD (27 %)
 <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
 hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
 Modèles de devis
@@ -183,15 +179,15 @@ Texte pour le client (imprimé sur le devis)
 Modification du devis DEV-202610-036
 Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
 Total TTC
-13 400 MAD
+22 900 MAD
 Contacter mon supérieur
 Réinitialiser
 Annuler
 Enregistrer les modifications
 Total sans batterie · TTC
-13 400 MAD
+22 900 MAD
 Marge indicative (interne)
--3 400 MAD (-25 %)
+6 100 MAD (27 %)
 Système
 5,72 kWc · 8 panneaux
 Enregistrer
@@ -233,7 +229,7 @@ line-qty=10
 Ligne optionnelle (add-on hors total)=on [ ]
 #34=Onduleur réseau 5kW Monophasé
 line-qty=1
-#36=1320
+#36=10800
 #37=20
 Ligne optionnelle (add-on hors total)=on [ ]
 #39=
@@ -309,63 +305,7 @@ gen-cond-acompte-financeur=
       {
         "produit": "101",
         "client": "9",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "101",
-        "client": "9",
         "quantite": "10"
-      }
-    ],
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "10"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "10"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "10"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
       }
     ]
   ],

@@ -135,8 +135,23 @@ export function useLignesEcran(ctx) {
     if (l?.produit) refreshTarif(key, l.produit, quantite)
   }, [lines, setLine, refreshTarif])
 
+  // AGNR16 — l'effet ne résout le tarif que d'une ligne NOUVELLE pour l'écran
+  // (clé jamais vue), ou de toutes les lignes quand le CLIENT change ; jamais
+  // d'une ligne dont le prix a été RELU du serveur (`prixRelu`, réouverture
+  // `?edit=`, relecture après enregistrement) : rouvrir puis enregistrer sans
+  // toucher gardait sinon 818,18 au lieu de 1 200,00 HT. Les gestes
+  // (onProduitChange, onQuantiteChange) résolvent toujours leur ligne.
+  const clesTarifVues = useRef(new Set())
+  const clientTarif = useRef(clientId)
   useEffect(() => {
-    lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
+    const clientChange = clientTarif.current !== clientId
+    clientTarif.current = clientId
+    lines.forEach(l => {
+      const nouvelle = !clesTarifVues.current.has(l._key)
+      clesTarifVues.current.add(l._key)
+      if (!l.produit || l.prixRelu) return
+      if (nouvelle || clientChange) refreshTarif(l._key, l.produit, l.quantite)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, lines.length])
 
@@ -380,7 +395,8 @@ export function useLignesEcran(ctx) {
     if (preset.remise_globale != null) setDiscountPct(String(parseFloat(preset.remise_globale) || 0))
     // QJR523 — même mappeur que la réouverture `?edit=` (HT → TTC au taux de
     // la ligne, tous les champs portés).
-    setLines(withKeys(lignesServeurVersEcran(retenues, preset.taux_tva)))
+    // AGNR16 — un modèle n'est pas un devis relu : ses lignes restent résolubles par la liste du client.
+    setLines(withKeys(lignesServeurVersEcran(retenues, preset.taux_tva).map(l => ({ ...l, prixRelu: false }))))
     if (sansPrix.length) {
       toast.warning('Produit(s) sans prix non repris du modèle : ' + sansPrix.join(', '))
     }

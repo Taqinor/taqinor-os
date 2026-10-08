@@ -355,43 +355,6 @@ gen-cond-acompte-financeur=
       "9"
     ]
   ],
-  "ventesApi.getPrixApplicable": [
-    [
-      {
-        "produit": "106",
-        "client": "9",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "10"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
-    ]
-  ],
   "ventesApi.lireOverrides": [
     [
       35

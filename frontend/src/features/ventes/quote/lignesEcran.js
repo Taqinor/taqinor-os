@@ -77,6 +77,10 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         variante: l.variante ?? '',
         prixManuel: !!l.prix_manuel,
         quantiteManuelle: !!l.quantite_manuelle,
+        // AGNR16 — prix RELU du serveur : l'effet de tarif de l'écran
+        // (`[clientId, lines.length]`) ne le réécrit jamais sans geste. Marqueur
+        // d'écran seulement, jamais envoyé (absent de `lignesEcranVersPayload`).
+        prixRelu: true,
         groupeIndex: l.groupe_index ?? null,
         groupeLabel: l.groupe_label ?? '',
         role_devis: l.role_devis ?? '',
