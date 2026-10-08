@@ -197,10 +197,7 @@ backend/django_core/apps/installations/serializers.py::EquipeSerializer.chef
 backend/django_core/apps/installations/serializers.py::EquipeSerializer.membres
 backend/django_core/apps/installations/serializers.py::EtapeApprobationAchatSerializer.approbateur
 backend/django_core/apps/installations/serializers.py::GeofenceAlertSerializer.acquittee_par
-backend/django_core/apps/installations/serializers.py::GpsConsentRecordSerializer.technicien
-backend/django_core/apps/installations/serializers.py::LotPrelevementSerializer.operateur
 backend/django_core/apps/installations/serializers.py::OrdreAssemblageSerializer.responsable
-backend/django_core/apps/installations/serializers.py::ProjetSerializer.responsable
 backend/django_core/apps/installations/serializers.py::ProjetTacheSerializer.assigne
 backend/django_core/apps/installations/serializers.py::ReserveSerializer.assignee
 backend/django_core/apps/installations/serializers.py::RevisionKitSerializer.user
@@ -273,13 +270,10 @@ backend/django_core/apps/installations/serializers.py::LivraisonLigneSerializer.
 backend/django_core/apps/installations/serializers.py::LivraisonSerializer.installation
 backend/django_core/apps/installations/serializers.py::LivraisonSerializer.transporteur
 backend/django_core/apps/installations/serializers.py::OrdreAssemblageLigneSerializer.ordre
-backend/django_core/apps/installations/serializers.py::OrdreAssemblageSerializer.chantier
 backend/django_core/apps/installations/serializers.py::OrdreAssemblageSerializer.kit
-backend/django_core/apps/installations/serializers.py::OrdreAssemblageSerializer.ordre_sous_traitance
 backend/django_core/apps/installations/serializers.py::OrdreDemontageLigneSerializer.ordre
 backend/django_core/apps/installations/serializers.py::OrdreDemontageSerializer.kit
 backend/django_core/apps/installations/serializers.py::PhotoChecklistMetaSerializer.checklist_item
-backend/django_core/apps/installations/serializers.py::PickListLigneSerializer.bin
 backend/django_core/apps/installations/serializers.py::PickListSerializer.installation
 backend/django_core/apps/installations/serializers.py::PositionTechnicienSerializer.intervention
 backend/django_core/apps/installations/serializers.py::PreuveLivraisonSerializer.livraison

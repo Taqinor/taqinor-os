@@ -948,12 +948,15 @@ class ProjetTicketSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
-class ProjetSerializer(serializers.ModelSerializer):
+class ProjetSerializer(SameCompanyFKSerializerMixin,
+                       serializers.ModelSerializer):
     """FG291 — programme/projet multi-chantiers regroupant chantiers + devis +
     tickets d'un même client/site. `reference`, company et `created_by` sont
     posés côté serveur (jamais lus du corps). Le statut est PROPRE au programme
     (jamais l'entonnoir commercial). Les rattachements sont imbriqués en
     lecture."""
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    same_company_fields = ('responsable',)
     reference = serializers.CharField(read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
@@ -1744,8 +1747,11 @@ class PutAwaySerializer(serializers.ModelSerializer):
         ]
 
 
-class PickListLigneSerializer(serializers.ModelSerializer):
+class PickListLigneSerializer(SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """FG321 - ligne de prelevement (SKU + casier + avancement)."""
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    same_company_fields = ('bin',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     bin_code = serializers.CharField(
@@ -2098,9 +2104,12 @@ class OrdreAssemblageLigneSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class OrdreAssemblageSerializer(serializers.ModelSerializer):
+class OrdreAssemblageSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    same_company_fields = ('chantier', 'ordre_sous_traitance')
     kit_nom = serializers.CharField(
         source='kit.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2563,9 +2572,12 @@ class RegleRangementSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class LotPrelevementSerializer(serializers.ModelSerializer):
+class LotPrelevementSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """ZSTK10 - lot de prelevement regroupant plusieurs pick-lists du meme
     depot. Societe/`created_by`/reference poses COTE SERVEUR."""
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    same_company_fields = ('operateur',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     operateur_nom = serializers.CharField(
@@ -2586,10 +2598,13 @@ class LotPrelevementSerializer(serializers.ModelSerializer):
         ]
 
 
-class GpsConsentRecordSerializer(serializers.ModelSerializer):
+class GpsConsentRecordSerializer(SameCompanyFKSerializerMixin,
+                                 serializers.ModelSerializer):
     """XFSM23 — trace de consentement GPS (déjà obtenu). company/technicien/
     recorded_by posés côté serveur ; jamais posée/révoquée par le corps client
     mobile — seule une action responsable/admin dédiée révoque."""
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    same_company_fields = ('technicien',)
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
     is_active = serializers.BooleanField(read_only=True)
