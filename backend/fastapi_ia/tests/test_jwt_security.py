@@ -18,11 +18,14 @@ import unittest
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     import jwt as _jwt
     _JWT_OK = True
-except Exception:  # pragma: no cover
+except Exception as exc:  # pragma: no cover
     _JWT_OK = False
+    verifier_import_optionnel(exc)
 
 _SECRET = os.environ["DJANGO_SECRET_KEY"]
 
@@ -77,10 +80,11 @@ try:
     from app.core import security as _sec
     from fastapi import HTTPException as _HTTPException
     _SEC_OK = True
-except Exception:  # pragma: no cover - fastapi absent
+except Exception as exc:  # pragma: no cover - fastapi absent
     _sec = None
     _HTTPException = None
     _SEC_OK = False
+    verifier_import_optionnel(exc)
 
 
 @unittest.skipUnless(_SEC_OK and _JWT_OK, "fastapi/security indisponible")

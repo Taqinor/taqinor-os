@@ -23,6 +23,8 @@ from unittest import mock
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -34,6 +36,7 @@ try:
 except Exception as exc:  # pragma: no cover - dependances manquantes
     _config = None
     _ERR = exc
+    verifier_import_optionnel(exc)
 
 
 def _env(debug, agent_user):

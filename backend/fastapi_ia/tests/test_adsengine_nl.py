@@ -17,12 +17,15 @@ import unittest
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+
 try:
     from app.services import sql_agent_service as svc
     _IMPORT_ERR = None
 except Exception as exc:  # pragma: no cover - dependances manquantes
     svc = None
     _IMPORT_ERR = exc
+    verifier_import_optionnel(exc)
 
 _ADS_TABLES = [
     "adsengine_adcampaignmirror",
