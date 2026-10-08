@@ -44,6 +44,7 @@ from .serializers import (
     SalleVenteSerializer, SalleVenteItemSerializer,
     ApporteurSerializer, DealEnregistreSerializer, DefiSerializer,
     VisiteExterneSerializer,
+    masquer_pii_dict,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity, stages
@@ -164,6 +165,21 @@ def _voit_le_crm(user):
     if getattr(user, 'role', None):
         return user.has_erp_permission('crm_voir')
     return bool(getattr(user, 'is_responsable', False))
+
+
+def _refus_pii_whatsapp(request):
+    """ACRM4 — le partage WhatsApp d'un devis rend le NUMÉRO du client
+    (``phone``, ``wa_url``) : refusé 403 ``droit_manquant`` sans
+    ``client_pii_voir``, exactement comme ``resume_associe``. ``None`` si
+    l'appelant a le droit."""
+    from .serializers import pii_masquee_pour
+    if not pii_masquee_pour(request.user):
+        return None
+    return Response(
+        {'detail': "Vous n'avez pas la permission de voir les coordonnées "
+                   'du client.',
+         'code': 'droit_manquant'},
+        status=status.HTTP_403_FORBIDDEN)
 
 
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -431,7 +447,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
-        return export_clients_xlsx(qs.order_by('nom'))
+        # ACRM4 — sans ``client_pii_voir`` : export sans colonnes PII.
+        from .serializers import pii_masquee_pour
+        return export_clients_xlsx(
+            qs.order_by('nom'), masquer_pii=pii_masquee_pour(request.user))
 
     @action(detail=False, methods=['get'], url_path='search',
             permission_classes=[IsAnyRole])
@@ -757,7 +776,8 @@ class ClientViewSet(CompanyScopedModelViewSet):
         act = activity.log_note(
             lead, request.user,
             f'Relance dormance — compte {client} réactivé manuellement.')
-        return Response(LeadActivitySerializer(act).data,
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='engagement',
@@ -1627,6 +1647,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         change donc ni le statut, ni la date d'envoi, ni le funnel."""
         from apps.ventes.utils.whatsapp import build_wa_url
 
+        refus = _refus_pii_whatsapp(request)
+        if refus is not None:
+            return refus
         lead = self.get_object()
         erreur, built = self._whatsapp_devis_message(
             request, lead, enregistrer=False)
@@ -1742,6 +1765,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """
         from apps.ventes.utils.whatsapp import build_wa_url
 
+        refus = _refus_pii_whatsapp(request)
+        if refus is not None:
+            return refus
         lead = self.get_object()
         erreur, built = self._whatsapp_devis_message(
             request, lead, enregistrer=True)
@@ -1850,8 +1876,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .services import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
         dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
+        # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``
+        # (``match_fort`` est calculé AVANT, sur les vraies valeurs).
         return Response([
-            {
+            masquer_pii_dict({
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
                 'societe': d.societe, 'telephone': d.telephone,
                 'email': d.email, 'stage': d.stage,
@@ -1859,7 +1887,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'nb_devis': d.devis.count(),
                 'match_fort': is_strong_identity_match(
                     d, phone=lead.telephone, email=lead.email),
-            }
+            }, request.user)
             for d in dups
         ])
 
@@ -1882,8 +1910,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         dups = find_duplicates_by_contact(
             request.user.company, phone=phone, email=email,
             exclude_pk=exclude_pk, queryset=self._leads_en_portee())
+        # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
         return Response([
-            {
+            masquer_pii_dict({
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
                 'societe': d.societe, 'telephone': d.telephone,
                 'email': d.email, 'stage': d.stage,
@@ -1891,7 +1920,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'nb_devis': d.devis.count(),
                 'match_fort': is_strong_identity_match(
                     d, phone=phone, email=email),
-            }
+            }, request.user)
             for d in dups
         ])
 
@@ -1927,6 +1956,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': message},
                 status=(status.HTTP_503_SERVICE_UNAVAILABLE if unavailable
                         else status.HTTP_400_BAD_REQUEST))
+        # ACRM4 (jumeau) — les doublons pré-vérifiés sont des leads EXISTANTS :
+        # leur PII suit la règle unique du masquage (``client_pii_voir``).
+        for doublon in result.get('doublons') or []:
+            masquer_pii_dict(doublon, request.user)
         return Response(result)
 
     scan_carte.throttle_scope = 'crm_ocr_scan'
@@ -1988,8 +2021,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     # CAD106 — combien de touches OUVERTES quittent leur plan.
                     'relances': relances_reprises,
                 },
+                # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
                 'members': [
-                    {
+                    masquer_pii_dict({
                         'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
                         'societe': d.societe, 'telephone': d.telephone,
                         'email': d.email, 'ville': d.ville, 'stage': d.stage,
@@ -1998,7 +2032,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'nb_activites': LeadActivity.objects.filter(lead=d).count(),
                         'completeness': _completeness(d),
                         'date_creation': d.date_creation.isoformat(),
-                    }
+                    }, request.user)
                     for d in group
                 ],
             })
@@ -2101,7 +2135,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if not act.pinned:
             act.pinned = True
             act.save(update_fields=['pinned'])
-        return Response(LeadActivitySerializer(act).data)
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data)
 
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/desepingler',
@@ -2118,7 +2153,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if act.pinned:
             act.pinned = False
             act.save(update_fields=['pinned'])
-        return Response(LeadActivitySerializer(act).data)
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data)
 
     @action(detail=True, methods=['post'], url_path='appliquer-plan',
             permission_classes=[IsResponsableOrAdmin])
@@ -2479,7 +2515,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({
             'mode': mode,
-            'client': ClientSerializer(client).data if client else None,
+            # ACRM4 — contexte transmis : la PII du client suit la règle
+            # unique du masquage (``client_pii_voir``).
+            'client': (ClientSerializer(
+                client, context={'request': request}).data
+                if client else None),
         })
 
     @action(detail=True, methods=['get'], url_path='points-contact',
@@ -2723,14 +2763,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         result = []
         for c in found:
-            result.append({
+            # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
+            result.append(masquer_pii_dict({
                 'id': c.id,
                 'nom': f"{c.nom} {c.prenom or ''}".strip(),
                 'email': c.email,
                 'telephone': c.telephone,
                 'nb_devis': c.devis.count(),
                 'nb_chantiers': c.installations.count() if hasattr(c, 'installations') else 0,
-            })
+            }, request.user))
         return Response(result)
 
     # ── MRY21 — KPI de cadence (Cockpit + bilan hebdomadaire) ────────────────
@@ -3200,7 +3241,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
         from .services import marquer_premier_contact
         marquer_premier_contact(lead)
-        return Response(LeadActivitySerializer(act).data,
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
@@ -3275,7 +3317,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'ALEA30: report de touche échoué sur le lead #%s — '
                         'interaction annulée', lead.pk, exc_info=True)
                     raise ReportToucheEchoue() from exc
-        return Response(LeadActivitySerializer(act).data,
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='bulk',
@@ -3360,7 +3403,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT,
                detail=f'Export leads (.xlsx) — {len(ids)} ligne(s)')
-        return export_leads_xlsx(leads)
+        # ACRM4 — sans ``client_pii_voir`` : export sans colonnes PII.
+        from .serializers import pii_masquee_pour
+        return export_leads_xlsx(
+            leads, masquer_pii=pii_masquee_pour(request.user))
 
     # ── CAD-L ── CAD148 — le panneau d'appel guidé.
     @action(detail=True, methods=['get'], url_path='panneau-appel',

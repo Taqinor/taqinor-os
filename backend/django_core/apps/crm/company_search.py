@@ -120,6 +120,14 @@ def own_data_search(company, q: str, *, limit: int = MAX_RESULTS,
         + [_fournisseur_hit(f) for f in fournisseurs]
         + [_lead_hit(le) for le in leads]
     )
+    # ACRM4 — la règle unique du masquage PII : un rôle sans
+    # ``client_pii_voir`` ne lit pas ici le téléphone / l'e-mail / l'adresse
+    # d'un client ou d'un lead que sa fiche lui masque.
+    if user is not None:
+        from .serializers import masquer_pii_dict
+        for h in hits:
+            if h['source'] in ('client', 'lead'):
+                masquer_pii_dict(h, user, ('telephone', 'email', 'adresse'))
 
     # Déduplication grossière : (nom normalisé, ice) — on garde la 1re
     # occurrence (les clients passent en premier, donc priorité au client

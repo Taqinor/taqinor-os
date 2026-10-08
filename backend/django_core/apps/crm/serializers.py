@@ -55,6 +55,18 @@ def pii_masquee_pour(user) -> bool:
     return user is not None and not getattr(user, 'can_view_client_pii', True)
 
 
+def masquer_pii_dict(dico, user, champs=LEAD_PII_FIELDS):
+    """ACRM4 — la MÊME règle (``pii_masquee_pour``) appliquée à un dict fait
+    main (doublons, rapprochement client, autocomplete…) : chaque champ PII
+    présent est vidé (``None``, comme ``ClientSerializer``/``LeadSerializer``)
+    pour un rôle sans ``client_pii_voir``. Rend le dict (modifié sur place)."""
+    if pii_masquee_pour(user):
+        for name in champs:
+            if name in dico:
+                dico[name] = None
+    return dico
+
+
 def masquer_valeurs_chatter(field, old_value, new_value, user):
     """Renvoie ``(old_value, new_value)`` masqués si ``field`` est une PII du
     lead et que ``user`` n'a pas le droit de la voir.
