@@ -35,7 +35,8 @@ def _data(option=True, references=None, **kw):
         'conception': {'mois_critique': 12, 'debit_conception_m3h': 30.7},
         'hypotheses_pompage': list(HYPOTHESES),
     })
-    d['etude']['provenance_pompage']['hmt_m'] = {
+    # AMOT43 — forme réelle : la HMT saisie vit sous ``entrees.hmt_saisie_m``.
+    d['etude']['provenance_pompage']['entrees']['hmt_saisie_m'] = {
         'origine': 'calculee', 'detail': None, 'date': '2026-09-15'}
     for it in d['all_items']:
         it['description'] = f"Fiche de {it['designation']}"

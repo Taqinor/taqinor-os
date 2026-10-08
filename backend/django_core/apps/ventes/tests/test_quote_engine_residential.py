@@ -2028,3 +2028,27 @@ class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
         d, html = self._html(data)
         self.assertFalse(d['masquer_synthese'])
         self.assertIn('<div class="c1-bigcut">', html)
+
+
+class TestSpl162GarantiesDesFiches(SimpleTestCase):
+    """SPL162 — ``theme.warranties_for`` lit ses prédicats dans
+    ``lignes_classement`` (appelant oublié par l'analyse, correction
+    CODE-FACTS) : une composition panneau + onduleur + batterie rend les
+    garanties des FICHES, pas la constante ``WARRANTIES``."""
+
+    def test_composition_rend_les_garanties_des_fiches(self):
+        from apps.ventes.quote_engine.residential import theme
+        d = {'sans_items': [
+            {'designation': 'Panneau Longi Hi-MO 6 580W', 'garantie_mois': 180,
+             'garantie_production_mois': 360},
+            {'designation': 'Onduleur hybride Deye 8kW', 'garantie_mois': 84},
+        ], 'avec_items': [
+            {'designation': 'Batterie Dyness 10 kWh', 'garantie_mois': 72},
+        ]}
+        garanties = theme.warranties_for(d)
+        self.assertNotEqual(garanties, list(theme.WARRANTIES))
+        par_libelle = {g[2]: g[0] for g in garanties}
+        self.assertEqual(par_libelle['Panneaux'], '15')
+        self.assertEqual(par_libelle['Onduleur'], '7')
+        self.assertEqual(par_libelle['Batterie'], '6')
+        self.assertEqual(par_libelle['Performance'], '30')

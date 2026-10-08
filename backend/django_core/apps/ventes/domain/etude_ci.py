@@ -1201,7 +1201,17 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         if mode not in MODES:
             return None
         params = dict(getattr(devis, 'etude_params', None) or {})
-        kwc, _kwc_sans = puissances_etude_horaire(devis)
+        kwc, kwc_sans = puissances_etude_horaire(devis)
+        # AMOT62 (C-AMOT-052) — panneaux variantés : l'étude C&I décrit
+        # l'option SERVIE (CIQ302 : l'offre réseau seule, sauf option AVEC
+        # acceptée), jamais l'option AVEC par défaut à côté du kWc « sans »
+        # imprimé. Règles corrigées seulement (décision 08/10 : un devis
+        # envoyé avant garde ``regles_calcul = 1`` et son ancienne étude).
+        if kwc_sans:
+            from apps.ventes.utils.options import SANS_BATTERIE, option_effective
+            from .regles_calcul import calcul_corrige
+            if calcul_corrige(devis) and option_effective(devis) == SANS_BATTERIE:
+                kwc = kwc_sans
         if not kwc:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,

@@ -98,6 +98,94 @@ def mesurer_talon(pdf_bytes: bytes) -> dict:
     return sortie
 
 
+#: AMOT37 — libellé de la ligne de REGROUPEMENT déclaré (page 3) quand la
+#: nomenclature ne tient pas en 3 pages. Textes en/ar à relire par le
+#: fondateur.
+LIBELLE_REGROUPEMENT = {
+    "fr": "Autres équipements ({n} lignes) — détail sur la proposition en ligne",
+    "en": "Other equipment ({n} lines) — details in the online proposal",
+    "ar": "معدات أخرى ({n} بنود) — التفاصيل في العرض عبر الإنترنت",
+}
+
+
+def pages_attendues(d) -> int:
+    """D-AGR-2 — 3 pages ; +1 SEULEMENT sur ``include_note_calcul``."""
+    return 4 if d.get("include_note_calcul") else 3
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def regrouper_lignes(d, garde):
+    """AMOT37 — ``d`` dont les lignes d'équipement au-delà des ``garde``
+    premières sont regroupées en UNE ligne déclarée par taux de TVA
+    (quantité 1, P.U. = Σ des totaux HT regroupés) : Σ des lignes imprimées
+    = Total HT, chaîne de totaux inchangée (lue sur ``totaux_all``)."""
+    from . import pages
+    items = [it for it in (d.get("all_items") or [])
+             if isinstance(it, dict) and _num(it.get("quantite")) > 0]
+    if garde >= len(items):
+        return d
+    gardes, reste = items[:garde], items[garde:]
+    langue = pages._langue(d)
+    gabarit = LIBELLE_REGROUPEMENT.get(langue) or LIBELLE_REGROUPEMENT["fr"]
+    par_taux = {}
+    for it in reste:
+        taux = _num(it.get("taux_tva"))
+        total = round(_num(it.get("prix_unit_ht")) * _num(it.get("quantite")), 2)
+        cumul = par_taux.setdefault(taux, [0, 0.0])
+        cumul[0] += 1
+        cumul[1] = round(cumul[1] + total, 2)
+    regroupees = [{
+        "designation": gabarit.format(n=n), "marque": "", "quantite": 1,
+        "prix_unit_ht": total,
+        "prix_unit_ttc": round(total * (1 + taux / 100), 2),
+        "taux_tva": taux, "regroupement": True,
+    } for taux, (n, total) in sorted(par_taux.items())]
+    return dict(d, all_items=gardes + regroupees)
+
+
+def _tient(doc, d):
+    return len(doc.pages) == pages_attendues(d)
+
+
+def _document_qui_tient(d, rendre):
+    """AMOT37 (C-AMOT-046, volet agricole) — ``(d, doc)`` au premier rendu qui
+    tient ses pages : tel quel, puis densité SUPÉRIEURE (jusqu'à serrée),
+    puis regroupement DÉCLARÉ des dernières lignes (le plus de lignes
+    possible, recherche dichotomique, densité serrée). Jamais une 4ᵉ page qui
+    coupe le bloc d'acceptation : au-delà, :class:`Unsupported` NOMMÉ."""
+    from . import pages
+    doc = rendre(d)
+    if _tient(doc, d):
+        return d, doc
+    for densite in range(pages.densite_compacte(d) + 1, 3):
+        essai = dict(d, _densite_min=densite)
+        doc = rendre(essai)
+        if _tient(doc, essai):
+            return essai, doc
+    serre = dict(d, _densite_min=2)
+    items = [it for it in (d.get("all_items") or [])
+             if isinstance(it, dict) and _num(it.get("quantite")) > 0]
+    bas, haut, retenu = 1, len(items) - 1, None
+    while bas <= haut:
+        garde = (bas + haut) // 2
+        essai = regrouper_lignes(serre, garde)
+        doc = rendre(essai)
+        if _tient(doc, essai):
+            retenu, bas = (essai, doc), garde + 1
+        else:
+            haut = garde - 1
+    if retenu is not None:
+        return retenu
+    raise Unsupported("document agricole : 3 pages intenables même avec "
+                      "regroupement des lignes")
+
+
 def render_pdf_bytes(data: dict) -> bytes:
     """Le document agricole de 3 pages en octets PDF, ou :class:`Unsupported`.
 
@@ -109,8 +197,12 @@ def render_pdf_bytes(data: dict) -> bytes:
     from . import pages
     d = _augment(data)
     base = str(Path(pages.__file__).resolve().parent)
-    doc1 = HTML(string=pages.build_html(d),
-                base_url=f"file://{base}/").render()
+
+    def rendre(donnees):
+        return HTML(string=pages.build_html(donnees),
+                    base_url=f"file://{base}/").render()
+
+    d, doc1 = _document_qui_tient(d, rendre)
     pdf_bytes = doc1.write_pdf()
     vide = mesurer_talon(pdf_bytes)
     if vide:

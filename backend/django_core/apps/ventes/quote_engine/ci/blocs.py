@@ -378,6 +378,22 @@ def puces_conditions(d):
     return [p for p in cgv_bullets_remplies(d) if _txt(p)]
 
 
+#: AMOT36 — puce de renvoi DÉCLARÉE qui remplace les dernières puces des
+#: conditions quand elles ne tiennent pas dans le contrat de pages C&I
+#: (commerce 3, usine 4). Textes en/ar à relire par le fondateur.
+RENVOI_SUITE_CONDITIONS = {
+    "fr": "suite des conditions : proposition en ligne",
+    "en": "conditions continued: see the online proposal",
+    "ar": "تتمة الشروط: العرض عبر الإنترنت",
+}
+
+
+def renvoi_suite_conditions(d):
+    """AMOT36 — la puce de renvoi dans la langue du document."""
+    return RENVOI_SUITE_CONDITIONS.get(langue(d)) \
+        or RENVOI_SUITE_CONDITIONS["fr"]
+
+
 def bloc_conditions(d, prefixe, couleur_titre, couleur_texte):
     """``<div>`` « Conditions » : puces CGV (gelées) et note de TVA
     multi-taux (``tva_note``, si les puces ne la portent pas déjà) — styles

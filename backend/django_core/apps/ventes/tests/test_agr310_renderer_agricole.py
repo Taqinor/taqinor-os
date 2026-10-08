@@ -89,12 +89,17 @@ def data_complete(nb_lignes_extra=0, nb_options=1):
         'conception': {'mois_critique': 12},
         'champ': {'kwc': 7.7, 'nb_panneaux': 14},
         'ha_irrigables': {'valeur': None},
+        # AMOT43 — forme RÉELLE du producteur (``derivees_de_l_etude``) :
+        # ``{'entrees': {...}, '_empreinte': ...}``, jamais une forme plate.
         'provenance_pompage': {
-            'volume_m3_jour': {'origine': 'lead', 'detail': 'client',
-                               'date': '2026-09-12'},
-            'niveau_dynamique_m': {'origine': 'lead',
-                                   'detail': 'mesure_visite',
-                                   'date': '2026-09-15'},
+            'entrees': {
+                'volume_m3_jour': {'origine': 'lead', 'detail': 'client',
+                                   'date': '2026-09-12'},
+                'niveau_dynamique_m': {'origine': 'lead',
+                                       'detail': 'mesure_visite',
+                                       'date': '2026-09-15'},
+            },
+            '_empreinte': 'agr310-fixture',
         },
         'saisies_economie_pompage': {
             'energie_actuelle': {

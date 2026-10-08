@@ -432,7 +432,15 @@ def page2(ctx):
                          if 1 <= serre <= 12 else None)
         except (TypeError, ValueError):
             serre_txt = None
-        legende = (f'<div class="ag-note">{_t(lg, "agr_legende_barres")}'
+        # AMOT44 — un besoin AGRONOMIQUE plein (FAO-56) est qualifié comme
+        # sur la page web ; « votre besoin » seulement pour la nature déclarée.
+        if bvl.get("base_besoin") == "agronomique_plein":
+            texte_legende = _t(lg, "agr_base_besoin_agronomique",
+                               phrase=mentions.phrase_provenance(
+                                   "agronomique", lg))
+        else:
+            texte_legende = _t(lg, "agr_legende_barres")
+        legende = (f'<div class="ag-note">{texte_legende}'
                    + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
                       if serre_txt else "") + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
@@ -898,9 +906,13 @@ def densite_compacte(d) -> int:
         seuils = (7, 9, 13)
     else:
         seuils = (9, 12, 16)
+    # AMOT37 — densité MINIMALE imposée par le renderer quand le rendu
+    # mesuré déborde de ses 3 pages (``_densite_min``, drapeau serveur).
+    plancher = int(d.get("_densite_min") or 0)
     if lignes + options >= seuils[2]:
         return 2
-    return 1 if lignes >= seuils[0] or lignes + options >= seuils[1] else 0
+    calcul = 1 if lignes >= seuils[0] or lignes + options >= seuils[1] else 0
+    return max(calcul, min(plancher, 2))
 
 
 def build_ctx(d):
