@@ -37,15 +37,42 @@ def _ligne_contenu(ligne):
     return contenu
 
 
+def _cles_etude_ecran():
+    """AGNR9 — les clés d'ENTRÉE ÉCRAN du schéma, dans son ordre (aucune
+    liste codée en dur)."""
+    from apps.ventes.domain.etude_schema import ECRAN, ENTREE, SCHEMA
+    return [cle for cle, regle in SCHEMA.items()
+            if regle.get('nature') == ENTREE
+            and regle.get('proprietaire') == ECRAN]
+
+
 def _etude_contenu(devis):
     """QJR551 — les clés d'ENTRÉE de l'étude que l'ÉCRAN possède (schéma
     ``etude_schema.SCHEMA``, aucune liste codée en dur) : ce que
-    « Revenir à cette version » rejoue par ``etude_params`` (contrat QJR504)."""
-    from apps.ventes.domain.etude_schema import ECRAN, ENTREE, SCHEMA
+    « Revenir à cette version » rejoue par ``etude_params`` (contrat QJR504).
+
+    AGNR9 (C-AGNR-013) — CHAQUE clé ÉCRAN est portée, une clé absente du
+    devis valant ``None`` : rejouée par replace-lines, ``etude_schema.ecrire``
+    RETIRE la clé (``None`` = retrait). Restaurer V1 retire donc le ×4
+    (``nombre_proprietes``) ou le ``kit_retire`` posé depuis — avant, la clé
+    absente de V1 n'était pas dans l'instantané et survivait à la
+    restauration."""
     etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
-    return {cle: etude[cle] for cle, regle in SCHEMA.items()
-            if regle.get('nature') == ENTREE
-            and regle.get('proprietaire') == ECRAN and cle in etude}
+    return {cle: etude.get(cle) for cle in _cles_etude_ecran()}
+
+
+def contenu_servi(contenu):
+    """AGNR9 — un instantané tel qu'on le SERT (« Historique »), y compris un
+    instantané stocké AVANT AGNR9 : chaque clé ÉCRAN absente de son ``etude``
+    vaut ``None`` (normalisation à la lecture, aucune migration). Ne modifie
+    jamais l'objet stocké."""
+    if not isinstance(contenu, dict):
+        return contenu
+    etude = contenu.get('etude')
+    etude = dict(etude) if isinstance(etude, dict) else {}
+    for cle in _cles_etude_ecran():
+        etude.setdefault(cle, None)
+    return {**contenu, 'etude': etude}
 
 
 def _entete_valeur(valeur):

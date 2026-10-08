@@ -414,6 +414,7 @@ class DevisCycleActionsMixin:
         entre deux instantanés (ajoutées / retirées / modifiées). Lecture
         seule : ne crée ni ne modifie aucun instantané."""
         from ..services import diff_configurations_devis
+        from ..domain.historique_config import contenu_servi
         devis = self.get_object()
         snapshots = list(devis.config_snapshots.select_related('auteur').all())
         payload = {
@@ -423,7 +424,9 @@ class DevisCycleActionsMixin:
                 'auteur': (getattr(s.auteur, 'username', None)
                            if s.auteur_id else None),
                 'nb_lignes': len((s.contenu or {}).get('lignes') or []),
-                'contenu': s.contenu,
+                # AGNR9 — clés ÉCRAN absentes = null, même pour un
+                # instantané stocké avant (normalisation à la lecture).
+                'contenu': contenu_servi(s.contenu),
             } for s in snapshots],
         }
         a_id = request.query_params.get('a')

@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<id>/historique-configuration/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR513 (M0 QJR5 ; D-QJR5-7) — historique de configuration d'un devis : versions, différences, restauration. « Revenir à cette version » n'a PAS d'endpoint propre : il rejoue replace-lines avec entete + etude_params (contrat devis_replace_lines_entete.json, QJR504). Forme du diff : QJR551. ADEV18 : `contenu.note` (note client) et `contenu.entete` (TOUS les champs d'en-tête visibles de modifiabilite.CHAMPS_ENTETE_VISIBLES, clé étrangère par son nom d'écriture : client_id → client) — la restauration rejoue `entete` + `note` comme `entete` de replace-lines. Jamais prix_achat ni marge.",
+  "pourquoi": "QJR513 (M0 QJR5 ; D-QJR5-7) — historique de configuration d'un devis : versions, différences, restauration. « Revenir à cette version » n'a PAS d'endpoint propre : il rejoue replace-lines avec entete + etude_params (contrat devis_replace_lines_entete.json, QJR504). Forme du diff : QJR551. ADEV18 : `contenu.note` (note client) et `contenu.entete` (TOUS les champs d'en-tête visibles de modifiabilite.CHAMPS_ENTETE_VISIBLES, clé étrangère par son nom d'écriture : client_id → client) — la restauration rejoue `entete` + `note` comme `entete` de replace-lines. AGNR9 : `contenu.etude` porte CHAQUE clé d'entrée ÉCRAN du schéma (etude_schema.SCHEMA), une clé absente du devis valant null — y compris pour un instantané stocké avant (normalisé à la lecture) ; rejouée en `etude_params`, null RETIRE la clé (restaurer V1 retire un ×N posé depuis). Jamais prix_achat ni marge.",
   "exemple": {
     "snapshots": [
       {
@@ -61,7 +61,9 @@
             "acompte_montant": "19400.00"
           },
           "etude": {
-            "scenario": "Les deux (Sans + Avec)"
+            "scenario": "Les deux (Sans + Avec)",
+            "nombre_proprietes": null,
+            "kit_retire": null
           },
           "totaux": {
             "ht_net": "40416.67",
