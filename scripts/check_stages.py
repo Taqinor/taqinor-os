@@ -78,6 +78,93 @@ def count_literal_uses(text: str) -> int:
     return len(LITERAL_USE_RE.findall(text))
 
 
+# ADEP23 — the same literals on the FRONTEND (js/jsx): bare dict keys
+# (`NEW: 0.1`, the shape KanbanView uses), quoted keys, ===/!==/==/!= comparisons
+# against a key, and literal lists of two or more keys. The Python regex above
+# needs quotes around a dict key, so `{ NEW: 0.1 }` slipped through.
+_JS_Q = r"['\"]"
+_JS_KEY = _JS_Q + _KEYS + _JS_Q
+LITERAL_USE_JS_RE = re.compile(
+    "|".join([
+        r"(?:^|[{,])\s*" + _JS_KEY + r"\s*:",                    # 'NEW': x
+        r"(?:^|[{,])\s*" + _KEYS + r"\s*:",                      # NEW: x
+        r"(?:===|!==|==|!=)\s*" + _JS_KEY,                       # s === 'NEW'
+        _JS_KEY + r"\s*(?:===|!==|==|!=)",                       # 'NEW' === s
+        r"\[\s*" + _JS_KEY + r"\s*(?:,\s*" + _JS_KEY + r"\s*)+",  # ['NEW', 'SIGNED']
+    ]),
+    re.MULTILINE,
+)
+# The stage vocabulary of the frontend (never flagged).
+JS_LITERAL_EXEMPT = {
+    "frontend/src/features/crm/stages.js",
+}
+JS_ALLOW_FILE = ROOT / "scripts" / "stages_litteraux_js_allow.txt"
+
+
+def count_js_literal_uses(text: str) -> int:
+    return len(LITERAL_USE_JS_RE.findall(text))
+
+
+def load_js_allow() -> dict[str, int]:
+    """`chemin = N` per line (decrease-only ceilings), `#` comments."""
+    allow: dict[str, int] = {}
+    if not JS_ALLOW_FILE.exists():
+        return allow
+    for raw in JS_ALLOW_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        rel, _, n = line.partition("=")
+        allow[rel.strip()] = int(n.strip())
+    return allow
+
+
+def _is_js_test(path: Path) -> bool:
+    return is_test_file(path) or "__tests__" in path.parts or ".test." in path.name
+
+
+def scan_js_literals() -> dict[str, int]:
+    counts: dict[str, int] = {}
+    base = ROOT / "frontend" / "src"
+    if not base.is_dir():
+        return counts
+    for path in base.rglob("*"):
+        if path.suffix not in {".js", ".jsx"} or _is_js_test(path):
+            continue
+        if any(part in SKIPPED_PARTS for part in path.parts[len(ROOT.parts):]):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in JS_LITERAL_EXEMPT:
+            continue
+        try:
+            n = count_js_literal_uses(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, OSError):
+            continue
+        if n:
+            counts[rel] = n
+    return counts
+
+
+def js_literal_failures(counts: dict[str, int], allow: dict[str, int]) -> list[str]:
+    out: list[str] = []
+    for rel, n in sorted(counts.items()):
+        ceiling = allow.get(rel, 0)
+        if n > ceiling:
+            out.append(
+                f"{rel}: {n} literal stage key(s) in the frontend (dict key / "
+                f"comparison / key list), ceiling {ceiling} — import them from "
+                f"features/crm/stages.js instead"
+            )
+    for rel, ceiling in sorted(allow.items()):
+        n = counts.get(rel, 0)
+        if n < ceiling:
+            out.append(
+                f"{rel}: only {n} literal stage key(s) left, ceiling is {ceiling} "
+                f"— lower scripts/stages_litteraux_js_allow.txt (decrease-only ratchet)"
+            )
+    return out
+
+
 def literal_failures(literal_counts: dict[str, int],
                      allow: dict[str, int] | None = None) -> list[str]:
     """AANA46 — compare per-file literal counts to the decrease-only ceilings."""
@@ -181,6 +268,7 @@ def main() -> int:
             )
 
     failures.extend(literal_failures(literal_counts))
+    failures.extend(js_literal_failures(scan_js_literals(), load_js_allow()))
 
     if failures:
         print("Stage-name divergence detected (stage names must come from STAGES.py):")
