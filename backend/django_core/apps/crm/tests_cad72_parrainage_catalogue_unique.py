@@ -28,6 +28,7 @@ from authentication.models import Company
 from apps.crm import horaires
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.services import message_pour_etape
+from apps.crm.tests_services_split_golden import modules_definissant_la_fixture
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS
 
@@ -41,10 +42,11 @@ LUNDI = datetime.datetime(2026, 9, 7, 9, 0, tzinfo=horaires.CASABLANCA)
 _MARQUEURS_ARABIZI = ('choukran', 'dyalek', "l'parrainage", 'mokafaa',
                       'lmostachar')
 
-_FICHIERS_A_VERIFIER = (
-    pathlib.Path(__file__).resolve().parent / 'services.py',
-    pathlib.Path(__file__).resolve().parent / 'models.py',
-)
+# SPL1 : `services.py` se scinde en modules cibles — la garde lit aussi
+# tout module crm qui définit un nom de la fixture du golden de scission.
+_FICHIERS_A_VERIFIER = tuple(dict.fromkeys(
+    list(modules_definissant_la_fixture())
+    + [pathlib.Path(__file__).resolve().parent / 'models.py']))
 
 
 class CatalogueUniqueSourceTests(SimpleTestCase):
@@ -52,9 +54,9 @@ class CatalogueUniqueSourceTests(SimpleTestCase):
     darija en arabizi ne subsiste."""
 
     def setUp(self):
-        self.source_services = (
-            pathlib.Path(__file__).resolve().parent / 'services.py'
-        ).read_text(encoding='utf-8')
+        self.source_services = '\n'.join(
+            chemin.read_text(encoding='utf-8')
+            for chemin in modules_definissant_la_fixture())
 
     def test_le_second_catalogue_nexiste_plus(self):
         motif = '_PARRAINAGE' + '_TEMPLATE_DEFAULTS'

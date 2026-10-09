@@ -56,10 +56,22 @@ export default function ConcurrentsPerte() {
     concurrent_nom: '', concurrent_prix: '', devise: 'MAD', motif: '', notes: '',
   })
   const [saving, setSaving] = useState(false)
+  // ALEA22 — erreurs SOUS le champ (réponse 400 du serveur ou champ requis) :
+  // le formulaire est `noValidate`, plus aucune bulle de validation native.
+  const [erreurs, setErreurs] = useState({})
+  const setChamp = (champ, valeur) => {
+    setForm((f) => ({ ...f, [champ]: valeur }))
+    setErreurs((e) => { const { [champ]: _omis, ...reste } = e; return reste })
+  }
 
   const creer = async (event) => {
     event.preventDefault()
-    if (!leadSelectionne || !form.concurrent_nom) return
+    if (!leadSelectionne) return
+    if (!form.concurrent_nom.trim()) {
+      setErreurs({ concurrent_nom: 'Le concurrent gagnant est requis.' })
+      return
+    }
+    setErreurs({})
     setSaving(true)
     try {
       await crmApi.createConcurrentPerte({
@@ -74,6 +86,15 @@ export default function ConcurrentsPerte() {
       setForm({ concurrent_nom: '', concurrent_prix: '', devise: 'MAD', motif: '', notes: '' })
       chargerConcurrents(leadSelectionne.id)
     } catch (err) {
+      const data = err?.response?.data
+      if (err?.response?.status === 400 && data && typeof data === 'object') {
+        const parChamp = {}
+        for (const [champ, val] of Object.entries(data)) {
+          const premier = Array.isArray(val) ? val.find((v) => typeof v === 'string') : val
+          if (typeof premier === 'string' && champ !== 'detail') parChamp[champ] = premier
+        }
+        setErreurs(parChamp)
+      }
       toast.error(frenchError(err, "Impossible d'enregistrer ce concurrent."))
     } finally {
       setSaving(false)
@@ -128,32 +149,47 @@ export default function ConcurrentsPerte() {
                 {leadSelectionne.nom} <Badge tone="danger">Perdu</Badge>
               </h2>
 
-              <form onSubmit={creer} style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input
-                  placeholder="Concurrent gagnant"
-                  value={form.concurrent_nom}
-                  onChange={(e) => setForm({ ...form, concurrent_nom: e.target.value })}
-                  aria-label="Concurrent gagnant"
-                  required
-                />
-                <input
-                  type="number" step="0.01"
-                  placeholder="Prix du concurrent"
-                  value={form.concurrent_prix}
-                  onChange={(e) => setForm({ ...form, concurrent_prix: e.target.value })}
-                  aria-label="Prix du concurrent"
-                  style={{ width: 130 }}
-                />
+              <form onSubmit={creer} noValidate style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span>
+                  <input
+                    placeholder="Concurrent gagnant"
+                    value={form.concurrent_nom}
+                    onChange={(e) => setChamp('concurrent_nom', e.target.value)}
+                    aria-label="Concurrent gagnant"
+                    aria-invalid={erreurs.concurrent_nom ? 'true' : undefined}
+                  />
+                  {erreurs.concurrent_nom && (
+                    <span role="alert" style={{ display: 'block', color: '#b91c1c', fontSize: 12 }}>
+                      {erreurs.concurrent_nom}
+                    </span>
+                  )}
+                </span>
+                <span>
+                  <input
+                    type="number" step="any"
+                    placeholder="Prix du concurrent"
+                    value={form.concurrent_prix}
+                    onChange={(e) => setChamp('concurrent_prix', e.target.value)}
+                    aria-label="Prix du concurrent"
+                    aria-invalid={erreurs.concurrent_prix ? 'true' : undefined}
+                    style={{ width: 130 }}
+                  />
+                  {erreurs.concurrent_prix && (
+                    <span role="alert" style={{ display: 'block', color: '#b91c1c', fontSize: 12 }}>
+                      {erreurs.concurrent_prix}
+                    </span>
+                  )}
+                </span>
                 <input
                   placeholder="Motif"
                   value={form.motif}
-                  onChange={(e) => setForm({ ...form, motif: e.target.value })}
+                  onChange={(e) => setChamp('motif', e.target.value)}
                   aria-label="Motif de la perte"
                 />
                 <input
                   placeholder="Notes"
                   value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  onChange={(e) => setChamp('notes', e.target.value)}
                   aria-label="Notes"
                 />
                 <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, CardContent, Checkbox, Combobox, EmptyState,
@@ -100,10 +101,11 @@ export default function SiteProfilePage() {
 
   useEffect(() => {
     let active = true
-    crmApi.getClients()
-      .then((r) => {
+    // ALEA20 — sélecteur client : TOUS les clients (pagination complète).
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getClients({ page, page_size: pageSize }).then((r) => r.data))
+      .then((data) => {
         if (!active) return
-        const data = r.data
         setClients(Array.isArray(data) ? data : (data?.results || []))
       })
       .catch(() => { if (active) setClients([]) })
