@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('achats', '0007_astk59_quantite_appliquee'),
-        ('stock', '0169_mouvementstock_mouvementstock_quantite_non_negative'),
+        ('stock', '0170_err_astk226_incident_resolu_par'),
     ]
 
     operations = [
