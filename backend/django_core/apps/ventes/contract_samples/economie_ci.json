@@ -821,9 +821,12 @@
       ],
       "valeur_mad_an": 10950.0,
       "mentions": [
-        "Excédent racheté 0,21 / 0,18 DH HT le kWh (pointe / hors pointe), tarif ANRE 03/2026-02/2027, MT seulement, sans déduction des frais réseau (D-CIQ-4).",
-        "Plafond d'injection : 20 % de la production (loi 82-21 art. 12, décision ANRE 04/26).",
-        "Loi 82-21 art. 13 : contribution d'accès au réseau prévue, non fixée, non incluse."
+        "Tarif d'excédent ANRE (décision 04/26) : 18 cDH/kWh hors pointe, 21 cDH/kWh pointe, HT hors TSS ; plafond légal 20 % de la production annuelle (loi 82-21, art. 12) ; tarif arrêté à la signature de la convention puis indexé sur le tarif général moyen",
+        "Potentiel annuel plafonné, non garanti : écrêtement et arrêts sans compensation (loi 82-21 art. 32).",
+        "Second compteur de l'énergie autoproduite exigé (ANRE 04/26 art. 9).",
+        "TSS éventuelle sur l'énergie injectée non déduite (ANRE 02/25 §4).",
+        "Tarif arrêté à la signature de la convention puis indexé sur le tarif général moyen (ANRE 04/26 art. 10) — tenu constant ici, aucune indexation supposée.",
+        "Contribution aux services système et de distribution prévue par l'art. 13 de la loi 82-21 : non encore fixée par l'ANRE, non incluse"
       ],
       "hypotheses": [
         {

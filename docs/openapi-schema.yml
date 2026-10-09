@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4808, operations: 7584, components: 2214}
+counts: {paths: 4816, operations: 7592, components: 2216}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1264,6 +1264,7 @@ operations:
 - post /api/django/facturation/factures/{id}/relancer/ -> django_facturation_factures_relancer_create
 - get /api/django/facturation/factures/{id}/relances/ -> django_facturation_factures_relances_retrieve
 - post /api/django/facturation/factures/{id}/remettre-brouillon/ -> django_facturation_factures_remettre_brouillon_create
+- post /api/django/facturation/factures/{id}/reprendre-abandon/ -> django_facturation_factures_reprendre_abandon_create
 - post /api/django/facturation/factures/{id}/retour-client/ -> django_facturation_factures_retour_client_create
 - post /api/django/facturation/factures/{id}/revoquer-lien-paiement/ -> django_facturation_factures_revoquer_lien_paiement_create
 - get /api/django/facturation/factures/{id}/telecharger-pdf/ -> django_facturation_factures_telecharger_pdf_retrieve
@@ -1278,6 +1279,7 @@ operations:
 - put /api/django/facturation/niveaux-relance/{id}/ -> django_facturation_niveaux_relance_update
 - get /api/django/facturation/notes-debit/ -> django_facturation_notes_debit_list
 - get /api/django/facturation/notes-debit/{id}/ -> django_facturation_notes_debit_retrieve
+- post /api/django/facturation/notes-debit/{id}/annuler/ -> django_facturation_notes_debit_annuler_create
 - get /api/django/facturation/notes-debit/{id}/telecharger-pdf/ -> django_facturation_notes_debit_telecharger_pdf_retrieve
 - get /api/django/facturation/paiements/ -> django_facturation_paiements_list
 - get /api/django/facturation/paiements/attestations-ras-en-attente/ -> django_facturation_paiements_attestations_ras_en_attente_retrieve
@@ -3663,6 +3665,7 @@ operations:
 - post /api/django/ventes/factures/{id}/relancer/ -> django_ventes_factures_relancer_create
 - get /api/django/ventes/factures/{id}/relances/ -> django_ventes_factures_relances_retrieve
 - post /api/django/ventes/factures/{id}/remettre-brouillon/ -> django_ventes_factures_remettre_brouillon_create
+- post /api/django/ventes/factures/{id}/reprendre-abandon/ -> django_ventes_factures_reprendre_abandon_create
 - post /api/django/ventes/factures/{id}/retour-client/ -> django_ventes_factures_retour_client_create
 - post /api/django/ventes/factures/{id}/revoquer-lien-paiement/ -> django_ventes_factures_revoquer_lien_paiement_create
 - get /api/django/ventes/factures/{id}/telecharger-pdf/ -> django_ventes_factures_telecharger_pdf_retrieve
@@ -3694,6 +3697,7 @@ operations:
 - put /api/django/ventes/niveaux-relance/{id}/ -> django_ventes_niveaux_relance_update
 - get /api/django/ventes/notes-debit/ -> django_ventes_notes_debit_list
 - get /api/django/ventes/notes-debit/{id}/ -> django_ventes_notes_debit_retrieve
+- post /api/django/ventes/notes-debit/{id}/annuler/ -> django_ventes_notes_debit_annuler_create
 - get /api/django/ventes/notes-debit/{id}/telecharger-pdf/ -> django_ventes_notes_debit_telecharger_pdf_retrieve
 - get /api/django/ventes/numerotation-audit/ -> django_ventes_numerotation_audit_retrieve
 - get /api/django/ventes/numerotation-preview/ -> django_ventes_numerotation_preview_retrieve
@@ -5095,6 +5099,7 @@ operations:
 - post /api/v1/facturation/factures/{id}/relancer/ -> v1_facturation_factures_relancer_create
 - get /api/v1/facturation/factures/{id}/relances/ -> v1_facturation_factures_relances_retrieve
 - post /api/v1/facturation/factures/{id}/remettre-brouillon/ -> v1_facturation_factures_remettre_brouillon_create
+- post /api/v1/facturation/factures/{id}/reprendre-abandon/ -> v1_facturation_factures_reprendre_abandon_create
 - post /api/v1/facturation/factures/{id}/retour-client/ -> v1_facturation_factures_retour_client_create
 - post /api/v1/facturation/factures/{id}/revoquer-lien-paiement/ -> v1_facturation_factures_revoquer_lien_paiement_create
 - get /api/v1/facturation/factures/{id}/telecharger-pdf/ -> v1_facturation_factures_telecharger_pdf_retrieve
@@ -5109,6 +5114,7 @@ operations:
 - put /api/v1/facturation/niveaux-relance/{id}/ -> v1_facturation_niveaux_relance_update
 - get /api/v1/facturation/notes-debit/ -> v1_facturation_notes_debit_list
 - get /api/v1/facturation/notes-debit/{id}/ -> v1_facturation_notes_debit_retrieve
+- post /api/v1/facturation/notes-debit/{id}/annuler/ -> v1_facturation_notes_debit_annuler_create
 - get /api/v1/facturation/notes-debit/{id}/telecharger-pdf/ -> v1_facturation_notes_debit_telecharger_pdf_retrieve
 - get /api/v1/facturation/paiements/ -> v1_facturation_paiements_list
 - get /api/v1/facturation/paiements/attestations-ras-en-attente/ -> v1_facturation_paiements_attestations_ras_en_attente_retrieve
@@ -7458,6 +7464,7 @@ operations:
 - post /api/v1/ventes/factures/{id}/relancer/ -> v1_ventes_factures_relancer_create
 - get /api/v1/ventes/factures/{id}/relances/ -> v1_ventes_factures_relances_retrieve
 - post /api/v1/ventes/factures/{id}/remettre-brouillon/ -> v1_ventes_factures_remettre_brouillon_create
+- post /api/v1/ventes/factures/{id}/reprendre-abandon/ -> v1_ventes_factures_reprendre_abandon_create
 - post /api/v1/ventes/factures/{id}/retour-client/ -> v1_ventes_factures_retour_client_create
 - post /api/v1/ventes/factures/{id}/revoquer-lien-paiement/ -> v1_ventes_factures_revoquer_lien_paiement_create
 - get /api/v1/ventes/factures/{id}/telecharger-pdf/ -> v1_ventes_factures_telecharger_pdf_retrieve
@@ -7489,6 +7496,7 @@ operations:
 - put /api/v1/ventes/niveaux-relance/{id}/ -> v1_ventes_niveaux_relance_update
 - get /api/v1/ventes/notes-debit/ -> v1_ventes_notes_debit_list
 - get /api/v1/ventes/notes-debit/{id}/ -> v1_ventes_notes_debit_retrieve
+- post /api/v1/ventes/notes-debit/{id}/annuler/ -> v1_ventes_notes_debit_annuler_create
 - get /api/v1/ventes/notes-debit/{id}/telecharger-pdf/ -> v1_ventes_notes_debit_telecharger_pdf_retrieve
 - get /api/v1/ventes/numerotation-audit/ -> v1_ventes_numerotation_audit_retrieve
 - get /api/v1/ventes/numerotation-preview/ -> v1_ventes_numerotation_preview_retrieve
@@ -8316,6 +8324,7 @@ components:
 - LigneInventaire
 - LigneInventaireRequest
 - LigneNoteDebit
+- LigneNoteDebitRequest
 - LignePicking
 - LignePickingRequest
 - LignePrixListe
@@ -8462,6 +8471,7 @@ components:
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
 - NoteDebit
+- NoteDebitRequest
 - Notification
 - NotificationRequest
 - NotificationRoutingRule

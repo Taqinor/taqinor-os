@@ -26,7 +26,11 @@ SENSIBILITES = [
      "retour_ans": 5, "tri_pct": 24.2, "ecart_retour_ans": 1,
      "ecart_tri_pct": -2.8},
 ]
-BANCABLE = {"pr": {"p50_kwh": 340000, "p90_kwh": 312500,
+# AMOT35 — une P90 n'est imprimée que si la simulation décrit le champ VENDU
+# (Σ zones[].kwc = kWc du devis, ``bankable.decrit_le_champ``) : la zone
+# reprend les 250 kWc de ``sample_data`` (fixture industrielle).
+BANCABLE = {"zones": [{"kwc": 250}],
+            "pr": {"p50_kwh": 340000, "p90_kwh": 312500,
                    "performance_ratio": 0.81}}
 
 

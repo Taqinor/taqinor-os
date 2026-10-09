@@ -175,13 +175,22 @@ class TestPuissanceServieVientDesLignes(BaseDevisLive):
             watts_annonces, NB_PANNEAUX_LIVE * WATT_CALEPINAGE)
 
     def test_production_du_calepinage_est_recalee_sur_les_lignes(self):
-        """La modélisation de site du calepinage est gardée, pas son échelle."""
+        """AMOT15 (D-ACAL-6) — la production VUE PAR LE CLIENT est celle du
+        moteur devis : celle du calepinage (même recalée) n'est plus imprimée.
+        Témoin : le MÊME devis sans calepinage ni production d'étude."""
         devis = self.devis_live()
         data = build_quote_data(devis, {'pdf_mode': 'full'})
+        temoin = build_quote_data(
+            self.devis_live(layout={}, etude={'scenario': 'Avec batterie'}),
+            {'pdf_mode': 'full'})
 
-        attendu = int(round(PROD_CALEPINAGE * KWC_DES_LIGNES / KWC_CALEPINAGE))
-        self.assertEqual(data['prod_kwh'], attendu)
-        self.assertLess(data['prod_kwh'], PROD_CALEPINAGE)
+        recalee = int(round(PROD_CALEPINAGE * KWC_DES_LIGNES / KWC_CALEPINAGE))
+        self.assertEqual(data['prod_kwh'], temoin['prod_kwh'])
+        self.assertEqual(data['etude']['production_annuelle'],
+                         temoin['prod_kwh'])
+        self.assertNotEqual(data['prod_kwh'], PROD_CALEPINAGE)
+        if temoin['prod_kwh'] != recalee:
+            self.assertNotEqual(data['prod_kwh'], recalee)
 
     def test_le_kwc_de_l_etude_servie_suit_la_meme_verite(self):
         """``etude.puissance_kwc`` est servi tel quel au client : même règle."""

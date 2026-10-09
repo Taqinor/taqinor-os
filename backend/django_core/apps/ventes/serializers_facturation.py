@@ -213,7 +213,9 @@ class PaiementSerializer(serializers.ModelSerializer):
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
                             'escompte_montant', 'client', 'statut',
                             'statut_affectation', 'provider_ref',
-                            'motif_rejet', 'frais_rejet', 'date_rejet']
+                            'motif_rejet', 'frais_rejet', 'date_rejet',
+                            # APDF30 — numéro de reçu posé par le serveur.
+                            'numero_recu']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):
@@ -317,6 +319,24 @@ class FactureSerializer(serializers.ModelSerializer):
     # AVERTISSEMENT, ne bloque jamais l'émission.
     mentions_manquantes = serializers.ListField(
         child=serializers.CharField(), read_only=True)
+    # AFAC9 — contrat `facturation/contract_samples/facture_encaissable.json` :
+    # la règle « encaissable » vit au serveur (LA porte unique), l'écran la lit.
+    encaissable = serializers.SerializerMethodField()
+    motif_non_encaissable = serializers.SerializerMethodField()
+
+    def _motif_encaissement(self, obj):
+        # Même fonction que la porte serveur ; aucune requête hors le
+        # `devis.bon_commande` d'un ACOMPTE (préchargé par la liste).
+        from .domain.encaissements import motif_non_encaissable
+        return motif_non_encaissable(obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_encaissable(self, obj):
+        return self._motif_encaissement(obj) is None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_motif_non_encaissable(self, obj):
+        return self._motif_encaissement(obj)
 
     def get_tva_par_taux(self, obj):
         return [
@@ -342,7 +362,9 @@ class FactureSerializer(serializers.ModelSerializer):
                             # CIQ214 — posés par la tranche / ``liberer-retenue``.
                             'retenue_garantie_mad', 'retenue_liberee_le',
                             # ATOT5 — clé de tranche posée par le serveur.
-                            'cle_tranche']
+                            'cle_tranche',
+                            # APAR61 — identité vendeur figée à l'émission.
+                            'identite_vendeur']
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
@@ -462,7 +484,9 @@ class AvoirSerializer(serializers.ModelSerializer):
                             # ARRONDI-100 — repris de la facture côté serveur.
                             'arrondi_pas', 'arrondi_unites',
                             # ATOT6 — ventilation recopiée par le serveur.
-                            'ventilation_tva']
+                            'ventilation_tva',
+                            # AFAC32 — avoir de note de débit (serveur).
+                            'note_debit']
 
     def get_tva_par_taux(self, obj):
         return [
@@ -687,6 +711,10 @@ class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
             'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
             'company', 'cloture_par', 'date_cloture', 'statut',
         ]
+        # AFAC60 (C-AFAC-054) — `technicien` FACULTATIF en entrée : l'écran
+        # ne l'envoie pas, `perform_create` le pose à l'appelant ; un
+        # technicien d'une autre société reste refusé (ASEC28).
+        extra_kwargs = {'technicien': {'required': False}}
 
 
 class MandatPaiementSerializer(SameCompanyFKSerializerMixin,

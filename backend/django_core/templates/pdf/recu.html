@@ -54,7 +54,7 @@
     <div class="header-left">
       {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
       <div class="doc-title">QUITTANCE</div>
-      <div class="doc-ref">Reçu de paiement n° {{ paiement.id }}</div>
+      <div class="doc-ref">Reçu de paiement n° {{ numero_recu or paiement.numero_recu }}</div>
     </div>
     <div class="company-info">
       <strong>{{ entreprise_nom }}</strong><br />

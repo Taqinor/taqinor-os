@@ -170,3 +170,5 @@ def charger_regles():
     """Importe les modules de règles (l'import les enregistre)."""
     from . import (regles_documents, regles_etude, regles_crm,  # noqa: F401
                    regles_securite, regles_calepinage)
+    # AMOT49 — invariants maison (marge, pompage) : append-only.
+    from . import regles_invariants  # noqa: F401

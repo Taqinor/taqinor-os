@@ -90,12 +90,18 @@ def make_devis(company, user, client, lignes, remise_globale='0',
         remise_globale=Decimal(remise_globale), created_by=user,
         etude_params=etude_params,
     )
-    for ligne in lignes:
+    skus = set()
+    for i, ligne in enumerate(lignes):
         # (desig, qty, pu) historique ou (desig, qty, pu, taux_tva) réforme
         desig, qty, pu = ligne[:3]
         taux = Decimal(ligne[3]) if len(ligne) > 3 else None
-        # SKU unique par devis pour éviter les collisions (company, sku)
+        # SKU unique par devis pour éviter les collisions (company, sku) —
+        # deux désignations au même préfixe de 13 caractères (« Panneau mono
+        # 550W » / « Panneau mono 710W ») reçoivent le rang de la ligne.
         sku = f"{reference[-6:]}-{desig[:13]}"
+        if sku in skus:
+            sku = f"{reference[-6:]}-{i}-{desig[:13]}"
+        skus.add(sku)
         LigneDevis.objects.create(
             devis=devis, produit=make_produit(company, desig, sku, pu),
             designation=desig, quantite=Decimal(qty),
@@ -138,8 +144,9 @@ def _residential_sample_data():
     avec = shared + [_item("Onduleur hybride Deye 10kW Triphasé", 1, 23333, marque="Deye"),
                      _item("Batterie Dyness 10 kWh", 1, 25000, marque="Dyness")]
     eco = 20953
-    sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116, 0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
-    eco_m = [round(eco * f) for f in sf]
+    # AMOT27 — la forme mensuelle vient de LA constante (poids GHI).
+    from apps.ventes.quote_engine.pricing import repartir_mensuel
+    eco_m = repartir_mensuel(eco)
     return {
         "ref": "DEV-202606-0071", "date": "21/06/2026",
         # deliberately lower-case + empty address to prove the display fixes

@@ -206,6 +206,24 @@ def _payback(cout, economie):
     return round(cout / economie, 2)
 
 
+def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
+                    cout_onduleur_ttc=None, battery_roundtrip=None):
+    """AMOT29 — le payback PUBLIÉ d'une carte : ``pricing.payback_publiable``
+    (cashflow 25 ans, la définition du PDF), ``None`` s'il n'est pas
+    chiffrable ou si l'option n'est jamais remboursée sur l'horizon."""
+    if cout is None or economie is None or cout <= 0 or economie <= 0:
+        return None
+    try:
+        from .quote_engine.pricing import payback_publiable
+        return payback_publiable(
+            cout, economie, stockage=stockage, part_batterie=part_batterie,
+            cout_onduleur_ttc=cout_onduleur_ttc,
+            battery_roundtrip=battery_roundtrip)['payback_years']
+    except Exception:  # noqa: BLE001 — un payback indisponible s'omet
+        logger.warning('payback publiable indisponible', exc_info=True)
+        return None
+
+
 def _prix_par_kwc(prix_ttc, kwc):
     """Le prix au kWc TTC, arrondi COMME le moteur de rendu l'arrondit.
 
@@ -292,11 +310,12 @@ def _materiel_du_devis(devis, variante):
     une famille manquée côté référence ferait accuser les autres tailles d'un
     ajout ou d'un retrait imaginaire.
     """
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
 
     admises = ('', 'sans') if variante == 'sans' else ('', 'avec')
     materiel, deja_vues, tout_classe = [], set(), True
-    for ligne in _lignes_produit_du_devis(devis):
+    # AMOT31 — les seules lignes VENDUES (jamais une ligne optionnelle).
+    for ligne in lignes_vendues(devis, variante):
         # L-2OPT — LA VARIANTE DÉCIDE. Un devis à deux options porte les lignes
         # des DEUX (onduleur réseau côté « sans », onduleur hybride + batterie
         # côté « avec ») plus les lignes communes. Les lire toutes faisait
@@ -437,7 +456,7 @@ def _cumul_servi(data, variante, prix_ttc):
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
-                  cout_onduleur_ttc, sortie=None):
+                  cout_onduleur_ttc, sortie=None, battery_roundtrip=None):
     """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
 
     ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
@@ -462,10 +481,12 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
         return None
     try:
         from .quote_engine.pricing import compute_cashflow_payback
+        _rt = ({'battery_roundtrip': float(battery_roundtrip)}
+               if battery_roundtrip else {})
         resultat = compute_cashflow_payback(
             float(prix_ttc), float(economie_annuelle),
             battery=bool(stockage), battery_share=part_batterie,
-            inverter_replace_cost=cout_onduleur_ttc)
+            inverter_replace_cost=cout_onduleur_ttc, **_rt)
     except Exception:  # noqa: BLE001 — un cumul indisponible s'omet
         logger.warning('cumul 25 ans indisponible', exc_info=True)
         return None
@@ -617,14 +638,11 @@ class _Contexte:
 
     @property
     def etude_kwargs(self):
-        return {
-            'conso_kwh_mensuelles': self.entrees['conso_kwh_mensuelles'],
-            'ville': self.entrees['ville'],
-            'lat': self.entrees['lat'],
-            'lon': self.entrees['lon'],
-            'occupation': self.entrees['occupation'],
-            'equipements': self.entrees['equipements'],
-        }
+        # AMOT30 — LE constructeur unique : barème société, charges fixes et
+        # jour de référence compris (la carte Éco était chiffrée au barème
+        # NATIONAL pendant que le devis l'était à celui de la société).
+        from apps.ventes.etude_horaire import kwargs_moteur_horaire
+        return kwargs_moteur_horaire(self.entrees)
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.
@@ -744,7 +762,7 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
     if contexte.capacite_toit:
         champs['max'] = max(int(contexte.toit_max),
                             int(nb_panneaux_devis or 0))
-        return champs
+        return _borner_eco(champs, contexte.toit_max)
 
     # AUCUN CALEPINAGE MESURABLE — LE REPLI, ET SA BORNE (28/08/2026).
     #
@@ -775,6 +793,24 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
         # devis est la réalité vendue : Max ne descend jamais dessous, et
         # l'égalité fait collapser les deux cartes au lieu de mentir.
         champs['max'] = max(maximum, int(nb_panneaux_devis or 0))
+    return _borner_eco(champs, contexte.toit_max)
+
+
+def _borner_eco(champs, toit_max):
+    """AMOT32 (C-AMOT-033) — l'ordre Éco ≤ Max ≤ toit est une PROPRIÉTÉ.
+
+    Le meilleur payback du balayage peut tomber AU-DESSUS du toit (30
+    panneaux pour un mur physique de 26) : une Éco plus grosse que Max ou que
+    le toit ne se propose pas, elle COLLAPSE (clé retirée — jamais un
+    intermédiaire fabriqué pour occuper l'emplacement)."""
+    eco = champs.get('eco')
+    if eco is None:
+        return champs
+    bornes = [int(champs['max'])] if champs.get('max') else []
+    if toit_max:
+        bornes.append(int(toit_max))
+    if bornes and eco > min(bornes):
+        champs.pop('eco')
     return champs
 
 
@@ -857,10 +893,23 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
         except Exception:  # noqa: BLE001 — sans bornes lues, le moteur
             # retombe sur son régime établi : jamais une borne inventée.
             bornes = {}
+        # AMOT30 — le RENDEMENT de la fiche des batteries composées, comme le
+        # devis (``rendement_batterie_du_devis``) : jamais l'hypothèse muette
+        # quand la fiche le prouve.
+        try:
+            from apps.ventes.horaire.batterie_lignes import (
+                rendement_batterie_des_lignes)
+            _rdt = rendement_batterie_des_lignes(
+                lignes_avec, roles=getattr(lignes_avec, 'roles', None))
+            bornes['batterie_rendement'] = _rdt['rendement']
+            bornes['batterie_rendement_source'] = _rdt['source']
+        except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur
+            pass
 
     try:
         etude = calculer_etude_horaire(
             kwc=kwc, batterie_kwh_utile=capacite,
+            source_conso=contexte.entrees.get('source_conso'),
             **bornes, **contexte.etude_kwargs)
     except Exception:  # noqa: BLE001
         logger.warning('étude horaire indisponible à %s panneaux',
@@ -881,8 +930,11 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # Une variante « avec batterie » sans batterie composée n'est pas
             # une variante : elle est ABSENTE, jamais une copie du « sans ».
             continue
-        prix = _palier_devis(
-            _positif(_num(vue.get('cout_ttc')) * contexte.facteur_remise))
+        # AMOT59 — LE prix de vente partagé avec l'échelle et le curseur.
+        from apps.ventes.domain.dimensionnement_devis import (
+            prix_client_composition)
+        prix = _positif(prix_client_composition(
+            vue.get('cout_ttc'), facteur=contexte.facteur_remise))
         economie = _positif(annuel.get('economie_%s_mad' % variante))
         carte = {
             'nb_panneaux': int(nb_panneaux),
@@ -895,22 +947,31 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                 carte['prix_par_kwc_ttc'] = prix_kwc
         if economie is not None:
             carte['economie_annuelle_mad'] = round(economie, 2)
-        paye = _payback(prix, economie)
+        # AMOT29 — LE payback publié est celui du document (cashflow 25 ans,
+        # mêmes arguments que ``_cumul_moteur`` ci-dessous) ; « jamais
+        # remboursé » ⇒ la clé est OMISE (jamais la sentinelle 25 ans, jamais
+        # le ratio simple, qui ne sert plus qu'au tri interne).
+        _cf_args = {
+            'stockage': bool(variante == 'avec' and capacite),
+            # AMOT58 — l'économie de la carte vient du moteur HORAIRE, déjà
+            # nette du rendement aller-retour : rien à re-déduire au cashflow
+            # (``battery_share = 0``), comme ``pricing`` en modèle horaire.
+            'part_batterie': (0.0 if variante == 'avec' else None),
+            'cout_onduleur_ttc': _cout_onduleur_ttc(
+                lignes, list(getattr(lignes, 'roles', ()) or ()),
+                contexte.facteur_remise),
+            # AMOT30 — le rendement aller-retour que le moteur horaire a
+            # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.
+            'battery_roundtrip': (etude or {}).get('rendement_batterie'),
+        }
+        paye = _payback_publie(prix, economie, **_cf_args)
         if paye is not None:
             carte['payback_annees'] = paye
         _ajouter_taux(carte, annuel, variante)
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
         serie = {} if sortie_profonde is not None else None
-        cumul = _cumul_moteur(
-            prix, economie,
-            stockage=bool(variante == 'avec' and capacite),
-            part_batterie=(_part_batterie(annuel) if variante == 'avec'
-                           else None),
-            cout_onduleur_ttc=_cout_onduleur_ttc(
-                lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise),
-            sortie=serie)
+        cumul = _cumul_moteur(prix, economie, sortie=serie, **_cf_args)
         if serie and serie.get('cumulative'):
             sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
@@ -1094,12 +1155,12 @@ def _resoudre_substitutions(equipements, company=None):
     """
     if not equipements:
         return {}
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
 
     par_role = {}
     for role, produit_id in (equipements or {}).items():
         try:
-            requete = Produit.objects.filter(pk=int(produit_id))
+            requete = produits_qs().filter(pk=int(produit_id))
         except (TypeError, ValueError):
             continue
         if company is not None:
@@ -1201,7 +1262,8 @@ def _carte_du_devis(contexte, data, variante):
     paye = _positif((data or {}).get(
         'roi_s' if variante == 'sans' else 'roi_a'))
     if paye is None:
-        paye = _payback(prix, economie)
+        # AMOT29 — repli : la définition du document, jamais le ratio simple.
+        paye = _payback_publie(prix, economie)
     if paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))
@@ -1290,13 +1352,12 @@ def _banque_du_devis(contexte, kwc):
 
 def _compter_modules_du_devis(devis):
     """Le NOMBRE de modules batterie des lignes réelles (0 = aucun)."""
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_battery
 
     total = 0
-    for ligne in _lignes_produit_du_devis(devis):
-        if (getattr(ligne, 'variante', '') or '') == 'sans':
-            continue
+    # AMOT31 — lignes VENDUES de l'option avec (jamais une optionnelle).
+    for ligne in lignes_vendues(devis, 'avec'):
         if not _is_battery(getattr(ligne, 'designation', '') or ''):
             continue
         total += int(_num(getattr(ligne, 'quantite', 0)))
@@ -1903,13 +1964,11 @@ def _compter_panneaux_du_devis(devis):
     options, le compte affiché est celui de l'option 1, jamais la somme des
     deux — un nombre qui ne décrit aucune installation.
     """
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_panel
 
     total = 0
-    for ligne in _lignes_produit_du_devis(devis):
-        if (getattr(ligne, 'variante', '') or '') == 'avec':
-            continue
+    for ligne in lignes_vendues(devis, 'sans'):
         if not _is_panel(getattr(ligne, 'designation', '') or ''):
             continue
         total += int(_num(getattr(ligne, 'quantite', 0)))
@@ -1929,14 +1988,15 @@ def _porter_modules_batterie(devis, modules):
     """
     from decimal import Decimal as _Decimal
 
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_battery
 
     if not modules:
         return None
-    candidats = [ligne for ligne in _lignes_produit_du_devis(devis)
-                 if (getattr(ligne, 'variante', '') or '') != 'sans'
-                 and getattr(ligne, 'produit', None) is not None
+    # AMOT31 — « Appliquer » ne modifie QUE des lignes vendues : une ligne
+    # optionnelle (add-on hors total) n'est jamais réécrite.
+    candidats = [ligne for ligne in lignes_vendues(devis, 'avec')
+                 if getattr(ligne, 'produit', None) is not None
                  and _is_battery(getattr(ligne, 'designation', '') or '')]
     if not candidats:
         return None
@@ -1970,7 +2030,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     """
     from decimal import Decimal as _Decimal
 
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _est_au_prix_catalogue
 
     if not equipements:
@@ -1980,7 +2040,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     if not produits:
         return {}
 
-    lignes = list(_lignes_produit_du_devis(devis))
+    lignes = list(lignes_vendues(devis))
     a_ecrire = []
     for role, produit in produits.items():
         cibles = [ligne for ligne in lignes

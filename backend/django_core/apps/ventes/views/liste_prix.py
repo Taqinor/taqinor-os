@@ -121,8 +121,9 @@ def prix_applicable_view(request):
     produit, un client optionnel et une quantité. Company-scoped : le produit
     et le client doivent appartenir à la société de l'utilisateur, sinon 404
     (jamais de fuite cross-tenant). Ne renvoie jamais `prix_achat`."""
-    from apps.stock.models import Produit
-    from apps.crm.models import Client
+    # ADEV56 — lectures cross-app par les sélecteurs de stock / crm.
+    from apps.crm.selectors import client_base_qs
+    from apps.stock.selectors import produits_qs
     from ..services import prix_applicable
 
     user = request.user
@@ -134,23 +135,19 @@ def prix_applicable_view(request):
     if not produit_id:
         raise ValidationError('Le paramètre produit est requis.')
 
-    produit_qs = Produit.objects.all()
-    if company is not None:
-        produit_qs = produit_qs.filter(company=company)
+    produit_qs = produits_qs(company)
     try:
         produit = produit_qs.get(pk=produit_id)
-    except (Produit.DoesNotExist, ValueError):
+    except (produit_qs.model.DoesNotExist, ValueError):
         raise NotFound('Produit introuvable.')
 
     client = None
     client_id = request.query_params.get('client')
     if client_id:
-        client_qs = Client.objects.all()
-        if company is not None:
-            client_qs = client_qs.filter(company=company)
+        client_qs = client_base_qs(company)
         try:
             client = client_qs.get(pk=client_id)
-        except (Client.DoesNotExist, ValueError):
+        except (client_qs.model.DoesNotExist, ValueError):
             raise NotFound('Client introuvable.')
 
     quantite = request.query_params.get('quantite') or '1'

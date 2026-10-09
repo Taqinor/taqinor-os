@@ -143,6 +143,11 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
             facture.date_echeance = derivee
 
     facture.statut = Facture.Statut.EMISE
+    # APAR61 (D-APAR-4) — l'identité vendeur imprimée est FIGÉE à l'émission
+    # (un changement de RIB ne réécrit jamais une facture déjà émise).
+    if not facture.identite_vendeur:
+        from ..utils.pdf import identite_vendeur_courante
+        facture.identite_vendeur = identite_vendeur_courante(facture.company)
     facture.save()
 
     from core.events import facture_emise
@@ -1096,11 +1101,13 @@ def _produit_frais_refactures(company):
     conflit."""
     from django.db import IntegrityError, transaction
 
-    from apps.stock.models import Produit
+    # ADEV56 — catalogue lu / écrit par `stock.selectors` / `stock.services`.
+    from apps.stock.selectors import produits_qs
+    from apps.stock.services import creer_produit
 
     def _lire():
-        return Produit.objects.filter(
-            company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+        return produits_qs(company).filter(
+            nom=_PRODUIT_FRAIS_REFACTURES_NOM,
             is_archived=False).order_by('pk').first()
 
     produit = _lire()
@@ -1108,8 +1115,8 @@ def _produit_frais_refactures(company):
         return produit
     try:
         with transaction.atomic():
-            return Produit.objects.create(
-                company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+            return creer_produit(
+                company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
                 prix_vente=Decimal('0'), quantite_stock=0, seuil_alerte=0)
     except IntegrityError:
         produit = _lire()
@@ -1241,7 +1248,10 @@ def facturables_pour_devis(*, company, query=''):
         statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
     if query:
         qs = qs.filter(reference__icontains=query)
-    return [f for f in qs.select_related('client', 'devis') if f.montant_du > 0]
+    # APRF11 — toutes les relations lues par `montant_du`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    return [f for f in factures_avec_montant_du(
+        qs.select_related('client', 'devis')) if f.montant_du > 0]
 
 
 # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────────
@@ -1253,9 +1263,9 @@ def _main_oeuvre_produit(company):
     """Produit catalogue (service, non stocké) porteur de la ligne
     main-d'œuvre SAV — get-or-create idempotent, un seul par société.
     Jamais décrémenté (aucun mouvement de stock ne le référence)."""
-    from apps.stock.models import Produit
-    produit, _created = Produit.objects.get_or_create(
-        company=company, sku='SAV-MO', defaults={
+    from apps.stock.services import get_or_create_produit  # ADEV56
+    produit, _created = get_or_create_produit(
+        company, sku='SAV-MO', defaults={
             'nom': "Main-d'œuvre SAV",
             'prix_vente': Decimal('0'),
             'quantite_stock': 0,
@@ -1683,12 +1693,16 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
 
         avoir = create_numbered(Avoir, company, 'avoir', _create)
         # Garde plafond (au centime) — SOUS le verrou : deux avoirs/retours
-        # concurrents ne lisent plus chacun l'ancien reste.
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+        # concurrents ne lisent plus chacun l'ancien reste. AFAC34 — plafond
+        # = TTC + notes de débit − avoirs − abandons ACTIFS : une facture
+        # abandonnée ne se crédite plus une seconde fois.
+        plafond = (reste_creditable + locked.notes_debit_total
+                   - (locked.abandon_montant or Decimal('0')))
+        if avoir.total_ttc - plafond > Decimal('0.01'):
             raise AvoirRefuse(
                 ('Le retour dépasse' if est_retour else "L'avoir dépasse")
                 + f' le montant restant de la facture '
-                  f'({reste_creditable:.2f} MAD).')
+                  f'({max(plafond, Decimal("0")):.2f} MAD).')
         if restocker and est_retour:
             for ligne in lignes:
                 produit = ligne['produit']
@@ -1730,3 +1744,91 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
         if mode != 'contre_passation':
             recalculer_statut_paiement(locked, user=user, source='avoir')
     return avoir
+
+
+# ── AFAC32 (C-AFAC-026, D-AFAC-C4) : annulation d'une note de débit ─────────
+def notes_debit_actives(facture):
+    """Notes de débit ÉMISES de la facture qu'aucun avoir de note de débit
+    actif ne neutralise encore (D-AFAC-C4 : une ND s'annule par avoir)."""
+    from ..models import Avoir, NoteDebit
+    return [
+        nd for nd in facture.notes_debit.filter(
+            statut=NoteDebit.Statut.EMISE).order_by('id')
+        if not nd.avoirs_annulation.filter(
+            statut=Avoir.Statut.EMISE).exists()
+    ]
+
+
+def annuler_note_debit_par_avoir(*, note_debit, user):
+    """AFAC32 — LA voie d'annulation d'une note de débit émise (D-AFAC-C4,
+    option a : par AVOIR, jamais en place) : un avoir sur la facture d'origine,
+    miroir exact de la ND (lignes, remise globale, montants figés, paniers
+    TVA), lié par ``Avoir.note_debit``. Le reste dû revient à ce qu'il était
+    avant la ND ; chatter tracé, ``avoir_cree`` émis, statut de paiement
+    re-dérivé (ATOT8).
+
+    IDEMPOTENTE : une ND déjà neutralisée renvoie son avoir actif, sans en
+    créer un second. Renvoie ``(avoir, cree)``. Lève ``AvoirRefuse`` si la ND
+    n'est pas émise."""
+    from django.db import transaction
+
+    from core.events import avoir_cree
+
+    from .. import activity
+    from ..models import Avoir, Facture, FactureActivity, LigneAvoir, NoteDebit
+    from ..utils.company_settings import create_numbered
+    from .encaissements import recalculer_statut_paiement
+
+    with transaction.atomic():
+        locked_facture = Facture.objects.select_for_update().get(
+            pk=note_debit.facture_id)
+        nd = NoteDebit.objects.select_for_update().get(pk=note_debit.pk)
+        existant = nd.avoirs_annulation.filter(
+            statut=Avoir.Statut.EMISE).order_by('id').first()
+        if existant is not None:
+            return existant, False
+        if nd.statut != NoteDebit.Statut.EMISE:
+            raise AvoirRefuse(
+                'Seule une note de débit émise peut être annulée.')
+        company = nd.company or locked_facture.company
+        nd_lignes = list(nd.lignes.all())
+
+        def _create(ref):
+            avoir = Avoir.objects.create(
+                company=company, reference=ref, facture=locked_facture,
+                client=nd.client, statut=Avoir.Statut.EMISE,
+                motif=f'Annulation de la note de débit {nd.reference}',
+                taux_tva=nd.taux_tva, remise_globale=nd.remise_globale,
+                note_debit=nd, created_by=user)
+            for ligne in nd_lignes:
+                LigneAvoir.objects.create(
+                    avoir=avoir, produit_id=ligne.produit_id,
+                    designation=ligne.designation, quantite=ligne.quantite,
+                    prix_unitaire=ligne.prix_unitaire, remise=ligne.remise,
+                    taux_tva=ligne.taux_tva)
+            if (nd.montant_ttc is not None or not nd_lignes
+                    or nd.ventilation_tva):
+                # Montants FIGÉS de la ND (saisie par montant, paniers TVA) :
+                # l'avoir porte exactement les mêmes.
+                avoir.montant_ht = nd.total_ht
+                avoir.montant_tva = nd.total_tva
+                avoir.montant_ttc = nd.total_ttc
+                avoir.ventilation_tva = nd.ventilation_tva
+                avoir.save(update_fields=[
+                    'montant_ht', 'montant_tva', 'montant_ttc',
+                    'ventilation_tva'])
+            return avoir
+
+        avoir = create_numbered(Avoir, company, 'avoir', _create)
+        activity.log_facture_avoir(locked_facture, user, avoir)
+        FactureActivity.objects.create(
+            company=company, facture=locked_facture, user=user,
+            kind=FactureActivity.Kind.MODIFICATION,
+            field='note_debit', field_label='Note de débit',
+            old_value=nd.reference, new_value=avoir.reference,
+            body=(f"Note de débit {nd.reference} annulée par l'avoir "
+                  f"{avoir.reference} ({avoir.total_ttc} MAD TTC)."))
+        avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        recalculer_statut_paiement(
+            locked_facture, user=user, source='annulation_note_debit')
+    return avoir, True

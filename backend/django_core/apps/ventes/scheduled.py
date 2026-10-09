@@ -77,7 +77,8 @@ def check_overdue_factures():
     et seulement si aucune date n'est déjà posée (une date existante n'est
     JAMAIS écrasée). Aucun niveau configuré ⇒ rien n'est posé, comportement
     strictement inchangé."""
-    from .models import Facture, FollowupLevel
+    from .models import Facture
+    from .domain.recouvrement import amorcer_cadence, niveaux_cadence
 
     today = casablanca_today()
     flipped = 0
@@ -85,8 +86,13 @@ def check_overdue_factures():
     premiers_niveaux = {}
     # On ne considère que les statuts « ouverts » : émise (déjà en retard exclu
     # car déjà au bon statut → idempotence), jamais payée/annulée.
+    # AFAC43 (C-AFAC-036) — un locataire suspendu (`actif=False`) n'est
+    # jamais balayé (SCA19, `authentication.selectors.active_company_ids`).
+    from authentication.selectors import active_company_ids
     candidates = Facture.objects.filter(
-        statut=Facture.Statut.EMISE).select_related('client').prefetch_related(
+        statut=Facture.Statut.EMISE,
+        company_id__in=active_company_ids(),
+    ).select_related('client').prefetch_related(
         'lignes', 'paiements', 'avoirs')
     for facture in candidates:
         # CIQ214 — en retard seulement si l'EXIGIBLE reste dû (une retenue de
@@ -99,22 +105,33 @@ def check_overdue_factures():
         facture.statut = Facture.Statut.EN_RETARD
         champs = ['statut']
         # AUD131 — amorce de cadence : sans cette date, le beat ne verrait
-        # JAMAIS cette facture (cf. docstring).
-        if facture.prochaine_relance is None:
-            cid = facture.company_id
-            if cid not in premiers_niveaux:
-                premiers_niveaux[cid] = FollowupLevel.objects.filter(
-                    company_id=cid).order_by('delai_jours', 'ordre').first()
-            premier = premiers_niveaux[cid]
-            if premier is not None:
-                facture.prochaine_relance = echeance + timedelta(
-                    days=premier.delai_jours or 0)
-                champs.append('prochaine_relance')
+        # JAMAIS cette facture (cf. docstring). AFAC46 — LA règle partagée
+        # (`amorcer_cadence`, aussi appelée à la réouverture après un rejet).
+        cid = facture.company_id
+        if cid not in premiers_niveaux:
+            premiers_niveaux[cid] = niveaux_cadence(facture.company)
+        if amorcer_cadence(facture, echeance=echeance,
+                           niveaux=premiers_niveaux[cid], save=False):
+            champs.append('prochaine_relance')
         facture.save(update_fields=champs)
         flipped += 1
     logger.info('check_overdue_factures: %s facture(s) basculée(s) en retard',
                 flipped)
     return flipped
+
+
+def _promesse_honoree(promesse, facture):
+    """AFAC49 — Σ des encaissements VALIDES (paiements non rejetés) reçus
+    depuis la création de la promesse ≥ ``montant_promis``."""
+    from decimal import Decimal
+    from .models import Paiement
+    depuis = promesse.date_creation.date() if promesse.date_creation else None
+    recu = sum(
+        (p.montant for p in facture.paiements.all()
+         if p.statut != Paiement.Statut.REJETE
+         and (depuis is None or p.date_paiement >= depuis)),
+        Decimal('0'))
+    return recu >= (promesse.montant_promis or Decimal('0')) > 0
 
 
 def _check_promesses_expirees(today):
@@ -129,15 +146,22 @@ def _check_promesses_expirees(today):
     from .models import PromessePaiement
 
     rompues = 0
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     en_cours = PromessePaiement.objects.filter(
         statut=PromessePaiement.Statut.EN_COURS,
         date_promise__lt=today,
+        facture__company_id__in=active_company_ids(),
     ).select_related('facture').prefetch_related(
         'facture__paiements', 'facture__avoirs',
         'facture__retenues_subies', 'facture__affectations_paiement')
     for promesse in en_cours:
         facture = promesse.facture
-        if facture.montant_exigible <= 0:  # CIQ214 — exigible réglé
+        if facture.montant_exigible <= 0 \
+                or _promesse_honoree(promesse, facture):
+            # CIQ214 — exigible réglé ; AFAC49 (D-AFAC-C10, option a) — ou le
+            # client a payé AU MOINS le montant promis depuis la promesse,
+            # même si un solde reste dû : la promesse est TENUE.
             promesse.statut = PromessePaiement.Statut.TENUE
             promesse.save(update_fields=['statut'])
             continue
@@ -231,9 +255,33 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
                 'facture %s', facture.id)
         return {'canal': canal, 'courrier_pdf_key': ''}
 
-    # Défaut / email — comportement historique strictement inchangé.
-    send_relance_email(facture, niveau_nom=niveau_nom, message=message, user=user)
-    return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': ''}
+    # Défaut / email. AFAC45 (C-AFAC-033) — le résultat RÉEL de l'envoi est
+    # rendu : un `EmailLog` en échec (adresse absente, SMTP en panne) ne
+    # consomme pas le niveau (l'appelant reporte au prochain jour ouvré).
+    log = send_relance_email(
+        facture, niveau_nom=niveau_nom, message=message, user=user)
+    return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': '',
+            'envoye': _email_parti(log)}
+
+
+def _email_parti(log):
+    """AFAC45 — True si l'``EmailLog`` dit l'e-mail réellement parti."""
+    from .models import EmailLog
+    return log is not None and getattr(log, 'statut', None) == \
+        EmailLog.Statut.ENVOYE
+
+
+def _reporter_relance(facture, today):
+    """AFAC45 — envoi en échec : le niveau n'est PAS consommé, la relance
+    est retentée au prochain jour ouvré de la société."""
+    cible = today + timedelta(days=1)
+    try:
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
+        cible = prochain_jour_ouvre(cible, facture.company)
+    except Exception:  # noqa: BLE001 — calendrier absent → date brute
+        pass
+    facture.prochaine_relance = cible
+    facture.save(update_fields=['prochaine_relance'])
 
 
 @shared_task(name='ventes.relance_reminders')
@@ -255,7 +303,7 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import Facture, FollowupLevel, ParametrageRelanceClient, RelanceLog
+    from .models import Facture, ParametrageRelanceClient, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
@@ -263,23 +311,27 @@ def relance_reminders():
     sent = 0
     # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
     # responsable le suit via la liste manuelle, pas cet envoi programmé).
+    # AFAC47 (C-AFAC-035) — couples (société, client) : un paramétrage
+    # « manuel » d'une AUTRE société (ligne corrompue) ne coupe jamais les
+    # relances du client d'un locataire voisin.
     clients_manuels = set(
         ParametrageRelanceClient.objects.filter(
             mode=ParametrageRelanceClient.Mode.MANUEL,
-        ).values_list('client_id', flat=True)
+        ).values_list('company_id', 'client_id')
     )
     # AUD131 — MÊME liste de statuts que la vue `relancer` et que la liste des
     # impayés : un seul propriétaire de la définition (`recouvrement`).
     from .recouvrement import STATUTS_NON_RELANCABLES, facture_relancable
 
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
+        company_id__in=active_company_ids(),
     ).exclude(
         statut__in=STATUTS_NON_RELANCABLES,
     ).exclude(
         exclu_relances_jusquau__gte=today,
-    ).exclude(
-        client_id__in=clients_manuels,
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
@@ -287,6 +339,8 @@ def relance_reminders():
     societes_pourvues = set()
 
     for facture in factures:
+        if (facture.company_id, facture.client_id) in clients_manuels:
+            continue  # ZFAC8 / AFAC47 — client MANUEL de SA société
         # AUD131 — le prédicat partagé remplace le court-circuit local
         # `montant_du <= 0` (le filtre de statut est déjà appliqué en SQL).
         if not facture_relancable(facture)[0]:
@@ -298,11 +352,17 @@ def relance_reminders():
         if facture.company_id not in societes_pourvues:
             ensure_default_followup_levels(facture.company)
             societes_pourvues.add(facture.company_id)
-        levels = list(FollowupLevel.objects.filter(
-            company=facture.company).order_by('delai_jours', 'ordre'))
+        # AFAC46 — UN tri des niveaux (``ordre``, ``delai_jours``), partagé
+        # avec l'aperçu, la liste et les relances manuelles.
+        from .domain.recouvrement import niveaux_cadence, prochain_niveau
+        levels = niveaux_cadence(facture.company)
         if not levels:
             # Aucun niveau configuré : envoi générique unique, puis stop.
-            send_relance_email(facture, niveau_nom='', message='', user=None)
+            log = send_relance_email(
+                facture, niveau_nom='', message='', user=None)
+            if not _email_parti(log):  # AFAC45 — retenté, jamais consommé
+                _reporter_relance(facture, today)
+                continue
             RelanceLog.objects.create(
                 company=facture.company, facture=facture, niveau=None,
                 niveau_nom='', note='Relance automatique programmée (email).')
@@ -311,20 +371,27 @@ def relance_reminders():
             sent += 1
             continue
 
-        # Niveau courant = PROCHAIN non encore envoyé (séquence niveau par
-        # niveau). On compte les relances automatiques déjà consignées pour
-        # cette facture afin de reprendre où la séquence s'est arrêtée — pas de
-        # saut direct au niveau le plus dur.
-        deja = facture.relances.filter(
-            note='Relance automatique programmée (email).').count()
-        idx = min(deja, len(levels) - 1)
-        niveau = levels[idx]
+        # AFAC46 — niveau courant = LE prochain niveau du journal EFFECTIF
+        # (tous canaux et auteurs : une relance manuelle niveau 3 n'est plus
+        # suivie d'un « Rappel courtois » niveau 1). Tous partis → séquence
+        # terminée, rien n'est envoyé.
+        niveau, deja_tous = prochain_niveau(facture, levels)
+        if deja_tous:
+            facture.prochaine_relance = None
+            facture.save(update_fields=['prochaine_relance'])
+            continue
+        idx = levels.index(niveau)
 
         # XFAC8 — route selon le canal configuré sur CE niveau (email par
         # défaut = comportement historique inchangé).
         dispatch = _dispatch_relance_canal(
             facture, niveau, 'Relance automatique programmée (email).',
             user=None)
+        if not dispatch.get('envoye', True):
+            # AFAC45 — e-mail non parti : aucun RelanceLog, niveau conservé,
+            # l'EmailLog en échec reste visible sur la facture.
+            _reporter_relance(facture, today)
+            continue
         RelanceLog.objects.create(
             company=facture.company, facture=facture, niveau=niveau.ordre,
             niveau_nom=niveau.nom,
@@ -434,9 +501,12 @@ def pre_echeance_reminders():
 
     today = casablanca_today()
     sent = 0
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     candidates = Facture.objects.filter(
         statut=Facture.Statut.EMISE, exclu_relances=False,
         date_echeance__isnull=False,
+        company_id__in=active_company_ids(),
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
@@ -457,8 +527,11 @@ def pre_echeance_reminders():
         # Idempotence : un seul rappel par facture (le marqueur reste tant
         # que la facture n'a qu'une échéance figée — pas de doublon possible
         # même si le job tourne plusieurs fois le même jour).
+        # AFAC45 — seul un rappel réellement PARTI compte : un échec est
+        # retenté au passage suivant.
         deja_envoye = EmailLog.objects.filter(
             facture=facture, reference__endswith=f'::{PRE_ECHEANCE_MARKER}',
+            statut=EmailLog.Statut.ENVOYE,
         ).exists()
         if deja_envoye:
             continue
@@ -468,7 +541,8 @@ def pre_echeance_reminders():
         log.reference = f'{(facture.reference or "")[:70]}::' \
             f'{PRE_ECHEANCE_MARKER}'
         log.save(update_fields=['reference'])
-        sent += 1
+        if _email_parti(log):
+            sent += 1
 
     logger.info('pre_echeance_reminders: %s rappel(s) envoyé(s)', sent)
     return sent
@@ -502,13 +576,18 @@ def releve_mensuel_reminders():
     marker = f'{RELEVE_MENSUEL_MARKER}-{mois}'
     sent = 0
 
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     clients = client_base_qs().filter(
-        releve_mensuel_auto=True).exclude(email__isnull=True).exclude(email='')
+        releve_mensuel_auto=True,
+        company_id__in=active_company_ids(),
+    ).exclude(email__isnull=True).exclude(email='')
 
     for client in clients:
         # Idempotence : un seul envoi par client et par mois.
+        # AFAC45 — seul un relevé réellement PARTI compte (échec retenté).
         deja_envoye = EmailLog.objects.filter(
-            client=client, reference=marker,
+            client=client, reference=marker, statut=EmailLog.Statut.ENVOYE,
         ).exists()
         if deja_envoye:
             continue
@@ -524,7 +603,8 @@ def releve_mensuel_reminders():
             continue
         log.reference = f'{marker}'[:80]
         log.save(update_fields=['reference'])
-        sent += 1
+        if _email_parti(log):
+            sent += 1
 
     logger.info('releve_mensuel_reminders: %s relevé(s) envoyé(s)', sent)
     return sent

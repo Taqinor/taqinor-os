@@ -211,7 +211,9 @@ def build(ctx) -> str:
         return f"{site_url}{chemin}" if site_url else ""
     pay = d.get("payment_terms", {}) or {}
     acompte = pay.get("acompte", 30)
-    materiel = pay.get("materiel", 60)
+    # AMOT19 — le builder sert les pourcentages des CASES de la branche
+    # imprimée ; un créneau absent vaut 0 et n'est pas imprimé.
+    materiel = pay.get("materiel", 0)
     solde = pay.get("solde", 10)
     tva_note = (d.get("tva_note", "") or "").strip()
     # The builder's note already starts with "TVA :"; drop it so it doesn't
@@ -283,8 +285,11 @@ def build(ctx) -> str:
     )
 
     # ── Conditions (compact) ────────────────────────────────────────────────
-    paiement = (f"{acompte}% à la commande &middot; {materiel}% à la réception "
-                f"du matériel &middot; {solde}% à la mise en service")
+    _morceaux = [f"{acompte}% à la commande"]
+    if materiel:
+        _morceaux.append(f"{materiel}% à la réception du matériel")
+    _morceaux.append(f"{solde}% à la mise en service")
+    paiement = " &middot; ".join(_morceaux)
     # QRES31 — échéance absolue partout où la validité s'affiche.
     # M7 — la date imprimée est celle du devis. `valid_until` est déjà posée
     # par le builder ; l'arithmétique de repli ne sert qu'aux appels sans elle.
@@ -420,13 +425,20 @@ def build(ctx) -> str:
         fmt_mad = ctx.get("fmt_mad") or theme.fmt
         accord_opt_html = ("Offre valable jusqu'au " + _valid_until
                            if _valid_until else "")
+        # AMOT33 — la pastille « recommandé » suit l'option RECOMMANDÉE par
+        # le serveur ; aucune recommandation ⇒ aucune pastille.
+        from ..figures import option_recommandee
+        _reco = option_recommandee(d)
+        _mini = '<span class="p3-reco-mini">recommandé</span>'
         accord_pick_html = (
             '<div class="p3-accord-pick">Cochez votre option :'
             f'<span class="p3-box"></span> Sans batterie — '
             f'<b>{fmt_mad(_ts)} MAD TTC</b>'
-            f'<span class="p3-box"></span> {_libelle_avec} — '
+            + (_mini if _reco == "sans" else "")
+            + f'<span class="p3-box"></span> {_libelle_avec} — '
             f'<b>{fmt_mad(_ta)} MAD TTC</b>'
-            '<span class="p3-reco-mini">recommandé</span></div>')
+            + (_mini if _reco == "avec" else "")
+            + '</div>')
     else:
         accord_opt_html = (_libelle_avec if _avec_ok else "Sans batterie")
         accord_pick_html = ""
