@@ -11,6 +11,7 @@ tache qui livre un composant monte ailleurs, un ecran public a jeton et une
 tache qui ETEND l'ecran cree par sa voisine sont toutes LEGITIMES. Les tests
 ci-dessous verrouillent ces silences autant que les detections.
 """
+import re
 import sys
 import tempfile
 import unittest
@@ -48,6 +49,15 @@ class FauxDepot:
         chemin = self.racine / "docs" / "PLAN.md"
         chemin.write_text("".join(lignes), encoding="utf-8")
         return ["docs/PLAN.md"]
+
+    def gel_v2(self, *identifiants):
+        """Gele des identifiants au format v2 (scripts/taches_audit_v2.txt)."""
+        chemin = self.racine / ctc.V2_IDS_RELATIF
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        existants = chemin.read_text(encoding="utf-8").splitlines() \
+            if chemin.is_file() else ["# gel v2 (test)"]
+        chemin.write_text("\n".join(existants + list(identifiants)) + "\n",
+                          encoding="utf-8")
 
     def ecran(self, relatif: str, contenu: str = "export default 1\n"):
         chemin = self.src / relatif
@@ -389,12 +399,73 @@ TACHE_AUDIT_COMPLETE = (
     "Preuve en direct : n/a. Hors périmètre : rien.")
 
 
+TACHE_AUDIT_V3 = (
+    "**Faire X** : Constat : C-ACAL-1 (C4, S3) — m à `a.py::f`. "
+    "Given a When b Then c. Persistance : n/a — lecture. "
+    "Emplacement : `a.py::f` (10 l.). Code net : supprime rien ; réutilise "
+    "`a.py::g` (recherche exécutée : 1 définition) ; lignes nettes attendues ≤ 5. "
+    "Appelants : `b.py::h` ; front : 0 écran. Assertions existantes : "
+    "`t.py::T::t1` → reste vert. Jumeaux : aucun (grep f : 0). "
+    "Listes figées : aucune (grep a.py scripts/*.txt : 0). "
+    "Contrat partagé : n/a — backend seul. Test rouge d'abord : `t.py::T::t2`, "
+    "rouge sur abc1234 ; mutant : ligne 3 ⇒ échec. Preuve en direct : API "
+    "seulement — 0 écran. Hors périmètre : rien. (gen manuel abc1234)")
+BALISES_V3 = " (ROUTINE) (@model: sonnet)"
+
+
 class ClausesTests(BaseDepot):
-    def plan_audit(self, *lignes, nom="PLAN_AUDIT_TEST.md") -> list:
+    def plan_audit(self, *lignes, nom="PLAN_AUDIT_TEST.md", gel_v2=True) -> list:
+        """Par defaut les ids ecrits sont GELES en v2 (les fixtures historiques
+        sont au format v2) ; `gel_v2=False` les laisse juger en v3."""
         dossier = self.depot.racine / "docs" / "plans"
         dossier.mkdir(parents=True, exist_ok=True)
         (dossier / nom).write_text("".join(lignes), encoding="utf-8")
+        if gel_v2:
+            ids = re.findall(r"^- \[[^\]]*\]\s*([A-Z]{2,6}\d{1,4})",
+                             "".join(lignes), flags=re.MULTILINE)
+            self.depot.gel_v2(*ids)
         return [f"docs/plans/{nom}"]
+
+    def test_v3_complete_passe(self):
+        fichiers = self.plan_audit(
+            tache("AMET901", TACHE_AUDIT_V3, "`scripts/a.py`" + BALISES_V3),
+            gel_v2=False)
+        self.assertEqual(self.clauses(fichiers), {})
+
+    def test_v3_na_nu_est_refuse(self):
+        texte = TACHE_AUDIT_V3.replace("Persistance : n/a — lecture.",
+                                       "Persistance : n/a.")
+        fichiers = self.plan_audit(
+            tache("AMET902", texte, "`scripts/a.py`" + BALISES_V3), gel_v2=False)
+        self.assertEqual(self.clauses(fichiers), {"AMET902": [ctc.MANQUE_NA_NU]})
+
+    def test_v3_sans_model_est_refuse(self):
+        fichiers = self.plan_audit(
+            tache("AMET903", TACHE_AUDIT_V3, "`scripts/a.py` (ROUTINE)"),
+            gel_v2=False)
+        self.assertEqual(self.clauses(fichiers), {"AMET903": [ctc.MANQUE_MODEL]})
+
+    def test_v2_gelee_reste_jugee_en_v2(self):
+        fichiers = self.plan_audit(
+            tache("ACAL9007", TACHE_AUDIT_COMPLETE, "`scripts/a.py`"))
+        self.assertEqual(self.clauses(fichiers), {})
+
+    def test_v2_non_gelee_est_jugee_en_v3(self):
+        fichiers = self.plan_audit(
+            tache("ACAL9008", TACHE_AUDIT_COMPLETE, "`scripts/a.py`"),
+            gel_v2=False)
+        manques = self.clauses(fichiers)["ACAL9008"]
+        for libelle in ("Persistance", "Emplacement", "Code net",
+                        "Assertions existantes", ctc.MANQUE_NA_NU,
+                        ctc.MANQUE_MODEL):
+            self.assertIn(libelle, manques)
+
+    def test_liste_v2_resolue_a_l_appel(self):
+        self.assertEqual(ctc.charger_ids_v2(), set())
+        self.depot.gel_v2("ACAL9009")
+        self.assertEqual(ctc.charger_ids_v2(), {"ACAL9009"})
+        self.assertEqual(ctc.version_de("ACAL9009", {"ACAL9009"}), "v2")
+        self.assertEqual(ctc.version_de("AMET1", {"ACAL9009"}), "v3")
 
     def clauses(self, fichiers):
         trouves, _ = ctc.analyse(fichiers, avec_doublons=False)
@@ -447,7 +518,9 @@ class ClausesTests(BaseDepot):
 
     def test_la_forme5_est_bloquante(self):
         self.assertIn(ctc.FORME_CLAUSES, ctc.FORMES_BLOQUANTES)
-        self.assertEqual(len(ctc.CLAUSES_AUDIT), 13)
+        self.assertEqual(len(ctc.CLAUSES_AUDIT_V2), 13)
+        self.assertEqual(len(ctc.CLAUSES_AUDIT_V3), 14)
+        self.assertIs(ctc.CLAUSES_AUDIT, ctc.CLAUSES_AUDIT_V2)
 
 
 # ===========================================================================
