@@ -30,10 +30,15 @@ export default function SignatureLivraisonDialog({
     cosignataire_organisme: installation?.cosignataire_organisme || '',
   })
   const setSigne = (k) => (e) => setSign((p) => ({ ...p, [k]: e.target.value }))
+  // ACHT59 — motif obligatoire pour re-signer un chantier déjà signé
+  // (`motif_override_signature`, lu par le serveur : 409 sans motif).
+  const dejaSigne = !!installation?.signe_le
+  const [motif, setMotif] = useState('')
   const [busy, setBusy] = useState(false)
 
   const enregistrer = async () => {
     if (!sig) { toast.error('Faites signer le client avant d’enregistrer.'); return }
+    if (dejaSigne && !motif.trim()) { toast.error('Motif obligatoire pour re-signer.'); return }
     setBusy(true)
     try {
       // Seuls les champs renseignés partent : le serveur laisse inchangés
@@ -42,14 +47,19 @@ export default function SignatureLivraisonDialog({
         Object.entries(sign).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
       await installationsApi.signerClientChantier(installation.id, {
         signature_client: sig, signataire_nom: nom.trim(), ...extra,
+        ...(dejaSigne ? { motif_override_signature: motif.trim() } : {}),
       })
       toast.success('Signature enregistrée — jointe au bon de livraison.')
       setSig(null)
       onSigned?.()
       onOpenChange(false)
     } catch (err) {
-      toast.error(err?.response?.data?.signature_client
-        ?? err?.response?.data?.detail
+      const d = err?.response?.data
+      // Jamais le nom de champ technique : on affiche le texte du refus.
+      const motifRefus = d?.motif_override_signature
+      toast.error(d?.signature_client
+        ?? d?.detail
+        ?? (Array.isArray(motifRefus) ? motifRefus.join(' ') : motifRefus)
         ?? 'Enregistrement de la signature impossible.')
     } finally {
       setBusy(false)
@@ -70,8 +80,19 @@ export default function SignatureLivraisonDialog({
         {installation?.signe_le && (
           <p className="text-xs text-muted-foreground">
             Déjà signé par {installation.signataire_nom || 'le client'} —
-            tracer une nouvelle signature la remplace.
+            {motif.trim() ? 'la nouvelle signature la remplace.'
+              : 'indiquez un motif pour la remplacer.'}
           </p>
+        )}
+        {dejaSigne && (
+          <div>
+            <Input aria-label="Motif de la re-signature" required
+                   placeholder="Motif de la re-signature (obligatoire)"
+                   value={motif} onChange={(e) => setMotif(e.target.value)} />
+            {!motif.trim() && (
+              <p className="mt-1 text-xs text-destructive">Motif obligatoire</p>
+            )}
+          </div>
         )}
 
         <Input placeholder="Nom du signataire (optionnel)"
@@ -92,7 +113,7 @@ export default function SignatureLivraisonDialog({
 
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuler</Button>
-          <Button disabled={busy || !sig} onClick={enregistrer}>
+          <Button disabled={busy || !sig || (dejaSigne && !motif.trim())} onClick={enregistrer}>
             <PenLine className="size-4" aria-hidden="true" /> Enregistrer la signature
           </Button>
         </div>

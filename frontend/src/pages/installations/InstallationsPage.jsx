@@ -317,11 +317,26 @@ export default function InstallationsPage() {
 
   // N2 — glisser une carte change le statut ; un select réassigne l'installateur.
   // En cas d'échec serveur : message FR + resynchronisation (rollback) du tableau.
-  const onChangeStatus = (inst, statut) =>
+  // ACHT64 — variantes « strictes » (rejettent avec la raison du serveur) pour
+  // l'action groupée de la liste, qui doit distinguer modifiés / refusés ; les
+  // variantes historiques (kanban, glisser) gardent toast + resynchronisation.
+  const raisonRefus = (err, repli) => {
+    if (typeof err === 'string') return err
+    const statut = err?.statut
+    if (Array.isArray(statut) && statut.length) return statut.join(' ')
+    return err?.detail || repli
+  }
+  const changeStatusStrict = (inst, statut) =>
     dispatch(updateInstallation({ id: inst.id, data: { statut } })).unwrap()
+      .catch((err) => { throw new Error(raisonRefus(err, 'Changement de statut impossible.')) })
+  const reassignStrict = (inst, technicien) =>
+    dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } })).unwrap()
+      .catch((err) => { throw new Error(raisonRefus(err, 'Réassignation impossible.')) })
+  const onChangeStatus = (inst, statut) =>
+    changeStatusStrict(inst, statut)
       .catch(() => { toast.error('Changement de statut impossible.'); refetch() })
   const onReassign = (inst, technicien) =>
-    dispatch(updateInstallation({ id: inst.id, data: { technicien_responsable: technicien } })).unwrap()
+    reassignStrict(inst, technicien)
       .catch(() => { toast.error('Réassignation impossible.'); refetch() })
   // N4 — replanifier la pose via glisser-déposer sur le calendrier (le serveur
   // journalise le changement de date dans le chatter).
@@ -559,6 +574,8 @@ export default function InstallationsPage() {
         {!showSkeleton && view === 'liste' && (
           <ListView items={filtered} onOpen={onOpen} users={users}
                     onChangeStatus={onChangeStatus} onReassign={onReassign}
+                    onChangeStatusStrict={changeStatusStrict}
+                    onReassignStrict={reassignStrict} onBatchDone={refetch}
                     nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'kanban' && (
