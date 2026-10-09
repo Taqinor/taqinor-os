@@ -326,57 +326,6 @@ export default function PaiementsPage() {
                 </div>
                 {(apercu.preview || []).length > 0 && (
                   <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-sm"
-                           aria-label="Aperçu du relevé bancaire">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Importer</th>
-                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Ligne</th>
-                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Date</th>
-                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Référence</th>
-                          <th className="px-2 py-1 text-right text-xs uppercase text-muted-foreground">Montant</th>
-                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Facture</th>
-                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Statut</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {apercu.preview
-                          .slice((pageApercu - 1) * LIGNES_PAR_PAGE, pageApercu * LIGNES_PAR_PAGE)
-                          .map((l) => (
-                          <tr key={l.ligne} className="border-b border-border/60 last:border-b-0">
-                            <td className="px-2 py-1">
-                              <input type="checkbox"
-                                     aria-label={`Importer la ligne ${l.ligne}`}
-                                     checked={cochees.has(l.ligne)}
-                                     disabled={l.statut === 'ambigu' ? !choix[l.ligne] : l.statut !== 'a_importer'}
-                                     onChange={() => basculerLigne(l.ligne)} />
-                            </td>
-                            <td className="px-2 py-1 tabular-nums">{l.ligne}</td>
-                            <td className="px-2 py-1">{l.date || '—'}</td>
-                            <td className="px-2 py-1">{l.reference || '—'}</td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {l.montant != null ? dh(l.montant) : '—'}
-                            </td>
-                            <td className="px-2 py-1">
-                              {l.statut === 'ambigu' && (l.candidats || []).length > 0 ? (
-                                <select aria-label={`Facture de la ligne ${l.ligne}`}
-                                        className="rounded border border-border bg-background px-1 py-0.5 text-sm"
-                                        value={choix[l.ligne] || ''}
-                                        onChange={(e) => choisirCandidat(l.ligne, e.target.value)}>
-                                  <option value="">Choisir la facture…</option>
-                                  {l.candidats.map((c) => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                              ) : (l.facture_reference || '—')}
-                            </td>
-                            <td className="px-2 py-1">
-                              <Badge tone={STATUTS_RELEVE[l.statut]?.tone ?? 'neutral'}>
-                                {STATUTS_RELEVE[l.statut]?.label ?? l.statut}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                     {apercu.preview.length > LIGNES_PAR_PAGE && (
                       <div className="mt-2 flex items-center gap-2 text-sm">
                         <Button type="button" size="sm" variant="outline"
@@ -388,6 +337,59 @@ export default function PaiementsPage() {
                                 onClick={() => setPageApercu((p) => p + 1)}>Suivant</Button>
                       </div>
                     )}
+                    <table className="w-full border-collapse text-sm"
+                           aria-label="Aperçu du relevé bancaire">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Ligne</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Date</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Référence</th>
+                          <th className="px-2 py-1 text-right text-xs uppercase text-muted-foreground">Montant</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Facture</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Importer</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Imputer à</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apercu.preview
+                          .slice((pageApercu - 1) * LIGNES_PAR_PAGE, pageApercu * LIGNES_PAR_PAGE)
+                          .map((l) => (
+                          <tr key={l.ligne} className="border-b border-border/60 last:border-b-0">
+                            <td className="px-2 py-1 tabular-nums">{l.ligne}</td>
+                            <td className="px-2 py-1">{l.date || '—'}</td>
+                            <td className="px-2 py-1">{l.reference || '—'}</td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {l.montant != null ? dh(l.montant) : '—'}
+                            </td>
+                            <td className="px-2 py-1">{l.facture_reference || '—'}</td>
+                            <td className="px-2 py-1">
+                              <input type="checkbox"
+                                     aria-label={`Importer la ligne ${l.ligne}`}
+                                     checked={cochees.has(l.ligne)}
+                                     disabled={l.statut === 'ambigu' ? !choix[l.ligne] : l.statut !== 'a_importer'}
+                                     onChange={() => basculerLigne(l.ligne)} />
+                            </td>
+                            <td className="px-2 py-1">
+                              {l.statut === 'ambigu' && (l.candidats || []).length > 0 ? (
+                                <select aria-label={`Facture de la ligne ${l.ligne}`}
+                                        className="rounded border border-border bg-background px-1 py-0.5 text-sm"
+                                        value={choix[l.ligne] || ''}
+                                        onChange={(e) => choisirCandidat(l.ligne, e.target.value)}>
+                                  <option value="">Choisir la facture…</option>
+                                  {l.candidats.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              ) : null}
+                            </td>
+                            <td className="px-2 py-1">
+                              <Badge tone={STATUTS_RELEVE[l.statut]?.tone ?? 'neutral'}>
+                                {STATUTS_RELEVE[l.statut]?.label ?? l.statut}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
