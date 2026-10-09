@@ -6,11 +6,13 @@ import logging
 
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import FormParser, MultiPartParser
 
 from django.http import Http404
 
@@ -62,6 +64,26 @@ IMPORT_FERIES_RESPONSE = inline_serializer('ImporterFeriesRapport', {
 PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
+_CIBLES = sorted(services.TARGETS)
+_MODES = ['creer', 'maj', 'upsert']
+
+
+def _corps_import(nom, avec_rollback=False):
+    """Corps multipart de dry-run/commit (``file`` + ``target`` obligatoires)."""
+    champs = {
+        'file': serializers.FileField(),
+        'target': serializers.ChoiceField(choices=_CIBLES),
+        'mapping': serializers.CharField(required=False, allow_blank=True),
+        'mode': serializers.ChoiceField(choices=_MODES, required=False),
+        'ecraser': serializers.BooleanField(required=False),
+        'external_system': serializers.CharField(
+            required=False, allow_blank=True),
+    }
+    if avec_rollback:
+        champs['rollback_on_error'] = serializers.BooleanField(required=False)
+    return {'multipart/form-data': inline_serializer(nom, champs)}
+
+
 # ERR53 — Bornes anti-DoS : un upload trop gros (en octets) ou un fichier de
 # trop de lignes est rejeté AVANT toute lecture/parsing intégral en mémoire,
 # avec un 400 clair plutôt qu'une erreur générique avalée.
@@ -93,6 +115,8 @@ def _read(request):
     return f, target, None
 
 
+@extend_schema(request=_corps_import('ImportDryRunRequete'),
+               responses=OpenApiTypes.ANY)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
@@ -132,6 +156,9 @@ def dry_run(request):
     return Response(result)
 
 
+@extend_schema(
+    request=_corps_import('ImportCommitRequete', avec_rollback=True),
+    responses=OpenApiTypes.ANY)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
@@ -184,6 +211,14 @@ def commit(request):
     return Response(result)
 
 
+@extend_schema(
+    parameters=[OpenApiParameter('target', OpenApiTypes.STR, required=False,
+                                 enum=_CIBLES)],
+    responses=inline_serializer('ImportMappingLigne', {
+        'id': serializers.IntegerField(),
+        'target': serializers.CharField(),
+        'nom': serializers.CharField(),
+        'mapping': serializers.DictField()}, many=True))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def list_mappings(request):
@@ -202,6 +237,16 @@ def list_mappings(request):
     ])
 
 
+@extend_schema(
+    request=inline_serializer('ImportMappingRequete', {
+        'target': serializers.ChoiceField(choices=_CIBLES),
+        'nom': serializers.CharField(),
+        'mapping': serializers.DictField()}),
+    responses=inline_serializer('ImportMappingEnregistre', {
+        'id': serializers.IntegerField(),
+        'target': serializers.CharField(),
+        'nom': serializers.CharField(),
+        'mapping': serializers.DictField()}))
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 def save_mapping(request):
@@ -232,6 +277,7 @@ def save_mapping(request):
     })
 
 
+@extend_schema(responses={(200, 'text/csv'): OpenApiTypes.STR})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def job_erreurs_csv(request, job_id):
@@ -254,7 +300,7 @@ def job_erreurs_csv(request, job_id):
     return resp
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'text/csv'): OpenApiTypes.STR})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_traductions(request):
@@ -301,7 +347,7 @@ def import_traductions(request):
     })
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'text/csv'): OpenApiTypes.STR})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_feries(request):
