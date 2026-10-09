@@ -293,6 +293,8 @@ def ingerer_page(requete, reponse, numero_page):
 # ═════════════════════════════════════════════════════════════════════════════
 # Reprise progressive après un quota : toujours < 3 600 s (visibilité Redis).
 PALIERS_PAUSE_S = (300, 600, 1200, 1800)
+# AACQ40 — pannes réseau / 5xx CONSÉCUTIVES avant l'``echec`` (reprenable).
+MAX_PANNES_RESEAU = 3
 # Délai court entre deux étapes (une étape = une page d'une requête).
 COUNTDOWN_ETAPE_S = 2
 JOB_KIND = 'veille_decouverte'
@@ -585,8 +587,37 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
             _clore(dec, 'echec', now)
             dec.save(update_fields=champs)
             return {'action': 'fin', 'countdown': 0, 'etape': dec.numero_etape}
+        except alc.ErreurReseau as exc:
+            # AACQ40 — panne réseau / 5xx : la requête RESTE OUVERTE (curseur
+            # gardé) ; pause par paliers puis ``echec`` reprenable après
+            # ``MAX_PANNES_RESEAU`` pannes consécutives. Chaque essai HTTP
+            # compte dans le quota consommé.
+            essais = max(1, int(getattr(exc, 'essais', 1) or 1))
+            dec.appels_consommes += essais
+            requete.appels += essais
+            requete.statut = 'en_cours'
+            requete.save(update_fields=['appels', 'statut', 'updated_at'])
+            _erreur(dec, exc.code, veille_acces.masquer_secrets(
+                exc.message_fr, config)[:255], now)
+            dec.pauses_consecutives += 1
+            if dec.pauses_consecutives >= MAX_PANNES_RESEAU:
+                dec.statut = 'echec'
+                dec.termine_le = now
+                job = dec.background_job
+                if job is not None:
+                    job.marquer_echec(dec.erreurs[-1]['message_fr'])
+                dec.save(update_fields=champs)
+                return {'action': 'fin', 'countdown': 0,
+                        'etape': dec.numero_etape}
+            palier = PALIERS_PAUSE_S[min(dec.pauses_consecutives - 1,
+                                         len(PALIERS_PAUSE_S) - 1)]
+            dec.statut = 'en_pause_quota'
+            dec.reprise_a = now + datetime.timedelta(seconds=palier)
+            dec.save(update_fields=champs)
+            return {'action': 'attendre', 'countdown': palier,
+                    'etape': dec.numero_etape}
         except alc.AdLibraryErreur as exc:
-            # Autre 4xx / paramètre / réseau : la requête est en erreur, le
+            # Autre 4xx / paramètre : la requête est en erreur, le
             # lancement continue avec la suivante.
             dec.appels_consommes += 1
             requete.appels += 1
@@ -607,6 +638,13 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
         ingerer_page(requete, reponse, numero_page)
         requete.refresh_from_db()
         dec.refresh_from_db()
+        # AACQ40 — essais HTTP en plus du premier (5xx puis succès) : comptés.
+        essais_en_plus = max(0, int(getattr(client, 'derniers_essais', 0)
+                                    or 0) - 1)
+        if essais_en_plus:
+            dec.appels_consommes += essais_en_plus
+            requete.appels += essais_en_plus
+            requete.save(update_fields=['appels', 'updated_at'])
         if not reponse.get('a_suivant'):
             requete.statut = ('vide' if numero_page == 1
                               and not reponse.get('pubs') else 'terminee')

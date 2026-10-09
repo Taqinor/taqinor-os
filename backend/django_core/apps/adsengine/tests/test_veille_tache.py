@@ -397,3 +397,72 @@ class RejeuDecouverteTests(BaseTache):
         with self._rejeu():
             self.assertEqual(veille_acces.etat(self.company)['etat'],
                              veille_acces.NON_CONFIGURE)
+
+
+class PanneReseauTests(BaseTache):
+    """AACQ40 — une panne réseau / 5xx ne clôt jamais « terminée » : pause par
+    paliers, puis ``echec`` reprenable ; chaque essai HTTP est compté."""
+
+    def setUp(self):
+        super().setUp()
+        dodo = mock.patch('apps.adsengine.ad_library_client.time.sleep')
+        dodo.start()
+        self.addCleanup(dodo.stop)
+
+    def _trois_pays(self):
+        return self.creer(mots_cles=[{'texte': 'robe',
+                                      'pays': ['FR', 'BE', 'DE']}])
+
+    def _jusqu_a_l_echec(self, dec):
+        t = Transport([httpx.Response(503, json={}) for _ in range(9)])
+        maintenant = self.now
+        actions = []
+        for _ in range(3):
+            res = self.etape(dec, t, now=maintenant)
+            actions.append((res['action'], res['countdown']))
+            dec.refresh_from_db()
+            self.assertNotEqual(dec.statut, 'termine')
+            maintenant = maintenant + datetime.timedelta(
+                seconds=res['countdown'] + 1)
+        return t, actions, maintenant
+
+    def test_503_ne_clot_pas_termine(self):
+        dec = self._trois_pays()
+        t, actions, _ = self._jusqu_a_l_echec(dec)
+        self.assertEqual(actions, [('attendre', 300), ('attendre', 600),
+                                   ('fin', 0)])
+        dec.refresh_from_db()
+        self.assertEqual(dec.statut, 'echec')
+        self.assertIn('HTTP 503', dec.erreurs[-1]['message_fr'])
+        # Requêtes toujours ouvertes (rien n'est « terminé » ni « erreur »).
+        statuts = set(dec.requetes.values_list('statut', flat=True))
+        self.assertTrue(statuts <= set(vd.STATUTS_REQUETE_OUVERTS), statuts)
+
+    def test_appels_consommes_compte_les_essais(self):
+        dec = self._trois_pays()
+        t, _actions, _ = self._jusqu_a_l_echec(dec)
+        self.assertEqual(len(t.requetes), 9)
+        dec.refresh_from_db()
+        self.assertEqual(dec.appels_consommes, 9)
+        self.assertEqual(sum(dec.requetes.values_list('appels', flat=True)),
+                         9)
+
+    def test_reprise_apres_panne(self):
+        dec = self._trois_pays()
+        _t, _actions, maintenant = self._jusqu_a_l_echec(dec)
+        with mock.patch('apps.adsengine.tasks.veille_etape.apply_async'):
+            vd.reprendre(dec)
+        dec.refresh_from_db()
+        self.assertEqual(dec.statut, 'en_file')
+        t = Transport([page(['f1'], suivant=False),
+                       page(['b1'], suivant=False, page_id='p2'),
+                       page(['d1'], suivant=False, page_id='p3')])
+        for _ in range(3):
+            res = self.etape(dec, t, now=maintenant)
+        self.assertEqual(res['action'], 'fin')
+        dec.refresh_from_db()
+        self.assertEqual(dec.statut, 'termine')
+        self.assertEqual(len(t.requetes), 3)
+        self.assertEqual(dec.appels_consommes, 12)
+        self.assertEqual(
+            set(dec.requetes.values_list('statut', flat=True)), {'terminee'})
