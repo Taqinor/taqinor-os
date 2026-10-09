@@ -178,6 +178,11 @@ export default function ConnectionScreen() {
   const [health, setHealth] = useState([])
   const [creds, setCreds] = useState(EMPTY_CREDS)
   const [guard, setGuard] = useState({})
+  // AACQ71 — chargement en échec (envoi bloqué), écarts saisie/enregistré et
+  // erreurs serveur PAR champ.
+  const [guardLoadError, setGuardLoadError] = useState(false)
+  const [guardNotes, setGuardNotes] = useState({})
+  const [guardFieldErrors, setGuardFieldErrors] = useState({})
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   // MRY0 — abonnement de la Page au webhook `leadgen` (un clic, une fois).
@@ -207,8 +212,10 @@ export default function ConnectionScreen() {
       .then(r => setHealth(normalizeWiringStatuses(r.data)))
       .catch(() => setHealth([]))
     adsengineApi.guardrail.get()
-      .then(r => setGuard(r.data || {}))
-      .catch(() => setGuard({}))
+      .then(r => { setGuard(r.data || {}); setGuardLoadError(false) })
+      // AACQ71 — un échec de chargement est un ÉTAT (envoi bloqué), jamais
+      // un formulaire vide silencieux.
+      .catch(() => { setGuard({}); setGuardLoadError(true) })
     // PUB129 — les portes d'autonomie EN DIRECT (état + remédiation serveur).
     adsengineApi.flightplan.autonomie()
       .then(r => setAutonomy(normalizeAutonomy(r.data)))
@@ -352,11 +359,52 @@ export default function ConnectionScreen() {
         payload[f.key] = Number(v)
       }
     }
+    // AACQ71 — chargement en échec : on n'envoie RIEN (sinon les bascules
+    // partiraient à `false` et les plafonds vides seraient « confirmés »).
+    if (guardLoadError) {
+      setErr('Garde-fous indisponibles : le chargement a échoué, rien n\'a été envoyé.')
+      return
+    }
+    setGuardNotes({}); setGuardFieldErrors({})
     try {
-      await adsengineApi.guardrail.update(payload)
+      const r = await adsengineApi.guardrail.update(payload)
+      // AACQ71 — l'écran relit la valeur RÉELLEMENT enregistrée (réponse du
+      // PATCH, sinon un GET) et dit tout écart avec la saisie.
+      let stored = r?.data && typeof r.data === 'object' && Object.keys(r.data).length
+        ? r.data : null
+      if (!stored) {
+        const g = await adsengineApi.guardrail.get()
+        stored = g?.data || {}
+      }
+      const notes = {}
+      for (const f of GUARD_FIELDS) {
+        if (f.type === 'bool' || !(f.key in stored)) continue
+        const enregistre = stored[f.key]
+        if (f.key in payload) {
+          if (enregistre !== null && Number(enregistre) !== payload[f.key]) {
+            notes[f.key] = `Enregistré : ${enregistre}`
+              + (Number.isInteger(Number(enregistre)) && !Number.isInteger(payload[f.key])
+                ? ' (le serveur ne garde que des entiers)' : '')
+          }
+        } else if (enregistre !== null && enregistre !== undefined && enregistre !== '') {
+          notes[f.key] = `Champ vidé : valeur conservée : ${enregistre}`
+        }
+      }
+      setGuard(stored)
+      setGuardNotes(notes)
       setMsg('Garde-fous mis à jour.')
-    } catch {
-      setErr('Mise à jour des garde-fous impossible.')
+    } catch (e) {
+      const data = e?.response?.data
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const parChamp = {}
+        for (const f of GUARD_FIELDS) {
+          const v = data[f.key]
+          const m = Array.isArray(v) ? v[0] : v
+          if (typeof m === 'string' && m) parChamp[f.key] = m
+        }
+        setGuardFieldErrors(parChamp)
+      }
+      setErr(erreurServeur(e, 'Mise à jour des garde-fous impossible.'))
     }
   }
 
@@ -636,15 +684,31 @@ export default function ConnectionScreen() {
                   </>
                 )}
                 <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{f.help}</span>
+                {/* AACQ71 — écart saisie/enregistré et erreur serveur, SOUS le champ. */}
+                {guardNotes[f.key] && (
+                  <span data-testid={`ae-conn-guard-note-${f.key}`}
+                    style={{ color: '#b45309', fontSize: '0.8rem' }}>{guardNotes[f.key]}</span>
+                )}
+                {guardFieldErrors[f.key] && (
+                  <span data-testid={`ae-conn-guard-err-${f.key}`} role="alert"
+                    style={{ color: '#dc2626', fontSize: '0.8rem' }}>{guardFieldErrors[f.key]}</span>
+                )}
               </label>
             ))}
           </fieldset>
         ))}
+        {guardLoadError && (
+          <p data-testid="ae-conn-guard-load-error" role="alert" style={{ margin: 0, color: '#dc2626' }}>
+            Garde-fous indisponibles : le chargement a échoué. Rien ne sera envoyé
+            tant que les valeurs réelles ne sont pas relues.
+          </p>
+        )}
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
           Plafond quotidien actuel : {formatMAD(guard.max_daily_budget_mad)}.
         </p>
         <div>
-          <button type="submit" className="btn btn-primary" data-testid="ae-conn-guard-save">
+          <button type="submit" className="btn btn-primary" data-testid="ae-conn-guard-save"
+            disabled={guardLoadError}>
             Mettre à jour les garde-fous
           </button>
         </div>
