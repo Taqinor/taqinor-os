@@ -22,7 +22,7 @@ migrations/*.py``):
       / loop variable named batch/chunk nearby) — a global unbatched update.
 
 Each finding is a WARNING unless the migration file is listed in
-``scripts/safe_migrations_allow.txt`` (one relative path per line, historical
+``scripts/exceptions_permanentes.yml (safe_migrations)`` (one relative path per line, historical
 migrations already merged — silences it entirely), in which case it is
 skipped. A NEW migration (not in the allowlist) with ANY finding makes this
 script exit non-zero (CI failure); an allowlisted migration is fully exempt.
@@ -37,9 +37,11 @@ import ast
 import sys
 from pathlib import Path
 
+import _exceptions_permanentes  # ENF14 — exceptions permanentes signées
+
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
-ALLOWLIST_PATH = ROOT / "scripts" / "safe_migrations_allow.txt"
+ALLOWLIST_PATH = ROOT / "scripts" / "exceptions_permanentes.yml"
 
 MIGRATION_ROOTS = [
     DJANGO_CORE / "core" / "migrations",
@@ -66,15 +68,7 @@ def _iter_migration_files():
 
 
 def _load_allowlist():
-    if not ALLOWLIST_PATH.exists():
-        return set()
-    out = set()
-    for line in ALLOWLIST_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        out.add(line)
-    return out
+    return _exceptions_permanentes.charger("safe_migrations", ALLOWLIST_PATH)
 
 
 def _rel(path: Path) -> str:
@@ -248,12 +242,12 @@ def main(argv):
 
     if report_lines:
         print("check_safe_migrations: unsafe migration pattern(s) found "
-              "(not in scripts/safe_migrations_allow.txt):")
+              "(not in scripts/exceptions_permanentes.yml (safe_migrations)):")
         for line in report_lines:
             print(f"  - {line}")
         print(
             "\nIf this is a REVIEWED historical migration, add its path to "
-            "scripts/safe_migrations_allow.txt. A NEW migration must fix the "
+            "scripts/exceptions_permanentes.yml (safe_migrations). A NEW migration must fix the "
             "pattern instead."
         )
         return 1

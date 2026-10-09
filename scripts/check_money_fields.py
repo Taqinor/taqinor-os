@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+import _exceptions_permanentes  # ENF14 — exceptions permanentes signées
+
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 MONEY_AUDIT_DOC = ROOT / "docs" / "money-fields-audit.md"
@@ -73,13 +75,7 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # ADEP25 — identites de CONTENU (`fichier::Classe.champ`), plus `fichier:ligne` (qui se
 # decalait a chaque insertion et laissait 4 cles mortes sur 6). Une cle qui n'apparie plus
 # aucune derive FAIT ECHOUER la garde (cliquet decroissant).
-DECIMAL_PLACES_ALLOWLIST = {
-    # ASTK44 — MouvementStock.cout_unitaire : cout UNITAIRE interne (valeur consommee /
-    # quantite produite), 4 decimales pour ne pas creer/detruire de valeur a l'arrondi.
-    "backend/django_core/apps/stock/models.py::MouvementStock.cout_unitaire",
-    # Produit.prix_par_panneau_ht : bareme 156,25 x 1,30 = 203,125/panneau (3 decimales exactes).
-    "backend/django_core/apps/stock/models.py::Produit.prix_par_panneau_ht",
-}
+DECIMAL_PLACES_ALLOWLIST = _exceptions_permanentes.charger("money_decimal_places")
 # Cles de derive rencontrees pendant le scan (detection des cles orphelines).
 _CLES_DERIVE: set = set()
 
