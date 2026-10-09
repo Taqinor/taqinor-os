@@ -830,15 +830,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   }, [users, allTickets, current.technicien_responsable, current.technicien_nom])
 
   const linkedEquip = equipements.find((e) => String(e.id) === String(fields.equipement))
-  // L307/L1 — quand un équipement est lié et porte une date de fin de garantie,
-  // la garantie effective est CALCULÉE. On la calcule à partir de l'équipement
-  // sélectionné pour griser et remplir le champ manuel à la bonne valeur.
-  const garantieCalculee = useMemo(() => {
-    if (!fields.equipement || !linkedEquip) return null
-    if (!linkedEquip.date_fin_garantie) return null
-    const fin = new Date(`${linkedEquip.date_fin_garantie}T00:00:00`)
-    return new Date() < fin ? 'oui' : 'non'
-  }, [fields.equipement, linkedEquip])
+  // ASAV45 — la garantie effective est celle SERVIE par le serveur
+  // (`sous_garantie_effectif`), jamais recalculée localement sur la seule
+  // date constructeur.
+  const garantieCalculee = current.sous_garantie_effectif || null
 
   // VX31 — sur grand viewport, le panneau est un aside PERSISTANT à côté de la
   // liste (jamais un tiroir plein-tiroir qui masque la DataTable) ; sous le
@@ -859,15 +854,21 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   )
 
   // L299/L1 — compte-à-rebours de garantie de l'équipement lié.
-  const headerContent = current.equipement_fin_garantie ? (
+  // ASAV45 — fin de garantie EFFECTIVE servie (max légale / constructeur).
+  const finGarantie = current.equipement_fin_garantie_effective
+    ?? current.equipement_fin_garantie
+  const baseGarantie = current.equipement_fin_garantie_effective
+    && current.equipement_fin_garantie_effective !== current.equipement_fin_garantie
+    ? ' (légale)' : ''
+  const headerContent = finGarantie ? (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <ShieldCheck className="size-3.5" aria-hidden="true" />
       {(() => {
-        const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
+        const fin = new Date(`${finGarantie}T00:00:00`)
         const jours = Math.round((fin - new Date()) / 86400000)
         return jours >= 0
-          ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
-          : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
+          ? `Garantie jusqu'au ${formatDateFR(finGarantie)}${baseGarantie} (${jours} j restant${jours > 1 ? 's' : ''})`
+          : `Garantie expirée le ${formatDateFR(finGarantie)}${baseGarantie} (${-jours} j)`
       })()}
     </span>
   ) : null
@@ -1041,8 +1042,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <GarantieIndicator value={current.sous_garantie_effectif} />
               {linkedEquip && (
                 <span className="text-xs text-muted-foreground">
-                  {linkedEquip.date_fin_garantie
-                    ? `Fin de garantie de l'équipement : ${formatDateFR(linkedEquip.date_fin_garantie)} — calculée automatiquement.`
+                  {finGarantie
+                    ? `Fin de garantie de l'équipement : ${formatDateFR(finGarantie)} — calculée automatiquement.`
                     : "Garantie de l'équipement non renseignée."}
                 </span>
               )}

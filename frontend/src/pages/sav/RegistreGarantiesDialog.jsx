@@ -119,7 +119,7 @@ export default function RegistreGarantiesDialog({ onClose }) {
                           ) : null}
                         </td>
                         <td className="px-3 py-1.5">{it.numero_serie || '—'}</td>
-                        <td className="px-3 py-1.5">{fmtDate(it.date_fin_garantie)}</td>
+                        <td className="px-3 py-1.5">{fmtDate(it.date_fin_garantie_effective ?? it.date_fin_garantie)}</td>
                         <td className="px-3 py-1.5">
                           <Badge tone={STATUT_TONES[it.statut_garantie] ?? 'neutral'}>
                             {STATUT_LABELS[it.statut_garantie] ?? it.statut_garantie}
