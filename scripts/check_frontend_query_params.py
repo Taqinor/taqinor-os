@@ -40,30 +40,53 @@ dont on réutilise le lexeur : commentaires retirés, chaînes masquées).
    et résout leur argument, récursivement (profondeur 5). Un nom de fonction
    défini dans plusieurs modules n'est rattaché qu'aux appelants qui importent
    le module qui le définit.
-4. Liens directs : un littéral ``/api/django/…?x=`` hors appel (``window.open``,
+   Une fonction PASSÉE sans être appelée est suivie : argument d'une fonction
+   d'ordre supérieur du frontend (``toutesLesPages(gedApi.getX, { actif: 1 })``
+   — ses paramètres sont LIÉS aux arguments de CE site), prop JSX
+   (``<Editeur loadFn={savApi.getX} />``), ref React (``useRef(fetcher)`` puis
+   ``ref.current(p)``), alias (``const fn = api.x``), ``useCallback`` /
+   ``createAsyncThunk`` (y compris rendu par une fabrique de thunks) ; une
+   expression ``f(args)`` / ``useMemo(() => …)`` est lue par ses ``return``.
+   Une URL paramètre d'une fonction est suivie jusqu'à chaque appelant.
+4. Fabrique CRUD partagée (``makeResourceFactory``) : ``<clé>.list(params)``
+   devient un ``GET <base>/<slug>/`` (modèle dédié, ``_fabriques``).
+5. Liens directs : un littéral ``/api/django/…?x=`` hors appel (``window.open``,
    ``href``) est un GET comme un autre.
-5. Intercepteur global : ``frontend/src/api/axios.js`` pose ``?entite=`` sur les
+6. Intercepteur global : ``frontend/src/api/axios.js`` pose ``?entite=`` sur les
    GET des listes de ``ENDPOINTS_ENTITE`` — la liste est RELUE dans axios.js
    (jamais recopiée ici), donc le modèle suit le code.
 
-Ce qui ne se résout pas statiquement (expression calculée, fonction passée par
-référence, clé calculée…) n'est JAMAIS ignoré : il part dans la liste
-« NON RÉSOLU », qui échoue comme un constat. Remède : rendre l'appel lisible,
-ou poser à côté une DÉCLARATION STATIQUE que la garde lit :
+Le lexeur est celui de ``check_api_contract.py`` corrigé pour le texte JSX
+(une apostrophe collée à une lettre n'ouvre pas de chaîne : sans cela,
+``l'automatisation`` masquait tout le fichier et ses appels disparaissaient).
+
+Ce qui ne se résout pas statiquement (expression calculée, fonction passée à
+une bibliothèque, clé calculée, chemin non rattachable…) n'est JAMAIS ignoré :
+il part dans la liste « NON RÉSOLU », qui échoue comme un constat. Remède :
+rendre l'appel lisible, ou poser à côté une DÉCLARATION STATIQUE que la garde
+lit, sur la ligne concernée ou l'une des lignes au-dessus :
 
     // parametres-requete: page, page_size, search
+    // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/
 
-sur la ligne de l'expression dynamique ou l'une des deux lignes au-dessus.
-Les noms déclarés sont VÉRIFIÉS contre le schéma comme les autres : c'est une
-déclaration, pas une exemption.
+(la seconde pour une URL servie par le serveur, jamais construite côté écran).
+Les noms et chemins déclarés sont VÉRIFIÉS contre le schéma comme les autres :
+c'est une déclaration, pas une exemption.
 
 ANGLES MORTS ASSUMÉS (documentés, pas silencieux)
 -------------------------------------------------
 * Un chemin qui ne correspond à aucune opération du schéma (route inconnue,
   FastAPI ``/api/fastapi``) n'est pas jugé ici — c'est le domaine de
-  ``check_api_contract.py``. Il est compté (« hors schéma ») dans ``--stats``.
+  ``check_api_contract.py``. Il est listé (« hors schéma ») par ``--stats``.
 * Un segment dynamique qui correspond à plusieurs gabarits également précis :
   l'union de leurs paramètres est acceptée.
+* Rattachement des appelants par QUALIFICATIF (``parent.nom(``, ``<x>Api.nom(``,
+  imports résolus) : un appelant atteint par un détour non modélisé
+  (déstructuration ``const { getX } = api`` puis ``getX(p)``) n'est pas vu ;
+  la fonction paraît alors sans appelant.
+* Seuls les clients dont le nom évoque une API (``api``, ``client``, ``http``,
+  ``axios``, ``instance``) sont lus ; ``api.request({...})`` n'est pas modélisé
+  (aucune occurrence au 09/10/2026).
 * Les fichiers de test (``.test.``/``.spec.``) ne joignent pas le serveur.
 
 BASE D'EXCEPTIONS : ``scripts/frontend_query_params_allow.txt`` — VIDE par

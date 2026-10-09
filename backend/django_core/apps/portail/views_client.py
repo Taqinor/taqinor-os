@@ -1381,7 +1381,11 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         return Response(sav_selectors.releve_portail(releve),
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[_ID_CHANTIER], responses=inline_serializer(
+    @extend_schema(parameters=[_ID_CHANTIER, OpenApiParameter(
+        name='phase', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY,
+        required=False,
+        description='Phase des photos (avant / pendant / apres).',
+    )], responses=inline_serializer(
         name='MesChantiersPortailPhotos',
         fields={'results': serializers.ListField(
             child=MesChantiersPortailPhotoSerializer())}))

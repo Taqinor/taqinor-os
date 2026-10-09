@@ -196,8 +196,21 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(commercial=self.request.user)
         return qs
 
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        if self.action == 'list':
+            lead = str(self.request.query_params.get('lead', '')).strip()
+            if lead.isdigit():
+                queryset = queryset.filter(lead_id=int(lead))
+        return queryset
+
     @extend_schema(
-        parameters=[OpenApiParameter('mine', OpenApiTypes.STR, required=False)],
+        parameters=[
+            OpenApiParameter('mine', OpenApiTypes.STR, required=False),
+            OpenApiParameter(
+                'lead', OpenApiTypes.INT, required=False,
+                description="Identifiant du lead : seulement ses visites."),
+        ],
         responses={200: _LISTE_OBJETS})
     def list(self, request, *args, **kwargs):
         lignes = [selectors.ligne_visite_terrain(visite)

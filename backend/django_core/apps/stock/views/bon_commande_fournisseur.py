@@ -1,7 +1,7 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
@@ -50,6 +50,8 @@ COMMANDER_ACTIONS = WRITE_ACTIONS + [
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    P('fournisseur', INT, False, 'Identifiant du fournisseur (fiche 360)')]))
 class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     """Bons de commande fournisseur (achats). Distinct du BC CLIENT de ventes.
 

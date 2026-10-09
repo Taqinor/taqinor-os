@@ -144,7 +144,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@oa.listing(p0=oa.qs('annulee'), p1=oa.qs('priorite'), p2=oa.qs('statut'), p3=oa.qs('type_intervention'), p4=oa.qs('export'), p5=oa.qd('date_from'), p6=oa.qd('date_to'), p7=oa.qi('installation'), p8=oa.qi('ticket'))
+@oa.listing(p0=oa.qs('annulee'), p1=oa.qs('priorite'), p2=oa.qs('statut'), p3=oa.qs('type_intervention'), p4=oa.qs('export'), p5=oa.qd('date_from'), p6=oa.qd('date_to'), p7=oa.qi('installation'), p8=oa.qi('ticket'), p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'))
 class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
@@ -209,6 +209,14 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # Jour exact (« Ma journée » équipe) ; valeur invalide ignorée.
+        from django.utils.dateparse import parse_date
+        try:
+            jour_prevu = parse_date(params.get('date_prevue') or '')
+        except ValueError:
+            jour_prevu = None
+        if jour_prevu:
+            qs = qs.filter(date_prevue=jour_prevu)
         # YSERV6 — une intervention annulée (chantier annulé) sort des vues
         # kanban/calendrier/charge (list) par défaut ; `?annulee=true` la
         # réaffiche (audit/historique). Ne s'applique jamais aux actions

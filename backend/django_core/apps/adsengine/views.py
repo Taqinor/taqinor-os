@@ -8,7 +8,10 @@ suivantes de la lane et sont tous basés sur
 import logging
 import os
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -54,6 +57,13 @@ from .serializers import (  # PLAN_VEILLE (ajout)
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _qp(name, type_, description):
+    """Paramètre de requête optionnel déclaré dans le schéma OpenAPI (D1)."""
+    return OpenApiParameter(name=name, type=type_,
+                            location=OpenApiParameter.QUERY, required=False,
+                            description=description)
 
 
 class StatusView(APIView):
@@ -721,6 +731,10 @@ class AdChatterView(APIView):
     def _resolve(self, request, perm):
         return _adseng_company_gate(request, perm)
 
+    @extend_schema(parameters=[
+        _qp('entity_type', str, "Type d'entité (campagne, annonce…)."),
+        _qp('entity_id', str, "Identifiant de l'entité."),
+    ])
     def get(self, request):
         company, err = self._resolve(request, 'adsengine_view')
         if err is not None:
@@ -1168,6 +1182,9 @@ class RulePolicyViewSet(AdsengineViewSet):
     # PUB91 — backtest de la règle sur l'historique RÉEL (dry-run avant armement).
     # Lecture seule (adsengine_view) : AUCUNE EngineAction n'est créée. ``?jours=``
     # borne la fenêtre (défaut 90 = dernier trimestre).
+    @extend_schema(parameters=[
+        _qp('jours', int, "Fenêtre de rétro-test en jours (défaut 90)."),
+    ])
     @action(detail=True, methods=['get'],
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def backtest(self, request, pk=None):
@@ -1802,6 +1819,11 @@ class HasAdsengineApprove(BasePermission):
         return _user_has_or_legacy(user, 'adsengine_approve')
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _qp('statut', str, "Statuts (liste à virgules ; alias en_attente)."),
+    _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
+    _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
+]))
 class EngineActionViewSet(AdsengineViewSet):
     """ENG7 — Boucle propose→approuve→applique.
 
@@ -2136,6 +2158,12 @@ class LeadsTimeseriesView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(parameters=[
+        _qp('granularite', str, "Granularité : jour (défaut) ou semaine."),
+        _qp('ad', str, "Identifiant Meta de l'annonce."),
+        _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
+        _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
+    ])
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2216,6 +2244,10 @@ class ReportExportView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(parameters=[
+        _qp('table', str, "Table à exporter (variantes par défaut)."),
+        _qp('date', OpenApiTypes.DATE, "Jour ciblé (AAAA-MM-JJ)."),
+    ])
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2276,6 +2308,11 @@ class CreativeLeaderboardView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(parameters=[
+        _qp('dimension', str, "Dimension de classement (hook, format…)."),
+        _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
+        _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
+    ])
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2330,6 +2367,11 @@ class MdeCalculatorView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(parameters=[
+        _qp('cible', float, "Effet relatif cible (défaut 0,20)."),
+        _qp('p', float, "Taux de conversion de base."),
+        _qp('volume', float, "Volume hebdomadaire disponible."),
+    ])
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2395,6 +2437,10 @@ class CreativeScatterView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(parameters=[
+        _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
+        _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
+    ])
     def get(self, request):
         company, err = _adseng_reporting_company(request)
         if err is not None:
@@ -2849,6 +2895,11 @@ class MetricsDashboardView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    @extend_schema(parameters=[
+        _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
+        _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
+        _qp('compare', bool, "Comparer à la période précédente."),
+    ])
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -2930,6 +2981,9 @@ class MetricsLeadsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    @extend_schema(parameters=[
+        _qp('metric', str, "Métrique demandée."),
+    ])
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3529,6 +3583,12 @@ class BreakdownsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    @extend_schema(parameters=[
+        _qp('object_type', str, "Type d'objet : campaign, adset ou ad."),
+        _qp('object_id', str, "Identifiant de l'objet miroir."),
+        _qp('dimension', str, "Dimension de ventilation."),
+        _qp('since', OpenApiTypes.DATE, "Depuis le jour (AAAA-MM-JJ)."),
+    ])
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3580,6 +3640,9 @@ class MediaResolveView(APIView):
     # Durée de cache (s) — < durée de vie CDN (~1 h). Jamais persisté en base.
     CACHE_TTL = 1800
 
+    @extend_schema(parameters=[
+        _qp('kind', str, "Type de média : video (défaut) ou image."),
+    ])
     def get(self, request, ref):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3653,6 +3716,9 @@ class AdPreviewsView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    @extend_schema(parameters=[
+        _qp('ad_format', str, "Format d'aperçu (MOBILE_FEED_STANDARD par défaut)."),
+    ])
     def get(self, request, ad_meta_id):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -3748,6 +3814,10 @@ class AdsCockpitView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    @extend_schema(parameters=[
+        _qp('debut', OpenApiTypes.DATE, "Début de période (AAAA-MM-JJ)."),
+        _qp('fin', OpenApiTypes.DATE, "Fin de période (AAAA-MM-JJ)."),
+    ])
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4436,6 +4506,9 @@ class SignalCohortView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    @extend_schema(parameters=[
+        _qp('signal', str, "Signal de cohorte (creatif par défaut)."),
+    ])
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
@@ -4813,6 +4886,24 @@ class VeilleDecouverteViewSet(AdsengineViewSet):
                          'deja_tire': tirage['deja_tire']})
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        _qp('classe', str, "Classe machine."),
+        _qp('dropshipper', str, "Dropshipper probable."),
+        _qp('decouverte', int, "Identifiant de la découverte."),
+        _qp('jeu', str, "Jeu de mesure (mode aveugle)."),
+        _qp('aveugle', str, "1 = mode aveugle."),
+        _qp('sans_etiquette', str, "1 = annonceurs sans étiquette de mesure."),
+    ]),
+    retrieve=extend_schema(parameters=[
+        _qp('classe', str, "Classe machine."),
+        _qp('dropshipper', str, "Dropshipper probable."),
+        _qp('decouverte', int, "Identifiant de la découverte."),
+        _qp('jeu', str, "Jeu de mesure (mode aveugle)."),
+        _qp('aveugle', str, "1 = mode aveugle."),
+        _qp('sans_etiquette', str, "1 = annonceurs sans étiquette de mesure."),
+    ]),
+)
 class VeilleAnnonceurViewSet(AdsengineViewSet):
     """VEIL17 — ``veille/annonceurs/`` : lecture (filtres ``classe``,
     ``dropshipper``, ``decouverte``, ``jeu``, ``sans_etiquette``), verdict
@@ -4908,6 +4999,14 @@ class VeilleAnnonceurViewSet(AdsengineViewSet):
                             status=exc.statut_http)
         return self._repondre(annonceur, aveugle=True)
 
+    @extend_schema(parameters=[
+        _qp('classe', str, "Classe machine."),
+        _qp('dropshipper', str, "Dropshipper probable."),
+        _qp('decouverte', int, "Identifiant de la découverte."),
+        _qp('jeu', str, "Jeu de mesure (mode aveugle)."),
+        _qp('aveugle', str, "1 = mode aveugle."),
+        _qp('sans_etiquette', str, "1 = annonceurs sans étiquette de mesure."),
+    ])
     @action(detail=False, methods=['get'], url_path='export-csv',
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def export_csv(self, request):
