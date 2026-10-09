@@ -6,7 +6,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from ..openapi_helpers import (  # noqa: F401
+from ..openapi_helpers import (
+    PTOKEN,  # noqa: F401
     BINARY, DATE, INT, LISTE, OBJET, P, S, STR, XLSX, corps,
 )
 from ..serializers import PortailFournisseurTokenSerializer  # noqa: E402
@@ -438,7 +439,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             PortailFournisseurTokenSerializer(token_obj).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None, responses=PortailFournisseurTokenSerializer)
+    @extend_schema(parameters=[PTOKEN], request=None, responses=PortailFournisseurTokenSerializer)
     @action(detail=True, methods=['post'],
             url_path='portail-tokens/(?P<token_id>[^/.]+)/revoquer',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])

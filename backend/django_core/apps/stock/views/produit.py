@@ -492,7 +492,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             status=status.HTTP_200_OK,
         )
 
-    @extend_schema(request=corps('ProduitBulkCorps', action=S.ChoiceField(choices=['set_price', 'set_warranty', 'set_category', 'set_brand']), ids=S.ListField(child=S.IntegerField()), mode=S.ChoiceField(choices=['percent', 'fixed'], required=False), valeur=S.DecimalField(max_digits=12, decimal_places=2, required=False), garantie_mois=S.IntegerField(required=False, allow_null=True), garantie_production_mois=S.IntegerField(required=False, allow_null=True), categorie_id=S.IntegerField(required=False, allow_null=True), marque=S.CharField(required=False, allow_blank=True)), responses=OBJET)
+    @extend_schema(request=corps('ProduitBulkCorps', action=S.ChoiceField(choices=['set_price', 'set_warranty', 'set_category', 'set_brand']), ids=S.ListField(child=S.IntegerField()), mode=S.CharField(required=False, help_text='percent ou fixed'), valeur=S.DecimalField(max_digits=12, decimal_places=2, required=False), garantie_mois=S.IntegerField(required=False, allow_null=True), garantie_production_mois=S.IntegerField(required=False, allow_null=True), categorie_id=S.IntegerField(required=False, allow_null=True), marque=S.CharField(required=False, allow_blank=True)), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def bulk(self, request):

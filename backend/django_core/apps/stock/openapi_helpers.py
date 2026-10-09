@@ -4,6 +4,8 @@ vues stock/achats (statuts, corps, paramètres de requête, exports binaires).
 Aucune logique métier : uniquement des constructeurs drf-spectacular, pour que
 chaque ``@extend_schema`` reste sur une ligne lisible.
 """
+from typing import Any, Dict, List
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
@@ -18,7 +20,7 @@ OBJET = OpenApiTypes.OBJECT
 S = serializers
 
 # Liste d'objets libres (rapports dont la forme n'a pas de sérialiseur).
-LISTE = serializers.ListField(child=serializers.DictField())
+LISTE = List[Dict[str, Any]]
 
 PDF = (200, 'application/pdf')
 XLSX = (
@@ -33,6 +35,13 @@ def P(name, typ=STR, required=False, desc='', enum=None):
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
+
+
+PID = OpenApiParameter(
+    name='id', type=INT, location=OpenApiParameter.PATH, description='Identifiant')
+PTOKEN = OpenApiParameter(
+    name='token_id', type=INT, location=OpenApiParameter.PATH,
+    description='Identifiant du jeton')
 
 
 def corps(_nom, /, **champs):

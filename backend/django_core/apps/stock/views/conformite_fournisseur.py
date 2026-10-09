@@ -5,7 +5,7 @@ from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from ..openapi_helpers import (  # noqa: F401
-    INT, OBJET, P, STR,
+    INT, OBJET, P, PID, STR,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
@@ -62,6 +62,9 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema_view(
+    list=extend_schema(responses=AchatsParametresSerializer),
+    partial_update=extend_schema(parameters=[PID], request=AchatsParametresSerializer, responses=AchatsParametresSerializer))
 class AchatsParametresViewSet(viewsets.ViewSet):
     """XPUR1 — paramètres achats de la société connectée (singleton par
     company). GET renvoie (en le créant si besoin) le réglage courant ; PATCH
