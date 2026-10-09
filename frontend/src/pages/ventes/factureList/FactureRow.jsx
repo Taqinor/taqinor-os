@@ -1,10 +1,10 @@
 // SPL211 — ligne de la liste des factures : DÉPLACEMENT VERBATIM depuis
 // FactureList.jsx (move only, aucun changement de comportement). Les aides
 // partagées avec l'écran vivent dans ./factureHelpers.js.
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Download, FileWarning, MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal, CreditCard, ShieldCheck, Zap, Eye } from 'lucide-react'
-import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent } from '../../../ui'
+import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, FormActions } from '../../../ui'
 import { formatMAD, toNumber, normalizePhoneE164, formatDateTime } from '../../../lib/format'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, factureTrack } from '../../../features/ventes/documentChain'
@@ -84,6 +84,8 @@ export default function FactureRow({ f, ctx }) {
     canManage, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
+    // AFAC13 - annulation avec directive d'argent (dialogue).
+    demanderAnnulation,
   } = ctx
   const overdue = isOverdue(f)
   const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
@@ -449,7 +451,9 @@ export default function FactureRow({ f, ctx }) {
                 )}
                 {f.statut !== 'payee' && f.statut !== 'annulee' && (
                   <DropdownMenuItem
-                    onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
+                    onClick={() => (demanderAnnulation
+                      ? demanderAnnulation(f)
+                      : doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`))}>
                     Annuler la facture
                   </DropdownMenuItem>
                 )}
@@ -505,5 +509,71 @@ export default function FactureRow({ f, ctx }) {
       </tr>
     )}
     </Fragment>
+  )
+}
+
+// AFAC13 — une facture qui porte de l'argent ne s'annule jamais sans dire où il
+// va : l'écran impose le choix « transférer » (autre facture ouverte du même
+// client) ou « rembourser », et affiche le refus serveur SOUS le choix. Aucune
+// règle d'argent recalculée ici : le dialogue s'ouvre sur `montant_paye > 0`
+// servi par le serveur, qui reste seul juge (AFAC12).
+export function AnnulationFactureDialog({ facture, factures = [], busy = false, erreur = null, onConfirm, onClose }) {
+  const [action, setAction] = useState('transferer')
+  const [cible, setCible] = useState('')
+  if (!facture) return null
+  const cibles = factures.filter(x => x.id !== facture.id
+    && String(x.client) === String(facture.client)
+    && ['emise', 'en_retard'].includes(x.statut))
+  const manque = action === 'transferer' && !cible
+  const valider = () => onConfirm(action === 'transferer'
+    ? { action, facture_cible: Number(cible) }
+    : { action })
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Annuler la facture {facture.reference}</DialogTitle>
+          <DialogDescription>
+            Cette facture porte {formatMAD(toNumber(facture.montant_paye))} encaissés :
+            dites où va cet argent avant de l’annuler.
+          </DialogDescription>
+        </DialogHeader>
+        <fieldset className="space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="annulation-acompte" value="transferer"
+                   checked={action === 'transferer'}
+                   onChange={() => setAction('transferer')} />
+            Transférer sur une autre facture
+          </label>
+          {action === 'transferer' && (
+            <select aria-label="Facture cible" value={cible}
+                    onChange={(e) => setCible(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1 text-sm">
+              <option value="">Choisir une facture ouverte…</option>
+              {cibles.map(x => (
+                <option key={x.id} value={x.id}>{x.reference}</option>
+              ))}
+            </select>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="annulation-acompte" value="rembourser"
+                   checked={action === 'rembourser'}
+                   onChange={() => setAction('rembourser')} />
+            Rembourser
+          </label>
+          {erreur && (
+            <p role="alert" data-testid="annulation-erreur"
+               className="text-sm text-destructive">{erreur}</p>
+          )}
+        </fieldset>
+        <FormActions sticky={false}>
+          <Button type="button" variant="ghost" onClick={onClose}>Retour</Button>
+          <Button type="button" variant="destructive" loading={busy}
+                  disabled={manque} onClick={valider}>
+            Annuler la facture
+          </Button>
+        </FormActions>
+      </DialogContent>
+    </Dialog>
   )
 }

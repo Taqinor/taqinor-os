@@ -424,7 +424,9 @@ const ventesApi = {
   // justification, et trace l'auteur + le motif dans le chatter.
   marquerPayeeFacture: (id, motif) => api.post(
     `/ventes/factures/${id}/marquer-payee/`, { motif }),
-  annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),
+  // AFAC13 — corps optionnel `{acompte: {action, facture_cible?}}` (contrat
+  // facture_annulation.json) : où va l'argent rattaché à la facture annulée.
+  annulerFacture: (id, body) => api.post(`/ventes/factures/${id}/annuler/`, body),
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   // ZFAC11 — reste à payer arrondi au pas de caisse société pour un règlement

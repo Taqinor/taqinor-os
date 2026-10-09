@@ -256,9 +256,11 @@ export const marquerPayeeFacture = createAsyncThunk('ventes/marquerPayeeFacture'
   }
 })
 
-export const annulerFacture = createAsyncThunk('ventes/annulerFacture', async (id, { rejectWithValue }) => {
+// AFAC13 — accepte `id` OU `{id, directive}` (rétro-compatible, comme marquerLivreBC).
+export const annulerFacture = createAsyncThunk('ventes/annulerFacture', async (arg, { rejectWithValue }) => {
+  const { id, directive } = (arg && typeof arg === 'object') ? arg : { id: arg, directive: null }
   try {
-    const res = await ventesApi.annulerFacture(id)
+    const res = await ventesApi.annulerFacture(id, directive ? { acompte: directive } : undefined)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
