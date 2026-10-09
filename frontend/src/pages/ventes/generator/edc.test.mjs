@@ -162,7 +162,7 @@ test('EDC9 : ancres de section posées sur les cartes, jamais sur l’argent', (
     ['gen-sec-document', 'Document'], ['gen-sec-lead', 'Lead & Client'],
     ['gen-sec-technique', 'Technique'], ['gen-sec-simulation', 'Simulation'],
     ['gen-sec-lignes', 'Lignes'], ['gen-sec-echeancier', 'Échéancier'],
-    ['gen-sec-texte', 'Texte client'], ['gen-sec-enregistrer', 'Enregistrer'],
+    ['gen-sec-texte', 'Texte client'], ['gen-sec-enregistrer', 'Enregistrement'],
   ]) {
     assert.match(gen, new RegExp(`id="${id}" data-nav-libelle="${libelle}"`), id)
   }
