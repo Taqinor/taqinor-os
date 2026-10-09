@@ -3,7 +3,7 @@ import crmApi from '../../../api/crmApi'
 import { toast } from '../../../ui'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
 import {
-  reducer, initState, getField, isDirty, dirtyKeys, isSuggested,
+  reducer, initState, getField, isDirty, dirtyKeys, isSuggested, signatureCharge,
   toPayload, currentFields,
 } from './draftCore'
 import { getPrefetched } from './leadPrefetch'
@@ -82,7 +82,7 @@ function messageChampErreur(data) {
   return `Non enregistré — « ${label} » : ${msg}${suffixe}`
 }
 
-export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUserId = null, onSaved, onFieldErrors } = {}) {
+export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUserId = null, onSaved, onFieldErrors, onFieldsSaved } = {}) {
   const [state, dispatch] = useReducer(reducer, undefined, () => {
     const effectiveLead = withPrefetched(lead, mode)
     const id = effectiveLead && effectiveLead.id != null ? effectiveLead.id : null
@@ -96,6 +96,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   const leadRef = useRef(lead)
   const onSavedRef = useRef(onSaved)
   const onFieldErrorsRef = useRef(onFieldErrors)
+  const onFieldsSavedRef = useRef(onFieldsSaved)
   // Rafraîchis en EFFET (jamais pendant le rendu — react-hooks/refs, lint CI).
   // Les lecteurs (debounce, leaveGuard, timers) tournent tous APRÈS commit,
   // donc voient toujours la dernière valeur committée.
@@ -104,6 +105,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     leadRef.current = lead
     onSavedRef.current = onSaved
     onFieldErrorsRef.current = onFieldErrors
+    onFieldsSavedRef.current = onFieldsSaved
   })
   // Fraîcheur VX243c : `date_modification` connu à l'ouverture (ou après notre
   // dernière écriture réussie).
@@ -166,12 +168,16 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     }
     const subset = {}
     for (const k of keys) subset[k] = st.draft[k]
+    const signature = signatureCharge(st)   // ALEA18 — charge telle que tentée
     dispatch({ type: 'FLUSH_START', keys })
     const flight = crmApi.updateLead(st.leadId, toPayload(subset)).then((r) => r.data)
     flightRef.current = flight
     try {
       const res = await flight
       dispatch({ type: 'FLUSH_SUCCESS', res })
+      // ALEA18 — un enregistrement réussi EFFACE l'erreur périmée sous les
+      // champs qu'il vient d'écrire (jamais celle d'un champ non envoyé).
+      onFieldsSavedRef.current?.(keys)
       // Écho serveur pour NOTRE lead uniquement (une réponse d'un autre lead
       // est jetée par le réducteur, on ne touche alors ni le miroir ni onSaved).
       if (res && res.id === st.leadId) {
@@ -190,7 +196,8 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       // `state.saveError`.
       const champErreur = err?.response?.status === 400 ? messageChampErreur(err.response.data) : null
       const message = champErreur ?? (err?.response?.data?.detail ?? "Échec d'enregistrement — réessayez.")
-      dispatch({ type: 'FLUSH_ERROR', error: message })
+      const refuse400 = err?.response?.status === 400
+      dispatch({ type: 'FLUSH_ERROR', error: message, refused: refuse400 ? signature : null })
       toast.error(message)
       // Erreurs PAR CHAMP d'un 400 DRF (critique Fable #6) : sans ce relais,
       // l'utilisateur ne savait jamais QUEL champ bloquait l'autosauvegarde.
@@ -339,12 +346,19 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // (exhaustive-deps) : le timer de debounce ne doit se réarmer QUE quand le
   // draft bouge réellement, pas quand saveState/stale/composer changent.
   const draftDirty = isDirty(state)
+  // ALEA18 — charge déjà refusée en 400 et brouillon inchangé (scalaire dérivé :
+  // seul ce booléen entre dans les deps de l'effet).
+  const chargeRefusee = !!state.refused && state.refused === signatureCharge(state)
   useEffect(() => {
     if (state.mode !== 'edit') return undefined
     if (!draftDirty || state.inflight) return undefined
+    // ALEA18 — charge déjà refusée en 400 et brouillon inchangé : on ne la
+    // réémet pas (un seul PATCH, un seul toast par refus). « Réessayer »
+    // (flush forcé) reste possible ; toute modification change la signature.
+    if (chargeRefusee) return undefined
     const t = setTimeout(() => { flush({}) }, AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [state.mode, state.draft, draftDirty, state.inflight, flush])
+  }, [state.mode, state.draft, draftDirty, state.inflight, chargeRefusee, flush])
 
   // ── Miroir sessionStorage (défense anti-perte) ───────────────────────────
   useEffect(() => {
