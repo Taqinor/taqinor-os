@@ -317,7 +317,10 @@ export default function FactureRow({ f, ctx }) {
             </Button>
           )}
           {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
-          {f.encaissable !== false && (
+          {/* AFAC26 — seulement si quelque chose est exigible (une facture C&I dont
+              seule la retenue reste due n'a rien à payer en ligne ; « Encaisser » reste). */}
+          {f.encaissable !== false
+            && (f.montant_exigible == null || toNumber(f.montant_exigible) > 0) && (
             <Button size="sm" variant="outline" loading={isPayLinkBusy}
                     onClick={() => handleLienPaiement(f)} title="Créer/copier le lien de paiement en ligne">
               <CreditCard /> Payer en ligne

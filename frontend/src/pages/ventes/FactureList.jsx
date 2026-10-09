@@ -796,7 +796,8 @@ export default function FactureList() {
       if (url && navigator.clipboard?.writeText) {
         pending.win?.close?.()
         await navigator.clipboard.writeText(url)
-        toast.success(`Lien de paiement copié — ${formatMAD(data.montant)}.`)
+        // AFAC26 — le montant annoncé est CE QUE LE CLIENT PAIERA (reste exigible), jamais le `montant` figé.
+        toast.success(`Lien de paiement copié — ${formatMAD(data.montant_a_payer ?? data.montant)}.`)
       } else if (url) {
         if (pending.win && !pending.win.closed) {
           pending.win.location = url
