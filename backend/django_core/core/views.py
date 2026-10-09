@@ -717,7 +717,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
                        'Filtres globaux (JSON) remplaçant ceux du layout.')],
-        responses=_OBJET)
+        responses={200: _OBJET})
     @action(detail=True, methods=['get'])
     def donnees(self, request, pk=None):
         """NTDATA32 — données de TOUS les widgets sous les filtres globaux.
@@ -859,7 +859,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(responses=_LISTE_OBJETS)
+    @extend_schema(responses={200: _LISTE_OBJETS})
     @action(detail=False, methods=['get'])
     def datasets(self, request):
         # NTDATA5 — le catalogue porte désormais, par champ, un `label` FR et
@@ -1202,7 +1202,7 @@ class BulkEditViewSet(viewsets.ViewSet):
         # qui déclare ses PROPRES permissions ci-dessus n'est pas concernée.
         return [IsAdminOrResponsableTier(), PeutExecuterEditionMasse()]
 
-    @extend_schema(responses=_OBJET)
+    @extend_schema(responses={200: _OBJET})
     @action(detail=False, methods=['get'])
     def targets(self, request):
         return Response(bulk_edit_infra.list_bulk_targets())
@@ -1289,7 +1289,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
-    @extend_schema(responses=_LISTE_OBJETS)
+    @extend_schema(responses={200: _LISTE_OBJETS})
     def list(self, request):
         from . import feature_flags
         company = request.user.company
@@ -1332,7 +1332,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response({'desactives': desactives})
 
-    @extend_schema(responses=_OBJET)
+    @extend_schema(responses={200: _OBJET})
     @action(detail=False, methods=['get'], url_path='journal')
     def journal(self, request):
         """ODY25 — journal d'installation de la société de l'appelant.
@@ -1756,7 +1756,7 @@ class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
         serializer.save(company=company)
         return Response(serializer.data)
 
-    @extend_schema(responses=_OBJET)
+    @extend_schema(responses={200: _OBJET})
     @action(detail=False, methods=['get'])
     def analytics(self, request):
         from . import api_usage
@@ -1931,7 +1931,7 @@ class _IsSuperUser(BasePermission):
 
 
 # ── NTPLT19 — Endpoint superuser des statistiques DB (introspection READ-ONLY) ─
-@extend_schema(responses=_OBJET)
+@extend_schema(responses={200: _OBJET})
 @api_view(['GET'])
 @permission_classes([_IsSuperUser])
 def db_stats_view(request):
@@ -2072,7 +2072,7 @@ class OutboxEventViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(event_name=event)
         return qs
 
-    @extend_schema(request=None, responses=_OBJET)
+    @extend_schema(request=None, responses={200: _OBJET})
     @action(detail=True, methods=['post'])
     def rejouer(self, request, pk=None):
         """Re-livre l'événement aux handlers durables (dédup préservée)."""

@@ -162,8 +162,8 @@ def _q(nom, type_, description):
 
 @extend_schema(
     request=_ROI_REQUEST,
-    responses=serializers.DictField(
-        child=serializers.CharField(allow_null=True)))
+    responses={200: {'type': 'object', 'additionalProperties': {
+        'type': 'string', 'nullable': True}}})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload

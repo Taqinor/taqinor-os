@@ -1818,7 +1818,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
         return None, (devis_list, phone, message, links)
 
-    @extend_schema(request=sd.corps('CrmWhatsappDevisRequest', devis_ids=sd.ids_requis(), langue=serializers.CharField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmWhatsappDevisApercuRequest', devis_ids=sd.ids_requis(), langue=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='whatsapp-devis-apercu',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_devis_apercu(self, request, pk=None):

@@ -1,7 +1,8 @@
 import math
 
 from django.db import IntegrityError, models, transaction
-from drf_spectacular.utils import extend_schema_field, inline_serializer
+from drf_spectacular.utils import (extend_schema_field, extend_schema_serializer,
+                                   inline_serializer)
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -2483,6 +2484,7 @@ class KitProduitSerializer(CompanyScopedRelationsMixin,
         return instance
 
 
+@extend_schema_serializer(component_name='StockRevisionKit')
 class RevisionKitSerializer(serializers.ModelSerializer):
     """XMFG18 — révision (snapshot) de la nomenclature d'un kit. Lecture
     seule : les révisions sont créées automatiquement côté serveur."""
