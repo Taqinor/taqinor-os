@@ -13,7 +13,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -91,6 +91,7 @@ def _refus_aucun_canal(err):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_contact_request(request, token):
@@ -200,6 +201,7 @@ def proposal_contact_request(request, token):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_request_otp(request, token):
@@ -244,6 +246,7 @@ _OTP_LECTURE_VERIFY_REQUEST = inline_serializer('PublicOtpLectureVerifyRequest',
 
 @extend_schema(request=None, responses={200: _OTP_LECTURE_DETAIL_RESPONSE})
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_request_otp_lecture(request, token):
@@ -281,6 +284,7 @@ def proposal_request_otp_lecture(request, token):
 
 @extend_schema(request=_OTP_LECTURE_VERIFY_REQUEST, responses={200: _OTP_LECTURE_DETAIL_RESPONSE})
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_verify_otp_lecture(request, token):
@@ -317,6 +321,7 @@ def proposal_verify_otp_lecture(request, token):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_accept(request, token):
@@ -492,6 +497,7 @@ def _entreprise_relue(bloc):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_activate_option(request, token):

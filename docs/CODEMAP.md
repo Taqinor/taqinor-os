@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: c30fdc89e9e49d8b5a2927d847518cbbb54a43a6d70373290c12a0b05eb9e7d6
-Plan fingerprint: 68f484446f744265167fb76ea2f5e6f233b283bc7d2c6731256f58021e1d6e06
+Plan fingerprint: d1fb53c845574f7d2b7e2a95a292a6d5a3a43c9a0867a4c1148e372c6a25dafc
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1156)**
+**Done (1157)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1167,6 +1167,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
 - `ENF1` — Harnais api-fuzz
+- `ENF2` — Plateforme API (causes C2-C6)
 - `ENF13` — Gardes toujours vertes rendues bloquantes
 - `ENF14` — Exceptions permanentes signées
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
@@ -1734,7 +1735,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (141)**
+**Open — to build (140)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1819,7 +1820,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
-- `ENF2` — Plateforme API (causes C2-C6)
 - `ENF3` — Schéma OpenAPI exact — installations
 - `ENF4` — Schéma OpenAPI exact — stock + achats
 - `ENF5` — Schéma OpenAPI exact — ventes + facturation

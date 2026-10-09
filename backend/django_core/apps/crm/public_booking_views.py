@@ -11,7 +11,7 @@ générique).
 """
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -44,6 +44,7 @@ class PublicBookingRateThrottle(SimpleRateThrottle):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicBookingRateThrottle])
 def public_booking_status(request, token):
@@ -63,6 +64,7 @@ def public_booking_status(request, token):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicBookingRateThrottle])
 def public_booking_reserve(request, token):

@@ -39,17 +39,32 @@ from __future__ import annotations
 import logging
 import uuid
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.db import IntegrityError
 from django.db.models import ProtectedError
+from django.http import Http404
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
+from rest_framework.views import set_rollback
+
+from core.unicite import ConflitUnicite, decrire_contrainte, message_conflit
 
 logger = logging.getLogger(__name__)
 
 # Slug stable par classe d'exception DRF — jamais dérivé du message humain
 # (qui peut être traduit/reformulé sans casser un client qui teste `code`).
 _CODE_BY_EXCEPTION = (
+    # ENF2 (C3) — DRF convertit ``django.http.Http404`` en ``NotFound`` et
+    # ``django.core.exceptions.PermissionDenied`` en ``PermissionDenied`` AVANT
+    # de construire la réponse, mais c'est l'exception D'ORIGINE qui arrive
+    # ici : sans ces deux lignes, chaque ``get_object_or_404`` (4 018 cas au
+    # fuzz du 07/10) répondait 404 avec ``code: "server_error"`` et « Une
+    # erreur inattendue s'est produite ».
+    (Http404, 'not_found'),
+    (DjangoPermissionDenied, 'permission_denied'),
+    (ConflitUnicite, 'unique_conflict'),
     (drf_exceptions.ValidationError, 'validation_error'),
     (drf_exceptions.AuthenticationFailed, 'not_authenticated'),
     (drf_exceptions.NotAuthenticated, 'not_authenticated'),
@@ -77,6 +92,12 @@ def _message_for(exc, code: str) -> str:
     brut DRF, qui peut fuiter des informations internes sur un 500)."""
     if code == 'server_error':
         return "Une erreur inattendue s'est produite."
+    if isinstance(exc, Http404):
+        # Le message Django (« No Devis matches the given query. ») est en
+        # anglais et nomme le modèle interne : jamais repris dans l'enveloppe.
+        return MESSAGE_NOT_FOUND
+    if isinstance(exc, DjangoPermissionDenied):
+        return str(exc) or MESSAGE_PERMISSION_DENIED
     detail = getattr(exc, 'detail', None)
     if isinstance(detail, str):
         return detail
@@ -91,8 +112,11 @@ def _message_for(exc, code: str) -> str:
 
 
 def _fields_for(exc, code: str):
-    """`fields` UNIQUEMENT pour les 400 de validation avec un detail
-    field-keyed (dict) — jamais pour les autres codes."""
+    """`fields` pour les 400 de validation avec un detail field-keyed (dict)
+    et pour les 409 ``unique_conflict`` (champs de la contrainte) — jamais
+    pour les autres codes."""
+    if code == 'unique_conflict':
+        return _champs_conflit(getattr(exc, 'champs', None))
     if code != 'validation_error':
         return None
     detail = getattr(exc, 'detail', None)
@@ -104,6 +128,70 @@ def _fields_for(exc, code: str):
             continue
         fields[key] = value if isinstance(value, list) else [value]
     return fields or None
+
+
+MESSAGE_NOT_FOUND = 'Ressource introuvable.'
+MESSAGE_PERMISSION_DENIED = (
+    "Vous n'avez pas la permission d'effectuer cette action.")
+MESSAGE_CHAMP_EN_DOUBLE = 'Cette valeur existe déjà.'
+# SQLSTATE Postgres d'une violation d'unicité (psycopg2 `pgcode`).
+_SQLSTATE_UNIQUE = '23505'
+
+
+_METHODES_ECRITURE = frozenset({'POST', 'PUT', 'PATCH'})
+
+
+def _methode(context) -> str:
+    request = context.get('request') if context else None
+    return str(getattr(request, 'method', '') or '').upper()
+
+
+def _champs_conflit(champs):
+    if not champs:
+        return None
+    return {champ: [MESSAGE_CHAMP_EN_DOUBLE] for champ in champs}
+
+
+def _violation_unicite(exc):
+    """(modèle, champs) si ``exc`` est une violation d'unicité Postgres,
+    sinon None. Lecture du SQLSTATE sur la cause pilote (psycopg2 ``pgcode``,
+    psycopg 3 ``sqlstate``) — jamais du message."""
+    if not isinstance(exc, IntegrityError):
+        return None
+    cause = exc.__cause__
+    sqlstate = (getattr(cause, 'pgcode', None)
+                or getattr(cause, 'sqlstate', None))
+    if sqlstate != _SQLSTATE_UNIQUE:
+        return None
+    diag = getattr(cause, 'diag', None)
+    return decrire_contrainte(
+        getattr(diag, 'constraint_name', None),
+        table=getattr(diag, 'table_name', None),
+        detail=getattr(diag, 'message_detail', None))
+
+
+def _unique_violation_response(model, champs, request_id) -> Response:
+    """ENF2 (C6) — filet de sécurité : la contrainte d'unicité en base a
+    refusé l'écriture (course entre deux requêtes, ou vue hors
+    ``TenantMixin`` donc sans pré-validation ``core.unicite``). C'est un
+    conflit de données, pas un crash : 409 ``unique_conflict`` nommé, MÊME
+    forme que la pré-validation. La transaction de requête éventuelle
+    (ATOMIC_REQUESTS) est marquée pour annulation, comme DRF le fait pour
+    ses propres exceptions."""
+    set_rollback()
+    champs = list(champs or [])
+    message = (message_conflit(model, champs) if model is not None
+               else ConflitUnicite.default_detail)
+    body = {
+        'detail': message,
+        'error': {
+            'code': 'unique_conflict',
+            'message': message,
+            'fields': _champs_conflit(champs),
+            'request_id': request_id,
+        },
+    }
+    return Response(body, status=status.HTTP_409_CONFLICT)
 
 
 def _request_id(context) -> str | None:
@@ -241,6 +329,13 @@ def taqinor_exception_handler(exc, context):
         # jamais un 500) — voir le docstring du module en tête de fichier.
         if isinstance(exc, ProtectedError):
             return _protected_error_response(exc, request_id)
+        # Une violation d'unicité n'est un CONFLIT client que sur une
+        # écriture demandée par le client (POST/PUT/PATCH). Sur une lecture
+        # ou une suppression, c'est un bug serveur (ex. amorçage paresseux qui
+        # recrée une ligne) : il reste un 500 journalisé, jamais masqué.
+        violation = _violation_unicite(exc)
+        if violation is not None and _methode(context) in _METHODES_ECRITURE:
+            return _unique_violation_response(*violation, request_id)
         # Exception non gérée par DRF (ex. bug applicatif) — la forme
         # unifiée reste due même ici ; le statut HTTP/sémantique tenant ne
         # change JAMAIS (toujours 500, jamais masqué en 200).

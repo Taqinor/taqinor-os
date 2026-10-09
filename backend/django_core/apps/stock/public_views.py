@@ -16,7 +16,7 @@ par IP + jeton (sans dépendance externe).
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -54,6 +54,7 @@ def _not_found():
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PortailFournisseurThrottle])
 def portail_fournisseur_documents_view(request, token):
@@ -70,6 +71,7 @@ def portail_fournisseur_documents_view(request, token):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PortailFournisseurThrottle])
 def portail_fournisseur_confirmer_bcf_view(request, token, bcf_id):
@@ -155,6 +157,7 @@ class QuaiCheckinThrottle(SimpleRateThrottle):
     }),
 })
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([QuaiCheckinThrottle])
 def quai_checkin_view(request):
@@ -209,6 +212,7 @@ class PortailTiersThrottle(SimpleRateThrottle):
     }),
 })
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PortailTiersThrottle])
 def portail_tiers_solde_view(request, token):
@@ -248,6 +252,7 @@ def portail_tiers_solde_view(request, token):
     }),
 })
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PortailFournisseurThrottle])
 def portail_fournisseur_creneaux_view(request, token):
@@ -291,6 +296,7 @@ def portail_fournisseur_creneaux_view(request, token):
     }),
 })
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PortailFournisseurThrottle])
 def portail_fournisseur_reserver_creneau_view(request, token):

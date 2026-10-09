@@ -9,8 +9,9 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4808, operations: 7584, components: 2214}
+counts: {paths: 4808, operations: 7580, components: 2215}
 securitySchemes:
+- bearerJWT
 - cookieJWT
 - publicApiKey
 - publicApiOAuth2
@@ -1737,7 +1738,6 @@ operations:
 - post /api/django/installations/commandes-cadre/{id}/activer/ -> django_installations_commandes_cadre_activer_create
 - post /api/django/installations/commandes-cadre/{id}/cloturer/ -> django_installations_commandes_cadre_cloturer_create
 - get /api/django/installations/comptage-lignes/ -> django_installations_comptage_lignes_list
-- post /api/django/installations/comptage-lignes/ -> django_installations_comptage_lignes_create
 - delete /api/django/installations/comptage-lignes/{id}/ -> django_installations_comptage_lignes_destroy
 - get /api/django/installations/comptage-lignes/{id}/ -> django_installations_comptage_lignes_retrieve
 - patch /api/django/installations/comptage-lignes/{id}/ -> django_installations_comptage_lignes_partial_update
@@ -2031,7 +2031,6 @@ operations:
 - put /api/django/installations/ordres-demontage/{id}/ -> django_installations_ordres_demontage_update
 - post /api/django/installations/ordres-demontage/{id}/terminer/ -> django_installations_ordres_demontage_terminer_create
 - get /api/django/installations/pick-list-lignes/ -> django_installations_pick_list_lignes_list
-- post /api/django/installations/pick-list-lignes/ -> django_installations_pick_list_lignes_create
 - delete /api/django/installations/pick-list-lignes/{id}/ -> django_installations_pick_list_lignes_destroy
 - get /api/django/installations/pick-list-lignes/{id}/ -> django_installations_pick_list_lignes_retrieve
 - patch /api/django/installations/pick-list-lignes/{id}/ -> django_installations_pick_list_lignes_partial_update
@@ -5568,7 +5567,6 @@ operations:
 - post /api/v1/installations/commandes-cadre/{id}/activer/ -> v1_installations_commandes_cadre_activer_create
 - post /api/v1/installations/commandes-cadre/{id}/cloturer/ -> v1_installations_commandes_cadre_cloturer_create
 - get /api/v1/installations/comptage-lignes/ -> v1_installations_comptage_lignes_list
-- post /api/v1/installations/comptage-lignes/ -> v1_installations_comptage_lignes_create
 - delete /api/v1/installations/comptage-lignes/{id}/ -> v1_installations_comptage_lignes_destroy
 - get /api/v1/installations/comptage-lignes/{id}/ -> v1_installations_comptage_lignes_retrieve
 - patch /api/v1/installations/comptage-lignes/{id}/ -> v1_installations_comptage_lignes_partial_update
@@ -5862,7 +5860,6 @@ operations:
 - put /api/v1/installations/ordres-demontage/{id}/ -> v1_installations_ordres_demontage_update
 - post /api/v1/installations/ordres-demontage/{id}/terminer/ -> v1_installations_ordres_demontage_terminer_create
 - get /api/v1/installations/pick-list-lignes/ -> v1_installations_pick_list_lignes_list
-- post /api/v1/installations/pick-list-lignes/ -> v1_installations_pick_list_lignes_create
 - delete /api/v1/installations/pick-list-lignes/{id}/ -> v1_installations_pick_list_lignes_destroy
 - get /api/v1/installations/pick-list-lignes/{id}/ -> v1_installations_pick_list_lignes_retrieve
 - patch /api/v1/installations/pick-list-lignes/{id}/ -> v1_installations_pick_list_lignes_partial_update
@@ -8121,6 +8118,7 @@ components:
 - Equipement
 - EquipementRequest
 - EquipementStatutEnum
+- ErreurApi
 - EtapeAssemblage
 - EtapeAssemblageRequest
 - EtapeEnum

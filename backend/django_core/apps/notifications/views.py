@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
-    action, api_view, permission_classes,
+    authentication_classes, action, api_view, permission_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -515,6 +515,7 @@ def calendar_check(request):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def vapid_public_key(request):
     """Clé publique VAPID pour l'abonnement côté navigateur.

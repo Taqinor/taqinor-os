@@ -11,7 +11,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
-    action, api_view, parser_classes, permission_classes, throttle_classes,
+    authentication_classes, action, api_view, parser_classes, permission_classes, throttle_classes,
 )
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -4422,6 +4422,7 @@ def _partage_echec_mdp(partage):
 
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicPartageRateThrottle])
 def public_partage(request, token):
@@ -4554,6 +4555,7 @@ class PublicDepotRateThrottle(SimpleRateThrottle):
 
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicDepotRateThrottle])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
@@ -4717,6 +4719,7 @@ def _signature_publique_payload(demande):
 
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
 def public_signature(request, token):
@@ -4914,6 +4917,7 @@ def _signataire_publique_payload(signataire):
 
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])
 def public_signataire(request, token):
@@ -5088,6 +5092,7 @@ def _demande_lisible_par_jeton(demande):
 
 @extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
 def public_signature_document(request, token):
@@ -5110,6 +5115,7 @@ def public_signature_document(request, token):
 
 @extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])
 def public_signataire_document(request, token):

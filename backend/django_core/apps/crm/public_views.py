@@ -18,7 +18,7 @@ import hmac
 
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -195,6 +195,7 @@ def _item_payload(item):
 @extend_schema(methods=['POST'], request=_SALLE_VENTE_ACCES_REQUEST,
                responses={200: _SALLE_VENTE_RESPONSE})
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleVenteRateThrottle])
 def public_salle_vente(request, token):
@@ -272,6 +273,7 @@ class PublicApporteurRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
 
 @extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicApporteurRateThrottle])
 def public_apporteur_mes_deals(request, token):

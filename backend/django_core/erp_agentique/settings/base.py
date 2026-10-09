@@ -789,6 +789,13 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    # ENF2 (C2) — après le nommage des énums (crochet par défaut, conservé en
+    # tête), chaque opération déclare l'enveloppe d'erreur qu'elle peut
+    # réellement servir (400/401/403/404/409/429/500) : documenté == réel.
+    'POSTPROCESSING_HOOKS': [
+        'drf_spectacular.hooks.postprocess_schema_enums',
+        'core.openapi_erreurs.declarer_enveloppe_erreur',
+    ],
     # YAPIC6 — nommage STABLE des jeux de choix partagés. Sans ces entrées,
     # drf-spectacular baptise un jeu de choix ambigu avec un suffixe de hachage
     # (`UniteF3aEnum`, `Regle614Enum`…) : un nom illisible pour un client

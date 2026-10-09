@@ -16,7 +16,7 @@ from django.db.models import F
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -530,6 +530,7 @@ def _remonter_signal_lecture_au_lead(link, *, friction_section='', resume=''):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_engagement(request, token):
