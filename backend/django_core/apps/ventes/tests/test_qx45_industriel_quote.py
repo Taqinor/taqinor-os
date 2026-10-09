@@ -103,6 +103,16 @@ class TestIndustrielInjectionWhenPresent(SimpleTestCase):
         # (``economie_ci.revente``), plus une clé d'étude écran v1.
         base = sample_data.build()
         base["economie_ci"] = sample_data.economie_ci()
+        # AMOT40 — le PDF imprime les mentions SERVIES par ``revente_ci`` : la
+        # revente porte la liste que le moteur sert réellement
+        # (``economie_ci.revente_ci``, MENTION_82_21 en tête), pas les
+        # libellés abrégés de l'exemple du contrat.
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.quote_engine import constants_82_21 as c8221
+        base["economie_ci"]["revente"]["mentions"] = [
+            c8221.MENTION_82_21, eco.MENTION_NON_GARANTI,
+            eco.MENTION_SECOND_COMPTEUR, eco.MENTION_TSS,
+            eco.MENTION_TARIF_ARRETE, c8221.MENTION_ART13]
         html = render.build_html(renderer._augment(base))
         self.assertIn("surplus injecté", html)
         self.assertIn("82-21", html)
