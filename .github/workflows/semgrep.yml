@@ -35,10 +35,15 @@ jobs:
   semgrep:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container:
-      image: semgrep/semgrep
+    # Pas de conteneur Docker Hub : la limite anonyme (toomanyrequests)
+    # faisait tomber le job ; semgrep s'installe depuis PyPI.
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Installer semgrep
+        run: pip install 'semgrep>=1.90,<2'
       - name: Semgrep (pack Django + règles maison, zéro découverte)
         run: |
           semgrep --config p/django --config .semgrep/ --metrics=off \
