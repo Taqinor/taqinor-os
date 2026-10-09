@@ -491,6 +491,28 @@ def _niveau_tension_from_lead(lead):
         lead, 'compteur_puissance_kva', None)
 
 
+def recaler_parc_apres_correction_reception(installation, ancienne_date, user):
+    """ACHT48 — la ``date_reception`` d'un chantier DÉJÀ réceptionné est
+    corrigée (PATCH) : les équipements du parc datés de l'ancienne date passent
+    à la nouvelle via ``sav.services.recaler_garanties_chantier`` (même
+    transaction que l'appelant) et une note au chatter le trace. Sans effet si
+    la date n'a pas changé ou si le chantier n'était pas réceptionné.
+    Renvoie le nombre d'équipements recalés."""
+    nouvelle = installation.date_reception
+    if ancienne_date is None or nouvelle is None or ancienne_date == nouvelle:
+        return 0
+    from apps.sav.services import recaler_garanties_chantier
+    n = recaler_garanties_chantier(
+        company=installation.company, installation=installation,
+        ancienne_date=ancienne_date, nouvelle_date=nouvelle)
+    from . import activity
+    activity.log_note(
+        installation, user,
+        f"Garanties du parc recalées : {n} équipement(s) "
+        f"({ancienne_date:%d/%m/%Y} → {nouvelle:%d/%m/%Y})")
+    return n
+
+
 def _nature_ligne_bom(produit):
     """APDF40 — nature d'une ligne de nomenclature : ``service`` si le type de
     sa catégorie produit est ``service``, sinon ``materiel`` (ligne libre
