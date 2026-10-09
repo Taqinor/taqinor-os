@@ -424,8 +424,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [piecesUnifiees, setPiecesUnifiees] = useState(null)
   const [retirerForm, setRetirerForm] = useState({
     produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
-    numero_serie: '',
+    numero_serie: '', serie_neuve: '',
   })
+  const [serieNeuveError, setSerieNeuveError] = useState(null)
+  const [equipementNeuf, setEquipementNeuf] = useState(null)
   const [retirerBusy, setRetirerBusy] = useState(false)
   const [retirerError, setRetirerError] = useState(null)
 
@@ -443,24 +445,36 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     if (!retirerForm.produit) return
     setRetirerBusy(true)
     setRetirerError(null)
+    setSerieNeuveError(null)
+    setEquipementNeuf(null)
     try {
-      await savApi.retirerTicketPiece(id, {
+      const rr = await savApi.retirerTicketPiece(id, {
         produit: retirerForm.produit,
         quantite: retirerForm.quantite,
         destination: retirerForm.destination,
         operation: retirerForm.operation,
         numero_serie: retirerForm.numero_serie || undefined,
+        serie_neuve: retirerForm.serie_neuve || undefined,
       })
+      // ASAV10 — l'appareil neuf entré au parc est affiché et le parc rechargé.
+      const neuf = rr?.data?.equipement_neuf ?? null
+      setEquipementNeuf(neuf)
+      if (neuf && current.installation) {
+        savApi.getEquipements({ installation: current.installation })
+          .then((r) => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
+      }
       toast.success('Pièce retirée.')
       // WIR232 — 400 : le formulaire ne se vide QUE sur succès.
       setRetirerForm({
         produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
-        numero_serie: '',
+        numero_serie: '', serie_neuve: '',
       })
       loadPiecesUnifiees()
       loadHistorique()
     } catch (err) {
-      setRetirerError(frError(err, 'Retrait impossible.'))
+      const sn = err?.response?.data?.serie_neuve
+      if (sn) setSerieNeuveError(Array.isArray(sn) ? sn.join(' ') : String(sn))
+      else setRetirerError(frError(err, 'Retrait impossible.'))
     } finally {
       setRetirerBusy(false)
     }
@@ -1323,6 +1337,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input value={retirerForm.numero_serie}
                      onChange={(e) => setRetirerForm((s) => ({ ...s, numero_serie: e.target.value }))} />
             </FormField>
+            <FormField label="N° de série du neuf" hint="optionnel" error={serieNeuveError}>
+              <Input aria-label="N° de série du neuf" value={retirerForm.serie_neuve}
+                     onChange={(e) => setRetirerForm((s) => ({ ...s, serie_neuve: e.target.value }))} />
+            </FormField>
             <div className="sm:col-span-full">
               <Button type="button" variant="outline" size="sm"
                       loading={retirerBusy} disabled={!retirerForm.produit} onClick={retirerPiece}>
@@ -1330,6 +1348,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </Button>
             </div>
           </div>
+          {equipementNeuf && (
+            <p className="mt-2 text-sm" data-testid="equipement-neuf">
+              Équipement neuf : {equipementNeuf.numero_serie}
+              {equipementNeuf.statut ? ` (${equipementNeuf.statut})` : ''}
+              {equipementNeuf.fin_garantie ? ` — garantie jusqu'au ${equipementNeuf.fin_garantie}` : ''}
+            </p>
+          )}
           {retirerError && (
             <div role="alert"
                  className="mt-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
