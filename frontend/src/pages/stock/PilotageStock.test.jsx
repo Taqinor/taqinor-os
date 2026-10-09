@@ -9,6 +9,13 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    un BCF brouillon en un clic (generer-bcf-reappro/).
    ========================================================================== */
 
+// ASTK242 — codes de permission pilotables par test (null = tous portés).
+const perms = vi.hoisted(() => ({ codes: null }))
+vi.mock('../../features/stock/useVoitPrixAchat', () => {
+  const porte = (c) => perms.codes === null || perms.codes.includes(c)
+  return { usePermissionAchats: porte, useVoitPrixAchat: () => porte('prix_achat_voir'), default: () => porte('prix_achat_voir') }
+})
+
 vi.mock('../../api/stockApi', () => ({
   default: {
     produitsAReapprovisionner: vi.fn(),
@@ -48,6 +55,7 @@ function wrapper({ children }) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  perms.codes = null
   if (!window.matchMedia) {
     window.matchMedia = vi.fn().mockImplementation((q) => ({
       matches: false, media: q, onchange: null,
@@ -138,6 +146,16 @@ describe('ASTK207 — une seule quantité suggérée', () => {
       const cellules = screen.getAllByText('13').filter((el) => el.className.includes('font-semibold'))
       expect(cellules.length).toBeGreaterThanOrEqual(2)
     })
+  })
+})
+
+describe('ASTK242 — auto-PO réservé à achats_commander', () => {
+  it('sans achats_commander : pas de bouton « Générer un BCF », aucun appel', async () => {
+    perms.codes = ['stock_voir']
+    render(<PilotageStock />, { wrapper })
+    await screen.findAllByText(/Panneau 550/)
+    expect(screen.queryByRole('button', { name: /Générer un BCF/ })).toBeNull()
+    expect(stockApi.genererBcfReappro).not.toHaveBeenCalled()
   })
 })
 

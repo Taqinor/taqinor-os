@@ -13,6 +13,7 @@ import {
   BarArrondie, ChartEmpty, ChartTooltip, resolveColor, animationDuration, CHART_ANIM_EASING,
 } from '../../ui/charts'
 import useStockFlags from '../../features/parametres/useStockFlags'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 
 /* ============================================================================
    WR3 — « Pilotage stock » : les analytics stock déjà prêtes côté backend
@@ -210,6 +211,7 @@ function RotationDonut({ data }) {
 }
 
 export default function PilotageStock({ onBcfGenere }) {
+  const peutCommander = usePermissionAchats('achats_commander')
   const navigate = useNavigate()
   // ZSTK13 — masque la colonne « Lot » du registre de péremption quand la
   // société a désactivé les lots/séries (True par défaut = inchangé).
@@ -369,9 +371,11 @@ export default function PilotageStock({ onBcfGenere }) {
           emptyLabel="Aucun produit sous son seuil d'alerte."
           footer={(
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" loading={genBusy} onClick={genererBcf}>
-                <ShoppingCart /> Générer un BCF (brouillon)
-              </Button>
+              {peutCommander && (
+                <Button type="button" size="sm" loading={genBusy} onClick={genererBcf}>
+                  <ShoppingCart /> Générer un BCF (brouillon)
+                </Button>
+              )}
               <Button type="button" size="sm" variant="ghost"
                       onClick={() => navigate('/stock/bons-commande-fournisseur')}>
                 Voir les bons de commande

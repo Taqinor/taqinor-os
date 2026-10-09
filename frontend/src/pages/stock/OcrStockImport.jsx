@@ -37,6 +37,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -159,6 +160,8 @@ export default function OcrStockImport() {
   // 751 — pour un document d'achat, créer un bon de commande fournisseur REÇU
   // (réception en bloc) au lieu de mouvements d'entrée isolés. Off par défaut.
   const [creerBcf, setCreerBcf] = useState(false)
+  // ASTK242 — créer un BCF exige achats_commander (sinon 403 serveur).
+  const peutCommander = usePermissionAchats('achats_commander')
 
   useEffect(() => {
     dispatch(fetchProduits())
@@ -388,7 +391,7 @@ const cp = produitsRef.current
       // bloc = mouvements d'ENTRÉE côté serveur). Réservé aux docs d'achat avec
       // un fournisseur résolu.
       const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
-      const modeBcf = creerBcf && isPurchaseDoc && resolvedFournisseurId
+      const modeBcf = peutCommander && creerBcf && isPurchaseDoc && resolvedFournisseurId
       const bcfLignes = []  // { produit, quantite, prix_achat_unitaire, label, ligneId }
       for (const ligne of lignesACibler) {
         const label = ligne.nom_ocr || ligne.ref_ocr || `Ligne #${ligne.id + 1}`
@@ -583,7 +586,7 @@ const cp = produitsRef.current
             nouveauFournisseurNom={nouveauFournisseurNom} setNouveauFournisseurNom={setNouveauFournisseurNom}
             lignes={lignes} updateLigne={updateLigne}
             onReset={handleReset} onApply={handleApply} applying={applying}
-            docType={docType} creerBcf={creerBcf} setCreerBcf={setCreerBcf}
+            docType={docType} creerBcf={creerBcf} setCreerBcf={setCreerBcf} peutCommander={peutCommander}
             canCreateProduit={canCreateProduit}
           />
         )}
@@ -748,7 +751,7 @@ function Step2Validate({
   fournisseurMode, setFournisseurMode, fournisseurId, setFournisseurId,
   nouveauFournisseurNom, setNouveauFournisseurNom,
   lignes, updateLigne, onReset, onApply, applying,
-  docType, creerBcf, setCreerBcf, canCreateProduit,
+  docType, creerBcf, setCreerBcf, peutCommander, canCreateProduit,
 }) {
   const showFournisseur = docType !== 'bon_sortie'
   const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
@@ -816,7 +819,7 @@ function Step2Validate({
         </div>
         {/* 751 — créer un bon de commande fournisseur reçu au lieu d'entrées
             isolées (doc d'achat uniquement ; nécessite un fournisseur). */}
-        {isPurchaseDoc && (
+        {isPurchaseDoc && peutCommander && (
           <label className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
             <Checkbox checked={creerBcf} onCheckedChange={(v) => setCreerBcf(!!v)} className="mt-0.5" />
             <span>
@@ -908,7 +911,7 @@ function Step2Validate({
         <Button onClick={onApply} loading={applying} disabled={hasErrors || lignes.length === 0}>
           {applying
             ? 'Application en cours…'
-            : <>{creerBcf && isPurchaseDoc ? 'Créer le bon de commande reçu' : 'Appliquer les mouvements'} <ChevronRight /></>}
+            : <>{peutCommander && creerBcf && isPurchaseDoc ? 'Créer le bon de commande reçu' : 'Appliquer les mouvements'} <ChevronRight /></>}
         </Button>
       </div>
     </div>
