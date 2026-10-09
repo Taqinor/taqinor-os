@@ -13,6 +13,19 @@
         "h": 75
       },
       "tient": true
+    },
+    "societe.fr": {
+      "fichier": "societe-fr-c5b259b75a.png",
+      "titre": "La société — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
     }
   }
 }

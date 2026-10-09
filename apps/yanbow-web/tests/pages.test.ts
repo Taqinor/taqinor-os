@@ -4,7 +4,11 @@
  * PUBLIABLE du registre, rendue mot pour mot (`data-affirmation`) ; les appels
  * « Prendre rendez-vous » portent une valeur `produit` du contrat (YBW50).
  */
+import { experimental_AstroContainer as AstroContainer } from 'astro/container';
+import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+import Societe from '../src/pages/societe.astro';
+import { LEGAL_COMPLET } from './fixtures/legal-complet';
 import { AFFIRMATIONS } from '../src/lib/claims';
 import { publiables, texteAffirmation } from '../src/lib/affirmer';
 import { VALEURS_PRODUIT } from '../src/lib/brand';
@@ -59,5 +63,31 @@ describe('YBW64 — Sur mesure', () => {
 
   it('aucun client cité, aucun délai ni prix', () => {
     expect(texte(p)).not.toMatch(/\bclients?\b|\bdélais?\b|\bsemaines?\b|\bjours?\b|\bprix\b/i);
+  });
+});
+
+describe('YBW65 — Société', () => {
+  const p = pageRendue(PAGES.societe.fr);
+  it('le métier, le sens du nom, la phrase D-YBW-9 depuis le registre', () => {
+    expect(affirmationsDe(p)).toEqual(['YB-METIER', 'YB-NOM-SOURCE', 'YB-NOM-YAN', 'YB-SLOGAN', 'SB-ENTREPRISE-REELLE', 'YB-REPONSE-HUMAINE']);
+    expect(p.document.querySelector('[data-affirmation="YB-SLOGAN"]')?.getAttribute('lang')).toBe('en');
+  });
+
+  it('texte seulement : aucune image, aucune date, aucun chiffre', () => {
+    expect(p.document.querySelectorAll('main img, main picture, main figure')).toHaveLength(0);
+    expect(texte(p).replace('1Bow', '')).not.toMatch(/\d/);
+  });
+
+  it('legal.ts nul (état réel) : aucune forme juridique ni société rendue', () => {
+    expect(p.document.querySelector('[data-entites]')).toBeNull();
+    expect(p.html).not.toMatch(/\bLtd\b|\bSARL\b|Limited|immatricul/i);
+  });
+
+  it('fixture complète : les deux sociétés citées avec leur forme', async () => {
+    const container = await AstroContainer.create();
+    const doc = new JSDOM(await container.renderToString(Societe, { props: { locale: 'fr', legal: LEGAL_COMPLET } })).window.document;
+    expect(doc.querySelector('[data-entite="editeur"]')?.textContent).toContain('Fixture Test Ltd');
+    expect(doc.querySelector('[data-entite="editeur"]')?.textContent).toContain('Angleterre et pays de Galles');
+    expect(doc.querySelector('[data-entite="maroc"]')?.textContent).toContain("SARL d'associé unique");
   });
 });

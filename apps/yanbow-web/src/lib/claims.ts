@@ -225,6 +225,17 @@ export const AFFIRMATIONS: Affirmation[] = [
     preuves: ['backend/django_core/apps/crm/webhooks.py:3354', `${PLAN}:56`],
     verifie_a_sha: SHA_PAGES,
   },
+  // ── YanBow — la société (YBW65) ─────────────────────────────────────────────
+  {
+    id: 'YB-METIER',
+    produit: 'yanbow',
+    texte_fr: 'Nous construisons des logiciels métier pour les entreprises.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:42`, `${PLAN}:54`],
+    verifie_a_sha: SHA_PAGES,
+  },
   // ── YanBow — le nom ─────────────────────────────────────────────────────────
   {
     id: 'YB-NOM-SOURCE',

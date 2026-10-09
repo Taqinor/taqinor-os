@@ -1,0 +1,8 @@
+---
+// Enveloppe mince (YBW65) : la page anglaise réutilise LE gabarit français.
+// Rendue seulement quand `en` est active (YBW70) — sinon rien (la route est
+// en plus retirée du build, astro.config.mjs).
+import Societe from '../societe.astro';
+import { estActive } from '../../i18n/config';
+---
+{estActive('en') && <Societe locale="en" />}

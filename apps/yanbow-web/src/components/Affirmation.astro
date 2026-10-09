@@ -10,7 +10,9 @@ interface Props {
   /** Balise rendue (paragraphe par défaut). */
   balise?: 'p' | 'li' | 'h1' | 'h2' | 'h3' | 'span';
   class?: string;
+  /** Langue du texte quand elle diffère de la page (ex. le slogan, en anglais). */
+  lang?: string;
 }
-const { id, locale, balise: Balise = 'p', class: classe } = Astro.props;
+const { id, locale, balise: Balise = 'p', class: classe, lang } = Astro.props;
 ---
-<Balise class={classe} data-affirmation={id}>{texteAffirmation(id, locale)}</Balise>
+<Balise class={classe} lang={lang} data-affirmation={id}>{texteAffirmation(id, locale)}</Balise>
