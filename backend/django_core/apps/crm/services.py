@@ -7332,16 +7332,13 @@ def _build_lead_wa_reply_url(lead):
             or getattr(lead, 'telephone', None)
             or ''
         )
-        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        # ACRM39 — normaliseur sanctionné (E.164) : un numéro français reste
+        # 33…, « +212 (0)6… » perd son zéro ; non normalisable ⇒ pas de lien
+        # (jamais un numéro inventé).
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone_raw)
         if not digits:
             return None
-        # Format international marocain (wa.me exige l'indicatif pays).
-        if digits.startswith('00'):
-            digits = digits[2:]
-        if digits.startswith('0'):
-            digits = '212' + digits[1:]
-        elif not digits.startswith('212'):
-            digits = '212' + digits
         nom = (
             (getattr(lead, 'nom', '') or '').strip()
             or 'votre client'
@@ -9291,8 +9288,11 @@ def dispatch_appointment_reminder(appointment) -> bool:
             f'Rappel : votre visite est prévue le {date_str}. '
             f'Notre équipe sera présente. Merci !'
         )
-        if phone:
-            digits = ''.join(c for c in phone if c.isdigit())
+        # ACRM39 — même normaliseur E.164 que les autres liens wa.me ;
+        # numéro non normalisable ⇒ aucun lien.
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone) if phone else None
+        if digits:
             wa_url = (f'https://wa.me/{digits}?text='
                       f'{urllib.parse.quote(msg)}')
             _appt_logger.info(
