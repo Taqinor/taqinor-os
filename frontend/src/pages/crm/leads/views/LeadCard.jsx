@@ -19,7 +19,11 @@ import { useState, memo } from 'react'
 import { Zap, MapPin, Pentagon, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import {
   CANAL_LABELS,
+  CONTACTED_STAGE,
+  FOLLOW_UP_STAGE,
+  NEW_STAGE,
   PIPELINE_STAGES,
+  QUOTE_SENT_STAGE,
   TYPE_INSTALLATION_LABELS,
   formatMAD,
   isPerdu,
@@ -138,9 +142,9 @@ const formatDepuis = (minutes) => {
 // QUOTE_SENT/FOLLOW_UP sans relance → invite à planifier une relance.
 const prochaineAction = (lead) => {
   const stage = lead?.stage
-  if (stage === 'NEW') return { label: 'À contacter', planifier: false }
-  if (stage === 'CONTACTED') return { label: 'Envoyer un devis', planifier: false }
-  if ((stage === 'QUOTE_SENT' || stage === 'FOLLOW_UP') && !lead?.relance_date) {
+  if (stage === NEW_STAGE) return { label: 'À contacter', planifier: false }
+  if (stage === CONTACTED_STAGE) return { label: 'Envoyer un devis', planifier: false }
+  if ((stage === QUOTE_SENT_STAGE || stage === FOLLOW_UP_STAGE) && !lead?.relance_date) {
     return { label: 'Planifier une relance', planifier: true }
   }
   return null
@@ -251,7 +255,7 @@ function LeadCard({
   const wa = waHref(lead.whatsapp)
   // QX31 — minuteur premier contact : uniquement en colonne NEW (dès que le
   // lead est contacté, son étape change et le minuteur disparaît de lui-même).
-  const minutesNouveau = lead.stage === 'NEW' ? minutesDepuis(lead.date_creation) : null
+  const minutesNouveau = lead.stage === NEW_STAGE ? minutesDepuis(lead.date_creation) : null
   // ⚡ indisponible : on explique pourquoi (devis_auto.message).
   const factureManquante =
     lead.devis_auto && !lead.devis_auto.pret ? lead.devis_auto.message : null

@@ -18,6 +18,8 @@ import {
 import {
   formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
   isStageMoveBackward, PIPELINE_STAGES, STAGE_LABELS,
+  NEW_STAGE, CONTACTED_STAGE, QUOTE_SENT_STAGE, FOLLOW_UP_STAGE, SIGNED_STAGE,
+  COLD_STAGE,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -59,12 +61,12 @@ const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 // jamais une seconde table de probabilités déclarée ailleurs).
 // eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé
 export const STAGE_PROBABILITY = {
-  NEW: 0.1,
-  CONTACTED: 0.25,
-  QUOTE_SENT: 0.5,
-  FOLLOW_UP: 0.7,
-  SIGNED: 1,
-  COLD: 0.05,
+  [NEW_STAGE]: 0.1,
+  [CONTACTED_STAGE]: 0.25,
+  [QUOTE_SENT_STAGE]: 0.5,
+  [FOLLOW_UP_STAGE]: 0.7,
+  [SIGNED_STAGE]: 1,
+  [COLD_STAGE]: 0.05,
 }
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)

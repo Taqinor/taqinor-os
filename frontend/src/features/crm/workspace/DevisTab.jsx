@@ -81,6 +81,16 @@ export const DEVIS_MINI_TRACK = [
   { key: 'chantier', label: 'Chantier' },
 ]
 
+/* ATOT31 — la porte de facturation encore ouverte est DITE par le serveur
+   (`solde.porte_facturation`, contrat ventes/contract_samples/devis_solde.json) :
+   'libre' (rien de facturé), 'tranche' (échéancier en cours), 'aucune' (tout
+   est facturé). Jamais redérivée des montants. Bloc absent → 'libre' (rien
+   n'est affirmé de plus que ce que l'écran savait avant). */
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function porteFacturation(devis) {
+  return devis?.solde?.porte_facturation ?? 'libre'
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function devisTrackCurrent(d) {
   return d?.chantier ? 'chantier' : 'accepte'
@@ -998,7 +1008,7 @@ export default function DevisTab({
                     current={devisTrackCurrent(d)}
                   />
                   <div className="lw-context-devis-actions">
-                    {!(d.solde?.tranches_facturees > 0) && (
+                    {porteFacturation(d) === 'libre' && (
                       <Button
                         type="button" size="sm"
                         onClick={() => setFacturerTarget(d)}
@@ -1006,15 +1016,17 @@ export default function DevisTab({
                         🧾 Facturer (facture complète)
                       </Button>
                     )}
-                    <Button
-                      type="button" size="sm" variant="outline"
-                      disabled={busyAction === `f-${d.id}`}
-                      onClick={() => genererFacture(d)}
-                    >
-                      {busyAction === `f-${d.id}` ? '…'
-                        : d.solde?.tranches_facturees > 0 ? '🧾 Générer la facture'
-                          : '🧾 Facturer par tranches (acompte…)'}
-                    </Button>
+                    {porteFacturation(d) !== 'aucune' && (
+                      <Button
+                        type="button" size="sm" variant="outline"
+                        disabled={busyAction === `f-${d.id}`}
+                        onClick={() => genererFacture(d)}
+                      >
+                        {busyAction === `f-${d.id}` ? '…'
+                          : porteFacturation(d) === 'tranche' ? '🧾 Générer la facture'
+                            : '🧾 Facturer par tranches (acompte…)'}
+                      </Button>
+                    )}
                     {d.chantier ? (
                       // CHT21(b) — span inerte devenu cliquable : deep-link
                       // réel vers la fiche chantier (patron ?id= déjà lu par
@@ -1023,7 +1035,10 @@ export default function DevisTab({
                             className="gen-hint" title="Voir le chantier">
                         🏗 {d.chantier.reference}
                       </Link>
-                    ) : (
+                    ) : d.is_active !== false && (
+                      // ACHT5 — seule la tête de chaîne active propose la
+                      // création : une version remplacée (is_active=false)
+                      // n'a jamais de chantier à elle.
                       <Button
                         type="button" size="sm" variant="outline"
                         disabled={busyAction === `c-${d.id}`}
