@@ -9,6 +9,7 @@ import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import RendezVous from '../src/pages/rendez-vous.astro';
 import Societe from '../src/pages/societe.astro';
+import Solarbow from '../src/pages/solarbow.astro';
 import { CLES_CHAMPS, POT_DE_MIEL } from '../src/lib/rdv/champs';
 import { LEGAL_COMPLET } from './fixtures/legal-complet';
 import { AFFIRMATIONS } from '../src/lib/claims';
@@ -65,6 +66,55 @@ describe('YBW64 — Sur mesure', () => {
 
   it('aucun client cité, aucun délai ni prix', () => {
     expect(texte(p)).not.toMatch(/\bclients?\b|\bdélais?\b|\bsemaines?\b|\bjours?\b|\bprix\b/i);
+  });
+});
+
+/** Modules affichés d'une page produit. */
+const modulesDe = (doc: Document) => [...doc.querySelectorAll('[data-module]')].map((m) => m.getAttribute('data-module'));
+/** Ce que la page produit ne doit JAMAIS dire (D-YBW-8, YBW92 GATED). */
+const NON_PUBLIABLES_SB = /signature [ée]lectronique|factur-?x|paiement en ligne|monitoring|suivi de production|agent (sql|de requ)|s[ée]curit[ée]|h[ée]bergement|automatique|[ée]conomies|\btarifs?\b/i;
+
+describe('YBW62 — SolarBow', () => {
+  const p = pageRendue(PAGES.solarbow.fr);
+  it('à qui c’est destiné, interface en français, phrase D-YBW-9, quatre modules depuis le registre', () => {
+    expect(p.document.querySelector('h1')?.textContent).toBe(texteAffirmation('SB-POUR-QUI', 'fr'));
+    expect(modulesDe(p.document)).toEqual(['prospects', 'calepinage', 'dossiers', 'devis']);
+    expect(affirmationsDe(p)).toEqual([
+      'SB-POUR-QUI',
+      'SB-INTERFACE-FR',
+      'SB-ENTREPRISE-REELLE',
+      'SB-CRM',
+      'SB-WHATSAPP-LIEN',
+      'SB-CALEPINAGE-3D',
+      'SB-PENTE-IGN',
+      'SB-PACKS-FR',
+      'SB-DEVIS-PDF',
+      'YB-REPONSE-HUMAINE',
+    ]);
+  });
+
+  it('jamais : signature électronique, Factur-X, paiement en ligne, suivi, agent, sécurité, hébergement, « automatique », économies', () => {
+    expect(texte(p)).not.toMatch(NON_PUBLIABLES_SB);
+    expect(NON_PUBLIABLES_SB.test('Relances WhatsApp automatiques')).toBe(true);
+  });
+
+  it('captures avec légende ; appels avec produit=solarbow', () => {
+    expect([...p.document.querySelectorAll('figure[data-capture]')].map((f) => f.getAttribute('data-capture'))).toEqual([
+      'crm-pipeline',
+      'calepinage-3d',
+      'packs-reglementaires',
+      'proposition-pdf',
+    ]);
+    const liens = appels(p);
+    expect(liens.length).toBeGreaterThanOrEqual(2);
+    for (const l of liens) expect(l).toBe('/rendez-vous/?produit=solarbow');
+  });
+
+  it('un module sans affirmation publiable disparaît (fixture)', async () => {
+    const registre = AFFIRMATIONS.map((a) => (a.id === 'SB-PACKS-FR' ? { ...a, publiable: false } : a));
+    const container = await AstroContainer.create();
+    const doc = new JSDOM(await container.renderToString(Solarbow, { props: { locale: 'fr', registre } })).window.document;
+    expect(modulesDe(doc)).toEqual(['prospects', 'calepinage', 'devis']);
   });
 });
 

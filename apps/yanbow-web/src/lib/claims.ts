@@ -184,6 +184,41 @@ export const AFFIRMATIONS: Affirmation[] = [
     preuves: [`${PLAN}:110`],
     verifie_a_sha: SHA,
   },
+  // ── SolarBow — page produit (YBW62) ─────────────────────────────────────────
+  {
+    id: 'SB-POUR-QUI',
+    produit: 'solarbow',
+    texte_fr: 'Le logiciel des installateurs solaires, du premier contact à la proposition commerciale.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [
+      'backend/django_core/apps/crm/models.py:520',
+      'backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py:49',
+      `${PLAN}:60`,
+    ],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'SB-INTERFACE-FR',
+    produit: 'solarbow',
+    texte_fr: 'L’interface est en français.',
+    statut: 'construit',
+    france: 'oui',
+    publiable: true,
+    preuves: [`${PLAN}:103`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'SB-WHATSAPP-LIEN',
+    produit: 'solarbow',
+    texte_fr: 'Une relance WhatsApp s’ouvre en un clic ; c’est l’installateur qui envoie le message.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['frontend/src/features/crm/relances/PanneauProposerVisite.jsx:73'],
+    verifie_a_sha: SHA_PAGES,
+  },
   // ── Sur mesure (YBW64) ──────────────────────────────────────────────────────
   {
     id: 'SM-OFFRE',

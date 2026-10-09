@@ -1,6 +1,19 @@
 {
   "gabarit": "og-1",
   "images": {
+    "solarbow.fr": {
+      "fichier": "solarbow-fr-744a5ce88c.png",
+      "titre": "SolarBow — le logiciel des installateurs solaires",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 144
+      },
+      "tient": true
+    },
     "surMesure.fr": {
       "fichier": "surMesure-fr-282ae3c275.png",
       "titre": "Logiciel sur mesure — YanBow",

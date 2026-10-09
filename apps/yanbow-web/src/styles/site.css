@@ -407,7 +407,7 @@ p {
     align-items: start;
   }
 
-  .hero-intro {
+  .hero-bas .hero-intro {
     grid-column: 6 / span 6;
   }
 
@@ -647,14 +647,28 @@ p {
 
 .bande-nuit h1,
 .bande-nuit h2 {
-  max-inline-size: 18ch;
-  font-size: clamp(2.5rem, 1.3rem + 4.4vw, 4.75rem);
+  max-inline-size: 20ch;
+  font-size: clamp(2.25rem, 1.2rem + 2.8vw, 3.75rem);
   line-height: 1.02;
   letter-spacing: -0.03em;
 }
 
 .bande-nuit .hero-intro {
   color: var(--nuit-attenue);
+}
+
+.bande-nuit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-4) var(--espace-6);
+  margin-block-start: var(--espace-2);
+}
+
+.bande-nuit-actions .bouton {
+  min-block-size: 56px;
+  padding-inline: var(--espace-8);
+  font-size: var(--texte-base);
 }
 
 .bande-nuit .capture-cadre {

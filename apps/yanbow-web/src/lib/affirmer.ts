@@ -28,3 +28,12 @@ export function texteAffirmation(id: string, locale: Locale): string {
 export function publiables(ids: readonly string[], registre: readonly Affirmation[] = AFFIRMATIONS): string[] {
   return ids.filter((id) => registre.find((a) => a.id === id)?.publiable === true);
 }
+
+/** Un module de page produit : un titre, ses affirmations, sa capture éventuelle (YBW62/YBW63). */
+export interface Module {
+  id: string;
+  titre: string;
+  affirmations: readonly string[];
+  /** Identifiant d'écran du kit YBW41 (`ECRANS_PRODUIT`). */
+  ecran?: string;
+}
