@@ -308,7 +308,8 @@ perte ⇒ 5) ; à égalité l'argent puis la sortie client d'abord. Les statuts 
 3. **Plusieurs propriétaires** → la tâche est SCINDÉE en moitiés mono-propriétaire : contrat / M0 d'abord (seul sur `main`),
    l'autre moitié `@after`. `PLAN_AUDIT_TRANSVERSE.md` n'accepte que les déplacements SPL atomiques tagués
    `(@atomique: <propriétaires>)` (règle (d) de `check_ownership.py`, AMET) ; il ne tourne jamais en parallèle d'un plan dont
-   il touche un propriétaire.
+   il touche un propriétaire. Transition : jusqu'à la PR 2 de fusion (D-OWN-FUSION), les tâches
+   {crm, lead} y restent admises (règle (d) en mode rapport) et y portent la mention de leur destination.
 4. **Chemin sans propriétaire** → corriger le registre dans la PR ; app parquée → pas de tâche.
 5. Les pistes sans fichiers (totaux, pdf, performance) sont des LENTILLES (§D.1), pas des unités.
 6. Les tâches d'un groupe gardent le **préfixe de l'unité auditée**, quel que soit le fichier où elles atterrissent ; le registre
