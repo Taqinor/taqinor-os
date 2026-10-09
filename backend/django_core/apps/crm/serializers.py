@@ -1073,6 +1073,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # jamais `None`, quand l'annotation est absente (un `retrieve` servi par
     # un autre queryset ne doit pas afficher un trou).
     nb_tentatives = serializers.SerializerMethodField()
+    # ACAL249 — LE repère toit du lead (pin, source, contour_utilisable),
+    # calculé par ``crm.selectors.repere_toit`` (QJR598) — lecture seule,
+    # jamais recopié ni accepté en écriture (contrat lead_repere_toit.json).
+    repere_toit = serializers.SerializerMethodField()
     # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
     # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
     # seul il n'autorise RIEN — il déclenche seulement la vérification
@@ -1675,6 +1679,19 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def get_nb_tentatives(self, obj) -> int:
         """MRY20 — lit l'annotation ; 0 par défaut, jamais une requête."""
         return int(getattr(obj, 'nb_tentatives', 0) or 0)
+
+    @extend_schema_field(serializers.DictField())
+    def get_repere_toit(self, obj):
+        """ACAL249 — ``{pin: {lat, lng} | None, source, contour_utilisable}``
+        par le sélecteur unique ``repere_toit`` (calcul pur, aucune requête).
+        Le pin est une coordonnée du domicile : masqué (``None``) comme le GPS
+        pour un rôle sans ``client_pii_voir``."""
+        from .selectors import repere_toit
+        pin, source, utilisable = repere_toit(obj)
+        if pin is not None and self._pii_masked():
+            pin = None
+        return {'pin': pin, 'source': source,
+                'contour_utilisable': bool(utilisable)}
 
     def get_touche_en_retard(self, obj) -> bool:
         """MRY5 — une touche de cadence est-elle ÉCHUE sur ce lead ?
