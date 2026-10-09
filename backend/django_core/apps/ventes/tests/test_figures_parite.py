@@ -475,7 +475,12 @@ class FiguresPariteSurfacesTests(_DevisReelMixin, TestCase):
                                   'production_annuelle': int(annuel),
                                   'production_source': 'calepinage'})
                 devis = self._devis('acal_production', spec)
-                Devis.objects.filter(pk=devis.pk).update(roof_layout={
+                # AMOT15 (C-AMOT-013) — aux règles CORRIGÉES, une production
+                # posée par le calepinage n'est plus recopiée (le moteur devis
+                # la calcule, D-ACAL-6). Le recalage ACAL102 est le chemin
+                # des règles d'ORIGINE (``regles_calcul = 1``), intact : c'est
+                # lui que ce test garde.
+                Devis.objects.filter(pk=devis.pk).update(regles_calcul=1, roof_layout={
                     'scenario': 'reseau', 'panelWatt': 720,
                     'result': {'panels': 8, 'kwc': 5.76,
                                'annualKwh': annuel}})
