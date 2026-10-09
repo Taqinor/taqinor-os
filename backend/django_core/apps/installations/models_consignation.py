@@ -52,7 +52,7 @@ class MaterielConsigne(models.Model):
         RETOURNE = 'retourne', 'Retourné'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_materiels_consignes')
     designation = models.CharField(max_length=255)

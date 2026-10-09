@@ -29,13 +29,13 @@ class RetenueGarantieSousTraitant(models.Model):
     dérivé du montant de l'ordre × pourcentage. Montants INTERNES."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_retenues_garantie')
     # Une retenue porte sur UN ordre de travaux. CASCADE : la retenue n'a pas de
     # sens sans son ordre.
     ordre = models.ForeignKey(
-        'installations.OrdreSousTraitance', on_delete=models.CASCADE,
+        'installations.OrdreSousTraitance', on_delete=models.CASCADE,  # on_delete: RetenueGarantieSousTraitant est le détail de OrdreSousTraitance — n'existe pas sans lui
         related_name='retenues_garantie')
     # Pourcentage retenu (0–100). DecimalField : on retient parfois 7,5 %.
     pourcentage = models.DecimalField(

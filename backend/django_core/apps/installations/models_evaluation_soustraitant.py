@@ -26,13 +26,13 @@ class EvaluationSousTraitant(models.Model):
     moyenne des trois axes (propriété dérivée)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_evaluations_sous_traitant')
     # DC34 — le sous-traitant est un stock.Fournisseur(type='service') ; FK
     # CHAÎNE (jamais d'import de apps.stock.models).
     sous_traitant = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.CASCADE,
+        'stock.Fournisseur', on_delete=models.CASCADE,  # on_delete: EvaluationSousTraitant est le détail de Fournisseur — n'existe pas sans lui
         related_name='installations_evaluations')
     # Prestation notée (optionnelle) : ordre de travaux et/ou chantier.
     ordre = models.ForeignKey(

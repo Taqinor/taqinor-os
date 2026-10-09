@@ -26,10 +26,10 @@ class RetourLivraison(models.Model):
         VALIDE = 'valide', 'Validé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='retours_livraison')
     livraison = models.ForeignKey(
-        Livraison, on_delete=models.CASCADE, related_name='retours')
+        Livraison, on_delete=models.CASCADE, related_name='retours')  # on_delete: RetourLivraison est le détail de Livraison — n'existe pas sans lui
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
     motif = models.TextField(blank=True, null=True)
@@ -61,7 +61,7 @@ class RetourLivraisonLigne(models.Model):
     (plafonnée ≤ quantité livrée à la création, vérifié au service)."""
 
     retour = models.ForeignKey(
-        RetourLivraison, on_delete=models.CASCADE, related_name='lignes')
+        RetourLivraison, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de RetourLivraison — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+')

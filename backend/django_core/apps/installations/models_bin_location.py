@@ -23,11 +23,11 @@ class BinLocation(models.Model):
     rangement guidé (FG320) et d'ordonnancement des prélèvements (FG321)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_bin_locations')
     emplacement = models.ForeignKey(
-        'stock.EmplacementStock', on_delete=models.CASCADE,
+        'stock.EmplacementStock', on_delete=models.CASCADE,  # on_delete: BinLocation est le détail de EmplacementStock — n'existe pas sans lui
         related_name='installations_bin_locations')
     code = models.CharField(
         max_length=40,
@@ -80,13 +80,13 @@ class BinAffectation(models.Model):
     de saisie initiale. Le total canonique reste `stock.EmplacementStock`."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_bin_affectations')
     bin = models.ForeignKey(
-        BinLocation, on_delete=models.CASCADE, related_name='affectations')
+        BinLocation, on_delete=models.CASCADE, related_name='affectations')  # on_delete: BinAffectation est le détail de BinLocation — n'existe pas sans lui
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: BinAffectation est le détail de Produit — n'existe pas sans lui
         related_name='installations_bin_affectations')
     quantite = models.PositiveIntegerField(default=0)
     date_creation = models.DateTimeField(auto_now_add=True)
