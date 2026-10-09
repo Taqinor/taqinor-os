@@ -221,9 +221,9 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
     """
     from ..models import Devis
     from apps.ventes.utils.company_settings import create_numbered
-    from apps.crm.models import Client
+    from apps.crm.selectors import client_base_qs  # ADEV56
 
-    client = Client.objects.get(pk=client_id, company=company)
+    client = client_base_qs(company).get(pk=client_id)
 
     def _create(ref):
         return Devis.objects.create(

@@ -331,6 +331,13 @@ LIBELLES = {
         'fr': "Gris : votre besoin par jour ; bleu : l'eau livrée par jour.",
         'en': 'Grey: your daily need; blue: water delivered per day.',
         'ar': 'الرمادي: حاجتكم اليومية؛ الأزرق: الماء المضخوخ يوميا.'},
+    # AMOT44 — légende quand le besoin est le besoin AGRONOMIQUE PLEIN
+    # (FAO-56) et non une nature déclarée ; ``{phrase}`` =
+    # ``agricole.mentions.PHRASES_PROVENANCE['agronomique']``.
+    'agr_base_besoin_agronomique': {
+        'fr': "Gris : {phrase} par jour ; bleu : l'eau livrée par jour.",
+        'en': 'Grey: {phrase} per day; blue: water delivered per day.',
+        'ar': 'الرمادي: {phrase} يوميا؛ الأزرق: الماء المضخوخ يوميا.'},
     'agr_mois_serre': {'fr': 'Mois le plus serré : <b>{mois}</b>.',
                        'en': 'Tightest month: <b>{mois}</b>.',
                        'ar': 'الشهر الأصعب: <b>{mois}</b>.'},

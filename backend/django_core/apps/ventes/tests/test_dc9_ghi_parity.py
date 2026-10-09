@@ -2,14 +2,12 @@
 
 La table d'irradiance GHI mensuelle était dupliquée entre
 ``quote_engine/constants.py`` (source Python unique) et ``solar.js`` (miroir
-front). Ce test lit la table du JS et la compare à la constante Python, et
-vérifie que le productible de RÉFÉRENCE documenté (constants.PRODUCTIBLE_DEFAUT)
-est aligné sur le défaut CompanyProfile.productible_kwh_kwc.
+front). Ce test lit la table du JS et la compare à la constante Python.
+AMOT47 — la troisième copie du productible de référence (une constante sans
+lecteur) a été supprimée : le repère est CompanyProfile.productible_kwh_kwc.
 """
 import os
 import re
-
-from decimal import Decimal
 
 from django.test import SimpleTestCase
 
@@ -43,12 +41,8 @@ class TestDC9GhiParity(SimpleTestCase):
                 py, js, places=2,
                 msg=f"GHI[{i}] diverge : Python {py} ≠ solar.js {js}")
 
-    def test_productible_default_aligns_with_company_profile(self):
-        # DC9 — le productible de référence documenté suit le défaut du profil.
-        from apps.parametres.models import CompanyProfile
-        field = CompanyProfile._meta.get_field('productible_kwh_kwc')
-        self.assertEqual(
-            Decimal(str(constants.PRODUCTIBLE_DEFAUT)),
-            Decimal(str(field.default)),
-            "constants.PRODUCTIBLE_DEFAUT doit égaler le défaut "
-            "CompanyProfile.productible_kwh_kwc (source canonique).")
+    def test_productible_constante_morte_retiree(self):
+        # AMOT47 — ``constants.PRODUCTIBLE_DEFAUT`` (troisième copie du 1600,
+        # sans lecteur) est SUPPRIMÉE : le repère canonique reste
+        # ``CompanyProfile.productible_kwh_kwc``.
+        self.assertFalse(hasattr(constants, 'PRODUCTIBLE_DEFAUT'))

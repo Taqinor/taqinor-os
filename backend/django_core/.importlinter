@@ -854,17 +854,3 @@ forbidden_modules =
 # chaque ligne retiree par ADEV56 doit sortir d'ici (import-linter refuse une
 # exception sans correspondance : "No matches for ignored import").
 ignore_imports =
-    apps.ventes.domain.creation -> apps.crm.models
-    apps.ventes.domain.imports -> apps.crm.models
-    apps.ventes.domain.recouvrement -> apps.crm.models
-    apps.ventes.views.credit_warning -> apps.crm.models
-    apps.ventes.views.liste_prix -> apps.crm.models
-    apps.ventes.domain.bordereau -> apps.stock.models
-    apps.ventes.domain.catalogue -> apps.stock.models
-    apps.ventes.domain.facturation_ops -> apps.stock.models
-    apps.ventes.domain.imports -> apps.stock.models
-    apps.ventes.domain.lignes -> apps.stock.models
-    apps.ventes.offres_tailles -> apps.stock.models
-    apps.ventes.serializers -> apps.stock.models
-    apps.ventes.tasks -> apps.stock.models
-    apps.ventes.views.liste_prix -> apps.stock.models

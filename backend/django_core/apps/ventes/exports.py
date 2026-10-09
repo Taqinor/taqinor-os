@@ -5,7 +5,7 @@ sur la période, avec sa TVA par ligne ; (2) Résumé TVA = HT/TVA/TTC répartis
 par taux (10 % / 20 %…), réconciliés au centime, + totaux. Lecture seule,
 borné à la société. openpyxl (pré-approuvé). Groundwork DGI (per-ligne + ICE).
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.http import HttpResponse
@@ -44,6 +44,28 @@ def facture_par_taux(facture):
         entree['ht'] += _q2(bucket.get('base_ht') or 0)
         entree['tva'] += _q2(bucket.get('montant') or 0)
     return par_taux, _q2(facture.total_ttc)
+
+
+def paniers_figes(facture):
+    """AFAC52 (C-AFAC-045) — une facture SANS lignes (tranche, contrat
+    récurrent) ventilée par ses taux RÉELS (``facture_par_taux`` : sa
+    ``ventilation_tva`` posée par ATOT6/CIQ215, sinon son taux unique) —
+    jamais un panier au « taux mélangé » (16,62 %). Renvoie ``[(taux, ht,
+    tva, ttc)]`` dont la somme TTC égale ``facture.total_ttc`` au centime (le
+    dernier panier absorbe l'écart d'arrondi)."""
+    par_taux, ttc_total = facture_par_taux(facture)
+    paniers = []
+    cumul = Decimal('0')
+    taux_tries = sorted(par_taux)
+    for i, taux in enumerate(taux_tries):
+        ht = _q2(par_taux[taux]['ht'])
+        tva = _q2(par_taux[taux]['tva'])
+        ttc = _q2(ht + tva)
+        if i == len(taux_tries) - 1:
+            ttc = _q2(ttc_total - cumul)
+        cumul += ttc
+        paniers.append((taux, ht, tva, ttc))
+    return paniers
 
 
 def lignes_ventilees(facture):
@@ -96,13 +118,20 @@ def lignes_ventilees(facture):
 
 def period_bounds(params):
     """Calcule (debut, fin) depuis ?month=YYYY-MM, ?quarter=YYYY-Q ou
-    ?start=&end=. Défaut : mois courant."""
+    ?start=&end=. Défaut : mois courant.
+
+    Forme INTERNE : ``[debut, fin[`` (``fin`` exclue). AFAC51 (C-AFAC-044) —
+    la « Date de fin » saisie à l'écran (``end``) est INCLUSIVE pour
+    l'utilisateur : ``end=2026-09-30`` couvre le 30/09, donc ``fin`` = end +
+    1 jour. ``?month=2026-09`` et ``start=2026-09-01&end=2026-09-30``
+    donnent exactement les mêmes lignes."""
     month = params.get('month')
     quarter = params.get('quarter')
     start = params.get('start')
     end = params.get('end')
     if start and end:
-        return date.fromisoformat(start), date.fromisoformat(end)
+        return (date.fromisoformat(start),
+                date.fromisoformat(end) + timedelta(days=1))
     if month:
         y, m = (int(x) for x in month.split('-'))
         debut = date(y, m, 1)
@@ -182,22 +211,21 @@ def export_journal_ventes(company, debut, fin):
             # fichier (`_compta_rows`, `_grand_livre_rows`) avaient déjà ce
             # filet ; seul le journal ne l'avait pas. Montants figés lus sur
             # les propriétés du document, qui gèrent ce cas.
-            ht = _q2(f.total_ht)
-            taux = Decimal(f.taux_tva or 0)
-            tva = _q2(f.total_tva)
-            ttc = _q2(f.total_ttc)
-            ws.append([
-                f.reference, date_f, type_libelle, nom, ice,
-                f.libelle or type_libelle or 'Facture', '', '',
-                float(ht), float(taux), float(tva), float(ttc),
-            ])
-            bucket = par_taux.setdefault(
-                taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
-            bucket['ht'] += ht
-            bucket['tva'] += tva
-            tot_ht += ht
-            tot_tva += tva
-            tot_ttc += ttc
+            # AFAC52 — une ligne PAR TAUX réel (ventilation de la tranche),
+            # jamais le taux mélangé d'en-tête.
+            for taux, ht, tva, ttc in paniers_figes(f):
+                ws.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    f.libelle or type_libelle or 'Facture', '', '',
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                bucket = par_taux.setdefault(
+                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+                bucket['ht'] += ht
+                bucket['tva'] += tva
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
 
     # Avoirs (notes de crédit) émis sur la période : lignes NÉGATIVES pour
     # réconcilier le CA. Ventilés par taux (10/20) comme les factures, et
@@ -297,19 +325,17 @@ def _compta_rows(company, debut, fin):
                 tot_tva += tva
                 tot_ttc += ttc
         else:
-            # Facture de tranche sans lignes : montants figés (un seul taux).
-            ht = _q2(f.total_ht)
-            taux = Decimal(f.taux_tva or 0)
-            tva = _q2(f.total_tva)
-            ttc = _q2(f.total_ttc)
-            rows.append([
-                f.reference, date_f, type_libelle, nom, ice,
-                type_libelle or 'Facture', '', '',
-                float(ht), float(taux), float(tva), float(ttc),
-            ])
-            tot_ht += ht
-            tot_tva += tva
-            tot_ttc += ttc
+            # Facture de tranche sans lignes : montants figés. AFAC52 — une
+            # ligne PAR TAUX réel (ventilation), jamais le taux mélangé.
+            for taux, ht, tva, ttc in paniers_figes(f):
+                rows.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    type_libelle or 'Facture', '', '',
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
     return rows, (tot_ht, tot_tva, tot_ttc)
 
 

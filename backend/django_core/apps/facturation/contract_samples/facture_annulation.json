@@ -1,0 +1,36 @@
+{
+  "endpoint": "POST /api/django/ventes/factures/<int:pk>/annuler/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Refus `directive_acompte_requise` pas encore servi : la tâche backend AFAC12 le produit (D-AFAC-C5, option a) et remet `forme_serveur: complete` ; l'écran AFAC13 envoie la directive.",
+  "pourquoi": "AFAC1 (C-AFAC-002, D-AFAC-C5 option a) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Une facture qui porte de l'argent (paiements directs, avances ventilées, retenues subies, note de débit ou avoir actifs) ne s'annule JAMAIS sans dire où va cet argent : sans directive `acompte`, le serveur refuse en 400 avec `code: \"directive_acompte_requise\"` et nomme l'argent rattaché ; l'écran impose alors le choix « transférer » (vers une autre facture du même devis) ou « rembourser » (contre-passation). La directive FG50 existe déjà côté serveur ; l'écran ne l'envoyait jamais. Montants en texte décimal.",
+  "requete": {
+    "acompte": {
+      "action": "transferer",
+      "facture_cible": 121
+    }
+  },
+  "requete_rembourser": {
+    "acompte": {
+      "action": "rembourser"
+    }
+  },
+  "exemple": {
+    "id": 118,
+    "reference": "FAC-2026-10-0007",
+    "statut": "annulee",
+    "statut_display": "Annulée",
+    "montant_paye": "0.00",
+    "montant_du": "0.00"
+  },
+  "exemple_refus": {
+    "code": "directive_acompte_requise",
+    "detail": "Cette facture porte de l'argent (45000.00 MAD encaissés) : choisissez de le transférer vers une autre facture du devis ou de le rembourser avant d'annuler.",
+    "argent_rattache": {
+      "paiements": "45000.00",
+      "affectations": "0.00",
+      "notes_debit": "0.00",
+      "retenues": "0.00",
+      "avoirs_actifs": "0.00"
+    }
+  }
+}

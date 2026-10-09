@@ -176,13 +176,11 @@ def _ligne_revente(argent, fmt, L, langue):
     valeur = _num(revente.get("valeur_mad_an"))
     if not valeur:
         return ""
-    mentions = [m for m in revente.get("mentions") or [] if m]
-    if langue != "fr":
-        # CIQ345 — les mentions servies sont françaises : la langue du
-        # document lit la MÊME table trilingue (CIQ305).
-        from ..ci.mentions import TEXTES_82_21, TEXTES_ART13, texte
-        mentions = [texte(TEXTES_82_21, langue) + ".",
-                    texte(TEXTES_ART13, langue) + "."]
+    # AMOT40 (C-AMOT-049) — CHAQUE mention servie, dans la langue du
+    # document (table trilingue ``ci.mentions``) : plus jamais deux mentions
+    # seulement en anglais, « non garanti » compris.
+    from ..ci.mentions import mentions_revente
+    mentions = mentions_revente(revente.get("mentions"), langue)
     mention = (f' <span class="i2-mini">{" ".join(mentions)}</span>'
                if mentions else "")
     return (f'<div class="i2-inj"><b>+ {fmt(valeur)} '
@@ -203,6 +201,19 @@ def _p90_bancable(d):
     la dispersion du moteur, aucune nouvelle), ou None. Permise sur le PDF,
     jamais dans la charge utile publique (``_sans_internes_bancables``)."""
     bank = (d.get("etude") or {}).get("bankable")
+    # AMOT35 — une P90 n'est imprimée que si la simulation décrit le champ
+    # VENDU et reste cohérente avec la production imprimée (LA règle
+    # partagée avec le legacy, ``bankable.bankable_imprimable``) ; sinon
+    # omise, motif dit en interne.
+    from ..bankable import bankable_imprimable
+    if bank:
+        ok, motif = bankable_imprimable(
+            bank, d.get("ind_kwc") or d.get("puissance_kwc"),
+            d.get("ind_prod"))
+        if not ok:
+            if motif and motif not in (d.get("avertissements_internes") or []):
+                d.setdefault("avertissements_internes", []).append(motif)
+            return None
     pr = bank.get("pr") if isinstance(bank, dict) else None
     return _num((pr or {}).get("p90_kwh")) if isinstance(pr, dict) else None
 

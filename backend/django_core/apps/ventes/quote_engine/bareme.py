@@ -37,7 +37,7 @@ CE QUE LES FACTURES TRANCHENT (des questions qui traînaient « à confirmer »)
 * Le timbre de 0,25 % est bien un FRAIS DE MODE DE PAIEMENT (espèces) et non
   une composante du kWh : exclu du calcul, comme prévu.
 
-CE QUE LES FACTURES ONT CORRIGÉ (voir :data:`DIVERGENCES_PRICING`) : la
+CE QUE LES FACTURES ONT CORRIGÉ (journal des divergences, plus bas) : la
 tranche 5 2026 vaut 1,381704 TTC. Le repo avait extrapolé le passage de TVA
 18 → 20 % « à HT constant » et affichait 1,405116 (valeur HISTORIQUE, plus
 nulle part dans l'ERP depuis D5) ; la facture A montre que c'est le TTC qui est
@@ -100,7 +100,7 @@ MILLESIME_COURANT = 2026
 #     TTC monte mécaniquement.
 # Les deux ne peuvent pas être vrais en même temps. Pour les tranches sans
 # facture 2026, on GARDE la valeur actuelle du repo (aucun chiffre ne bouge
-# sans preuve) et on note l'alternative. Voir :data:`DIVERGENCES_PRICING`.
+# sans preuve) et on note l'alternative (journal des divergences).
 
 #: Barème 2025 — TTC. Les tranches 5 et 6 sont PROUVÉES par les factures C et B.
 TRANCHES_2025 = TrancheTable(
@@ -126,48 +126,24 @@ TRANCHES_2026 = TrancheTable(
         (500, 1.381704),    # PROUVÉ facture A : 1,15142 HT × 1,20. Valeur de
                             # RÉFÉRENCE : depuis D5 (29/08/2026) tout l'ERP
                             # l'a rejointe (elle-même n'a jamais bougé).
-        (None, 1.622856),   # CONFLIT — voir DIVERGENCES_PRICING
+        (None, 1.622856),   # CONFLIT — voir le journal des divergences
     ],
     selective_threshold=150,
     boundary_tolerance=10,
 )
 
-#: Ce que le moteur CJ2a calcule DIFFÉREMMENT de ``pricing.ONEE_TRANCHES``, et
-#: pourquoi. Rendu tel quel dans le bloc d'étude pour que l'écart soit VISIBLE
-#: et non enfoui. Un test épingle cette liste : elle ne peut pas dériver en
-#: silence. Le jour où le fondateur propage une correction dans ``pricing.py``,
-#: l'entrée passe de ``corrigé`` (écart actif) à ``propagé`` (écart résorbé) —
-#: EXPRÈS, jamais en silence : c'est ce qui vient d'arriver à T5 (D5, 29/08).
-DIVERGENCES_PRICING = (
-    {
-        'tranche': '311-510 kWh (T5), millésime 2026',
-        'valeur_moteur': 1.381704,
-        'valeur_pricing': 1.381704,
-        'statut': 'propagé',
-        'preuve': "facture SRM n° 643769639 du 08/05/2026 : 359 kWh × "
-                  "1,15142 HT = 413,36 HT / 496,03 TTC. Corroboré par la "
-                  "facture du 20/01/2026 (T5 2025 = 1,3817 TTC) : le TTC est "
-                  "resté CONSTANT au passage TVA 18 → 20 %, le HT a baissé. "
-                  "Le repo avait supposé l'inverse (HT constant) et affichait "
-                  "1,405116. DÉCISION FONDATEUR D5 (29/08/2026) : tout le "
-                  "périmètre ERP (pricing.ONEE_TRANCHES, "
-                  "parametres.DEFAULT_RESIDENTIAL_TIERS, le miroir JS "
-                  "solar.js) est aligné sur 1,381704 — l'écart est RÉSORBÉ, "
-                  "il n'y a plus qu'une seule valeur T5 côté ERP.",
-    },
-    {
-        'tranche': '> 510 kWh (T6), millésime 2026',
-        'valeur_moteur': 1.622856,
-        'valeur_pricing': 1.622856,
-        'statut': 'conflit_non_tranché',
-        'preuve': "AUCUNE facture T6 de 2026 disponible. Le 1,622856 du repo "
-                  "se dit « ancré sur facture réelle » (HT 1,35238 × 1,20) ; "
-                  "mais le mécanisme PROUVÉ sur T5 (TTC constant) donnerait "
-                  "1,5958. Les deux valeurs sont plausibles et incompatibles. "
-                  "On GARDE la valeur du repo (ne rien bouger sans preuve) — "
-                  "À TRANCHER sur la prochaine facture T6 2026.",
-    },
-)
+# JOURNAL DES DIVERGENCES avec ``pricing.ONEE_TRANCHES`` (AMOT47 : l'ancien
+# tuple ``DIVERGENCES_PRICING`` n'avait AUCUN lecteur hors de ses tests — il se
+# disait « rendu dans le bloc d'étude », ce qui était faux ; il devient ce
+# commentaire daté, sans perte d'information) :
+#   · T5 (311-510 kWh), millésime 2026 — 1,381704 côté moteur ET pricing :
+#     PROPAGÉ (décision fondateur D5, 29/08/2026). Preuve : facture SRM
+#     n° 643769639 du 08/05/2026 (359 kWh × 1,15142 HT = 413,36 HT / 496,03
+#     TTC), corroborée par la facture du 20/01/2026 (TTC constant au passage
+#     TVA 18 → 20 %).
+#   · T6 (> 510 kWh), millésime 2026 — 1,622856 : CONFLIT NON TRANCHÉ. Aucune
+#     facture T6 2026 ; le mécanisme prouvé sur T5 donnerait 1,5958. On garde
+#     la valeur du repo — À TRANCHER sur la prochaine facture T6 2026.
 
 #: Taux de TVA PAR LIGNE et par millésime — relevés sur les factures.
 #: La TPPAN n'y figure pas : son barème produit directement un montant TTC

@@ -314,4 +314,7 @@ class ComportementPublicTests(TestCase):
         self.assertTrue(
             attendu, 'golden de comportement non capturé : lancer une fois '
             'SPLIT_GOLDEN_CAPTURE=1 sur ce module (voir la docstring)')
+        # CI #898 — un écart doit NOMMER ses scénarios dans le log CI (sans
+        # base locale, c'est la seule façon de savoir lesquels recapturer).
+        self.maxDiff = None
         self.assertEqual(digests, attendu)

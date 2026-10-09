@@ -579,12 +579,12 @@ def task_resync_devis_apres_produit_modifie(produit_id, company_id, champs,
     """
     from authentication.models import Company
 
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
 
     from .services import resynchroniser_devis_pour_produit
 
     company = Company.objects.filter(pk=company_id).first()
-    produit = Produit.objects.filter(pk=produit_id).first()
+    produit = produits_qs().filter(pk=produit_id).first()
     if company is None or produit is None:
         logger.info('task_resync_devis_apres_produit_modifie: produit %s / '
                     'société %s introuvable — rien à faire.',

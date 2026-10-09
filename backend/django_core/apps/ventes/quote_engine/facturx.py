@@ -32,7 +32,12 @@ n'est pas vendu.
 
 LE CONTRAT D'ENTRÉE est un dictionnaire PLAT (aucun modèle Django importé) que
 l'appelant construit depuis sa facture ; voir :data:`CHAMPS_REQUIS` et
-``construire_xml``. Aucun prix d'achat, aucune marge n'y a sa place : le
+``construire_xml``. AMOT71 — deux clés FACULTATIVES le complètent :
+``remise_ht`` (remise globale HT DÉCLARÉE : Σ lignes = ``total_ht`` +
+``remise_ht``, imprimée en ``AllowanceTotalAmount``) et ``acompte`` (déjà
+versé : ``net_a_payer`` = ``total_ttc`` − ``acompte``, imprimé en
+``TotalPrepaidAmount``) ; un zéro (``Decimal('0.00')``) est une valeur, seuls
+``None`` / ``''`` sont absents. Aucun prix d'achat, aucune marge n'y a sa place : le
 constructeur ne lit que les clés qu'il connaît, et rien d'autre ne peut
 traverser.
 """
@@ -214,6 +219,41 @@ def _verifier_coherence(facture, buckets):
         raise DonneesFacturxInvalides(
             f'la répartition de TVA totalise {somme_tva}, la facture annonce '
             f'{tva}')
+    # AMOT71 (C-AMOT-041) — BR-CO-10/13 : Σ des lignes = total HT + remise
+    # DÉCLARÉE (``remise_ht``) ; sans déclaration, l'écart est une
+    # contradiction, jamais une remise devinée.
+    lignes = list(facture.get('lignes') or ())
+    somme_lignes = sum((_decimal(li.get('montant_ht'),
+                                 f'lignes[{i}].montant_ht')
+                        for i, li in enumerate(lignes)), Decimal('0'))
+    remise = (_decimal(facture['remise_ht'], 'remise_ht')
+              if not _absent(facture.get('remise_ht')) else Decimal('0'))
+    if abs(somme_lignes - (ht + remise)) > centime:
+        raise DonneesFacturxInvalides(
+            f'les lignes totalisent {somme_lignes}, la facture annonce '
+            f'{ht} HT + remise déclarée {remise}')
+    # BR-CO-16 : net à payer = TTC − acompte DÉCLARÉ (``acompte``).
+    acompte = (_decimal(facture['acompte'], 'acompte')
+               if not _absent(facture.get('acompte')) else Decimal('0'))
+    if not _absent(facture.get('net_a_payer')):
+        net = _decimal(facture['net_a_payer'], 'net_a_payer')
+        if abs(net - (ttc - acompte)) > centime:
+            raise DonneesFacturxInvalides(
+                f'net_a_payer ({net}) ne vaut pas total_ttc ({ttc}) − '
+                f'acompte déclaré ({acompte})')
+
+
+def _absent(valeur):
+    """AMOT71 — une valeur ABSENTE : ``None``, chaîne vide, ou conteneur
+    vide. Un ZÉRO légitime (``Decimal('0.00')``, ``0``, ``'0.00'``) est
+    une valeur, jamais une absence (exonération, facture soldée)."""
+    if valeur is None:
+        return True
+    if isinstance(valeur, str):
+        return not valeur.strip()
+    if isinstance(valeur, (dict, list, tuple)):
+        return not valeur
+    return False
 
 
 # ── Construction du XML ─────────────────────────────────────────────────────
@@ -284,7 +324,9 @@ def construire_xml(facture) -> bytes:
     """
     if not isinstance(facture, dict):
         raise DonneesFacturxInvalides('facture: dictionnaire attendu')
-    manquants = [c for c in CHAMPS_REQUIS if not facture.get(c)]
+    # AMOT71 — seuls ``None`` / ``''`` (et un conteneur vide) sont absents :
+    # ``total_tva = Decimal('0.00')`` est une exonération, pas un manque.
+    manquants = [c for c in CHAMPS_REQUIS if _absent(facture.get(c))]
     if manquants:
         raise DonneesFacturxInvalides(
             'champs requis absents : ' + ', '.join(manquants))
@@ -342,14 +384,32 @@ def construire_xml(facture) -> bytes:
                    'ram:SpecifiedTradeSettlementHeaderMonetarySummation')
     total_ht = _montant(facture['total_ht'], 'total_ht')
     total_ttc = _montant(facture['total_ttc'], 'total_ttc')
-    _sous(resume, 'ram:LineTotalAmount', total_ht)
+    # AMOT71 — BR-CO-10/13 : la somme des LIGNES, puis la remise DÉCLARÉE
+    # (``remise_ht`` → ``AllowanceTotalAmount``), puis la base taxable.
+    remise_ht = facture.get('remise_ht')
+    if _absent(remise_ht):
+        _sous(resume, 'ram:LineTotalAmount', total_ht)
+    else:
+        _sous(resume, 'ram:LineTotalAmount', _montant(
+            _decimal(facture['total_ht'], 'total_ht')
+            + _decimal(remise_ht, 'remise_ht'), 'total_lignes'))
+        _sous(resume, 'ram:AllowanceTotalAmount',
+              _montant(remise_ht, 'remise_ht'))
     _sous(resume, 'ram:TaxBasisTotalAmount', total_ht)
     _sous(resume, 'ram:TaxTotalAmount',
           _montant(facture['total_tva'], 'total_tva'), currencyID=devise)
     _sous(resume, 'ram:GrandTotalAmount', total_ttc)
-    _sous(resume, 'ram:DuePayableAmount',
-          _montant(facture.get('net_a_payer') or facture['total_ttc'],
-                   'net_a_payer'))
+    # BR-CO-16 — acompte DÉCLARÉ (``acompte`` → ``TotalPrepaidAmount``) ; un
+    # net à payer de 0 est une valeur (facture soldée), jamais « absent ».
+    acompte = facture.get('acompte')
+    if not _absent(acompte):
+        _sous(resume, 'ram:TotalPrepaidAmount', _montant(acompte, 'acompte'))
+    net = facture.get('net_a_payer')
+    if _absent(net):
+        net = (_decimal(facture['total_ttc'], 'total_ttc')
+               - (_decimal(acompte, 'acompte') if not _absent(acompte)
+                  else Decimal('0')))
+    _sous(resume, 'ram:DuePayableAmount', _montant(net, 'net_a_payer'))
 
     return ET.tostring(racine, encoding='UTF-8', xml_declaration=True)
 

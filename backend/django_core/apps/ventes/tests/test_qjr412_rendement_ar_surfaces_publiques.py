@@ -132,7 +132,7 @@ class CalculerEtudeHoraireInchangeTest(SimpleTestCase):
 
     def test_le_repli_muet_garde_sa_forme_historique(self):
         """Sur le repli, AUCUNE clé de plus (QJR137, ``CLES_RACINE_HISTORIQUES``)."""
-        etude = EH.calculer_etude_horaire(**self._commun())
+        etude = EH.calculer_etude_horaire(**{'tranches': None, 'charges_fixes_mad': None, **self._commun()})
         self.assertIsNotNone(etude)
         self.assertNotIn('rendement_batterie', etude)
         self.assertNotIn('rendement_batterie_source', etude)
@@ -141,7 +141,7 @@ class CalculerEtudeHoraireInchangeTest(SimpleTestCase):
         etude = EH.calculer_etude_horaire(
             batterie_rendement=RENDEMENT_FICHE,
             batterie_rendement_source=BL.RENDEMENT_SOURCE_FICHE,
-            **self._commun())
+            **{'tranches': None, 'charges_fixes_mad': None, **self._commun()})
         self.assertIsNotNone(etude)
         self.assertEqual(etude['rendement_batterie'], RENDEMENT_FICHE)
         self.assertEqual(etude['rendement_batterie_source'],

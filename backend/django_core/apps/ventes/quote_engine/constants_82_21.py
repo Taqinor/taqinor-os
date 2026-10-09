@@ -11,7 +11,7 @@ seuils et ``regime_8221_suggere`` sont des RÉ-EXPORTS du noyau
 ``core.reglementaire.regime_8221`` (CIQ612, seule source).
 
 QXMT (18/08/2026) : ce module porte AUSSI le barème MOYENNE TENSION ONEE
-(``TARIF_MT_ONEE``) utilisé par l'étude industrielle/commerciale quand le
+(``_officiels.MT_GENERAL``) utilisé par l'étude industrielle/commerciale quand le
 dossier est raccordé en MT.
 """
 from __future__ import annotations
@@ -122,10 +122,8 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
 # ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
 # CIQ202 : UNE seule source — ``apps/parametres/tarifs_officiels.py`` (module
 # PUR de fondation, chaque valeur avec {source_url, page_audience, releve_le,
-# inchange_depuis}). Ce dict LIT ce module : aucune valeur recopiée ici.
-# Miroir JS : ``TARIF_MT_ONEE`` de frontend/src/features/ventes/solar.js
-# (parité testée dans tests/test_qx50_injection_82_21.py ; le miroir disparaît
-# avec CIQ228).
+# inchange_depuis}). Aucune valeur n'est recopiée ici.
+# (Le miroir JS a disparu avec CIQ228.)
 #
 # RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, D-CIQ-4). Les prix sont
 # TTC TELS QUE PUBLIÉS : la page ONEE garde un libellé « TVA 18 % » périmé
@@ -140,19 +138,9 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
 # NB nomenclature : « C1 / C2 » n'existe PAS comme option tarifaire MT chez
 # l'ONEE — la MT n'a qu'un « Tarif Général (MT) » ; les options TLU/MU/CU/TCU
 # et « Super Pointe » sont réservées à la HT/THT.
-TARIF_MT_ONEE = {
-    # Redevance de consommation par poste horaire, DH/kWh TTC publié.
-    "POINTE": _officiels.MT_GENERAL['pointe']['valeur'],
-    "PLEINES": _officiels.MT_GENERAL['pleines']['valeur'],
-    "CREUSES": _officiels.MT_GENERAL['creuses']['valeur'],
-    # Prime fixe, DH par kVA souscrit et par an. DÉLIBÉRÉMENT NON déduite des
-    # économies : le solaire ne réduit pas la puissance souscrite.
-    "PRIME_PUISSANCE_DH_KVA_AN":
-        _officiels.MT_GENERAL['prime_fixe_kva_an']['valeur'],
-    # Plages horaires PUBLIÉES (heure GMT, intervalles [de_h, a_h)) : schéma
-    # one.org.ma/images/horr.jpg, page bi-horaire ; décision ANRE 04/26 art. 7.
-    "PLAGES_H": _officiels.POSTES_MT,
-}
+# AMOT75 : le dict ``TARIF_MT_ONEE`` (jumeau sans lecteur de production) est
+# retiré ; les valeurs se lisent directement dans ``_officiels.MT_GENERAL`` /
+# ``_officiels.POSTES_MT`` (seule source).
 
 # Mention affichée avec TOUT chiffre issu du barème MT (jamais un chiffre nu).
 MENTION_MT = (
@@ -165,82 +153,7 @@ MENTION_MT = (
 poste_horaire = _officiels.poste_horaire
 
 
-def tarif_mt_disponible() -> bool:
-    """Le barème MT est-il exploitable (les 3 postes horaires sourcés > 0) ?"""
-    return all(
-        isinstance(TARIF_MT_ONEE.get(k), (int, float)) and TARIF_MT_ONEE[k] > 0
-        for k in ("POINTE", "PLEINES", "CREUSES")
-    )
-
-
-def normaliser_repartition_mt(repartition):
-    """Répartition horaire client (%) → parts normalisées à 100 %, ou ``None``.
-
-    ``None`` quand rien d'exploitable n'est fourni : les plages MT publiées
-    sont des HEURES, pas la répartition de la consommation du client — AUCUNE
-    répartition de consommation par défaut n'est inventée. Les
-    valeurs non numériques ou négatives comptent pour 0. Défensif : jamais
-    d'exception.
-    """
-    def part(value):
-        try:
-            n = float(value)
-        except (TypeError, ValueError):
-            return 0.0
-        return n if n > 0 else 0.0
-
-    src = repartition or {}
-    pointe = part(src.get("pointe"))
-    pleines = part(src.get("pleines"))
-    creuses = part(src.get("creuses"))
-    somme = pointe + pleines + creuses
-    if somme <= 0:
-        return None
-    return {
-        "pointe": round(pointe / somme * 100, 1),
-        "pleines": round(pleines / somme * 100, 1),
-        "creuses": round(creuses / somme * 100, 1),
-    }
-
-
-def tarif_mt_moyen(repartition):
-    """Prix moyen pondéré (DH/kWh TTC) du barème MT, ou ``None``.
-
-    ``None`` — jamais un nombre de repli — si le barème n'est pas sourcé ou si
-    la répartition est absente : c'est ce ``None`` qui fait OMETTRE le calcul
-    d'économies plutôt que d'inventer un tarif.
-    """
-    if not tarif_mt_disponible():
-        return None
-    parts = normaliser_repartition_mt(repartition)
-    if not parts:
-        return None
-    moyen = (
-        parts["pointe"] * TARIF_MT_ONEE["POINTE"]
-        + parts["pleines"] * TARIF_MT_ONEE["PLEINES"]
-        + parts["creuses"] * TARIF_MT_ONEE["CREUSES"]
-    ) / 100.0
-    return moyen if moyen > 0 else None
-
-
-def injection_annuelle(production_kwh, autoconsomme_kwh, pointe: bool = False):
-    """Surplus injectable (kWh) plafonné à 20 % de la prod + sa valeur BRUTE HT (DH).
-
-    surplus = max(0, production − autoconsommé), borné à ``PLAFOND_INJECTION_PCT``
-    (loi 82-21 art. 12) ; valeur = surplus × tarif ANRE 04/26 BRUT HT (hors
-    pointe par défaut : l'injection solaire est diurne). AUCUNE déduction
-    TURD/TURT/TSS (ANRE 02/25 art. 8). MT/HT/THT seulement — en BT l'appelant
-    ne valorise aucune revente (``MENTION_BT``). Retourne (kwh, dh), tous deux
-    ≥ 0 et arrondis. Défensif : jamais d'exception.
-    """
-    try:
-        prod = max(0.0, float(production_kwh or 0))
-        auto = max(0.0, float(autoconsomme_kwh or 0))
-    except (TypeError, ValueError):
-        return 0, 0
-    surplus = max(0.0, prod - auto)
-    plafond = prod * PLAFOND_INJECTION_PCT / 100.0
-    kwh = min(surplus, plafond)
-    tarif = ANRE_TARIF_POINTE if pointe else ANRE_TARIF_HORS_POINTE
-    dh = kwh * tarif
-    return round(kwh), round(dh)
+# AMOT47 (C-AMOT-008) — ``tarif_mt_disponible``, ``normaliser_repartition_mt``,
+# ``tarif_mt_moyen`` et ``injection_annuelle`` SUPPRIMÉS : aucun lecteur hors
+# de leurs propres tests (la revente C&I est chiffrée par ``economie_ci``,
+# le barème MT par ``tarif_ci``). Les constantes sourcées ci-dessus restent.

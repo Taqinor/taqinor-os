@@ -298,6 +298,11 @@ class Facture(TotauxDocumentMixin, models.Model):
     # factures antérieures (l'empreinte manquante force alors un re-rendu,
     # jamais un fichier périmé).
     pdf_render_meta = models.JSONField(null=True, blank=True)
+    # APAR61 (C-APAR-013, D-APAR-4) — identité vendeur FIGÉE à l'émission
+    # (raison sociale, ICE/RC/IF, RIB, banque, adresse, mentions, logo) : le
+    # PDF d'une facture émise se rend depuis cet instantané, jamais depuis le
+    # profil vivant. NULL (facture antérieure, brouillon) = profil vivant.
+    identite_vendeur = models.JSONField(null=True, blank=True)
     # ── Export structuré UBL 2.1 (N38) — clé MinIO du dernier XML généré.
     # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
     fichier_ubl = models.CharField(
@@ -904,6 +909,10 @@ class Paiement(models.Model):
         max_length=200, null=True, blank=True,
         help_text='Clé d\'idempotence (déduplication webhook PSP) — unique par '
                   'société quand renseignée.')
+    # APDF30 (C-APDF-011) — numéro du REÇU (quittance), séquence PROPRE à la
+    # société (`core.numbering`, plus-haut-utilisé + 1), posé à la première
+    # émission du reçu ; vide tant qu'aucun reçu n'a été rendu.
+    numero_recu = models.CharField(max_length=40, blank=True, default='')
 
     class Meta:
         verbose_name = 'Paiement'
@@ -920,6 +929,12 @@ class Paiement(models.Model):
                 condition=models.Q(idempotency_key__isnull=False)
                 & ~models.Q(idempotency_key=''),
                 name='uniq_paiement_idempotency_par_societe',
+            ),
+            # APDF30 — un numéro de reçu est unique PAR SOCIÉTÉ (vide exclu).
+            models.UniqueConstraint(
+                fields=['company', 'numero_recu'],
+                condition=~models.Q(numero_recu=''),
+                name='uniq_paiement_numero_recu_par_societe',
             ),
             # ENF13 — backstop DB des deux champs monétaires positifs par
             # nature (``montant`` reste volontairement signé, voir ci-dessous).
@@ -967,7 +982,7 @@ class Paiement(models.Model):
     def montant_disponible(self):
         """Solde de l'avance encore disponible pour ventilation."""
         from decimal import Decimal
-        if self.facture_id and not self.affectations.exists():
+        if (self.facture_id and not self.affectations.exists()) or self.statut == self.Statut.REJETE:  # AFAC9 : avance rejetée
             return Decimal('0')
         montant = self.montant if isinstance(self.montant, Decimal) \
             else Decimal(str(self.montant))
@@ -1038,6 +1053,12 @@ class Avoir(TotauxDocumentMixin, models.Model):
     # NE PAS re-stocker, ex. produit défectueux détruit) et exige un motif.
     restocke = models.BooleanField(default=False)
     motif_retour = models.CharField(max_length=255, blank=True, default='')
+    # AFAC32 (D-AFAC-C4) — « avoir de note de débit » : une ND émise
+    # s'annule par un avoir qui la neutralise (jamais en place). Vide pour
+    # tout autre avoir — comportement historique intact.
+    note_debit = models.ForeignKey(
+        'ventes.NoteDebit', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='avoirs_annulation')
 
     class Meta:
         verbose_name = 'Avoir'
@@ -1207,6 +1228,10 @@ class RelanceLog(models.Model):
     # d'impression (jamais d'envoi postal automatisé — impression manuelle).
     courrier_pdf_key = models.CharField(max_length=500, blank=True, default='')
     date = models.DateField(auto_now_add=True)
+    # AFAC46 — compte dans la cadence de relance (``prochain_niveau``) ;
+    # False une fois la facture soldée (``reset_relance_escalation``), pour
+    # toute relance, manuelle comme automatique — l'historique reste.
+    compte_dans_cadence = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='relances_effectuees')

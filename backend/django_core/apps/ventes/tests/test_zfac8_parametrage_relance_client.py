@@ -54,7 +54,9 @@ class TestParametrageRelanceClientCron(TestCase):
 
     def test_manual_client_skipped_by_cron(self):
         from apps.ventes.scheduled import relance_reminders
-        with mock.patch('apps.ventes.email_service.send_relance_email'):
+        # AFAC45 — le beat ne consigne que si l'e-mail est PARTI (statut lu).
+        with mock.patch('apps.ventes.email_service.send_relance_email',
+                        return_value=mock.Mock(statut='envoye')):
             relance_reminders()
         self.assertTrue(
             RelanceLog.objects.filter(facture=self.facture_auto).exists())
@@ -68,7 +70,9 @@ class TestParametrageRelanceClientCron(TestCase):
             ParametrageRelanceClient.objects.filter(
                 client=self.client_auto).exists())
         from apps.ventes.scheduled import relance_reminders
-        with mock.patch('apps.ventes.email_service.send_relance_email'):
+        # AFAC45 — le beat ne consigne que si l'e-mail est PARTI (statut lu).
+        with mock.patch('apps.ventes.email_service.send_relance_email',
+                        return_value=mock.Mock(statut='envoye')):
             relance_reminders()
         self.assertTrue(
             RelanceLog.objects.filter(facture=self.facture_auto).exists())

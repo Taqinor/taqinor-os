@@ -186,6 +186,7 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/stock/services.py::demonter_composite::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py::demonter_composite::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py::get_or_create_emplacement_soustraitant::EmplacementStock` | get_or_create | EmplacementStock.objects | company, nom |
+| `backend/django_core/apps/stock/services.py::get_or_create_produit::Produit` | get_or_create | Produit.objects | company |
 | `backend/django_core/apps/stock/services.py::provisionner_compte_fournisseur::Role` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/stock/services.py::rebuter_produit::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py::record_purchase_price::PrixFournisseur` | get_or_create | PrixFournisseur.objects | fournisseur, produit |
@@ -201,7 +202,6 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/uxviews/models.py::UxParametres.get_or_default::cls` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/views.py::FavoriUtilisateurViewSet.importer::FavoriUtilisateur` | get_or_create | FavoriUtilisateur.objects | company, content_type, object_id, owner |
 | `backend/django_core/apps/uxviews/views.py::SavedViewViewSet.list::EcranRecent` | update_or_create | EcranRecent.objects | company, ecran, owner |
-| `backend/django_core/apps/ventes/domain/facturation_ops.py::_main_oeuvre_produit::Produit` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/domain/gammes.py::get_parametres_gammes::ParametresGammes` | get_or_create | ParametresGammes.objects | company |
 | `backend/django_core/apps/ventes/views/liste_prix.py::ListePrixViewSet.lignes::LignePrixListe` | update_or_create | LignePrixListe.objects | liste, produit |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py::RemiseEncaissementViewSet._creer_remise::LigneRemiseEncaissement` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
