@@ -1,14 +1,14 @@
 // FG280 — Alarmes / défauts onduleur, DISTINCTES du ticket SAV (cycle de vie
 // propre : active → acquittée → escaladée/résolue). Liste + acquitter +
 // escalader (ouvre/relie un ticket SAV).
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Plus, ShieldAlert } from 'lucide-react'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import {
   TooltipProvider, Card, StatusPill, Button, Input, Textarea, Select,
   SelectTrigger, SelectValue, SelectContent, SelectItem, EmptyState, Skeleton,
-  toast,
+  Combobox, toast,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 
@@ -21,7 +21,24 @@ const GRAVITE_OPTIONS = [
   { value: 'warning', label: 'Avertissement' },
   { value: 'critique', label: 'Critique' },
 ]
-const CREER_ALARME_DEFAULTS = { code: '', gravite: 'warning', libelle: '', description: '' }
+const CREER_ALARME_DEFAULTS = {
+  code: '', gravite: 'warning', libelle: '', description: '', equipement: '',
+}
+
+const aEquipement = (a) => !!(a.equipement || a.equipement_serie || a.equipement_produit)
+
+// ASAV49 — message du serveur (`detail`, `ticket`, `error`) plutôt qu'un repli
+// générique : un refus d'escalade doit dire POURQUOI.
+function messageServeur(e, repli) {
+  const d = e?.response?.data
+  if (!d) return repli
+  if (typeof d === 'string') return d
+  const v = d.detail ?? d.ticket ?? d.error
+  if (Array.isArray(v)) return v.join(' ')
+  if (typeof v === 'string') return v
+  if (v && typeof v === 'object' && typeof v.message === 'string') return v.message
+  return repli
+}
 
 const fmtDateTime = (iso) => formatDateTime(iso)
 
@@ -39,6 +56,25 @@ export default function SavAlarmesPage() {
   const [creerForm, setCreerForm] = useState(CREER_ALARME_DEFAULTS)
   const [creerBusy, setCreerBusy] = useState(false)
   const [creerError, setCreerError] = useState(null)
+  // ASAV49 — ticket existant à relier, par alarme ({[alarmeId]: ticketId}).
+  const [ticketLie, setTicketLie] = useState({})
+
+  // Recherche SERVEUR (jamais la page 1 d'un parc de centaines d'appareils).
+  const chercherEquipements = useCallback(async (q) => {
+    const r = await savApi.getEquipements({ search: q || undefined })
+    return (r.data?.results ?? r.data ?? []).map((e) => ({
+      value: String(e.id),
+      label: `${e.produit_nom ?? 'Produit'} — ${e.numero_serie ?? 'sans n° série'}`,
+    }))
+  }, [])
+  const chercherTickets = useCallback(async (q) => {
+    const r = await savApi.getTickets({ search: q || undefined, ouvert: 'tous' })
+    return (r.data?.results ?? r.data ?? []).map((t) => ({
+      value: String(t.id),
+      label: t.reference ?? `Ticket ${t.id}`,
+      description: t.description || undefined,
+    }))
+  }, [])
 
   const load = () => {
     setLoading(true)
@@ -56,16 +92,16 @@ export default function SavAlarmesPage() {
       await savApi.acquitterAlarme(row.id)
       toast.success('Alarme acquittée')
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Acquittement impossible.') }
+    } catch (e) { toast.error(messageServeur(e, 'Acquittement impossible.')) }
     finally { setBusyId(null) }
   }
   const escalader = async (row) => {
     setBusyId(row.id)
     try {
-      const r = await savApi.escaladerAlarme(row.id)
+      const r = await savApi.escaladerAlarme(row.id, ticketLie[row.id] || undefined)
       toast.success(`Alarme escaladée${r.data?.ticket_reference ? ` — ticket ${r.data.ticket_reference}` : ''}`)
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Escalade impossible.') }
+    } catch (e) { toast.error(messageServeur(e, 'Escalade impossible.')) }
     finally { setBusyId(null) }
   }
 
@@ -79,13 +115,14 @@ export default function SavAlarmesPage() {
         gravite: creerForm.gravite,
         libelle: creerForm.libelle || undefined,
         description: creerForm.description || undefined,
+        equipement: creerForm.equipement ? Number(creerForm.equipement) : undefined,
       })
       toast.success('Alarme créée')
       setCreerForm(CREER_ALARME_DEFAULTS)
       setCreerOuvert(false)
       load()
     } catch (e) {
-      setCreerError(e?.response?.data?.detail ?? "Échec de la création de l'alarme.")
+      setCreerError(messageServeur(e, "Échec de la création de l'alarme."))
     } finally { setCreerBusy(false) }
   }
 
@@ -138,6 +175,15 @@ export default function SavAlarmesPage() {
                 </Select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-foreground sm:col-span-2">
+                Équipement
+                <Combobox aria-label="Équipement de l'alarme"
+                          value={creerForm.equipement || null}
+                          onSearch={chercherEquipements}
+                          placeholder="— Équipement (optionnel) —"
+                          searchPlaceholder="Rechercher un équipement…"
+                          onChange={(v) => setCreerForm((f) => ({ ...f, equipement: v ?? '' }))} />
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-foreground sm:col-span-2">
                 Libellé
                 <Input placeholder="ex. Défaut isolement" value={creerForm.libelle}
                        onChange={(e) => setCreerForm((f) => ({ ...f, libelle: e.target.value }))} />
@@ -188,15 +234,31 @@ export default function SavAlarmesPage() {
                       </Button>
                     )}
                     {(a.statut === 'active' || a.statut === 'acquittee') && (
-                      <Button size="sm" variant="outline" loading={busyId === a.id} onClick={() => escalader(a)}>
-                        <AlertTriangle /> Escalader
-                      </Button>
+                      <>
+                        <Combobox className="w-56" aria-label={`Ticket à relier (${a.code})`}
+                                  value={ticketLie[a.id] || null}
+                                  onSearch={chercherTickets}
+                                  placeholder="Relier un ticket existant"
+                                  searchPlaceholder="Rechercher un ticket…"
+                                  onChange={(v) => setTicketLie((m) => ({ ...m, [a.id]: v ?? '' }))} />
+                        <Button size="sm" variant="outline" loading={busyId === a.id}
+                                disabled={!aEquipement(a) && !ticketLie[a.id]}
+                                onClick={() => escalader(a)}>
+                          <AlertTriangle /> Escalader
+                        </Button>
+                      </>
                     )}
                     {a.ticket_reference && (
                       <span className="text-xs text-muted-foreground">Ticket {a.ticket_reference}</span>
                     )}
                   </div>
                 </div>
+                {(a.statut === 'active' || a.statut === 'acquittee')
+                  && !aEquipement(a) && !ticketLie[a.id] && (
+                  <p className="mt-1 text-xs text-warning">
+                    Aucun équipement rattaché : choisissez un ticket existant à relier pour escalader.
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground">
                   {a.equipement_produit ?? '—'} — {a.equipement_serie ?? 'sans série'}
                   {' · '}détectée {fmtDateTime(a.date_detection)}
