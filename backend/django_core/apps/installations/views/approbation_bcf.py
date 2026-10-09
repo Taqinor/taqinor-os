@@ -27,6 +27,7 @@ from ..serializers import (
     SeuilApprobationBCFSerializer, ApprobationBCFSerializer,
 )
 from .. import selectors
+from core.permissions import _user_has_or_legacy
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -91,7 +92,11 @@ class ApprobationBCFViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
                 {'detail': "Ce montant dépasse le seuil : seul un "
                            "Administrateur peut approuver ce BCF."},
                 status=status.HTTP_403_FORBIDDEN)
-        if palier == PALIER_RESPONSABLE and not user.is_responsable:
+        # ACHT55 — palier « responsable » : le code fin `achats_commander`
+        # (repli légacy pour les comptes sans rôle fin), plus `is_responsable`
+        # (vrai dès qu'UN code d'écriture existe dans n'importe quel module).
+        if palier == PALIER_RESPONSABLE and not _user_has_or_legacy(
+                user, 'achats_commander'):
             return Response(
                 {'detail': "Approbation réservée aux Responsables/"
                            "Administrateurs."},

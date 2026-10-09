@@ -189,6 +189,14 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         # Admin Ventes ne portent pas → 403. On garde ces deux actions par le
         # code ventes que ces rôles détiennent (`ventes_creer`), sans leur
         # ouvrir les autres écritures du chantier.
+        # ACHT55 — recette-pompage / recette / reserves / pack-remise : lecture
+        # tout rôle, ÉCRITURE (POST) au rôle chantier — fini les gardes
+        # inline `user.is_responsable` (vrai dès qu'UN code d'écriture existe
+        # dans N'IMPORTE quel module : Admin RH / Commercial terrain passaient).
+        if (self.action in ('recette_pompage', 'recette', 'reserves',
+                            'pack_remise')
+                and self.request.method not in ('GET', 'HEAD', 'OPTIONS')):
+            return [IsResponsableOrAdmin()]
         if self.action == 'commander_besoin':
             # ACHT54 — crée un BCF : `achats_commander` en plus du module.
             return [IsResponsableOrAdmin(),
@@ -1290,8 +1298,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         recette = RecettePompage.objects.filter(installation=inst).first()
         ctx = {'request': request}
         if request.method == 'POST':
-            if not request.user.is_responsable:
-                return Response(status=status.HTTP_403_FORBIDDEN)
             if inst.type_installation != Installation.TypeInstallation.AGRICOLE:
                 return Response(
                     {'detail': "La recette pompage est réservée à un "
@@ -1321,8 +1327,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from ..serializers_commissioning import CommissioningRecordSerializer
         inst = self.get_object()
         if request.method == 'POST':
-            if not request.user.is_responsable:
-                return Response(status=status.HTTP_403_FORBIDDEN)
             record = ensure_commissioning_record(inst, request.user)
             return Response(
                 CommissioningRecordSerializer(record).data,
@@ -1346,8 +1350,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         inst = self.get_object()
         if request.method == 'GET':
             return Response(reserves_contrat(inst))
-        if not request.user.is_responsable:
-            return Response(status=status.HTTP_403_FORBIDDEN)
         data = request.data
         description = (data.get('description') or '').strip()
         if not description:
@@ -1431,8 +1433,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from ..serializers_commissioning import HandoverPackSerializer
         inst = self.get_object()
         if request.method == 'POST':
-            if not request.user.is_responsable:
-                return Response(status=status.HTTP_403_FORBIDDEN)
             pack = generer_handover_pack(inst, request.user)
             return Response(
                 HandoverPackSerializer(pack).data,
