@@ -31,10 +31,11 @@ class CityHeatmapTests(TestCase):
             dimension=InsightBreakdown.Dimension.REGION, key=key,
             spend=Decimal(spend))
 
-    def _lead(self, ville, *, signed=False, montant=None):
+    def _lead(self, ville, *, signed=False, montant=None,
+              canal=Lead.Canal.META_ADS):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect', ville=ville,
-            stage=SIGNED if signed else NEW)
+            canal=canal, stage=SIGNED if signed else NEW)
         if signed and montant is not None:
             client = Client.objects.create(
                 company=self.company, nom='C', prenom=ville)
@@ -84,10 +85,37 @@ class CityHeatmapTests(TestCase):
 
     def test_period_filter_applied(self):
         self._breakdown('Fès-Meknès', '100.00', day=datetime.date(2026, 6, 1))
-        self._lead('Fès')
+        lead = self._lead('Fès')
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=datetime.datetime(
+                2026, 7, 15, 10, 0, tzinfo=datetime.timezone.utc))
         result = reporting.city_heatmap(
             self.company, date_start=datetime.date(2026, 7, 1),
             date_end=datetime.date(2026, 7, 31))
         v = result['villes'][0]
         # La dépense de juin est hors fenêtre juillet -> pas de correspondance.
         self.assertIsNone(v['cpl'])
+
+    def test_depense_jamais_comptee_deux_fois(self):
+        """AACQ11 — la dépense d'une région n'est comptée qu'une fois : seules
+        les villes ayant des leads Meta DANS la fenêtre en reçoivent."""
+        hier = datetime.date(2026, 7, 10)
+        self._breakdown('Casablanca-Settat', '1000.00', day=hier)
+        vieux = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+        for _ in range(4):
+            lead = self._lead('Casablanca', canal=Lead.Canal.SITE_WEB)
+            Lead.objects.filter(pk=lead.pk).update(date_creation=vieux)
+        for _ in range(6):
+            lead = self._lead('Settat')
+            Lead.objects.filter(pk=lead.pk).update(
+                date_creation=datetime.datetime(
+                    2026, 7, 10, 9, 0, tzinfo=datetime.timezone.utc))
+        result = reporting.city_heatmap(
+            self.company, date_start=hier, date_end=hier)
+        villes = {v['ville']: v for v in result['villes']}
+        self.assertNotIn('Casablanca', villes)
+        self.assertEqual(villes['Settat']['leads'], 6)
+        self.assertEqual(villes['Settat']['spend'], '1000.00')
+        self.assertEqual(villes['Settat']['cpl'], '166.67')
+        total = sum(Decimal(v['spend']) for v in result['villes'] if v['spend'])
+        self.assertEqual(total, Decimal('1000.00'))
