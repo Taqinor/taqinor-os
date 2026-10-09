@@ -127,7 +127,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     kit ; approbations inchangées."""
     queryset = DemandeAchat.objects.select_related(
         'chantier', 'programme', 'fournisseur_suggere',
-        'approuvee_par', 'created_by').prefetch_related('lignes').all()
+        'approuvee_par', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = DemandeAchatSerializer
 
     def get_permissions(self):
