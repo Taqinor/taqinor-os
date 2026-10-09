@@ -10,7 +10,7 @@ Devis ORM réel, fonction réelle. Test-du-test : remettre
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from hypothesis.extra.django import TestCase
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
