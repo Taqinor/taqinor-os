@@ -762,7 +762,7 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
     if contexte.capacite_toit:
         champs['max'] = max(int(contexte.toit_max),
                             int(nb_panneaux_devis or 0))
-        return champs
+        return _borner_eco(champs, contexte.toit_max)
 
     # AUCUN CALEPINAGE MESURABLE — LE REPLI, ET SA BORNE (28/08/2026).
     #
@@ -793,6 +793,24 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
         # devis est la réalité vendue : Max ne descend jamais dessous, et
         # l'égalité fait collapser les deux cartes au lieu de mentir.
         champs['max'] = max(maximum, int(nb_panneaux_devis or 0))
+    return _borner_eco(champs, contexte.toit_max)
+
+
+def _borner_eco(champs, toit_max):
+    """AMOT32 (C-AMOT-033) — l'ordre Éco ≤ Max ≤ toit est une PROPRIÉTÉ.
+
+    Le meilleur payback du balayage peut tomber AU-DESSUS du toit (30
+    panneaux pour un mur physique de 26) : une Éco plus grosse que Max ou que
+    le toit ne se propose pas, elle COLLAPSE (clé retirée — jamais un
+    intermédiaire fabriqué pour occuper l'emplacement)."""
+    eco = champs.get('eco')
+    if eco is None:
+        return champs
+    bornes = [int(champs['max'])] if champs.get('max') else []
+    if toit_max:
+        bornes.append(int(toit_max))
+    if bornes and eco > min(bornes):
+        champs.pop('eco')
     return champs
 
 
