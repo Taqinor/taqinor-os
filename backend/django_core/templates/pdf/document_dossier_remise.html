@@ -77,6 +77,22 @@
   </table>
   {% endif %}
 
+  {# APDF33 (D-APDF-4) — prestations listées à part, SANS garantie constructeur. #}
+  {% if prestations %}
+  <div class="section-title">Prestations</div>
+  <table>
+    <thead><tr><th>Prestation</th><th class="text-right">Qté</th></tr></thead>
+    <tbody>
+      {% for c in prestations %}
+      <tr>
+        <td>{{ c.designation }}</td>
+        <td class="text-right">{{ c.quantite }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   {# AUD307 — pièces réellement validées par le pack de remise CH4. Absent
      tant qu'aucun pack n'est persisté : le document reste alors identique à
      ce qu'il était avant cette tâche. #}
