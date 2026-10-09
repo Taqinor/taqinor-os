@@ -4,7 +4,27 @@ Stdlib seulement : importable par le moteur legacy vendorisé comme par les
 paquets premium (résidentiel / commercial / industriel), qui ne peuvent pas
 importer ``generate_devis_premium`` (matplotlib au chargement).
 """
+import contextvars
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+#: Décision fondateur 08/10/2026 (« nouveaux rendus seulement ») — vrai
+#: pendant le rendu d'un devis envoyé AVANT les corrections du moteur
+#: (``Devis.regles_calcul = 1`` → ``data['regles_calcul_origine']``) : les
+#: formateurs AMOT24 / AMOT26 gardent alors leur format d'origine. Posé par
+#: ``builder.build_quote_data`` et par chaque point d'entrée de rendu à partir
+#: du dict de données (``poser_regles_origine``).
+_REGLES_ORIGINE = contextvars.ContextVar('regles_calcul_origine',
+                                         default=False)
+
+
+def poser_regles_origine(valeur):
+    """Pose le drapeau « règles d'origine » du rendu en cours."""
+    _REGLES_ORIGINE.set(bool(valeur))
+
+
+def regles_origine():
+    """Vrai pendant le rendu d'un devis aux règles d'origine."""
+    return _REGLES_ORIGINE.get()
 
 
 def fmt_centimes(v):
@@ -35,7 +55,15 @@ def pct_fr(v):
     virgule décimale, sans zéros inutiles — 2,5 ; 20 ; 7,25.
 
     Jamais ``int(x)`` (qui imprimait « −2 % » pour une remise de 2,5 %) ni
-    le point anglais (« 2.5 »). Stdlib seulement."""
+    le point anglais (« 2.5 »). Stdlib seulement.
+
+    Règles d'origine (devis envoyé avant AMOT24) : le format d'hier,
+    ``int(x)`` pour un entier, sinon la valeur telle quelle (« 2.5 »)."""
+    if _REGLES_ORIGINE.get():
+        try:
+            return str(int(v)) if v == int(v) else str(v)
+        except (TypeError, ValueError):
+            return str(v)
     try:
         d = Decimal(str(v))
     except (InvalidOperation, ValueError, TypeError):
@@ -53,7 +81,15 @@ def fmt_dirhams(v, sep="\u202f"):
 
     LE formateur entier du moteur : ``round(float(x))`` arrondissait au PAIR
     (banquier), donc 52 650,5 → 52 650 au PDF contre 52 651 à l'écran.
-    ``sep`` = séparateur de milliers (espace fine insécable par défaut)."""
+    ``sep`` = séparateur de milliers (espace fine insécable par défaut).
+
+    Règles d'origine (devis envoyé avant AMOT26) : l'arrondi d'hier
+    (``round`` de Python)."""
+    if _REGLES_ORIGINE.get():
+        try:
+            return f"{int(round(float(v))):,}".replace(",", sep)
+        except (TypeError, ValueError):
+            return str(v)
     try:
         d = Decimal(str(v)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
@@ -80,16 +116,24 @@ def total_ht_remise(it):
     return float(valeur)
 
 
-def lignes_remisees(items):
+def lignes_remisees(items, *, catalogue_seul=False):
     """AMOT45 (C-AMOT-057) — LE helper unique de la remise ligne par ligne
     (extrait du résidentiel) : pour chaque item, ``(item, pu_catalogue,
     pu_remise, total_catalogue, total_remise, remisee)``. Σ ``total_remise``
     = Total HT de la chaîne (répartition du noyau, QJRREM) ; ``remisee`` dit
-    si le catalogue doit être barré."""
+    si le catalogue doit être barré.
+
+    ``catalogue_seul`` (devis envoyé avant AMOT45, ``regles_calcul = 1`` —
+    décision fondateur 08/10/2026) : prix remisés = catalogue, rien de barré,
+    l'affichage d'hier des pages agricole et équipements C&I."""
     sortie = []
     for it in items or []:
         pu_cat = float((it or {}).get("prix_unit_ht") or 0)
         qte = float((it or {}).get("quantite") or 0)
+        if catalogue_seul:
+            sortie.append((it, pu_cat, pu_cat, pu_cat * qte, pu_cat * qte,
+                           False))
+            continue
         pu_rem = pu_ht_remise(it)
         tot_rem = total_ht_remise(it)
         sortie.append((it, pu_cat, pu_rem, pu_cat * qte, tot_rem,

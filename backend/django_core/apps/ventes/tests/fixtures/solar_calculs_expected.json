@@ -4293,16 +4293,16 @@
    "modele": "estimation",
    "production": 28340.4,
    "eco_sans": 24797.86176,
-   "eco_avec": 31185.36176,
+   "eco_avec": 31185,
    "payback_sans": 6.2,
    "payback_avec": 6.6,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6287913462422656,
+   "autoconso_avec": 0.6287932251235003,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 432878,
-   "net_gain_avec": 521406
+   "net_gain_avec": 521397
   },
   {
    "id": "QAHP-0625",
@@ -4429,7 +4429,7 @@
    "modele": "estimation",
    "production": 6788.3,
    "eco_sans": 5939.76046511628,
-   "eco_avec": 11879.52093023256,
+   "eco_avec": 11879,
    "payback_sans": 9.3,
    "payback_avec": 5.6,
    "autoconso_sans": 0.5,
@@ -4438,7 +4438,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 85739,
-   "net_gain_avec": 202996
+   "net_gain_avec": 202984
   },
   {
    "id": "QAHP-0633",
@@ -4497,16 +4497,16 @@
    "modele": "estimation",
    "production": 8517.2,
    "eco_sans": 7452.54888,
-   "eco_avec": 14840.10948,
+   "eco_avec": 14904.75,
    "payback_sans": 6.5,
-   "payback_avec": 4.1,
+   "payback_avec": 4,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.995639862210471,
+   "autoconso_avec": 1,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 127797,
-   "net_gain_avec": 275343
+   "net_gain_avec": 276713
   },
   {
    "id": "QAHP-0637",
@@ -4531,7 +4531,7 @@
    "modele": "estimation",
    "production": 1293.9,
    "eco_sans": 1132.17188,
-   "eco_avec": 2264.34376,
+   "eco_avec": 2264.5,
    "payback_sans": 6.2,
    "payback_avec": 4.4,
    "autoconso_sans": 0.5,
@@ -4540,7 +4540,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 19714,
-   "net_gain_avec": 41213
+   "net_gain_avec": 41216
   },
   {
    "id": "QAHP-0639",
@@ -4548,7 +4548,7 @@
    "modele": "estimation",
    "production": 1586,
    "eco_sans": 1387.7906976744189,
-   "eco_avec": 2775.5813953488378,
+   "eco_avec": 2775.5,
    "payback_sans": 8.8,
    "payback_avec": 6.3,
    "autoconso_sans": 0.5,
@@ -4557,7 +4557,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 20775,
-   "net_gain_avec": 45787
+   "net_gain_avec": 45786
   },
   {
    "id": "QAHP-0640",
@@ -4633,16 +4633,16 @@
    "modele": "estimation",
    "production": 254148.5,
    "eco_sans": 222379.94767441862,
-   "eco_avec": 225573.69767441862,
+   "eco_avec": 225574.125,
    "payback_sans": 5.4,
    "payback_avec": 7.2,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.5071808407938738,
+   "autoconso_avec": 0.5071808269951879,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 4060692,
-   "net_gain_avec": 3716213
+   "net_gain_avec": 3716223
   },
   {
    "id": "QAHP-0645",
@@ -4667,16 +4667,16 @@
    "modele": "estimation",
    "production": 14057.1,
    "eco_sans": 12300.00324,
-   "eco_avec": 15493.753240000002,
+   "eco_avec": 15493.625,
    "payback_sans": 6.3,
    "payback_avec": 5.9,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6298272015739729,
+   "autoconso_avec": 0.6298285551682435,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 212858,
-   "net_gain_avec": 269035
+   "net_gain_avec": 269032
   },
   {
    "id": "QAHP-0647",
@@ -4718,16 +4718,16 @@
    "modele": "estimation",
    "production": 16791.5,
    "eco_sans": 14692.593023255817,
-   "eco_avec": 24281.205917276788,
+   "eco_avec": 24504.2,
    "payback_sans": 9.6,
-   "payback_avec": 8.4,
+   "payback_avec": 8.3,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.8263077143307471,
+   "autoconso_avec": 0.8338732729871368,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 207539,
-   "net_gain_avec": 358169
+   "net_gain_avec": 362898
   },
   {
    "id": "QAHP-0650",
@@ -4735,16 +4735,16 @@
    "modele": "estimation",
    "production": 89399.7,
    "eco_sans": 78224.7639534884,
-   "eco_avec": 81418.5139534884,
+   "eco_avec": 81418.75,
    "payback_sans": 5.3,
    "payback_avec": 5.8,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.5204139318457961,
+   "autoconso_avec": 0.520413870246085,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 1436180,
-   "net_gain_avec": 1442916
+   "net_gain_avec": 1442922
   },
   {
    "id": "QAHP-0651",
@@ -4837,16 +4837,16 @@
    "modele": "estimation",
    "production": 5401.8,
    "eco_sans": 4726.542800000001,
-   "eco_avec": 9437.429400000003,
+   "eco_avec": 9453.5,
    "payback_sans": 8.6,
    "payback_avec": 5.3,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.9983438000392169,
+   "autoconso_avec": 1,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 71256,
-   "net_gain_avec": 164315
+   "net_gain_avec": 164656
   },
   {
    "id": "QAHP-0657",
@@ -4871,16 +4871,16 @@
    "modele": "estimation",
    "production": 286050.7,
    "eco_sans": 250294.36046511628,
-   "eco_avec": 256681.86046511628,
+   "eco_avec": 256682.125,
    "payback_sans": 10.7,
    "payback_avec": 14.8,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.5127599758702718,
+   "autoconso_avec": 0.5127599623843301,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 3276213,
-   "net_gain_avec": 2363746
+   "net_gain_avec": 2363752
   },
   {
    "id": "QAHP-0659",
@@ -4956,7 +4956,7 @@
    "modele": "estimation",
    "production": 52007.7,
    "eco_sans": 6585.250000000002,
-   "eco_avec": 6585.25,
+   "eco_avec": 6585.291329008802,
    "payback_sans": 25,
    "payback_avec": 25,
    "autoconso_sans": 0.07235470728688775,
@@ -4965,7 +4965,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": -244216,
-   "net_gain_avec": -324084
+   "net_gain_avec": -324083
   },
   {
    "id": "QAHP-0664",
@@ -4990,7 +4990,7 @@
    "modele": "estimation",
    "production": 1836.1,
    "eco_sans": 1606.5732558139537,
-   "eco_avec": 3213.1465116279073,
+   "eco_avec": 3213,
    "payback_sans": 6.9,
    "payback_avec": 4.4,
    "autoconso_sans": 0.5,
@@ -4999,7 +4999,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 26893,
-   "net_gain_avec": 58653
+   "net_gain_avec": 58650
   },
   {
    "id": "QAHP-0666",
@@ -5007,16 +5007,16 @@
    "modele": "estimation",
    "production": 12648.6,
    "eco_sans": 11067.504651162792,
-   "eco_avec": 17438.364066059024,
+   "eco_avec": 17455.375,
    "payback_sans": 5.6,
    "payback_avec": 4.8,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.7878182397794108,
+   "autoconso_avec": 0.7885603605028065,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 199770,
-   "net_gain_avec": 316553
+   "net_gain_avec": 316915
   },
   {
    "id": "QAHP-0667",
@@ -5262,7 +5262,7 @@
    "modele": "estimation",
    "production": 13511.7,
    "eco_sans": 2059.7499999999995,
-   "eco_avec": 2059.75,
+   "eco_avec": 2059.796796160018,
    "payback_sans": 25,
    "payback_avec": 25,
    "autoconso_sans": 0.08710973509938331,
@@ -5271,7 +5271,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": -50594,
-   "net_gain_avec": -57532
+   "net_gain_avec": -57531
   },
   {
    "id": "QAHP-0682",
@@ -5296,16 +5296,16 @@
    "modele": "estimation",
    "production": 53728.7,
    "eco_sans": 47012.61292000001,
-   "eco_avec": 53400.11291999999,
+   "eco_avec": 53400.37499999999,
    "payback_sans": 7.3,
    "payback_avec": 8.3,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.5679338969189973,
+   "autoconso_avec": 0.5679335182117664,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 771689,
-   "net_gain_avec": 813099
+   "net_gain_avec": 813105
   },
   {
    "id": "QAHP-0684",
@@ -5313,7 +5313,7 @@
    "modele": "estimation",
    "production": 1271.1,
    "eco_sans": 1112.243023255814,
-   "eco_avec": 2224.486046511628,
+   "eco_avec": 2224.25,
    "payback_sans": 6,
    "payback_avec": 4.3,
    "autoconso_sans": 0.5,
@@ -5322,7 +5322,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 19618,
-   "net_gain_avec": 40763
+   "net_gain_avec": 40758
   },
   {
    "id": "QAHP-0685",
@@ -5415,16 +5415,16 @@
    "modele": "estimation",
    "production": 6834.4,
    "eco_sans": 5980.116279069768,
-   "eco_avec": 9173.866279069769,
+   "eco_avec": 9173.5,
    "payback_sans": 10.8,
    "payback_avec": 7.8,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.7670307608547706,
+   "autoconso_avec": 0.7670471173544045,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 77792,
-   "net_gain_avec": 140455
+   "net_gain_avec": 140446
   },
   {
    "id": "QAHP-0691",
@@ -5432,16 +5432,16 @@
    "modele": "estimation",
    "production": 13376.9,
    "eco_sans": 11704.82209302326,
-   "eco_avec": 14898.572093023258,
+   "eco_avec": 14898.625,
    "payback_sans": 8.6,
    "payback_avec": 9.2,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6364288143219049,
+   "autoconso_avec": 0.6364281976526874,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 177222,
-   "net_gain_avec": 212427
+   "net_gain_avec": 212428
   },
   {
    "id": "QAHP-0692",
@@ -5466,7 +5466,7 @@
    "modele": "estimation",
    "production": 3854.9,
    "eco_sans": 3373.0313953488376,
-   "eco_avec": 6746.062790697675,
+   "eco_avec": 6746.25,
    "payback_sans": 5.5,
    "payback_avec": 3.8,
    "autoconso_sans": 0.5,
@@ -5475,7 +5475,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 61151,
-   "net_gain_avec": 126620
+   "net_gain_avec": 126625
   },
   {
    "id": "QAHP-0694",
@@ -5670,16 +5670,16 @@
    "modele": "estimation",
    "production": 7348.9,
    "eco_sans": 6430.2966,
-   "eco_avec": 9624.0466,
+   "eco_avec": 9624.125,
    "payback_sans": 8,
    "payback_avec": 6.6,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.748336134292779,
+   "autoconso_avec": 0.7483331065451082,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 100989,
-   "net_gain_avec": 158600
+   "net_gain_avec": 158602
   },
   {
    "id": "QAHP-0706",
@@ -5755,7 +5755,7 @@
    "modele": "estimation",
    "production": 260335.8,
    "eco_sans": 8366.75,
-   "eco_avec": 8366.750000000002,
+   "eco_avec": 8366.755680257138,
    "payback_sans": 25,
    "payback_avec": 25,
    "autoconso_sans": 0.01836474112631838,
@@ -5823,16 +5823,16 @@
    "modele": "estimation",
    "production": 33292.6,
    "eco_sans": 29130.988372093037,
-   "eco_avec": 32324.738372093037,
+   "eco_avec": 32325.125,
    "payback_sans": 7.7,
    "payback_avec": 9.3,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.554817055281577,
+   "autoconso_avec": 0.5548163277565855,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 465089,
-   "net_gain_avec": 462040
+   "net_gain_avec": 462049
   },
   {
    "id": "QAHP-0715",
@@ -5840,7 +5840,7 @@
    "modele": "estimation",
    "production": 1274.7,
    "eco_sans": 1115.3848837209307,
-   "eco_avec": 2230.7697674418614,
+   "eco_avec": 2231.25,
    "payback_sans": 5.6,
    "payback_avec": 3.6,
    "autoconso_sans": 0.5,
@@ -5849,7 +5849,7 @@
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 20120,
-   "net_gain_avec": 42413
+   "net_gain_avec": 42423
   },
   {
    "id": "QAHP-0716",
@@ -5908,16 +5908,16 @@
    "modele": "estimation",
    "production": 13596.7,
    "eco_sans": 11897.151162790698,
-   "eco_avec": 15090.901162790698,
+   "eco_avec": 15091.125,
    "payback_sans": 5.2,
    "payback_avec": 5.3,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6342233092737659,
+   "autoconso_avec": 0.6342207839964698,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 218617,
-   "net_gain_avec": 270917
+   "net_gain_avec": 270923
   },
   {
    "id": "QAHP-0720",
@@ -5993,16 +5993,16 @@
    "modele": "estimation",
    "production": 28953.6,
    "eco_sans": 25334.42441860465,
-   "eco_avec": 28528.17441860465,
+   "eco_avec": 28528.5,
    "payback_sans": 10,
    "payback_avec": 13.5,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.5630318247462262,
+   "autoconso_avec": 0.563031014712993,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 348367,
-   "net_gain_avec": 294356
+   "net_gain_avec": 294364
   },
   {
    "id": "QAHP-0725",
@@ -6078,16 +6078,16 @@
    "modele": "estimation",
    "production": 16038.3,
    "eco_sans": 14033.48604651163,
-   "eco_avec": 17227.236046511633,
+   "eco_avec": 17227,
    "payback_sans": 8.4,
    "payback_avec": 8.3,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6137903294097722,
+   "autoconso_avec": 0.613792243421873,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 214497,
-   "net_gain_avec": 260152
+   "net_gain_avec": 260146
   },
   {
    "id": "QAHP-0730",
@@ -6095,16 +6095,16 @@
    "modele": "estimation",
    "production": 29082.3,
    "eco_sans": 25447.034883720935,
-   "eco_avec": 31834.53488372094,
+   "eco_avec": 31834.25,
    "payback_sans": 8.6,
    "payback_avec": 9.7,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6255057815023909,
+   "autoconso_avec": 0.6255071865758889,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 385724,
-   "net_gain_avec": 439933
+   "net_gain_avec": 439927
   },
   {
    "id": "QAHP-0731",
@@ -6129,16 +6129,16 @@
    "modele": "estimation",
    "production": 10816.1,
    "eco_sans": 9464.07756,
-   "eco_avec": 12657.827560000002,
+   "eco_avec": 12657.75,
    "payback_sans": 11.1,
    "payback_avec": 9,
    "autoconso_sans": 0.5,
-   "autoconso_avec": 0.6687301260874282,
+   "autoconso_avec": 0.6687315088757396,
    "facture_sans": null,
    "facture_avec_sans": null,
    "facture_avec_avec": null,
    "net_gain_sans": 120706,
-   "net_gain_avec": 182281
+   "net_gain_avec": 182279
   },
   {
    "id": "QAHP-0733",

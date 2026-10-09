@@ -37,7 +37,7 @@ class PourcentageSaisi(SimpleTestCase):
     """La fonction de module elle-même (aucune base)."""
 
     def _f(self, valeur, defaut=Decimal('20')):
-        from apps.ventes.views.devis_gardes import _pourcentage_saisi
+        from apps.ventes.domain.bornes import pourcentage_saisi as _pourcentage_saisi
         return _pourcentage_saisi({'taux_tva': valeur}, 'taux_tva', defaut)
 
     def test_absent_ou_vide_rend_le_defaut(self):

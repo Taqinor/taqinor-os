@@ -16,13 +16,13 @@
 // Run : node --test src/pages/ventes/DevisGeneratorCartesValeurSignee.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { unwrap, moteur, apercu, saisie, absent, PUCE_APERCU } from '../../features/ventes/quote/valeur.js'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 
 // ── ROUGE → VERT (exécuté) : unwrap() refuse un nombre nu ───────────────────
 // Avant QJR426, AUCUNE des 13 cartes n'empruntait ce chemin (elles passaient
@@ -78,8 +78,10 @@ test('QJR426 — les 9 sites CarteMetrique du générateur portent `valeur=`, au
   }
 })
 
-test('QJR426 — `moteur`/`apercu` sont importés de quote/valeur.js dans DevisGenerator.jsx', () => {
-  assert.match(DG, /import \{ moteur, apercu \} from '\.\.\/\.\.\/features\/ventes\/quote\/valeur'/)
+test('QJR426 — `moteur`/`apercu` sont importés de quote/valeur.js dans le générateur', () => {
+  // SPL51 — `signerEcoOuRoi` (seul lecteur d'`apercu`) vit dans le hook
+  // `generator/hooks/useApercuEtude.js` : l'import y a suivi (profondeur relative).
+  assert.match(DG, /import \{ moteur, apercu \} from '(\.\.\/)+features\/ventes\/quote\/valeur'/)
 })
 
 // ── Marque de provenance là où elle n'est pas évidente (et nulle part une

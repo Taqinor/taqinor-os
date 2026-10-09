@@ -637,11 +637,32 @@ class _Contexte:
                                       physique)
 
     @property
+    def corrige(self):
+        """Décision fondateur 08/10/2026 — ``False`` pour un devis envoyé
+        avant les corrections AMOT29–32/58/59 (``Devis.regles_calcul = 1``) :
+        ses cartes de tailles sont chiffrées comme le client les a reçues."""
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        return calcul_corrige(self.devis)
+
+    @property
     def etude_kwargs(self):
         # AMOT30 — LE constructeur unique : barème société, charges fixes et
         # jour de référence compris (la carte Éco était chiffrée au barème
         # NATIONAL pendant que le devis l'était à celui de la société).
         from apps.ventes.etude_horaire import kwargs_moteur_horaire
+        if not getattr(self, 'corrige', True):
+            # Règles d'origine : les arguments d'hier (grille nationale, sans
+            # charges fixes ni jour de référence).
+            return {
+                'conso_kwh_mensuelles': self.entrees['conso_kwh_mensuelles'],
+                'ville': self.entrees['ville'],
+                'lat': self.entrees['lat'],
+                'lon': self.entrees['lon'],
+                'occupation': self.entrees['occupation'],
+                'equipements': self.entrees['equipements'],
+                'tranches': None,
+                'charges_fixes_mad': None,
+            }
         return kwargs_moteur_horaire(self.entrees)
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
@@ -762,7 +783,9 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
     if contexte.capacite_toit:
         champs['max'] = max(int(contexte.toit_max),
                             int(nb_panneaux_devis or 0))
-        return _borner_eco(champs, contexte.toit_max)
+        # Règles d'origine (devis envoyé avant AMOT32) : Éco non bornée.
+        return (_borner_eco(champs, contexte.toit_max) if getattr(contexte, 'corrige', True)
+                else champs)
 
     # AUCUN CALEPINAGE MESURABLE — LE REPLI, ET SA BORNE (28/08/2026).
     #
@@ -793,6 +816,8 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
         # devis est la réalité vendue : Max ne descend jamais dessous, et
         # l'égalité fait collapser les deux cartes au lieu de mentir.
         champs['max'] = max(maximum, int(nb_panneaux_devis or 0))
+    if not getattr(contexte, 'corrige', True):
+        return champs
     return _borner_eco(champs, contexte.toit_max)
 
 
@@ -895,22 +920,24 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             bornes = {}
         # AMOT30 — le RENDEMENT de la fiche des batteries composées, comme le
         # devis (``rendement_batterie_du_devis``) : jamais l'hypothèse muette
-        # quand la fiche le prouve.
-        try:
-            from apps.ventes.horaire.batterie_lignes import (
-                rendement_batterie_des_lignes)
-            _rdt = rendement_batterie_des_lignes(
-                lignes_avec, roles=getattr(lignes_avec, 'roles', None))
-            bornes['batterie_rendement'] = _rdt['rendement']
-            bornes['batterie_rendement_source'] = _rdt['source']
-        except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur
-            pass
+        # quand la fiche le prouve. Règles d'origine : l'hypothèse d'hier.
+        if getattr(contexte, 'corrige', True):
+            try:
+                from apps.ventes.horaire.batterie_lignes import (
+                    rendement_batterie_des_lignes)
+                _rdt = rendement_batterie_des_lignes(
+                    lignes_avec, roles=getattr(lignes_avec, 'roles', None))
+                bornes['batterie_rendement'] = _rdt['rendement']
+                bornes['batterie_rendement_source'] = _rdt['source']
+            except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur
+                pass
 
     try:
+        _source = ({'source_conso': contexte.entrees.get('source_conso')}
+                   if getattr(contexte, 'corrige', True) else {})
         etude = calculer_etude_horaire(
             kwc=kwc, batterie_kwh_utile=capacite,
-            source_conso=contexte.entrees.get('source_conso'),
-            **bornes, **contexte.etude_kwargs)
+            **_source, **bornes, **contexte.etude_kwargs)
     except Exception:  # noqa: BLE001
         logger.warning('étude horaire indisponible à %s panneaux',
                        nb_panneaux, exc_info=True)
@@ -933,8 +960,13 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
         # AMOT59 — LE prix de vente partagé avec l'échelle et le curseur.
         from apps.ventes.domain.dimensionnement_devis import (
             prix_client_composition)
-        prix = _positif(prix_client_composition(
-            vue.get('cout_ttc'), facteur=contexte.facteur_remise))
+        if getattr(contexte, 'corrige', True):
+            prix = _positif(prix_client_composition(
+                vue.get('cout_ttc'), facteur=contexte.facteur_remise))
+        else:
+            # Règles d'origine (devis envoyé avant AMOT59) : le prix d'hier.
+            prix = _palier_devis(
+                _positif(_num(vue.get('cout_ttc')) * contexte.facteur_remise))
         economie = _positif(annuel.get('economie_%s_mad' % variante))
         carte = {
             'nb_panneaux': int(nb_panneaux),
@@ -964,7 +996,16 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.
             'battery_roundtrip': (etude or {}).get('rendement_batterie'),
         }
-        paye = _payback_publie(prix, economie, **_cf_args)
+        if getattr(contexte, 'corrige', True):
+            paye = _payback_publie(prix, economie, **_cf_args)
+        else:
+            # Règles d'origine (avant AMOT29/AMOT58/AMOT30) : ratio simple,
+            # part batterie re-déduite, rendement d'hypothèse.
+            paye = _payback(prix, economie)
+            _cf_args = dict(
+                _cf_args, battery_roundtrip=None,
+                part_batterie=(_part_batterie(annuel) if variante == 'avec'
+                               else None))
         if paye is not None:
             carte['payback_annees'] = paye
         _ajouter_taux(carte, annuel, variante)
@@ -1262,8 +1303,10 @@ def _carte_du_devis(contexte, data, variante):
     paye = _positif((data or {}).get(
         'roi_s' if variante == 'sans' else 'roi_a'))
     if paye is None:
-        # AMOT29 — repli : la définition du document, jamais le ratio simple.
-        paye = _payback_publie(prix, economie)
+        # AMOT29 — repli : la définition du document, jamais le ratio simple
+        # (règles d'origine : le ratio simple d'hier).
+        paye = (_payback_publie(prix, economie) if getattr(contexte, 'corrige', True)
+                else _payback(prix, economie))
     if paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))

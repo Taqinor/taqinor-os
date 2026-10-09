@@ -319,6 +319,10 @@ SCHEMA = {
                                'AGR122 — {chemin: {origine, detail, date}} '
                                "des entrées résolues : un défaut n'est "
                                'jamais enregistré comme une saisie.'),
+    'entrees_pompage': _cle((dict,), MOTEUR_POMPAGE, DERIVEE,
+                            'AMOT63 — {clé: valeur} RÉSOLUES par le moteur '
+                            '(cultures, région, niveaux, profondeur, '
+                            'bassin, distance, plaque) lues par le rendu.'),
 
     # ── QJR66 (même arbitrage) — les ENTRÉES du marché industriel/commercial.
     #    `tension_raccordement` est déclaré plus haut (entrée générale) ; la

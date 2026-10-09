@@ -618,6 +618,10 @@ def option_recommandee(quote: dict):
     comportement historique."""
     if not bool(quote.get("deux_options", True)):
         return None
+    if quote.get("regles_calcul_origine"):
+        # Décision fondateur 08/10/2026 — devis envoyé avant AMOT33 : le
+        # gabarit d'hier mettait toujours l'option « avec » en avant.
+        return "avec"
     reco = quote.get("recommended", "Avec batterie")
     return {"Sans batterie": "sans", "Avec batterie": "avec"}.get(reco)
 
