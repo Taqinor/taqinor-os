@@ -66,7 +66,23 @@ function ecrireDernierMode(v) {
   }
 }
 
-export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
+export default function PaiementDialog({ facture: factureProp, onOpenChange, onSaved }) {
+  // AFAC65 — la facture est RELUE (GET /ventes/factures/<id>/) à l'ouverture et après
+  // chaque paiement : l'en-tête Payé/Dû, la liste des paiements et le montant
+  // prérempli viennent de la facture fraîche, quelle que soit la forme passée
+  // par l'appelant (la ligne Relances n'a ni `montant_paye` ni `paiements`).
+  const [fraiche, setFraiche] = useState(null)
+  const facture = factureProp && fraiche?.id === factureProp.id
+    ? { ...factureProp, ...fraiche } : factureProp
+  const relireFacture = async (id) => {
+    try {
+      const res = await Promise.resolve().then(() => ventesApi.getFacture(id))
+      if (res?.data) setFraiche(res.data)
+      return res?.data ?? null
+    } catch {
+      return null // l'instantané de l'appelant reste affiché
+    }
+  }
   const [paySaving, setPaySaving] = useState(false)
   const [payMontant, setPayMontantBrut] = useState('')
   const { errors: erreursSrv, setFromResponse, clearField, clearAll } = useServerFieldErrors()
@@ -100,6 +116,13 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
     if (!facture) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)init form on facture change
     setPayMontant(facture.montant_du ?? '')
+    setFraiche(null)
+    relireFacture(facture.id).then((fr) => {
+      // Prérempli = dû de la facture fraîche, sauf si l'utilisateur a déjà tapé.
+      if (fr?.montant_du != null) {
+        setPayMontantBrut((cur) => (String(cur) === String(facture.montant_du ?? '') ? fr.montant_du : cur))
+      }
+    })
     setPayDate(todayIso())
     setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé
     setPayModeTouched(false)  // VX249(b) — nouveau paiement → « suggéré » redevient vrai
@@ -154,6 +177,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
         toast.success('Paiement enregistré.')
       }
       onSaved?.()
+      relireFacture(facture.id)
       // VX92 — « Créer un autre » : on vide les champs (sauf la facture ciblée,
       // inchangée) et on refocalise le montant au lieu de fermer.
       if (payCreerUnAutre) {
