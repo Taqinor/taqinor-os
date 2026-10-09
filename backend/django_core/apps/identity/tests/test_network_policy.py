@@ -127,7 +127,7 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
         NetworkPolicy.objects.create(
             company=self.company, mode=NetworkPolicy.Mode.OFF)
         r = self._admin().post(self.BASE, {'mode': 'monitor'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_policy_list_is_company_scoped(self):
         NetworkPolicy.objects.create(
