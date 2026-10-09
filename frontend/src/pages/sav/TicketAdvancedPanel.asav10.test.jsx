@@ -11,9 +11,9 @@ import CONTRAT from '../../../../backend/django_core/apps/sav/contract_samples/p
 
 const serveur = vi.hoisted(() => ({ corps: [], parc: [] }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
 
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
   getEquipements: vi.fn(() => Promise.resolve({ data: serveur.parc })),
   retirerTicketPiece: vi.fn((id, body) => {
     serveur.corps.push(body)
@@ -28,12 +28,12 @@ vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDet
   }),
 }))
 
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock((url) => Promise.resolve({
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock((url) => Promise.resolve({
   data: url === '/stock/produits/' ? [{ id: 1450, nom: 'Onduleur Deye', sku: 'DEYE' }] : [] })))
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore, TICKET_BASE } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore, TICKET_BASE } from './__tests__/ticketDetailMocks.js'
 
 afterEach(() => { cleanup(); serveur.corps.length = 0; serveur.parc.length = 0 })
 

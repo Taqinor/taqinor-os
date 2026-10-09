@@ -11,13 +11,13 @@ import CONTRAT from '../../../../backend/django_core/apps/sav/contract_samples/t
 
 const serveur = vi.hoisted(() => ({ ticket: null, journal: [], refus: false }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ data }) => {
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ data }) => {
   serveur.journal.push('PATCH')
   serveur.ticket = { ...serveur.ticket, ...data }
   return serveur.ticket
 }))
 
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
   getTicket: vi.fn(() => Promise.resolve({ data: serveur.ticket })),
   resoudreTicket: vi.fn(() => {
     serveur.journal.push('POST resoudre')
@@ -29,11 +29,11 @@ vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDet
     return Promise.resolve({ data: serveur.ticket })
   }),
 }))
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore } from './__tests__/ticketDetailMocks.js'
 
 beforeEach(() => {
   serveur.ticket = { ...CONTRAT.exemple, type: 'correctif', description: 'avant',

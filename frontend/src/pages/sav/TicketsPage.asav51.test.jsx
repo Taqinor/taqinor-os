@@ -9,11 +9,11 @@ import { MemoryRouter } from 'react-router-dom'
 
 const serveur = vi.hoisted(() => ({ corps: [], pagesLues: [] }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
   retirerTicketPiece: vi.fn((id, body) => { serveur.corps.push(body); return Promise.resolve({ data: {} }) }),
 }))
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock((url, cfg) => {
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock((url, cfg) => {
   if (url !== '/stock/produits/') return Promise.resolve({ data: [] })
   const page = Number(cfg?.params?.page ?? 1)
   serveur.pagesLues.push(page)
@@ -23,10 +23,10 @@ vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDeta
   }
   return Promise.resolve({ data: { count: 102, next: null, results } })
 }))
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore, TICKET_BASE } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore, TICKET_BASE } from './__tests__/ticketDetailMocks.js'
 
 describe('TicketDetail — ASAV51 catalogue complet', () => {
   it('le 102e produit se choisit dans « Retirer une pièce »', async () => {

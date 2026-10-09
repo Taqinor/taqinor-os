@@ -34,9 +34,9 @@ vi.mock('../../api/savApi', () => ({
     saveContratOm: vi.fn(),
   },
 }))
-vi.mock('../../api/crmApi', async () => (await import('./__testutils__/contratsMocks.js')).crmApiMock())
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/contratsMocks.js')).installationsApiMock())
-vi.mock('../../api/axios', async () => (await import('./__testutils__/contratsMocks.js')).axiosMock())
+vi.mock('../../api/crmApi', async () => (await import('./__tests__/contratsMocks.js')).crmApiMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/contratsMocks.js')).installationsApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/contratsMocks.js')).axiosMock())
 
 import { Component as ContratsMaintenance } from './ContratsMaintenance.jsx'
 

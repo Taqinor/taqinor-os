@@ -53,11 +53,6 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/selectors.py::reporting_lead_rows":
         "date de PREMIÈRE acceptation du lead (événement de signature) : une "
         "V1 remplacée a bien été acceptée, sa date compte",
-    "backend/django_core/apps/crm/selectors.py::devis_expirant_bientot":
-        "À CORRIGER (constat de ce build, hors Files de la garde) : lit "
-        "`statut != 'envoye'` sans is_active — une V1 envoyée puis remplacée "
-        "pourrait remonter comme « expire bientôt » ; la correction vit dans "
-        "apps/crm (propriétaire), la ligne tombe avec elle",
     "backend/django_core/apps/crm/selectors.py::attribution_comparaison_devis":
         "attribution d'un devis donné (argument) : le caller fournit la "
         "version ; ne lit pas un ensemble de devis",
@@ -70,6 +65,21 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/views.py::ClientViewSet.segments":
         "segment a_recontacter : une V1 acceptée il y a < 12 mois est un "
         "événement de signature, pas un CA ; la version courante est sans objet",
+    "backend/django_core/apps/ventes/scheduled.py::_email_parti":
+        "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
+        "statut de devis sans is_active dans ventes/scheduled.py — à passer "
+        "par le prédicat de version en vigueur par le propriétaire ventes ; la "
+        "ligne tombe avec la correction",
+    "backend/django_core/apps/ventes/scheduled.py::pre_echeance_reminders":
+        "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
+        "statut de devis sans is_active dans ventes/scheduled.py — à passer "
+        "par le prédicat de version en vigueur par le propriétaire ventes ; la "
+        "ligne tombe avec la correction",
+    "backend/django_core/apps/ventes/scheduled.py::releve_mensuel_reminders":
+        "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
+        "statut de devis sans is_active dans ventes/scheduled.py — à passer "
+        "par le prédicat de version en vigueur par le propriétaire ventes ; la "
+        "ligne tombe avec la correction",
 }
 
 

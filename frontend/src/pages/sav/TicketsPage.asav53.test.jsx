@@ -11,8 +11,8 @@ import { MemoryRouter } from 'react-router-dom'
 
 const serveur = vi.hoisted(() => ({ stock: { 900: 5, 7: 0 }, pieces: [], appels: 0 }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
   getTicketPieces: vi.fn(() => Promise.resolve({ data: serveur.pieces })),
   getPiecesCompatibles: vi.fn(() => Promise.resolve({
     data: { results: [{ piece_id: 900, nom: 'Ventilateur', sku: 'VENT' }] } })),
@@ -29,13 +29,13 @@ vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDet
     return Promise.resolve({ data: {}, status: 201 })
   }),
 }))
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock((url) => Promise.resolve({
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock((url) => Promise.resolve({
   // La liste produits chargée ne contient PAS la pièce 900 et donne 0 au 7.
   data: url === '/stock/produits/' ? [{ id: 7, nom: 'Autre', sku: 'AUT', quantite_stock: 0 }] : [] })))
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore, TICKET_BASE } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore, TICKET_BASE } from './__tests__/ticketDetailMocks.js'
 
 function rendre() {
   return render(<Provider store={ticketStore('admin')}><MemoryRouter>

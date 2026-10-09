@@ -175,7 +175,6 @@ frontend/src/pages/preferences/prefs.js::setReducedMotionPref  1
 frontend/src/pages/preferences/prefs.js::setSunlightPref  1
 frontend/src/pages/sav/TicketsPage.jsx::copierLien  1
 frontend/src/pages/sav/TicketsPage.jsx::ecrireLastTicketType  1
-frontend/src/pages/sav/TicketsPage.jsx::reloadAll  1
 frontend/src/pages/stock/FournisseurFiche360.jsx::supprimer  1
 frontend/src/pages/stock/FournisseurFiche360.jsx::valider  1
 frontend/src/pages/stock/OcrStockImport.jsx::push  1

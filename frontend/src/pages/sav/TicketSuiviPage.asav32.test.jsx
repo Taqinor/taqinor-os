@@ -8,7 +8,7 @@ vi.mock('../../api/axios', () => ({
 }))
 
 import api from '../../api/axios'
-import { renderSuiviPage as renderPage } from './__testutils__/renderSuiviPage.jsx'
+import { renderSuiviPage as renderPage } from './__tests__/renderSuiviPage.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

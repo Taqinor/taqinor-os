@@ -6,7 +6,7 @@ import { Provider } from 'react-redux'
 // mémoire qui applique la décision d'ASAV2 (couvert → 0 MAD, récidive → 403
 // sans override d'un responsable) ; aucune assertion sur les arguments d'appel.
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
 
 const serveur = vi.hoisted(() => ({ factures: [] }))
 
@@ -20,16 +20,16 @@ vi.mock('../../api/savApi', async () => {
     serveur.factures.push(f)
     return Promise.resolve({ data: f })
   }
-  return (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+  return (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
     facturerTicket: vi.fn((id, override) => facturer(id === 2, !!override)),
     rapportPdf: vi.fn(() => Promise.resolve({ data: new Blob() })),
   })
 })
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore, TICKET_BASE } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore, TICKET_BASE } from './__tests__/ticketDetailMocks.js'
 
 afterEach(() => { cleanup(); serveur.factures.length = 0 })
 

@@ -562,7 +562,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     try {
       const r = await savApi.getTicket(id)
       setCurrent(r.data)
-    } catch { /* silencieux */ }
+    } catch (err) {
+      toast.error(frError(err, 'Rechargement du ticket impossible.'))
+    }
   }
   const loadHistorique = () => {
     savApi.getTicketHistorique(id).then((r) => setHistorique(r.data)).catch(() => {})
@@ -706,7 +708,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         const r = await savApi.getTicket(id)
         setCurrent(r.data)
         set('statut', r.data?.statut ?? current.statut)
-      } catch { /* silencieux */ }
+      } catch (errRecharge) {
+        toast.error(frError(errRecharge, 'Rechargement du ticket impossible.'))
+      }
     } finally {
       setSaving(false)
     }

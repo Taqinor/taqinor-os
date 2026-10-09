@@ -27,12 +27,12 @@ const regroupements = () => {
   return Object.values(par).filter((n) => n >= 3)
 }
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ id, data }) => {
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ id, data }) => {
   serveur.journal.push(`PATCH ${id}`)
   serveur.tickets[id] = { ...serveur.tickets[id], ...data }
   return serveur.tickets[id]
 }))
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
   getTicket: vi.fn((id) => Promise.resolve({ data: serveur.tickets[id] })),
   getCausesDefaillance: vi.fn(() => Promise.resolve({ data: [{ id: 11, nom: 'Surchauffe' }] })),
   getRemedesDefaillance: vi.fn(() => Promise.resolve({ data: [{ id: 21, nom: 'Remplacement ventilateur' }] })),
@@ -48,11 +48,11 @@ vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDet
   }),
   lienClientTicket: vi.fn(() => Promise.resolve({ data: { url: 'https://x.test/s' } })),
 }))
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore } from './__tests__/ticketDetailMocks.js'
 
 function rendre(id) {
   return render(<Provider store={ticketStore('responsable')}><MemoryRouter>

@@ -15,19 +15,19 @@ const serveur = vi.hoisted(() => ({
   patchs: [],
 }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ data }) => {
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ data }) => {
   serveur.patchs.push(data)
   const { cout: _ignore, ...modifiable } = data // read_only_fields : cout jeté
   serveur.ticket = { ...serveur.ticket, ...modifiable }
   return serveur.ticket
 }))
 
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock())
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore } from './__tests__/ticketDetailMocks.js'
 
 afterEach(() => { cleanup(); serveur.patchs.length = 0 })
 

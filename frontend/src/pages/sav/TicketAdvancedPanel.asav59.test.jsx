@@ -13,8 +13,8 @@ const serveur = vi.hoisted(() => ({
   doublonAnnule: false,
 }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
-vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock({
   getTicket: vi.fn(() => Promise.resolve({ data: { ...TICKET_BASE } })),
   fusionnerTicket: vi.fn(() => {
     serveur.pieces = [...serveur.pieces, { id: 2, produit_nom: 'Câble MC4 (du doublon)', quantite: '2' }]
@@ -23,11 +23,11 @@ vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDet
   }),
   getTicketPieces: vi.fn(() => Promise.resolve({ data: serveur.pieces.map((p) => ({ ...p })) })),
 }))
-vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
-vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
-import { ticketStore, TICKET_BASE } from './__testutils__/ticketDetailMocks.js'
+import { ticketStore, TICKET_BASE } from './__tests__/ticketDetailMocks.js'
 
 describe('TicketDetail — ASAV59 rechargement après fusion', () => {
   it('les pièces du doublon apparaissent et la liste est prévenue', async () => {

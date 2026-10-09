@@ -40,7 +40,7 @@ vi.mock('../../features/stock/store/stockSlice', () => ({
 
 import { downloadBlob } from '../../utils/downloadBlob'
 import MouvementsPage from './MouvementsPage.jsx'
-import { installJsdomPolyfills } from './__testutils__/jsdomPolyfills.js'
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 beforeEach(() => {
   vi.clearAllMocks()
