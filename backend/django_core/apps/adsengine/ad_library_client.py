@@ -56,6 +56,10 @@ MAX_NOUVEAUX_ESSAIS = 2
 LONGUEUR_MAX_MOT_CLE = 100
 
 SEARCH_TYPES = ('KEYWORD_UNORDERED', 'KEYWORD_EXACT_PHRASE')
+# AACQ37 — ``ad_type=ALL`` sur chaque recherche ``ads_archive`` : parité avec
+# la sonde VEIL40 (``tools/adlib_probe/probe.py:244``, référence de parité) —
+# sans lui Meta peut ne renvoyer que les pubs politiques/sociales.
+AD_TYPE = 'ALL'
 AD_ACTIVE_STATUS = ('ACTIVE', 'INACTIVE', 'ALL')
 
 # Champs demandés (seuls ceux que l'API sert pour une pub commerciale UE/UK ;
@@ -398,6 +402,7 @@ class AdLibraryClient:
             'ad_reached_countries': json.dumps([pays]),
             'search_type': search_type,
             'ad_active_status': ad_active_status,
+            'ad_type': AD_TYPE,
             'fields': ','.join(champs or CHAMPS_DEFAUT),
         }
         if limit:
