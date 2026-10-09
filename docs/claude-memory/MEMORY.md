@@ -34,3 +34,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Décisions audit pdf (D-APDF)](apdf-decisions-fondateur.md) — 09/10/2026 : bande légale du devis depuis le seul profil société (capital + forme, sans gérant) ; ICE/IF/RC/patente sur BL, PV, remise ; prestations hors PV/BL
 - [Décision TVA par défaut (D-APAR-1)](apar-decisions-fondateur.md) — 09/10/2026 : le profil `tva_standard` est l'unique source ; bouton « Par défaut » du référentiel retiré
 - [Tous les contrôles bloquants](enforce-all-checks.md) — 09/10/2026 : api-fuzz tous checks bloquant, aucun contrôle advisory, dettes des gardes ramenées à zéro
+- [Merge queue sur main](merge-queue-main.md) — 09/10/2026 : `main` derrière une merge queue GitHub ; `gh pr merge --auto --merge` met en file, plus jamais de boucle update-branch ; CI répond à `merge_group`
