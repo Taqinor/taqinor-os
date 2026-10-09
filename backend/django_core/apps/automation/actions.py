@@ -535,7 +535,11 @@ def _assign_record(rule, instance, company, context, user):
         if _est_lead(instance):
             # APAR51 — un lead s'écrit par le service propriétaire (chatter
             # old→new, même discipline que le geste manuel).
-            return _ecrire_lead(instance, field, target, user)
+            # Le journal du run garde le message d'assignation historique.
+            statut, message = _ecrire_lead(instance, field, target, user)
+            if statut == Status.SUCCESS:
+                message = f'Assigné à {target} via « {field} ».'
+            return statut, message
         setattr(instance, f'{field}_id', target.pk)
         instance.save(update_fields=[f'{field}_id'])
         return Status.SUCCESS, f'Assigné à {target} via « {field} ».'

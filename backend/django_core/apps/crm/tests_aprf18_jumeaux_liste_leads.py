@@ -22,7 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import stages
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 
 User = get_user_model()
@@ -56,7 +56,9 @@ class JumeauxListeLeadsTests(TestCase):
                 stage=stages.NEW)
             Devis.objects.create(
                 company=self.company, reference=f'DEV-APRF18-{self.n:04d}',
-                lead=lead, statut='brouillon', taux_tva=Decimal('20.00'),
+                lead=lead, client=Client.objects.create(
+                    company=self.company, nom=f'Client {self.n}'),
+                statut='brouillon', taux_tva=Decimal('20.00'),
                 remise_globale=Decimal('0'), created_by=self.user)
 
     def _compter(self, url):

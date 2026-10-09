@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.installations.models import Installation
-from apps.ventes.models import Client
+from apps.crm.models import Client
 
 User = get_user_model()
 BASE = '/api/django/installations/chantiers'

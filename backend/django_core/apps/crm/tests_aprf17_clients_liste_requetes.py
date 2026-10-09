@@ -22,6 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm.models import Client
+from apps.stock.models import Produit
 from apps.ventes.models import Devis, Facture, LigneFacture, Paiement
 
 User = get_user_model()
@@ -40,6 +41,9 @@ class ClientsListeRequetesTests(TestCase):
         self.api.credentials(HTTP_AUTHORIZATION=(
             f'Bearer {AccessToken.for_user(self.user)}'))
         self.n = 0
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='APRF17-P',
+            prix_vente=Decimal('1000'), quantite_stock=10)
 
     def _clients(self, nombre, factures):
         for _ in range(nombre):
@@ -57,7 +61,8 @@ class ClientsListeRequetesTests(TestCase):
                     reference=f'FA-APRF17-{self.n:04d}-{k}',
                     statut=Facture.Statut.EMISE)
                 LigneFacture.objects.create(
-                    facture=facture, designation='Panneau',
+                    facture=facture, produit=self.produit,
+                    designation='Panneau',
                     quantite=Decimal('2'), prix_unitaire=Decimal('1000'),
                     remise=Decimal('0'))
                 Paiement.objects.create(

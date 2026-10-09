@@ -66,9 +66,16 @@ class ObjetSecondairePorteeTests(TestCase):
                                {'mode': 'lier', 'client_id': 99999999},
                                format='json')
         self.assertEqual(hors.status_code, 400)
-        self.assertEqual(hors.data, {'client_id': ['Client introuvable.']})
+        self.assertEqual(hors.data['client_id'], ['Client introuvable.'])
         self.assertEqual(absent.status_code, 400)
-        self.assertEqual(hors.data, absent.data)
+        # Enveloppe YAPIC3 identique, au ``request_id`` (par requête) près.
+        hors_err = {k: v for k, v in hors.data['error'].items()
+                    if k != 'request_id'}
+        absent_err = {k: v for k, v in absent.data['error'].items()
+                      if k != 'request_id'}
+        self.assertEqual(hors_err, absent_err)
+        self.assertEqual(set(hors.data), set(absent.data))
+        self.assertEqual(hors.data['client_id'], absent.data['client_id'])
         self.lead.refresh_from_db()
         self.assertIsNone(self.lead.client_id)
 
