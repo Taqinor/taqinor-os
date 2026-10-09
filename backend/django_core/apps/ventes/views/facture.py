@@ -653,8 +653,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             remboursement (l'acompte n'est plus « coincé » sur une facture
             morte).
 
-        Sans directive (ou sur une facture sans acompte) : comportement
-        historique strictement inchangé — on bascule seulement le statut.
+        AFAC12 — sans directive, une facture qui porte de l'argent est
+        REFUSÉE (400 ``directive_acompte_requise``) ; une facture sous avoir
+        actif aussi (400 ``avoir_actif``). Sans argent rattaché : on bascule
+        seulement le statut. Les avances ventilées suivent le transfert.
         """
         from decimal import Decimal
         facture = self.get_object()
@@ -683,6 +685,20 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                  'code': 'note_debit_active'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # AFAC12 (C-AFAC-002) — jamais une facture annulée sous un avoir
+        # ACTIF : l'avoir crédite une facture vivante ; il s'annule d'abord.
+        avoirs_actifs = [a for a in facture.avoirs.all()
+                         if a.statut != 'annulee']
+        if avoirs_actifs:
+            return Response(
+                {'detail': (
+                    'Cette facture porte un avoir actif ('
+                    + ', '.join(a.reference for a in avoirs_actifs)
+                    + ") : annulez-le d'abord."
+                ),
+                 'code': 'avoir_actif'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         directive = request.data.get('acompte') or {}
         if not isinstance(directive, dict):
             return Response(
@@ -708,7 +724,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # net est `Facture.montant_paye` — plus aucune somme locale de
             # `p.montant` (elle remboursait 45 000 jamais encaissés).
             paiements = [p for p in locked.paiements.all()
-                         if p.statut != Paiement.Statut.REJETE]
+                         if p.statut not in Paiement.STATUTS_NON_COMPTES]
             net_acompte = Decimal(str(locked.montant_paye))
 
             if acompte_action == 'transferer':
@@ -804,9 +820,21 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 # Re-pointe les paiements vers la cible : les soldes des deux
                 # factures se redérivent (propriétés calculées).
                 nb = len(paiements)
+                from ..domain.encaissements import _rattacher_paiement
                 for p in paiements:
-                    p.facture = cible
-                    p.save(update_fields=['facture'])
+                    # AFAC17 — LE geste de déplacement partagé avec
+                    # ``reaffecter_paiement``.
+                    _rattacher_paiement(p, cible)
+                # AFAC12 — les avances VENTILÉES suivent aussi : le net
+                # transféré (``montant_paye``) les comptait déjà, mais elles
+                # restaient sur la facture morte (la cible recevait moins).
+                for a in locked.affectations_paiement.select_related(
+                        'paiement'):
+                    if a.paiement.statut in Paiement.STATUTS_NON_COMPTES:
+                        continue
+                    a.facture = cible
+                    a.save(update_fields=['facture'])
+                    nb += 1
                 locked.statut = Facture.Statut.ANNULEE
                 locked.save(update_fields=['statut'])
                 activity.log_facture_acompte_transfere_sortie(
@@ -864,7 +892,30 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             else:
-                # Comportement historique : simple bascule de statut.
+                # AFAC12 (C-AFAC-002, D-AFAC-C5 a) — une facture qui porte de
+                # l'argent (paiements valides, avances ventilées, escomptes)
+                # ne s'annule JAMAIS sans dire où il va : l'argent restait
+                # sur une facture morte et la porte suivante re-facturait
+                # 100 % (contrat ``facture_annulation.json``).
+                if net_acompte > 0:
+                    from ..domain.encaissements import (
+                        argent_rattache, decrire_argent_rattache,
+                    )
+                    argent = argent_rattache(locked)
+                    return Response(
+                        {'code': 'directive_acompte_requise',
+                         'detail': (
+                             "Cette facture porte de l'argent ("
+                             + decrire_argent_rattache(argent)
+                             + ') : choisissez de le transférer vers une '
+                             'autre facture du devis ou de le rembourser '
+                             "avant d'annuler."),
+                         'argent_rattache': {
+                             cle: f'{Decimal(str(v or 0)):.2f}'
+                             for cle, v in argent.items()}},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # Sans argent rattaché : simple bascule de statut.
                 locked.statut = Facture.Statut.ANNULEE
                 locked.save(update_fields=['statut'])
                 facture = locked
@@ -1252,21 +1303,36 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `montant` (la trace figée à la création)."""
         facture = self.get_object()
         from ..services import LinkError, create_payment_link
-        from ..payments.providers import get_provider
+        from ..domain.encaissements import url_page_paiement
+        from ..payments.providers import get_provider, providers_lien_actifs
         provider_key = request.data.get('provider') or 'noop'
+        # AFAC21 (C-AFAC-020) — clé validée contre la LISTE BLANCHE des
+        # fournisseurs de lien activés AVANT toute écriture : une clé
+        # inconnue créait un lien (201), un fournisseur sans session un 500
+        # avec lien orphelin, une clé trop longue un 500 ``DataError``.
+        if (not isinstance(provider_key, str)
+                or provider_key not in providers_lien_actifs()):
+            return Response(
+                {'detail': 'Fournisseur de paiement inconnu ou inactif.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             link = create_payment_link(facture=facture, provider=provider_key)
         except LinkError as exc:
             return Response({'detail': exc.message},
                             status=status.HTTP_400_BAD_REQUEST)
         session = get_provider(link.provider).create_session(link)
+        # AFAC21 — URL ABSOLUE de la page client : le réglage d'abord, sinon
+        # l'hôte de CETTE requête (jamais un chemin ``/api/…`` relatif).
+        pay_url = session.get('pay_url') or ''
+        if link.provider == 'noop' or not pay_url.startswith('http'):
+            pay_url = url_page_paiement(link.token, request)
         return Response({
             'token': link.token,
             'statut': link.statut,
             'montant': str(link.montant),
             'montant_a_payer': str(link.montant_a_payer),
             'provider': link.provider,
-            'pay_url': session.get('pay_url'),
+            'pay_url': pay_url,
             'expires_at': link.expires_at.isoformat(),
         }, status=status.HTTP_201_CREATED)
 
