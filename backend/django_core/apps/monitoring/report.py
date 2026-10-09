@@ -173,12 +173,19 @@ def render_om_report_pdf(installation, *, period='monthly', today=None):
     return render_pdf(html=html)
 
 
+class EnvoiRapportImpossible(Exception):
+    """ASAV68 — l'e-mail du rapport O&M n'est pas parti (SMTP injoignable,
+    refus du serveur…) : l'appelant répond 502, jamais « envoyé »."""
+
+
 def email_om_report(installation, *, period='monthly', recipient=None,
                     today=None):
     """Génère le rapport O&M et l'envoie par e-mail (PDF en pièce jointe).
 
     Destinataire = `recipient` sinon l'e-mail du client du système. No-op sûr
-    (renvoie False) sans destinataire. Renvoie True si l'envoi a été tenté.
+    (renvoie False) sans destinataire. Renvoie True si l'e-mail est PARTI ;
+    ASAV68 — lève ``EnvoiRapportImpossible`` si l'envoi échoue (exception ou
+    retour nul) : la notification interne n'est émise qu'après un envoi réussi.
 
     ARC39 — cet envoi reste un ``EmailMessage`` direct (destinataire CLIENT,
     PDF en pièce jointe — ``notifications.services.notify()`` ne sait pas
@@ -208,7 +215,13 @@ def email_om_report(installation, *, period='monthly', recipient=None,
               f'{period_label} du système {ref}.'),
         to=[recipient])
     msg.attach(f'rapport-om-{ref}.pdf', pdf_bytes, 'application/pdf')
-    msg.send(fail_silently=True)
+    try:
+        envoyes = msg.send(fail_silently=False)
+    except Exception as exc:  # noqa: BLE001 — SMTP, réseau, refus serveur…
+        raise EnvoiRapportImpossible(str(exc) or exc.__class__.__name__)
+    if not envoyes:
+        raise EnvoiRapportImpossible('le serveur de messagerie a refusé '
+                                     "l'envoi")
 
     try:
         _notify_rapport_envoye(installation, period_label, ref, recipient)
