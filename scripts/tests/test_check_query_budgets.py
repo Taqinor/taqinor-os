@@ -139,6 +139,64 @@ class TestMalformedManifest(_Harness):
         self.assertEqual(cqb.main(), 1)
 
 
+SKIPPED_BODY = """\
+    import unittest
+    class T(unittest.TestCase):
+        {skip}
+        def test_budget(self):
+            {inner}
+            with self.assertMaxQueries(12):
+                self.client.get('/api/django/crm/leads/')
+"""
+
+
+class TestBudgetSaute(_Harness):
+    """APRF27 — un budget enforced dont le test est sauté ne garde rien."""
+
+    def _ecrire(self, skip="", inner="pass"):
+        self._write_manifest(ENFORCED_ENDPOINT)
+        self._write_test_file(
+            "test_leads_budget.py",
+            SKIPPED_BODY.format(skip=skip, inner=inner))
+
+    def test_budget_saute_refuse(self):
+        self._ecrire(skip="@unittest.skip('lent')")
+        self.assertEqual(cqb.main(), 1)
+
+    def test_skiptest_refuse(self):
+        self._ecrire(inner="self.skipTest('lent')")
+        self.assertEqual(cqb.main(), 1)
+
+    def test_pytest_mark_skip_refuse(self):
+        self._ecrire(skip="@pytest.mark.skip")
+        self.assertEqual(cqb.main(), 1)
+
+    def test_sans_skip_passe(self):
+        self._ecrire()
+        self.assertEqual(cqb.main(), 0)
+
+    def test_docstring_qui_mentionne_un_skip_nest_pas_un_skip(self):
+        self._write_manifest(ENFORCED_ENDPOINT)
+        self._write_test_file("test_leads_budget.py", '''\
+            """Test-du-test : remettre @unittest.skip rougit la garde."""
+            class T:
+                def test_budget(self):
+                    with self.assertMaxQueries(12):
+                        self.client.get('/api/django/crm/leads/')
+        ''')
+        self.assertEqual(cqb.main(), 0)
+
+    def test_message_nomme_fichier_et_endpoint(self):
+        import contextlib
+        import io
+        self._ecrire(skip="@unittest.skip('lent')")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            cqb.main()
+        self.assertIn("budget sauté : /api/django/crm/leads/", err.getvalue())
+        self.assertIn("test_leads_budget.py:", err.getvalue())
+
+
 class TestMissingPyYAML(_Harness):
     """AUD831 — the behavioural change: PyYAML absent used to be a silent
     exit 0 ('dependance dev'); once this guard is wired into CI (which
