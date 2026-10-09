@@ -41,6 +41,11 @@ class NTSRV12PaliersEscaladeTest(TestCase):
             company=self.company, reference='SAV-NTSRV12-1',
             client=self.client_obj, statut=Ticket.Statut.EN_COURS,
             sla_due_at=date.today())
+        # ASAV57 (D-ASAV-5 Q2 a) — l'interrupteur société gouverne les
+        # notifications : les balayages ne notifient que société activée.
+        _r = SavSlaSettings.get(self.company)
+        _r.sla_breach_enabled = True
+        _r.save(update_fields=['sla_breach_enabled'])
 
     def _paliers(self):
         p0 = EscaladeSlaNiveau.objects.create(
