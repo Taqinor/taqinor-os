@@ -406,7 +406,9 @@ class MetaFormF6MappingTests(TestCase):
 
     def test_je_compare_seulement_est_basse_et_plus_tard(self):
         lead = self._create(quand='je_compare_seulement')
-        self.assertEqual(lead.priorite, Lead.Priorite.NORMALE)   # jamais de downgrade auto
+        # À la CRÉATION la priorité déclarée s'applique (comme « je me renseigne »
+        # dans FORM-4.0) ; « jamais de downgrade » ne vaut que pour l'enrichissement.
+        self.assertEqual(lead.priorite, Lead.Priorite.BASSE)
         self.assertEqual(lead.project_timeline,
                          Lead.ProjectTimeline.PLUS_TARD)
 
