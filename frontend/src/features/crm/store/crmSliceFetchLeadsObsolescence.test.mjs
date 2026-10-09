@@ -30,11 +30,11 @@ test('LB7 : fetchLeads.pending trace le requestId de la dernière requête dispa
 test('LB7 : fetchLeads.fulfilled ignore un payload OBSOLÈTE (requestId périmé)', () => {
   const start = SRC.indexOf('.addCase(fetchLeads.fulfilled,')
   assert.ok(start > 0)
-  const block = SRC.slice(start, start + 500)
+  const block = SRC.slice(start, start + 900)
   assert.match(block, /if \(action\.meta\.requestId !== state\.fetchLeadsRequestId\) return/)
   // La garde précède TOUJOURS l'écriture — sinon elle ne protège rien.
   const guardIdx = block.indexOf('if (action.meta.requestId !== state.fetchLeadsRequestId) return')
-  const writeIdx = block.indexOf('state.leads = action.payload.results ?? action.payload')
+  const writeIdx = block.indexOf('state.leads = avecLesCreesLocaux(')
   assert.ok(guardIdx > 0 && writeIdx > guardIdx, 'la garde doit précéder l\'écriture de state.leads')
 })
 

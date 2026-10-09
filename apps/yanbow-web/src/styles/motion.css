@@ -7,19 +7,20 @@
  *   la connaît pas (contenu visible, rien ne bouge).
  * - JAMAIS sur l'élément LCP : ni `.hero`, ni `.hero-page`, ni `.bande-nuit`,
  *   ni un `h1`, ni la première section de `<main>`.
- * - Seulement `opacity` et `transform` (compositeur) : aucun décalage de mise en
+ * - Seulement `transform` (compositeur ; jamais `opacity`, qui ferait échouer le contraste) : aucun décalage de mise en
  *   page, donc aucun CLS ajouté (budget : CLS < 0,02, YBW16).
  * - Entièrement enveloppé dans `prefers-reduced-motion: no-preference`.
  */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
+    /* Glissement seul, SANS fondu : un texte en opacité partielle échoue au
+       contraste (axe color-contrast, /sur-mesure/) tant qu'il n'est pas
+       entièrement révélé. */
     @keyframes revelation-douce {
       from {
-        opacity: 0;
         transform: translateY(0.75rem);
       }
       to {
-        opacity: 1;
         transform: none;
       }
     }

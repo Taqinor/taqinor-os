@@ -3,6 +3,4 @@
 # un fichier au-dessus de son plafond echoue ; un fichier en dessous doit baisser sa ligne.
 # Mesure au 08/10/2026 (la liste de l'audit donnait LeadCard 4 ; la comparaison
 # `lead.stage === 'NEW'` l.254 est la 5e). Retrait des litteraux : ADEP46 (PLAN_AUDIT_LEAD).
-frontend/src/pages/crm/leads/views/KanbanView.jsx = 6
-frontend/src/pages/crm/leads/views/LeadCard.jsx = 5
 frontend/src/features/uxviews/contextActions.js = 2

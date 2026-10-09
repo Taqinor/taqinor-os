@@ -15,6 +15,7 @@ import {
   FileWarning, HardHat, Wrench, ShoppingCart, ArrowRightLeft,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner, Input,
@@ -187,8 +188,12 @@ export default function MesActivitesPage() {
   const loadTeam = () => {
     // Liste complète (toutes les activités ouvertes de la société) ; échec
     // silencieux : la charge d'équipe est un encart secondaire, pas la page.
-    recordsApi.getActivities()
-      .then(r => setTeamActivities(r.data.results ?? r.data))
+    // ALEA20 — TOUTES les pages (la liste nue s'arrêtait à 50 lignes et
+    // « Charge de l'équipe » sous-comptait au-delà).
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      recordsApi.getActivities(undefined, undefined, { page, page_size: pageSize })
+        .then(r => r.data))
+      .then(res => setTeamActivities(Array.isArray(res) ? res : (res?.results ?? [])))
       .catch(() => setTeamActivities([]))
   }
 
