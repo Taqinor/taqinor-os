@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 200
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: mirror.gcr.io/pgvector/pgvector:pg16
         env:
           POSTGRES_DB: erp_db
           POSTGRES_USER: erp_user
