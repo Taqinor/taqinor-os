@@ -50,12 +50,17 @@ class IdentiteVendeurFigeeTests(TestCase):
         self.addCleanup(p_up.stop)
 
     def _facture(self, ref, statut='brouillon'):
+        from apps.stock.models import Produit
         from apps.ventes.models import Facture, LigneFacture
+        produit, _ = Produit.objects.get_or_create(
+            company=self.company, sku='APAR61-P',
+            defaults={'nom': 'Centrale', 'prix_vente': Decimal('1000')})
         facture = Facture.objects.create(
             company=self.company, reference=ref, client=self.client_obj,
             statut=statut, taux_tva=Decimal('20'))
         LigneFacture.objects.create(
-            facture=facture, designation='Centrale', quantite=Decimal('1'),
+            facture=facture, produit=produit, designation='Centrale',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('1000'), taux_tva=Decimal('20'))
         return facture
 

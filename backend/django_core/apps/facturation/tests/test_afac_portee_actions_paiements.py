@@ -40,7 +40,8 @@ class PorteeActionsPaiementsTests(TestCase):
         cls.company = Company.objects.create(nom='AFAC55', slug='afac55-co')
         role_equipe = Role.objects.create(
             company=cls.company, nom='Commercial',
-            permissions=RESPONSABLE_PERMISSIONS + ['records_scope_equipe'],
+            permissions=RESPONSABLE_PERMISSIONS + [
+                'encaisser', 'records_scope_equipe'],
             est_systeme=False)
         cls.proprio = User.objects.create_user(
             username='afac55_proprio', password='x', role=role_equipe,
