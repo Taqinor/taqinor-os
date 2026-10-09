@@ -37,9 +37,14 @@ class DevisCadenceActionsMixin:
         ``request.user.company`` — jamais de devis d'une autre société. RÈGLE
         #4 : aucune écriture, aucun statut touché.
 
+        ADEV64 (C-ADEV-025) — et à la PORTÉE de ``request.user`` : un
+        Commercial de portée ``team`` ne voit ni les devis ni les téléphones
+        des clients hors de sa portée (auteur du devis ou responsable du lead).
+
         Renvoie ``{'buckets': {clé: {'count', 'ids'}, …}, 'wa_drafts':
         {id: message}}`` — forme déclarée par ``DevisActionRequiseSerializer``
         (PACT7 : jamais ``response=dict``).
         """
         from ..selectors import devis_action_requise
-        return Response(devis_action_requise(request.user.company))
+        return Response(devis_action_requise(request.user.company,
+                                             user=request.user))

@@ -14,8 +14,15 @@ from .selectors_facturation import devis_a_facturer
 
 # ── QX29/QX30/PACT17 — « Relances du jour » : file d'action des devis ────────
 
-def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
-                         jours_avant_expiration=7, jours_non_facture=7):
+#: ADEV64 — champs propriétaires qui ouvrent un devis à la portée d'un
+#: utilisateur dans « Relances du jour » : son AUTEUR, ou le RESPONSABLE du
+#: lead d'origine (string-FK ``crm.Lead.owner``, jamais un import crm).
+_CHAMPS_PORTEE = ('created_by', 'lead__owner')
+
+
+def devis_action_requise(company, *, user=None, today=None,
+                         jours_sans_reponse=3, jours_avant_expiration=7,
+                         jours_non_facture=7):
     """PACT17 — Regroupe les devis d'une société par ACTION ATTENDUE, miroir
     exact de ``apps.sav.selectors.file_action`` (ZSAV6, parité Odoo « Activity
     view »). C'est l'agrégat que ``DevisActionBoardPage`` consomme : il
@@ -65,6 +72,13 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     Lecture seule, bornée à ``company`` — jamais de fuite cross-société.
     Aucun prix d'achat ni marge n'est exposé (règle #4) : seul le total TTC,
     déjà visible du client, accompagne la ligne.
+
+    ADEV64 (C-ADEV-025) — ``user`` fourni (la vue passe ``request.user``) :
+    chaque panier est borné à SA portée (``core.scoping.scope_queryset`` sur
+    ``_CHAMPS_PORTEE`` — auteur du devis OU responsable du lead) ; un
+    Commercial de portée ``team`` ne voit ni les devis ni les téléphones des
+    clients hors de sa portée. ``user=None`` (appel interne) : société
+    entière, comme avant.
     """
     from datetime import timedelta
 
@@ -85,15 +99,26 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     engagement_relance = []
     wa_drafts = {}
 
-    # ── Acceptés non facturés : ZFAC12 tel quel (jamais recodé ici) ──
-    for devis in devis_a_facturer(company, jours=jours_non_facture,
-                                  today=today):
-        acceptes_non_factures.append(devis.id)
+    # ADEV64 — la portée de l'utilisateur borne TOUS les paniers (et donc
+    # les lignes, téléphones et brouillons, tous dérivés des ids cités).
+    devis_societe = Devis.objects.filter(company=company)
+    if user is not None:
+        from core.scoping import scope_queryset
+        devis_societe = scope_queryset(devis_societe, user, _CHAMPS_PORTEE)
+
+    # ── Acceptés non facturés : ZFAC12 tel quel (jamais recodé ici), relu
+    # dans la portée (ordre ``id`` croissant, celui du contrat APRF1) ──
+    acceptes_non_factures.extend(
+        devis_societe
+        .filter(pk__in=[d.id for d in devis_a_facturer(
+            company, jours=jours_non_facture, today=today)])
+        .order_by('id')
+        .values_list('id', flat=True)
+    )
 
     # ── Refusés sans motif (QX26) ──
     refuses_sans_motif.extend(
-        devis_en_jeu(Devis.objects
-                     .filter(company=company, statut=Devis.Statut.REFUSE))
+        devis_en_jeu(devis_societe.filter(statut=Devis.Statut.REFUSE))
         .exclude(motif_refus__gt='')
         .order_by('id')
         .values_list('id', flat=True)
@@ -101,9 +126,7 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
 
     # ── Devis ENVOYÉS : un seul panier par devis, priorité au signal le plus
     # fort (engagement mesuré > échéance qui approche > simple cadence).
-    envoyes = (devis_en_jeu(Devis.objects
-                            .filter(company=company,
-                                    statut=Devis.Statut.ENVOYE))
+    envoyes = (devis_en_jeu(devis_societe.filter(statut=Devis.Statut.ENVOYE))
                .select_related('client')
                .prefetch_related('share_links')
                .order_by('id'))

@@ -65,10 +65,7 @@ ROUTES_SONDEES = {
 #: Routes sondées dont la fuite est CONNUE et portée par une tâche ouverte :
 #: leurs fuites sont rapportées sans faire échouer la garde. Retirer l'entrée
 #: dès que la tâche est livrée.
-EN_ATTENTE = {
-    'devis-action-requise':
-        'ADEV64 (PLAN_AUDIT_LEAD) — portée équipe de « Relances du jour ».',
-}
+EN_ATTENTE = {}
 
 #: Viewsets EXEMPTÉS (par nom de classe), avec leur raison.
 VIEWSETS_EXEMPTES = {
