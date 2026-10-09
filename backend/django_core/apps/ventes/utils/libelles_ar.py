@@ -166,23 +166,18 @@ def _load_font_base64(filename):
 
 
 def arabic_font_face_css():
-    """CSS `@font-face` embarquant Noto Sans Arabic (regular + bold), ou une
-    chaîne vide si les fichiers sont absents (le gabarit retombe alors sur une
-    police système — dégradation propre, jamais de crash)."""
-    b64_400 = _load_font_base64('NotoSansArabic-400.woff2')
-    b64_700 = _load_font_base64('NotoSansArabic-700.woff2')
-    faces = []
-    if b64_400:
-        faces.append(
-            '@font-face{font-family:"Noto Sans Arabic";font-style:normal;'
-            'font-weight:400;font-display:block;'
-            f'src:url("data:font/woff2;base64,{b64_400}") format("woff2");}}')
-    if b64_700:
-        faces.append(
-            '@font-face{font-family:"Noto Sans Arabic";font-style:normal;'
-            'font-weight:700;font-display:block;'
-            f'src:url("data:font/woff2;base64,{b64_700}") format("woff2");}}')
-    return ''.join(faces)
+    """APDF25 (C-APDF-002) — PLUS AUCUN ``@font-face`` vendorisé : renvoie
+    toujours ``''``.
+
+    Le woff2 « Noto Sans Arabic » embarqué était HOMONYME de la police
+    système de l'image (``fonts-noto-core``, Dockerfile) : WeasyPrint
+    mélangeait les deux et la colonne Total de la facture arabe sortait en
+    glyphes illisibles (« MAD صنعى », sonde PLANG-1). La police système sert
+    désormais seule, comme pour le moteur devis (APDF6,
+    ``premium_base.css_arabe``). Appelants : ``utils/pdf.generate_facture_pdf``
+    et ``documents/builders`` (BL arabe) — inchangés, ils reçoivent ``''``.
+    ``_load_font_base64`` reste (retrait des woff2 : APDF47)."""
+    return ''
 
 
 def document_langue(client, *, langue_explicite=None, company=None):
