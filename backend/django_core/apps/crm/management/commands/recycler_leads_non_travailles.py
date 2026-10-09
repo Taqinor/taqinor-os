@@ -77,13 +77,16 @@ def recycler_leads_non_travailles(now=None, dry_run=False):
 
         leads = selectors.leads_sla_depasse(
             company, now=now, seuil_heures=seuil)
+        # APRF10 — les leads DÉJÀ escaladés, lus en UNE requête par société
+        # (et non un ``.exists()`` par lead à chaque passage horaire).
+        deja_escalades = set(LeadActivity.objects.filter(
+            lead__company=company, kind=LeadActivity.Kind.NOTE,
+            body__startswith=ESCALATION_MARKER,
+        ).values_list('lead_id', flat=True))
         for lead in leads:
-            already_escalated = LeadActivity.objects.filter(
-                lead=lead, kind=LeadActivity.Kind.NOTE,
-                body__startswith=ESCALATION_MARKER,
-            ).exists()
-            if not already_escalated:
+            if lead.pk not in deja_escalades:
                 nb_escalades += 1
+                deja_escalades.add(lead.pk)
                 if not dry_run:
                     _escalate(lead, seuil, now)
 

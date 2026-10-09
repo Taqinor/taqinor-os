@@ -22,7 +22,6 @@ frontend/src/features/adsengine/CreativeLibraryScreen.jsx::CreativeLibraryScreen
 frontend/src/features/adsengine/DashboardScreen.jsx::openDrill
 frontend/src/features/adsengine/ExperimentsScreen.jsx::ExperimentsScreen
 frontend/src/features/adsengine/FactTableScreen.jsx::FactTableScreen
-frontend/src/features/adsengine/FlightPlanScreen.jsx::FlightPlanScreen
 frontend/src/features/adsengine/ManualActionComposer.jsx::ManualActionComposer
 frontend/src/features/adsengine/RulesScreen.jsx::RulesScreen
 frontend/src/features/adsengine/SimulationScreen.jsx::SimulationScreen

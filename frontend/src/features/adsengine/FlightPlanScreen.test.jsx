@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   phaseList: vi.fn(),
   phaseCreate: vi.fn(),
   phaseRemove: vi.fn(),
+  // AACQ67 — PATCH en place d'une phase existante.
+  phaseUpdate: vi.fn(),
   engagementPresets: vi.fn(),
   createEngagement: vi.fn(),
   deliveryEstimate: vi.fn(),
@@ -41,6 +43,7 @@ vi.mock('./adsengineApi', () => ({
         list: mocks.phaseList,
         create: mocks.phaseCreate,
         remove: mocks.phaseRemove,
+        update: mocks.phaseUpdate,
       },
     },
     // PUB5 — EngagementAudiencePicker mounted in the compose column.
@@ -95,6 +98,8 @@ beforeEach(() => {
   mocks.phaseCreate.mockImplementation((body) =>
     Promise.resolve({ data: { id: 1000 + (body?.order ?? 0), ...body } }))
   mocks.phaseRemove.mockResolvedValue({ data: {} })
+  mocks.phaseUpdate.mockImplementation((id, body) =>
+    Promise.resolve({ data: { id, ...body } }))
   mocks.permissions = ['adsengine_manage']
 })
 
@@ -292,6 +297,72 @@ describe('FlightPlanScreen (ENG40)', () => {
       await waitFor(() => expect(mocks.phaseCreate).toHaveBeenCalledTimes(3))
       expect(mocks.planCreate).not.toHaveBeenCalled()
       expect(await screen.findByTestId('ae-fp-save-msg')).toHaveTextContent('Plan mis à jour.')
+    })
+
+    // AACQ67 — phase réelle avec gabarit, budget, dates et nombre de bras ;
+    // 55 phases d'AUTRES plans, plus récentes, poussent la nôtre en page 2.
+    const PHASE = {
+      id: 77, plan: 42, order: 0, name: 'Amorçage', tested_variable: 'hook',
+      launch_template: 'tpl_x', budget_mad: 500, num_arms: 3, week_span: 4,
+      start_date: '2026-10-09', end_date: '2026-11-06',
+      created_at: '', updated_at: '',
+    }
+    const AUTRES = Array.from({ length: 55 }, (_, i) => ({
+      ...PHASE, id: 2000 + i, plan: 99, name: `Autre ${i}`,
+    }))
+    const planExistant = () => {
+      mocks.planList.mockResolvedValue({ data: [
+        { id: 42, name: 'Solaire résidentiel Q3', status: 'brouillon',
+          start_date: null, end_date: null, notes: '', created_at: '', updated_at: '' },
+      ] })
+      mocks.phaseList.mockImplementation((params) => Promise.resolve({
+        data: (params?.page ?? 1) === 1
+          ? { count: 56, next: 'p2', previous: null, results: AUTRES.slice(0, 50) }
+          : { count: 56, next: null, previous: 'p1',
+            results: [...AUTRES.slice(50), PHASE] },
+      }))
+    }
+
+    it('réouvrir puis enregistrer conserve id, gabarit et budget des phases', async () => {
+      planExistant()
+      renderScreen()
+      // La phase du plan (page 2) est relue, le gabarit aussi.
+      expect(await screen.findByTestId('ae-fp-phases')).toHaveTextContent('Amorçage')
+      expect(mocks.phaseList).toHaveBeenCalledWith({ page: 2 })
+      // Enregistrer SANS toucher : aucune écriture de phase.
+      fireEvent.click(screen.getByTestId('ae-fp-save'))
+      expect(await screen.findByTestId('ae-fp-save-msg')).toHaveTextContent('Plan mis à jour.')
+      expect(mocks.phaseUpdate).not.toHaveBeenCalled()
+      expect(mocks.phaseCreate).not.toHaveBeenCalled()
+      expect(mocks.phaseRemove).not.toHaveBeenCalled()
+      // Changer le libellé : PATCH en place du SEUL libellé (même id).
+      fireEvent.change(screen.getByTestId('ae-fp-phase-label-0'),
+        { target: { value: 'Amorçage révisé' } })
+      fireEvent.click(screen.getByTestId('ae-fp-save'))
+      await waitFor(() => expect(mocks.phaseUpdate).toHaveBeenCalledWith(
+        77, { name: 'Amorçage révisé' }))
+      const [, corps] = mocks.phaseUpdate.mock.calls[0]
+      for (const champ of ['launch_template', 'budget_mad', 'num_arms',
+        'start_date', 'end_date']) {
+        expect(corps).not.toHaveProperty(champ)
+      }
+      expect(mocks.phaseCreate).not.toHaveBeenCalled()
+      expect(mocks.phaseRemove).not.toHaveBeenCalled()
+    })
+
+    it('un 400 est affiché tel quel et aucune phase n\'est supprimée avant l\'échec', async () => {
+      planExistant()
+      mocks.phaseCreate.mockRejectedValue(Object.assign(new Error('HTTP 400'), {
+        response: { status: 400, data: {
+          week_span: ["La durée d'une phase est de 1 à 8 semaines."] } } }))
+      renderScreen()
+      await screen.findByTestId('ae-fp-phases')
+      // Nouveau gabarit : les 3 phases sont à CRÉER, l'ancienne à supprimer.
+      fireEvent.change(screen.getByTestId('ae-fp-template'), { target: { value: 'lancement' } })
+      fireEvent.click(screen.getByTestId('ae-fp-save'))
+      expect(await screen.findByTestId('ae-fp-save-err'))
+        .toHaveTextContent("La durée d'une phase est de 1 à 8 semaines.")
+      expect(mocks.phaseRemove).not.toHaveBeenCalled()
     })
 
     it('sans adsengine_manage, « Enregistrer le plan » est grisé', async () => {

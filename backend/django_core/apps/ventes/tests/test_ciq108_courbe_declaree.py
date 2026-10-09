@@ -135,6 +135,38 @@ class TestCourbeDeclaree(unittest.TestCase):
         self.assertGreater(novembre['charge_kwh'][8], 0.0)
         self.assertAlmostEqual(novembre['charge_kwh'][7], 0.0)
 
+    def test_mois_ferme_entier_rapport_archetype(self):
+        # CAD177 (CIQ334) — hôtel, plages déclarées, talon NON déclaré (rapport
+        # nuit/jour de l'archétype), fermeture du mois d'août entier.
+        rythme = {'jours_ouverts': [True] * 6 + [False], 'plages': {'ouvre': [[8, 18]]},
+                  'fermetures': [{'du': '2027-08-01', 'au': '2027-08-31', 'motif': 'annuelle'}]}
+        kwh = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
+        # Facture d'août nulle (cohérente avec la fermeture) ⇒ charge nulle à
+        # toute heure : la production d'août est entièrement en surplus.
+        sans_facture = list(kwh)
+        sans_facture[7] = 0
+        jt, prov, alertes = courbe_declaree(rythme, sans_facture, annee_reference=ANNEE,
+                                            archetype='hotel', feries=[])
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        aout = [j for j in jt if j['mois'] == 8]
+        self.assertEqual({j['type_jour'] for j in aout}, {'ferme'})
+        self.assertEqual(max(max(j['charge_kwh']) for j in aout), 0.0)
+        self.assertNotIn('talon_incoherent', {a['code'] for a in alertes})
+        # Facture d'août NON nulle malgré la fermeture : le niveau reste la
+        # facture (Σ charge = kWh déclaré) mais la contradiction est DITE.
+        jt, _prov, alertes = courbe_declaree(rythme, kwh, annee_reference=ANNEE,
+                                             archetype='hotel', feries=[])
+        self.assertAlmostEqual(_energie_mois(jt, 8), 17600, delta=1e-6)
+        self.assertIn('talon_incoherent', {a['code'] for a in alertes})
+
+    def test_mois_ferme_entier_bornes_alerte(self):
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]},
+                  'fermetures': [{'du': '2027-08-01', 'au': '2027-08-31', 'motif': 'annuelle'}]}
+        _jt, prov, alertes = courbe_declaree(rythme, [10000] * 12, annee_reference=ANNEE,
+                                             feries=[], production_jours_types=_production_cloche())
+        self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
+        self.assertIn('talon_incoherent', {a['code'] for a in alertes})
+
     def test_aucune_part_diurne(self):
         rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 2}}
         sortie = courbe_declaree(rythme, [10000] * 12, annee_reference=ANNEE, feries=[])

@@ -1757,7 +1757,7 @@
 - frontend/src/features/adsengine/adsengineApi.js :: arms -> /api/django/adsengine/bras  [ExperimentArmSerializer]
     champs: ad_id, created_at, creative_asset, experiment, hook_id, id, is_active, label, updated_at, visual_id
 - frontend/src/features/adsengine/adsengineApi.js :: create -> /api/django/adsengine/regles  [RulePolicySerializer]
-    champs: cadence_hours, conditions, cooldown_hours, created_at, dry_run, enabled, id, last_evaluated_at, last_result, mode, params, template_key, updated_at
+    champs: cadence_hours, conditions, cooldown_hours, created_at, dry_run, enabled, id, last_evaluated_at, last_result, mode, params, template_key, threshold_currency, updated_at
     mode ∈ {auto, propose}
 - frontend/src/features/adsengine/adsengineApi.js :: log -> /api/django/adsengine/actions  [EngineActionSerializer]
     champs: applied_at, approved_by, auto, created_at, error, id, kind, payload, proposed_by, reason_fr, result, status, updated_at

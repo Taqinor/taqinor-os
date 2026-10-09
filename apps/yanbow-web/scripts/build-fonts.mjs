@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Polices auto-hébergées (YBW39) — familles candidates du tour design (YBW42),
+ * Polices auto-hébergées (YBW39) — familles retenues au tour design (YBW44),
  * toutes sous licence SIL Open Font License 1.1 (vérifiée dans le LICENSE de
  * chaque paquet @fontsource-variable/* 5.3.0, champ `license: OFL-1.1`).
  *
@@ -28,15 +28,15 @@ const POLICES = join(RACINE, 'public', 'fonts');
 const CSS = join(RACINE, 'src', 'styles', 'fonts.css');
 export const VERSION = '5.3.0';
 
-/** Familles candidates (YBW42) ; après YBW44, retirer les non retenues. */
+/**
+ * Familles RETENUES au tour design (YBW44, choix de Reda YBWM12 : direction A) :
+ * Outfit (titres) + Instrument Sans (texte). Les candidates non retenues
+ * (Urbanist, Geist, Geist Mono, Fraunces, Plus Jakarta Sans) sont retirées —
+ * jamais mêlées à celles-ci sur le site.
+ */
 export const FAMILLES = [
   { id: 'outfit', nom: 'Outfit', generique: 'sans-serif' },
-  { id: 'urbanist', nom: 'Urbanist', generique: 'sans-serif' },
   { id: 'instrument-sans', nom: 'Instrument Sans', generique: 'sans-serif' },
-  { id: 'geist', nom: 'Geist', generique: 'sans-serif' },
-  { id: 'geist-mono', nom: 'Geist Mono', generique: 'monospace' },
-  { id: 'fraunces', nom: 'Fraunces', generique: 'serif' },
-  { id: 'plus-jakarta-sans', nom: 'Plus Jakarta Sans', generique: 'sans-serif' },
 ];
 
 /** Sous-ensemble latin (identique à celui des paquets Fontsource). */
@@ -79,7 +79,7 @@ export function cssPolices(dossier = POLICES) {
   }
   blocs.push(
     '',
-    '/* Familles provisoires (direction A recommandée) — figées au tour design (YBW44). */',
+    '/* Familles figées au tour design (YBW44) : Outfit (titres) + Instrument Sans (texte). */',
     ':root {',
     "  --police-texte: 'Instrument Sans', 'Instrument Sans repli', sans-serif;",
     "  --police-titre: 'Outfit', 'Outfit repli', sans-serif;",
