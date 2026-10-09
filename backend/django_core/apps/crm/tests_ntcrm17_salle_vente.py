@@ -59,7 +59,7 @@ class SalleVenteApiTests(TestCase):
     def _create_salle(self, **extra):
         resp = self.api.post('/api/django/crm/salles-vente/', {
             'client': self.client_obj.pk, 'titre': 'Salle test', **extra,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         # Garde de non-régression : une création qui ne parle pas d'`actif`
         # doit donner une salle SERVABLE (le piège DRF `default_empty_html`
@@ -78,7 +78,7 @@ class SalleVenteApiTests(TestCase):
             statut=Devis.Statut.ENVOYE)
         resp = self.api.post(
             f'/api/django/crm/salles-vente/{salle_id}/items/',
-            {'type': 'devis', 'reference': str(devis.pk)})
+            {'type': 'devis', 'reference': str(devis.pk)}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         resp2 = self.api.get(f'/api/django/crm/salles-vente/{salle_id}/')
         self.assertEqual(len(resp2.data['items']), 1)

@@ -77,7 +77,7 @@ class TestLeadAPI(TestCase):
         self.assertNotIn('Theirs', names)
 
     def test_create_forces_company_and_defaults(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Nouveau Lead'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Nouveau Lead'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         lead = Lead.objects.get(nom='Nouveau Lead')
         self.assertEqual(lead.company_id, self.company.id)
@@ -567,7 +567,7 @@ class TestDefaultResponsable(TestCase):
         self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
     def test_new_lead_gets_default_responsable(self):
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Sans resp'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'Sans resp'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         lead = Lead.objects.get(nom='Sans resp')
         self.assertEqual(lead.owner_id, self.meryem.id)
@@ -575,7 +575,7 @@ class TestDefaultResponsable(TestCase):
     def test_explicit_responsable_is_respected(self):
         resp = self.api.post(
             '/api/django/crm/leads/',
-            {'nom': 'Avec resp', 'owner': self.autre.id},
+            {'nom': 'Avec resp', 'owner': self.autre.id}, format='json',
         )
         self.assertEqual(resp.status_code, 201, resp.data)
         lead = Lead.objects.get(nom='Avec resp')
@@ -859,7 +859,7 @@ class TestLeadSoftDeleteVerrouille(TestCase):
     def test_patch_is_deleted_est_ignore(self):
         records_avant = self._deletion_records()
         resp = self.api.patch(
-            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True})
+            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertFalse(
@@ -877,7 +877,7 @@ class TestLeadSoftDeleteVerrouille(TestCase):
         resp = self.api.patch(
             f'/api/django/crm/leads/{self.lead.id}/',
             {'deleted_at': timezone.now().isoformat(),
-             'deleted_by': self.user.pk})
+             'deleted_by': self.user.pk}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertIsNone(self.lead.deleted_at)
@@ -900,7 +900,7 @@ class TestLeadSoftDeleteVerrouille(TestCase):
                              lead=self.lead, client=client)
 
         resp = self.api.patch(
-            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True})
+            f'/api/django/crm/leads/{self.lead.id}/', {'is_deleted': True}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertFalse(self.lead.is_deleted)
@@ -981,7 +981,7 @@ class TestLeadPatchEcritureBornee(TestCase):
 
     def test_patch_normal_ecrit_toujours_son_champ(self):
         resp = self.api.patch(
-            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Agadir'})
+            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Agadir'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.ville, 'Agadir')
@@ -989,7 +989,7 @@ class TestLeadPatchEcritureBornee(TestCase):
 
     def test_updated_by_est_pose_par_le_serveur(self):
         resp = self.api.patch(
-            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Fès'})
+            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Fès'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.updated_by_id, self.user.id)
@@ -1003,7 +1003,7 @@ class TestLeadPatchEcritureBornee(TestCase):
         self.assertTrue(ancien)
         resp = self.api.patch(
             f'/api/django/crm/leads/{self.lead.id}/',
-            {'telephone': '0622222222'})
+            {'telephone': '0622222222'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertNotEqual(self.lead.phone_normalise, ancien)
@@ -1016,7 +1016,7 @@ class TestLeadPatchEcritureBornee(TestCase):
         self.assertTrue(ancien)
         resp = self.api.patch(
             f'/api/django/crm/leads/{self.lead.id}/',
-            {'email': 'apres@example.com'})
+            {'email': 'apres@example.com'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertNotEqual(self.lead.email_normalise, ancien)
@@ -1042,7 +1042,7 @@ class TestLeadPatchEcritureBornee(TestCase):
     def test_la_date_de_modification_avance_toujours(self):
         avant = Lead.objects.get(pk=self.lead.pk).date_modification
         resp = self.api.patch(
-            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Tanger'})
+            f'/api/django/crm/leads/{self.lead.id}/', {'ville': 'Tanger'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
         self.assertGreater(

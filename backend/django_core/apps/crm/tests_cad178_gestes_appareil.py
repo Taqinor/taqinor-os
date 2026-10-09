@@ -209,7 +209,7 @@ class EndpointsComptentLeGesteTests(TestCase):
         etape = self._touche()
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/', {},
-            HTTP_USER_AGENT=UA_IPHONE)
+            HTTP_USER_AGENT=UA_IPHONE, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(self._compte('fait', 'mobile'), 1)
         self.assertEqual(self._compte('whatsapp', 'mobile'), 0)
@@ -219,7 +219,7 @@ class EndpointsComptentLeGesteTests(TestCase):
         etape = self._touche()
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
-            {'langue': 'xx'}, HTTP_USER_AGENT=UA_IPHONE)
+            {'langue': 'xx'}, HTTP_USER_AGENT=UA_IPHONE, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(GesteRelanceAppareil.objects.filter(
             company=self.company).count(), 0)
@@ -231,7 +231,7 @@ class EndpointsComptentLeGesteTests(TestCase):
             {'rappel_le': (MAINTENANT.date()
                            + datetime.timedelta(days=2)).isoformat(),
              'rappel_heure': '10:00'},
-            HTTP_USER_AGENT=UA_DESKTOP)
+            HTTP_USER_AGENT=UA_DESKTOP, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(self._compte('reporter', 'ordinateur'), 1)
 
@@ -241,7 +241,7 @@ class EndpointsComptentLeGesteTests(TestCase):
         etape = self._touche(canal=RelanceEtape.Canal.WHATSAPP)
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/whatsapp/', {},
-            HTTP_USER_AGENT=UA_ANDROID_PHONE)
+            HTTP_USER_AGENT=UA_ANDROID_PHONE, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(self._compte('whatsapp', 'mobile'), 1)
 
