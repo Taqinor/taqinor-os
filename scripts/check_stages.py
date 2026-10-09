@@ -80,7 +80,7 @@ LITERAL_EXEMPT = {
 LITERAL_ALLOW = {
     "backend/django_core/apps/crm/selectors.py": 1,
     "backend/django_core/apps/crm/services.py": 3,
-    "backend/django_core/apps/crm/views.py": 2,
+    "backend/django_core/apps/crm/views.py": 1,
     "backend/django_core/core/win_probability.py": 6,
 }
 

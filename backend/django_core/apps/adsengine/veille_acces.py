@@ -212,6 +212,20 @@ def exiger_utilisable(company):
     return configuration()
 
 
+def exiger_utilisable_ou_rejeu(company):
+    """AACQ36 — Comme :func:`exiger_utilisable`, SAUF en mode rejeu
+    (``AdLibraryClient.dossier_rejeu()`` actif : fixtures posées ET réseau
+    coupé) où seule la société autorisée est exigée — le rejeu n'ouvre aucune
+    socket et ne lit aucun jeton. ``etat()`` est inchangé (aucun état nouveau).
+    Ne fait AUCUN appel réseau."""
+    from .ad_library_client import AdLibraryClient
+    if AdLibraryClient.dossier_rejeu() is None:
+        return exiger_utilisable(company)
+    if not societe_autorisee(company):
+        raise AccesRefuse(NON_AUTORISE)
+    return configuration()
+
+
 def verifier(company, *, http_client=None):
     """Vérifie le jeton par ``debug_token`` (VEIL13), À LA DEMANDE seulement.
 

@@ -44,6 +44,7 @@ vi.mock('./useAdsPermissions', () => ({
 }))
 
 import ExperimentsScreen from './ExperimentsScreen'
+import CONCLURE from '../../../../backend/django_core/apps/adsengine/contract_samples/experience_conclure.json'
 
 const renderScreen = () => render(<MemoryRouter><ExperimentsScreen /></MemoryRouter>)
 
@@ -308,6 +309,8 @@ describe('ExperimentsScreen — WIR209 clôture + étude native', () => {
   it('« Hypothèse validée » poste {validated: true} et recharge le journal de décision', async () => {
     renderScreen()
     fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    // AACQ66 — le verdict irréversible part seulement après confirmation.
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-confirm'))
     await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, { validated: true }))
     expect(await screen.findByTestId('ae-exp-closure-msg')).toHaveTextContent('VALIDÉE')
     // Le DecisionLog affiché est relu après la clôture (1 au montage + 1 après).
@@ -318,6 +321,7 @@ describe('ExperimentsScreen — WIR209 clôture + étude native', () => {
     mocks.conclude.mockResolvedValue({ data: { node: 12, decision_log: 56, validated: false } })
     renderScreen()
     fireEvent.click(await screen.findByTestId('ae-exp-conclude-invalidated'))
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-confirm'))
     await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, { validated: false }))
     expect(await screen.findByTestId('ae-exp-closure-msg')).toHaveTextContent('INVALIDÉE')
   })
@@ -329,8 +333,47 @@ describe('ExperimentsScreen — WIR209 clôture + étude native', () => {
     } })
     renderScreen()
     fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-confirm'))
     expect(await screen.findByTestId('ae-exp-closure-msg'))
       .toHaveTextContent(/verdict enregistré nulle part/)
+  })
+
+  it('AACQ66 — affiche le verdict serveur sur un 409 et demande confirmation', async () => {
+    mocks.conclude.mockRejectedValue(Object.assign(new Error('HTTP 409'), {
+      response: { status: 409, data: {
+        detail: 'Expérience déjà clôturée : hypothèse CONFIRMÉE — verdict inchangé.',
+        validated: true } } }))
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-invalidated'))
+    // Une confirmation nomme le geste irréversible AVANT tout envoi.
+    const panneau = await screen.findByTestId('ae-exp-conclude-confirm-panel')
+    expect(panneau).toHaveTextContent('irréversible')
+    expect(panneau).toHaveTextContent('INVALIDÉE')
+    expect(mocks.conclude).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('ae-exp-conclude-confirm'))
+    await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, { validated: false }))
+    const msg = await screen.findByTestId('ae-exp-closure-msg')
+    expect(msg).toHaveTextContent(
+      'Expérience déjà clôturée : hypothèse CONFIRMÉE — verdict inchangé')
+    expect(msg).not.toHaveTextContent('INVALIDÉE')
+  })
+
+  it('AACQ66 — le verdict affiché est celui RENVOYÉ par le serveur (contrat)', async () => {
+    // Second appel identique : `decision_log` null, verdict enregistré relu.
+    mocks.conclude.mockResolvedValue({ data: CONCLURE.second_appel_meme_verdict })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-confirm'))
+    // Contrat : `validated: false` enregistré ⇒ jamais « VALIDÉE » du bouton.
+    expect(await screen.findByTestId('ae-exp-closure-msg')).toHaveTextContent('INVALIDÉE')
+  })
+
+  it('AACQ66 — annuler la confirmation n\'envoie rien', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-cancel'))
+    expect(screen.queryByTestId('ae-exp-conclude-confirm-panel')).toBeNull()
+    expect(mocks.conclude).not.toHaveBeenCalled()
   })
 
   it('« Lire l\'étude Meta » poste sync-ad-study et rend la phrase FR du DecisionLog', async () => {

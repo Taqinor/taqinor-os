@@ -1,0 +1,49 @@
+---
+// Page produit solaire (YBW62) — UN gabarit FR + EN (`en/solarbow.astro` l'importe).
+// Parties prêtes pour la France SEULEMENT (D-YBW-8) : prospects et relances
+// (WhatsApp = un lien que l'installateur ouvre, jamais « automatique »),
+// calepinage + suggestion de pente IGN (niveau « capacité » tant qu'ACAL351
+// n'est pas fait), dossiers déclaration préalable / Enedis / Consuel, devis et
+// proposition PDF (aucune devise). La phrase D-YBW-9. AUCUNE signature
+// électronique, Factur-X, paiement en ligne, suivi de production, agent de
+// requêtes, sécurité ou hébergement (section future GATED, YBW92). Captures
+// du kit YBW41 avec légende ; appel avec `produit=solarbow`.
+import Layout from '../layouts/Layout.astro';
+import AppelFinal from '../components/AppelFinal.astro';
+import BandeProduit from '../components/BandeProduit.astro';
+import ModulesProduit from '../components/ModulesProduit.astro';
+import type { Module } from '../lib/affirmer';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { lecteur } from '../i18n/utils';
+import { fr } from '../i18n/pages/solarbow.fr';
+import { en } from '../i18n/pages/solarbow.en';
+import type { Affirmation } from '../lib/claims';
+
+interface Props {
+  locale?: Locale;
+  /** Surcharge du registre des affirmations — réservée aux tests (fixture). */
+  registre?: readonly Affirmation[];
+}
+const { locale = DEFAULT_LOCALE, registre } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const modules: Module[] = [
+  { id: 'prospects', titre: tx('modules.prospects'), affirmations: ['SB-CRM', 'SB-WHATSAPP-LIEN'] },
+  { id: 'calepinage', titre: tx('modules.calepinage'), affirmations: ['SB-CALEPINAGE-3D', 'SB-PENTE-IGN'], ecran: 'calepinage-3d' },
+  { id: 'dossiers', titre: tx('modules.dossiers'), affirmations: ['SB-PACKS-FR'], ecran: 'packs-reglementaires' },
+  { id: 'devis', titre: tx('modules.devis'), affirmations: ['SB-DEVIS-PDF'], ecran: 'proposition-pdf' },
+];
+---
+<Layout page="solarbow" locale={locale} titre={tx('titre')} description={tx('description')}>
+  <BandeProduit
+    locale={locale}
+    surtitre={tx('surtitre')}
+    titre="SB-POUR-QUI"
+    intro={['SB-INTERFACE-FR', 'SB-ENTREPRISE-REELLE']}
+    cta={tx('cta')}
+    produit="solarbow"
+    secondaire={{ texte: tx('secondaire'), href: '#modules' }}
+    ecran="crm-pipeline"
+  />
+  <ModulesProduit locale={locale} surtitre={tx('modules.surtitre')} titre={tx('modules.titre')} modules={modules} registre={registre} />
+  <AppelFinal locale={locale} titre={tx('appel.titre')} bouton={tx('appel.bouton')} affirmation="YB-REPONSE-HUMAINE" produit="solarbow" />
+</Layout>

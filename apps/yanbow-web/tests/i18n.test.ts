@@ -4,7 +4,10 @@ import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { beforeAll, describe, expect, it } from 'vitest';
-import Sonde from '../src/pages/_bonjour.astro';
+// YBW61 : la sonde « bonjour » est supprimée ; le mécanisme est prouvé sur un gabarit à DEUX
+// dictionnaires complets (Confidentialité, YBW27) — les pages du site ont un anglais squelette
+// jusqu'à YBW70.
+import Sonde from '../src/pages/confidentialite.astro';
 import { LOCALES_ACTIVES } from '../src/i18n/config';
 import { PAGES, toutesLesUrl } from '../src/i18n/pages';
 import { alternates, L, t } from '../src/i18n/utils';
@@ -16,22 +19,22 @@ async function rendre(props: Record<string, unknown>): Promise<Document> {
 const hreflangs = (doc: Document) =>
   [...doc.querySelectorAll('link[rel="alternate"][hreflang]')].map((l) => `${l.getAttribute('hreflang')}=${l.getAttribute('href')}`);
 
-describe('YBW13 — fixture LOCALES_ACTIVES = [fr, en] : sonde rendue', () => {
+describe('YBW13 — fixture LOCALES_ACTIVES = [fr, en] : gabarit rendu', () => {
   it('FR : lang, hreflang fr/en/x-default, sélecteur vers /en/', async () => {
     const doc = await rendre({ locale: 'fr', locales: ['fr', 'en'] });
     expect(doc.documentElement.getAttribute('lang')).toBe('fr');
-    expect(hreflangs(doc)).toEqual(['fr=/bonjour/', 'en=/en/bonjour/', 'x-default=/bonjour/']);
-    const sel = [...doc.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
-    expect(sel).toEqual(['/en/bonjour/']);
-    expect(doc.querySelector('h1')?.textContent).toBe('Bonjour');
+    expect(hreflangs(doc)).toEqual(['fr=/confidentialite/', 'en=/en/privacy/', 'x-default=/confidentialite/']);
+    const sel = [...doc.querySelectorAll('main nav a')].map((a) => a.getAttribute('href'));
+    expect(sel).toEqual(['/en/privacy/']);
+    expect(doc.querySelector('h1')?.textContent).toBe('Confidentialité');
   });
 
   it('EN : lang, mêmes hreflang, sélecteur vers la page FR équivalente', async () => {
     const doc = await rendre({ locale: 'en', locales: ['fr', 'en'] });
     expect(doc.documentElement.getAttribute('lang')).toBe('en');
-    expect(hreflangs(doc)).toEqual(['fr=/bonjour/', 'en=/en/bonjour/', 'x-default=/bonjour/']);
-    expect([...doc.querySelectorAll('nav a')].map((a) => a.getAttribute('href'))).toEqual(['/bonjour/']);
-    expect(doc.querySelector('h1')?.textContent).toBe('Hello');
+    expect(hreflangs(doc)).toEqual(['fr=/confidentialite/', 'en=/en/privacy/', 'x-default=/confidentialite/']);
+    expect([...doc.querySelectorAll('main nav a')].map((a) => a.getAttribute('href'))).toEqual(['/confidentialite/']);
+    expect(doc.querySelector('h1')?.textContent).toBe('Privacy');
   });
 });
 
@@ -47,11 +50,11 @@ describe('YBW13 — état réel LOCALES_ACTIVES = [fr]', () => {
     expect(doc.documentElement.outerHTML).not.toContain('/en/');
   });
 
-  it('build : aucune route /en/ publiée et la sonde FR ne lie pas /en/', () => {
+  it('build : aucune route /en/ publiée et l’accueil FR ne lie pas /en/', () => {
     const client = fileURLToPath(new URL('../dist/client/', import.meta.url));
     if (!existsSync(client)) throw new Error('dist/ absent — lancer `npm run build` avant `npm test`');
     expect(existsSync(client + 'en')).toBe(false);
-    const html = readFileSync(client + 'bonjour/index.html', 'utf-8');
+    const html = readFileSync(client + 'index.html', 'utf-8');
     expect(html).not.toContain('/en/');
   });
 });

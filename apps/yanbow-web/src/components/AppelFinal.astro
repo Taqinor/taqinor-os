@@ -1,0 +1,34 @@
+---
+// Bande d'appel finale (direction A) : titre, une affirmation, et la
+// trajectoire-flèche STATIQUE (jamais animée ici) vers l'unique action
+// « Prendre rendez-vous ». `produit` pré-sélectionne le sujet du formulaire
+// (valeur du contrat YBW50, aucune donnée personnelle dans l'URL).
+import TraitFleche from './motif/TraitFleche.astro';
+import Affirmation from './Affirmation.astro';
+import type { Locale } from '../i18n/config';
+import { L } from '../i18n/utils';
+import type { ValeurProduit } from '../lib/brand';
+
+interface Props {
+  locale: Locale;
+  titre: string;
+  bouton: string;
+  /** Affirmation sous le titre (registre). */
+  affirmation?: string;
+  produit?: ValeurProduit;
+}
+const { locale, titre, bouton, affirmation, produit } = Astro.props;
+const href = L('rendezVous', locale) + (produit ? `?produit=${produit}` : '');
+---
+<section class="bande" aria-labelledby="appel-titre">
+  <div class="conteneur">
+    <h2 id="appel-titre">{titre}</h2>
+    {affirmation && <Affirmation id={affirmation} locale={locale} />}
+    <div class="hero-trajectoire">
+      <TraitFleche longueur={46} class="hero-fleche fleche-courte" />
+      <TraitFleche longueur={92} class="hero-fleche fleche-moyenne" />
+      <TraitFleche longueur={150} class="hero-fleche fleche-longue" />
+      <a class="bouton" href={href} data-appel-rdv data-produit={produit}>{bouton}</a>
+    </div>
+  </div>
+</section>

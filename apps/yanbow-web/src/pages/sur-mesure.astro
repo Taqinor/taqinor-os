@@ -1,0 +1,70 @@
+---
+// Page Sur mesure (YBW64) — UN gabarit FR + EN (`en/custom-software.astro`
+// l'importe). Démarche besoin → prototype → mise en service → exploitation ;
+// preuve = les deux produits construits (jamais « en service » pour le
+// second) ; AUCUN client cité, aucun délai ni prix ; appel avec
+// `produit=sur_mesure`. Affirmations : registre `src/lib/claims.ts`.
+import Layout from '../layouts/Layout.astro';
+import Affirmation from '../components/Affirmation.astro';
+import AppelFinal from '../components/AppelFinal.astro';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { L, lecteur } from '../i18n/utils';
+import { fr } from '../i18n/pages/sur-mesure.fr';
+import { en } from '../i18n/pages/sur-mesure.en';
+import { PRODUITS } from '../lib/brand';
+
+interface Props {
+  locale?: Locale;
+}
+const { locale = DEFAULT_LOCALE } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const etapes = ['besoin', 'prototype', 'service', 'exploitation'];
+const produits = (Object.keys(PRODUITS) as (keyof typeof PRODUITS)[]).map((cle) => ({ cle, nom: PRODUITS[cle].nom }));
+---
+<Layout page="surMesure" locale={locale} titre={tx('titre')} description={tx('description')}>
+  <section class="hero-page" aria-labelledby="page-titre">
+    <div class="conteneur">
+      <p class="surtitre">{tx('surtitre')}</p>
+      <h1 id="page-titre">{tx('h1')}</h1>
+      <Affirmation id="SM-OFFRE" locale={locale} class="hero-intro" />
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="demarche-titre">
+    <div class="conteneur sur-mesure-grille">
+      <div class="sur-mesure-texte">
+        <p class="surtitre">{tx('demarche.surtitre')}</p>
+        <h2 id="demarche-titre">{tx('demarche.titre')}</h2>
+        <Affirmation id="SM-DEMARCHE" locale={locale} />
+      </div>
+      <ol class="etapes">
+        {etapes.map((e) => (
+          <li>
+            <span class="etape-titre">{tx(`demarche.${e}.titre`)}</span>
+            <span class="etape-detail">{tx(`demarche.${e}.detail`)}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="preuve-titre">
+    <div class="conteneur">
+      <header class="section-tete">
+        <p class="surtitre">{tx('preuve.surtitre')}</p>
+        <h2 id="preuve-titre">{tx('preuve.titre')}</h2>
+        <Affirmation id="YB-DEUX-PRODUITS" locale={locale} />
+      </header>
+      <div class="produits-grille">
+        {produits.map((p) => (
+          <article class="produit" aria-labelledby={`preuve-${p.cle}`}>
+            <h3 id={`preuve-${p.cle}`}>{p.nom}</h3>
+            <a class="lien-fleche" href={L(p.cle, locale)}>{tx(`preuve.${p.cle}`)}</a>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <AppelFinal locale={locale} titre={tx('appel.titre')} bouton={tx('appel.bouton')} affirmation="YB-REPONSE-HUMAINE" produit="sur_mesure" />
+</Layout>

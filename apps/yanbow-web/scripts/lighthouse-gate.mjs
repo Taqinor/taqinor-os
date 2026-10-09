@@ -48,7 +48,7 @@ function lireArguments(argv) {
  * Charge le registre TypeScript `src/i18n/pages.ts` sans dépendance de plus :
  * transpilation par `typescript` (devDependency) puis import d'une data-URL.
  * Le fichier n'importe que des TYPES, effacés à la transpilation.
- * @returns {Promise<{ PAGES: Record<string, Record<string, string>>, SONDE: Record<string, string> }>}
+ * @returns {Promise<{ PAGES: Record<string, Record<string, string>> }>}
  */
 async function chargerRegistre() {
   const source = readFileSync(new URL('src/i18n/pages.ts', RACINE), 'utf-8');
@@ -115,8 +115,8 @@ async function principal() {
   if (args.urls) {
     urls = args.urls.split(',').filter(Boolean);
   } else {
-    const { PAGES, SONDE } = await chargerRegistre();
-    const candidates = [...Object.values(PAGES).flatMap((p) => Object.values(p)), ...Object.values(SONDE)];
+    const { PAGES } = await chargerRegistre();
+    const candidates = Object.values(PAGES).flatMap((p) => Object.values(p));
     urls = [...new Set(candidates)].filter(construite);
   }
   if (urls.length === 0) {

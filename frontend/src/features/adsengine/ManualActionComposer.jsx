@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Send, BookmarkPlus, Wand2 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { erreurServeur } from './adsengine'
 // PUB4 — grille dayparting (ADSDEEP36) montée pour le kind set_schedule.
 import DaypartingGrid from './DaypartingGrid'
 
@@ -109,8 +110,9 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
       }
       setDone(true)
       onProposed?.()
-    } catch {
-      setErr('Proposition refusée (permission ou champ invalide).')
+    } catch (e) {
+      // AACQ73 — la raison du serveur (ex. 400 `payload` précis, AACQ72).
+      setErr(erreurServeur(e, 'Proposition refusée.'))
     } finally {
       setBusy(false)
     }

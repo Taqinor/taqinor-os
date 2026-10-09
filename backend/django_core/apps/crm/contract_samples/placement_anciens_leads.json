@@ -1,13 +1,14 @@
 {
   "endpoint": "POST /api/django/crm/leads/placement-cadences/",
-  "pourquoi": "MRY30/MRY33 (PACT10) — le PLACEMENT des anciens leads dans les cadences du moteur de relances (décision fondateur 06/09/2026 : « tous les anciens leads non Froid sont traités ; le moteur décide à quelle étape des six appels chacun se trouve »). Corps `{\"apply\": false}` = APERÇU, n'écrit rien ; `{\"apply\": true}` = applique et renvoie le même rapport avec `applique`. Lu par la carte « Anciens leads à placer » du Cockpit (MRY33) et par la commande `placer_anciens_leads`. Règles de décision (service `placer_anciens_leads`) : lead vivant (ni Froid, ni Signé, ni perdu/archivé/« ne plus contacter ») SANS aucune touche de cadence ; `ancre` = le plus récent de la création, de la dernière activité humaine, du dernier changement d'étape journalisé et de la date d'envoi d'un devis ERP ; devis ERP envoyé → « Après devis » depuis son envoi (touches passées sautées) ; devis envoyé ou relance sans devis ERP → « Après devis » positionnée si l'ancre a ≤ 14 jours, sinon dormant « Devis sans suite » ; contacté sans devis → « Contact » positionnée si ≤ 14 jours, sinon dormant « Jamais chiffré » ; nouveau → « Contact » complète depuis maintenant si ≤ 14 jours, sinon dormant « Jamais chiffré » ; dormant = Froid + tag + cadence « Réveil » dont la première touche est ÉTALÉE à 8 leads par jour ouvré, les plus récents d'abord. Un devis accepté sans signature est listé, jamais touché. PERFORMANCE (07/09, 499 en prod) : l'aperçu est un CALCUL PUR (aucune écriture, aucune transaction annulée), l'`apercu` n'est daté que pour ses 20 lignes ; l'application se fait PAR LOTS (`limite` leads par appel, défaut 40, les décisions dans l'ordre d'étalement) et renvoie `restants` — l'écran rappelle jusqu'à `restants == 0`. L'étalement des réveils tient compte des réveils déjà posés (occupation par jour) : les lots successifs prolongent la file au lieu de la recommencer.",
+  "pourquoi": "MRY30/MRY33 (PACT10) — le PLACEMENT des anciens leads dans les cadences du moteur de relances (décision fondateur 06/09/2026 : « tous les anciens leads non Froid sont traités ; le moteur décide à quelle étape des six appels chacun se trouve »). Corps `{\"apply\": false}` = APERÇU, n'écrit rien ; `{\"apply\": true}` = applique et renvoie le même rapport avec `applique`. Lu par la carte « Anciens leads à placer » du Cockpit (MRY33) et par la commande `placer_anciens_leads`. Règles de décision (service `placer_anciens_leads`) : lead vivant (ni Froid, ni Signé, ni perdu/archivé/« ne plus contacter ») SANS touche de cadence À FAIRE (ACRM46 : un lead aux touches toutes closes redevient candidat) ni rappel manuel à venir (ACRM20) ; `ancre` = le plus récent de la création, de la dernière activité humaine, du dernier changement d'étape journalisé et de la date d'envoi d'un devis ERP ; devis ERP envoyé → « Après devis » depuis son envoi (touches passées sautées) ; devis envoyé ou relance sans devis ERP → « Après devis » positionnée si l'ancre a ≤ 14 jours, sinon dormant « Devis sans suite » ; contacté sans devis → « Contact » positionnée si ≤ 14 jours, sinon dormant « Jamais chiffré » ; nouveau → « Contact » complète depuis maintenant si ≤ 14 jours, sinon dormant « Jamais chiffré » ; dormant = Froid + tag + cadence « Réveil » dont la première touche est ÉTALÉE à 8 leads par jour ouvré, les plus récents d'abord. Un devis accepté sans signature est listé, jamais touché. PERFORMANCE (07/09, 499 en prod) : l'aperçu est un CALCUL PUR (aucune écriture, aucune transaction annulée), l'`apercu` n'est daté que pour ses 20 lignes ; l'application se fait PAR LOTS (`limite` leads par appel, défaut 40, les décisions dans l'ordre d'étalement) et renvoie `restants` — l'écran rappelle jusqu'à `restants == 0`. L'étalement des réveils tient compte des réveils déjà posés (occupation par jour) : les lots successifs prolongent la file au lieu de la recommencer.",
   "exemple": {
     "apply": false,
     "total_candidats": 277,
     "a_placer": 270,
     "ignores": {
       "deja_en_cadence": 4,
-      "devis_accepte_non_signe": 3
+      "devis_accepte_non_signe": 3,
+      "rappel_manuel_a_venir": 2
     },
     "par_etape": [
       {
@@ -66,7 +67,8 @@
     "a_placer": 0,
     "ignores": {
       "deja_en_cadence": 0,
-      "devis_accepte_non_signe": 0
+      "devis_accepte_non_signe": 0,
+      "rappel_manuel_a_venir": 0
     },
     "par_etape": [],
     "apercu": [],
@@ -75,10 +77,14 @@
     "erreurs": 0,
     "restants": 0
   },
+  "exemple_erreur": {
+    "detail": "Lecture des devis acceptés indisponible : placement suspendu, rien n'a été appliqué"
+  },
   "notes": {
     "total_candidats": "leads vivants de la société hors Froid/Signé, non perdus, non archivés, sans « ne plus contacter » (miroir Odoo inclus).",
     "a_placer": "candidats retenus après les ignorés ; `sum(par_etape[].nombre) == a_placer`.",
-    "ignores": "`deja_en_cadence` : au moins une touche de cadence existe déjà (le moteur les tient) ; `devis_accepte_non_signe` : à passer en Signé à la main, jamais relancé.",
+    "ignores": "`deja_en_cadence` : au moins une touche de cadence À FAIRE existe déjà (le moteur les tient ; ACRM61 — un lead aux touches toutes closes n'y est plus compté) ; `devis_accepte_non_signe` : à passer en Signé à la main, jamais relancé ; `rappel_manuel_a_venir` (ACRM61, entier, jamais null) : lead portant une relance manuelle datée à venir, laissée à l'humain. Toutes les valeurs sont des entiers, jamais null.",
+    "exemple_erreur": "réponse HTTP 503 `{detail}` quand la lecture des devis acceptés est indisponible : RIEN n'est appliqué (voir `exemple_erreur` au premier niveau).",
     "par_etape": "un objet par code de décision, dans l'ordre ci-dessus ; `cadence` ∈ {contact, apres_devis, reveil}. `nombre` est un entier, jamais null.",
     "apercu": "les 20 premiers leads à placer (ordre : `jours` croissant) ; `stage_libelle` = libellé français de l'étape actuelle (STAGES.py) ; `prochaine_touche` = libellé de la première touche À FAIRE créée ; `prochaine_le` = son `due_at` ISO Africa/Casablanca ; `ancre` = date locale.",
     "reveils_jusqu_au": "date locale de la dernière première-touche de réveil étalée (8 leads par jour ouvré), null sans dormant.",

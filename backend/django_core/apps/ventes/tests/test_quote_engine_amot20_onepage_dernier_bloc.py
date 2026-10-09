@@ -13,6 +13,8 @@ Test-du-test : ré-ancrer la mesure sur ``_formes_total_ttc`` seul (retirer
 ``_onepage_conditions_qui_tiennent``) ⇒ la ligne « après mise en marche »
 n'a plus de boîte visible et ``test_dernier_bloc_visible`` rougit.
 """
+import html as _html
+
 from django.test import TestCase
 from django.utils import timezone
 
@@ -23,7 +25,9 @@ from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
 
-NOTE_LONGUE = ' '.join(['Note commerciale AMOT20 très détaillée'] * 60)
+# ×200 : la note seule déborde la page EN FR, EN ET EN AR (×60 tenait en
+# fr/en — rien à tronquer, donc aucun renvoi à prouver dans ces langues).
+NOTE_LONGUE = ' '.join(['Note commerciale AMOT20 très détaillée'] * 200)
 CLAUSES = [{'clause_id': i, 'nom': f'Clause {i}',
             'corps_texte': ' '.join([f'condition particulière {i}'] * 20),
             'type_deal': '', 'ordre': i} for i in (1, 2, 3)]
@@ -64,7 +68,10 @@ class OnepageDernierBlocTests(TestCase):
                 visibles = [b for b in boites
                             if b.position_y + b.height <= limite]
                 texte_visible = ' '.join(b.text for b in visibles)
-                libelle = i18n_labels.libelle('apres_mise_en_marche', langue)
+                # Libellé stocké échappé (fr « apr&#232;s ») ; WeasyPrint
+                # compose le texte décodé.
+                libelle = _html.unescape(
+                    i18n_labels.libelle('apres_mise_en_marche', langue))
                 self.assertTrue(
                     libelle in texte_visible
                     or libelle.upper() in texte_visible,

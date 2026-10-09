@@ -1,0 +1,57 @@
+---
+// Page produit publicitaire (YBW63) — UN gabarit FR + EN (`en/marketingbow.astro`
+// l'importe). Moteur de campagnes SEULEMENT, AUCUNE veille (D-YBW-7) : créé
+// en pause et activé par une personne ; proposer → approuver → appliquer,
+// droits séparés ; garde-fous et coupe-circuit ; chiffres des textes générés
+// vérifiés puis validation humaine ; « en option, après démonstration ». La
+// propriété de la Page et du compte publicitaire est une PROCÉDURE (section
+// « Notre façon de travailler »), jamais une garantie logicielle. Aucune
+// garantie de sécurité ni d'isolation (non publiable avant YBW92). Appel avec
+// `produit=marketingbow`.
+import Layout from '../layouts/Layout.astro';
+import Affirmation from '../components/Affirmation.astro';
+import AppelFinal from '../components/AppelFinal.astro';
+import BandeProduit from '../components/BandeProduit.astro';
+import ModulesProduit from '../components/ModulesProduit.astro';
+import type { Module } from '../lib/affirmer';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { lecteur } from '../i18n/utils';
+import { fr } from '../i18n/pages/marketingbow.fr';
+import { en } from '../i18n/pages/marketingbow.en';
+import type { Affirmation as Aff } from '../lib/claims';
+
+interface Props {
+  locale?: Locale;
+  /** Surcharge du registre des affirmations — réservée aux tests (fixture). */
+  registre?: readonly Aff[];
+}
+const { locale = DEFAULT_LOCALE, registre } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const modules: Module[] = [
+  { id: 'pause', titre: tx('modules.pause'), affirmations: ['MB-CREATION-EN-PAUSE'] },
+  { id: 'approbation', titre: tx('modules.approbation'), affirmations: ['MB-PROPOSE-APPROUVE', 'MB-PERMISSIONS'], ecran: 'approbations' },
+  { id: 'garde-fous', titre: tx('modules.gardeFous'), affirmations: ['MB-COUPE-CIRCUIT'], ecran: 'garde-fous' },
+  { id: 'textes', titre: tx('modules.textes'), affirmations: ['MB-CHIFFRES-CITES'] },
+];
+---
+<Layout page="marketingbow" locale={locale} titre={tx('titre')} description={tx('description')}>
+  <BandeProduit
+    locale={locale}
+    surtitre={tx('surtitre')}
+    titre="MB-POUR-QUI"
+    intro={['MB-OPTION']}
+    cta={tx('cta')}
+    produit="marketingbow"
+    secondaire={{ texte: tx('secondaire'), href: '#modules' }}
+    ecran="campagnes-en-pause"
+  />
+  <ModulesProduit locale={locale} surtitre={tx('modules.surtitre')} titre={tx('modules.titre')} modules={modules} registre={registre} />
+  <section class="section" aria-labelledby="procedure-titre" data-procedure>
+    <div class="conteneur prose">
+      <p class="surtitre">{tx('procedure.surtitre')}</p>
+      <h2 id="procedure-titre">{tx('procedure.titre')}</h2>
+      <Affirmation id="MB-PROPRIETE" locale={locale} />
+    </div>
+  </section>
+  <AppelFinal locale={locale} titre={tx('appel.titre')} bouton={tx('appel.bouton')} affirmation="YB-REPONSE-HUMAINE" produit="marketingbow" />
+</Layout>

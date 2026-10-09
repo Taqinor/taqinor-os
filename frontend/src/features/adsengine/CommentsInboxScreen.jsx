@@ -5,6 +5,7 @@ import {
   AlertTriangle, Filter, RefreshCw, FileText,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { erreurServeur } from './adsengine'
 import SyncStatusBanner from './SyncStatusBanner'
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 
@@ -111,8 +112,9 @@ export default function CommentsInboxScreen() {
       await fn()
       markProposed(id)
       setReplyingId(null); setReplyText('')
-    } catch {
-      setErr("Action impossible (permission ?). Rien n'a été proposé.")
+    } catch (e) {
+      // AACQ73 — la raison du serveur, jamais une cause devinée.
+      setErr(`${erreurServeur(e, 'Action impossible.')} Rien n'a été proposé.`)
     } finally {
       setBusy(false)
     }

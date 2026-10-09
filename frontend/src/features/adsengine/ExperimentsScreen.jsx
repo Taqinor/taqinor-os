@@ -6,7 +6,7 @@ import {
 import adsengineApi from './adsengineApi'
 import {
   normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm, readPaginated,
-  formatPercent, formatMAD, formatNumber,
+  formatPercent, formatMAD, formatNumber, erreurServeur,
 } from './adsengine'
 import { useAdsPermissions } from './useAdsPermissions'
 
@@ -305,6 +305,10 @@ export default function ExperimentsScreen() {
   const [closureBusy, setClosureBusy] = useState(false)
   const [closureMsg, setClosureMsg] = useState('')
 
+  // AACQ66 — le verdict est IRRÉVERSIBLE : un clic ne fait que le PROPOSER ;
+  // seule la confirmation explicite l'envoie (annuler n'envoie rien).
+  const [pendingVerdict, setPendingVerdict] = useState(null)
+
   const conclude = useCallback(async (validated) => {
     if (!selectedId) return
     const req = adsengineApi.experiments.conclude?.(selectedId, { validated })
@@ -315,16 +319,23 @@ export default function ExperimentsScreen() {
       const d = (r && typeof r.data === 'object' && r.data) || {}
       // 200 avec `node: null` = verdict enregistré NULLE PART (aucune hypothèse
       // rattachée) : on relaie le message du serveur, jamais un faux succès.
+      // AACQ66 — le verdict AFFICHÉ est celui RENVOYÉ par le serveur
+      // (`validated` enregistré), jamais celui du bouton cliqué.
+      const enregistre = typeof d.validated === 'boolean' ? d.validated : null
       setClosureMsg(d.node == null
         ? (d.detail || "Aucun nœud d'hypothèse rattaché à cette expérience — "
           + 'verdict enregistré nulle part.')
-        : (validated
-          ? 'Hypothèse VALIDÉE : verdict enregistré, journal de décision à jour.'
-          : 'Hypothèse INVALIDÉE : verdict enregistré, journal de décision à jour.'))
+        : enregistre === null
+          ? 'Verdict enregistré, journal de décision à jour.'
+          : (enregistre
+            ? 'Hypothèse VALIDÉE : verdict enregistré, journal de décision à jour.'
+            : 'Hypothèse INVALIDÉE : verdict enregistré, journal de décision à jour.'))
       // Le DecisionLog affiché doit montrer la décision qui vient d'être écrite.
       loadDetail(selectedId)
     } catch (e) {
-      setClosureMsg(e?.response?.data?.detail || 'Clôture impossible.')
+      // 409 « Expérience déjà clôturée : hypothèse … — verdict inchangé » :
+      // le texte du serveur, tel quel.
+      setClosureMsg(erreurServeur(e, 'Clôture impossible.'))
     } finally {
       setClosureBusy(false)
     }
@@ -441,7 +452,7 @@ export default function ExperimentsScreen() {
                         disabled={closureBusy || !canManage}
                         title={!canManage
                           ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
-                        onClick={() => conclude(true)}
+                        onClick={() => { setClosureMsg(''); setPendingVerdict(true) }}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                         <ThumbsUp size={14} aria-hidden="true" /> Hypothèse validée
                       </button>
@@ -450,7 +461,7 @@ export default function ExperimentsScreen() {
                         disabled={closureBusy || !canManage}
                         title={!canManage
                           ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
-                        onClick={() => conclude(false)}
+                        onClick={() => { setClosureMsg(''); setPendingVerdict(false) }}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                         <ThumbsDown size={14} aria-hidden="true" /> Hypothèse invalidée
                       </button>
@@ -465,6 +476,35 @@ export default function ExperimentsScreen() {
                         <RefreshCw size={14} aria-hidden="true" /> Lire l&apos;étude Meta
                       </button>
                     </div>
+                    {pendingVerdict !== null && (
+                      <div data-testid="ae-exp-conclude-confirm-panel" role="alertdialog"
+                        aria-label="Confirmer la clôture de l'expérience"
+                        style={{ marginTop: '0.6rem', padding: '0.6rem 0.75rem',
+                          border: '1px solid #fed7aa', background: '#fff7ed', borderRadius: 6 }}>
+                        <p style={{ margin: '0 0 0.5rem', color: '#9a3412' }}>
+                          Clôturer l&apos;expérience avec le verdict « hypothèse{' '}
+                          {pendingVerdict ? 'VALIDÉE' : 'INVALIDÉE'} » ? Ce geste est
+                          irréversible : le verdict ne pourra plus être inversé.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button type="button" className="btn btn-primary"
+                            data-testid="ae-exp-conclude-confirm"
+                            disabled={closureBusy || !canManage}
+                            onClick={() => {
+                              const v = pendingVerdict
+                              setPendingVerdict(null)
+                              conclude(v)
+                            }}>
+                            Confirmer la clôture
+                          </button>
+                          <button type="button" className="btn btn-light"
+                            data-testid="ae-exp-conclude-cancel"
+                            onClick={() => setPendingVerdict(null)}>
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {closureMsg && (
                       <p data-testid="ae-exp-closure-msg" role="status"
                         style={{ margin: '0.6rem 0 0', color: '#334155' }}>{closureMsg}</p>

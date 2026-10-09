@@ -45,3 +45,29 @@ class LeadsVilleRowsTests(TestCase):
             company=self.company, nom='Espace', ville='  Tanger  ')
         rows = leads_ville_rows(self.company)
         self.assertEqual(rows[0]['ville'], 'Tanger')
+
+    def test_filtre_canal_et_fenetre(self):
+        """AACQ10 — canaux + fenêtre de création, défaut inchangé."""
+        import datetime
+        from django.utils import timezone
+        hier = timezone.localdate() - datetime.timedelta(days=1)
+        for i in range(4):
+            lead = Lead.objects.create(
+                company=self.company, nom=f'Web {i}', ville='Casablanca',
+                canal='site_web')
+            Lead.objects.filter(pk=lead.pk).update(
+                date_creation=timezone.now() - datetime.timedelta(days=700))
+        for i in range(6):
+            lead = Lead.objects.create(
+                company=self.company, nom=f'Meta {i}', ville='Settat',
+                canal='meta_ads')
+            Lead.objects.filter(pk=lead.pk).update(
+                date_creation=timezone.now() - datetime.timedelta(days=1))
+        autre = Company.objects.create(nom='PUB62 autre', slug='pub62-autre')
+        self.assertEqual(len(leads_ville_rows(self.company)), 10)
+        rows = leads_ville_rows(self.company, canaux=['meta_ads'],
+                                date_start=hier, date_end=hier)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual({r['ville'] for r in rows}, {'Settat'})
+        self.assertEqual(leads_ville_rows(autre, canaux=['meta_ads'],
+                                          date_start=hier, date_end=hier), [])

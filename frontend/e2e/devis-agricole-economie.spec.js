@@ -161,16 +161,31 @@ test('AGR222 — ligne à 0 % sans base légale, et date de solde relue', async 
 
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  // CAD177 — la fusion `PATCH …/etude-params/` part APRÈS la création : naviguer
+  // avant sa réponse l'annulait en vol (nocturne 37856987210, dialogue beforeunload).
+  const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
+    && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
+    && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   const cree = await (await creation).json()
+  await etudeEcrite
   const id = cree.id ?? cree.devis?.id
   ids.push(id)
 
   // Date de solde saisie dans l'échéancier (Édition complète) : relue ensuite.
+  // CAD177 — à la réouverture, le tableau des surcharges se remplit APRÈS le
+  // rendu de la carte et la décale vers le bas : le clic posé avant ce décalage
+  // pressait le bouton et relâchait ailleurs (bouton focalisé, aucun clic —
+  // trace de la nocturne 37856987210). Le geste est rejoué tant que la saisie
+  // de l'échéancier n'est pas ouverte ; la date reste exigée telle quelle.
   await page.goto(`/ventes/devis/nouveau?edit=${id}`)
-  await page.getByRole('button', { name: /Personnaliser l'échéancier/ }).click()
   const carte = page.getByTestId('carte-echeancier')
   const derniere = carte.locator('input[type="date"]').last()
+  const personnaliser = carte.getByRole('button', { name: /Personnaliser l'échéancier/ })
+  await expect(async () => {
+    if (await personnaliser.isVisible()) await personnaliser.click()
+    await expect(derniere).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 45_000 })
   await derniere.fill('2027-03-31')
   const sauvegarde = page.waitForResponse((r) => ['PUT', 'POST', 'PATCH'].includes(r.request().method())
     && new RegExp(`/ventes/devis/${id}/replace-lines/`).test(new URL(r.url()).pathname)
