@@ -5360,6 +5360,22 @@ def _verrou_client_par_telephone(company_id, cle_telephone):
         yield True
 
 
+def _email_identite(valeur):
+    """ACRM38 (C-ACRM-033) — LA clé e-mail d'identité client : la même que
+    la dédup (``normalize_email`` : bords retirés, minuscules), et ``None``
+    pour un vide — jamais ``''`` ni ``' '`` (deux personnes sans e-mail ne
+    partagent jamais un client, et ``''`` heurtait la contrainte d'unicité
+    insensible à la casse)."""
+    return normalize_email(valeur) or None
+
+
+def _telephone_identite(valeur):
+    """ACRM38 — le téléphone d'identité, normalisé sur la valeur RÉELLEMENT
+    stockée côté Client (tronquée à 20 caractères) : deux résolutions du
+    même lead comparent la même chose."""
+    return normalize_phone((valeur or '')[:20])
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     if lead.client_id:
         # Rattache le Tiers du client déjà lié (stade amont ARC56), sans
@@ -5377,9 +5393,10 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     company=lead.company, ice__isnull=False).exclude(ice=''):
                 if _ice_normalise(candidate.ice) == lead_ice:
                     return candidate
-        if lead.email:
+        lead_email = _email_identite(lead.email)
+        if lead_email:
             match = Client.objects.filter(
-                company=lead.company, email__iexact=lead.email,
+                company=lead.company, email__iexact=lead_email,
             ).first()
             if match is not None:
                 _verifier_ice_compatible(match, lead_ice, "l'e-mail")
@@ -5393,11 +5410,11 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         # marocaines, quelques centaines à quelques milliers de clients par
         # société) ; à indexer (colonne normalisée + index, comme QW10 sur
         # Lead) si ce volume devient un goulot mesuré.
-        lead_phone = normalize_phone(lead.telephone)
+        lead_phone = _telephone_identite(lead.telephone)
         if not lead_phone:
             return None
         for candidate in Client.objects.filter(company=lead.company):
-            if normalize_phone(candidate.telephone) == lead_phone:
+            if _telephone_identite(candidate.telephone) == lead_phone:
                 _verifier_ice_compatible(candidate, lead_ice, 'le téléphone')
                 return candidate
         return None
@@ -5407,7 +5424,8 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     # (société, téléphone normalisé) le temps du « chercher puis créer ». Le
     # chemin e-mail garde son arbitrage par la base (contrainte unique
     # insensible à la casse + relecture) et le verrou y est un no-op.
-    cle_verrou = '' if lead.email else normalize_phone(lead.telephone)
+    cle_verrou = ('' if _email_identite(lead.email)
+                  else _telephone_identite(lead.telephone))
     with _verrou_client_par_telephone(lead.company_id, cle_verrou):
         client = _resoudre_ou_creer_client(lead, _find_existing)
 
@@ -5505,7 +5523,8 @@ def _resoudre_ou_creer_client(lead, _find_existing):
                 company=lead.company,
                 nom=lead.nom,
                 prenom=lead.prenom,
-                email=lead.email,
+                # ACRM38 — e-mail normalisé, jamais '' (NULL quand vide).
+                email=_email_identite(lead.email),
                 telephone=(lead.telephone or '')[:20] or None,
                 adresse=adresse or None,
                 langue_document=langue_document,
@@ -5616,7 +5635,8 @@ def identite_client_depuis_lead(lead, *, entreprise=False):
     identite = {
         'nom': getattr(lead, 'nom', None),
         'prenom': getattr(lead, 'prenom', None),
-        'email': getattr(lead, 'email', None),
+        # ACRM38 — la même clé e-mail que la création du client.
+        'email': _email_identite(getattr(lead, 'email', None)),
         'telephone': (getattr(lead, 'telephone', None) or '')[:20] or None,
         'adresse': adresse or None,
     }
@@ -6696,7 +6716,10 @@ def create_lead_from_meta_lead_ads(
 
     nom = (fields.get('nom') or '').strip() or 'Lead Meta Ads'
     telephone = fields.get('telephone') or ''
-    email = fields.get('email') or ''
+    # ACRM38 — l'e-mail du formulaire Meta est nettoyé et validé comme
+    # celui du site (``_clean_email``) : un « ' ' » n'est jamais une identité.
+    from .webhooks import _clean_email
+    email = _clean_email(fields.get('email')) or ''
 
     # ── D-CRX1 : plus AUCUNE absorption ─────────────────────────────────────
     # Les doublons sont cherchés ICI, AVANT la création, pour DEUX usages
@@ -9419,7 +9442,8 @@ def find_lead_by_email(company, email):
     casse). Point d'entrée cross-app sanctionné pour `apps.publicapi` (dédup
     upsert de l'import bulk) — jamais d'import direct de `Lead` ailleurs.
     Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
-    email = (email or '').strip()
+    # ACRM38 (jumeau) — la même clé que l'identité client.
+    email = _email_identite(email)
     if not email:
         return None
     return (
