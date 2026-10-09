@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ENF1 (09/10/2026) — configuration Schemathesis v4 du job `api-fuzz`
+# (`.github/workflows/release-verify.yml`). Découverte automatique : le job lance
+# `schemathesis run` depuis la RACINE du dépôt, où vit ce fichier.
+#
+# Règle fondateur du 09/10 (docs/claude-memory/enforce-all-checks.md) : TOUS les
+# checks (`--checks all`, posé dans le workflow), job BLOQUANT. Ce fichier ne
+# retire donc QUE deux familles d'opérations, chacune justifiée ci-dessous :
+#   1. les opérations qui DÉTRUISENT le harnais lui-même (la session du fuzzeur)
+#      ou ont des effets externes RÉELS ;
+#   2. le miroir `/api/v1/` (mêmes vues que `/api/django/`).
+# Jamais un vrai endpoint retiré pour « faire baisser » les constats.
+#
+# Le reste du harnais :
+#   - authentification (cookie `access_token` du compte `fuzz_admin`, re-login
+#     périodique + sur 401) : `scripts/fuzz/schemathesis_hooks.py` (variable
+#     SCHEMATHESIS_HOOKS posée par le workflow) ;
+#   - compte de fuzz dédié + ids FK connus : `scripts/fuzz/prepare_fuzz_env.py` ;
+#   - throttles DRF coupés dans le seul serveur de fuzz : `scripts/fuzz/gunicorn_fuzz.py`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── 1a. Auto-destruction de la session du fuzzeur (cluster C1 du 09/10) ─────
+# Run 37856987210 : le fuzzeur appelait `POST /auth/logout/` et
+# `POST /auth/sessions/{id}/revoke/`, révoquait SA PROPRE session (AUD408 :
+# `access_session_revoked`) et ~3 800 réponses suivantes étaient des 401
+# « Session révoquée » — ~4 000 opérations jamais réellement testées.
+# `change-password` révoque aussi les sessions (AUD408) et rendrait le mot de
+# passe du re-login caduc. Ces vues restent couvertes par leurs tests Django.
+[[operations]]
+include-path-regex = '^/api/django/auth/(logout|change-password|sessions/[^/]+/revoke)/$'
+enabled = false
+
+# ── 1b. Envois externes RÉELS / actions destructrices (repris de QAH6) ──────
+#   - `adsengine/` : moteur Meta Ads/Instagram (publication réelle, réponses /
+#     suppression de commentaires, connexions Meta) — surface entière.
+#   - `/contact/` : formulaire public -> e-mail SendGrid (parqué, exclu par principe).
+#   - `statuspage/public/(abonner|confirmer|desabonner)/` : e-mail de confirmation
+#     (`apps/statuspage/views.py` `_envoyer_email_confirmation`).
+#   - `automation/approvals/{id}/approve/` : RELANCE l'action différée
+#     (`engine.run_approved`) — e-mail/SMS/WhatsApp selon la règle. `reject` et
+#     `simuler` restent fuzzés.
+# NB : l'ancienne regex écrivait `approvals/[0-9]+/approve/` ; or le filtre
+# s'applique au GABARIT (`approvals/{id}/approve/`) — elle ne correspondait
+# donc à rien et l'opération était fuzzée (constaté dans le run du 09/10).
+[[operations]]
+include-path-regex = '(adsengine/|/contact/|statuspage/public/(abonner|confirmer|desabonner)/|automation/approvals/[^/]+/approve/)'
+enabled = false
+
+# ── 2. Miroir `/api/v1/` ────────────────────────────────────────────────────
+# `erp_agentique/urls.py` monte la MÊME liste `_APP_URLS` sous `api/django/` et
+# sous `api/v1/` (YAPIC7 : « mêmes vues, mêmes ViewSets »). Fuzzer les deux
+# doublait chaque opération (7 013 sélectionnées le 09/10, la moitié en double)
+# et chaque constat — pour le même code. Seul `/api/v1/` est retiré : les
+# opérations hors de ces deux préfixes (publiques, schéma…) restent fuzzées.
+[[operations]]
+include-path-regex = '^/api/v1/'
+enabled = false

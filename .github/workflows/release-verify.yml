@@ -18,6 +18,14 @@ name: Release verify (full suite)
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   workflow_dispatch:
+    inputs:
+      # ENF1 — re-mesure ciblée du fuzz API sans payer les autres lanes
+      # (~1 h de backend-full/e2e-full). Faux par défaut : un dispatch normal
+      # et le nocturne (`schedule`, où `inputs` est vide) lancent TOUT.
+      only_api_fuzz:
+        description: 'Ne lancer que le job api-fuzz (re-mesure du fuzz API)'
+        type: boolean
+        default: false
   schedule:
     # Filet de sécurité nightly — 03:00 UTC, pour que rien ne pourrisse en silence.
     - cron: '0 3 * * *'
@@ -127,6 +135,7 @@ jobs:
   # son binaire natif au lieu de `docker run minio/minio:latest`, dont le pull
   # est refuse depuis le 12/09/2026 (cf. l'en-tete de `ci-image-check`).
   backend-full:
+    if: ${{ !inputs.only_api_fuzz }}
     needs: ci-image-check
     runs-on: ubuntu-latest
     permissions:
@@ -195,6 +204,7 @@ jobs:
 
   # ── Front : logique pure (node:test) + composants/UX (Vitest) ──────────────
   frontend-full:
+    if: ${{ !inputs.only_api_fuzz }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -223,6 +233,7 @@ jobs:
   # (les DEUX pulls sont refusés depuis le 12/09/2026, cf. l'en-tête de
   # `ci-image-check`).
   e2e-full:
+    if: ${{ !inputs.only_api_fuzz }}
     needs: ci-image-check
     runs-on: ubuntu-latest
     permissions:
@@ -395,6 +406,7 @@ jobs:
 
   # ── Site vitrine : type-check + vitest + build + Lighthouse ────────────────
   web-full:
+    if: ${{ !inputs.only_api_fuzz }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -441,6 +453,7 @@ jobs:
   # suites se sautent proprement si une dépendance manque ; avec les requirements
   # complètes installées, elles s'exécutent réellement.
   fastapi-tests:
+    if: ${{ !inputs.only_api_fuzz }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -485,54 +498,42 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # QAH6 (28/09/2026) — FUZZING PROPERTY-BASED DU SCHEMA OPENAPI (Schemathesis).
+  # ENF1 (09/10/2026) — job BLOQUANT, harnais refait.
   #
-  # Recherche L2 du 27/09/2026 (GROUPE QAH) : un agent LLM explore bien et juge
-  # MAL (GUI Testing Arena, GUITester) — les ORACLES DURS doivent porter le
-  # jugement. Schemathesis EST un oracle dur pour l'API : il lit le schema
-  # drf-spectacular DEJA validé en CI (YAPIC6, job `backend-openapi`) et genere
-  # des requetes (positives ET négatives) contre CHAQUE opération documentée,
-  # verifiant 5xx/conformite de reponse/en-tetes — sans jugement humain a
-  # simuler. Non-bloquant (`continue-on-error`), palier 3 (nightly + dispatch,
-  # comme tout ce fichier) : c'est un DECOUVREUR, jamais un gate.
+  # Schemathesis EST un oracle dur pour l'API : il lit le schéma drf-spectacular
+  # et génère des requêtes (positives ET négatives) contre CHAQUE opération
+  # documentée, avec `--checks all`. Règle fondateur du 09/10
+  # (docs/claude-memory/enforce-all-checks.md) : plus de `continue-on-error` —
+  # un constat fait échouer le job (et compte dans `alert-on-repeated-failure`).
+  # Un constat se corrige à la cause (groupe ENF de docs/PLAN.md), jamais par un
+  # filtre qui le masque.
   #
-  # Conteneurise dans l'image CI (`ci-backend`, pas besoin des navigateurs
-  # `ci-e2e`) — meme raison que `backend-full`/`e2e-full` : MinIO par binaire
-  # natif, jamais `docker run minio/minio` (CAD177). Setup DB/demo repris tel
-  # quel du job `e2e-full` (migrate + seed_demo + seed_catalogue).
+  # Harnais (aucun code produit ; détail dans chaque fichier) :
+  #   - `schemathesis.toml` (racine) : exclusions JUSTIFIÉES une à une —
+  #     opérations qui détruisent la session du fuzzeur (logout, révocation de
+  #     session, changement de mot de passe : cluster C1, ~4 000 opérations
+  #     « testées » en 401 « Session révoquée » le 09/10), envois externes réels
+  #     (adsengine, contact, abonnements statuspage, approve d'automatisation) et
+  #     le miroir `/api/v1/` (mêmes vues que `/api/django/`, YAPIC7).
+  #   - `scripts/fuzz/prepare_fuzz_env.py` : compte dédié `fuzz_admin` (mot de
+  #     passe aléatoire par run, jamais demo_admin) + ids FK existants.
+  #   - `scripts/fuzz/schemathesis_hooks.py` : auth cookie `access_token`
+  #     (schéma `cookieJWT` déclaré) rafraîchie toutes les 10 min et sur 401 —
+  #     l'ancien Bearer figé expirait à 30 min et, hors schéma, faussait le
+  #     check `ignored_auth` ; désérialiseurs csv/html/binaires ; garde
+  #     anti-auto-sabotage et ids FK connus pour les cas positifs.
+  #   - `scripts/fuzz/gunicorn_fuzz.py` : throttles DRF coupés dans CE serveur
+  #     seulement (cluster C10 : 429 en rafale, y compris sur des TRACE).
   #
-  # EXCLUSIONS (destructif / envois externes REELS) — documentees ici, jamais
-  # dans une invention : verifie contre le code, pas une supposition.
-  #   - `adsengine/` : moteur Meta Ads/Instagram de l'ERP (PUBLICATION reelle,
-  #     reponse/suppression/masquage de commentaires Instagram, connexions
-  #     Meta) — surface entiere exclue, trop large et trop connectee a l'API
-  #     Graph pour un tri operation-par-operation fiable ici.
-  #   - `/contact/` : formulaire de contact public -> e-mail SendGrid (parqué
-  #     par defaut, mais exclu par principe — PLAN.md « Public contact form »).
-  #   - `statuspage/public/(abonner|confirmer|desabonner)/` : abonnement au
-  #     statut public -> e-mail de confirmation (`apps/statuspage/views.py`
-  #     `_envoyer_email_confirmation`).
-  #   - `automation/approvals/<id>/approve/` : approuver une approbation
-  #     RELANCE reellement l'action differee (`engine.run_approved`) — laquelle
-  #     peut envoyer e-mail/SMS/WhatsApp selon la regle configuree. `reject` et
-  #     `simuler` (dry-run explicite, « rien n'est ecrit ni envoye ») restent
-  #     fuzzables.
-  #   NOTE — sans clés API réelles dans l'environnement CI (SENDGRID_API_KEY,
-  #   identifiants Meta), ces intégrations échouent déjà gracieusement (voir
-  #   CLAUDE.md « Key-gated features ») ; l'exclusion reste utile en défense en
-  #   profondeur ET pour la qualité du signal (un 5xx dû à une clé absente
-  #   n'est pas un vrai bug d'API).
-  #
-  # Chaque échec REPRODUCTIBLE devient une tâche ERR dans docs/ERROR_PLAN.md —
-  # jamais un gate (règle explicite du groupe QAH, « canonisation d'oracle
-  # interdite » : on ne rend jamais un test vert en l'alignant sur un bug).
-  # Recette locale (docker) : docs/TESTING.md, section « Fuzz API
-  # (Schemathesis) — QAH6 ».
+  # Conteneurisé dans l'image CI (`ci-backend`) — MinIO par binaire natif,
+  # jamais `docker run minio/minio` (CAD177). Re-mesure ciblée : bouton « Run
+  # workflow » avec `only_api_fuzz` coché. Recette locale (docker) :
+  # docs/TESTING.md, section « Fuzz API (Schemathesis) — QAH6 ».
   # ---------------------------------------------------------------------------
   api-fuzz:
     needs: ci-image-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    continue-on-error: true
     permissions:
       contents: read
       packages: read
@@ -569,6 +570,9 @@ jobs:
       # requetes de Schemathesis contre la meme societe demo epuisent le
       # budget 1200/min et font pleuvoir des 429 (bruit, pas un vrai bug).
       TENANT_RATE_LIMIT: '0'
+      # ENF1 — lus par scripts/fuzz/schemathesis_hooks.py.
+      FUZZ_BASE_URL: http://127.0.0.1:8000
+      FUZZ_USERNAME: fuzz_admin
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/backend-env
@@ -581,10 +585,24 @@ jobs:
           python manage.py migrate --noinput
           python manage.py seed_demo
           python manage.py seed_catalogue
-      - name: Démarrer Django (gunicorn)
+      - name: Compte de fuzz dédié + ids FK connus (ENF1)
         working-directory: backend/django_core
         run: |
-          gunicorn erp_agentique.wsgi:application \
+          set -euo pipefail
+          # Mot de passe ALÉATOIRE par run, masqué, jamais dans le dépôt.
+          FUZZ_PASSWORD="Fz9-$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$FUZZ_PASSWORD"
+          echo "FUZZ_PASSWORD=$FUZZ_PASSWORD" >> "$GITHUB_ENV"
+          # `$GITHUB_WORKSPACE` (chemin DANS le conteneur) — jamais
+          # `github.workspace`, qui donne le chemin de l'hôte en job conteneurisé.
+          FUZZ_STATE_FILE="$GITHUB_WORKSPACE/fuzz-state.json"
+          echo "FUZZ_STATE_FILE=$FUZZ_STATE_FILE" >> "$GITHUB_ENV"
+          export FUZZ_PASSWORD FUZZ_STATE_FILE
+          python ../../scripts/fuzz/prepare_fuzz_env.py "$FUZZ_STATE_FILE"
+      - name: Démarrer Django (gunicorn, throttles coupés — ENF1)
+        working-directory: backend/django_core
+        run: |
+          gunicorn -c ../../scripts/fuzz/gunicorn_fuzz.py erp_agentique.wsgi:application \
             --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync &
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -595,24 +613,18 @@ jobs:
             echo "Attente Django ($i)…"; sleep 2
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
-      - name: Obtenir un JWT demo_admin
-        id: jwt
+      - name: Vérifier la connexion fuzz_admin (échec franc avant le run)
         run: |
           set -euo pipefail
-          # Identifiants seedés en dur par `seed_demo` (authentication/
-          # management/commands/seed_demo.py) — jamais un compte de prod.
-          # ERR118 — `CustomTokenObtainPairView` pose le JWT dans le cookie
-          # httpOnly `access_token` (corps de réponse vide) : on le lit du
-          # cookie-jar ; `CookieJWTAuthentication` accepte aussi le Bearer.
-          curl -sf -c cookies.txt -X POST http://127.0.0.1:8000/api/django/token/ \
-            -H "Content-Type: application/json" \
-            -d '{"username": "demo_admin", "password": "Demo@2026!"}' > /dev/null
-          ACCESS=$(python -c "import http.cookiejar as c; j=c.MozillaCookieJar('cookies.txt'); j.load(ignore_discard=True, ignore_expires=True); t=[x.value for x in j if x.name=='access_token']; assert t, 'cookie access_token absent'; print(t[0])")
-          rm -f cookies.txt
-          # Le jeton ne va JAMAIS dans les logs (masqué) ni dans un output lu
-          # par un autre job — consommé dans CE job, à l'étape suivante.
-          echo "::add-mask::$ACCESS"
-          echo "access=$ACCESS" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import os, requests
+          r = requests.post(os.environ['FUZZ_BASE_URL'] + '/api/django/token/',
+                            json={'username': os.environ['FUZZ_USERNAME'],
+                                  'password': os.environ['FUZZ_PASSWORD']}, timeout=120)
+          assert r.status_code == 200 and r.cookies.get('access_token'), \
+              f'connexion fuzz_admin refusée : HTTP {r.status_code}'
+          print('connexion fuzz_admin OK (cookie access_token posé)')
+          PY
       - name: Générer le schéma OpenAPI (hors worker gunicorn)
         # CAD177 — `GET /api/schema/` met ~5 min à construire les ~10 Mo du
         # schéma (mesuré en local : 289 s). Le worker gunicorn sync est tué à
@@ -624,24 +636,44 @@ jobs:
         # toujours le serveur gunicorn via `--url`.
         working-directory: backend/django_core
         run: python manage.py spectacular --file ../../openapi-schema.yml
-      - name: schemathesis run (fuzzing + stateful contre api/schema/)
-        working-directory: backend/django_core
-        env:
-          ACCESS_TOKEN: ${{ steps.jwt.outputs.access }}
+      - name: schemathesis run (fuzzing + stateful, tous les checks — BLOQUANT)
+        # Lancé depuis la RACINE : `schemathesis.toml` y est découvert.
         run: |
           set -euo pipefail
+          export SCHEMATHESIS_HOOKS="$GITHUB_WORKSPACE/scripts/fuzz/schemathesis_hooks.py"
           schemathesis run \
-            --url http://127.0.0.1:8000 \
-            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            --url "$FUZZ_BASE_URL" \
             --checks all \
             --phases examples,coverage,fuzzing,stateful \
             --mode all \
             --max-time 1800 \
-            --exclude-path-regex '(adsengine/|/contact/|statuspage/public/(abonner|confirmer|desabonner)/|automation/approvals/[0-9]+/approve/)' \
             --report junit,json \
-            --report-dir ../../schemathesis-report \
-            ../../openapi-schema.yml \
-            2>&1 | tee ../../schemathesis-output.log
+            --report-dir schemathesis-report \
+            openapi-schema.yml \
+            2>&1 | tee schemathesis-output.log
+      - name: Ventilation des constats (résumé du job)
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, json
+          fichiers = sorted(glob.glob('schemathesis-report/json-*.json'))
+          if not fichiers:
+              print('Aucun rapport JSON Schemathesis produit.')
+              raise SystemExit(0)
+          d = json.load(open(fichiers[-1], encoding='utf-8'))
+          ops, tc = d.get('operations', {}), d.get('test_cases', {})
+          print('### api-fuzz — ventilation\n')
+          print(f"Opérations : {ops.get('selected')}/{ops.get('total')} sélectionnées, "
+                f"{ops.get('tested')} testées, {ops.get('errored')} en erreur")
+          print(f"Cas : {tc.get('generated')} générés, {tc.get('with_failures')} en échec, "
+                f"{tc.get('unique_failures')} constats uniques\n")
+          print('| Check | Constats | Opérations |')
+          print('|---|---:|---:|')
+          for f in d.get('failures', []):
+              print(f"| {f.get('title')} | {f.get('count')} | {len(f.get('operations', []))} |")
+          for w in d.get('warnings', []) or []:
+              print(f"\n- avertissement : {json.dumps(w, ensure_ascii=False)[:300]}")
+          PY
       - name: Upload le rapport Schemathesis
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -650,6 +682,7 @@ jobs:
           path: |
             schemathesis-report/
             schemathesis-output.log
+            fuzz-state.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -677,7 +710,7 @@ jobs:
   # ---------------------------------------------------------------------------
   alert-on-repeated-failure:
     if: ${{ always() && github.event_name == 'schedule' }}
-    needs: [ci-image-check, backend-full, frontend-full, e2e-full, web-full, fastapi-tests]
+    needs: [ci-image-check, backend-full, frontend-full, e2e-full, web-full, fastapi-tests, api-fuzz]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -714,6 +747,7 @@ jobs:
             --job-result "${{ needs.e2e-full.result }}" \
             --job-result "${{ needs.web-full.result }}" \
             --job-result "${{ needs.fastapi-tests.result }}" \
+            --job-result "${{ needs.api-fuzz.result }}" \
             --previous-conclusion "${{ steps.prev.outputs.conclusion }}")
           echo "Alerter ? $ALERTE"
           echo "alerte=$ALERTE" >> "$GITHUB_OUTPUT"
