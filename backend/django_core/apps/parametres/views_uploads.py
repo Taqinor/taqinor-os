@@ -6,7 +6,8 @@ changement d'endpoint, de validation de format/taille ni de comportement
 import uuid
 
 from django.conf import settings
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view,
     permission_classes,
@@ -24,6 +25,16 @@ from .serializers import CompanyProfileSerializer
 from .views_common import _audit_company, _profile
 
 
+_UPLOAD_IMAGE = inline_serializer('UploadImageRequest', {
+    'file': serializers.FileField(
+        help_text='Image PNG, JPEG ou WebP (2 Mo max).'),
+})
+
+
+@extend_schema(request={'multipart/form-data': _UPLOAD_IMAGE},
+               responses=CompanyProfileSerializer)
+@extend_schema(request={'multipart/form-data': _UPLOAD_IMAGE},
+               responses=CompanyProfileSerializer)
 @api_view(['POST'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
@@ -128,6 +139,7 @@ def _upload_image(request, field, prefix):
     )
 
 
+@extend_schema(request=None, responses=CompanyProfileSerializer)
 @api_view(['DELETE'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
@@ -138,6 +150,7 @@ def delete_logo(request):
     return _delete_image(request, field='logo_key')
 
 
+@extend_schema(request=None, responses=CompanyProfileSerializer)
 @api_view(['DELETE'])
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable

@@ -22,7 +22,12 @@ résolution passe par ``ContentType``, qui est de la fondation Django.
 """
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema_field, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_field,
+    extend_schema_view, inline_serializer,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import action
@@ -157,11 +162,28 @@ def resoudre_content_type(cle_modele):
         return None
 
 
+_CIBLE_LIEN = inline_serializer('DossierCibleLien', {
+    'cle_modele': serializers.CharField(
+        help_text='« app_label.model », ex. crm.lead.'),
+    'object_id': serializers.IntegerField(min_value=1),
+    'libelle': serializers.CharField(required=False),
+})
+
+
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter(
+        'statut', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+        description='Ne garder que ce statut.'),
+    OpenApiParameter(
+        'type_dossier', OpenApiTypes.STR, OpenApiParameter.QUERY,
+        required=False, description='Ne garder que ce type de dossier.'),
+]))
 class DossierViewSet(CompanyScopedModelViewSet):
     """CRUD des dossiers transverses + rattachement/checklist (NTWFL17)."""
 
     serializer_class = DossierSerializer
     queryset = Dossier.objects.all()
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_queryset(self):
         qs = super().get_queryset().prefetch_related('liens', 'checklist')
@@ -196,6 +218,7 @@ class DossierViewSet(CompanyScopedModelViewSet):
                 dossier, champ, libelle, avant[champ], getattr(dossier, champ),
                 user=self.request.user)
 
+    @extend_schema(responses=DossierActivitySerializer(many=True))
     @action(detail=True, methods=['get'])
     def historique(self, request, pk=None):
         """Le chatter du dossier, du plus récent au plus ancien."""
@@ -203,6 +226,11 @@ class DossierViewSet(CompanyScopedModelViewSet):
         return Response(DossierActivitySerializer(
             dossiers_service.historique(dossier), many=True).data)
 
+    @extend_schema(
+        request=inline_serializer('DossierNoterRequest', {
+            'body': serializers.CharField(),
+        }),
+        responses={201: DossierActivitySerializer})
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """Ajoute une note MANUELLE au chatter (``{body}``)."""
@@ -216,6 +244,9 @@ class DossierViewSet(CompanyScopedModelViewSet):
         return Response(DossierActivitySerializer(activite).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        request=_CIBLE_LIEN,
+        responses={200: DossierLienSerializer, 201: DossierLienSerializer})
     @action(detail=True, methods=['post'])
     def lier(self, request, pk=None):
         """Rattache ``{cle_modele, object_id, libelle?}`` au dossier."""
@@ -251,6 +282,10 @@ class DossierViewSet(CompanyScopedModelViewSet):
             DossierLienSerializer(lien).data,
             status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
+    @extend_schema(
+        request=_CIBLE_LIEN,
+        responses=inline_serializer('DossierDelierReponse', {
+            'detache': serializers.BooleanField()}))
     @action(detail=True, methods=['post'])
     def delier(self, request, pk=None):
         """Détache ``{cle_modele, object_id}`` du dossier."""
@@ -273,6 +308,21 @@ class DossierViewSet(CompanyScopedModelViewSet):
                 action='detache', user=request.user)
         return Response({'detache': bool(supprimes)})
 
+    @extend_schema(
+        methods=['GET'],
+        responses=DossierWorkflowChecklistItemSerializer(many=True))
+    @extend_schema(
+        methods=['POST'],
+        request=inline_serializer('DossierChecklistRequest', {
+            'libelle': serializers.CharField(required=False),
+            'ordre': serializers.IntegerField(required=False, min_value=0),
+            'item_id': serializers.IntegerField(required=False),
+            'fait': serializers.BooleanField(required=False),
+        }),
+        responses={
+            200: DossierWorkflowChecklistItemSerializer,
+            201: DossierWorkflowChecklistItemSerializer,
+        })
     @action(detail=True, methods=['get', 'post'])
     def checklist(self, request, pk=None):
         """Lit la checklist, ou ajoute/coche une étape.

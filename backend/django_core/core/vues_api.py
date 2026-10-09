@@ -8,7 +8,13 @@ vues d'équipe des équipes dont l'utilisateur est membre.
 ``?cible=crm.lead`` filtre sur une liste donnée. ``core`` n'importe aucune app
 métier : ``cible`` reste une chaîne.
 """
-from rest_framework import serializers
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, PolymorphicProxySerializer, extend_schema,
+    inline_serializer,
+)
+from rest_framework import serializers
+from rest_framework.parsers import JSONParser
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.response import Response
 
@@ -63,11 +69,23 @@ class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelS
         return attrs
 
 
+_VUE_DEFAUT = inline_serializer('VueDefautReponse', {
+    'vue': VuePersonnaliseeSerializer(allow_null=True),
+})
+_VUES_PAGE = inline_serializer('VuesPage', {
+    'count': serializers.IntegerField(),
+    'next': serializers.CharField(allow_null=True),
+    'previous': serializers.CharField(allow_null=True),
+    'results': VuePersonnaliseeSerializer(many=True),
+})
+
+
 class VuePersonnaliseeViewSet(CompanyScopedModelViewSet):
     """CRUD des vues personnalisées, bornées à la société ET à la visibilité."""
 
     serializer_class = VuePersonnaliseeSerializer
     queryset = VuePersonnalisee.objects.all()
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_queryset(self):
         qs = filtre_visibilite(super().get_queryset(), self.request.user)
@@ -76,6 +94,20 @@ class VuePersonnaliseeViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(cible=cible)
         return qs
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                'cible', OpenApiTypes.STR, OpenApiParameter.QUERY,
+                required=False, description='Cible (écran) des vues.'),
+            OpenApiParameter(
+                'defaut', OpenApiTypes.STR, OpenApiParameter.QUERY,
+                required=False,
+                description='1/true : résout LA vue par défaut de la cible.'),
+        ],
+        responses=PolymorphicProxySerializer(
+            component_name='VuesListeOuDefaut',
+            serializers=[_VUES_PAGE, _VUE_DEFAUT],
+            resource_type_field_name=None))
     def list(self, request, *args, **kwargs):
         """NTEXT17 — ``?cible=<x>&defaut=1`` résout LA vue par défaut.
 

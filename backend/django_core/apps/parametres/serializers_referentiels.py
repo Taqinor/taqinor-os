@@ -6,12 +6,23 @@ API. Ces sérialiseurs les exposent en CRUD ; ``company`` est TOUJOURS forcée
 côté serveur (jamais lue du corps), la clé technique (``code``) d'une entrée
 existante ne peut pas migrer.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models_payment_terms import ConditionPaiement
 from .models_relance import CadenceRelanceEtape
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
+
+
+@extend_schema_field({
+    'type': 'string', 'nullable': True,
+    'pattern': r'^\d{2}:\d{2}(:\d{2})?$',
+    'description': 'Heure HH:MM[:SS] (sans fuseau).'})
+class HeureLocaleField(serializers.TimeField):
+    """ENF8 — heure locale « HH:MM:SS » : ``format: time`` d'OpenAPI exige un
+    fuseau (RFC 3339), que le serveur ne sert pas — schéma exact, comportement
+    inchangé."""
 
 
 class UniciteSocieteMixin:
@@ -137,6 +148,8 @@ class CadenceRelanceEtapeSerializer(UniciteSocieteMixin, serializers.ModelSerial
     jamais un chiffre affiché au client."""
 
     message_doublon = 'Cette cadence a déjà une étape à cet ordre.'  # APAR37
+
+    heure_cible = HeureLocaleField(required=False, allow_null=True)
 
     class Meta:
         model = CadenceRelanceEtape

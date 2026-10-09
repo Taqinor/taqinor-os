@@ -134,10 +134,12 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     delai_reception_definitive_mois = serializers.IntegerField(
         required=False, allow_null=True)
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_benchmarking_opt_in(self, obj):
         company = getattr(obj, 'company', None)
         return bool(getattr(company, 'benchmarking_opt_in', False))
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_seuils_sources(self, obj) -> dict:
         from core.reglementaire import regime_8221 as r8221
         return {
@@ -567,8 +569,10 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    @extend_schema_field({'type': 'string', 'nullable': True})
     def get_logo_url(self, obj):
         return self._presign(obj.logo_key)
 
+    @extend_schema_field({'type': 'string', 'nullable': True})
     def get_signature_url(self, obj):
         return self._presign(obj.signature_key)

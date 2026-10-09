@@ -8,7 +8,7 @@ from .models import SettingsAuditLog
 
 
 class SettingsAuditLogSerializer(serializers.ModelSerializer):
-    user_nom = serializers.CharField(source='user.username', read_only=True)
+    user_nom = serializers.CharField(source='user.username', read_only=True, allow_null=True)
 
     class Meta:
         model = SettingsAuditLog

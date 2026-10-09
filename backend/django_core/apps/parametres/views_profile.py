@@ -4,8 +4,12 @@ Domaine « Société & identité / Devis & logique métier ». Extrait de l'anci
 ``views.py`` sans aucun changement d'endpoint, de permission ni de
 comportement."""
 from django.utils.dateparse import parse_datetime
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -183,6 +187,7 @@ def _conflit_verrou(request, profile):
     }, status=status.HTTP_409_CONFLICT)
 
 
+@extend_schema(responses=CompanyProfileSerializer)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_profile(request):
@@ -190,7 +195,18 @@ def get_profile(request):
     return Response(CompanyProfileSerializer(profile).data)
 
 
+_CONFLIT_PROFIL = inline_serializer('ProfilConflit', {
+    'detail': serializers.CharField(),
+    'code': serializers.CharField(),
+    'updated_at': serializers.DateTimeField(allow_null=True),
+})
+
+
+@extend_schema(request=CompanyProfileSerializer,
+               responses={200: CompanyProfileSerializer,
+                          409: _CONFLIT_PROFIL})
 @api_view(['PUT', 'PATCH'])
+@parser_classes([JSONParser])  # ENF8 (D2) — logo/signature : routes dédiées
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
 # n'y touchent plus).
