@@ -80,9 +80,15 @@ def choice(values, required=False, **kw):
         choices=list(values), required=required, **kw)
 
 
+_BODIES = {}
+
+
 def body(name, **fields):
-    """Sérialiseur de corps/réponse nommé (composant OpenAPI stable)."""
-    return inline_serializer(name, fields=fields)
+    """Sérialiseur de corps/réponse nommé (composant OpenAPI stable). Un même
+    nom renvoie TOUJOURS la même classe (sinon collision de composants)."""
+    if name not in _BODIES:
+        _BODIES[name] = inline_serializer(name, fields=fields)
+    return _BODIES[name]
 
 
 # ── paramètres de requête ─────────────────────────────────────────────────────
@@ -121,12 +127,14 @@ def qf(name, **kw):
 PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
 HTML = {(200, 'text/html'): OpenApiTypes.STR}
 OBJ = OpenApiTypes.OBJECT
-LIST = serializers.ListField(child=serializers.DictField())
 NO_CONTENT = {204: None}
 
 
-def listing(*params):
+LIST = type(inline_serializer('ObjetLibre', fields={}))(many=True)
+
+
+def listing(*args, **kw):
     """``extend_schema_view`` pour la liste : déclare les paramètres lus par
     ``get_queryset``."""
     return extend_schema_view(
-        list=extend_schema(parameters=list(params)))
+        list=extend_schema(parameters=list(args) + list(kw.values())))

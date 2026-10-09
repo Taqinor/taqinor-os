@@ -258,6 +258,7 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
             'body', 'user_nom', 'created_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
@@ -477,13 +478,16 @@ class InterventionPreparationSerializer(serializers.ModelSerializer):
                   'completion', 'nb_manques']
         read_only_fields = ['intervention', 'tout_charge', 'confirme_le']
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_completion(self, obj):
         from .field_services import preparation_completion
         return preparation_completion(obj)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_confirme_par_nom(self, obj):
         return getattr(obj.confirme_par, 'username', None)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_manques(self, obj):
         return sum(1 for li in obj.materiel.all() if li.manquant)
 
@@ -498,6 +502,7 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
             'body', 'user_nom', 'created_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
@@ -768,6 +773,7 @@ class ComponentSerialSerializer(serializers.ModelSerializer):
         read_only_fields = ['intervention', 'serie_ocr', 'pousse_parc',
                             'date_creation']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_plaque_url(self, obj):
         if not obj.plaque_attachment_id:
             return None
@@ -802,9 +808,11 @@ class ConsommationLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
                   'date_modification']
         read_only_fields = ['stock_applique', 'ordre', 'date_modification']
 
+    @extend_schema_field(serializers.CharField())
     def get_variance(self, obj):
         return obj.variance
 
+    @extend_schema_field(serializers.BooleanField())
     def get_justification_requise(self, obj):
         from .field_capture import ligne_needs_justification
         return ligne_needs_justification(obj)
@@ -822,12 +830,15 @@ class MaterielConsommationSerializer(serializers.ModelSerializer):
                   'lignes', 'nb_variances', 'overage']
         read_only_fields = ['intervention', 'valide', 'valide_le']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_valide_par_nom(self, obj):
         return getattr(obj.valide_par, 'username', None)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_variances(self, obj):
         return sum(1 for li in obj.lignes.all() if li.variance != 0)
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_overage(self, obj):
         from .field_capture import consommation_overage
         return consommation_overage(obj)
@@ -845,11 +856,13 @@ class VoiceMemoSerializer(serializers.ModelSerializer):
         read_only_fields = ['intervention', 'audio', 'transcrit',
                             'date_creation']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_audio_url(self, obj):
         if not obj.audio_id:
             return None
         return f'/api/django/records/attachments/{obj.audio_id}/download/'
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_created_by_nom(self, obj):
         return getattr(obj.created_by, 'username', None)
 
@@ -876,9 +889,11 @@ class ReserveSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerialize
                             'devis_repare_id', 'resolue_le', 'date_creation',
                             'installation', 'levee_par']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_photo_url(self, obj):
         if not obj.photo_id:
             return None
@@ -939,6 +954,7 @@ class SafetyCheckItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'cle', 'libelle', 'ordre', 'coche', 'coche_par_nom',
                   'coche_le']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_coche_par_nom(self, obj):
         return getattr(obj.coche_par, 'username', None)
 
@@ -953,6 +969,7 @@ class SafetySignoffSerializer(serializers.ModelSerializer):
                   'items']
         read_only_fields = ['intervention', 'signe', 'signe_le']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_signe_par_nom(self, obj):
         return getattr(obj.signe_par, 'username', None)
 
@@ -2205,6 +2222,7 @@ class RevisionKitSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
                   'date_creation']
         read_only_fields = fields
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         u = obj.user
         if u is None:
@@ -2314,6 +2332,7 @@ class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
             'body', 'user_nom', 'created_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
