@@ -6,18 +6,22 @@ seulement une entrée de menu cachée côté UI. Un admin est refusé comme les
 autres : c'est une fonctionnalité DÉSACTIVÉE, pas un droit manquant.
 """
 from drf_spectacular.utils import (
-    extend_schema, extend_schema_field, inline_serializer,
+    extend_schema, extend_schema_field, extend_schema_view, inline_serializer,
 )
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
+from ..openapi_helpers import (  # noqa: F401
+    INT, P, S, STR, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import (
@@ -111,6 +115,7 @@ class DepotConsignationSerializer(CompanyScopedRelationsMixin,
         return super().validate(attrs)
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('client', INT)]))
 class DepotConsignationViewSet(CompanyScopedModelViewSet):
     """NTDST3 — dépôts de consignation chez les clients.
 
@@ -123,6 +128,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         'declarations').all()
     serializer_class = DepotConsignationSerializer
     ordering = ['-date_depot', '-id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
@@ -189,7 +196,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(depot).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None,
+    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=S.IntegerField(), date_declaration=S.DateField(required=False, allow_null=True), note=S.CharField(required=False, allow_blank=True)),
                    responses={201: DeclarationFactureeSerializer})
     @action(detail=True, methods=['post'], url_path='declarer-consommation',
             permission_classes=[IsResponsableOrAdmin])
@@ -261,7 +268,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
             f'inline; filename="releve-consignation-{depot.id}.pdf"')
         return reponse
 
-    @extend_schema(responses={
+    @extend_schema(parameters=[P('statut', STR)], responses={
         (200, 'application/vnd.openxmlformats-officedocument.'
               'spreadsheetml.sheet'): bytes})
     @action(detail=False, methods=['get'], url_path='export-xlsx',
@@ -371,6 +378,7 @@ class AccordRFAFournisseurSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('statut', STR)]))
 class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
     """NTDST5 — accords de remise arrière fournisseur.
 
@@ -380,6 +388,8 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
         'fournisseur', 'avoir_genere').all()
     serializer_class = AccordRFAFournisseurSerializer
     ordering = ['-periode_debut', '-id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action == 'generer_avoir':
@@ -478,7 +488,7 @@ class AtpProduitMixin:
         return Response(atp_produit(request.user.company, self.get_object()))
 
 
-@extend_schema(responses={
+@extend_schema(parameters=[P('client', INT), P('categorie', INT), P('marque', STR), P('q', STR), P('limite', INT), P('offset', INT)], responses={
     200: inline_serializer('StockCatalogueB2b', {
         'client': serializers.IntegerField(allow_null=True),
         'total': serializers.IntegerField(),
@@ -561,6 +571,7 @@ class ParametresNegoceSerializer(CompanyScopedRelationsMixin,
 
 @extend_schema(request=None, responses={200: ParametresNegoceSerializer})
 @api_view(['GET', 'PATCH'])
+@parser_classes([JSONParser])
 @permission_classes([IsResponsableOrAdmin])
 def parametres_negoce_view(request):
     """NTDST30 — réglages négoce de LA société (singleton, créé à la demande).

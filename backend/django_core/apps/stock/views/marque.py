@@ -1,6 +1,7 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -62,6 +63,8 @@ class MarqueViewSet(CompanyScopedModelViewSet):
     admin. Une marque utilisée par des produits ne peut pas être supprimée."""
     queryset = Marque.objects.all()
     serializer_class = MarqueSerializer
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

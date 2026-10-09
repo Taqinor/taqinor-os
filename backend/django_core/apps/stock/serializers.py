@@ -38,6 +38,7 @@ class MarqueSerializer(serializers.ModelSerializer):
         model = Marque
         fields = ['id', 'nom', 'archived', 'en_usage']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_en_usage(self, obj):
         return Produit.objects.filter(company=obj.company, marque=obj.nom).count()
 
@@ -177,12 +178,14 @@ class FournisseurSerializer(CompanyScopedRelationsMixin,
         # des trois ne s'écrit par PUT/PATCH.
         read_only_fields = ['company', 'statut_validation', 'tiers']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_produits(self, obj):
         annotated = getattr(obj, 'nb_produits_annot', None)
         if annotated is not None:
             return annotated
         return obj.produits.count()
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_bons_commande(self, obj):
         annotated = getattr(obj, 'nb_bons_commande_annot', None)
         if annotated is not None:
@@ -204,7 +207,8 @@ class MouvementStockSerializer(CompanyScopedRelationsMixin,
     # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True
+        source='created_by.username', read_only=True, default=None,
+        allow_null=True,
     )
 
     class Meta:
@@ -875,17 +879,20 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             return locale
         return None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_nom_localise(self, obj):
         """YHARD4 — variante ``nom`` dans la langue cible, repli FR
         (``ContentTranslation``, cf. core/i18n_content.py)."""
         from core.i18n_content import translated_value
         return translated_value(obj, 'nom', self._target_locale())
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_description_localise(self, obj):
         """YHARD4 — variante ``description`` dans la langue cible, repli FR."""
         from core.i18n_content import translated_value
         return translated_value(obj, 'description', self._target_locale())
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_marge_pct(self, obj):
         """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
         from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -920,6 +927,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             return None
         return f'/api/django/records/attachments/{obj.photo_id}/download/'
 
+    @extend_schema_field(serializers.IntegerField())
     def get_quantite_reservee(self, obj):
         return self._reserved_map().get(obj.id, 0)
 
@@ -937,6 +945,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         self._quarantaine_map_cache = cache
         return cache
 
+    @extend_schema_field(serializers.IntegerField())
     def get_quantite_disponible(self, obj):
         # N14 (réservé) + NTWMS31 (quarantaine qualité) : ni l'un ni l'autre
         # n'est disponible pour une vague de prélèvement ou une vente.
@@ -944,6 +953,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 - self._reserved_map().get(obj.id, 0)
                 - self._quarantaine_map().get(obj.id, 0))
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_categorie_type_display(self, obj):
         # Libellé FR du type d'équipement (None si catégorie non typée).
         cat = obj.categorie
@@ -1135,10 +1145,12 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
     def get_role_devis_source(self, obj):
         return self._role_resolu(obj)[1]
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_low_stock(self, obj):
         # Comportement historique conservé (stock brut vs seuil).
         return obj.seuil_alerte > 0 and obj.quantite_stock <= obj.seuil_alerte
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_low_stock_disponible(self, obj):
         # N14 — alerte sur le DISPONIBLE (engagé-mais-non-consommé décompté).
         if not obj.seuil_alerte or obj.seuil_alerte <= 0:
@@ -1159,6 +1171,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         self._breakdown_map_cache = cache
         return cache
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_stock_par_emplacement(self, obj):
         # Seuls les emplacements détenant du stock sont remontés, pour ne pas
         # alourdir la liste. La camionnette à 0 n'apparaît donc pas.
@@ -1182,12 +1195,14 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         self._en_commande_map_cache = cache
         return cache
 
+    @extend_schema_field(serializers.IntegerField())
     def get_quantite_en_commande(self, obj):
         # ZPUR10 — réutilise la même map que `bcf_sources_en_commande`
         # (jamais de logique dupliquée, jamais de requête par produit).
         sources = self._en_commande_map().get(obj.id, [])
         return sum(s['quantite_restante'] for s in sources)
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_bcf_sources_en_commande(self, obj):
         return self._en_commande_map().get(obj.id, [])
 
@@ -1237,17 +1252,21 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         from .selectors import specs_solaire_produit
         return specs_solaire_produit(obj)
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_premiere_date_mouvement(self, obj):
         val = getattr(obj, 'premiere_date_mouvement', None)
         return val.isoformat() if val else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_derniere_date_mouvement(self, obj):
         val = getattr(obj, 'derniere_date_mouvement', None)
         return val.isoformat() if val else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_unite_stock_display(self, obj):
         # ARC27 — libellé du référentiel Paramètres (UniteMesure) si l'unité
         # miroir est reliée ou si une unité active correspond au code
@@ -1503,9 +1522,11 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
                 fields.pop(nom, None)
         return fields
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_produit_nom(self, obj):
         return obj.produit.nom if obj.produit_id else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_produit_sku(self, obj):
         return obj.produit.sku if obj.produit_id else None
 
@@ -1606,6 +1627,8 @@ class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
             fields.pop('acomptes', None)
         return fields
 
+    @extend_schema_field(serializers.ListField(
+        child=serializers.DictField()))
     def get_acomptes(self, obj):
         return AcompteFournisseurSerializer(
             obj.acomptes.all(), many=True).data
@@ -1741,12 +1764,15 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         # produit est dérivé de la ligne de commande côté serveur.
         read_only_fields = ['produit', 'quantite_appliquee']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_produit_nom(self, obj):
         return obj.produit.nom if obj.produit_id else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_produit_sku(self, obj):
         return obj.produit.sku if obj.produit_id else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_designation(self, obj):
         """XPUR16 — désignation libre de la ligne BCF d'origine quand cette
         ligne de réception n'a pas de produit catalogue."""
@@ -2073,6 +2099,7 @@ class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
             fields.pop('paiements', None)
         return fields
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_sous_totaux_par_taux(self, obj):
         from .selectors import sous_totaux_tva_facture_fournisseur
         return sous_totaux_tva_facture_fournisseur(obj)
@@ -2368,9 +2395,11 @@ class KitProduitSerializer(CompanyScopedRelationsMixin,
                   'date_creation', 'date_mise_a_jour']
         read_only_fields = ['date_creation', 'date_mise_a_jour']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_composants(self, obj):
         return obj.composants.count()
 
+    @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_disponibilite_potentielle(self, obj):
         if not self.context.get('avec_disponibilite'):
             return None
@@ -2465,6 +2494,7 @@ class RevisionKitSerializer(serializers.ModelSerializer):
                   'date_creation']
         read_only_fields = fields
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         u = obj.user
         if u is None:
@@ -2496,6 +2526,7 @@ class DocumentConformiteFournisseurSerializer(CompanyScopedRelationsMixin,
             'created_by', 'date_creation', 'date_modification',
         ]
 
+    @extend_schema_field(serializers.BooleanField())
     def get_est_valide(self, obj):
         return obj.est_valide()
 

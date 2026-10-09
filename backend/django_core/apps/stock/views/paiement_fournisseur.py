@@ -1,10 +1,15 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from rest_framework.permissions import BasePermission
+from ..openapi_helpers import (  # noqa: F401
+    BINARY, DATE, INT, P, XLSX,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -66,6 +71,7 @@ class PeutLirePaiementsFournisseur(BasePermission):
         return bool(user.is_responsable and user.can_view_buy_prices)
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('facture', INT, False, 'Facture fournisseur (id)')]))
 class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     """G5 — Paiements fournisseur (règlements). Lecture + création/suppression ;
     chaque écriture recalcule le statut de la facture. company posée serveur."""
@@ -81,6 +87,8 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     # correction passe par l'annulation (DELETE, admin) puis la recréation
     # (POST), qui recalculent tous deux statut et retenue.
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # AUD419 — la LECTURE des règlements fournisseurs n'est plus ouverte à
@@ -215,6 +223,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
             facture.refresh_from_db()
             recompute_facture_fournisseur_statut(facture)
 
+    @extend_schema(parameters=[P('date_debut', DATE), P('date_fin', DATE)], responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='ras-tva/export',
             permission_classes=[IsResponsableOrAdmin])
     def export_ras_tva(self, request):

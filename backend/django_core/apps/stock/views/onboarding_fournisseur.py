@@ -11,7 +11,7 @@ dossier non VALIDÉ bloque la création d'un bon de commande (garde posée dans
 ``views/bon_commande_fournisseur.py``).
 """
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema, extend_schema_field, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -19,6 +19,9 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.serializers import CompanyScopedRelationsMixin
+from ..openapi_helpers import (  # noqa: F401
+    BINARY, INT, OBJET, P, S, STR, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
@@ -75,6 +78,7 @@ class DossierOnboardingFournisseurSerializer(CompanyScopedRelationsMixin,
         return selectors.progression_onboarding(obj)
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('statut', STR)]))
 class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
     """NTP2P7 — dossiers d'entrée en relation fournisseur.
 
@@ -84,6 +88,8 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
     queryset = DossierOnboardingFournisseur.objects.select_related(
         'fournisseur', 'valide_par').prefetch_related('documents').all()
     serializer_class = DossierOnboardingFournisseurSerializer
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # NTP2P36 — `valider-dossier` exige EN PLUS le code fin
@@ -112,6 +118,7 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
     # du champ ``fournisseur`` (CompanyScopedRelationsMixin) : un id d'une
     # autre société répond « objet inexistant » avant toute écriture.
 
+    @extend_schema(request=corps('DossierValiderCorps', valider=S.BooleanField(), motif_rejet=S.CharField(required=False, allow_blank=True)), responses=DossierOnboardingFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='valider-dossier')
     def valider_dossier(self, request, pk=None):
         """NTP2P7 — valide (ou rejette) le dossier.
@@ -170,6 +177,7 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
                                     'date_decision', 'updated_at'])
         return Response(self.get_serializer(dossier).data)
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'])
     def progression(self, request, pk=None):
         """NTP2P29 — avancement du wizard (pièces reçues / requises)."""
@@ -177,6 +185,7 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
             selectors.progression_onboarding(self.get_object()))
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('dossier', INT), P('type_document', STR)]))
 class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
     """NTP2P7 — pièces légales d'un dossier d'onboarding.
 
@@ -209,6 +218,7 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company,
                         televerse_par=self.request.user)
 
+    @extend_schema(request={'multipart/form-data': corps('DocumentFournisseurTeleverserCorps', file=S.FileField())}, responses=DocumentFournisseurSerializer)
     @action(detail=True, methods=['post'])
     def televerser(self, request, pk=None):
         """NTP2P7 — attache le fichier de la pièce (MinIO, clé par société).
@@ -242,6 +252,7 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
             dossier.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(document).data)
 
+    @extend_schema(responses={(200, 'application/octet-stream'): BINARY})
     @action(detail=True, methods=['get'])
     def telecharger(self, request, pk=None):
         """NTP2P7 — sert le fichier depuis MinIO (même origine, scopé société)."""

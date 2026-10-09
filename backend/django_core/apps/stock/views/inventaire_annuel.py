@@ -1,7 +1,12 @@
+from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
+from ..openapi_helpers import (  # noqa: F401
+    BINARY, S, XLSX, corps,
+)
 from ..models import InventaireAnnuel
 from ..serializers import InventaireAnnuelSerializer
 from authentication.permissions import IsAdminRole
@@ -20,6 +25,9 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdminRole]
     ordering = ['-exercice']
 
+    parser_classes = [JSONParser]
+
+    @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=S.IntegerField()), responses={201: InventaireAnnuelSerializer})
     @action(detail=False, methods=['post'], url_path='figer')
     def figer(self, request):
         """Fige l'inventaire de l'exercice donné (`{"exercice": 2026}`) —
@@ -42,6 +50,7 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             self.get_serializer(inventaire).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses={XLSX: BINARY})
     @action(detail=True, methods=['get'], url_path='export-xlsx')
     def export_xlsx(self, request, pk=None):
         """Export .xlsx du snapshot figé (relit `donnees`, jamais recalculé)."""

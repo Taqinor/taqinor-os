@@ -1,10 +1,15 @@
 """NTWMS38 — référentiel des compatibilités casier ↔ matière dangereuse."""
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers
 
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
+from ..openapi_helpers import (  # noqa: F401
+    INT, P, STR,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import CompatibiliteHazmatCasier, Produit
@@ -35,6 +40,7 @@ class CompatibiliteHazmatCasierSerializer(CompanyScopedRelationsMixin,
         return value
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('bin', INT), P('classe_danger', STR)]))
 class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
     """CRUD des casiers autorisés par classe de danger.
 
@@ -44,6 +50,8 @@ class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
     queryset = CompatibiliteHazmatCasier.objects.select_related('bin').all()
     serializer_class = CompatibiliteHazmatCasierSerializer
     ordering = ['bin_id', 'classe_danger']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

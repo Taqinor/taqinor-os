@@ -1,10 +1,14 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    INT, P, S, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from .document_fige import DocumentFigeMixin
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
@@ -45,6 +49,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)')]))
 class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     """N19 — retours fournisseur (articles défectueux / erronés). Numérotation
     sans trou (préfixe RF). La validation DÉCRÉMENTE le stock via MouvementStock
@@ -62,6 +67,8 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     search_fields = ['reference', 'fournisseur__nom', 'motif']
     ordering_fields = ['date_creation', 'statut', 'reference']
     ordering = ['-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         """ASTK178 — liste filtrable par `?fournisseur=<id>` (fiche 360)."""
@@ -98,6 +105,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             )
         create_with_reference(RetourFournisseur, 'RF', company, _save)
 
+    @extend_schema(request=None, responses=RetourFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         """Valide le retour : décrémente le stock (SORTIE) pour chaque ligne.
@@ -111,7 +119,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(retour).data)
 
-    @extend_schema(request=None, responses={
+    @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=S.DictField(required=False)), responses={
         200: inline_serializer('StockRetourValideScanne', {
             'id': serializers.IntegerField(),
             'reference': serializers.CharField(),
@@ -146,6 +154,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             'statut': retour.statut, 'deplacements': nb_lignes,
         })
 
+    @extend_schema(request=None, responses=RetourFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         retour = self.get_object()
@@ -158,6 +167,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         retour.save(update_fields=['statut'])
         return Response(self.get_serializer(retour).data)
 
+    @extend_schema(request=None, responses={201: AvoirFournisseurSerializer})
     @action(detail=True, methods=['post'], url_path='generer-avoir')
     def generer_avoir(self, request, pk=None):
         """XPUR9 — génère un AvoirFournisseur BROUILLON pré-rempli depuis ce

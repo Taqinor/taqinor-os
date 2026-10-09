@@ -1,10 +1,14 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    BINARY, INT, LISTE, P, PDF, S, STR, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -48,6 +52,7 @@ from .catch_weight import PeseeLigneActionsMixin  # noqa: E402
 from .document_fige import DocumentFigeMixin  # noqa: E402
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT, False, 'BCF (id)'), P('statut', STR, False, 'Statut')]))
 class ReceptionFournisseurViewSet(DocumentFigeMixin,
                                   ControleReceptionActionsMixin,
                                   PeseeLigneActionsMixin,
@@ -76,6 +81,8 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
     ]
     ordering_fields = ['date_creation', 'date_reception', 'statut', 'reference']
     ordering = ['-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
@@ -135,6 +142,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
 
+    @extend_schema(parameters=[P('code', STR, True, 'Code GS1-128 / DataMatrix')], responses=corps('ReceptionScanGs1Reponse', produit_id=S.IntegerField(), produit_nom=S.CharField(), numeros_serie=S.ListField(child=S.CharField(), allow_null=True), numero_lot=S.CharField(allow_null=True), date_peremption=S.CharField(allow_null=True)))
     @action(detail=False, methods=['get'], url_path='scan-gs1')
     def scan_gs1(self, request):
         """XSTK4 — décompose un code GS1-128/DataMatrix (query param
@@ -176,6 +184,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 if parsed.get('date_peremption') else None),
         })
 
+    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']), P('sortie', STR, False, 'html pour la version HTML', ['html', 'pdf'])], responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes')
     def etiquettes(self, request, pk=None):
         """ZSTK6 — planche d'étiquettes lot/série depuis les lignes de CETTE
@@ -228,6 +237,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             f'inline; filename="etiquettes-{reception.reference}.pdf"')
         return response
 
+    @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='suggestions-rangement')
     def suggestions_rangement(self, request, pk=None):
         """NTWMS2 — casier SUGGÉRÉ pour chaque ligne, à afficher AVANT la
@@ -263,7 +273,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             'lignes': proposer_cross_dock(reception),
         })
 
-    @extend_schema(responses={
+    @extend_schema(request=corps('ReceptionCrossDockCorps', lignes=S.ListField(child=S.IntegerField(), required=False), unite_logistique=S.IntegerField(required=False)), responses={
         200: inline_serializer('StockReceptionCrossDockAffectation', {
             'unite_logistique': serializers.IntegerField(allow_null=True),
             'sscc': serializers.CharField(),
@@ -315,6 +325,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(resultat)
 
+    @extend_schema(request=None, responses=ReceptionFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
         """Confirme la réception : incrémente le stock (ENTREE) pour chaque
@@ -337,6 +348,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(reception).data)
 
+    @extend_schema(request=None, responses=ReceptionFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """YSTCK6 — une réception CONFIRMÉE est annulée par CONTRE-PASSATION
@@ -357,6 +369,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         reception.save(update_fields=['statut'])
         return Response(self.get_serializer(reception).data)
 
+    @extend_schema(request=None, responses={201: FactureFournisseurSerializer})
     @action(detail=True, methods=['post'], url_path='facturer',
             permission_classes=[IsResponsableOrAdmin])
     def facturer(self, request, pk=None):

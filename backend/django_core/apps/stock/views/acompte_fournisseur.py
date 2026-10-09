@@ -1,7 +1,12 @@
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    INT, LISTE, P,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import AcompteFournisseur
 from ..serializers import AcompteFournisseurSerializer
@@ -16,6 +21,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT)]))
 class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR8 — acomptes/avances fournisseur sur BCF. Imputés automatiquement
     (idempotent) sur la première facture du BCF via
@@ -31,6 +37,8 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_versement', 'date_creation', 'montant']
     ordering = ['-date_versement', '-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['ouverts']:
@@ -68,6 +76,7 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
             if acompte.bon_commande_id:
                 imputer_acomptes_bcf(acompte.bon_commande)
 
+    @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='ouverts')
     def ouverts(self, request):
         """XPUR8 (AUDV04/DRAFT165-113) — acomptes fournisseur PARTIELLEMENT/
