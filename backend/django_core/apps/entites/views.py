@@ -1,5 +1,11 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
@@ -27,6 +33,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
 
     serializer_class = EntiteSerializer
     permission_classes = [IsAdministrateur]
+    parser_classes = [JSONParser]
     queryset = Entite.objects.all()
 
     def get_queryset(self):
@@ -49,6 +56,10 @@ class EntiteViewSet(CompanyScopedModelViewSet):
                 raise PermissionDenied(
                     "Permission 'adminops_entites_gerer' requise.")
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'tree', OpenApiTypes.STR, required=False, enum=['1'],
+            description='1 = arbre imbriqué (liste de racines).')])
     def list(self, request, *args, **kwargs):
         if request.query_params.get('tree') == '1':
             return Response(selectors.entite_tree(request.user.company))
@@ -90,12 +101,23 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         # NTADM1/11 — jamais de suppression dure : DELETE == désactivation.
         services.desactiver_entite(instance, user=self.request.user)
 
+    @extend_schema(request=None, responses=EntiteSerializer)
     @action(detail=True, methods=['post'])
     def desactiver(self, request, pk=None):
         entite = self.get_object()
         services.desactiver_entite(entite, user=request.user)
         return Response(EntiteSerializer(entite).data)
 
+    @extend_schema(responses=inline_serializer('EntiteHistoriqueLigne', {
+        'id': serializers.IntegerField(),
+        'kind': serializers.CharField(),
+        'field_label': serializers.CharField(allow_blank=True),
+        'old_value': serializers.CharField(allow_blank=True, allow_null=True),
+        'new_value': serializers.CharField(allow_blank=True, allow_null=True),
+        'body': serializers.CharField(allow_blank=True),
+        'created_by': serializers.CharField(allow_null=True),
+        'created_at': serializers.DateTimeField(),
+    }, many=True))
     @action(detail=True, methods=['get'])
     def historique(self, request, pk=None):
         """NTADM47 — fil d'activité (chatter générique `records`)."""
@@ -114,6 +136,11 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         } for a in activites]
         return Response(data)
 
+    @extend_schema(
+        request=inline_serializer('EntiteNoterRequete', {
+            'body': serializers.CharField(required=False, allow_blank=True)}),
+        responses=inline_serializer('EntiteNoterReponse', {
+            'ok': serializers.BooleanField()}))
     @action(detail=True, methods=['post'])
     def noter(self, request, pk=None):
         """NTADM47 — note manuelle de chatter."""
@@ -123,6 +150,11 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         log_note(entite, request.user, body)
         return Response({'ok': True})
 
+    @extend_schema(responses=inline_serializer('EntiteAccessible', {
+        'id': serializers.IntegerField(),
+        'code': serializers.CharField(),
+        'nom': serializers.CharField(),
+    }, many=True))
     @action(detail=False, methods=['get'], url_path='mes-entites',
             permission_classes=[IsAnyRole])
     def mes_entites(self, request):
@@ -137,6 +169,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         return Response(selectors.entites_accessibles(
             request.user, request.user.company))
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
     def groupe(self, request):
         """NTADM25 — vue consolidée « Groupe », LECTURE SEULE (Administrateur).
@@ -149,6 +182,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         """
         return Response(selectors.consolidation_groupe(request.user.company))
 
+    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
     def export(self, request):
         """NTADM28 — export xlsx du référentiel (code/nom/parent/actif).
@@ -170,7 +204,15 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         ]
         return build_xlsx_response('entites', headers, rows, sheet_title='Entités')
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAdministrateur])
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer('EntiteImportRequete', {
+            'fichier': serializers.FileField(),
+            'commit': serializers.BooleanField(required=False),
+            'ecraser': serializers.BooleanField(required=False),
+        })},
+        responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=['post'], permission_classes=[IsAdministrateur],
+            parser_classes=[MultiPartParser])
     def importer(self, request):
         """NTADM43 — import CSV en masse (dry-run par défaut ; `commit=1` écrit).
 
