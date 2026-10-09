@@ -235,7 +235,7 @@
 - frontend/src/api/installationsApi.js :: getLandedCostDossier -> /api/django/installations/dossiers-import/<>/landed-cost
     dossier_id:inconnu, lignes:inconnu, total_fob:nombre, total_frais:nombre, total_landed:nombre
 - frontend/src/api/installationsApi.js :: getLienClientIntervention -> /api/django/installations/interventions/<>/lien-client
-    path:inconnu, token:inconnu, url:inconnu
+    detail:inconnu, path:inconnu, token:inconnu, url:inconnu
 - frontend/src/api/installationsApi.js :: getLienRapportIntervention -> /api/django/installations/interventions/<>/lien-rapport
     path:inconnu, token:inconnu, url:inconnu
 - frontend/src/api/installationsApi.js :: getMaTournee -> /api/django/installations/interventions/ma-tournee
@@ -258,14 +258,6 @@
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
     interventions:inconnu, seuil_pct:inconnu
-- frontend/src/api/installationsApi.js :: supprimerLigneConsommation -> /api/django/installations/interventions/<>/supprimer-ligne-consommation
-    detail:inconnu
-- frontend/src/api/installationsApi.js :: supprimerMemo -> /api/django/installations/interventions/<>/supprimer-memo
-    detail:texte
-- frontend/src/api/installationsApi.js :: supprimerPhoto -> /api/django/installations/interventions/<>/supprimer-photo
-    detail:texte
-- frontend/src/api/installationsApi.js :: supprimerSerial -> /api/django/installations/interventions/<>/supprimer-serial
-    detail:texte
 - frontend/src/api/installationsApi.js :: syncField -> /api/django/installations/sync
     applied:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/monitoringApi.js :: emailOmReport -> /api/django/monitoring/configs/<>/email-om-report

@@ -514,6 +514,53 @@ def _freeze_bom(devis):
     return bom
 
 
+def divergence_devis_chantier(installation):
+    """ACHT66 — écart entre la nomenclature GELÉE du chantier
+    (``Installation.bom``) et ce que le devis lié produirait aujourd'hui
+    (``_freeze_bom`` : option retenue × N villas, réutilisé tel quel, jamais
+    recopié). Forme du contrat ``installation_divergence_devis.json`` :
+    ``{diverge, lignes: [{produit_id, designation, quantite_bom,
+    quantite_devis}]}`` ; une ligne n'apparaît que si les quantités diffèrent
+    (``None`` = produit absent d'un côté). Sans devis : aucun écart."""
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return {'diverge': False, 'lignes': []}
+
+    def _cumul(bom):
+        out = {}
+        for ligne in bom or []:
+            produit_id = ligne.get('produit_id')
+            cle = ('p', produit_id) if produit_id else (
+                'd', ligne.get('designation') or '')
+            entree = out.setdefault(cle, {
+                'produit_id': produit_id,
+                'designation': ligne.get('designation') or '',
+                'quantite': 0.0})
+            try:
+                entree['quantite'] += float(ligne.get('quantite') or 0)
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    gele = _cumul(installation.bom)
+    courant = _cumul(_freeze_bom(devis))
+    lignes = []
+    for cle in list(gele) + [c for c in courant if c not in gele]:
+        a, b = gele.get(cle), courant.get(cle)
+        qte_bom = round(a['quantite'], 4) if a else None
+        qte_devis = round(b['quantite'], 4) if b else None
+        if qte_bom == qte_devis:
+            continue
+        ref = a or b
+        lignes.append({
+            'produit_id': ref['produit_id'],
+            'designation': ref['designation'],
+            'quantite_bom': qte_bom,
+            'quantite_devis': qte_devis,
+        })
+    return {'diverge': bool(lignes), 'lignes': lignes}
+
+
 def _devis_successeurs_revision_ids(devis):
     """ACHT4 — ids des versions qui REMPLACENT ``devis`` (chaîne
     ``superseded_by`` : v1 → v2 → v3), même société, sans cycle. Lu par

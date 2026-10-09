@@ -507,6 +507,10 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
     # réglementaire (contrat ``dossier_8221.json``), sinon la saisie chantier
     # (``source: 'saisie_chantier'``). Lecture seule.
     dossier_8221_resume = serializers.SerializerMethodField()
+    # ACHT66 — écart nomenclature gelée / devis lié (contrat
+    # ``installation_divergence_devis.json``), calculé par le serveur ; clé du
+    # DÉTAIL seulement (la liste ne la calcule pas : aucune requête par ligne).
+    divergence_devis = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -585,6 +589,21 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
                     champ: MESSAGE_STATUT_GERE_PAR_DOSSIER
                     for champ in modifies})
         return attrs
+
+    def get_fields(self):
+        fields = super().get_fields()
+        view = self.context.get('view')
+        # ACHT66 — clé du DÉTAIL (et des réponses d'écriture d'UN chantier) :
+        # ni la liste ni les actions agrégées ne la calculent.
+        if view is not None and getattr(view, 'action', None) not in (
+                'retrieve', 'create', 'update', 'partial_update'):
+            fields.pop('divergence_devis', None)
+        return fields
+
+    @extend_schema_field(serializers.DictField())
+    def get_divergence_devis(self, obj):
+        from .services import divergence_devis_chantier
+        return divergence_devis_chantier(obj)
 
     @extend_schema_field(serializers.DictField())
     def get_dossier_8221_resume(self, obj):
