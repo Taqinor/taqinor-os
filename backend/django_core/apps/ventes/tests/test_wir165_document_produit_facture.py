@@ -104,6 +104,9 @@ class DocumentProduitFactureTests(TestCase):
         strict : aucun document GED créé, le PDF legacy est généré comme
         avant (même clé, même sauvegarde)."""
         from apps.ventes.utils.pdf import generate_facture_pdf
+        # ADOC75 : routage par défaut semé à la création de la société ;
+        # « sans routage » = on le retire explicitement.
+        RoutageDocumentaire.objects.filter(company=self.company).delete()
         facture = make_facture(self.user, self.client_obj, self.produit)
 
         key = generate_facture_pdf(facture.id)
@@ -127,9 +130,10 @@ class DocumentProduitFactureTests(TestCase):
         cabinet = Cabinet.objects.create(company=self.company, nom='Ventes')
         tag = DocumentTag.objects.create(
             company=self.company, nom='Facture', slug='facture')
-        routage = RoutageDocumentaire.objects.create(
+        routage, _ = RoutageDocumentaire.objects.update_or_create(
             company=self.company, source='ventes_facture',
-            cabinet_cible=cabinet, dossier_cible='Factures/{{ annee }}')
+            defaults={'cabinet_cible': cabinet,
+                      'dossier_cible': 'Factures/{{ annee }}'})
         routage.tags_defaut.add(tag)
 
         facture = make_facture(self.user, self.client_obj, self.produit)
@@ -159,9 +163,9 @@ class DocumentProduitFactureTests(TestCase):
         from apps.ventes.utils.pdf import generate_facture_pdf
 
         cabinet = Cabinet.objects.create(company=self.company, nom='Ventes')
-        RoutageDocumentaire.objects.create(
+        RoutageDocumentaire.objects.update_or_create(
             company=self.company, source='ventes_facture',
-            cabinet_cible=cabinet, dossier_cible='Factures')
+            defaults={'cabinet_cible': cabinet, 'dossier_cible': 'Factures'})
 
         facture = make_facture(self.user, self.client_obj, self.produit)
         generate_facture_pdf(facture.id)
@@ -178,9 +182,9 @@ class DocumentProduitFactureTests(TestCase):
         from apps.ventes.utils.pdf import generate_facture_pdf
 
         cabinet = Cabinet.objects.create(company=self.company, nom='Ventes')
-        RoutageDocumentaire.objects.create(
+        RoutageDocumentaire.objects.update_or_create(
             company=self.company, source='ventes_facture',
-            cabinet_cible=cabinet, dossier_cible='Factures')
+            defaults={'cabinet_cible': cabinet, 'dossier_cible': 'Factures'})
 
         facture = make_facture(self.user, self.client_obj, self.produit)
         with patch(

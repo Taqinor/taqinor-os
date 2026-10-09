@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
@@ -13,6 +14,9 @@ class MonitoringConfigSerializer(serializers.ModelSerializer):
     # has_credentials expose seulement la PRÉSENCE d'identifiants (jamais leur
     # contenu côté client) ; `credentials` est write-only.
     has_credentials = serializers.SerializerMethodField()
+    # ASAV71 — colonne chiffrée (sous-classe de TextField) : champ JSON
+    # déclaré explicitement, write-only, jamais relu par l'API.
+    credentials = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = MonitoringConfig
@@ -22,7 +26,6 @@ class MonitoringConfigSerializer(serializers.ModelSerializer):
             'is_auto', 'last_sync', 'date_modification',
         ]
         # `company` posée côté serveur ; identifiants jamais relus du serveur.
-        extra_kwargs = {'credentials': {'write_only': True, 'required': False}}
         read_only_fields = ['last_sync', 'date_modification']
 
     def get_provider_label(self, obj):
@@ -62,6 +65,37 @@ class ProductionReadingSerializer(serializers.ModelSerializer):
         if value is None or value < 0:
             raise serializers.ValidationError('Énergie invalide.')
         return value
+
+    def validate_period_days(self, value):
+        # ASAV66 — un relevé couvre au moins un jour.
+        if value is None or value < 1:
+            raise serializers.ValidationError(
+                'La période doit couvrir au moins 1 jour.')
+        return value
+
+    def validate(self, attrs):
+        """ASAV66 — pas de relevé dans le futur, et un seul relevé par
+        (système, date, période), TOUTES sources (un double clic ou une saisie
+        après import CSV ne compte plus la production deux fois)."""
+        attrs = super().validate(attrs)
+        instance = self.instance
+        jour = attrs.get('date', getattr(instance, 'date', None))
+        periode = attrs.get(
+            'period_days', getattr(instance, 'period_days', None))
+        installation = attrs.get(
+            'installation', getattr(instance, 'installation', None))
+        if jour is not None and jour > timezone.localdate():
+            raise serializers.ValidationError(
+                {'date': 'La date du relevé ne peut pas être dans le futur.'})
+        if jour is not None and periode is not None and installation:
+            doublons = ProductionReading.objects.filter(
+                installation=installation, date=jour, period_days=periode)
+            if instance is not None:
+                doublons = doublons.exclude(pk=instance.pk)
+            if doublons.exists():
+                raise serializers.ValidationError(
+                    {'date': 'Relevé déjà saisi pour cette période.'})
+        return attrs
 
 
 class CleaningEventSerializer(serializers.ModelSerializer):

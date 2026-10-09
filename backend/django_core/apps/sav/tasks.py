@@ -284,7 +284,9 @@ def scan_sla_breaches():
         ticket.sla_breach = True
         ticket.save(update_fields=['sla_breach'])
         updated += 1
-        if ticket.technicien_responsable_id:
+        # ASAV57 — l'interrupteur société ne gouverne que la NOTIFICATION.
+        if (reglage_pour(ticket).sla_breach_enabled
+                and ticket.technicien_responsable_id):
             notify(
                 user=ticket.technicien_responsable,
                 event_type=EventType.SAV_TICKET_BREACHING,
@@ -436,6 +438,9 @@ def scan_sla_pre_alerts_and_escalations():
     escalations = 0
     for ticket in qs:
         sla = reglage_pour(ticket)
+        # ASAV57 — interrupteur OFF : aucune pré-alerte ni escalade.
+        if not sla.sla_breach_enabled:
+            continue
         due_effectif = ticket.sla_due_at_effectif(today=today)
 
         # ── Pré-alerte J-x au technicien assigné ──

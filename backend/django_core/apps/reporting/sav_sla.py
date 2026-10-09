@@ -59,7 +59,10 @@ def sav_sla_insight(request):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     from apps.sav.models import Ticket
-    from apps.sav import selectors as sla
+    # ASAV18 — UNE définition du respect du SLA, celle du KPI d'agent :
+    # résolution contre l'échéance EFFECTIVE (pauses décomptées),
+    # première réponse contre l'échéance de RÉPONSE (jamais ``sla_due_at``).
+    from apps.sav.selectors import premiere_reponse_respectee, sla_respecte
 
     qs = Ticket.objects.filter(**co, annule=False)
 
@@ -84,20 +87,16 @@ def sav_sla_insight(request):
         subset = [t for t in tickets if t.priorite == choice_val]
         if not subset:
             continue
-        # ASAV18 — mesure déléguée aux sélecteurs sav (une seule définition,
-        # identique au KPI d'agent) : résolution = échéance EFFECTIVE (pauses
-        # décomptées), première réponse = échéance de RÉPONSE. ``None`` = non
-        # mesurable, exclu du taux.
+        # Dénominateur = tickets MESURABLES (résultat non ``None``), comme
+        # ``performance_agent`` : un ticket sans échéance n'est ni respecté
+        # ni manqué.
         reponse_mesures = [
-            r for r in (sla.premiere_reponse_respectee(t) for t in subset)
-            if r is not None]
-        reponse_ok = [r for r in reponse_mesures if r]
-        reponse_total = reponse_mesures
-        resolution_mesures = [
-            r for r in (sla.sla_respecte(t) for t in subset)
-            if r is not None]
-        resolution_ok = [r for r in resolution_mesures if r]
-        resolution_total = resolution_mesures
+            (t, premiere_reponse_respectee(t)) for t in subset]
+        reponse_total = [t for t, r in reponse_mesures if r is not None]
+        reponse_ok = [t for t, r in reponse_mesures if r]
+        resolution_mesures = [(t, sla_respecte(t)) for t in subset]
+        resolution_total = [t for t, r in resolution_mesures if r is not None]
+        resolution_ok = [t for t, r in resolution_mesures if r]
         par_priorite[choice_val] = {
             'priorite': choice_val,
             'label': str(choice_label),
@@ -121,12 +120,12 @@ def sav_sla_insight(request):
             'reouvertures': 0,
         })
         entry['total'] += 1
-        reponse = sla.premiere_reponse_respectee(t)
+        reponse = premiere_reponse_respectee(t)
         if reponse is not None:
             entry['reponse_total'] += 1
             if reponse:
                 entry['reponse_ok'] += 1
-        resolution = sla.sla_respecte(t)
+        resolution = sla_respecte(t)
         if resolution is not None:
             entry['resolution_total'] += 1
             if resolution:

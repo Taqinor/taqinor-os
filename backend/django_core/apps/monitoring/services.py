@@ -117,13 +117,70 @@ def sync_system(installation, *, user=None):
     return imported, config.provider
 
 
-def _expected_recent_kwh(installation, config, window_days):
-    """Production attendue (kWh) sur la fenêtre. None si inconnaissable."""
+_NON_FOURNI = object()
+
+
+def premiers_releves(installation_ids):
+    """ASAV62 — ``{installation_id: date du premier relevé}`` en UNE requête
+    (les listes du parc la passent à ``attendu_periode`` : pas de N+1)."""
+    from django.db.models import Min
+    return dict(ProductionReading.objects
+                .filter(installation_id__in=list(installation_ids))
+                .values('installation')
+                .annotate(premier=Min('date'))
+                .values_list('installation', 'premier'))
+
+
+def debut_couverture(installation, debut, premier_releve=_NON_FOURNI):
+    """ASAV62 — premier jour réellement couvert de la période démarrant à
+    ``debut`` : pas avant la mise en service ni avant le premier relevé
+    (``premier_releve`` : date déjà connue de l'appelant, ``None`` = aucun
+    relevé ; non fourni = lu en base)."""
+    debut_effectif = debut
+    mise_en_service = getattr(installation, 'date_mise_en_service', None)
+    if mise_en_service and mise_en_service > debut_effectif:
+        debut_effectif = mise_en_service
+    if premier_releve is _NON_FOURNI:
+        premier = (ProductionReading.objects
+                   .filter(installation=installation)
+                   .order_by('date').values_list('date', flat=True).first())
+    else:
+        premier = premier_releve
+    if premier and premier > debut_effectif:
+        debut_effectif = premier
+    return debut_effectif
+
+
+def attendu_periode(installation, config, debut, fin,
+                    premier_releve=_NON_FOURNI):
+    """ASAV62 — production attendue (kWh) sur la période RÉELLEMENT couverte
+    de ``[debut, fin]`` : bornée par la mise en service et par le premier
+    relevé du système (un système neuf n'est pas jugé sur 365 jours dont il
+    n'a vécu que 30). ``None`` si aucune référence annuelle (CIQ643 — pas de
+    repli inventé). UN seul helper pour l'évaluation de sous-performance,
+    ``om_metrics``, ``fleet_overview``, ``benchmark_parc`` et le rapport O&M."""
     annual = config.expected_annual_kwh
     if annual is None:
         # CIQ643 — pas de repli inventé : « en attente de référence ».
         return None
-    return Decimal(str(annual)) * Decimal(window_days) / Decimal('365')
+    debut_effectif = debut_couverture(installation, debut, premier_releve)
+    if debut_effectif == debut:
+        jours = (fin - debut).days  # fenêtre entière (comportement d'origine)
+    else:
+        # Période bornée : le jour de départ compte (un relevé par jour).
+        jours = (fin - debut_effectif).days + 1
+    jours = max(jours, 0)
+    return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
+
+
+def _expected_recent_kwh(installation, config, window_days, today=None,
+                         premier_releve=_NON_FOURNI):
+    """Production attendue (kWh) sur la fenêtre récente — voir
+    ``attendu_periode``. None si inconnaissable."""
+    today = today or timezone.localdate()
+    return attendu_periode(
+        installation, config, today - timedelta(days=window_days), today,
+        premier_releve)
 
 
 def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
@@ -137,6 +194,30 @@ def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
     for r in agg.values_list('energy_kwh', flat=True):
         total += Decimal(str(r))
     return total
+
+
+MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
+MOTIF_PERFORMANCE_RETABLIE = 'performance_retablie'
+
+
+def _fermer_episode(installation, motif, note):
+    """ASAV70 — termine l'épisode de sous-performance : ferme le drapeau
+    OUVERT du système (verrou de ligne) avec son motif et sa note. No-op
+    s'il n'y en a pas. Un nouvel épisode réel rouvrira un drapeau neuf."""
+    with transaction.atomic():
+        drapeau = (UnderperformanceFlag.objects
+                   .select_for_update()
+                   .filter(installation=installation, is_open=True)
+                   .first())
+        if drapeau is None:
+            return None
+        drapeau.is_open = False
+        drapeau.date_cloture = timezone.now()
+        drapeau.motif_cloture = motif
+        drapeau.note_cloture = note
+        drapeau.save(update_fields=[
+            'is_open', 'date_cloture', 'motif_cloture', 'note_cloture'])
+        return drapeau
 
 
 def evaluate_underperformance(installation, *, user=None, today=None):
@@ -159,7 +240,17 @@ def evaluate_underperformance(installation, *, user=None, today=None):
               'ratio_pct': None, 'flag': None, 'ticket': None,
               'data_status': 'no_data_ever'}
 
-    expected = _expected_recent_kwh(installation, config, RECENT_WINDOW_DAYS)
+    # ASAV69 — un site RETIRÉ du parc n'est ni évalué ni signalé : aucun
+    # drapeau, aucun ticket SAV au nom d'un client dont le site est retiré.
+    if getattr(installation, 'parc_actif', True) is False:
+        result['data_status'] = 'site_retire'
+        _fermer_episode(
+            installation, MOTIF_DONNEES_INDISPONIBLES,
+            'Système retiré du parc : évaluation impossible.')
+        return result
+
+    expected = _expected_recent_kwh(
+        installation, config, RECENT_WINDOW_DAYS, today=today)
     # AUD522 — bornée à la MÊME fenêtre que `actual` (recent_production_kwh) :
     # un système dont le SEUL relevé date de plus d'un an n'a AUCUNE donnée
     # récente, même si `ProductionReading.objects.filter(installation=...)`
@@ -173,11 +264,20 @@ def evaluate_underperformance(installation, *, user=None, today=None):
         has_ever = ProductionReading.objects.filter(
             installation=installation).exists()
         result['data_status'] = 'stale_data' if has_ever else 'no_data_ever'
+        # ASAV70 — plus d'évaluation possible : l'épisode ouvert se termine.
+        _fermer_episode(
+            installation, MOTIF_DONNEES_INDISPONIBLES,
+            'Aucun relevé récent : évaluation impossible '
+            f'({result["data_status"]}).')
         return result
     if not expected or expected <= 0:
         # CIQ643 — des relevés récents existent mais aucune référence n'a été
         # semée : aucune évaluation, aucun drapeau.
         result['data_status'] = 'en_attente_reference'
+        # ASAV70 — référence retirée : l'épisode ouvert se termine.
+        _fermer_episode(
+            installation, MOTIF_DONNEES_INDISPONIBLES,
+            'Référence de production retirée : évaluation impossible.')
         return result
 
     actual = recent_production_kwh(installation, today=today)
@@ -232,7 +332,12 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             if open_flag is not None:
                 open_flag.is_open = False
                 open_flag.date_cloture = timezone.now()
-                open_flag.save(update_fields=['is_open', 'date_cloture'])
+                open_flag.motif_cloture = MOTIF_PERFORMANCE_RETABLIE
+                open_flag.note_cloture = (
+                    'Production revenue au-dessus du seuil.')
+                open_flag.save(update_fields=[
+                    'is_open', 'date_cloture', 'motif_cloture',
+                    'note_cloture'])
     return result
 
 

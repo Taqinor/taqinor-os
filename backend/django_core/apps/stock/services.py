@@ -5,7 +5,7 @@ l'utilisateur. Le PRIX D'ACHAT n'est JAMAIS modifié ni exposé (règle marges).
 Les changements sont journalisés (audit logger).
 """
 import logging
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation
 from django.db import models
 
 logger = logging.getLogger('stock.audit')
@@ -2227,25 +2227,35 @@ def compute_besoin_materiel(installation):
 
     Les lignes sans produit (libre) sont ignorées : on ne peut pas
     réapprovisionner un article qui n'est pas au catalogue.
+
+    ACHT9 — la source est la NOMENCLATURE GELÉE du chantier (option retenue ×
+    N villas), lue par ``installations.selectors.quantites_nomenclature_
+    chantier`` (arrondi au plafond, ERR54) — jamais les lignes courantes du
+    devis : une option non retenue n'est ni commandée ni bloquante, un devis
+    ×3 villas requiert 3 fois la quantité. `manque` retranche la quantité
+    déjà EN COMMANDE pour CE chantier (BCF brouillon/envoyé non reçu,
+    ``chantier_origine``) ; `manque_brut` conserve le manque avant retrait.
     """
-    devis = installation.devis
-    if devis is None:
+    from apps.installations.selectors import quantites_nomenclature_chantier
+    from .models import Produit
+
+    quantites = quantites_nomenclature_chantier(installation, plafond=True)
+    if not quantites:
         return []
     # N14 — réservations actives de la société, et la part réservée par CE
     # chantier (pour ne pas la décompter deux fois de son propre disponible).
     reserved_all = reserved_quantities(installation.company)
     own_reserved = _own_reservation_map(installation)
+    en_commande = _en_commande_chantier(installation)
+    produits = {
+        p.id: p for p in Produit.objects.filter(
+            company=installation.company, id__in=list(quantites)
+        ).select_related('fournisseur')}
     besoins = {}
-    for ligne in devis.lignes.select_related('produit', 'produit__fournisseur'):
-        produit = ligne.produit
+    for produit_id, requis in quantites.items():
+        produit = produits.get(produit_id)
         if produit is None:
             continue
-        # ERR54 — une ligne fractionnaire (ex. 2,5 unités) exige un APPRO ARRONDI
-        # AU SUPÉRIEUR (3, pas 2) : un int() tronquait et sous-commandait.
-        try:
-            requis = int(_dec(ligne.quantite).to_integral_value(rounding=ROUND_CEILING))
-        except (AttributeError, InvalidOperation, TypeError, ValueError):
-            requis = 0
         entry = besoins.get(produit.id)
         if entry is None:
             # Disponible pour CE chantier = stock total − réservé par les AUTRES
@@ -2270,7 +2280,9 @@ def compute_besoin_materiel(installation):
             entry['requis'] += requis
     out = []
     for entry in besoins.values():
-        entry['manque'] = max(entry['requis'] - entry['disponible'], 0)
+        entry['manque_brut'] = max(entry['requis'] - entry['disponible'], 0)
+        entry['en_commande'] = en_commande.get(entry['produit_id'], 0)
+        entry['manque'] = max(entry['manque_brut'] - entry['en_commande'], 0)
         # N17 — fournisseur le moins cher (si une liste de prix existe).
         cheapest = cheapest_prix_fournisseur(entry['produit'])
         if cheapest is not None:
@@ -2283,6 +2295,29 @@ def compute_besoin_materiel(installation):
             entry['prix_achat_min'] = None
         out.append(entry)
     out.sort(key=lambda e: e['designation'].lower())
+    return out
+
+
+def _bcf_ouverts_chantier(installation):
+    """BCF BROUILLON/ENVOYÉ (non reçus) dont ``chantier_origine`` est ce
+    chantier, avec leurs lignes."""
+    from .models import BonCommandeFournisseur
+    return list(BonCommandeFournisseur.objects.filter(
+        company=installation.company, chantier_origine=installation,
+        statut__in=[BonCommandeFournisseur.Statut.BROUILLON,
+                    BonCommandeFournisseur.Statut.ENVOYE],
+    ).prefetch_related('lignes'))
+
+
+def _en_commande_chantier(installation):
+    """ACHT9 — ``{produit_id: quantité restante à recevoir}`` des BCF ouverts
+    de ce chantier (déjà commandée, pas encore reçue)."""
+    out = {}
+    for bon in _bcf_ouverts_chantier(installation):
+        for ligne in bon.lignes.all():
+            if ligne.produit_id:
+                out[ligne.produit_id] = out.get(ligne.produit_id, 0) + max(
+                    ligne.quantite - ligne.quantite_recue, 0)
     return out
 
 
@@ -2304,6 +2339,13 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
     besoins = compute_besoin_materiel(installation)
     manquants = [b for b in besoins if b['manque'] > 0]
     if not manquants:
+        # ACHT9 — idempotent : si le manque brut existe mais qu'un BCF ouvert
+        # le couvre déjà, on le DIT (et on n'en crée pas un second).
+        if any(b['manque_brut'] > 0 for b in besoins):
+            refs = ', '.join(
+                b.reference for b in _bcf_ouverts_chantier(installation))
+            raise ValueError(
+                f'Un BCF ouvert couvre déjà ces manques : {refs}.')
         raise ValueError('Aucun manque à commander pour ce chantier.')
 
     def _save(ref):
@@ -2337,14 +2379,59 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
 # quantité, prix) ; ``produit_id`` peut être ``None`` (ligne libre/service, DA
 # hors catalogue). Référence anti-collision (jamais count()+1).
 
-def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note=''):
+def _fmt_qte_fr(valeur):
+    return str(valeur).replace('.', ',')
+
+
+def _normaliser_ligne_bcf(index, ligne):
+    """ACHT10 — (produit_id, désignation, quantité entière > 0, prix >= 0) ou
+    ``ValueError`` en français nommant la ligne. Accepte le tuple historique
+    ``(produit_id, designation, qte, prix)`` ou un dict (``produit`` /
+    ``produit_id``, ``designation``, ``quantite``, ``prix``)."""
+    from decimal import Decimal, InvalidOperation
+    if isinstance(ligne, dict):
+        produit_id = ligne.get('produit_id', ligne.get('produit'))
+        designation = ligne.get('designation')
+        qte = ligne.get('quantite')
+        prix = ligne.get('prix', ligne.get('prix_achat_unitaire'))
+    else:
+        produit_id, designation, qte, prix = ligne
+    try:
+        qte_d = Decimal(str(qte if qte not in (None, '') else 0))
+        prix_d = Decimal(str(prix if prix not in (None, '') else 0))
+    except InvalidOperation:
+        raise ValueError(
+            f'Ligne {index} : quantité ou prix illisible.') from None
+    if not qte_d.is_finite() or not prix_d.is_finite():
+        raise ValueError(f'Ligne {index} : quantité ou prix illisible.')
+    if qte_d <= 0:
+        raise ValueError(
+            f'Ligne {index} : quantité {_fmt_qte_fr(qte_d.normalize())} '
+            f'invalide — elle doit être supérieure à 0.')
+    if qte_d != qte_d.to_integral_value():
+        raise ValueError(
+            f'Ligne {index} : quantité {_fmt_qte_fr(qte_d.normalize())} non '
+            f'entière — un BCF se commande en unités.')
+    if prix_d < 0:
+        raise ValueError(
+            f'Ligne {index} : le prix ne peut pas être négatif.')
+    return produit_id, designation or '', int(qte_d), prix_d
+
+
+def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note='',
+                            chantier_origine=None):
     """Crée un ``BonCommandeFournisseur`` BROUILLON depuis une liste de lignes.
 
-    ``lignes`` : itérable de tuples ``(produit_id, designation, qte, prix)``.
-    ``produit_id`` peut être ``None`` (ligne libre/service — ``sans_stock``
-    posé automatiquement par le modèle via l'absence de produit). Lève
-    ValueError si ``lignes`` est vide. Renvoie le ``BonCommandeFournisseur``
-    créé. INTERNE — jamais de prix d'achat sur un document client.
+    ``lignes`` : itérable de tuples ``(produit_id, designation, qte, prix)``
+    (ou de dicts, voir ``_normaliser_ligne_bcf``). ``produit_id`` peut être
+    ``None`` (ligne libre/service — ``sans_stock`` posé automatiquement par le
+    modèle via l'absence de produit). Lève ``ValueError`` si ``lignes`` est
+    vide, ou (ACHT10) si une quantité est ≤ 0 ou non entière, ou un prix
+    négatif : aucun BCF n'est alors créé (jamais de troncature silencieuse).
+    ``chantier_origine`` (optionnel, même société) est posé sur le BCF : sa
+    réception réserve alors la marchandise au chantier (comme
+    ``draft_bcf_for_shortfall``). Renvoie le ``BonCommandeFournisseur`` créé.
+    INTERNE — jamais de prix d'achat sur un document client.
     """
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
@@ -2352,17 +2439,24 @@ def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note=''):
     lignes = list(lignes)
     if not lignes:
         raise ValueError('Aucune ligne à commander.')
+    normalisees = [
+        _normaliser_ligne_bcf(i, ligne) for i, ligne in enumerate(lignes, 1)]
+    if chantier_origine is not None and (
+            getattr(chantier_origine, 'company_id', None) != company.pk):
+        raise ValueError(
+            "Le chantier d'origine n'appartient pas à cette société.")
 
     def _save(ref):
         bon = BonCommandeFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note=note or '', created_by=user)
-        for produit_id, designation, qte, prix in lignes:
+            note=note or '', created_by=user,
+            chantier_origine=chantier_origine)
+        for produit_id, designation, qte, prix in normalisees:
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, produit_id=produit_id,
-                designation=designation or '', quantite=int(qte or 0),
-                prix_achat_unitaire=prix or 0)
+                designation=designation, quantite=qte,
+                prix_achat_unitaire=prix)
         return bon
 
     return create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)

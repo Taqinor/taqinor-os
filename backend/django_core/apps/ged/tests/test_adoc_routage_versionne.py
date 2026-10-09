@@ -52,9 +52,11 @@ class RoutageVersionneBase(TestCase):
             username='adoc61-admin', password='x', company=self.co_a,
             role_legacy='admin')
         self.cab = Cabinet.objects.create(company=self.co_a, nom='Ventes')
-        RoutageDocumentaire.objects.create(
+        # ADOC75 : la société reçoit déjà un routage par défaut → on le remplace.
+        RoutageDocumentaire.objects.update_or_create(
             company=self.co_a, source='ventes_facture',
-            cabinet_cible=self.cab, dossier_cible='Factures/{{ annee }}')
+            defaults={'cabinet_cible': self.cab,
+                      'dossier_cible': 'Factures/{{ annee }}'})
 
     def _emettre(self, octets, reference='FAC-1'):
         document_produit.send(

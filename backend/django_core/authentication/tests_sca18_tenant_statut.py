@@ -60,9 +60,11 @@ class TenantSuspenduLoginApiTest(TenantAPITestCase):
     def setUp(self):
         super().setUp()
         self.susp_company = CompanyFactory(nom='Bloquée', slug='bloquee')
+        # ACRM3 — la liste clients exige ``crm_voir`` : un compte responsable
+        # (qui la lit) isole la cause du 403 — la suspension, pas le rôle.
         self.susp_user = UserFactory(
             username='blocked', password='pw12345678',
-            company=self.susp_company)
+            company=self.susp_company, role_legacy='responsable')
         self.susp_company.statut = Company.STATUT_SUSPENDU
         self.susp_company.save()
 
@@ -88,9 +90,12 @@ class TenantSuspenduLoginApiTest(TenantAPITestCase):
         self.assertEqual(r.status_code, 403)
 
     def test_tenant_actif_inchange(self):
+        # ACRM3 — lecteur CRM (responsable) : un compte « normal » sans rôle
+        # fin n'a pas ``crm_voir`` et reçoit 403, tenant actif ou non.
+        lecteur = UserFactory(company=self.company, role_legacy='responsable')
         api = APIClient()
         api.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(lecteur)}')
         r = api.get('/api/django/crm/clients/')
         self.assertEqual(r.status_code, 200)
 

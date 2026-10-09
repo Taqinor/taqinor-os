@@ -2,8 +2,8 @@ import os
 from django.conf import settings
 from django.contrib import admin
 from django.urls import path, re_path, include
-from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
-from authentication.views import CustomTokenObtainPairView
+from rest_framework_simplejwt.views import TokenVerifyView
+from authentication.views import BodyTokenRefreshView, CustomTokenObtainPairView
 from drf_spectacular.views import (
     SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView,
 )
@@ -123,7 +123,7 @@ urlpatterns = [
     ),
     path(
         'api/django/token/refresh/',
-        TokenRefreshView.as_view(),
+        BodyTokenRefreshView.as_view(),  # ASEC49 — même politique que le cookie
         name='token_refresh',
     ),
     path(

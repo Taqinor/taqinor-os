@@ -38,8 +38,6 @@ backend/django_core/apps/automation/views.py::AutomationRuleViewSet
 backend/django_core/apps/compta/views.py::EtatsComptablesViewSet
 # actions non nommees par le branchement : appliquer
 backend/django_core/apps/cpq/views.py::OffreGroupeeViewSet
-# actions non nommees par le branchement : anonymize, consolidation, data_export, segments
-backend/django_core/apps/crm/views.py::ClientViewSet
 # actions non nommees par le branchement : confirmer_whatsapp
 backend/django_core/apps/crm/views.py::AppointmentViewSet
 # actions non nommees par le branchement : ajouter_item, analytics, retirer_item

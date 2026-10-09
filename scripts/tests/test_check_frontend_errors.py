@@ -69,5 +69,60 @@ class CheckFrontendErrorsTests(unittest.TestCase):
         self.assertEqual(guard.ALLOWLIST, set())
 
 
+CATCH_COMMENTE = """
+export async function envoyer() {
+  try { await api.post('/x/') } catch { /* silencieux */ }
+}
+"""
+CATCH_VIDE = """
+function f() {
+  try { g() } catch (e) {}
+}
+"""
+CATCH_AFFICHE = """
+function f() {
+  try { g() } catch (e) { toast.error(frenchError(e, 'Erreur.')) }
+}
+"""
+
+
+class CatchVideTests(unittest.TestCase):
+    """AFAC95 - regle 3 : catch vide ou reduit a un commentaire."""
+
+    def _trouves(self, files):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages = root / "frontend" / "src" / "pages"
+            pages.mkdir(parents=True)
+            for name, content in files.items():
+                (pages / name).write_text(content, encoding="utf-8")
+            with mock.patch.object(guard, "ROOT", root), \
+                 mock.patch.object(guard, "SCANNED_DIRS", [pages]):
+                return guard.scan_catch_vide()
+
+    def test_catch_commentaire_seul_signale(self):
+        trouves = self._trouves({"A.jsx": CATCH_COMMENTE, "B.jsx": CATCH_VIDE})
+        self.assertEqual(trouves, {
+            "frontend/src/pages/A.jsx::envoyer": 1,
+            "frontend/src/pages/B.jsx::f": 1})
+        erreurs = guard.verifier_catch_vide(trouves, {})
+        self.assertEqual(len(erreurs), 2)
+        self.assertIn("catch vide", erreurs[0])
+
+    def test_catch_qui_affiche_accepte(self):
+        self.assertEqual(self._trouves({"A.jsx": CATCH_AFFICHE}), {})
+
+    def test_cle_morte_echoue(self):
+        base = {"frontend/src/pages/A.jsx::envoyer": 1}
+        self.assertEqual(guard.verifier_catch_vide(base, base), [])
+        erreurs = guard.verifier_catch_vide({}, base)
+        self.assertEqual(len(erreurs), 1)
+        self.assertIn("MORTE", erreurs[0])
+
+    def test_depot_reel_vert(self):
+        self.assertEqual(guard.verifier_catch_vide(
+            guard.scan_catch_vide(), guard.charger_catch_vide()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

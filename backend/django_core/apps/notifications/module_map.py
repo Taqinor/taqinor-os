@@ -56,6 +56,8 @@ EVENT_TYPE_MODULE = {
     'innovation_campagne': 'innovation',
     'feedback_digest': 'innovation',
     'feedback_starred': 'innovation',
+    # ACHT75 — module « outillage » (manifeste d'app).
+    'outillage_calibration_proche': 'outillage',
 }
 
 

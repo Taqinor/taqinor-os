@@ -1,0 +1,4 @@
+# Base de reference de check_tests_skips_inconditionnels.py (ACAL341).
+# Une ligne = `fichier::fonction` d'un test squelette (skip inconditionnel +
+# NotImplementedError / raison « CI validera »). DETTE : ne peut que
+# RETRECIR (--write-baseline refuse d'ajouter).

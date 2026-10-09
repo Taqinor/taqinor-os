@@ -736,3 +736,135 @@ source_modules =
 forbidden_modules =
     apps.visites.views
     apps.ventes.views
+
+# ADEV71 (C-ADEV-027) - garde de la classe "frontiere inter-apps gardee sur les
+# seuls models" : le contrat `core-domain-models-decoupled` ne contraint que
+# `*.models` (`lint-imports` : "17 kept, 0 broken" alors que des imports
+# directs views/domain/services -> crm|stock|installations|sav `.models` ou
+# `.views` existaient). Ici : les modules NON-modele de `apps.ventes` (views,
+# domain, serializers, tasks, selectors, services, utils, offres_tailles,
+# public...) n'importent ni `.models` ni `.views` de crm, stock, installations,
+# sav (tests et migrations exclus : non listes). Les lectures croisees passent
+# par le `selectors.py` / `services.py` de l'app cible (CLAUDE.md, "Cross-app
+# boundary"). Seuls les imports DIRECTS sont juges (`allow_indirect_imports`) :
+# la couche selector/service traverse les domaines par construction.
+# `ignore_imports` : chaque exception est NOMMEE (module -> module) avec sa
+# raison ; la liste ne peut que retrecir (ADEV56, PLAN_AUDIT_TRANSVERSE).
+[importlinter:contract:ventes-non-modeles-n-importent-pas-les-modeles-d-autres-domaines]
+name = ventes non-model modules never import crm/stock/installations/sav models or views (ADEV71)
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    apps.ventes.activity
+    apps.ventes.agent_actions
+    apps.ventes.apps
+    apps.ventes.bi_datasets
+    apps.ventes.calendrier_view
+    apps.ventes.calepinage_options
+    apps.ventes.coherence
+    apps.ventes.commissioning
+    apps.ventes.compatibilites
+    apps.ventes.connection_declaration
+    apps.ventes.connection_declaration_view
+    apps.ventes.courbes_journalieres
+    apps.ventes.dashboard_view
+    apps.ventes.deposit
+    apps.ventes.dgi
+    apps.ventes.diagram_views
+    apps.ventes.dimensionnement
+    apps.ventes.domain
+    apps.ventes.dsr_provider
+    apps.ventes.economie
+    apps.ventes.economie_ci
+    apps.ventes.economie_ci_view
+    apps.ventes.economie_pompage
+    apps.ventes.economies_periodes
+    apps.ventes.electrical_service
+    apps.ventes.email_service
+    apps.ventes.etude
+    apps.ventes.etude_ci_view
+    apps.ventes.etude_horaire
+    apps.ventes.etude_horaire_view
+    apps.ventes.etude_pompage_view
+    apps.ventes.exports
+    apps.ventes.extra_docs_views
+    apps.ventes.horaire
+    apps.ventes.inbound_email
+    apps.ventes.insights_view
+    apps.ventes.journal_view
+    apps.ventes.moteur_ci
+    apps.ventes.multivilla
+    apps.ventes.numbering_view
+    apps.ventes.offres_tailles
+    apps.ventes.paiement_import
+    apps.ventes.payment_providers
+    apps.ventes.payments
+    apps.ventes.platform
+    apps.ventes.profils_comparatifs
+    apps.ventes.public
+    apps.ventes.public_urls
+    apps.ventes.public_views
+    apps.ventes.quote_engine
+    apps.ventes.ramadan
+    apps.ventes.receivers
+    apps.ventes.recouvrement
+    apps.ventes.regulatory_docs
+    apps.ventes.reports
+    apps.ventes.roof_load
+    apps.ventes.roof_load_view
+    apps.ventes.scheduled
+    apps.ventes.selectors
+    apps.ventes.selectors_cadence
+    apps.ventes.selectors_calepinage
+    apps.ventes.selectors_facturation
+    apps.ventes.selectors_portail
+    apps.ventes.selectors_publicite
+    apps.ventes.selectors_reglementaire
+    apps.ventes.selectors_stock
+    apps.ventes.serializers
+    apps.ventes.serializers_cadence
+    apps.ventes.serializers_commissioning
+    apps.ventes.serializers_facturation
+    apps.ventes.serializers_regulatory
+    apps.ventes.services
+    apps.ventes.single_line_diagram
+    apps.ventes.solar_base
+    apps.ventes.solar_classification
+    apps.ventes.solar_design
+    apps.ventes.solar_finance
+    apps.ventes.taille_detail
+    apps.ventes.tarif_ci
+    apps.ventes.tasks
+    apps.ventes.urls
+    apps.ventes.utils
+    apps.ventes.views
+    apps.ventes.weather_feed
+forbidden_modules =
+    apps.crm.models
+    apps.crm.views
+    apps.stock.models
+    apps.stock.views
+    apps.installations.models
+    apps.installations.views
+    apps.sav.models
+    apps.sav.views
+# DETTE DU JOUR (09/10/2026) : 14 imports directs deja presents, nommes un a un
+# (aucun joker). Le plan (ADEV71) veut `ignore_imports` VIDE une fois ADEV56 fait
+# (PLAN_AUDIT_TRANSVERSE : ces appels passent par stock/crm `selectors.py`) ;
+# chaque ligne retiree par ADEV56 doit sortir d'ici (import-linter refuse une
+# exception sans correspondance : "No matches for ignored import").
+ignore_imports =
+    apps.ventes.domain.creation -> apps.crm.models
+    apps.ventes.domain.imports -> apps.crm.models
+    apps.ventes.domain.recouvrement -> apps.crm.models
+    apps.ventes.views.credit_warning -> apps.crm.models
+    apps.ventes.views.liste_prix -> apps.crm.models
+    apps.ventes.domain.bordereau -> apps.stock.models
+    apps.ventes.domain.catalogue -> apps.stock.models
+    apps.ventes.domain.facturation_ops -> apps.stock.models
+    apps.ventes.domain.imports -> apps.stock.models
+    apps.ventes.domain.lignes -> apps.stock.models
+    apps.ventes.offres_tailles -> apps.stock.models
+    apps.ventes.serializers -> apps.stock.models
+    apps.ventes.tasks -> apps.stock.models
+    apps.ventes.views.liste_prix -> apps.stock.models

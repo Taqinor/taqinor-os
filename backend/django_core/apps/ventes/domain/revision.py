@@ -213,6 +213,39 @@ def reviser_devis(devis, *, user=None):
     return nd
 
 
+def _paniers_ecart_par_taux(precedent, devis, reste):
+    """ATOT22 — l'écart des bases (et de la TVA) PAR TAUX entre la version
+    facturée ``precedent`` et la V2 ``devis`` (option effective, chaîne
+    canonique ``argent.totaux`` vue NET), restreint aux taux dont l'écart va
+    dans le sens du document (``reste`` > 0 : complément ; < 0 : avoir).
+    Rend ``[{taux, base_ht, montant}]`` (Decimal, valeurs absolues), triés
+    par taux."""
+    from decimal import Decimal
+
+    from apps.ventes.domain.argent import Vue, totaux
+
+    def _paniers(d):
+        out = {}
+        for e in totaux(d, vue=Vue.NET).tva_par_taux:
+            t = Decimal(str(e['taux']))
+            base, tva = out.get(t, (Decimal('0'), Decimal('0')))
+            out[t] = (base + Decimal(str(e['base'])),
+                      tva + Decimal(str(e['montant'])))
+        return out
+
+    avant, apres = _paniers(precedent), _paniers(devis)
+    signe = 1 if reste > 0 else -1
+    zero = (Decimal('0'), Decimal('0'))
+    paniers = []
+    for t in sorted(set(avant) | set(apres)):
+        d_base = apres.get(t, zero)[0] - avant.get(t, zero)[0]
+        d_tva = apres.get(t, zero)[1] - avant.get(t, zero)[1]
+        if d_base * signe > 0:
+            paniers.append({'taux': t, 'base_ht': abs(d_base),
+                            'montant': abs(d_tva)})
+    return paniers
+
+
 def rattacher_aval_financier_revision(devis, *, user=None):
     """QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : l'aval FINANCIER
     de la version remplacée passe à la V2, seul l'écart est régularisé.
@@ -326,10 +359,35 @@ def rattacher_aval_financier_revision(devis, *, user=None):
         return {'bc': bc, 'factures': factures, 'sources': sources,
                 'ecart_ttc': ecart, 'document': None}
 
-    taux = blended_tva_pct(devis)
+    # ATOT22 (C-ATOT-004) — la TVA du document est celle de l'ÉCART RÉEL des
+    # bases par taux entre la version facturée et la V2 (jamais un « taux
+    # mélangé ») : un taux unique ⇒ HT/TVA à CE taux ; plusieurs ⇒ ventilés
+    # au centime par le service unique ``ventilation_document_fige`` (ATOT6).
     montant_ttc = abs(reste)
-    montant_ht = quantize_mad(montant_ttc / (1 + Decimal(str(taux)) / 100))
-    montant_tva = montant_ttc - montant_ht
+    ventilation = None
+    paniers = _paniers_ecart_par_taux(precedent, devis, reste)
+    if len(paniers) == 1:
+        taux = paniers[0]['taux']
+        montant_ht = quantize_mad(
+            montant_ttc / (1 + Decimal(str(taux)) / 100))
+        montant_tva = montant_ttc - montant_ht
+    elif paniers:
+        from apps.facturation.totaux import ventilation_document_fige
+        ventilation = ventilation_document_fige(
+            [{'taux': str(p['taux']), 'base_ht': str(p['base_ht']),
+              'montant': str(p['montant'])} for p in paniers],
+            montant_ttc)
+        montant_ht = sum((Decimal(b['base_ht']) for b in ventilation),
+                         Decimal('0'))
+        montant_tva = montant_ttc - montant_ht
+        taux = blended_tva_pct(devis)
+    else:
+        # Aucun écart de base dans le sens du document (reste issu d'avoirs
+        # ou d'arrondis antérieurs) : le chemin d'hier.
+        taux = blended_tva_pct(devis)
+        montant_ht = quantize_mad(
+            montant_ttc / (1 + Decimal(str(taux)) / 100))
+        montant_tva = montant_ttc - montant_ht
     company = devis.company
     if reste > 0:
         def _facture(ref):
@@ -341,7 +399,8 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                 libelle=(f'Complément révision {devis.reference} '
                          f'(remplace {precedent.reference})')[:255],
                 montant_ht=montant_ht, montant_tva=montant_tva,
-                montant_ttc=montant_ttc, taux_tva=taux, created_by=user)
+                montant_ttc=montant_ttc, taux_tva=taux,
+                ventilation_tva=ventilation, created_by=user)
         document = create_numbered(Facture, company, 'facture', _facture)
         activity.log_devis_note(
             devis, user,
@@ -361,7 +420,7 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                        f'{precedent.reference}) — écart de révision.'),
                 taux_tva=taux, montant_ht=montant_ht,
                 montant_tva=montant_tva, montant_ttc=montant_ttc,
-                created_by=user)
+                ventilation_tva=ventilation, created_by=user)
         document = create_numbered(Avoir, company, 'avoir', _avoir)
         activity.log_facture_avoir(cible, user, document)
         activity.log_devis_note(

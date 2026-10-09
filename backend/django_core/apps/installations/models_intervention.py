@@ -47,7 +47,17 @@ class TypeIntervention(models.Model):
         return self.libelle
 
 
+class InterventionQuerySet(models.QuerySet):
+    """ACHT51 — ensemble des interventions NON annulées : seul manager lu par
+    les balayages qui parlent au client (rappel J-1, météo, tournée)."""
+
+    def actives(self):
+        return self.filter(annulee=False)
+
+
 class Intervention(models.Model):
+    objects = InterventionQuerySet.as_manager()
+
     class Type(models.TextChoices):
         POSE = 'pose', 'Pose'
         RACCORDEMENT = 'raccordement', 'Raccordement'
@@ -204,6 +214,10 @@ class Intervention(models.Model):
     lien_rapport_token = models.CharField(
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien compte-rendu signé (ZFSM2).")
+    # ACHT36 — instant de la PREMIÈRE clôture notifiée : `intervention_completed`
+    # n'est émis qu'une fois (un cycle terminée → sur site → terminée ne
+    # rejoue aucun effet de clôture).
+    cloturee_notifiee_le = models.DateTimeField(null=True, blank=True)
 
     # ── XFSM21 — météo sur le planning (travaux toiture) ─────────────────────
     # Prévision J+3 (Open-Meteo, gratuit, sans clé) récupérée par la tâche Beat

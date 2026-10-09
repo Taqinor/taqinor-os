@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4806, operations: 7582, components: 2214}
+counts: {paths: 4808, operations: 7584, components: 2214}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2538,6 +2538,8 @@ operations:
 - get /api/django/public/document/{token}/ -> django_public_document_retrieve
 - get /api/django/public/installations/intervention-rapport/{token}/ -> django_public_installations_intervention_rapport_retrieve
 - get /api/django/public/installations/intervention-rapport/{token}/pdf/ -> django_public_installations_intervention_rapport_pdf_retrieve
+- get /api/django/public/installations/intervention-rapport/{token}/photo/{att_id}/ -> django_public_installations_intervention_rapport_photo_retrieve
+- get /api/django/public/installations/intervention-rapport/{token}/photos/{att_id}/ -> django_public_installations_intervention_rapport_photos_retrieve
 - get /api/django/public/installations/intervention/{token}/ -> django_public_installations_intervention_retrieve
 - get /api/django/public/pay/{token}/ -> django_public_pay_retrieve
 - post /api/django/public/pay/{token}/webhook/ -> django_public_pay_webhook_create

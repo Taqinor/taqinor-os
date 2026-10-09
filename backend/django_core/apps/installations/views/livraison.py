@@ -76,7 +76,8 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
     responsable/admin. Filtrable par `installation`, `statut`, `depot`,
     `date_prevue`."""
     queryset = Livraison.objects.select_related(
-        'installation', 'depot', 'created_by').prefetch_related('lignes').all()
+        'installation', 'depot', 'created_by').prefetch_related(
+        'lignes__produit').all()
     serializer_class = LivraisonSerializer
 
     def get_permissions(self):

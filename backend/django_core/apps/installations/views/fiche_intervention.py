@@ -4,12 +4,12 @@
 NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 (un module par ressource). Comportement et symboles inchangés : le package
 __init__ ré-exporte toutes les vues publiques."""
-from rest_framework import status
+
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsAdminRole
 from core.viewsets import CompanyScopedModelViewSet
-from rest_framework.response import Response
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import FicheInterventionTemplate, FicheInterventionChamp
 from ..serializers import (
@@ -19,7 +19,8 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class FicheInterventionTemplateViewSet(CompanyScopedModelViewSet):
+class FicheInterventionTemplateViewSet(UsageGuardedDestroyMixin,
+                                       CompanyScopedModelViewSet):
     """ZFSM1 — gabarits de fiche d'intervention (Paramètres → Chantiers).
     Lecture tout rôle, écriture admin. Un gabarit par `type_intervention` et
     par société ; `protege` verrouille un gabarit système. Tout est scopé à
@@ -32,16 +33,21 @@ class FicheInterventionTemplateViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
-    def destroy(self, request, *args, **kwargs):
-        template = self.get_object()
+    def destroy_guard_message(self, template):
         if template.protege:
-            return Response(
-                {'detail': "Ce gabarit est protégé — désactivez-le plutôt."},
-                status=status.HTTP_409_CONFLICT)
-        return super().destroy(request, *args, **kwargs)
+            return "Ce gabarit est protégé — désactivez-le plutôt."
+        # ACHT73 — un gabarit qui a des relevés porte l'historique des mesures
+        # des interventions : on le désactive, on ne le supprime pas.
+        nb = template.releves.count()
+        if nb:
+            return (f"Utilisé par {nb} relevé{'s' if nb > 1 else ''} "
+                    "d'intervention — désactivez le gabarit plutôt que de le "
+                    "supprimer.")
+        return None
 
 
-class FicheInterventionChampViewSet(CompanyScopedModelViewSet):
+class FicheInterventionChampViewSet(UsageGuardedDestroyMixin,
+                                    CompanyScopedModelViewSet):
     """ZFSM1 — champs d'un gabarit de fiche d'intervention. Lecture tout rôle,
     écriture admin. Filtrable via ?template=<id>."""
     queryset = FicheInterventionChamp.objects.all()
@@ -58,6 +64,16 @@ class FicheInterventionChampViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+    def destroy_guard_message(self, champ):
+        # ACHT73 — un champ qui porte des VALEURS (mesures saisies) ne se
+        # supprime pas : l'historique des relevés disparaîtrait.
+        nb = champ.valeurs.exclude(valeur='').count()
+        if nb:
+            return (f"Utilisé par {nb} valeur{'s' if nb > 1 else ''} "
+                    "saisie" + ('s' if nb > 1 else '') + " — le champ ne "
+                    "peut pas être supprimé.")
+        return None
 
     def _check_template_tenant(self, serializer):
         """Tenant safety : le gabarit ciblé doit appartenir à la société."""

@@ -108,9 +108,6 @@ services:
     restart: always
 
   celery_worker:
-    # Utilise le code Django (django_core) car le worker a besoin des modules Django.
-    # Le dossier backend/celery_worker/ contient des tâches Celery additionnelles
-    # à intégrer dans django_core/erp_agentique/celery.py si nécessaire.
     # ── UNE SEULE image pour les 4 services Django (03/08/2026) ────────────
     # Les 4 déclaraient `build: ./backend/django_core` — MÊME contexte, MÊME
     # Dockerfile, AUCUN argument distinct : Docker fabriquait donc QUATRE

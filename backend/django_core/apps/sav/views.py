@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -94,6 +94,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
         'produit', 'installation', 'installation__client', 'client_vente',
+        'categorie', 'created_by', 'remplace_par_ticket',
     ).all()
     serializer_class = EquipementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -105,6 +106,21 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # APRF30 — compteurs de tickets annotés (une seule requête pour la
+        # page) ; le serializer les lit et retombe sur ``.count()`` hors liste.
+        if self.action == 'list':
+            from datetime import timedelta
+            depuis = timezone.localdate() - timedelta(days=365)
+            qs = qs.annotate(
+                nb_tickets_ouverts_annote=Count(
+                    'tickets', distinct=True,
+                    filter=Q(tickets__statut__in=Ticket.OPEN_STATUTS,
+                             tickets__annule=False)),
+                nb_tickets_12m_annote=Count(
+                    'tickets', distinct=True,
+                    filter=Q(tickets__type=Ticket.Type.CORRECTIF,
+                             tickets__date_creation__date__gte=depuis)),
+            )
         # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, self.request.user, ['created_by'])
@@ -617,6 +633,10 @@ def _ticket_visible_du_corps(request, brut, champ='ticket'):
     raise ValidationError({champ: 'Ticket inconnu.'})
 
 
+class _ProduitNeufInconnu(Exception):
+    """ASAV9 — ``produit_neuf`` introuvable (annule le remplacement)."""
+
+
 class TicketEnDoubleError(APIException):
     """ASAV23 — création d'un ticket identique dans la fenêtre anti-doublon."""
     status_code = 409
@@ -646,6 +666,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ASAV39 — « suis-je abonné ? » préchargé (1 requête pour la page).
+        if getattr(self.request.user, 'pk', None):
+            from django.db.models import Prefetch
+            qs = qs.prefetch_related(Prefetch(
+                'followers',
+                queryset=TicketFollower.objects.filter(
+                    user=self.request.user),
+                to_attr='_suivis_de_moi'))
         # Portée de visibilité (Feature F) — tickets créés par soi / dont on est
         # le technicien responsable / ceux de l'équipe. 'all' → inchangé.
         from authentication.scoping import scope_queryset
@@ -762,6 +790,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return
         installation = getattr(equipement, 'installation', None)
         if installation is None:
+            # ASAV40 — équipement vendu au comptoir (XPOS9) : pas de chantier,
+            # mais un client de vente.
+            if (serializer.validated_data.get('client') is None
+                    and equipement.client_vente_id):
+                serializer.validated_data['client'] = equipement.client_vente
             return
         if serializer.validated_data.get('installation') is None:
             serializer.validated_data['installation'] = installation
@@ -874,9 +907,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # déclenche rien (comportement historique inchangé).
         if inst.equipement_id and inst.client_id:
             from .models import ContratMaintenance
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=inst.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
+            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
@@ -889,9 +921,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
             from .models import ContratMaintenance
             from .selectors import droits_restants
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=inst.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
+            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None:
                 droits = droits_restants(contrat, inst.date_ouverture.year)
                 if (inst.type == Ticket.Type.PREVENTIF
@@ -1716,7 +1747,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from .services import (
             EquipementDejaRemplaceError, OperationDestinationIncoherenteError,
             RetraitHorsPerimetreError, RetraitProduitIncoherentError,
-            retirer_piece,
+            SerieNeuveDejaAuParcError, retirer_piece,
         )
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
@@ -1737,6 +1768,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if operation not in PieceRetiree.Operation.values:
             return Response({'detail': 'Opération invalide.'}, status=400)
         numero_serie = (request.data.get('numero_serie') or '').strip()
+        # ASAV9 — ``serie_neuve`` (optionnel) : l'appareil neuf entre au parc.
+        serie_neuve = (request.data.get('serie_neuve') or '').strip()
+        if serie_neuve:
+            from .models import Equipement
+            if Equipement.objects.filter(
+                    company=ticket.company,
+                    numero_serie=serie_neuve).exists():
+                return Response(
+                    {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
+                    status=400)
+            if not numero_serie or not Equipement.objects.filter(
+                    company=ticket.company,
+                    numero_serie=numero_serie).exists():
+                return Response(
+                    {'serie_neuve': ["Le numéro de série de l'appareil "
+                                     'remplacé doit exister au parc.']},
+                    status=400)
+        equipement_neuf = None
         try:
             with transaction.atomic():
                 piece = retirer_piece(
@@ -1744,6 +1793,26 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     quantite=quantite, numero_serie=numero_serie,
                     destination=destination, operation=operation,
                     user=request.user)
+                if serie_neuve and piece.equipement_remplace is not None:
+                    from .services import remplacer_equipement
+                    produit_neuf = produit
+                    if request.data.get('produit_neuf'):
+                        try:
+                            produit_neuf = get_produit_or_raise(
+                                ticket.company,
+                                request.data.get('produit_neuf'))
+                        except (produit_does_not_exist(), ValueError,
+                                TypeError):
+                            raise _ProduitNeufInconnu()
+                    equipement_neuf = remplacer_equipement(
+                        ticket=ticket, ancien=piece.equipement_remplace,
+                        produit_neuf=produit_neuf, serie_neuve=serie_neuve,
+                        date_pose=timezone.localdate(), user=request.user)
+        except _ProduitNeufInconnu:
+            return Response({'produit_neuf': ['Produit inconnu.']},
+                            status=404)
+        except SerieNeuveDejaAuParcError as exc:
+            return Response({'serie_neuve': [str(exc)]}, status=400)
         except OperationDestinationIncoherenteError as exc:
             return Response({'detail': str(exc)}, status=400)
         # ASAV8 — retrait borné au périmètre du ticket, une fois par équipement.
@@ -1761,7 +1830,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         activity.log_note(
             ticket, request.user,
             f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
-        return Response(PieceRetireeSerializer(piece).data, status=201)
+        data = dict(PieceRetireeSerializer(piece).data)
+        data['equipement_neuf'] = None if equipement_neuf is None else {
+            'id': equipement_neuf.id,
+            'numero_serie': equipement_neuf.numero_serie,
+            'statut': equipement_neuf.statut,
+            'installation': equipement_neuf.installation_id,
+            'client': equipement_neuf.client_vente_id,
+        }
+        return Response(data, status=201)
 
     @action(detail=True, methods=['get'], url_path='pieces-unifiees',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1785,40 +1862,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         (réutilise ``facture_id_ext`` si déjà posé) — jamais de double
         facture. Facture = PDF legacy (jamais /proposal, réservé aux devis
         client-facing — règle #4 CLAUDE.md)."""
-        ticket = self.get_object()
-        from apps.ventes.services import generer_facture_ticket_sav
-
-        # XFSM15 — un ticket récidive est non-facturable PAR DÉFAUT ; un
-        # responsable/admin peut lever l'exclusion via `override=true`
-        # explicite (l'un ne dispense jamais de l'autre : sans override,
-        # MÊME un admin reste bloqué ; avec override, seul un responsable/
-        # admin peut effectivement lever l'exclusion).
-        override = str(request.data.get('override') or '') in (
-            '1', 'true', 'True', 'on')
-        if ticket.non_facturable:
-            is_responsable = (
-                getattr(request.user, 'is_admin_role', False)
-                or getattr(request.user, 'is_responsable', False))
-            if not override or not is_responsable:
-                return Response({
-                    'detail': ('Ticket récidive marqué non-facturable — '
-                               'override responsable requis.'),
-                }, status=403)
-
-        sous_garantie = ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI
-        pieces = list(ticket.pieces.select_related('produit'))
-        facture = generer_facture_ticket_sav(
-            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
-            user=request.user)
-        activity.log_note(
-            ticket, request.user,
-            f'Facture {facture.reference} générée depuis le ticket '
-            f'(hors garantie : {not sous_garantie}).')
-        return Response({
-            'facture_id': facture.id,
-            'facture_reference': facture.reference,
-            'sous_garantie': sous_garantie,
-        }, status=201)
+        # ASAV2 — alias de ``facturer`` : même service de décision.
+        return self._facturer_ticket(request, self.get_object())
 
     @action(detail=True, methods=['post'], url_path='facturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1834,15 +1879,23 @@ class TicketViewSet(CompanyScopedModelViewSet):
         catalogue (jamais ``prix_achat`` — pièces au prix VENTE uniquement).
         Idempotent (réutilise ``facture_id_ext`` si déjà posé). Renvoie aussi
         la couverture retenue pour cette facturation."""
-        ticket = self.get_object()
+        return self._facturer_ticket(request, self.get_object())
+
+    def _facturer_ticket(self, request, ticket):
+        """ASAV2 — corps commun de ``facturer`` et ``generer-facture`` : la
+        décision « qui paie » vient de ``services.decision_facturation``."""
         from apps.ventes.services import generer_facture_ticket_sav
+        from .services import decision_facturation
 
-        couverture = ticket.couverture
-        if couverture == Ticket.Couverture.A_DETERMINER:
-            couverture = ticket.couverture_calculee()
-
-        sous_garantie = couverture in (
-            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT)
+        # XFSM15 — récidive : refus 403 sans ``override`` d'un responsable.
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        decision = decision_facturation(ticket, request.user, override)
+        if decision['refuse']:
+            return Response({'detail': decision['detail']},
+                            status=decision['http'])
+        couverture = decision['couverture']
+        sous_garantie = decision['couvert']
         pieces = list(ticket.pieces.select_related('produit'))
         facture = generer_facture_ticket_sav(
             ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
@@ -1855,6 +1908,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'facture_id': facture.id,
             'facture_reference': facture.reference,
             'couverture': couverture,
+            'sous_garantie': sous_garantie,
         }, status=201)
 
     @action(detail=True, methods=['post'], url_path='planifier-intervention',
@@ -2296,10 +2350,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``apps.ventes.services.create_devis_pour_ticket`` (cross-app write,
         jamais d'import direct du modèle ventes)."""
         ticket = self.get_object()
-        if ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI:
+        # ASAV2 — même décision que les deux portes de facture.
+        from .services import decision_facturation
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        decision = decision_facturation(ticket, request.user, override)
+        if decision['refuse']:
+            return Response({'detail': decision['detail']},
+                            status=decision['http'])
+        if decision['couvert']:
             return Response(
-                {'detail': 'Ticket sous garantie : aucun devis de '
-                           "réparation n'est nécessaire."},
+                {'detail': 'Ticket couvert (garantie ou contrat) : aucun '
+                           "devis de réparation n'est nécessaire."},
                 status=status.HTTP_400_BAD_REQUEST)
 
         from apps.ventes.services import create_devis_pour_ticket
@@ -2482,17 +2544,38 @@ class WarrantyClaimViewSet(CompanyScopedModelViewSet):
             except Exception:
                 pass
 
+    @staticmethod
+    def _poser_dates_statut(claim):
+        """ASAV37 — le serveur pose ``date_envoi_fournisseur`` (envoi) et
+        ``date_resolution`` (résolu / refusé) à la transition, si vides
+        (date locale Maroc). Éditer un autre champ ne les touche jamais."""
+        champs = []
+        aujourdhui = timezone.localdate()
+        if (claim.statut == WarrantyClaim.Statut.ENVOYE
+                and not claim.date_envoi_fournisseur):
+            claim.date_envoi_fournisseur = aujourdhui
+            champs.append('date_envoi_fournisseur')
+        if (claim.statut in (WarrantyClaim.Statut.RESOLU,
+                             WarrantyClaim.Statut.REFUSE)
+                and not claim.date_resolution):
+            claim.date_resolution = aujourdhui
+            champs.append('date_resolution')
+        if champs:
+            claim.save(update_fields=champs)
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         self._resolve_fournisseur(serializer)
-        serializer.save(
+        claim = serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
+        self._poser_dates_statut(claim)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         self._resolve_fournisseur(serializer)
         super().perform_update(serializer)
+        self._poser_dates_statut(serializer.instance)
 
 
 # ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
@@ -2628,7 +2711,9 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
             # l'équipement lié à l'alarme quand c'est possible.
             equipement = alarme.equipement
             installation = getattr(equipement, 'installation', None)
-            client = getattr(installation, 'client', None)
+            client = (getattr(installation, 'client', None)
+                      if installation is not None
+                      else getattr(equipement, "client_vente", None))  # ASAV40
             if client is None:
                 raise ValidationError({
                     'ticket': "Aucun ticket fourni et l'alarme n'a pas "
@@ -2768,7 +2853,9 @@ class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
 class CategorieEquipementViewSet(CompanyScopedModelViewSet):
     """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
-    queryset = CategorieEquipement.objects.all()
+    queryset = CategorieEquipement.objects.select_related(
+        'responsable', 'equipe_responsable',
+    ).annotate(nb_equipements_annote=Count('equipements', distinct=True))
     serializer_class = CategorieEquipementSerializer
 
     def get_permissions(self):
@@ -3170,7 +3257,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             raise ValidationError({'ticket_ids': 'Ticket inconnu.'})
 
-        tickets = list(Ticket.objects.filter(
+        # ASAV76 — bornés à la portée de l'utilisateur (comme lier-ticket).
+        tickets = list(_tickets_visibles(request).filter(
             pk__in=demandes, company=company))
         if len(tickets) != len(set(demandes)):
             raise ValidationError(

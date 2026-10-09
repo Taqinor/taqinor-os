@@ -41,16 +41,13 @@ def _is_public_path(path):
 
 def _client_ip(request):
     """IP de l'appelant. Derrière notre reverse-proxy (nginx/Caddy),
-    ``REMOTE_ADDR`` est celle du proxy : on prend donc le premier saut de
-    ``X-Forwarded-For`` quand il est présent, sinon ``REMOTE_ADDR``.
+    l'adresse du pair TCP est celle du proxy. ASEC15 : délègue à LA primitive
+    ``core.throttling.ip_de_requete`` (saut de confiance de
+    ``X-Forwarded-For``) — avant, le PREMIER saut, choisi par l'appelant,
+    décidait de l'allowlist ``enforce`` (contournable par un en-tête forgé).
     """
-    meta = getattr(request, 'META', {}) or {}
-    forwarded = meta.get('HTTP_X_FORWARDED_FOR', '') or ''
-    if forwarded:
-        first = forwarded.split(',')[0].strip()
-        if first:
-            return first
-    return meta.get('REMOTE_ADDR', '') or ''
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request)
 
 
 def _ip_allowed(ip_str, policy):

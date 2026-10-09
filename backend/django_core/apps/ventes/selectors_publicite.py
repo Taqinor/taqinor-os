@@ -22,8 +22,10 @@ def devis_value_for_lead(lead_id, company):
     if not lead_id:
         return None
     from .models import Devis
-    devis = (Devis.objects
-             .filter(lead_id=lead_id, company=company)
+    from .selectors import devis_en_jeu
+    # ADEV45 — jamais la valeur d'une V1 remplacée par sa révision.
+    devis = (devis_en_jeu(Devis.objects
+                          .filter(lead_id=lead_id, company=company))
              .order_by('-date_creation', '-id')
              .first())
     if devis is None:
@@ -76,9 +78,12 @@ def devis_view_tracking_segments(company):
     ``{'email', 'telephone'}``, même contrat que
     ``apps.crm.selectors.lead_contact_identifiers``)."""
     from .models import Devis
+    from .selectors import devis_en_jeu
 
-    qs = (Devis.objects
-          .filter(company=company, statut=Devis.Statut.ENVOYE)
+    # ADEV45 — une V1 remplacée par sa révision n'est jamais un contact à
+    # relancer : seule la version en jeu entre dans un panier.
+    qs = (devis_en_jeu(Devis.objects
+                       .filter(company=company, statut=Devis.Statut.ENVOYE))
           .select_related('client', 'lead')
           .prefetch_related('share_links'))
 
@@ -106,10 +111,12 @@ def expired_devis_contacts(company):
     ACCEPTÉ est retiré du segment — on ne relance jamais quelqu'un qui a
     déjà acheté. Renvoie une liste de dicts ``{'email', 'telephone'}``."""
     from .models import Devis
+    from .selectors import devis_en_jeu
 
+    # ADEV45 — une V1 remplacée (et expirée) n'est pas une offre à relancer.
     expired = list(
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.EXPIRE)
+        devis_en_jeu(Devis.objects
+                     .filter(company=company, statut=Devis.Statut.EXPIRE))
         .select_related('client'))
     if not expired:
         return []

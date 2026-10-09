@@ -911,6 +911,12 @@ app.conf.beat_schedule = {
         'task': 'parametres.purger_audit',
         'schedule': crontab(hour=3, minute=40),
     },
+    # ACHT75 — échéances de calibration d'outillage à 30 jours ou moins
+    # (sociétés actives, une notification par outil et par échéance).
+    'outillage-calibrations-a-echeance': {
+        'task': 'outillage.calibrations_a_echeance',
+        'schedule': crontab(hour=7, minute=20),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

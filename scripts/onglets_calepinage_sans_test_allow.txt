@@ -17,5 +17,4 @@
 course-soleil  # sans test au 23/09/2026 (CALX383)
 horizon  # sans test au 23/09/2026 (CALX383)
 ombriere  # sans test au 23/09/2026 (CALX383)
-pente  # sans test au 23/09/2026 (CALX383)
 terrain  # sans test au 23/09/2026 (CALX383)

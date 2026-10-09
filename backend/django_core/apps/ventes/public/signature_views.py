@@ -26,6 +26,57 @@ from .noyau import (
 from .paiement_views import _deposit_success_payload
 
 
+#: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
+#: (``reponses_409.empreinte_perimee``), mot pour mot.
+EMPREINTE_PERIMEE = ('La proposition a changé depuis votre lecture : '
+                     'rechargez la page avant de signer.')
+
+
+def empreinte_contenu(devis):
+    """ADEV51 (C-ADEV-018) — empreinte du CONTENU signable de ce devis :
+    SHA-256 de ``modifiabilite.empreinte_visible`` (lignes, en-tête, note,
+    option, conception — relus en base). Une correction SUR PLACE d'un envoyé
+    (D-QJR5-1) la change ; rien d'autre ne la change."""
+    import hashlib
+    import json
+
+    from ..domain.modifiabilite import empreinte_visible
+    brut = json.dumps(empreinte_visible(devis), sort_keys=True,
+                      ensure_ascii=False, default=str)
+    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+
+def signable_au_jeton(devis):
+    """ADEV51 — le devis peut-il être signé au jeton client MAINTENANT ?
+    Envoyé, version en vigueur (pas remplacée), offre non expirée (ADEV52).
+    Hors de ce cas, aucune empreinte n'est servie ni exigée : les gardes
+    d'``accept_devis`` disent elles-mêmes pourquoi (``version_remplacee``,
+    ``expiree``, ``statut``…)."""
+    from ..domain.modifiabilite import ACCEPTER, geste_cycle_permis
+    from ..models import Devis
+    from ..utils.expiry import is_expired
+    if devis is None or devis.statut != Devis.Statut.ENVOYE:
+        return False
+    if is_expired(devis):
+        return False
+    permis, _message = geste_cycle_permis(devis, ACCEPTER)
+    return permis
+
+
+def _refus_empreinte(request, devis):
+    """ADEV51 — 409 ``empreinte_perimee`` quand le client signe un contenu
+    autre que celui qu'il a lu (empreinte absente ou différente de
+    l'empreinte courante) ; ``None`` sinon. Rien n'est écrit."""
+    if not signable_au_jeton(devis):
+        return None
+    recue = request.data.get('empreinte_contenu')
+    if isinstance(recue, str) and recue.strip() == empreinte_contenu(devis):
+        return None
+    return _noindex(Response(
+        {'detail': EMPREINTE_PERIMEE, 'code': 'empreinte_perimee'},
+        status=status.HTTP_409_CONFLICT))
+
+
 def _refus_aucun_canal(err):
     """ADEV20 (C-ADEV-021) — « Code envoyé. » seulement si un code est
     réellement parti : quand le service rend ``OTP_AUCUN_CANAL``, 409
@@ -378,6 +429,12 @@ def proposal_accept(request, token):
         return _noindex(Response(
             {'detail': otp_err},
             status=status.HTTP_400_BAD_REQUEST))
+    # ADEV51 (C-ADEV-018) — ce que le client signe = ce qu'il a lu : le corps
+    # renvoie l'``empreinte_contenu`` servie à la lecture ; un devis corrigé
+    # depuis (ou une empreinte absente) ⇒ 409 ``empreinte_perimee``.
+    refus = _refus_empreinte(request, devis)
+    if refus is not None:
+        return refus
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture

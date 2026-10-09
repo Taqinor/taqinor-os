@@ -108,7 +108,10 @@ function fichiers(dir: string): string[] {
 /** Fichiers de src/ (hors tokens.css et pack logo) contenant un hex brut. */
 export function hexBruts(entrees: { rel: string; contenu: string }[]): string[] {
   return entrees
-    .filter((f) => f.rel !== 'styles/tokens.css' && !f.rel.startsWith('brand/') && /\.(css|astro|ts|tsx|mjs|js)$/.test(f.rel))
+    // Jetons des candidats du tour design (YBW42) : `styles/candidates/<id>.tokens.css` seulement,
+    // contrastes calculés par tests/designCandidates.test.ts.
+    .filter((f) => f.rel !== 'styles/tokens.css' && !/^styles\/candidates\/[a-z]\.tokens\.css$/.test(f.rel))
+    .filter((f) => !f.rel.startsWith('brand/') && /\.(css|astro|ts|tsx|mjs|js)$/.test(f.rel))
     .filter((f) => /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?(?:[0-9a-fA-F]{2})?\b/.test(f.contenu))
     .map((f) => f.rel);
 }
@@ -176,5 +179,7 @@ describe('YBW38 — aucun hex brut hors tokens.css', () => {
   it('cas négatif : un hex planté dans un composant est détecté', () => {
     expect(hexBruts([{ rel: 'components/X.astro', contenu: '<style>.x{color:#C8762B}</style>' }])).toEqual(['components/X.astro']);
     expect(hexBruts([{ rel: 'styles/tokens.css', contenu: '--a:#fff;' }])).toEqual([]);
+    expect(hexBruts([{ rel: 'styles/candidates/a.tokens.css', contenu: '--a:#fff;' }])).toEqual([]);
+    expect(hexBruts([{ rel: 'styles/candidates/a.css', contenu: '.x{color:#fff}' }])).toEqual(['styles/candidates/a.css']);
   });
 });

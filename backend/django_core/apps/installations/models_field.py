@@ -311,6 +311,9 @@ class ConsommationLigne(models.Model):
     # garantir l'idempotence (jamais deux mouvements pour la même ligne).
     stock_applique = models.BooleanField(default=False)
     ordre = models.PositiveIntegerField(default=0)
+    # ACHT32 — dernière modification EN LIGNE de la ligne : référence de la
+    # détection de conflit des ops terrain (`base_updated_at`).
+    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Ligne de consommation'
