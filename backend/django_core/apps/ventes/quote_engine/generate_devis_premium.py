@@ -4503,10 +4503,17 @@ def _formes_dernier_bloc():
     """AMOT20 \u2014 formes qui rep\u00e8rent le DERNIER bloc de la zone de contenu : la
     ligne Validit\u00e9 / Acompte / mise en marche / TVA (libell\u00e9
     \u00ab apr\u00e8s mise en marche \u00bb, propre \u00e0 cette ligne), le bon pour accord
-    agricole et, en filet, le Total TTC (``_formes_total_ttc``)."""
+    agricole et, en filet, le Total TTC (``_formes_total_ttc``).
+
+    Le libellé français est stocké ÉCHAPPÉ (« apr&#232;s mise en marche ») ;
+    WeasyPrint compose le texte DÉCODÉ (« après mise en marche »). Chercher la
+    forme échappée ne trouvait donc jamais la ligne en français : la mesure
+    retombait sur le seul Total TTC et la ligne Validité/Acompte/TVA pouvait
+    rester sous la ligne de rognage. On compare sur le texte décodé."""
     formes = list(_formes_total_ttc())
     for brut in (_L("apres_mise_en_marche"),
                  i18n_labels.libelle("apres_mise_en_marche", "fr")):
+        brut = html.unescape(brut or "")
         for forme in (brut, brut.upper()):
             if forme and forme not in formes:
                 formes.append(forme)
@@ -5178,10 +5185,22 @@ def _onepage_conditions_qui_tiennent(lignes, tronquees, html):
     rendu (note, clauses) sont restaurés après composition."""
     global NOTE_CLIENT, CLAUSES_CGV
     note_avant, clauses_avant = NOTE_CLIENT, list(CLAUSES_CGV)
+    # Le DERNIER bloc seul : mêlé au Total TTC (toujours composé plus haut),
+    # le max des boîtes trouvées retenait le Total TTC dès que la ligne
+    # Validité/TVA était JETÉE sous le bord A4 (constaté en arabe : clauses
+    # longues, ligne absente, aucune troncature) — la mesure page haute ne
+    # s'active que si AUCUNE forme n'est trouvée. Filet Total TTC seulement
+    # si le libellé reste introuvable même sur la page haute.
     formes = _formes_dernier_bloc()
+    formes_total = _formes_total_ttc()
+    formes_dernier = tuple(f for f in formes if f not in formes_total)
     try:
         for _ in range(_ONEPAGE_PASSES_CONDITIONS):
-            mesure = _mesure_onepage(html, formes)
+            mesure = None
+            if formes_dernier:
+                mesure = _mesure_onepage(html, formes_dernier)
+            if mesure is None:
+                mesure = _mesure_onepage(html, formes)
             if mesure is None or mesure[0] <= 0:
                 return html
             if not _tronquer_conditions():
