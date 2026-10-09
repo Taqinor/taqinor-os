@@ -491,6 +491,9 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             apres = avant - quantite
         else:  # transfert : déplacement physique, total inchangé
             apres = avant
+        if type_mouvement == 'sortie':
+            # ERR-ASTK205 — sortie scannée sans lot : écart nommé.
+            note = note_sortie_sans_lot(company, verrouille, note)
         mouvement = record_stock_movement(
             company=company, produit=verrouille,
             type_mouvement=getattr(
@@ -507,6 +510,45 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             company, user, verrouille, type_mouvement, quantite,
             bin_source, bin_destination, reference)
         return mouvement
+
+
+MENTION_SORTIE_SANS_LOT = 'Non affectée à un lot'
+
+
+def produit_suivi_par_lot(company, produit):
+    """ERR-ASTK205 — vrai si le registre des lots (``LotEntrepot``) porte au
+    moins un lot ENCORE en stock pour ce produit de cette société."""
+    from .models import LotEntrepot
+    return LotEntrepot.objects.filter(
+        company=company, produit=produit, quantite_restante__gt=0).exists()
+
+
+def note_sortie_sans_lot(company, produit, note=None):
+    """ERR-ASTK205 (C-ASTK-052) — une SORTIE manuelle SANS lot sur un produit
+    suivi par lot reste permise, mais l'écart est NOMMÉ, jamais muet : la
+    note du mouvement porte « Non affectée à un lot ». Renvoie la note à
+    poser (inchangée pour un produit non suivi par lot)."""
+    if not produit_suivi_par_lot(company, produit):
+        return note
+    note = (note or '').strip()
+    if MENTION_SORTIE_SANS_LOT in note:
+        return note
+    return (f'{MENTION_SORTIE_SANS_LOT} — {note}' if note
+            else MENTION_SORTIE_SANS_LOT)
+
+
+def ecart_lots_non_affecte(company, produit):
+    """ERR-ASTK205 — écart du registre des lots : Σ restant des lots −
+    stock du produit. > 0 = unités sorties sans lot (non affectées) ; 0 pour
+    un produit sans lot. Lecture seule, bornée à la société."""
+    from django.db.models import Sum
+    from .models import LotEntrepot
+    total = LotEntrepot.objects.filter(
+        company=company, produit=produit,
+    ).aggregate(total=Sum('quantite_restante'))['total']
+    if not total:
+        return 0
+    return int(total) - int(produit.quantite_stock or 0)
 
 
 def _emplacement_du_casier(casier):
