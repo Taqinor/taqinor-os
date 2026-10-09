@@ -43,6 +43,39 @@ literal→setting wiring — all shipped; they are now just instances of the gen
 
 ---
 
+## BUILD QUEUE — PRIORITÉ ENF : tous les contrôles bloquants (décision fondateur 09/10/2026)
+
+Règle fondateur (docs/claude-memory/enforce-all-checks.md) : api-fuzz TOUS checks, bloquant au nocturne ET sur un sous-ensemble PR ;
+aucun contrôle advisory / `continue-on-error` / `|| true` ; toutes les dettes de gardes à ZÉRO (duplicats inclus) ; hygiène à zéro
+(E501, `noqa`, `eslint-disable`, tests sautés hors conditions d'environnement, seuil de couverture). Inventaire du 09/10 : api-fuzz
+14 372 constats dont ~90 % tiennent à ~8 causes racines (C1-C12). Ordre : ENF1+ENF2 d'abord (une vague), re-mesure, puis ENF3-ENF10
+en parallèle de ENF12-ENF13, puis ENF11, puis les vagues de dette ENF15+.
+
+- [ ] ENF1 — **Harnais api-fuzz** : exclure logout / révocation de session / changement de mot de passe du fuzz ; utilisateur de fuzz dédié + `schemathesis.toml` (auth Bearer + crochet de rafraîchissement, le JWT de 30 min expirait) ; throttles anonymes à 0 en env de fuzz ; désérialiseurs csv/html ; ids de données connus (FK) ; fuzz du seul préfixe `/api/django/` (miroir `/api/v1/` identique) ; retirer `continue-on-error` du job et l'ajouter aux needs de `alert-on-repeated-failure`. Re-mesurer et consigner les chiffres. Files: `.github/workflows/release-verify.yml`, `schemathesis.toml`. (@lane: ci/fuzz) (@model: opus)
+- [ ] ENF2 — **Plateforme API (causes C2-C6)** : `core/exceptions.py` — `django.http.Http404` vers `not_found`, `PermissionDenied` vers `permission_denied` (aujourd'hui `server_error`), violation d'unicité vers 409/400 nommé au lieu de 500 ; crochet de post-traitement drf-spectacular qui déclare l'enveloppe d'erreur (400/401/403/404/409/429/500) sur chaque opération ; schéma `bearerJWT` déclaré à côté de `cookieJWT` (cookie présent-mais-vide refusé) ; vues publiques à jeton sans authentification JWT (~17 vues) ; les 6 GET 500 de la checklist/étapes chantier. Tests pour chacun. Files: `backend/django_core/core/exceptions.py`, `backend/django_core/erp_agentique/openapi_check.py`, `backend/django_core/authentication/cookie_auth.py`. (@lane: core/api-plateforme) (@model: opus)
+- [ ] ENF3 — **Schéma OpenAPI exact — installations** : `@extend_schema` par action (réponses, corps, paramètres de requête, binaires, statuts 201/204/405/409 exacts, champs nullables / read_only) jusqu'à zéro constat api-fuzz et zéro avertissement drf-spectacular pour l'app. (@lane: backend/installations) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF4 — **Schéma OpenAPI exact — stock + achats** : même règle qu'ENF3. (@lane: backend/stock) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF5 — **Schéma OpenAPI exact — ventes + facturation** : même règle qu'ENF3 (le moteur de devis rend seulement, règle n°4). (@lane: backend/ventes) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF6 — **Schéma OpenAPI exact — crm + portail** : même règle qu'ENF3. (@lane: backend/crm) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF7 — **Schéma OpenAPI exact — ged + records** : même règle qu'ENF3. (@lane: backend/ged) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF8 — **Schéma OpenAPI exact — core + parametres + notifications** : même règle qu'ENF3. (@lane: backend/parametres) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF9 — **Schéma OpenAPI exact — sav + calepinage + outillage** : même règle qu'ENF3. (@lane: backend/sav) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF10 — **Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews, accessreview, publicapi, custom-fields et le reste** : même règle qu'ENF3 ; bases `scripts/openapi_schema_allow.txt` et `openapi_shapes` vidées. (@lane: backend/reporting) (@model: sonnet) (@after: ENF1, ENF2)
+- [ ] ENF11 — **api-fuzz bloquant** : zéro constat au nocturne (tous checks), job bloquant + alerte ; sous-ensemble PR (~5 min, phase coverage sur les opérations des apps modifiées) ajouté aux contrôles requis ; `check_openapi_schema` en échec sur tout avertissement ; liens stateful déclarés. (@lane: ci/fuzz) (@model: opus) (@after: ENF3, ENF4, ENF5, ENF6, ENF7, ENF8, ENF9, ENF10)
+- [ ] ENF12 — **Plus aucun masque dans les workflows** : retirer `continue-on-error` / `|| true` de bandit, semgrep, dependency-audit, mutation, k6, locust, Lighthouse, régression visuelle ; seuils réels (CVE haute/critique, score de mutation, p95, scores Lighthouse) ; bandit/semgrep aussi sur PR ; baselines visuelles commitées (plus de `--update-snapshots`) ; constats réels corrigés. (@lane: ci/workflows) (@model: opus)
+- [ ] ENF13 — **Gardes toujours vertes rendues bloquantes** : `check_money_monodevise` et `check_db_invariants` échouent sur tout constat (les 12 écarts d'invariants DB corrigés) ; libellés « advisory » retirés. (@lane: scripts/gardes) (@model: sonnet)
+- [ ] ENF14 — **Exceptions permanentes signées** : un fichier unique listant les seules exceptions approuvées par le fondateur (migrations historiques, modèles hors tenant par conception, dockerignore, DECIMAL_PLACES, sauts conditionnés à l'environnement) ; toute garde lit ce fichier. (@lane: docs/enf) (@model: sonnet)
+- [ ] ENF15 — **Dettes moyennes à zéro** : vider les bases d'environ 120 entrées ou moins (money_rounding, liste_page1, read_modify_write, date_jour_utc, action_permission_override, seuils_electriques, symboles_moteur, beat_active_companies, override_registry, calepinage_actions, unique_scoping, tenant_view_allowlist, naive_datetime, onglets_calepinage_sans_test, contrats_calepinage, stock_actions, openapi_shapes, tests_source_regex, ecrans_atteignables et les petites) en corrigeant les causes, app par app. (@lane: dette/moyennes) (@model: sonnet) (@after: ENF14)
+- [ ] ENF16 — **Dette on_delete (573) à zéro** : chaque FK justifiée en ligne ou corrigée, base vidée. (@lane: dette/on-delete) (@model: sonnet) (@after: ENF14)
+- [ ] ENF17 — **Dette fk_scoping (332) à zéro** : chaque FK de lecture bornée société. (@lane: dette/fk-scoping) (@model: opus) (@after: ENF14)
+- [ ] ENF18 — **Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro.** (@lane: dette/services) (@model: sonnet) (@after: ENF14)
+- [ ] ENF19 — **Duplicats (1 181) à zéro** (décision fondateur 09/10 : pas de cliquet figé) : extraire le code partagé, vagues par app, base vidée. (@lane: dette/duplicats) (@model: sonnet) (@after: ENF14)
+- [ ] ENF20 — **import-linter : `ignore_imports` (52) à zéro** : chaque import croisé passe par `selectors`/`services`. (@lane: dette/imports) (@model: opus) (@after: ENF14)
+- [ ] ENF21 — **flake8 E501 bloquant** : retirer l'ignore global, lignes de 120 caractères au plus partout. (@lane: hygiene/e501) (@model: haiku)
+- [ ] ENF22 — **`# noqa` (2 435) et `eslint-disable` (432) à zéro** : corriger chaque règle sous-jacente. (@lane: hygiene/lint) (@model: sonnet)
+- [ ] ENF23 — **Tests sautés (178) à zéro** hors sauts conditionnés à l'environnement listés dans ENF14 : chaque test réparé ou supprimé avec raison. (@lane: hygiene/skips) (@model: sonnet) (@after: ENF14)
+- [ ] ENF24 — **Seuil de couverture** : collecte de couverture au nocturne avec `fail_under` (valeur mesurée puis relevée par paliers). (@lane: ci/couverture) (@model: sonnet)
+
 ## BUILD QUEUE — PRIORITÉ 0 : MVP solaire, sortie PHYSIQUE des modules hors-MVP (décision fondateur 20/09/2026)
 
 ### Groupe SOLMVP — 49 apps sortent du code et des tests, restaurables (supersède le parcage « toggle » du Groupe SOL)
@@ -1970,6 +2003,7 @@ Tracked here so they aren't lost:
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+- 2026-10-09 — Groupe ENF ajouté (décision fondateur : tous les contrôles bloquants, api-fuzz tous checks au nocturne + sous-ensemble PR, toutes les dettes de gardes et l'hygiène à zéro, duplicats inclus) : ENF1-ENF24.
 - 2026-10-07 — vague 1 « work on all plans » (dev-all) : CIQ334, CIQ346 — construites et testées en statique par les lanes (tests Django/e2e validés par la CI du merge) ; ASTK173 = décision fondateur (a) « réaligner » consignée ; AANA30 : provisionnement SQL + variables prod restent à faire par Reda ; ASTK232 : baseline stock à resserrer à mesure que les écrans arrivent.
 - 2026-10-07 — CIQ129 : clés v1 et réponses plates de l'étude C&I retirées du schéma (refus 400 nommant la clé), tous les lecteurs (builder, catégories, mentions, équipements, payload public, une-page premium, copies, écran) relisent la source v2 / moteur ; rendus résidentiel, commercial et industriel inchangés (empreintes HTML identiques) ; contrat etude_ecran_industriel.json supprimé (vide).
 - 2026-10-07 — Vague 7 CIQ/AGR (15 tâches) : chantiers C&I — pack de remise (CIQ632, installations 0121), séries en lot + garde de nomenclature (CIQ633, 0122), garanties pose/étanchéité sans défaut (CIQ634, 0123), recette C&I au portail (CIQ635, CIQ649), checklist MT (CIQ662), essais injection/découplage exigés en MT si réglages imposés (CIQ663 — pièce de réglages non rattachée), écran dossiers réglementaires (CIQ638), dialogue de recette (CIQ636), fiche chantier C&I (CIQ637) ; e2e (non exécutés localement, nocturne) : agricole point d'eau (AGR423), capture lead pro (CIQ424), suivi commercial (CIQ521), visite C&I → chantier → réception (CIQ650), site MT → recette (CIQ665) ; secret de test du récepteur de leads ajouté au nocturne. Restent : CIQ129 (bloquée), CIQ334/CIQ346 (attendent CIW), CAD177. Lanes sur Sonnet (limite hebdo Opus) — revues renforcées.

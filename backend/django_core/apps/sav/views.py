@@ -3,14 +3,16 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.db.models import F, Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import (
+    APIException, NotFound, ValidationError,
+)
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -92,6 +94,7 @@ class EquipementViewSet(CompanyScopedModelViewSet):
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
         'produit', 'installation', 'installation__client', 'client_vente',
+        'categorie', 'created_by', 'remplace_par_ticket',
     ).all()
     serializer_class = EquipementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -103,6 +106,21 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # APRF30 — compteurs de tickets annotés (une seule requête pour la
+        # page) ; le serializer les lit et retombe sur ``.count()`` hors liste.
+        if self.action == 'list':
+            from datetime import timedelta
+            depuis = timezone.localdate() - timedelta(days=365)
+            qs = qs.annotate(
+                nb_tickets_ouverts_annote=Count(
+                    'tickets', distinct=True,
+                    filter=Q(tickets__statut__in=Ticket.OPEN_STATUTS,
+                             tickets__annule=False)),
+                nb_tickets_12m_annote=Count(
+                    'tickets', distinct=True,
+                    filter=Q(tickets__type=Ticket.Type.CORRECTIF,
+                             tickets__date_creation__date__gte=depuis)),
+            )
         # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, self.request.user, ['created_by'])
@@ -226,6 +244,12 @@ class EquipementViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # ASAV7 — horloges figées : on ne recalcule la garantie que si la
+        # pose ou le produit CHANGENT réellement, et jamais au rebut (sinon
+        # éditer une note réalignait la fin sur la durée COURANTE du
+        # catalogue et deux jumeaux divergeaient).
+        avant = serializer.instance
+        pose_avant, produit_avant = avant.date_pose, avant.produit_id
         try:
             super().perform_update(serializer)
         except IntegrityError:
@@ -233,14 +257,20 @@ class EquipementViewSet(CompanyScopedModelViewSet):
                 {'numero_serie':
                  'Ce numéro de série existe déjà dans votre société.'})
         inst = serializer.instance
-        inst.recompute_garanties()
+        update_fields = []
+        if not inst.mis_au_rebut and (
+                inst.date_pose != pose_avant
+                or inst.produit_id != produit_avant):
+            inst.recompute_garanties()
+            update_fields = [
+                'date_fin_garantie', 'date_fin_garantie_production']
         # FG85 — assure que le jeton est toujours présent (migration d'équipements existants).
         token = f'EQUIP:{inst.pk}'
-        update_fields = ['date_fin_garantie', 'date_fin_garantie_production']
         if inst.equipement_token != token:
             inst.equipement_token = token
             update_fields.append('equipement_token')
-        inst.save(update_fields=update_fields)
+        if update_fields:
+            inst.save(update_fields=update_fields)
 
     @action(detail=True, methods=['post'], url_path='mettre-au-rebut',
             permission_classes=[IsResponsableOrAdmin])
@@ -575,6 +605,45 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         return Response(payload, status=201)
 
 
+def _tickets_visibles(request):
+    """ASAV25 — tickets de la société VISIBLES par l'utilisateur : la même
+    portée (``scope_queryset`` : créés par soi / dont on est technicien /
+    équipe ; « tous » inchangé) que la liste ``TicketViewSet``. Toute action
+    qui reçoit des ids de tickets dans son corps les résout ICI — jamais par
+    ``Ticket.objects.filter(company=…)`` nu."""
+    from authentication.scoping import scope_queryset
+    return scope_queryset(
+        Ticket.objects.filter(company=request.user.company), request.user,
+        ['technicien_responsable', 'created_by'])
+
+
+def _ticket_visible_du_corps(request, brut, champ='ticket'):
+    """ASAV25 — ticket du corps : inconnu de la société → 400 sous ``champ``
+    (inchangé) ; de la société mais HORS portée → 404 (introuvable)."""
+    try:
+        ticket_id = int(brut)
+    except (TypeError, ValueError):
+        raise ValidationError({champ: 'Ticket inconnu.'})
+    ticket = _tickets_visibles(request).filter(pk=ticket_id).first()
+    if ticket is not None:
+        return ticket
+    if Ticket.objects.filter(
+            pk=ticket_id, company=request.user.company).exists():
+        raise NotFound({champ: 'Ticket introuvable.'})
+    raise ValidationError({champ: 'Ticket inconnu.'})
+
+
+class _ProduitNeufInconnu(Exception):
+    """ASAV9 — ``produit_neuf`` introuvable (annule le remplacement)."""
+
+
+class TicketEnDoubleError(APIException):
+    """ASAV23 — création d'un ticket identique dans la fenêtre anti-doublon."""
+    status_code = 409
+    default_detail = 'Ticket en double.'
+    default_code = 'ticket_en_double'
+
+
 class TicketViewSet(CompanyScopedModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
     en ordre d'entonnoir), indépendant des étapes lead / statuts de document.
@@ -597,6 +666,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ASAV39 — « suis-je abonné ? » préchargé (1 requête pour la page).
+        if getattr(self.request.user, 'pk', None):
+            from django.db.models import Prefetch
+            qs = qs.prefetch_related(Prefetch(
+                'followers',
+                queryset=TicketFollower.objects.filter(
+                    user=self.request.user),
+                to_attr='_suivis_de_moi'))
         # Portée de visibilité (Feature F) — tickets créés par soi / dont on est
         # le technicien responsable / ceux de l'équipe. 'all' → inchangé.
         from authentication.scoping import scope_queryset
@@ -713,6 +790,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return
         installation = getattr(equipement, 'installation', None)
         if installation is None:
+            # ASAV40 — équipement vendu au comptoir (XPOS9) : pas de chantier,
+            # mais un client de vente.
+            if (serializer.validated_data.get('client') is None
+                    and equipement.client_vente_id):
+                serializer.validated_data['client'] = equipement.client_vente
             return
         if serializer.validated_data.get('installation') is None:
             serializer.validated_data['installation'] = installation
@@ -763,15 +845,26 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
         client = serializer.validated_data.get('client')
+        # ASAV23 — un double clic ne crée qu'un ticket.
+        self._refuser_doublon_recent(company, serializer.validated_data)
         sla_due_at = self._compute_sla_due_at(
             company, client, priorite, date_ouverture)
+        # ASAV19 — échéance de PREMIÈRE RÉPONSE, même service.
+        from .services import compute_sla_echeance, compute_sla_reponse_due_at
+        sla_reponse_due_at = compute_sla_reponse_due_at(
+            company, client, priorite, date_ouverture)
+        # ASAV21 — horodatage de l'échéance (chemin heures ouvrées seulement).
+        sla_echeance_at = compute_sla_echeance(
+            company, client, priorite, date_ouverture)[1]
         create_with_reference(
             Ticket, 'SAV', company,
             lambda ref: serializer.save(
                 reference=ref, company=company,
                 created_by=self.request.user,
                 date_ouverture=date_ouverture,
-                sla_due_at=sla_due_at),
+                sla_due_at=sla_due_at,
+                sla_echeance_at=sla_echeance_at,
+                sla_reponse_due_at=sla_reponse_due_at),
         )
         # XSAV9 — affectation automatique si aucun technicien n'a été choisi
         # à la création et que la société l'a activée (défaut OFF = inchangé).
@@ -814,9 +907,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # déclenche rien (comportement historique inchangé).
         if inst.equipement_id and inst.client_id:
             from .models import ContratMaintenance
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=inst.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
+            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
@@ -829,9 +921,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
             from .models import ContratMaintenance
             from .selectors import droits_restants
-            contrat = (ContratMaintenance.objects
-                       .filter(client_id=inst.client_id, actif=True)
-                       .order_by('-date_creation').first())
+            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
+            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None:
                 droits = droits_restants(contrat, inst.date_ouverture.year)
                 if (inst.type == Ticket.Type.PREVENTIF
@@ -853,6 +944,68 @@ class TicketViewSet(CompanyScopedModelViewSet):
     # compte comme une réouverture.
     _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
 
+    #: ASAV23 — fenêtre (secondes) dans laquelle un ticket identique est un
+    #: double envoi (double clic, retry réseau), pas une nouvelle demande.
+    FENETRE_DOUBLON_SECONDES = 60
+
+    @classmethod
+    def _refuser_doublon_recent(cls, company, data):
+        """ASAV23 — 409 si un ticket OUVERT identique (même société, client,
+        chantier, équipement, description normalisée) a été créé il y a
+        moins de 60 s ; le corps nomme la référence existante."""
+        def _normaliser(texte):
+            return ' '.join((texte or '').split()).casefold()
+
+        client = data.get('client')
+        installation = data.get('installation')
+        equipement = data.get('equipement')
+        description = _normaliser(data.get('description'))
+        depuis = timezone.now() - timedelta(
+            seconds=cls.FENETRE_DOUBLON_SECONDES)
+        candidats = Ticket.objects.filter(
+            company=company, client=client,
+            installation_id=getattr(installation, 'pk', None),
+            equipement_id=getattr(equipement, 'pk', None),
+            statut__in=Ticket.OPEN_STATUTS, annule=False,
+            date_creation__gte=depuis,
+        ).only('reference', 'description').order_by('-date_creation')
+        for existant in candidats:
+            if _normaliser(existant.description) == description:
+                raise TicketEnDoubleError({
+                    'detail': (f"Ce ticket vient déjà d'être créé "
+                               f'({existant.reference}).'),
+                    'reference_existante': existant.reference,
+                })
+
+    @staticmethod
+    def _cle_sla(ticket):
+        """ASAV15 — les entrées de l'échéance SLA d'un ticket."""
+        return (ticket.priorite, ticket.date_ouverture, ticket.client_id)
+
+    @staticmethod
+    def _recalculer_sla(ticket):
+        """ASAV15 — recalcule l'échéance SLA (override contrat compris, même
+        ``compute_sla_due_at`` que la création) et ouvre un nouveau cycle :
+        pré-alerte, escalade (paliers compris) et ``sla_breach`` remis à
+        zéro puis ``sla_breach`` recalculé sur la nouvelle échéance."""
+        from .services import compute_sla_echeance, compute_sla_reponse_due_at
+        ouverture = ticket.date_ouverture or timezone.localdate()
+        ticket.sla_due_at, ticket.sla_echeance_at = compute_sla_echeance(
+            ticket.company, ticket.client, ticket.priorite, ouverture)
+        # ASAV19 — l'échéance de première réponse suit les mêmes entrées.
+        ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
+            ticket.company, ticket.client, ticket.priorite, ouverture)
+        ticket.sla_pre_alert_notifiee = False
+        ticket.sla_escalade_notifiee = False
+        ticket.sla_escalade_paliers_notifies = None
+        ticket.sla_breach = False
+        ticket.recompute_sla_breach()
+        ticket.save(update_fields=[
+            'sla_due_at', 'sla_echeance_at', 'sla_reponse_due_at',
+            'sla_pre_alert_notifiee',
+            'sla_escalade_notifiee', 'sla_escalade_paliers_notifies',
+            'sla_breach'])
+
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         # YDOCF1 — `statut` est désormais read-only sur le sérialiseur : plus
@@ -866,102 +1019,32 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # dossier 82-21 (no-op hors site professionnel sous accord /
         # autorisation).
         etait_a_l_arret = bool(serializer.instance.arret_installation)
+        # ASAV15 — l'échéance SLA dépend de la priorité, de l'ouverture et du
+        # client (override contrat) : capturés AVANT la mise à jour.
+        avant = self._cle_sla(serializer.instance)
+        # ASAV22 — instantané AVANT la correction, pour l'historique.
+        ancien = Ticket.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
+        if self._cle_sla(serializer.instance) != avant:
+            self._recalculer_sla(serializer.instance)
+        # ASAV22 — chaque champ suivi corrigé par PATCH laisse une ligne
+        # avant → après au chatter (aucune ligne sans changement réel).
+        activity.log_changes(ancien, serializer.instance, self.request.user)
         if serializer.instance.arret_installation and not etait_a_l_arret:
             from . import services as sav_services
             sav_services.notifier_arret_installation(serializer.instance)
 
     def _appliquer_transition_statut(self, ticket, statut_cible):
-        """YDOCF1 — Applique une transition de statut GARDÉE (via
-        ``machine_etats.changer_statut``) et rejoue exactement la même chaîne
-        d'effets qu'avant YDOCF1 (SLA/réouverture/chatter/notification client/
-        clôture des downtimes). Lève ``ValidationError`` (400) nommant le
-        statut courant + les cibles permises sur une transition interdite."""
-        from . import machine_etats
-
-        old = Ticket.objects.get(pk=ticket.pk)
-        # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
-        # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
-        if (statut_cible == Ticket.Statut.CLOTURE
-                and old.statut != Ticket.Statut.CLOTURE):
-            ouvertes = self._interventions_ouvertes(old)
-            if ouvertes:
-                raise ValidationError({
-                    'statut': (
-                        'Impossible de clôturer : intervention(s) encore '
-                        'ouverte(s) sur ce ticket.'),
-                    'interventions_ouvertes': ouvertes,
-                })
-        try:
-            machine_etats.changer_statut(ticket, statut_cible, persister=False)
-        except machine_etats.TransitionInterdite as exc:
-            raise ValidationError({'statut': str(exc)})
-        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
-        # l'appelant n'en a pas déjà posé un explicitement (jamais écrasé).
-        # Dans les deux cas (posé explicitement par l'appelant AVANT cet
-        # appel, ou proposé automatiquement ici), le champ doit figurer dans
-        # `update_fields` sous peine d'être silencieusement perdu (un
-        # `save(update_fields=...)` n'écrit QUE les colonnes listées).
-        update_fields = ['statut']
-        if statut_cible == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU:
-            if not ticket.canal_resolution:
-                ticket.canal_resolution = old.canal_resolution_propose()
-            update_fields.append('canal_resolution')
-        ticket.save(update_fields=update_fields)
-        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu) sur
-        # le FRANCHISSEMENT gardé par la condition ci-dessus. No-op si la
-        # transition n'atteint pas RESOLU (garde interne au service).
+        """ASAV12 — délégué d'une ligne vers LE service unique
+        ``services.appliquer_transition_ticket`` (même chaîne d'effets pour la
+        vue et le récepteur d'intervention terminée). Une transition refusée
+        lève ``ValidationError`` (400) avec le détail du service."""
         from . import services as sav_services
-        sav_services.emettre_ticket_resolu(
-            ticket, company=ticket.company, user=self.request.user,
-            ancien_statut=old.statut)
-        # ARC34 — déclencheur automation générique RECORD_STATE_CHANGE sur
-        # TOUTE transition de statut réussie (whitelist registre plateforme ;
-        # no-op sans règle). Émission via le service (frontière respectée).
-        sav_services.emettre_changement_statut_ticket(
-            ticket, company=ticket.company, user=self.request.user,
-            ancien_statut=old.statut)
-        # FG81 — recalcule sla_breach après toute mise à jour de statut.
-        ticket.recompute_sla_breach()
-        save_fields = ['sla_breach']
-        # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
-        # serveur, jamais décrémenté. La transition est déjà tracée par
-        # TicketActivity (activity.log_changes ci-dessous).
-        # AUD829 — F() atomic increment: a bare `ticket.reopen_count += 1`
-        # then save() loses a concurrent reopen under two racing requests
-        # on the same ticket (lost-update anomaly).
-        if (old.statut in self._CLOTURE_STATUTS
-                and ticket.statut in Ticket.OPEN_STATUTS):
-            Ticket.objects.filter(pk=ticket.pk).update(
-                reopen_count=F('reopen_count') + 1)
-            ticket.refresh_from_db(fields=['reopen_count'])
-        ticket.save(update_fields=save_fields)
-        activity.log_changes(old, ticket, self.request.user)
-        # XSAV4 — notification client best-effort sur transition de statut
-        # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.
-        if old.statut != ticket.statut:
-            from .notifications_client import notify_ticket_transition
-            notify_ticket_transition(
-                ticket, ticket.statut, request=self.request)
-            # ZSAV9 — notifie les suiveurs de la transition (best-effort).
-            from .services import notify_followers
-            from apps.notifications.types_evenements import EventType
-            notify_followers(
-                ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
-                title=f'Statut changé — {ticket.reference}',
-                body=f'Nouveau statut : {ticket.get_statut_display()}.',
-                link=f'/sav/tickets/{ticket.pk}',
-                exclude_user=self.request.user)
-        # XSAV16 — la clôture du ticket propose (= referme automatiquement,
-        # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
-        # ferme jamais une fenêtre déjà close, et n'affecte que les
-        # downtimes du même ticket (pas ceux d'autres tickets sur le même
-        # équipement).
-        if (old.statut != ticket.statut
-                and ticket.statut in self._CLOTURE_STATUTS):
-            for dt in ticket.downtimes.filter(fin__isnull=True):
-                dt.clore()
-        return ticket
+        try:
+            return sav_services.appliquer_transition_ticket(
+                ticket, statut_cible, self.request.user, request=self.request)
+        except sav_services.TransitionTicketRefusee as exc:
+            raise ValidationError(exc.detail)
 
     @action(detail=True, methods=['post'], url_path='planifier',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1075,11 +1158,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'operation': 'Opération inconnue.'}, status=400)
 
+        # ASAV25 — seuls les tickets VISIBLES (portée de l'utilisateur) sont
+        # traités ; les autres ids sortent en échec « introuvable », sans
+        # dire s'ils existent.
         company = request.user.company
-        tickets = list(
-            Ticket.objects.filter(company=company, id__in=ids))
+        tickets = list(_tickets_visibles(request).filter(id__in=ids))
         traites = []
         echecs = []
+        vus = {t.id for t in tickets}
+        for brut in ids:
+            try:
+                ident = int(brut)
+            except (TypeError, ValueError):
+                ident = brut
+            if ident not in vus:
+                echecs.append({'id': ident, 'raison': 'Ticket introuvable.'})
 
         if operation == 'statut':
             statut_cible = request.data.get('statut')
@@ -1118,6 +1211,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 old = Ticket.objects.get(pk=ticket.pk)
                 ticket.priorite = priorite
                 ticket.save(update_fields=['priorite'])
+                # ASAV15 — même recalcul d'échéance que le PATCH.
+                if old.priorite != priorite:
+                    self._recalculer_sla(ticket)
                 activity.log_changes(old, ticket, request.user)
                 traites.append(ticket.id)
 
@@ -1230,6 +1326,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         body = (request.data.get('body') or '').strip()
         reponse_type_id = request.data.get('reponse_type_id')
+        statut_macro = None
 
         if not body and reponse_type_id:
             try:
@@ -1254,20 +1351,32 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 date=timezone.localdate().strftime('%d/%m/%Y'),
             ).strip()
             if macro.nouveau_statut and ticket.statut != macro.nouveau_statut:
-                old = Ticket.objects.get(pk=ticket.pk)
-                ticket.statut = macro.nouveau_statut
-                ticket.save(update_fields=['statut'])
-                activity.log_changes(old, ticket, request.user)
+                statut_macro = macro.nouveau_statut
 
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if statut_macro:
+            # ASAV13 — le statut d'une macro passe par LE service gardé
+            # (graphe, YSERV2, effets complets d'ASAV12) ; un refus renvoie
+            # 400 SANS note ni changement de statut.
+            from . import services as sav_services
+            try:
+                sav_services.appliquer_transition_ticket(
+                    ticket, statut_macro, request.user, request=request)
+            except sav_services.TransitionTicketRefusee as exc:
+                return Response(exc.detail, status=400)
         # NTPRT12 — opt-in EXPLICITE : sans `visible_client` vrai dans le
         # corps, la note reste interne et le portail client ne la voit jamais.
         visible_client = request.data.get('visible_client') in (
             True, 'true', 'True', '1', 1, 'on')
         act = activity.log_note(
             ticket, request.user, body, visible_client=visible_client)
+        # ASAV19 — une note VISIBLE CLIENT est une réponse au client ; une
+        # note interne ne l'est pas.
+        if visible_client:
+            from .services import poser_premiere_reponse
+            poser_premiere_reponse(ticket)
         # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
         from .services import notify_followers
         from apps.notifications.types_evenements import EventType
@@ -1341,8 +1450,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     return Response({'detail': 'Date invalide.'}, status=400)
             else:
                 at = timezone.now()
-            ticket.date_premiere_reponse = at
-            ticket.save(update_fields=['date_premiere_reponse'])
+            from .services import poser_premiere_reponse
+            poser_premiere_reponse(ticket, at)
             activity.log_note(
                 ticket, request.user,
                 f'Première réponse enregistrée le {at.strftime("%d/%m/%Y %H:%M")}')
@@ -1420,6 +1529,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         entree = activity.log_appel(
             ticket, request.user, corps, outcome=issue, duree_minutes=duree)
+        # ASAV19 — un appel journalisé (hors « non joint ») est une réponse
+        # réelle au client : pose la première réponse (une seule fois).
+        if issue != 'non_joint':
+            from .services import poser_premiere_reponse
+            poser_premiere_reponse(ticket)
         return Response({
             'id': entree.pk, 'kind': entree.kind, 'body': entree.body,
             'issue': entree.outcome, 'duree_minutes': entree.duree_minutes,
@@ -1458,6 +1572,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         except ValueError as exc:
             champ, _, detail = str(exc).partition(': ')
             return Response({champ: detail or str(exc)}, status=400)
+        # ASAV19 — un e-mail envoyé au client pose la première réponse.
+        from .services import poser_premiere_reponse
+        poser_premiere_reponse(ticket)
         return Response({
             'id': ligne.pk, 'message_id': ligne.message_id,
             'thread_root': ligne.thread_root,
@@ -1627,7 +1744,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
-        from .services import OperationDestinationIncoherenteError, retirer_piece
+        from .services import (
+            EquipementDejaRemplaceError, OperationDestinationIncoherenteError,
+            RetraitHorsPerimetreError, RetraitProduitIncoherentError,
+            SerieNeuveDejaAuParcError, retirer_piece,
+        )
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
         except (InvalidOperation, TypeError):
@@ -1647,6 +1768,24 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if operation not in PieceRetiree.Operation.values:
             return Response({'detail': 'Opération invalide.'}, status=400)
         numero_serie = (request.data.get('numero_serie') or '').strip()
+        # ASAV9 — ``serie_neuve`` (optionnel) : l'appareil neuf entre au parc.
+        serie_neuve = (request.data.get('serie_neuve') or '').strip()
+        if serie_neuve:
+            from .models import Equipement
+            if Equipement.objects.filter(
+                    company=ticket.company,
+                    numero_serie=serie_neuve).exists():
+                return Response(
+                    {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
+                    status=400)
+            if not numero_serie or not Equipement.objects.filter(
+                    company=ticket.company,
+                    numero_serie=numero_serie).exists():
+                return Response(
+                    {'serie_neuve': ["Le numéro de série de l'appareil "
+                                     'remplacé doit exister au parc.']},
+                    status=400)
+        equipement_neuf = None
         try:
             with transaction.atomic():
                 piece = retirer_piece(
@@ -1654,8 +1793,35 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     quantite=quantite, numero_serie=numero_serie,
                     destination=destination, operation=operation,
                     user=request.user)
+                if serie_neuve and piece.equipement_remplace is not None:
+                    from .services import remplacer_equipement
+                    produit_neuf = produit
+                    if request.data.get('produit_neuf'):
+                        try:
+                            produit_neuf = get_produit_or_raise(
+                                ticket.company,
+                                request.data.get('produit_neuf'))
+                        except (produit_does_not_exist(), ValueError,
+                                TypeError):
+                            raise _ProduitNeufInconnu()
+                    equipement_neuf = remplacer_equipement(
+                        ticket=ticket, ancien=piece.equipement_remplace,
+                        produit_neuf=produit_neuf, serie_neuve=serie_neuve,
+                        date_pose=timezone.localdate(), user=request.user)
+        except _ProduitNeufInconnu:
+            return Response({'produit_neuf': ['Produit inconnu.']},
+                            status=404)
+        except SerieNeuveDejaAuParcError as exc:
+            return Response({'serie_neuve': [str(exc)]}, status=400)
         except OperationDestinationIncoherenteError as exc:
             return Response({'detail': str(exc)}, status=400)
+        # ASAV8 — retrait borné au périmètre du ticket, une fois par équipement.
+        except RetraitHorsPerimetreError as exc:
+            return Response({'numero_serie': [str(exc)]}, status=400)
+        except RetraitProduitIncoherentError as exc:
+            return Response({'produit': [str(exc)]}, status=400)
+        except EquipementDejaRemplaceError as exc:
+            return Response({'detail': str(exc)}, status=409)
         suffixe = {
             PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
             PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
@@ -1664,7 +1830,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         activity.log_note(
             ticket, request.user,
             f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
-        return Response(PieceRetireeSerializer(piece).data, status=201)
+        data = dict(PieceRetireeSerializer(piece).data)
+        data['equipement_neuf'] = None if equipement_neuf is None else {
+            'id': equipement_neuf.id,
+            'numero_serie': equipement_neuf.numero_serie,
+            'statut': equipement_neuf.statut,
+            'installation': equipement_neuf.installation_id,
+            'client': equipement_neuf.client_vente_id,
+        }
+        return Response(data, status=201)
 
     @action(detail=True, methods=['get'], url_path='pieces-unifiees',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1688,40 +1862,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         (réutilise ``facture_id_ext`` si déjà posé) — jamais de double
         facture. Facture = PDF legacy (jamais /proposal, réservé aux devis
         client-facing — règle #4 CLAUDE.md)."""
-        ticket = self.get_object()
-        from apps.ventes.services import generer_facture_ticket_sav
-
-        # XFSM15 — un ticket récidive est non-facturable PAR DÉFAUT ; un
-        # responsable/admin peut lever l'exclusion via `override=true`
-        # explicite (l'un ne dispense jamais de l'autre : sans override,
-        # MÊME un admin reste bloqué ; avec override, seul un responsable/
-        # admin peut effectivement lever l'exclusion).
-        override = str(request.data.get('override') or '') in (
-            '1', 'true', 'True', 'on')
-        if ticket.non_facturable:
-            is_responsable = (
-                getattr(request.user, 'is_admin_role', False)
-                or getattr(request.user, 'is_responsable', False))
-            if not override or not is_responsable:
-                return Response({
-                    'detail': ('Ticket récidive marqué non-facturable — '
-                               'override responsable requis.'),
-                }, status=403)
-
-        sous_garantie = ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI
-        pieces = list(ticket.pieces.select_related('produit'))
-        facture = generer_facture_ticket_sav(
-            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
-            user=request.user)
-        activity.log_note(
-            ticket, request.user,
-            f'Facture {facture.reference} générée depuis le ticket '
-            f'(hors garantie : {not sous_garantie}).')
-        return Response({
-            'facture_id': facture.id,
-            'facture_reference': facture.reference,
-            'sous_garantie': sous_garantie,
-        }, status=201)
+        # ASAV2 — alias de ``facturer`` : même service de décision.
+        return self._facturer_ticket(request, self.get_object())
 
     @action(detail=True, methods=['post'], url_path='facturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1737,15 +1879,23 @@ class TicketViewSet(CompanyScopedModelViewSet):
         catalogue (jamais ``prix_achat`` — pièces au prix VENTE uniquement).
         Idempotent (réutilise ``facture_id_ext`` si déjà posé). Renvoie aussi
         la couverture retenue pour cette facturation."""
-        ticket = self.get_object()
+        return self._facturer_ticket(request, self.get_object())
+
+    def _facturer_ticket(self, request, ticket):
+        """ASAV2 — corps commun de ``facturer`` et ``generer-facture`` : la
+        décision « qui paie » vient de ``services.decision_facturation``."""
         from apps.ventes.services import generer_facture_ticket_sav
+        from .services import decision_facturation
 
-        couverture = ticket.couverture
-        if couverture == Ticket.Couverture.A_DETERMINER:
-            couverture = ticket.couverture_calculee()
-
-        sous_garantie = couverture in (
-            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT)
+        # XFSM15 — récidive : refus 403 sans ``override`` d'un responsable.
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        decision = decision_facturation(ticket, request.user, override)
+        if decision['refuse']:
+            return Response({'detail': decision['detail']},
+                            status=decision['http'])
+        couverture = decision['couverture']
+        sous_garantie = decision['couvert']
         pieces = list(ticket.pieces.select_related('produit'))
         facture = generer_facture_ticket_sav(
             ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
@@ -1758,6 +1908,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'facture_id': facture.id,
             'facture_reference': facture.reference,
             'couverture': couverture,
+            'sous_garantie': sous_garantie,
         }, status=201)
 
     @action(detail=True, methods=['post'], url_path='planifier-intervention',
@@ -1789,11 +1940,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # un refus (statut inattendu) laisse simplement le ticket en l'état —
         # l'intervention, elle, est déjà créée.
         if ticket.statut == Ticket.Statut.NOUVEAU:
-            from .machine_etats import TransitionInterdite, changer_statut
+            # ASAV12 — même service unique que les actions de statut.
+            from .services import (
+                TransitionTicketRefusee, appliquer_transition_ticket,
+            )
             try:
-                changer_statut(ticket, Ticket.Statut.PLANIFIE, persister=False)
-                ticket.save(update_fields=['statut'])
-            except TransitionInterdite:
+                appliquer_transition_ticket(
+                    ticket, Ticket.Statut.PLANIFIE, request.user,
+                    request=request)
+            except TransitionTicketRefusee:
                 import logging
                 logging.getLogger(__name__).warning(
                     'sav: planifier_intervention — transition NOUVEAU → '
@@ -2112,7 +2267,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 {'detail': "Un ticket ne peut pas être fusionné avec lui-même."},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        doublon = Ticket.objects.filter(
+        # ASAV25 — le doublon doit être VISIBLE par l'utilisateur (sinon sa
+        # fusion transférerait son chatter vers un ticket qu'il voit).
+        doublon = _tickets_visibles(request).filter(
             pk=doublon_id, company=principal.company).first()
         if doublon is None:
             return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
@@ -2193,10 +2350,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``apps.ventes.services.create_devis_pour_ticket`` (cross-app write,
         jamais d'import direct du modèle ventes)."""
         ticket = self.get_object()
-        if ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI:
+        # ASAV2 — même décision que les deux portes de facture.
+        from .services import decision_facturation
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        decision = decision_facturation(ticket, request.user, override)
+        if decision['refuse']:
+            return Response({'detail': decision['detail']},
+                            status=decision['http'])
+        if decision['couvert']:
             return Response(
-                {'detail': 'Ticket sous garantie : aucun devis de '
-                           "réparation n'est nécessaire."},
+                {'detail': 'Ticket couvert (garantie ou contrat) : aucun '
+                           "devis de réparation n'est nécessaire."},
                 status=status.HTTP_400_BAD_REQUEST)
 
         from apps.ventes.services import create_devis_pour_ticket
@@ -2379,17 +2544,38 @@ class WarrantyClaimViewSet(CompanyScopedModelViewSet):
             except Exception:
                 pass
 
+    @staticmethod
+    def _poser_dates_statut(claim):
+        """ASAV37 — le serveur pose ``date_envoi_fournisseur`` (envoi) et
+        ``date_resolution`` (résolu / refusé) à la transition, si vides
+        (date locale Maroc). Éditer un autre champ ne les touche jamais."""
+        champs = []
+        aujourdhui = timezone.localdate()
+        if (claim.statut == WarrantyClaim.Statut.ENVOYE
+                and not claim.date_envoi_fournisseur):
+            claim.date_envoi_fournisseur = aujourdhui
+            champs.append('date_envoi_fournisseur')
+        if (claim.statut in (WarrantyClaim.Statut.RESOLU,
+                             WarrantyClaim.Statut.REFUSE)
+                and not claim.date_resolution):
+            claim.date_resolution = aujourdhui
+            champs.append('date_resolution')
+        if champs:
+            claim.save(update_fields=champs)
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         self._resolve_fournisseur(serializer)
-        serializer.save(
+        claim = serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
+        self._poser_dates_statut(claim)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         self._resolve_fournisseur(serializer)
         super().perform_update(serializer)
+        self._poser_dates_statut(serializer.instance)
 
 
 # ── FG87 — Base de connaissances SAV ─────────────────────────────────────────
@@ -2518,16 +2704,16 @@ class AlarmeOnduleurViewSet(CompanyScopedModelViewSet):
 
         ticket_id = request.data.get('ticket')
         if ticket_id:
-            ticket = Ticket.objects.filter(
-                id=ticket_id, company=company).first()
-            if ticket is None:
-                raise ValidationError({'ticket': 'Ticket inconnu.'})
+            # ASAV25 — résolu par la portée de l'utilisateur.
+            ticket = _ticket_visible_du_corps(request, ticket_id)
         else:
             # Ouvre un ticket correctif. Le client/chantier sont déduits de
             # l'équipement lié à l'alarme quand c'est possible.
             equipement = alarme.equipement
             installation = getattr(equipement, 'installation', None)
-            client = getattr(installation, 'client', None)
+            client = (getattr(installation, 'client', None)
+                      if installation is not None
+                      else getattr(equipement, "client_vente", None))  # ASAV40
             if client is None:
                 raise ValidationError({
                     'ticket': "Aucun ticket fourni et l'alarme n'a pas "
@@ -2667,7 +2853,9 @@ class EquipeMaintenanceViewSet(CompanyScopedModelViewSet):
 class CategorieEquipementViewSet(CompanyScopedModelViewSet):
     """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
     écriture responsable/admin (édité dans Paramètres SAV)."""
-    queryset = CategorieEquipement.objects.all()
+    queryset = CategorieEquipement.objects.select_related(
+        'responsable', 'equipe_responsable',
+    ).annotate(nb_equipements_annote=Count('equipements', distinct=True))
     serializer_class = CategorieEquipementSerializer
 
     def get_permissions(self):
@@ -2870,15 +3058,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         brut = request.data.get('ticket')
         if brut in (None, ''):
             raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})
-        try:
-            ticket_id = int(brut)
-        except (TypeError, ValueError):
-            raise ValidationError({'ticket': 'Ticket inconnu.'})
-        ticket = Ticket.objects.filter(
-            pk=ticket_id, company=request.user.company).first()
-        if ticket is None:
-            raise ValidationError({'ticket': 'Ticket inconnu.'})
-        return ticket
+        # ASAV25 — résolu par la portée de l'utilisateur (404 hors portée).
+        return _ticket_visible_du_corps(request, brut)
 
     @extend_schema(
         request=inline_serializer('SavProblemeLierTicketRequest', {
@@ -3076,7 +3257,8 @@ class ProblemeViewSet(CompanyScopedModelViewSet):
         except (TypeError, ValueError):
             raise ValidationError({'ticket_ids': 'Ticket inconnu.'})
 
-        tickets = list(Ticket.objects.filter(
+        # ASAV76 — bornés à la portée de l'utilisateur (comme lier-ticket).
+        tickets = list(_tickets_visibles(request).filter(
             pk__in=demandes, company=company))
         if len(tickets) != len(set(demandes)):
             raise ValidationError(
@@ -3343,320 +3525,23 @@ def sav_parts_forecast(request):
     return Response(results)
 
 
-# ── AUD521 — Réglages SLA mis en cache PAR SOCIÉTÉ pour les scans quotidiens ─
-# Les trois scans ci-dessous parcourent la queryset Ticket multi-société et
-# appelaient ``SavSlaSettings.get(ticket.company)`` DANS la boucle — soit un
-# ``get_or_create`` par ticket. Ce helper charge tous les réglages en UNE
-# requête et ne retombe sur ``get()`` que pour une société sans réglage
-# enregistré (au plus une requête par société distincte, jamais par ticket).
-
-def _reglages_sla_par_ticket(tickets):
-    """Renvoie une fonction ``(ticket) -> SavSlaSettings`` sans N+1."""
-    cache = SavSlaSettings.par_company({t.company_id for t in tickets})
-
-    def _pour(ticket):
-        if ticket.company_id in cache:
-            return cache[ticket.company_id]
-        reglage = SavSlaSettings.get(ticket.company)
-        cache[ticket.company_id] = reglage
-        return reglage
-    return _pour
-
-
-# ── FG81 — Scan journalier de breach (appelé par Celery-beat ou management cmd) ──
+# ── ASAV33 — les balayages SAV vivent dans ``apps/sav/tasks.py`` ───────────
+# (bornés aux sociétés actives, verrou, entrées beat). Les noms historiques
+# restent ici en DÉLÉGUÉS d'une ligne pour les appelants existants.
 
 def scan_sla_breaches():
-    """FG81 — Parcourt tous les tickets ouverts avec sla_due_at dépassé, met à
-    jour sla_breach et notifie le technicien responsable. Idempotent.
+    """FG81 — délégué de ``tasks.scan_sla_breaches`` (ASAV33)."""
+    from .tasks import scan_sla_breaches as _scan
+    return _scan()
 
-    Appelé par le scan journalier (management command ou Celery-beat).
-    Aucune modification si sla_breach_enabled est False pour la société."""
-    from apps.notifications.services import notify
-    from apps.notifications.types_evenements import EventType
-
-    today = timezone.localdate()
-    breached = list(Ticket.objects.filter(
-        statut__in=Ticket.OPEN_STATUTS,
-        annule=False,
-        sla_due_at__lt=today,
-        sla_breach=False,
-    ).select_related('company', 'technicien_responsable'))
-    # AUD521 — réglages chargés UNE fois par société (plus un get_or_create
-    # par ticket).
-    reglage_pour = _reglages_sla_par_ticket(breached)
-
-    updated = 0
-    for ticket in breached:
-        # Vérifie que la société a activé les notifications SLA.
-        sla = reglage_pour(ticket)
-        if not sla.sla_breach_enabled:
-            continue
-        ticket.sla_breach = True
-        ticket.save(update_fields=['sla_breach'])
-        updated += 1
-        if ticket.technicien_responsable_id:
-            notify(
-                user=ticket.technicien_responsable,
-                event_type=EventType.SAV_TICKET_BREACHING,
-                title=f'SLA dépassé — {ticket.reference}',
-                body=(f'Le ticket {ticket.reference} a dépassé son délai SLA '
-                      f'({ticket.sla_due_at.strftime("%d/%m/%Y")}).'),
-                link=f'/sav/tickets/{ticket.pk}',
-                company=ticket.company,
-            )
-    return updated
-
-
-# ── NTSRV12 — Paliers d'escalade SLA configurables (étend XSAV6) ────────────
-
-def _paliers_escalade_par_company(company_ids):
-    """NTSRV12 — ``{company_id: [EscaladeSlaNiveau ordonnés]}`` en UNE requête.
-
-    Dict VIDE pour toute société sans palier configuré : l'appelant garde
-    alors le comportement XSAV6 binaire, strictement inchangé."""
-    from .models import EscaladeSlaNiveau
-
-    ids = {cid for cid in company_ids if cid is not None}
-    if not ids:
-        return {}
-    par_company = {}
-    for palier in (EscaladeSlaNiveau.objects
-                   .filter(company_id__in=ids, actif=True)
-                   .select_related('notifier_utilisateur')
-                   .order_by('ordre', 'seuil_jours_apres_echeance', 'id')):
-        par_company.setdefault(palier.company_id, []).append(palier)
-    return par_company
-
-
-def _destinataires_palier(palier, company):
-    """NTSRV12 — destinataires d'un palier : l'utilisateur désigné, sinon les
-    comptes actifs du rôle visé, sinon les destinataires par défaut de
-    l'événement (``resolve_recipients``, mute-aware via ``notify()``)."""
-    from apps.notifications.types_evenements import EventType
-    from apps.notifications.services import resolve_recipients
-
-    if palier.notifier_utilisateur_id:
-        return [palier.notifier_utilisateur]
-    role = (palier.notifier_role or '').strip().lower()
-    if role:
-        from authentication.models import CustomUser
-        vises = [
-            u for u in CustomUser.objects.filter(
-                company=company, is_active=True)
-            if (getattr(u, 'role_tier', None) or '').lower() == role
-            or (role == 'admin' and getattr(u, 'is_admin_role', False))
-        ]
-        if vises:
-            return vises
-    return list(resolve_recipients(company, EventType.SAV_TICKET_BREACHING))
-
-
-def _notifier_paliers(ticket, paliers, due_effectif, today):
-    """NTSRV12 — notifie les paliers ÉCHUS et pas encore notifiés pour ce
-    ticket. Renvoie le nombre de paliers déclenchés (0 le plus souvent).
-
-    Un palier ``seuil_jours_apres_echeance=N`` se déclenche à partir de
-    ``échéance + N jours`` — JAMAIS avant. IDEMPOTENT : l'id du palier est
-    mémorisé sur le ticket (``sla_escalade_paliers_notifies``), donc le
-    balayage du lendemain ne le rejoue pas."""
-    from apps.notifications.types_evenements import EventType
-    from apps.notifications.services import notify
-
-    if due_effectif is None:
-        return 0
-    deja = ticket.sla_escalade_paliers_notifies or []
-    if not isinstance(deja, list):
-        deja = []
-    declenches = 0
-    for palier in paliers:
-        if palier.pk in deja:
-            continue
-        seuil = due_effectif + timedelta(days=palier.seuil_jours_apres_echeance)
-        if today < seuil:
-            continue  # « jamais avant » — garantie du critère d'acceptation.
-        libelle = palier.libelle or f'J+{palier.seuil_jours_apres_echeance}'
-        for user in _destinataires_palier(palier, ticket.company):
-            notify(
-                user=user,
-                event_type=EventType.SAV_TICKET_BREACHING,
-                title=f'Escalade SLA ({libelle}) — {ticket.reference}',
-                body=(f'Le ticket {ticket.reference} a atteint le palier '
-                      f'{libelle} après son échéance SLA '
-                      f'({due_effectif.strftime("%d/%m/%Y")}).'),
-                link=f'/sav/tickets/{ticket.pk}',
-                company=ticket.company,
-            )
-        deja.append(palier.pk)
-        declenches += 1
-    if declenches:
-        ticket.sla_escalade_paliers_notifies = deja
-        ticket.save(update_fields=['sla_escalade_paliers_notifies'])
-    return declenches
-
-
-# ── XSAV6 — Pré-alerte SLA (J-x) + escalade à la violation ────────────────────
 
 def scan_sla_pre_alerts_and_escalations():
-    """XSAV6 — Pré-alerte à J-x + escalade au tier responsable à la violation.
+    """XSAV6 — délégué de ``tasks.scan_sla_pre_alerts_and_escalations``."""
+    from .tasks import scan_sla_pre_alerts_and_escalations as _scan
+    return _scan()
 
-    DISTINCT de ``scan_sla_breaches`` (FG81, notifie le technicien À la
-    violation) et de ``notifications.sweeps._sweep_sav_breaching`` (âge du
-    ticket, repli managers). Ici : pré-alerte configurable AVANT l'échéance
-    (``sla_warning_days`` jours avant ``sla_due_at_effectif``), puis escalade
-    au tier responsable/direction (``resolve_recipients``, mute-aware via
-    ``notify()``) une fois l'échéance dépassée — si ``escalade_activee``.
-
-    IDEMPOTENT : un ticket déjà notifié pour un niveau (pré-alerte ou
-    escalade) ne l'est plus les jours suivants — flag posé sur le ticket.
-    OFF par défaut (``sla_warning_days=0`` et ``escalade_activee=False``) :
-    aucun effet, aucune notification supplémentaire.
-
-    NTSRV12 — quand une société configure des ``EscaladeSlaNiveau``, ces
-    PALIERS remplacent pour elle l'escalade binaire ci-dessus (plusieurs
-    notifications ordonnées, ex. J+0 → responsable, J+1 → direction), chacune
-    idempotente via ``Ticket.sla_escalade_paliers_notifies``. AUCUN palier
-    configuré = comportement XSAV6 strictement inchangé.
-    """
-    from apps.notifications.services import notify, resolve_recipients
-    from apps.notifications.types_evenements import EventType
-
-    today = timezone.localdate()
-    qs = list(Ticket.objects.filter(
-        statut__in=Ticket.OPEN_STATUTS,
-        annule=False,
-        sla_due_at__isnull=False,
-    ).select_related('company', 'technicien_responsable'))
-    # AUD521 — réglages chargés UNE fois par société.
-    reglage_pour = _reglages_sla_par_ticket(qs)
-
-    # NTSRV12 — paliers d'escalade chargés UNE fois par société (jamais une
-    # requête par ticket).
-    paliers_par_company = _paliers_escalade_par_company(
-        {t.company_id for t in qs})
-
-    def paliers_pour(company_id):
-        return paliers_par_company.get(company_id, [])
-
-    pre_alerts = 0
-    escalations = 0
-    for ticket in qs:
-        sla = reglage_pour(ticket)
-        due_effectif = ticket.sla_due_at_effectif(today=today)
-
-        # ── Pré-alerte J-x au technicien assigné ──
-        if (sla.sla_warning_days > 0
-                and not ticket.sla_pre_alert_notifiee
-                and not ticket.sla_escalade_notifiee
-                and ticket.technicien_responsable_id
-                and due_effectif is not None):
-            seuil = due_effectif - timedelta(days=sla.sla_warning_days)
-            if today >= seuil and today <= due_effectif:
-                notify(
-                    user=ticket.technicien_responsable,
-                    event_type=EventType.SAV_TICKET_BREACHING,
-                    title=f'SLA bientôt dépassé — {ticket.reference}',
-                    body=(f'Le ticket {ticket.reference} approche son '
-                          f'échéance SLA ({due_effectif.strftime("%d/%m/%Y")}).'),
-                    link=f'/sav/tickets/{ticket.pk}',
-                    company=ticket.company,
-                )
-                ticket.sla_pre_alert_notifiee = True
-                ticket.save(update_fields=['sla_pre_alert_notifiee'])
-                pre_alerts += 1
-
-        # ── NTSRV12 — Paliers d'escalade configurables (remplacent le
-        # binaire XSAV6 POUR LA SOCIÉTÉ QUI EN CONFIGURE). Aucun palier =
-        # aucun changement : on retombe sur le bloc XSAV6 ci-dessous.
-        paliers = paliers_pour(ticket.company_id)
-        if paliers:
-            escalations += _notifier_paliers(ticket, paliers, due_effectif,
-                                             today)
-            continue
-
-        # ── Escalade au tier responsable/direction à la violation ──
-        if (sla.escalade_activee
-                and not ticket.sla_escalade_notifiee
-                and due_effectif is not None
-                and today > due_effectif):
-            recipients = resolve_recipients(
-                ticket.company, EventType.SAV_TICKET_BREACHING)
-            for user in recipients:
-                notify(
-                    user=user,
-                    event_type=EventType.SAV_TICKET_BREACHING,
-                    title=f'Escalade SLA — {ticket.reference}',
-                    body=(f'Le ticket {ticket.reference} a dépassé son '
-                          f'échéance SLA ({due_effectif.strftime("%d/%m/%Y")}) '
-                          'et requiert une attention immédiate.'),
-                    link=f'/sav/tickets/{ticket.pk}',
-                    company=ticket.company,
-                )
-            ticket.sla_escalade_notifiee = True
-            ticket.save(update_fields=['sla_escalade_notifiee'])
-            escalations += 1
-
-    return {'pre_alerts': pre_alerts, 'escalations': escalations}
-
-
-# ── XSAV24 — Auto-clôture des tickets résolus dormants ───────────────────────
 
 def scan_auto_cloture_tickets_resolus():
-    """XSAV24 — Clôture automatiquement les tickets RÉSOLU sans activité
-    depuis ``SavSlaSettings.auto_cloture_jours`` jours (0 = OFF, comportement
-    actuel inchangé — AUCUN ticket n'est jamais touché tant qu'une société ne
-    fixe pas explicitement une valeur > 0).
-
-    « Sans activité » = aucun ``TicketActivity`` (note ou changement de champ
-    suivi, y compris le passage à RÉSOLU lui-même) depuis N jours — donc un
-    ticket tout juste résolu, ou avec un échange récent, n'est jamais fermé
-    par erreur. IDEMPOTENT : un ticket déjà CLÔTURÉ n'est plus repris par le
-    sweep suivant (il ne filtre que sur ``statut=RESOLU``).
-
-    Notification client optionnelle réutilisée via XSAV4
-    (``notify_ticket_transition``, best-effort, n'envoie rien sans le toggle
-    société ``notifications_client_sav`` — indépendant du toggle
-    ``auto_cloture_jours``)."""
-    from .models import TicketActivity
-
-    today = timezone.localdate()
-    cloture = 0
-
-    tickets = list(Ticket.objects
-                   .filter(statut=Ticket.Statut.RESOLU, annule=False)
-                   .select_related('company'))
-    # AUD521 — réglages chargés UNE fois par société.
-    reglage_pour = _reglages_sla_par_ticket(tickets)
-
-    for ticket in tickets:
-        sla = reglage_pour(ticket)
-        if not sla.auto_cloture_jours:
-            continue
-
-        derniere_activite = (
-            TicketActivity.objects.filter(ticket=ticket)
-            .order_by('-created_at').values_list('created_at', flat=True)
-            .first())
-        reference_dt = derniere_activite or ticket.date_modification
-        if reference_dt is None:
-            continue
-        jours_ecoules = (today - timezone.localtime(reference_dt).date()).days
-        if jours_ecoules < sla.auto_cloture_jours:
-            continue
-
-        old = Ticket.objects.get(pk=ticket.pk)
-        ticket.statut = Ticket.Statut.CLOTURE
-        ticket.save(update_fields=['statut'])
-        activity.log_changes(old, ticket, None)
-        activity.log_note(
-            ticket, None,
-            f'Clôturé automatiquement après {sla.auto_cloture_jours} jours '
-            "sans activité.")
-        cloture += 1
-
-        try:
-            from .notifications_client import notify_ticket_transition
-            notify_ticket_transition(ticket, Ticket.Statut.CLOTURE)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
-
-    return cloture
+    """XSAV24 — délégué de ``tasks.scan_auto_cloture_tickets_resolus``."""
+    from .tasks import scan_auto_cloture_tickets_resolus as _scan
+    return _scan()

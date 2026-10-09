@@ -29,7 +29,7 @@ import io
 import statistics
 from decimal import Decimal, ROUND_HALF_UP
 
-from . import allocation
+from . import allocation, metrics
 
 # PUB88 — un bras est un « gagnant confirmé » quand sa probabilité d'être le
 # meilleur atteint le seuil de maturité de phase (dd-science-core §4 : P ≥ 80 %).
@@ -65,7 +65,9 @@ def variant_table(company, *, qualifying_stage=None):
     variants = []
     for v in data['variants']:
         spend = Decimal(v['spend'])
-        cost_per_lead = _q2(spend / v['leads']) if v['leads'] else None
+        # AACQ26 — leads ERP attribués à la variante (source nommée).
+        cpl_calc = metrics.cout_par_lead(spend, v['leads'], source='crm')
+        cost_per_lead = _q2(cpl_calc.valeur)
         variants.append({
             'meta_id': v['meta_id'],
             'name': v['name'],
@@ -74,6 +76,7 @@ def variant_table(company, *, qualifying_stage=None):
             'qualified': v['qualified'],
             'signed': v['signed'],
             'cost_per_lead': cost_per_lead,
+            'cost_per_lead_source': cpl_calc.source_fr,
             'cost_per_qualified_lead': v['cost_per_qualified_lead'],
             'cost_per_signature': v['cost_per_signature'],
             'lead_ids': v['lead_ids'],
@@ -604,8 +607,8 @@ def city_heatmap(company, *, date_start=None, date_end=None):
             'region_meta': matched_region,
             'spend': _q2(spend) if spend is not None else None,
             'leads': leads,
-            'cpl': (_q2(spend / leads)
-                    if spend is not None and leads else None),
+            'cpl': _q2(metrics.cout_par_lead(
+                spend, leads, source='crm').valeur),
             'signed': signed,
             'cout_par_signature': (_q2(spend / signed)
                                    if spend is not None and signed else None),

@@ -195,6 +195,10 @@ def variables_enregistrement(instance, company):
     entreprise = _nom_entreprise(company)
     if entreprise:
         valeurs['entreprise'] = entreprise
+        # APAR50 — {marque} des gabarits WhatsApp livrés (devis_unique,
+        # devis_multi_entete, facture, relance) : même source que
+        # ``ventes.utils.whatsapp.marque_societe`` (profil, sinon Company.nom).
+        valeurs['marque'] = entreprise
     if instance is None:
         return valeurs
     reference = getattr(instance, 'reference', None)
@@ -381,11 +385,24 @@ def _creer_tache(instance, company, user, resume, note):
         due_date=timezone.localdate(), created_by=user)
 
 
+def _refus_opposition(instance, canal):
+    """ACRM17 — ``(SKIPPED, motif)`` si la personne derrière ``instance``
+    a demandé à ne plus être contactée (``crm.selectors.peut_contacter``),
+    sinon ``None``. Aucun envoi, aucun lien préparé."""
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter
+    if peut_contacter(instance, canal):
+        return None
+    return Status.SKIPPED, MOTIF_CONTACT_REFUSE
+
+
 def _send_whatsapp(rule, instance, company, context, user):
     # WhatsApp est un canal MANUEL (lien wa.me) — aucun envoi automatique
     # n'existe dans l'app. APAR25 — le lien n'était que journalisé (SUCCESS
     # sans effet observable) : il est désormais CONSERVÉ comme tâche
     # « Envoyer ce WhatsApp » sur la fiche, que l'équipe ouvre et envoie.
+    refus = _refus_opposition(instance, 'whatsapp')
+    if refus is not None:
+        return refus
     motif, phone, url, body = preparer_whatsapp(
         rule, instance, company, context)
     if motif:
@@ -403,6 +420,9 @@ def _send_whatsapp(rule, instance, company, context, user):
 
 
 def _send_email(rule, instance, company, context, user):
+    refus = _refus_opposition(instance, 'email')
+    if refus is not None:
+        return refus
     to = _resolve_email(instance)
     if not to:
         return Status.NOOP, 'Aucune adresse email : envoi ignoré.'
@@ -512,6 +532,14 @@ def _assign_record(rule, instance, company, context, user):
             pk=user_id, company=company).first()
         if target is None:
             return Status.NOOP, 'Utilisateur cible inconnu : ignoré.'
+        if _est_lead(instance):
+            # APAR51 — un lead s'écrit par le service propriétaire (chatter
+            # old→new, même discipline que le geste manuel).
+            # Le journal du run garde le message d'assignation historique.
+            statut, message = _ecrire_lead(instance, field, target, user)
+            if statut == Status.SUCCESS:
+                message = f'Assigné à {target} via « {field} ».'
+            return statut, message
         setattr(instance, f'{field}_id', target.pk)
         instance.save(update_fields=[f'{field}_id'])
         return Status.SUCCESS, f'Assigné à {target} via « {field} ».'
@@ -538,6 +566,9 @@ def _set_field(rule, instance, company, context, user):
             'assignables (machine à états / champ financier / non déclaré) : '
             'refusé.')
     value = cfg.get('value')
+    if _est_lead(instance):
+        # APAR51 — validation, refus CAD49 et chatter : le service crm.
+        return _ecrire_lead(instance, field, value, user)
     ancienne = getattr(instance, field, None)
     try:
         setattr(instance, field, value)
@@ -624,6 +655,18 @@ def _server_action(rule, instance, company, context, user):
     if not updates:
         return Status.NOOP, (
             'Aucune expression valide/autorisée : action ignorée.')
+    if _est_lead(instance):
+        # APAR51 — chaque champ calculé passe par le service propriétaire.
+        resultats = [_ecrire_lead(instance, f, v, user)
+                     for f, v in sorted(updates.items())]
+        echecs = [m for st, m in resultats if st == Status.FAILED]
+        refus = [m for st, m in resultats if st == Status.SKIPPED]
+        if echecs:
+            return Status.FAILED, ' ; '.join(echecs)
+        if refus and len(refus) == len(resultats):
+            return Status.SKIPPED, ' ; '.join(refus)
+        return Status.SUCCESS, (
+            f"Champ(s) calculé(s) : {', '.join(sorted(updates))}.")
     try:
         for field, value in updates.items():
             setattr(instance, field, value)
@@ -647,26 +690,43 @@ def _create_sav_ticket(rule, instance, company, context, user):
     if manquantes:
         return Status.SKIPPED, motif_variables(
             manquantes, 'ticket SAV non créé')
+    from apps.sav.models import Ticket
+
+    # APAR51 — type et priorité VALIDÉS (jamais un « xx » en base), puis le
+    # ticket naît par les services SAV : référence sans collision et SLA
+    # posé (``poser_sla_due_at``), exactement comme le chemin manuel.
+    type_ticket = cfg.get('type') or Ticket.Type.PREVENTIF
+    priorite = cfg.get('priorite') or Ticket.Priorite.NORMALE
+    if type_ticket not in Ticket.Type.values:
+        return Status.FAILED, (
+            f'Ticket SAV non créé : type hors choix ({type_ticket!r}).')
+    if priorite not in Ticket.Priorite.values:
+        return Status.FAILED, (
+            f'Ticket SAV non créé : priorité hors choix ({priorite!r}).')
     try:
-        from apps.sav.models import Ticket
-        from apps.ventes.utils.references import create_with_reference
+        from apps.sav.services import (
+            create_corrective_ticket, creer_ticket_preventif,
+            poser_sla_due_at)
 
         installation = instance if _model_name(instance) == 'installation' \
             else None
-
-        def _save(ref):
-            return Ticket.objects.create(
-                company=company,
-                reference=ref,
-                client=client,
-                installation=installation,
-                type=cfg.get('type', Ticket.Type.PREVENTIF),
-                priorite=cfg.get('priorite', Ticket.Priorite.NORMALE),
-                description=description,
-                created_by=user,
-            )
-
-        ticket = create_with_reference(Ticket, 'SAV', company, _save)
+        if type_ticket == Ticket.Type.PREVENTIF:
+            ticket = creer_ticket_preventif(
+                company=company, client=client, installation=installation,
+                description=description, created_by=user, priorite=priorite)
+        else:
+            ticket = create_corrective_ticket(
+                company=company, client=client, installation=installation,
+                description=description, created_by=user)
+            if ticket.type != type_ticket or ticket.priorite != priorite:
+                # Le service correctif pose sa priorité par défaut : la règle
+                # en impose une autre — l'échéance SLA est recalculée sur
+                # elle (même producteur, ``poser_sla_due_at``).
+                ticket.type = type_ticket
+                ticket.priorite = priorite
+                ticket.sla_due_at = None
+                ticket.save(update_fields=['type', 'priorite', 'sla_due_at'])
+                poser_sla_due_at(ticket)
         return Status.SUCCESS, f'Ticket SAV {ticket.reference} créé.'
     except Exception as exc:
         return Status.FAILED, f'Ticket SAV non créé : {exc}'
@@ -815,6 +875,28 @@ def _for_each(rule, instance, company, context, user):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
+
+def _est_lead(instance):
+    """APAR51 — l'instance est-elle un ``crm.Lead`` ?"""
+    return _model_key(instance) == 'crm.lead'
+
+
+def _ecrire_lead(lead, champ, valeur, user):
+    """APAR51 — écrit un champ de lead par ``crm.services.
+    appliquer_champ_automatique`` et traduit son issue en statut de run."""
+    from apps.crm.services import (
+        CHAMP_AUTO_CADENCE, CHAMP_AUTO_INCHANGE, CHAMP_AUTO_INVALIDE,
+        appliquer_champ_automatique)
+
+    issue, motif = appliquer_champ_automatique(lead, champ, valeur, user)
+    if issue == CHAMP_AUTO_INVALIDE:
+        return Status.FAILED, motif
+    if issue == CHAMP_AUTO_CADENCE:
+        return Status.SKIPPED, f'Refusé (CAD49) : {motif}.'
+    if issue == CHAMP_AUTO_INCHANGE:
+        return Status.NOOP, f'Champ « {champ} » déjà à cette valeur.'
+    return Status.SUCCESS, f'Champ « {champ} » mis à jour.'
+
 
 def _model_name(instance):
     meta = getattr(instance, '_meta', None)

@@ -46,6 +46,15 @@ ETUDE_INDUSTRIEL = {
 }
 
 
+def _sans_gels_internes(clauses):
+    """APDF20 — les entrées de ``clauses_appliquees`` hors gels internes
+    (``doc_texts_geles`` est désormais posé à chaque gel, défauts compris)."""
+    from apps.ventes.domain.envoi import TYPE_DOC_TEXTS_GELES
+    return [c for c in (clauses or [])
+            if not (isinstance(c, dict)
+                    and c.get('type') == TYPE_DOC_TEXTS_GELES)]
+
+
 def _norm(texte):
     return re.sub(r'\s+', ' ', texte).strip().lower()
 
@@ -83,19 +92,23 @@ class GelTests(_Base):
             mark_devis_sent(devis=devis, user=self.user)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
-        self.assertEqual(devis.clauses_appliquees, [CLAUSE])
+        self.assertEqual(_sans_gels_internes(devis.clauses_appliquees),
+                         [CLAUSE])
 
     def test_sans_catalogue_rien_n_est_ecrit_ni_efface(self):
-        """cpq parqué : la source réelle rend None, le snapshot reste."""
+        """cpq parqué : la source réelle rend None, le snapshot reste.
+        APDF20 — seul le gel des textes contractuels s'ajoute (une fois)."""
         from apps.ventes.domain.envoi import (
             clauses_applicables_devis, figer_clauses_devis)
         devis = self._devis()
         self.assertIsNone(clauses_applicables_devis(devis))
         devis.clauses_appliquees = [CLAUSE]
         devis.save(update_fields=['clauses_appliquees'])
+        figer_clauses_devis(devis)
         self.assertFalse(figer_clauses_devis(devis))
         devis.refresh_from_db()
-        self.assertEqual(devis.clauses_appliquees, [CLAUSE])
+        self.assertEqual(_sans_gels_internes(devis.clauses_appliquees),
+                         [CLAUSE])
 
     def test_envoi_gele_les_cgv_de_la_societe_sans_patch(self):
         """ERR-QJR668 — SANS patch de ``clauses_applicables_devis`` : les CGV
@@ -115,7 +128,7 @@ class GelTests(_Base):
         # {acompte} conservé) dans UNE entrée dédiée, pas en clause
         # particulière.
         self.assertEqual(
-            devis.clauses_appliquees,
+            _sans_gels_internes(devis.clauses_appliquees),
             [{'type': 'cgv_gelees', 'bullets': [
                 'QJR668 livraison sous trente jours ouvrés',
                 'Acompte {acompte} % à la commande']}])
@@ -147,7 +160,8 @@ class GelTests(_Base):
         self.assertEqual(r.status_code, 200, r.content)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
-        self.assertEqual(devis.clauses_appliquees, [CLAUSE, CLAUSE_2])
+        self.assertEqual(_sans_gels_internes(devis.clauses_appliquees),
+                         [CLAUSE, CLAUSE_2])
 
     def test_un_brouillon_modifie_ne_gele_rien(self):
         devis = self._devis()

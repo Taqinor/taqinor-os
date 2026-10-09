@@ -1,68 +1,73 @@
-"""APRF6 (C-APRF-003) — ``electrical_design`` n'est plus servi par la
-représentation LISTE des devis (``GET /ventes/devis/``) ; le DÉTAIL
-(``GET /ventes/devis/<id>/``) le sert identique.
+"""APRF6 (C-APRF-003) — la conception électrique (``electrical_design``) est
+absente de la représentation LISTE des devis (``GET /ventes/devis/``) et
+servie identique, octet pour octet, au détail (``GET /ventes/devis/<id>/``).
 
-Réponses HTTP réelles. Test-du-test : remettre le champ en liste ⇒
-``test_liste_sans_conception`` échoue ; le retirer aussi du détail ⇒
-``test_detail_avec_conception`` échoue.
+Test-du-test : remettre le champ en liste ⇒ ``test_liste_sans_conception``
+échoue ; le retirer aussi du détail ⇒ ``test_detail_avec_conception``
+échoue. Réponses HTTP réelles, aucun mock.
 """
 import json
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from authentication.models import Company
 from apps.crm.models import Client
 from apps.ventes.models import Devis
-from authentication.models import Company
 
 User = get_user_model()
-
 URL = '/api/django/ventes/devis/'
+
 CONCEPTION = {
-    'strings': [{'id': i, 'panneaux': 12, 'voc_v': 498.5, 'isc_a': 13.9}
-                for i in range(40)],
-    'protections': {'dc': 'fusible 15 A', 'ac': 'disjoncteur 32 A'},
-    'cables': {'dc_mm2': 6, 'ac_mm2': 10},
+    'version': 1,
+    'chaines': [{'mppt': 1, 'panneaux': 9, 'voc_v': 412.5}],
+    'protections': {'dc': 'Fusible 15 A', 'ac': 'Disjoncteur 32 A'},
+    'cables': [{'troncon': 'DC', 'section_mm2': 6, 'longueur_m': 25}],
 }
 
 
 class ListeSansConceptionTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.company = Company.objects.create(nom='APRF6', slug='aprf6-co')
-        cls.user = User.objects.create_user(
-            username='aprf6_admin', password='x', role_legacy='admin',
-            company=cls.company)
-        client = Client.objects.create(
-            company=cls.company, nom='Client APRF6',
-            email='aprf6@example.com')
-        cls.devis = Devis.objects.create(
-            company=cls.company, reference='DEV-APRF6-1', client=client,
-            created_by=cls.user, electrical_design=CONCEPTION,
-            electrical_design_hash='h-aprf6')
-
     def setUp(self):
+        self.company = Company.objects.create(nom='APRF6 SARL')
+        self.user = User.objects.create_user(
+            username='aprf6_admin', password='x', role_legacy='admin',
+            company=self.company)
         self.api = APIClient()
-        self.api.force_authenticate(self.user)
+        self.api.force_authenticate(user=self.user)
+        client = Client.objects.create(
+            company=self.company, nom='Client', prenom='APRF6')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-APRF6-0001', client=client,
+            created_by=self.user, taux_tva=Decimal('20'),
+            electrical_design=CONCEPTION,
+            roof_layout={'result': {'panels': 9}})
 
-    def test_liste_sans_conception(self):
+    def _ligne_liste(self):
         resp = self.api.get(URL)
         self.assertEqual(resp.status_code, 200)
-        corps = resp.json()
-        lignes = corps.get('results', corps) if isinstance(corps, dict) \
-            else corps
-        ligne = next(x for x in lignes if x['id'] == self.devis.pk)
+        data = resp.data
+        lignes = data.get('results', data) if isinstance(data, dict) else data
+        return next(r for r in lignes if r['id'] == self.devis.pk)
+
+    def test_liste_sans_conception(self):
+        ligne = self._ligne_liste()
         self.assertNotIn('electrical_design', ligne)
-        # roof_layout reste en liste (lu par DevisRow.jsx).
+        # Jumeaux : le calepinage reste en liste (lu par DevisRow.jsx).
         self.assertIn('roof_layout', ligne)
-        self.assertNotIn('voc_v', json.dumps(ligne))
 
     def test_detail_avec_conception(self):
         resp = self.api.get('%s%s/' % (URL, self.devis.pk))
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()['electrical_design'], CONCEPTION)
-        # CLAUSE PERSISTANCE — après la liste, la conception est intacte.
-        self.api.get(URL)
+        self.assertEqual(
+            json.dumps(resp.data['electrical_design'], sort_keys=True),
+            json.dumps(CONCEPTION, sort_keys=True))
+
+    def test_liste_puis_detail_conception_intacte(self):
+        # CLAUSE PERSISTANCE — ouvrir le devis après la liste.
+        self._ligne_liste()
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.electrical_design, CONCEPTION)
+        resp = self.api.get('%s%s/' % (URL, self.devis.pk))
+        self.assertEqual(resp.data['electrical_design'], CONCEPTION)

@@ -103,6 +103,8 @@ class ZSAV9TicketFollowerTest(TestCase):
         sla.suivre_tous_tickets_sav.add(self.follower_user)
         r = self.api.post('/api/django/sav/tickets/', {
             'client': self.client_obj.id, 'installation': self.inst.id,
+            # ASAV23 — distinct du ticket du setUp (sinon doublon 409).
+            'description': 'Nouvelle demande ZSAV9',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         tid = r.data['id']
@@ -113,6 +115,8 @@ class ZSAV9TicketFollowerTest(TestCase):
     def test_liste_vide_pas_abonnement_par_defaut(self):
         r = self.api.post('/api/django/sav/tickets/', {
             'client': self.client_obj.id, 'installation': self.inst.id,
+            # ASAV23 — distinct du ticket du setUp (sinon doublon 409).
+            'description': 'Nouvelle demande ZSAV9',
         }, format='json')
         tid = r.data['id']
         self.assertFalse(

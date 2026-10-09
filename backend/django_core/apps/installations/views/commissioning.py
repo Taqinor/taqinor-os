@@ -86,7 +86,9 @@ class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
             return
         pk = (serializer.instance.pk
               if serializer.instance is not None else None)
-        transient = CommissioningRecord(pk=pk, instrument_id=instrument_id)
+        transient = CommissioningRecord(
+            pk=pk, instrument_id=instrument_id,
+            company=serializer.context['request'].user.company)  # ACHT44
         if transient.instrument_etalonnage_expire:
             raise ValidationError({
                 'instrument_id': (

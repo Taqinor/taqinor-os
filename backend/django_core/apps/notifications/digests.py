@@ -88,8 +88,10 @@ def _count_chantiers_a_planifier(company):
 def _count_devis_en_attente(company):
     """Devis envoyés en attente de réponse du client (ni acceptés ni refusés)."""
     from apps.ventes.models import Devis
-    return Devis.objects.filter(
-        company=company, statut=Devis.Statut.ENVOYE).count()
+    from apps.ventes.selectors import devis_en_jeu
+    # ADEV45 — une V1 remplacée par sa révision ne compte pas une 2e fois.
+    return devis_en_jeu(Devis.objects.filter(
+        company=company, statut=Devis.Statut.ENVOYE)).count()
 
 
 def _count_paiements_en_retard(company):

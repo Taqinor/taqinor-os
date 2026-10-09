@@ -1,0 +1,33 @@
+{
+  "endpoint": "GET /api/django/public/sav/ticket/<str:token>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Clés servies par ASAV30 (vague 10) ; la vue n'est pas lisible statiquement par check_api_shapes, donc la forme reste déclarée partielle tant qu'elle ne l'est pas.",
+  "pourquoi": "ASAV1 (Groupe ASAV, audit sav L2 du 08/10/2026) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui `ticket_public_status` (apps/sav/public_views.py) sert {reference, statut, date_modification, statut_display, csat_detaille_actif} : un ticket ANNULE (drapeau `annule`, jamais une valeur de `statut`) s'affiche « Nouveau » au client sur `/suivi/:token` (sonde SPUB-3). CLAUSE CLIENT : ce fichier fixe ce que voit le client. Cles AJOUTEES : `annule` (bool) ; `fusionne_dans_reference` = reference du ticket maitre quand le ticket a ete fusionne comme doublon, sinon `null` ; `statut_display` vaut « Annulé » quand `annule` est vrai. Aucun champ interne (cout, chatter, client, technicien) — jamais. Consommateurs : ASAV30 (back), ASAV31 (TicketSuiviPage). `exemple` = ticket vivant ; `exemple_annule` ; `exemple_fusionne`. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "reference": "SAV-2026-10-0042",
+    "statut": "en_cours",
+    "date_modification": "2026-10-08T09:14:00Z",
+    "statut_display": "En cours",
+    "csat_detaille_actif": false,
+    "annule": false,
+    "fusionne_dans_reference": null
+  },
+  "exemple_annule": {
+    "reference": "SAV-2026-10-0044",
+    "statut": "nouveau",
+    "date_modification": "2026-10-08T10:02:00Z",
+    "statut_display": "Annulé",
+    "csat_detaille_actif": false,
+    "annule": true,
+    "fusionne_dans_reference": null
+  },
+  "exemple_fusionne": {
+    "reference": "SAV-2026-10-0045",
+    "statut": "nouveau",
+    "date_modification": "2026-10-08T10:05:00Z",
+    "statut_display": "Annulé",
+    "csat_detaille_actif": false,
+    "annule": true,
+    "fusionne_dans_reference": "SAV-2026-10-0042"
+  }
+}

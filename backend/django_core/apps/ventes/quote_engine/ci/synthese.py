@@ -123,14 +123,17 @@ MOTIF_SANS_ETUDE = (
 MOTIF_TAUX_ABSENTS = (
     "bilan du moteur C&I sans taux : autoconsommation et couverture non "
     "servies")
+#: AMOT62 (C-AMOT-052) — écart toléré entre le kWc SERVI et celui de
+#: l'étude C&I (``taille.retenue_kwc``) : la garde 2 % du moteur horaire
+#: (``pricing._HORAIRE_TOLERANCE_KWC``). Au-delà, production et taux de
+#: l'étude décrivent une AUTRE installation : ils ne sont pas servis.
+TOLERANCE_KWC_ETUDE = 0.02
+MOTIF_ETUDE_AUTRE_PUISSANCE = (
+    "étude C&I calculée pour une autre puissance que l'option servie : "
+    "production et taux non servis")
 MOTIF_PRODUCTION_ABSENTE = (
     "production non servie : seule la production du moteur C&I est imprimée, "
     "jamais une production par ville à côté de taux d'un autre modèle")
-MOTIF_ETUDE_AUTRE_OPTION = (
-    "étude du moteur C&I calculée pour une autre puissance que l'option "
-    "servie (écart > 2 %) : production et taux non servis")
-#: AMOT62 — écart relatif toléré entre le kWc servi et celui de l'étude.
-TOLERANCE_KWC_ETUDE = 0.02
 MOTIF_BASELINE_ABSENTE = (
     "consommation de référence non résolue par le moteur C&I")
 MOTIF_ETUDE_A_FAIRE = (
@@ -283,6 +286,16 @@ def _option_servie(data):
     return "sans_batterie"
 
 
+def _etude_decrit_kwc(etude_ci, kwc):
+    """AMOT62 — l'étude C&I décrit-elle ce kWc (à 2 % près) ? Vrai quand
+    l'une des deux puissances est inconnue (rien à comparer)."""
+    kwc_etude = _num(_dict(etude_ci.get("taille")).get("retenue_kwc"))
+    if kwc is None or kwc_etude is None or kwc_etude <= 0:
+        return True
+    return abs(float(kwc) - float(kwc_etude)) / float(kwc_etude) \
+        <= TOLERANCE_KWC_ETUDE
+
+
 def _systeme(data, etude_ci, option):
     suffixe = "avec" if option == "avec_batterie" else "sans"
     kwc = _num(data.get(f"puissance_kwc_{suffixe}"))
@@ -291,24 +304,16 @@ def _systeme(data, etude_ci, option):
     nb = _num(data.get(f"nb_panneaux_{suffixe}"))
     if nb is None:
         nb = _num(data.get("nb_panneaux"))
+    # AMOT62 — la production de l'étude n'est servie que si l'étude décrit
+    # le kWc SERVI (sinon : ``None`` + motif publié par ``synthese_ci``).
+    production = (_num(_dict(etude_ci.get("bilan")).get("production_kwh"))
+                  if _etude_decrit_kwc(etude_ci, kwc) else None)
     return {
         "kwc": kwc,
         "nb_panneaux": nb,
         # UNE production : celle du moteur C&I, jamais ``prod_kwh``.
-        "production_kwh_an": _num(
-            _dict(etude_ci.get("bilan")).get("production_kwh")),
+        "production_kwh_an": production,
     }
-
-
-def _etude_decrit_autre_kwc(kwc_servi, etude_ci):
-    """AMOT62 — vrai si l'étude C&I porte une taille retenue dont le kWc
-    s'écarte de plus de 2 % du kWc servi (production et taux d'une AUTRE
-    installation que celle imprimée). Aucune donnée ⇒ faux (rien à
-    comparer : le comportement d'avant)."""
-    kwc_etude = _num(_dict(_dict(etude_ci).get("taille")).get("retenue_kwc"))
-    if not kwc_servi or not kwc_etude:
-        return False
-    return abs(kwc_servi - kwc_etude) / kwc_etude > TOLERANCE_KWC_ETUDE
 
 
 def _statut_et_a_confirmer(etude_ci, lead):
@@ -540,18 +545,11 @@ def synthese_ci(data):
         "provenance": _bloc_provenance(entrees),
         "systeme": _systeme(data, etude_ci, option),
     }
-    # AMOT62 — UNE option : une étude calculée pour un autre kWc que celui
-    # servi (> 2 %) ne prête ni sa production ni ses taux (règles corrigées).
-    etude_autre_option = (not data.get("regles_calcul_origine")
-                          and _etude_decrit_autre_kwc(
-                              synthese["systeme"]["kwc"], etude_ci))
-    if etude_autre_option:
-        synthese["systeme"]["production_kwh_an"] = None
+    etude_coherente = _etude_decrit_kwc(etude_ci, synthese["systeme"]["kwc"])
+    if synthese["systeme"]["production_kwh_an"] is None:
         omissions.append({"bloc": "systeme.production_kwh_an",
-                          "motif": MOTIF_ETUDE_AUTRE_OPTION})
-    elif synthese["systeme"]["production_kwh_an"] is None:
-        omissions.append({"bloc": "systeme.production_kwh_an",
-                          "motif": MOTIF_PRODUCTION_ABSENTE})
+                          "motif": (MOTIF_PRODUCTION_ABSENTE if etude_coherente
+                                    else MOTIF_ETUDE_AUTRE_PUISSANCE)})
 
     baseline, motif = _bloc_baseline(entrees, etude_ci)
     if baseline is not None:
@@ -561,9 +559,10 @@ def synthese_ci(data):
 
     if not etude_ci:
         omissions.append({"bloc": "energie", "motif": MOTIF_SANS_ETUDE})
-    elif etude_autre_option:
+    elif not etude_coherente:
+        # AMOT62 — taux d'une autre installation : non servis, motif publié.
         omissions.append({"bloc": "energie",
-                          "motif": MOTIF_ETUDE_AUTRE_OPTION})
+                          "motif": MOTIF_ETUDE_AUTRE_PUISSANCE})
     else:
         energie, motif = _bloc_energie(etude_ci, langue)
         if energie is not None:

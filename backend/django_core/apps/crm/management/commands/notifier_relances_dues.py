@@ -161,8 +161,11 @@ def _ligne_dossier(etape, aujourdhui):
     lead = getattr(etape, 'lead', None)
     nom = (getattr(lead, 'nom', '') or '').strip() or f'Lead #{etape.lead_id}'
     quoi = (etape.libelle or '').strip() or etape.get_canal_display()
-    retard = (' — en retard' if etape.due_date and etape.due_date < aujourdhui
-              else '')
+    # ALEA32 — LA définition unique de « en retard » (jours ouvrés de la
+    # société + absences du responsable), celle du cockpit.
+    from apps.crm.controle_suivi import etape_en_retard
+    retard = (' — en retard'
+              if etape_en_retard(etape, aujourd_hui=aujourdhui) else '')
     return f'{nom} : {quoi}{retard}'
 
 

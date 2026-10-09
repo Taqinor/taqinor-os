@@ -896,6 +896,13 @@ app.conf.beat_schedule = {
         'task': 'parametres.notifier_traductions_manquantes_hebdo',
         'schedule': crontab(day_of_week=1, hour=7, minute=35),
     },
+    # ASAV33 — auto-clôture des tickets SAV résolus dormants (XSAV24,
+    # apps/sav/tasks.py) : bâtie mais jamais planifiée jusqu'ici. Quotidien,
+    # heure creuse ; OFF par société tant que auto_cloture_jours vaut 0.
+    'sav-auto-cloture': {
+        'task': 'sav.scan_auto_cloture_quotidien',
+        'schedule': crontab(hour=6, minute=50),
+    },
     # APAR34 — rétention « armée » des journaux d'audit appliquée sans commande
     # manuelle : chaque nuit, heure creuse, l'UNIQUE purgeur
     # (apps/parametres/retention.purge_all_companies, plancher légal 365 j)
@@ -903,6 +910,12 @@ app.conf.beat_schedule = {
     'parametres-purger-audit': {
         'task': 'parametres.purger_audit',
         'schedule': crontab(hour=3, minute=40),
+    },
+    # ACHT75 — échéances de calibration d'outillage à 30 jours ou moins
+    # (sociétés actives, une notification par outil et par échéance).
+    'outillage-calibrations-a-echeance': {
+        'task': 'outillage.calibrations_a_echeance',
+        'schedule': crontab(hour=7, minute=20),
     },
 }
 

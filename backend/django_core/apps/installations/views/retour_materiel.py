@@ -28,7 +28,7 @@ class RetourMaterielViewSet(CompanyScopedModelViewSet):
     Lecture tout rôle, écriture responsable/admin. Filtrable par
     `installation`, `statut`."""
     queryset = RetourMateriel.objects.select_related(
-        'installation', 'created_by').prefetch_related('lignes').all()
+        'installation', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = RetourMaterielSerializer
 
     def get_permissions(self):

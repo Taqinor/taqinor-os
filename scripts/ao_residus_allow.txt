@@ -1,0 +1,8 @@
+# Liste blanche de la règle f de check_parked_apps.py (ACAL337).
+# Fichiers de apps/calepinage autorisés à porter l'IDENTIFIANT `appel_offre`
+# (motifs fnmatch relatifs à la racine du dépôt). Les symboles de pont retirés
+# (lier_appel_offre, calepinage_de_l_affaire, ...) ne sont JAMAIS tolérés.
+# Cette liste ne peut que RÉTRÉCIR. La colonne `appel_offre_id` (autre
+# identifiant) et les migrations ne passent pas par cette liste.
+backend/django_core/apps/calepinage/models.py  # colonne historique (contrat de la table)
+backend/django_core/apps/calepinage/publicapi/*  # contrat externe publicapi

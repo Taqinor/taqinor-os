@@ -1,0 +1,22 @@
+# AMOT75 - PASSIF GELE : symboles publics du moteur de devis (quote_engine/constants*.py,
+# bareme.py) sans AUCUN lecteur de production (jumeaux Python restes apres la suppression du
+# miroir JS). Format `fichier::symbole`. NE PEUT QUE DECROITRE : une cle dont le symbole est
+# supprime ou desormais lu FAIT ECHOUER la garde (retirez la ligne). Tache qui les retire :
+# AMOT47 (code mort du moteur tarifaire). TSS/TURD/TURT sont DOCUMENTAIRES (jamais soustraits,
+# decision ANRE 02/25 art. 8) : conserves tant que le fondateur veut les afficher.
+backend/django_core/apps/ventes/quote_engine/constants.py::BLUE_LIGHT
+backend/django_core/apps/ventes/quote_engine/constants.py::BLUE_MAIN
+backend/django_core/apps/ventes/quote_engine/constants.py::EFFICIENCY
+backend/django_core/apps/ventes/quote_engine/constants.py::GREY_NEUTRAL
+backend/django_core/apps/ventes/quote_engine/constants.py::KG_CO2_PAR_ARBRE_AN
+backend/django_core/apps/ventes/quote_engine/constants.py::KWH_PRICE
+backend/django_core/apps/ventes/quote_engine/constants.py::ORANGE_ACCENT
+backend/django_core/apps/ventes/quote_engine/constants.py::PRODUCTIBLE_DEFAUT
+backend/django_core/apps/ventes/quote_engine/constants.py::TEXT_DARK
+backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TSS_C_KWH
+backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURD_C_KWH
+backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURT_C_KWH
+backend/django_core/apps/ventes/quote_engine/constants_82_21.py::injection_annuelle
+backend/django_core/apps/ventes/quote_engine/constants_82_21.py::tarif_mt_moyen
+backend/django_core/apps/ventes/quote_engine/bareme.py::DIVERGENCES_PRICING
+backend/django_core/apps/ventes/quote_engine/bareme.py::TIMBRE_ESPECES_PCT

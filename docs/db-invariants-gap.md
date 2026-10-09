@@ -19,7 +19,7 @@ backstop.
 | `LigneAvoir` | facturation | — | prix_unitaire, quantite, remise | (all constrained) |
 | `MouvementStock` | stock | — | — | quantite >= 0 |
 | `Paiement` | facturation | — | — | frais_rejet >= 0; escompte_montant >= 0 |
-| `LigneEcriture` | compta | credit, debit | credit, debit | (all constrained) |
+| `LigneEcriture` | compta | — | — | debit >= 0; credit >= 0; debit exclusif du credit |
 
 Legend: a field in *Python invariant fields* but absent from
 *CheckConstraint fields* is a Python-only invariant (bypassable).

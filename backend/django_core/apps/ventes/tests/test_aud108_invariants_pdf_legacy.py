@@ -251,10 +251,14 @@ class TestChaineSoldesReleveClient(_BaseDocumentsLegacy):
         paye = next(v for lib, v in valeurs.items() if 'payé' in lib)
         avoirs = next(v for lib, v in valeurs.items() if 'avoirs' in lib)
         du = next(v for lib, v in valeurs.items() if 'dû' in lib)
+        # AFAC31 — le relevé affiche les six termes SIGNÉS (« −Payé »,
+        # « +Notes de débit »…) : Solde dû = somme des termes, au centime.
+        termes = [v for lib, v in valeurs.items() if 'dû' not in lib]
+        self.assertEqual(len(termes), 6, valeurs)
         self.assertEqual(facture, self.GOLDEN_TTC)
-        self.assertEqual(paye, Decimal('10000.00'))
+        self.assertEqual(paye, Decimal('-10000.00'))
         self.assertEqual(avoirs, Decimal('0.00'))
-        self.assertEqual(facture - paye - avoirs, du)
+        self.assertEqual(sum(termes, Decimal('0')), du)
 
 
 class TestChaineSoldeQuittance(_BaseDocumentsLegacy):

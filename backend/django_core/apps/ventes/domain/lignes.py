@@ -804,6 +804,15 @@ def _statut_en_base(devis):
             .values_list('statut', flat=True).first())
 
 
+def _devis_frais(devis):
+    """ADEV30 — ``clauses_appliquees`` relu EN BASE (l'instance de
+    l'appelant peut être antérieure au gel d'envoi)."""
+    from apps.ventes.models import Devis
+    frais = (Devis.objects.filter(pk=devis.pk)
+             .only('pk', 'clauses_appliquees').first())
+    return frais if frais is not None else devis
+
+
 def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
                                    comptes_avant=None):
     """QJR83 — remet au barème les lignes de forfait TARIFÉES AU PANNEAU.
@@ -848,9 +857,16 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
     messages = avertissements if isinstance(avertissements, list) else []
     lignes = _lignes_produit(devis)
     comptes = _comptes_panneaux(lignes)
+    geles = {}
     if _statut_en_base(devis) not in (None, 'brouillon'):
         if comptes_avant is None or comptes_avant == comptes:
             return messages
+        # ADEV30 — compte changé sur un envoyé : le barème est celui GELÉ à
+        # l'envoi (``envoi.figer_baremes_forfaits``), jamais celui du jour.
+        # Un devis envoyé avant ce gel (aucune entrée) retombe sur le barème
+        # courant, comme hier.
+        from apps.ventes.domain.envoi import baremes_forfaits_geles
+        geles = baremes_forfaits_geles(_devis_frais(devis))
     for ligne in lignes:
         produit = getattr(ligne, 'produit', None)
         if not porte_bareme_par_panneau(produit):
@@ -861,6 +877,12 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
             messages.append(
                 avertissement_forfait_commun_divergent(ligne.designation))
             continue
+        bareme = geles.get(str(getattr(produit, 'pk', '')))
+        if isinstance(bareme, dict):
+            from types import SimpleNamespace
+            produit = SimpleNamespace(
+                prix_fixe_ht=bareme.get('prix_fixe_ht'),
+                prix_par_panneau_ht=bareme.get('prix_par_panneau_ht'))
         attendu = prix_forfait_ht(produit, nb_panneaux)
         if attendu is None:
             continue

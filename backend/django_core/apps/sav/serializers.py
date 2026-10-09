@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.utils import timezone
 
@@ -88,11 +89,17 @@ class EquipementSerializer(serializers.ModelSerializer):
         return value
 
     def get_nb_tickets_ouverts(self, obj):
+        annote = getattr(obj, 'nb_tickets_ouverts_annote', None)
+        if annote is not None:
+            return annote  # APRF30 — annoté par la liste.
         return obj.tickets.filter(
             statut__in=Ticket.OPEN_STATUTS, annule=False).count()
 
     def get_nb_tickets_12m(self, obj):
         """FG90 — compte les tickets correctifs des 12 derniers mois."""
+        annote = getattr(obj, 'nb_tickets_12m_annote', None)
+        if annote is not None:
+            return annote  # APRF30 — annoté par la liste.
         since = timezone.localdate() - timedelta(days=365)
         return obj.tickets.filter(
             type=Ticket.Type.CORRECTIF,
@@ -108,16 +115,22 @@ class EquipementSerializer(serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip()
 
     def get_garantie_jours_restants(self, obj):
-        if not obj.date_fin_garantie:
+        # ASAV44 — calculé sur la garantie EFFECTIVE (légale / constructeur).
+        fin = obj.date_fin_garantie_effective
+        if not fin:
             return None
-        return (obj.date_fin_garantie - timezone.localdate()).days
+        return (fin - timezone.localdate()).days
 
     def get_garantie_etat(self, obj):
         """État de garantie : non_renseignee / sous_garantie / expire_bientot /
-        hors_garantie. Sert d'indicateur clair côté écran."""
-        if not obj.date_fin_garantie:
+        hors_garantie. Sert d'indicateur clair côté écran.
+
+        ASAV44 — sur ``date_fin_garantie_effective`` : même garantie que
+        ``Ticket.sous_garantie_effectif``."""
+        fin = obj.date_fin_garantie_effective
+        if not fin:
             return 'non_renseignee'
-        jours = (obj.date_fin_garantie - timezone.localdate()).days
+        jours = (fin - timezone.localdate()).days
         if jours < 0:
             return 'hors_garantie'
         if jours <= EXPIRING_SOON_DAYS:
@@ -298,6 +311,16 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         source='equipement.produit.nom', read_only=True, default=None)
     equipement_fin_garantie = serializers.DateField(
         source='equipement.date_fin_garantie', read_only=True, default=None)
+    # ASAV44 — fin de garantie EFFECTIVE (max légale / constructeur), celle
+    # que ``sous_garantie_effectif`` utilise ; la constructeur reste servie
+    # ci-dessus.
+    equipement_fin_garantie_effective = serializers.DateField(
+        source='equipement.date_fin_garantie_effective', read_only=True,
+        default=None)
+    # ASAV39 — l'utilisateur courant suit-il ce ticket ?
+    je_suis_abonne = serializers.SerializerMethodField()
+    # ASAV43 — transitions que le serveur accepte depuis le statut courant.
+    statuts_suivants = serializers.SerializerMethodField()
     technicien_nom = serializers.SerializerMethodField()
     # Garantie effective : calculée depuis l'équipement lié, sinon manuelle.
     sous_garantie_effectif = serializers.SerializerMethodField()
@@ -354,6 +377,10 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         # des requêtes différentes, jamais interchangeables.
         self._contrat_actif_cache = {}
         self._contrat_recent_cache = {}
+        # APRF31 — registre des équipements et tickets de l'année PAR
+        # CONTRAT, lus une fois par page (jamais par ticket).
+        self._registre_cache = {}
+        self._droits_cache = {}
 
     def _contrat_actif_pour_client(self, client):
         from .models import ContratMaintenance
@@ -362,9 +389,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         if client.id not in self._contrat_actif_cache:
             contrat = ContratMaintenance.actif_pour_client(client)
             if contrat is None:
-                contrat = (ContratMaintenance.objects
-                           .filter(client=client, actif=True)
-                           .order_by('-date_creation').first())
+                contrat = ContratMaintenance.valide_pour_client(client.id)
             self._contrat_actif_cache[client.id] = contrat
         return self._contrat_actif_cache[client.id]
 
@@ -376,6 +401,10 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
             'sla_breach', 'sla_due_at', 'date_premiere_reponse',
+            # ASAV19 — échéance de première réponse, posée par le serveur.
+            'sla_reponse_due_at',
+            # ASAV21 — échéance horodatée (heures ouvrées), posée par le serveur.
+            'sla_echeance_at',
             # FG88 — date_tournee est posée par l'action de planification de
             # tournée (bulk-assign), jamais directement du corps de requête.
             'date_tournee',
@@ -405,6 +434,8 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             # (``TicketViewSet`` à la création), le coût interne hors du
             # corps d'un PATCH générique.
             'non_facturable', 'est_recidive', 'cout',
+            # ASAV14 — posée/vidée par le service de transition uniquement.
+            'date_resolution',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -434,6 +465,25 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     def get_sous_garantie_effectif(self, obj):
         return obj.sous_garantie_calcule
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_je_suis_abonne(self, obj):
+        """ASAV39 — vrai si l'utilisateur de la requête est suiveur. La
+        liste précharge ``_suivis_de_moi`` (une requête pour toute la page) ;
+        hors liste (détail unique), une seule requête."""
+        suivis = getattr(obj, '_suivis_de_moi', None)
+        if suivis is not None:
+            return len(suivis) > 0
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not getattr(user, 'pk', None):
+            return False
+        return obj.followers.filter(user=user).exists()
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_statuts_suivants(self, obj):
+        from . import machine_etats
+        return machine_etats.statuts_suivants(obj)
+
     def get_sous_garantie_effectif_display(self, obj):
         return dict(Ticket.SousGarantie.choices).get(
             obj.sous_garantie_calcule, obj.sous_garantie_calcule)
@@ -461,14 +511,18 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         contrat = self._contrat_actif_pour_client(obj.client)
         if contrat is None:
             return None
-        return contrat.couvre_equipement(obj.equipement)
+        return contrat.couvre_equipement(
+            obj.equipement, cache=self._registre_cache)
 
     def get_couverture_proposee(self, obj):
         # N+1 réel corrigé (YOPSB13) : partage le cache ContratMaintenance
         # (contrat actif le plus récent, sans condition d'override SLA — un
         # cache DISTINCT de get_equipement_couvert) par client sur toute la
         # page au lieu d'une requête par ticket.
-        return obj.couverture_calculee(contrat_cache=self._contrat_recent_cache)
+        return obj.couverture_calculee(
+            contrat_cache=self._contrat_recent_cache,
+            registre_cache=self._registre_cache,
+            droits_cache=self._droits_cache)
 
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()
@@ -531,8 +585,11 @@ class WarrantyClaimSerializer(serializers.ModelSerializer):
     class Meta:
         model = WarrantyClaim
         fields = '__all__'
+        # ASAV37 — les dates d'envoi / de résolution sont posées par le
+        # SERVEUR à la transition de statut (jamais lues du corps).
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
+            'date_envoi_fournisseur', 'date_resolution',
         ]
 
 
@@ -678,6 +735,9 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
     def get_nb_equipements(self, obj):
+        annote = getattr(obj, 'nb_equipements_annote', None)
+        if annote is not None:
+            return annote  # APRF30 — annoté par la liste.
         return obj.equipements.count()
 
     def _same_company(self, obj):
@@ -818,32 +878,6 @@ class TicketWorksheetSerializer(serializers.ModelSerializer):
 
     def get_champs_requis_manquants(self, obj):
         return obj.champs_requis_manquants()
-
-
-# ── NTSRV2 — Formulaire portail client → ticket SAV (entrée PUBLIQUE) ────────
-
-class PortailTicketCreateSerializer(serializers.Serializer):
-    """NTSRV2 — validation du corps du formulaire portail public.
-
-    Le jeton, lui, est validé À PART (404 sans fuite d'info) : il ne doit
-    jamais produire un message de validation qui distingue « jeton inconnu »
-    de « jeton révoqué ». Les erreurs des autres champs NOMMENT le champ
-    fautif, en français."""
-    sujet = serializers.CharField(
-        max_length=200, allow_blank=False,
-        error_messages={
-            'blank': 'Merci d’indiquer l’objet de votre demande.',
-            'required': 'Merci d’indiquer l’objet de votre demande.',
-        })
-    description = serializers.CharField(
-        max_length=4000, allow_blank=True, required=False, default='')
-    priorite = serializers.ChoiceField(
-        choices=Ticket.Priorite.choices, required=False,
-        default=Ticket.Priorite.NORMALE,
-        error_messages={
-            'invalid_choice': 'Priorité inconnue (basse, normale, haute ou '
-                              'urgente).',
-        })
 
 
 # ── NTSRV16 — Gestion Problème (Problem Management) ─────────────────────────

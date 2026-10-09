@@ -9,13 +9,14 @@
 #
 # REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
 #   - retirer un import puis `python scripts/check_frontiere_calepinage.py
-#     --write-baseline` retire sa ligne ; un import simplement DEPLACE s'y
-#     re-enregistre a sa nouvelle ligne ;
+#     --write-baseline` retire sa ligne ; un import simplement DEPLACE ne
+#     change rien (la cle est fichier + module + compte) ;
 #   - `--write-baseline` REFUSE tout import NOUVEAU (plus d'imports d'un meme
 #     module dans un meme fichier que la base n'en porte). Ajouter une dette
 #     exige `--autoriser-croissance`, drapeau reserve au fondateur, visible en
 #     revue.
 #
-# Format : `<fichier>:<ligne>:<module>`.
-backend/django_core/apps/calepinage/services/pack_technique.py:324:apps.ged.services
-backend/django_core/apps/calepinage/services/terre.py:117:apps.ged.selectors
+# Format : `<fichier>:<module>  <nombre d'imports>` (ACAL338 : plus de
+# numero de ligne — decaler un import ne change pas le verdict).
+backend/django_core/apps/calepinage/services/pack_technique.py:apps.ged.services  1
+backend/django_core/apps/calepinage/services/terre.py:apps.ged.selectors  1

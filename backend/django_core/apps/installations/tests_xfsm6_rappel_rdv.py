@@ -48,7 +48,8 @@ def make_user(company, role='responsable', username=None, phone=None):
 def make_chantier(company, user, client_email='client@example.invalid'):
     n = next(_seq)
     client = Client.objects.create(
-        company=company, nom='Site', prenom='Client', email=client_email)
+        company=company, nom='Site', prenom='Client', email=client_email,
+        telephone='0612345678')  # APAR62 — le brouillon WhatsApp vise le client
     lead = Lead.objects.create(
         company=company, nom='Site', prenom='Client', stage='SIGNED',
         type_installation='residentiel')
@@ -141,7 +142,7 @@ class TestRappelRdvJ1(TestCase):
         rappel_rdv_j1()
         self.assertIn('Salut', mail.outbox[-1].body)
 
-    def test_wa_draft_genere_avec_responsable(self):
+    def test_wa_draft_genere_pour_le_client(self):
         Intervention.objects.create(
             company=self.company, installation=self.inst,
             type_intervention='pose', created_by=self.user,

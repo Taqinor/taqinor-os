@@ -336,6 +336,9 @@ class BridgedCreateAdDispatchTests(CreativeBridgeMixin, TestCase):
             reason_fr="Créer une ad depuis cet asset ponté.",
             payload={'name': 'Ad pontée', 'adset_id': 'as-1', **fragments})
         EngineAction.objects.filter(pk=action.pk).update(
+            # AACQ76 — empreinte de la version approuvée (update() court-circuite save()).
+            approved_fingerprint=EngineAction.fingerprint_of(
+                action.kind, action.payload),
             status=EngineAction.Statut.APPROUVEE)
         action.refresh_from_db()
         client = Mock()

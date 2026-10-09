@@ -236,7 +236,7 @@ class TestUnderperformance(TestCase):
     def _add_reading(self, kwh):
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=self.today - timedelta(days=10), energy_kwh=Decimal(str(kwh)),
+            date=self.today - timedelta(days=364), energy_kwh=Decimal(str(kwh)),
             period_days=365)
 
     def test_no_data_is_noop(self):
@@ -749,7 +749,14 @@ class TestSoiling(TestCase):
         self.assertTrue(a['recommend_cleaning'])
 
     def test_recent_cleaning_no_days_alert(self):
-        self._seed([1000, 1000, 1000])
+        # ASAV63 — le PR mensuel est normalisé par jours couverts : trois mois
+        # pleins (relevés au 1er, kWh proportionnels aux jours) = PR constant,
+        # donc aucune chute ; seul le délai depuis le nettoyage peut alerter.
+        for mois, jours in ((1, 31), (2, 28), (3, 31)):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, mois, 1), period_days=jours,
+                energy_kwh=Decimal('12000') * jours / Decimal('365'))
         CleaningEvent.objects.create(
             company=self.company, installation=self.inst,
             date=date(2026, 6, 1))

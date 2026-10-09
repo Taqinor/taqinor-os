@@ -152,6 +152,9 @@ class TestFG77Readiness(TestCase):
         """ADVISORY : readiness n'empêche pas de passer le chantier « En cours »."""
         panneau = make_produit(self.company, 'Panneau', stock=3)
         inst = make_chantier(self.company, self.user, [(panneau, 10)])
+        # ACHT2 — un pas à la fois : le chantier part de « Planifié ».
+        Installation.objects.filter(pk=inst.pk).update(
+            statut=Installation.Statut.PLANIFIE)
         r = self.api.patch(
             f'/api/django/installations/chantiers/{inst.id}/',
             {'statut': Installation.Statut.EN_COURS}, format='json')

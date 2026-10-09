@@ -789,6 +789,12 @@ class Ticket(models.Model):
     # Échéance cible pour la RÉSOLUTION (calculée à la création depuis le SLA
     # société). NULL quand le réglage SLA n'est pas activé.
     sla_due_at = models.DateField(null=True, blank=True)
+    # ASAV19 — échéance cible de PREMIÈRE RÉPONSE (même service que la
+    # résolution, premier terme de ``days_for``). NULL sans SLA activé.
+    sla_reponse_due_at = models.DateField(null=True, blank=True)
+    # ASAV21 — échéance HORODATÉE (aware) quand le SLA est en heures ouvrées ;
+    # NULL sur le chemin en jours (``sla_due_at`` porte alors seul la date).
+    sla_echeance_at = models.DateTimeField(null=True, blank=True)
     # True quand sla_due_at est dépassé et le ticket toujours ouvert.
     # Mis à jour par le scan journalier + à chaque changement de statut.
     sla_breach = models.BooleanField(default=False)
@@ -972,6 +978,17 @@ class Ticket(models.Model):
         return self.reference
 
     @property
+    def date_reference_couverture(self):
+        """ASAV4 (D-ASAV-6) — date à laquelle se juge la couverture d'un
+        ticket (garantie ET contrat) : la date d'ouverture, à défaut la date
+        de création, à défaut aujourd'hui (ticket pas encore enregistré)."""
+        if self.date_ouverture:
+            return self.date_ouverture
+        if self.date_creation:
+            return timezone.localtime(self.date_creation).date()
+        return timezone.localdate()
+
+    @property
     def sous_garantie_calcule(self):
         """Garantie effective du ticket.
 
@@ -985,13 +1002,16 @@ class Ticket(models.Model):
         constructeur reste sous garantie (légale, impérative)."""
         eq = self.equipement
         if eq is not None and eq.date_fin_garantie_effective:
-            today = timezone.localdate()
+            # ASAV4 (D-ASAV-6) — jugée à l'OUVERTURE du ticket, jamais au jour
+            # de la lecture ou de la facturation.
+            today = self.date_reference_couverture
             return (self.SousGarantie.OUI
                     if today < eq.date_fin_garantie_effective
                     else self.SousGarantie.NON)
         return self.sous_garantie
 
-    def couverture_calculee(self, *, contrat_cache=None):
+    def couverture_calculee(self, *, contrat_cache=None, registre_cache=None,
+                            droits_cache=None):
         """XCTR4 — Propose une couverture (garantie / contrat / facturable)
         SANS écraser une valeur déjà posée manuellement.
 
@@ -1009,27 +1029,55 @@ class Ticket(models.Model):
         pour tout appel hors contexte de liste (fiche détail unique, etc.)."""
         if self.sous_garantie_calcule == self.SousGarantie.OUI:
             return self.Couverture.GARANTIE
+        ref = self.date_reference_couverture
         if contrat_cache is not None:
-            if self.client_id not in contrat_cache:
-                contrat_cache[self.client_id] = self._contrat_couvrant()
-            contrat = contrat_cache[self.client_id]
+            cle = (self.client_id, ref)
+            if cle not in contrat_cache:
+                contrat_cache[cle] = self._contrat_couvrant(ref)
+            contrat = contrat_cache[cle]
         else:
-            contrat = self._contrat_couvrant()
-        if contrat is not None and contrat.couvre_equipement(self.equipement):
+            contrat = self._contrat_couvrant(ref)
+        if contrat is not None and contrat.couvre_equipement(
+                self.equipement, cache=registre_cache):
             from .selectors import droits_restants
-            annee = (self.date_ouverture or timezone.localdate()).year
-            droits = droits_restants(contrat, annee)
+            annee = ref.year
+            droits = droits_restants(
+                contrat, annee, ticket=self, cache=droits_cache)
             if self.type == self.Type.PREVENTIF:
                 restant = droits['visites_restantes']
             else:
                 restant = droits['deplacements_restants']
             if restant is None or restant > 0:
                 return self.Couverture.CONTRAT
+        if self.garantie_chantier_a_confirmer:
+            return self.Couverture.A_DETERMINER
         return self.Couverture.FACTURABLE
+
+    @property
+    def garantie_chantier_a_confirmer(self):
+        """ASAV11 (D-ASAV-2) — ticket SANS équipement daté dont le chantier
+        est encore dans une garantie (légale : réception + 12 mois ; ou de
+        pose : ``garantie_installation_mois``) à la date d'ouverture : la
+        garantie est « à confirmer », jamais facturée d'office. Une valeur
+        ``sous_garantie`` posée à la main, ou un équipement daté, prime."""
+        eq = self.equipement
+        if eq is not None and eq.date_fin_garantie_effective:
+            return False
+        if self.sous_garantie != self.SousGarantie.A_DETERMINER:
+            return False
+        chantier = self.installation
+        reception = getattr(chantier, 'date_reception', None)
+        if reception is None:
+            return False
+        fin = add_months(reception, Equipement.GARANTIE_LEGALE_MOIS)
+        pose = getattr(chantier, 'garantie_installation_mois', None)
+        if pose:
+            fin = max(fin, add_months(reception, pose))
+        return self.date_reference_couverture < fin
 
     def _contrat_couvrant(self, today=None):
         """AUD502 — contrat de maintenance du client qui COUVRE réellement à
-        la date du jour : le plus récent parmi les contrats actifs ET non
+        la date de référence (ASAV4 : l'ouverture du ticket ; défaut : jour) : le plus récent parmi les contrats actifs ET non
         expirés au-delà de la grâce (``ContratMaintenance.est_actif``).
 
         Avant AUD502, seul le drapeau ``actif`` était testé : un contrat mort
@@ -1085,9 +1133,21 @@ class Ticket(models.Model):
         if self.statut not in self.OPEN_STATUTS or self.annule:
             self.sla_breach = False
             return
+        if self.sla_echeance_at:
+            # ASAV21 — SLA en heures : comparé à MAINTENANT, pas au lendemain.
+            self.sla_breach = timezone.now() > self.sla_echeance_at_effectif()
+            return
         today = timezone.localdate()
         due = self.sla_due_at_effectif(today=today)
         self.sla_breach = today > due
+
+    def sla_echeance_at_effectif(self, today=None):
+        """ASAV21 — échéance HORODATÉE décalée des pauses (jours entiers
+        convertis en durée), ou None sans échéance horodatée."""
+        if not self.sla_echeance_at:
+            return None
+        total_pause = self.jours_pause + self._pause_en_cours_jours(today=today)
+        return self.sla_echeance_at + timezone.timedelta(days=total_pause)
 
     def _pause_en_cours_jours(self, today=None):
         """XSAV5 — jours déjà écoulés dans la pause EN COURS (0 si aucune)."""
@@ -1607,12 +1667,30 @@ class ContratMaintenance(models.Model):
         ``sla_resolution_days`` non NULL)."""
         if client is None:
             return None
-        return (cls.objects
-                .filter(client=client, actif=True)
-                .exclude(sla_response_days__isnull=True,
-                         sla_resolution_days__isnull=True)
-                .order_by('-date_creation')
-                .first())
+        # ASAV26 — « actif » = ``est_actif(date)`` (expiration + grâce), comme
+        # la couverture : un contrat échu n'impose plus son SLA.
+        for contrat in (cls.objects
+                        .filter(client=client, actif=True)
+                        .exclude(sla_response_days__isnull=True,
+                                 sla_resolution_days__isnull=True)
+                        .order_by('-date_creation')):
+            if contrat.est_actif():
+                return contrat
+        return None
+
+    @classmethod
+    def valide_pour_client(cls, client_id, today=None):
+        """ASAV26 — contrat le plus récent du client qui COUVRE encore
+        (drapeau ``actif`` ET ``est_actif`` : expiration + grâce), sans
+        condition d'override SLA. None sinon."""
+        if not client_id:
+            return None
+        for contrat in (cls.objects
+                        .filter(client_id=client_id, actif=True)
+                        .order_by('-date_creation')):
+            if contrat.est_actif(today):
+                return contrat
+        return None
 
     def prochaine_visite(self):
         """Date de la prochaine visite (dernière visite ou début + période).
@@ -1743,13 +1821,22 @@ class ContratMaintenance(models.Model):
             return False
         return (today or timezone.localdate()) >= self.prochaine_facturation()
 
-    def couvre_equipement(self, equipement):
+    def couvre_equipement(self, equipement, cache=None):
         """XCTR2 — True si `equipement` fait partie du registre couvert par ce
         contrat. Un contrat SANS équipement enregistré (M2M vide) est
         considéré comme couvrant tout le client (comportement historique,
-        aucune régression pour les contrats existants sans registre posé)."""
+        aucune régression pour les contrats existants sans registre posé).
+
+        APRF31 — ``cache`` (``{contrat_id: (a_registre, {ids})}`` partagé par
+        la liste) : le registre est lu UNE fois par contrat et par page."""
         if equipement is None:
             return True
+        if cache is not None:
+            if self.pk not in cache:
+                ids = set(self.equipements.values_list('pk', flat=True))
+                cache[self.pk] = (bool(ids), ids)
+            a_registre, ids = cache[self.pk]
+            return (not a_registre) or equipement.pk in ids
         if not self.equipements.exists():
             return True
         return self.equipements.filter(pk=equipement.pk).exists()
@@ -1998,8 +2085,11 @@ class ReponseType(models.Model):
         null=True, blank=True, related_name='reponses_type')
     titre = models.CharField(max_length=150)
     corps = models.TextField()
+    # ASAV13 — limité aux choix de ``Ticket.Statut`` (vide = aucun
+    # changement) ; appliqué par ``services.appliquer_transition_ticket``.
     nouveau_statut = models.CharField(
         max_length=12, blank=True, default='',
+        choices=Ticket.Statut.choices,
         help_text='Statut optionnel appliqué au ticket à l\'insertion.')
     archived = models.BooleanField(default=False)
     # ── NTSRV34 — Canaux autorisés pour cette macro ─────────────────────────

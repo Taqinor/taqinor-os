@@ -331,15 +331,25 @@ def contrats_maintenance_facturables(company):
     ]
 
 
-def droits_restants(contrat, annee=None):
+def droits_restants(contrat, annee=None, *, ticket=None, cache=None):
     """XCTR3 — Compteurs de droits inclus (entitlements) consommés/restants
     pour ``contrat`` sur l'année civile ``annee`` (défaut : année courante).
 
-    Compte les tickets PREVENTIF (visites) et CORRECTIF (déplacements) ouverts
-    sur le contrat (via `installation` — même pivot que les visites générées)
-    dont ``date_ouverture`` tombe dans les bornes de l'année civile demandée.
-    Un quota NULL sur le contrat = illimité : jamais d'avertissement, le champ
+    Compte les tickets PREVENTIF (visites) et CORRECTIF (déplacements) NON
+    ANNULÉS dont ``date_ouverture`` tombe dans l'année demandée, rattachés au
+    contrat par son chantier, ou — ASAV5 — par son CLIENT quand le contrat n'a
+    pas de chantier. Un quota NULL sur le contrat = illimité : le champ
     ``restant`` renvoie ``None`` (pas de division/quota calculée).
+
+    ASAV5 — avec ``ticket`` (le ticket ÉVALUÉ) on ne compte que les tickets
+    ANTÉRIEURS : le ticket lui-même est exclu et seuls ceux ouverts au plus
+    tard à sa date (à date égale, créés avant lui) consomment un droit — un
+    quota de N couvre donc exactement les N premiers tickets. Sans ``ticket``
+    (écran des contrats) : compteur de l'année, tous tickets non annulés.
+
+    APRF31 — ``cache`` (dict ``{(contrat_id, année): lignes}`` fourni par la
+    liste) : les tickets de l'année du contrat sont lus UNE fois par page et
+    comptés en Python — jamais deux ``count()`` par ticket.
     """
     from datetime import date as _date
 
@@ -347,17 +357,33 @@ def droits_restants(contrat, annee=None):
     debut = _date(annee, 1, 1)
     fin = _date(annee, 12, 31)
 
-    if contrat.installation_id:
+    cle = (contrat.pk, annee)
+    lignes = cache.get(cle) if cache is not None else None
+    if lignes is None:
         base_qs = Ticket.objects.filter(
-            company_id=contrat.company_id,
-            installation_id=contrat.installation_id,
+            company_id=contrat.company_id, annule=False,
             date_ouverture__gte=debut, date_ouverture__lte=fin,
         )
-        visites_consommees = base_qs.filter(type=Ticket.Type.PREVENTIF).count()
-        deplacements_consommes = base_qs.filter(type=Ticket.Type.CORRECTIF).count()
-    else:
-        visites_consommees = 0
-        deplacements_consommes = 0
+        if contrat.installation_id:
+            base_qs = base_qs.filter(installation_id=contrat.installation_id)
+        elif contrat.client_id:
+            base_qs = base_qs.filter(client_id=contrat.client_id)
+        else:
+            base_qs = base_qs.none()
+        lignes = list(base_qs.values_list('type', 'date_ouverture', 'pk'))
+        if cache is not None:
+            cache[cle] = lignes
+    if ticket is not None:
+        ref = ticket.date_reference_couverture
+        lignes = [
+            (t, d, pk) for t, d, pk in lignes
+            if pk != ticket.pk and (
+                d < ref or (d == ref and (not ticket.pk or pk < ticket.pk)))
+        ]
+    visites_consommees = sum(
+        1 for t, _d, _pk in lignes if t == Ticket.Type.PREVENTIF)
+    deplacements_consommes = sum(
+        1 for t, _d, _pk in lignes if t == Ticket.Type.CORRECTIF)
 
     def _restant(inclus, consomme):
         if inclus is None:
@@ -962,7 +988,7 @@ def tickets_ouverts_client(company, client_id):
     if company is None or not client_id:
         return 0
     return Ticket.objects.filter(
-        company=company, client_id=client_id,
+        company=company, client_id=client_id, annule=False,
         statut__in=Ticket.OPEN_STATUTS).count()
 
 
@@ -991,11 +1017,14 @@ def fil_client_du_ticket(company, client_id, ticket_id):
                .filter(company=company, ticket=ticket, visible_client=True)
                .select_related('user')
                .order_by('created_at', 'id'))
+    # ASAV34 — l'auteur affiché au client est le nom d'intervenant (nom
+    # complet, sinon la raison sociale), jamais l'identifiant de connexion.
+    from apps.parametres.selectors import nom_intervenant
     return [{
         'id': entree.id,
         'body': entree.body or '',
         'created_at': entree.created_at,
-        'auteur': getattr(entree.user, 'username', '') or '',
+        'auteur': nom_intervenant(entree.user, company),
     } for entree in entrees]
 
 
@@ -1178,6 +1207,64 @@ def resume_par_equipe(company):
 
 # ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
 
+def ticket_en_retard_sla(ticket, today=None, *, sla_actif=None):
+    """ASAV17 — LA définition du retard SLA d'un ticket (écran, scan, KPI).
+
+    En retard = société au SLA activé, ticket ouvert non annulé portant une
+    échéance, et ``today`` au-delà de l'échéance EFFECTIVE
+    (``sla_due_at_effectif`` : pauses « en attente client » décomptées).
+    ASAV57 : l'interrupteur société ne change plus le retard. ``sla_actif``
+    évite la lecture du
+    réglage quand l'appelant l'a déjà (balayages sans N+1)."""
+    if not ticket.sla_due_at or ticket.annule:
+        return False
+    if ticket.statut not in Ticket.OPEN_STATUTS:
+        return False
+    # ASAV57 (D-ASAV-5 Q2 a) — le retard se calcule toujours ; l'interrupteur
+    # société ne gouverne que les notifications (``sla_actif`` conservé pour
+    # compatibilité des appelants, sans effet sur la décision).
+    if ticket.sla_echeance_at:
+        # ASAV21 — SLA en heures ouvrées : comparé à maintenant.
+        return timezone.now() > ticket.sla_echeance_at_effectif()
+    today = today or timezone.localdate()
+    return today > ticket.sla_due_at_effectif(today=today)
+
+
+def sla_respecte(ticket):
+    """ASAV17 — le SLA de résolution a-t-il été tenu ? ``None`` quand ce
+    n'est pas mesurable (pas d'échéance ou pas de date de résolution).
+
+    Compare ``date_resolution`` à l'échéance EFFECTIVE à cette date (pauses
+    décomptées) — jamais à ``sla_due_at`` brut."""
+    if not ticket.sla_due_at or not ticket.date_resolution:
+        return None
+    return ticket.date_resolution <= ticket.sla_due_at_effectif(
+        today=ticket.date_resolution)
+
+
+def premiere_reponse_respectee(ticket):
+    """ASAV19 — le SLA de PREMIÈRE RÉPONSE a-t-il été tenu ? ``None`` quand
+    ce n'est pas mesurable (pas d'échéance de réponse ou pas de réponse)."""
+    if not ticket.sla_reponse_due_at or not ticket.date_premiere_reponse:
+        return None
+    repondu_le = timezone.localtime(ticket.date_premiere_reponse).date()
+    return repondu_le <= ticket.sla_reponse_due_at
+
+
+def _sla_moitie_ecoulee(ticket, today):
+    """ASAV17 — plus de la moitié du délai SLA ACTIF écoulée (pauses
+    exclues) ; un ticket en attente client n'est jamais « à relancer »."""
+    if ticket.en_attente_client or not (
+            ticket.date_ouverture and ticket.sla_due_at):
+        return False
+    total_jours = (ticket.sla_due_at - ticket.date_ouverture).days
+    if total_jours <= 0:
+        return False
+    pause = ticket.jours_pause + ticket._pause_en_cours_jours(today=today)
+    ecoules = (today - ticket.date_ouverture).days - pause
+    return ecoules >= total_jours / 2
+
+
 def file_action(company, *, today=None):
     """ZSAV6 — Regroupe les tickets OUVERTS de la société par « action
     attendue » (parité Odoo « Activity view »), chaque ticket dans EXACTEMENT
@@ -1218,14 +1305,11 @@ def file_action(company, *, today=None):
         if t.statut == Ticket.Statut.PLANIFIE and t.date_tournee is None:
             buckets['a_planifier'].append(t.id)
             continue
+        # ASAV17 — délai ACTIF (pauses exclues), même source que le retard.
         if (t.statut == Ticket.Statut.EN_COURS
-                and t.date_ouverture and t.sla_due_at):
-            total_jours = (t.sla_due_at - t.date_ouverture).days
-            if total_jours > 0:
-                ecoules = (today - t.date_ouverture).days
-                if ecoules >= total_jours / 2:
-                    buckets['a_relancer'].append(t.id)
-                    continue
+                and _sla_moitie_ecoulee(t, today)):
+            buckets['a_relancer'].append(t.id)
+            continue
         if t.statut == Ticket.Statut.RESOLU:
             # XSAV24 journalise désormais TOUJOURS la création du ticket dans
             # son chatter (kind=CREATION) — la dernière activité n'est donc
@@ -1870,9 +1954,11 @@ def performance_agent(company, *, date_debut=None, date_fin=None):
         # Respect du SLA : mesuré seulement quand le ticket porte une
         # échéance ET une date de résolution ; les autres sont exclus du
         # dénominateur plutôt que comptés « respectés » par défaut.
-        if ticket.sla_due_at and ticket.date_resolution:
+        # ASAV17 — échéance EFFECTIVE (pauses décomptées) via sla_respecte.
+        respecte = sla_respecte(ticket)
+        if respecte is not None:
             seau['sla_total'] += 1
-            if ticket.date_resolution <= ticket.sla_due_at:
+            if respecte:
                 seau['sla_respectes'] += 1
 
     def _moyenne(valeurs, chiffres=1):

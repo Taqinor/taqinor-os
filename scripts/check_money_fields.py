@@ -70,21 +70,18 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # QUANTITE d'usage agregee (kWh/appels/unites facturables), pas un montant :
 # 4 decimales necessaires pour les fractions d'unite ; le montant factura-
 # ble, lui, est arrondi au centime au moment de la facturation.
+# ADEP25 — identites de CONTENU (`fichier::Classe.champ`), plus `fichier:ligne` (qui se
+# decalait a chaque insertion et laissait 4 cles mortes sur 6). Une cle qui n'apparie plus
+# aucune derive FAIT ECHOUER la garde (cliquet decroissant).
 DECIMAL_PLACES_ALLOWLIST = {
-    "backend/django_core/apps/gestion_projet/models.py:103",
-    # 846->847 (merge main CIQ101 + SPL113 : +1 ligne d'import avant dans
-    # stock/models.py ; MÊME champ prix_par_panneau_ht, déclaration relue
-    # identique). Bug-class #34.
-    "backend/django_core/apps/stock/models.py:847",
-    # ASTK44 (07/10/2026) — MouvementStock.cout_unitaire : coût UNITAIRE
-    # interne d'une entrée de production (valeur consommée ÷ quantité
-    # produite), une couche du coût moyen, jamais un montant facturé : 4
-    # décimales pour ne pas créer/détruire de valeur à l'arrondi.
-    "backend/django_core/apps/stock/models.py:1358",
-    "backend/django_core/apps/btp_chantier/models.py:831",
-    "backend/django_core/apps/btp_chantier/models.py:1169",
-    "backend/django_core/apps/contrats/models.py:4268",
+    # ASTK44 — MouvementStock.cout_unitaire : cout UNITAIRE interne (valeur consommee /
+    # quantite produite), 4 decimales pour ne pas creer/detruire de valeur a l'arrondi.
+    "backend/django_core/apps/stock/models.py::MouvementStock.cout_unitaire",
+    # Produit.prix_par_panneau_ht : bareme 156,25 x 1,30 = 203,125/panneau (3 decimales exactes).
+    "backend/django_core/apps/stock/models.py::Produit.prix_par_panneau_ht",
 }
+# Cles de derive rencontrees pendant le scan (detection des cles orphelines).
+_CLES_DERIVE: set = set()
 
 FLOAT_LIKE = {"FloatField"}
 DECIMAL_LIKE = {"DecimalField"}
@@ -202,10 +199,12 @@ def check_file(path: Path, decimal_places_mode: bool):
         if decimal_places_mode:
             is_rate = bool(RATE_NAME_RE.search(field))
             expected = {2, 4} if is_rate else {2}
-            allow_key = f"{_rel(path)}:{lineno}"
-            if (max_digits is None or decimal_places is None
-                    or decimal_places not in expected) \
-                    and allow_key not in DECIMAL_PLACES_ALLOWLIST:
+            allow_key = f"{_rel(path)}::{model}.{field}"
+            derive = (max_digits is None or decimal_places is None
+                      or decimal_places not in expected)
+            if derive:
+                _CLES_DERIVE.add(allow_key)
+            if derive and allow_key not in DECIMAL_PLACES_ALLOWLIST:
                 findings.append((
                     "MONEY_DECIMAL_PLACES",
                     f"{model}.{field} at line {lineno}: DecimalField "
@@ -257,6 +256,10 @@ def main(argv):
         print(f"  {rel}:{lineno}  {model}.{field}  [{ftype}]{extra}")
 
     if decimal_places_mode:
+        for cle in sorted(DECIMAL_PLACES_ALLOWLIST - _CLES_DERIVE):
+            report_lines.append(
+                f"DECIMAL_PLACES_ALLOWLIST: [ORPHAN_ALLOWLIST_KEY] cle « {cle} » "
+                "n'apparie aucune derive - retirez-la (base decroissante).")
         _write_audit_doc(all_rows)
         print(f"\ncheck_money_fields --decimal-places: wrote "
               f"{_rel(MONEY_AUDIT_DOC)}")

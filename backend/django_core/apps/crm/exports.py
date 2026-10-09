@@ -102,11 +102,29 @@ def lead_row(lead):
     ]
 
 
-def export_leads_xlsx(leads):
-    """Réponse .xlsx pour une sélection de leads."""
+#: ACRM4 — les colonnes PII retirées de l'export d'un rôle sans
+#: ``client_pii_voir`` (règle unique ``serializers.pii_masquee_pour``).
+LEAD_EXPORT_PII_HEADERS = ('Email', 'Téléphone', 'WhatsApp')
+CLIENT_EXPORT_PII_HEADERS = ('Email', 'Téléphone', 'Adresse')
+
+
+def _sans_colonnes(headers, rows, retirees):
+    """``(headers, rows)`` privés des colonnes dont l'en-tête est dans
+    ``retirees`` — la colonne disparaît, aucune cellule PII n'est écrite."""
+    gardees = [i for i, h in enumerate(headers) if h not in retirees]
+    return ([headers[i] for i in gardees],
+            [[row[i] for i in gardees] for row in rows])
+
+
+def export_leads_xlsx(leads, *, masquer_pii=False):
+    """Réponse .xlsx pour une sélection de leads. ``masquer_pii`` (ACRM4)
+    retire les colonnes e-mail / téléphone / WhatsApp."""
+    headers = LEAD_EXPORT_HEADERS
     rows = [lead_row(lead) for lead in leads]
+    if masquer_pii:
+        headers, rows = _sans_colonnes(headers, rows, LEAD_EXPORT_PII_HEADERS)
     return build_xlsx_response(
-        'leads.xlsx', LEAD_EXPORT_HEADERS, rows, sheet_title='Leads')
+        'leads.xlsx', headers, rows, sheet_title='Leads')
 
 
 _TYPE_CLIENT_LABELS = {'particulier': 'Particulier', 'entreprise': 'Entreprise'}
@@ -117,7 +135,7 @@ CLIENT_EXPORT_HEADERS = [
 ]
 
 
-def export_clients_xlsx(clients):
+def export_clients_xlsx(clients, *, masquer_pii=False):
     """Export .xlsx clients avec les identifiants légaux marocains (ICE/IF/
     RC/CIN). Aucun prix d'achat ni marge — données d'identité uniquement.
 
@@ -134,8 +152,13 @@ def export_clients_xlsx(clients):
         getattr(c, 'rc', '') or '', getattr(c, 'cin', '') or '',
         c.date_creation.strftime('%Y-%m-%d') if getattr(c, 'date_creation', None) else '',
     ] for c in clients]
+    headers = CLIENT_EXPORT_HEADERS
+    if masquer_pii:
+        # ACRM4 — rôle sans ``client_pii_voir`` : colonnes PII retirées.
+        headers, rows = _sans_colonnes(
+            headers, rows, CLIENT_EXPORT_PII_HEADERS)
     return build_xlsx_response(
-        'clients.xlsx', CLIENT_EXPORT_HEADERS, rows, sheet_title='Clients')
+        'clients.xlsx', headers, rows, sheet_title='Clients')
 
 
 DEFI_CLASSEMENT_HEADERS = ['Rang', 'Nom', 'Score (valeur réalisée)']

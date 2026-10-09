@@ -117,6 +117,16 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         if devis is not None and user.company_id \
                 and devis.company_id != user.company_id:
             raise ValidationError({'devis': 'Devis inconnu.'})
+        # ADEV41 — même portée équipe que la lecture (ADEV21) : on n'ajoute
+        # pas de ligne au devis d'un collègue hors portée (même réponse que
+        # pour un devis d'une autre société, aucun oracle d'existence).
+        if devis is not None and user.company_id:
+            from core.scoping import scope_queryset
+            from ..models import Devis
+            visible = scope_queryset(
+                Devis.objects.filter(pk=devis.pk), user, ['created_by'])
+            if not visible.exists():
+                raise ValidationError({'devis': 'Devis inconnu.'})
 
     def _check_devis_not_frozen(self, devis):
         """YDOCF2 — les lignes d'un devis figé (accepté/refusé/expiré) ne sont

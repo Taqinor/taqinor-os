@@ -56,9 +56,11 @@ class Qx9EsignEvidenceTests(TestCase):
         devis = _make_devis(self.company, self.client_obj, f'DEV-{MONTH}-QX901')
         link = ShareLink.for_devis(devis)
         ts = '2026-07-10T12:34:56+00:00'
+        from apps.ventes.public.signature_views import empreinte_contenu
         resp = self.api.post(self._url(link.token), {
             'nom': 'Salma Bennani',
             'consent_esign': True,
+            'empreinte_contenu': empreinte_contenu(devis),
             'signature_data_url': 'data:image/png;base64,AAAA',
             'signed_at_client': ts,
             'on_behalf_of': 'mon foyer',

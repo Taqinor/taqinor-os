@@ -71,6 +71,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_ROOT = ROOT / "backend" / "django_core"
+
+
+def _rel_parts(path, base=ROOT):
+    """ADEP27 - parties du chemin RELATIVES a la racine du depot : un depot
+    range sous un dossier nomme `build/`, `dist/` ou `tests/` doit donner le
+    meme verdict (jamais tester les dossiers du chemin absolu)."""
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return path.parts
+
 BASELINE_PATH = ROOT / "scripts" / "openapi_shapes_allow.txt"
 SCHEMA_BASELINE_PATH = ROOT / "scripts" / "openapi_schema_allow.txt"
 
@@ -123,7 +134,7 @@ def est_agrege(chemin: str) -> bool:
 
 def _fichiers_python(root: Path = DJANGO_ROOT):
     for path in sorted(root.rglob("*.py")):
-        if any(part in SKIP_DIRS for part in path.parts):
+        if any(part in SKIP_DIRS for part in _rel_parts(path, root)):
             continue
         if path.name.startswith(("test_", "tests_")) or path.name == "tests.py":
             continue

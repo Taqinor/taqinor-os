@@ -26,7 +26,7 @@ class RetourLivraisonViewSet(CompanyScopedModelViewSet):
     tout rôle, écriture responsable/admin. Filtrable par `livraison`,
     `statut`."""
     queryset = RetourLivraison.objects.select_related(
-        'livraison', 'created_by').prefetch_related('lignes').all()
+        'livraison', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = RetourLivraisonSerializer
 
     def get_permissions(self):
@@ -65,9 +65,9 @@ class RetourLivraisonViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
-        """ZSTK8 — valide le retour : poste les mouvements ENTREE au dépôt
-        source (plafonnés à la quantité livrée). Refuse (400) si une ligne
-        dépasse la quantité livrée."""
+        """ZSTK8 — valide le retour. ACHT21 : TRANSFERT de la destination de
+        la livraison vers son dépôt d'origine (jamais une entrée), plafonné
+        au cumul livré − autres retours ; refus (400) lisible sinon."""
         retour = self.get_object()
         try:
             valider_retour_livraison(retour, request.user)

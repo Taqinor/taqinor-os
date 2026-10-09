@@ -31,7 +31,11 @@ def declaration_raccordement(request, pk):
     user = request.user
     qs = Devis.objects.select_related('client')
     if getattr(user, 'company_id', None):
-        qs = qs.filter(company=user.company)
+        # ADEV41 — même portée équipe que ``DevisViewSet``/ADEV21 : un devis
+        # hors portée est introuvable (404), jamais servi.
+        from core.scoping import scope_queryset
+        qs = scope_queryset(qs.filter(company=user.company), user,
+                            ['created_by'])
     elif not user.is_superuser:
         qs = qs.none()
     # ADEV41 — portée équipe (mêmes ``owner_fields`` que ADEV21) : un devis

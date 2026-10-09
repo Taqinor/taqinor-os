@@ -193,10 +193,15 @@ class PremierRunTests(PublicationMeryemTestsBase):
         self.assertEqual(Notification.objects.count(), notifs_avant + 6)
 
     def test_dry_run_necrit_rien(self):
+        # ADOC75 — la création de la société a déjà semé le classeur des
+        # routages par défaut (« Documents clients ») : le dry-run n'en
+        # ajoute aucun.
+        cabinets_avant = Cabinet.objects.filter(company=self.company).count()
         call_command(
             'publier_documents_meryem', company=self.company.slug, dry_run=True)
 
-        self.assertEqual(Cabinet.objects.filter(company=self.company).count(), 0)
+        self.assertEqual(Cabinet.objects.filter(company=self.company).count(),
+                         cabinets_avant)
         self.assertEqual(Folder.objects.filter(company=self.company).count(), 0)
         self.assertEqual(Document.objects.filter(company=self.company).count(), 0)
         self.assertEqual(

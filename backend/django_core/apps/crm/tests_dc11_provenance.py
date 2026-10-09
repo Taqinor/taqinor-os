@@ -290,6 +290,21 @@ class LeCheminVivantDeLaProvenance(TestCase):
             'facture_hiver',
             selectors.lead_values_changed_since(stamp, company=self.company))
 
+    def test_cad177_reenregistrer_sans_changement_garde_l_estampille(self):
+        """CAD177 — même lead, aucune dérive : l'estampille en place est
+        GARDÉE telle quelle (même `captured_at`). La réécrire changeait
+        etude_params — et l'empreinte de l'étude C&I — à chaque
+        enregistrement sans changement (CIQ334/CIQ346)."""
+        from apps.ventes.domain import pipeline
+
+        pipeline.estampiller_provenance(self.devis, self._intention())
+        self.devis.refresh_from_db()
+        avant = dict(self.devis.etude_params['provenance'])
+        self.assertIsNone(
+            pipeline.estampiller_provenance(self.devis, self._intention()))
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.etude_params['provenance'], avant)
+
     def test_un_changement_de_lead_source_reestampille(self):
         from apps.ventes.domain import pipeline
 

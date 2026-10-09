@@ -58,7 +58,9 @@ class GelChampsFinanceTests(TestCase):
             {'bom': [{'produit_id': 1, 'designation': 'Panneau X',
                       'quantite': 2}]},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # ACHT6 — `bom` est désormais en LECTURE SEULE (posée par le serveur) :
+        # le PATCH l'ignore (200) au lieu de la refuser ; elle reste gelée.
+        self.assertEqual(r.status_code, 200, r.data)
         inst.refresh_from_db()
         self.assertEqual(inst.bom, [])
 
@@ -87,4 +89,6 @@ class GelChampsFinanceTests(TestCase):
             format='json')
         self.assertEqual(r.status_code, 200, r.data)
         inst.refresh_from_db()
-        self.assertEqual(len(inst.bom), 1)
+        # ACHT6 — comportement INVERSÉ par la tâche : la nomenclature gelée
+        # n'est plus écrite par un PATCH générique, même sur un chantier vivant.
+        self.assertEqual(inst.bom, [])

@@ -16,7 +16,7 @@ from django.utils import timezone
 from .models import (
     MonitoringConfig, ProductionReading, SlaDisponibilite, UnderperformanceFlag,
 )
-from .services import _expected_recent_kwh
+from .services import _expected_recent_kwh, premiers_releves
 
 # FG286 — facteur d'émission du réseau marocain (kg CO₂ évité par kWh
 # autoproduit). Même hypothèse que l'energy report (apps.installations) : on la
@@ -49,6 +49,7 @@ def fleet_overview(company, *, window_days=365, today=None):
                    .select_related('installation'))
 
     inst_ids = [config.installation_id for config in configs]
+    premiers = premiers_releves(inst_ids)  # ASAV62 — une requête, pas N
     prod_par_installation = dict(
         ProductionReading.objects
         .filter(installation_id__in=inst_ids, date__gte=since, date__lte=today)
@@ -58,6 +59,9 @@ def fleet_overview(company, *, window_days=365, today=None):
 
     total_kwh = Decimal('0')
     total_expected = Decimal('0')
+    # ASAV65 — numérateur du PR parc : production des SEULS systèmes qui ont
+    # un attendu (la production totale reste affichée à part).
+    total_kwh_avec_attendu = Decimal('0')
     total_kwc = Decimal('0')
     systems = []
     active_count = 0
@@ -74,10 +78,13 @@ def fleet_overview(company, *, window_days=365, today=None):
         prod = Decimal(str(prod))
         total_kwh += prod
 
-        expected = _expected_recent_kwh(inst, config, window_days)
+        expected = _expected_recent_kwh(
+            inst, config, window_days, today=today,
+            premier_releve=premiers.get(inst.id))
         pr_pct = None
         if expected and expected > 0:
             total_expected += expected
+            total_kwh_avec_attendu += prod
             pr_pct = _q((prod / expected) * Decimal('100'))
 
         systems.append({
@@ -86,14 +93,19 @@ def fleet_overview(company, *, window_days=365, today=None):
             'puissance_kwc': _q(kwc),
             'production_kwh': _q(prod),
             'pr_pct': pr_pct,
+            # ASAV65 — « sans référence » : pas d'attendu, donc pas de PR.
+            'sans_reference': pr_pct is None,
         })
 
     fleet_pr = None
     if total_expected > 0:
-        fleet_pr = _q((total_kwh / total_expected) * Decimal('100'))
+        fleet_pr = _q(
+            (total_kwh_avec_attendu / total_expected) * Decimal('100'))
 
+    # ASAV69 — les alertes d'un site retiré du parc ne comptent plus.
     open_alerts = UnderperformanceFlag.objects.filter(
-        company=company, is_open=True).count()
+        company=company, is_open=True,
+        installation__parc_actif=True).count()
 
     return {
         'window_days': window_days,
@@ -189,7 +201,8 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
 
 def client_environmental_dashboard(company, client_id, *,
                                    tarif_mad_par_kwh=None,
-                                   co2_kg_par_kwh=None):
+                                   co2_kg_par_kwh=None, since=None,
+                                   until=None):
     """FG288 — synthèse environnementale CUMULÉE des systèmes d'un client.
 
     Production / économies (MAD) / CO₂ évité cumulés sur tous les systèmes du
@@ -207,6 +220,11 @@ def client_environmental_dashboard(company, client_id, *,
 
     qs = ProductionReading.objects.filter(
         company=company, installation__client_id=client_id)
+    # ASAV67 — période optionnelle (attestation bornée).
+    if since is not None:
+        qs = qs.filter(date__gte=since)
+    if until is not None:
+        qs = qs.filter(date__lte=until)
     total_kwh = qs.aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
     total_kwh = Decimal(str(total_kwh))
 
@@ -395,12 +413,16 @@ def benchmark_parc(company, *, window_days=365, today=None):
                    .filter(company=company)
                    .select_related('installation'))
 
+    premiers = premiers_releves(
+        [config.installation_id for config in configs])
     entries = []
     for config in configs:
         inst = config.installation
         if not getattr(inst, 'parc_actif', True):
             continue
-        expected = _expected_recent_kwh(inst, config, window_days)
+        expected = _expected_recent_kwh(
+            inst, config, window_days, today=today,
+            premier_releve=premiers.get(inst.id))
         if not expected or expected <= 0:
             continue
         prod = (ProductionReading.objects

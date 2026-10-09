@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4806, operations: 7588, components: 2215}
+counts: {paths: 4808, operations: 7584, components: 2214}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -157,10 +157,7 @@ operations:
 - get /api/django/adsengine/actions/ -> django_adsengine_actions_list
 - post /api/django/adsengine/actions/ -> django_adsengine_actions_create
 - post /api/django/adsengine/actions/proposer/{kind}/ -> django_adsengine_actions_proposer_create
-- delete /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_destroy
 - get /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_retrieve
-- patch /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_partial_update
-- put /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_update
 - post /api/django/adsengine/actions/{id}/annuler/ -> django_adsengine_actions_annuler_create
 - post /api/django/adsengine/actions/{id}/apply/ -> django_adsengine_actions_apply_create
 - post /api/django/adsengine/actions/{id}/approve/ -> django_adsengine_actions_approve_create
@@ -2541,6 +2538,8 @@ operations:
 - get /api/django/public/document/{token}/ -> django_public_document_retrieve
 - get /api/django/public/installations/intervention-rapport/{token}/ -> django_public_installations_intervention_rapport_retrieve
 - get /api/django/public/installations/intervention-rapport/{token}/pdf/ -> django_public_installations_intervention_rapport_pdf_retrieve
+- get /api/django/public/installations/intervention-rapport/{token}/photo/{att_id}/ -> django_public_installations_intervention_rapport_photo_retrieve
+- get /api/django/public/installations/intervention-rapport/{token}/photos/{att_id}/ -> django_public_installations_intervention_rapport_photos_retrieve
 - get /api/django/public/installations/intervention/{token}/ -> django_public_installations_intervention_retrieve
 - get /api/django/public/pay/{token}/ -> django_public_pay_retrieve
 - post /api/django/public/pay/{token}/webhook/ -> django_public_pay_webhook_create
@@ -3989,10 +3988,7 @@ operations:
 - get /api/v1/adsengine/actions/ -> v1_adsengine_actions_list
 - post /api/v1/adsengine/actions/ -> v1_adsengine_actions_create
 - post /api/v1/adsengine/actions/proposer/{kind}/ -> v1_adsengine_actions_proposer_create
-- delete /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_destroy
 - get /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_retrieve
-- patch /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_partial_update
-- put /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_update
 - post /api/v1/adsengine/actions/{id}/annuler/ -> v1_adsengine_actions_annuler_create
 - post /api/v1/adsengine/actions/{id}/apply/ -> v1_adsengine_actions_apply_create
 - post /api/v1/adsengine/actions/{id}/approve/ -> v1_adsengine_actions_approve_create
@@ -9015,7 +9011,6 @@ components:
 - PatchedDossierRequest
 - PatchedEmailTemplateRequest
 - PatchedEmplacementStockRequest
-- PatchedEngineActionRequest
 - PatchedEntiteRequest
 - PatchedEquipeCommercialeRequest
 - PatchedEquipeMaintenanceRequest

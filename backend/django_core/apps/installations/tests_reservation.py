@@ -30,7 +30,9 @@ from apps.stock.models import Produit, MouvementStock
 from apps.stock.services import (
     reserved_quantity, available_quantity, is_low_stock_available,
 )
-from apps.installations.models import InstallationActivity, StockReservation
+from apps.installations.models import (
+    Installation, InstallationActivity, StockReservation,
+)
 from apps.installations.services import (
     create_installation_from_devis, seed_reservations,
     consume_reservations, release_reservations,
@@ -189,6 +191,8 @@ class TestConsumptionIdempotent(TestCase):
 
     def test_installe_via_api_then_reenter_installe_no_double(self):
         url = f'/api/django/installations/chantiers/{self.inst.id}/'
+        # ACHT2 — un pas à la fois : le chantier part d'« En cours ».
+        Installation.objects.filter(pk=self.inst.pk).update(statut='en_cours')
         # Passe à « Installé » via l'API (déclenche le hook de statut).
         r = self.api.patch(url, {'statut': 'installe'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
@@ -230,6 +234,8 @@ class TestConsumptionIdempotent(TestCase):
         url = (f'/api/django/installations/chantiers/'
                f'{self.inst.id}/mise-en-service/')
         self.assertIsNone(self.inst.date_reception)
+        # ACHT2 — la mise en service suit « Installé » (un pas à la fois).
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
         r = self.api.post(url, {'date_mise_en_service': '2026-06-20'},
                           format='json')
         self.assertEqual(r.status_code, 200, r.data)
@@ -241,6 +247,8 @@ class TestConsumptionIdempotent(TestCase):
         # mise en service route bien par `_apply_stock_statut_effects` sans
         # jamais re-sortir le stock (idempotent) : une seule SORTIE au total.
         url = f'/api/django/installations/chantiers/{self.inst.id}/'
+        # ACHT2 — un pas à la fois : le chantier part d'« En cours ».
+        Installation.objects.filter(pk=self.inst.pk).update(statut='en_cours')
         self.api.patch(url, {'statut': 'installe'}, format='json')
         self.panneau.refresh_from_db()
         self.assertEqual(self.panneau.quantite_stock, 20)  # 30 - 10
@@ -330,10 +338,14 @@ class TestReleaseOnCancelClose(TestCase):
 
     def test_close_via_api_after_install_keeps_consumption(self):
         url = f'/api/django/installations/chantiers/{self.inst.id}/'
+        # ACHT2 — un pas à la fois : le chantier part d'« En cours ».
+        Installation.objects.filter(pk=self.inst.pk).update(statut='en_cours')
         self.api.patch(url, {'statut': 'installe'}, format='json')
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 9)  # consommé 6
-        # Clôturer ne ré-ajoute pas le stock consommé.
+        # Clôturer ne ré-ajoute pas le stock consommé (ACHT2 : via
+        # « Réceptionné », un pas à la fois).
+        self.api.patch(url, {'statut': 'receptionne'}, format='json')
         self.api.patch(url, {'statut': 'cloture'}, format='json')
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 9)

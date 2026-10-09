@@ -1305,6 +1305,35 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "n'est pas lisible statiquement — la garde s'abstient, les deux "
         "moities (DevisSerializer, BlocCalepinageDevis.jsx) s'appuient sur "
         "CET exemple (CALX45/CALX46)",
+    "sav/ticket_detail.json":
+        "cles ADDITIVES `statuts_suivants`, `equipement_fin_garantie_effective` "
+        "et `je_suis_abonne` du detail d'un ticket (GET sav/tickets/<pk>/) : "
+        "servi par un ModelViewSet dont la forme n'est pas lisible "
+        "statiquement ; les moities back (ASAV39/43/44) et front (ASAV42/45) "
+        "s'appuient sur CET exemple (ASAV1)",
+    "sav/ticket_suivi_public.json":
+        "GET public/sav/ticket/<token>/ — `annule`, `fusionne_dans_reference`, "
+        "`statut_display` « Annule » : la vue publique les sert avec ASAV30, "
+        "la page /suivi/:token avec ASAV31 — toutes deux s'appuient sur CET "
+        "exemple (ASAV1)",
+    "sav/piece_retiree.json":
+        "POST sav/tickets/<pk>/pieces-retirees/ — corps `serie_neuve` "
+        "optionnel et reponse `equipement_neuf` : servis par l'@action de "
+        "TicketViewSet avec ASAV9, champ ecran avec ASAV10 — tous deux "
+        "s'appuient sur CET exemple (ASAV1)",
+    "installations/installation_divergence_devis.json":
+        "cle ADDITIVE `divergence_devis` du detail d'un chantier (GET "
+        "installations/chantiers/<pk>/), calculee par le serveur : servie "
+        "par un ModelViewSet (forme non lisible statiquement) ; "
+        "ACHT66 la produit (InstallationSerializer.divergence_devis) mais le "
+        "detail n'est pas lisible statiquement — ACHT67 (ecran) s'appuie "
+        "sur CET exemple (ACHT40)",
+    "installations/field_sync_cocher_checklist.json":
+        "op hors-ligne `chantier.cocher_checklist` de POST installations/"
+        "sync/ portant `equipements` (meme forme que le corps en ligne de "
+        "`cocher-checklist`) : le handler de synchro n'est pas une vue "
+        "lisible statiquement — ACHT70 (handler) et ACHT71 (ecran) "
+        "s'appuient sur CET exemple (ACHT40)",
 }
 
 

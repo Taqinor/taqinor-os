@@ -89,6 +89,48 @@ from authentication.scoping import scope_queryset  # noqa: E402
 from core.mixins import company_qs  # noqa: E402
 
 
+# CAD177 — bornes des colonnes des lignes d'avoir / de note de débit
+# (DecimalField max_digits=10, decimal_places=2 → |x| < 10^8 ; remise et
+# taux TVA max_digits=5 et bornés 0..100 par contrainte). Hors bornes
+# (1e12, NaN, Infinity, remise 1000), l'INSERT levait DataError « numeric
+# field overflow » → 500 (marcheur aléatoire, nocturne 37792898726).
+_MAX_MONTANT_LIGNE = 10 ** 8
+
+
+def _montants_ligne_corrective(i, ligne):
+    """Valide quantité / prix unitaire / remise / taux TVA d'une ligne saisie
+    (avoir ou note de débit). Rend ``((qte, pu, remise, taux_tva), None)`` ou
+    ``(None, message)`` — message 400 nommant la ligne, jamais un 500."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        qte = Decimal(str(ligne.get('quantite')))
+        pu = Decimal(str(ligne.get('prix_unitaire')))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, (f'Ligne {i} : quantité et prix unitaire '
+                      'numériques requis.')
+    if not qte.is_finite() or not pu.is_finite() or qte <= 0 or pu < 0:
+        return None, f'Ligne {i} : quantité > 0 et prix unitaire ≥ 0 requis.'
+    if qte >= _MAX_MONTANT_LIGNE or pu >= _MAX_MONTANT_LIGNE:
+        return None, (f'Ligne {i} : quantité et prix unitaire doivent rester '
+                      'sous 100 000 000.')
+    try:
+        remise = Decimal(str(ligne.get('remise') or 0))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f'Ligne {i} : remise invalide.'
+    if not remise.is_finite() or not 0 <= remise <= 100:
+        return None, f'Ligne {i} : remise entre 0 et 100 % requise.'
+    taux_tva = ligne.get('taux_tva')
+    if taux_tva in (None, ''):
+        return (qte, pu, remise, None), None
+    try:
+        taux_tva = Decimal(str(taux_tva))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f'Ligne {i} : taux TVA invalide.'
+    if not taux_tva.is_finite() or not 0 <= taux_tva <= 100:
+        return None, f'Ligne {i} : taux TVA invalide.'
+    return (qte, pu, remise, taux_tva), None
+
+
 class IsSuperuserOnly(BasePermission):
     """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
 
@@ -407,51 +449,74 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='remettre-brouillon',
             permission_classes=[IsResponsableOrAdmin])
     def remettre_brouillon(self, request, pk=None):
-        """ZFAC1 — Reset to Draft (opt-in période ouverte).
+        """ZFAC1 — Reset to Draft.
 
-        Repasse une facture ÉMISE en brouillon UNIQUEMENT si elle n'a AUCUN
-        paiement ni avoir actif et que la période comptable de sa date
-        d'émission n'est pas verrouillée (YLEDG3) ni que XFAC24
-        (immutabilité) est activée pour la société. Le numéro/référence est
-        CONSERVÉ (pas de renumérotation) — seul le statut change."""
+        Repasse une facture ÉMISE en brouillon UNIQUEMENT si elle ne porte
+        AUCUN argent (AFAC11 : paiements, avances ventilées, notes de débit
+        émises, retenues subies, avoirs actifs — prédicat unique
+        ``argent_rattache``) et que XFAC24 (immutabilité) n'est pas activée
+        pour la société. Contrôlé SOUS VERROU de la facture (un paiement
+        concurrent ne peut pas passer entre la garde et la bascule). Le lien
+        de paiement actif est RÉVOQUÉ : le client ne peut plus payer une
+        facture en cours d'édition. Le numéro/référence est CONSERVÉ (pas de
+        renumérotation) — seul le statut change. (Aucun contrôle de période
+        comptable n'est fait ici — YLEDG3 hors périmètre.)"""
+        from django.db import transaction
+
+        from ..domain.encaissements import (
+            argent_rattache, decrire_argent_rattache, revoquer_lien_paiement,
+        )
         facture = self.get_object()
-        if facture.statut != Facture.Statut.EMISE:
-            return Response(
-                {'detail': (
-                    'Seule une facture émise (sans paiement ni avoir) peut '
-                    'être remise en brouillon.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if facture.paiements.exists():
-            return Response(
-                {'detail': (
-                    'Impossible : cette facture a déjà au moins un '
-                    'paiement enregistré.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
-            return Response(
-                {'detail': (
-                    'Impossible : cette facture a un avoir actif.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=facture.company)
-        if getattr(profile, 'factures_immuables', False):
-            return Response(
-                {'detail': (
-                    "Facture immuable : l'immutabilité (XFAC24) est activée "
-                    "pour cette société — corrigez par un avoir puis une "
-                    "nouvelle facture."
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        ancien = facture.statut
-        facture.statut = Facture.Statut.BROUILLON
-        facture.save(update_fields=['statut'])
+        with transaction.atomic():
+            facture = Facture.objects.select_for_update().get(pk=facture.pk)
+            if facture.statut != Facture.Statut.EMISE:
+                return Response(
+                    {'detail': (
+                        'Seule une facture émise (sans paiement ni avoir) peut '
+                        'être remise en brouillon.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if facture.paiements.exists():
+                return Response(
+                    {'detail': (
+                        'Impossible : cette facture a déjà au moins un '
+                        'paiement enregistré.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
+                return Response(
+                    {'detail': (
+                        'Impossible : cette facture a un avoir actif.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            argent = decrire_argent_rattache(argent_rattache(facture))
+            if argent:
+                return Response(
+                    {'detail': (
+                        'Impossible de remettre en brouillon : de l\'argent '
+                        f'est rattaché à cette facture ({argent}). Corrigez '
+                        'par un avoir ou une note de débit.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from apps.parametres.models import CompanyProfile
+            profile = CompanyProfile.get(company=facture.company)
+            if getattr(profile, 'factures_immuables', False):
+                return Response(
+                    {'detail': (
+                        "Facture immuable : l'immutabilité (XFAC24) est activée "
+                        "pour cette société — corrigez par un avoir puis une "
+                        "nouvelle facture."
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            ancien = facture.statut
+            facture.statut = Facture.Statut.BROUILLON
+            facture.save(update_fields=['statut'])
+            revoquer_lien_paiement(facture=facture, user=request.user)
         from .. import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
         return Response(FactureSerializer(facture).data)
@@ -750,6 +815,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 locked.statut = Facture.Statut.ANNULEE
                 locked.save(update_fields=['statut'])
                 facture = locked
+
+            # AFAC23 (C-AFAC-018) — les trois branches convergent vers
+            # ANNULEE : les liens « Payer en ligne » ouverts sont fermés dans
+            # la même transaction (la page client répond « annulé »).
+            from ..domain.encaissements import fermer_liens_paiement
+            from ..models import PaymentLink
+            fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
 
         # YEVNT6 — événement documentaire (best-effort), une fois pour les
         # trois branches ci-dessus (toutes convergent vers ANNULEE).
@@ -1208,7 +1280,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # bloc atomique plus bas) : le lire ici, hors transaction, laissait
         # deux requêtes concurrentes lire chacune l'ancien reste et passer
         # toutes deux la garde.
-        from decimal import Decimal, InvalidOperation
 
         # ERR34 — valider les lignes fournies AVANT toute création, et échouer
         # bruyamment (400) au lieu de les avaler en silence (l'ancien
@@ -1229,35 +1300,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     return Response(
                         {'detail': f'Ligne {i} : désignation requise.'},
                         status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    qte = Decimal(str(ligne.get('quantite')))
-                    pu = Decimal(str(ligne.get('prix_unitaire')))
-                except (InvalidOperation, TypeError, ValueError):
+                montants, erreur = _montants_ligne_corrective(i, ligne)
+                if erreur:
                     return Response(
-                        {'detail': (f'Ligne {i} : quantité et prix unitaire '
-                                    'numériques requis.')},
+                        {'detail': erreur},
                         status=status.HTTP_400_BAD_REQUEST)
-                if qte <= 0 or pu < 0:
-                    return Response(
-                        {'detail': (f'Ligne {i} : quantité > 0 et prix '
-                                    'unitaire ≥ 0 requis.')},
-                        status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    remise = Decimal(str(ligne.get('remise') or 0))
-                except (InvalidOperation, TypeError, ValueError):
-                    return Response(
-                        {'detail': f'Ligne {i} : remise invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST)
-                taux_tva = ligne.get('taux_tva')
-                if taux_tva not in (None, ''):
-                    try:
-                        taux_tva = Decimal(str(taux_tva))
-                    except (InvalidOperation, TypeError, ValueError):
-                        return Response(
-                            {'detail': f'Ligne {i} : taux TVA invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    taux_tva = None
+                qte, pu, remise, taux_tva = montants
                 # DC10 — produit REQUIS sur une nouvelle ligne d'avoir (lien
                 # snapshot fort). Le FK reste nullable en base pour l'historique,
                 # mais toute ligne saisie ici doit désigner un produit de la
@@ -1279,107 +1327,18 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
-        def _create(ref, source):
-            avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, taux_tva=facture.taux_tva,
-                # AUD106 — la remise globale de la facture SUIT sur l'avoir.
-                # Elle n'était jamais reprise : l'avoir total recopiait les
-                # lignes BRUTES alors que la facture facture le NET, donc il
-                # créditait plus que ce qui avait été facturé.
-                remise_globale=facture.remise_globale,
-                # ARRONDI-100 — l'avoir TOTAL (lignes de la facture recopiées)
-                # reprend son palier : il crédite exactement le facturé. Un
-                # avoir PARTIEL (lignes saisies) n'arrondit jamais.
-                arrondi_pas=(0 if clean_lignes
-                             else getattr(source, 'arrondi_pas', 0) or 0),
-                arrondi_unites=(1 if clean_lignes
-                                else getattr(source, 'arrondi_unites', 1) or 1),
-                created_by=request.user)
-            if clean_lignes:
-                for ligne in clean_lignes:
-                    LigneAvoir.objects.create(avoir=avoir, **ligne)
-            else:
-                f_lignes = list(source.lignes.all())
-                if f_lignes:
-                    for ligne in f_lignes:
-                        LigneAvoir.objects.create(
-                            avoir=avoir, produit=ligne.produit,
-                            designation=ligne.designation,
-                            quantite=ligne.quantite,
-                            prix_unitaire=ligne.prix_unitaire,
-                            remise=ligne.remise, taux_tva=ligne.taux_tva)
-                else:
-                    # Facture de tranche sans lignes : montants figés.
-                    avoir.montant_ht = source.total_ht
-                    avoir.montant_tva = source.total_tva
-                    avoir.montant_ttc = source.total_ttc
-                    avoir.save(update_fields=[
-                        'montant_ht', 'montant_tva', 'montant_ttc'])
-            # ATOT6 — autant de paniers TVA que la facture d'origine.
-            from ..domain.facturation_ops import (
-                ventiler_document_depuis_facture,
-            )
-            ventiler_document_depuis_facture(
-                avoir, source, partiel=bool(clean_lignes),
+        # AFAC27 — LE constructeur unique (`creer_avoir_facture`) : verrou de
+        # la facture, plafond lu SOUS le verrou (AUD126), remise globale et
+        # palier repris, ventilation TVA (ATOT6), chatter, `avoir_cree`,
+        # contre-passation (ZFAC5) et recalcul du statut (ATOT8).
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        try:
+            avoir = creer_avoir_facture(
+                facture=facture, user=request.user, motif=motif, mode=mode,
                 lignes_saisies=clean_lignes)
-            return avoir
-
-        # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
-        # n'avait ni `transaction.atomic` ni `select_for_update` : deux
-        # requêtes concurrentes (double-clic, deux gestionnaires) lisaient
-        # chacune l'ancien `reste_creditable` et passaient toutes deux la
-        # garde, créditant le client de deux fois le plafond. C'est le motif
-        # que `enregistrer-paiement` a déjà corrigé sous ERR72 ; le même
-        # correctif est porté ici — verrou de ligne sur la Facture PUIS
-        # lecture du reste, création et contrôle du plafond dans la même
-        # transaction.
-        with transaction.atomic():
-            locked = Facture.objects.select_for_update().get(pk=facture.pk)
-            reste_creditable = locked.total_ttc - locked.avoirs_total
-            avoir = create_numbered(
-                Avoir, company, 'avoir', lambda ref: _create(ref, locked))
-            # Garde plafond : si l'avoir créé dépasse le reste créditable, on
-            # le supprime (avec ses lignes) et on refuse — un avoir partiel
-            # correct passe inchangé. Tolérance d'un centime pour les arrondis.
-            if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-                avoir.lignes.all().delete()
-                avoir.delete()
-                return Response(
-                    {'detail': "L'avoir dépasse le montant restant de la "
-                               f"facture ({reste_creditable:.2f} MAD)."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            # Chatter facture : trace la création de l'avoir (acteur côté
-            # serveur, jamais lu du corps de la requête).
-            from .. import activity
-            activity.log_facture_avoir(locked, request.user, avoir)
-            if mode == 'contre_passation':
-                # ZFAC5 — annulation NETTE : la facture d'origine passe
-                # annulee, avec un FactureActivity liant les deux pièces.
-                from ..models import FactureActivity
-                ancien_statut = locked.statut
-                locked.statut = Facture.Statut.ANNULEE
-                locked.save(update_fields=['statut'])
-                FactureActivity.objects.create(
-                    company=company, facture=locked, user=request.user,
-                    kind=FactureActivity.Kind.MODIFICATION,
-                    field='statut', field_label='Statut',
-                    old_value=ancien_statut,
-                    new_value=Facture.Statut.ANNULEE,
-                    body=(f"Facture annulée par contre-passation — avoir "
-                          f"miroir {avoir.reference}."),
-                )
-            # YLEDG1 — événement documentaire générique (pose du seam pour
-            # compta.ecriture_pour_avoir, jamais d'import de son service ici).
-            from core.events import avoir_cree
-            avoir_cree.send(sender=Avoir, instance=avoir, company=company)
-            # ATOT8 — le statut de paiement suit le reste dû : un avoir qui
-            # solde la facture la passe PAYÉE (`facture_payee` émis une fois).
-            if mode != 'contre_passation':
-                from ..domain.encaissements import recalculer_statut_paiement
-                recalculer_statut_paiement(
-                    locked, user=request.user, source='avoir')
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
@@ -1405,7 +1364,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         motif = (request.data.get('motif') or '').strip()
         lignes = request.data.get('lignes')
 
-        from decimal import Decimal, InvalidOperation
         clean_lignes = None
         if isinstance(lignes, list) and lignes:
             clean_lignes = []
@@ -1419,35 +1377,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     return Response(
                         {'detail': f'Ligne {i} : désignation requise.'},
                         status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    qte = Decimal(str(ligne.get('quantite')))
-                    pu = Decimal(str(ligne.get('prix_unitaire')))
-                except (InvalidOperation, TypeError, ValueError):
+                montants, erreur = _montants_ligne_corrective(i, ligne)
+                if erreur:
                     return Response(
-                        {'detail': (f'Ligne {i} : quantité et prix unitaire '
-                                    'numériques requis.')},
+                        {'detail': erreur},
                         status=status.HTTP_400_BAD_REQUEST)
-                if qte <= 0 or pu < 0:
-                    return Response(
-                        {'detail': (f'Ligne {i} : quantité > 0 et prix '
-                                    'unitaire ≥ 0 requis.')},
-                        status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    remise = Decimal(str(ligne.get('remise') or 0))
-                except (InvalidOperation, TypeError, ValueError):
-                    return Response(
-                        {'detail': f'Ligne {i} : remise invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST)
-                taux_tva = ligne.get('taux_tva')
-                if taux_tva not in (None, ''):
-                    try:
-                        taux_tva = Decimal(str(taux_tva))
-                    except (InvalidOperation, TypeError, ValueError):
-                        return Response(
-                            {'detail': f'Ligne {i} : taux TVA invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    taux_tva = None
+                qte, pu, remise, taux_tva = montants
                 produit_id = ligne.get('produit') or None
                 if produit_id is None:
                     return Response(
@@ -1510,6 +1445,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         note_debit = create_numbered(
             NoteDebit, company, 'note_debit', _create)
+        # AFAC29 (C-AFAC-027) — une note de débit AUGMENTE le reste dû : le
+        # statut de paiement est re-dérivé par LE service d'ATOT8 (une facture
+        # PAYÉE majorée revient au recouvrement, émise ou en retard).
+        from ..domain.encaissements import recalculer_statut_paiement
+        recalculer_statut_paiement(
+            facture, user=request.user, source='note_debit')
         try:
             from ..utils.pdf import generate_note_debit_pdf
             generate_note_debit_pdf(note_debit.id)
@@ -1535,7 +1476,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        company = facture.company
         motif = (request.data.get('motif') or '').strip()
         if not motif:
             return Response(
@@ -1548,121 +1488,19 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Au moins une ligne retournée est requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-        reste_creditable = facture.total_ttc - facture.avoirs_total
-
-        # Quantité déjà retournée par produit (avoirs actifs déjà émis sur
-        # cette facture) — pour ne jamais accepter un retour au-delà du vendu.
-        deja_retourne = {}
-        for a in facture.avoirs.filter(statut=Avoir.Statut.EMISE):
-            for lig in a.lignes.all():
-                if lig.produit_id:
-                    deja_retourne[lig.produit_id] = (
-                        deja_retourne.get(lig.produit_id, Decimal('0'))
-                        + lig.quantite)
-
-        vendu_par_produit = {}
-        for lig in facture.lignes.all():
-            if lig.produit_id:
-                vendu_par_produit[lig.produit_id] = (
-                    vendu_par_produit.get(lig.produit_id, Decimal('0'))
-                    + lig.quantite)
-
-        clean_lignes = []
-        for i, ligne in enumerate(lignes, start=1):
-            if not isinstance(ligne, dict):
-                return Response(
-                    {'detail': f'Ligne {i} invalide.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            produit_id = ligne.get('produit') or None
-            if produit_id is None:
-                return Response(
-                    {'detail': f'Ligne {i} : produit requis.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            from apps.stock.selectors import get_produit_scoped
-            produit = get_produit_scoped(company, produit_id)
-            if produit is None:
-                return Response(
-                    {'detail': f'Ligne {i} : produit inconnu.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            try:
-                qte = Decimal(str(ligne.get('quantite')))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response(
-                    {'detail': f'Ligne {i} : quantité numérique requise.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if qte <= 0:
-                return Response(
-                    {'detail': f'Ligne {i} : quantité > 0 requise.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            vendu = vendu_par_produit.get(produit_id, Decimal('0'))
-            deja = deja_retourne.get(produit_id, Decimal('0'))
-            disponible_retour = vendu - deja
-            if qte > disponible_retour:
-                return Response(
-                    {'detail': (
-                        f'Ligne {i} : quantité retournée ({qte}) supérieure '
-                        f'à la quantité vendue restant retournable '
-                        f'({disponible_retour}) pour « {produit.nom} ».')},
-                    status=status.HTTP_400_BAD_REQUEST)
-            f_ligne = next(
-                (lig for lig in facture.lignes.all()
-                 if lig.produit_id == produit_id), None)
-            prix_unitaire = f_ligne.prix_unitaire if f_ligne else Decimal('0')
-            remise = f_ligne.remise if f_ligne else Decimal('0')
-            taux_tva = f_ligne.taux_tva if f_ligne else None
-            designation = (
-                f_ligne.designation if f_ligne else produit.nom)[:255]
-            clean_lignes.append({
-                'produit': produit, 'produit_id': produit_id,
-                'designation': designation, 'quantite': qte,
-                'prix_unitaire': prix_unitaire, 'remise': remise,
-                'taux_tva': taux_tva,
-            })
-
-        def _create(ref):
-            avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, motif_retour=motif, restocke=restocker,
-                taux_tva=facture.taux_tva, created_by=request.user)
-            for ligne in clean_lignes:
-                LigneAvoir.objects.create(
-                    avoir=avoir, produit=ligne['produit'],
-                    designation=ligne['designation'],
-                    quantite=ligne['quantite'],
-                    prix_unitaire=ligne['prix_unitaire'],
-                    remise=ligne['remise'], taux_tva=ligne['taux_tva'])
-            return avoir
-
-        avoir = create_numbered(Avoir, company, 'avoir', _create)
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-            avoir.lignes.all().delete()
-            avoir.delete()
-            return Response(
-                {'detail': "Le retour dépasse le montant restant de la "
-                           f"facture ({reste_creditable:.2f} MAD)."},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        if restocker:
-            for ligne in clean_lignes:
-                produit = ligne['produit']
-                produit.refresh_from_db()
-                qte_entiere = int(Decimal(ligne['quantite']).quantize(
-                    Decimal('1'), rounding=ROUND_HALF_UP))
-                qte_avant = produit.quantite_stock
-                qte_apres = qte_avant + qte_entiere
-                record_stock_movement(
-                    company=company, produit=produit,
-                    type_mouvement=mouvement_type_entree(),
-                    quantite=qte_entiere, quantite_avant=qte_avant,
-                    quantite_apres=qte_apres, reference=avoir.reference,
-                    note=f'Retour client — {motif} (facture {facture.reference})',
-                    created_by=request.user,
-                )
-
-        from .. import activity
-        activity.log_facture_avoir(facture, request.user, avoir)
+        # AFAC27 (C-AFAC-024) — LE constructeur unique d'avoir : quantités
+        # retournables, prix/remise/TVA FACTURÉS, remise globale et palier
+        # d'arrondi de la facture (au prorata, le dernier retour porte le
+        # solde au centime), plafond SOUS verrou, re-stockage dans la même
+        # transaction, `avoir_cree`, recalcul du statut (ATOT8).
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        try:
+            avoir = creer_avoir_facture(
+                facture=facture, user=request.user, motif=motif,
+                retour_lignes=lignes, restocker=restocker)
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
@@ -1782,20 +1620,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..utils.company_settings import create_numbered
 
         facture = self.get_object()
-        levels = list(FollowupLevel.objects.filter(
-            company=facture.company).order_by('delai_jours', 'ordre'))
+        # AFAC24 (C-AFAC-040, base) — UNE formule : la pénalité facturée est
+        # la pénalité INDICATIVE de la lettre et de la liste des relances
+        # (`recouvrement._current_level`), calculée sur l'EXIGIBLE (CIQ214),
+        # jamais sur `montant_du` (qui compte la retenue de garantie).
+        from ..recouvrement import _current_level, _levels, montant_exigible
         jr = facture.jours_retard
-        niveau = None
-        for lvl in levels:
-            if jr >= lvl.delai_jours:
-                niveau = lvl
+        niveau = _current_level(
+            jr, _levels(facture.company),
+            montant_du=montant_exigible(facture))
         if niveau is None:
             return Response(
                 {'detail': "Aucun niveau de relance atteint pour "
                            "cette facture."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        penalite = niveau.calcul_penalite(facture.montant_du, jr)
+        penalite = Decimal(niveau['penalite'])
         if penalite <= 0:
             return Response(
                 {'detail': "Aucune pénalité à facturer (taux/frais à 0)."},
@@ -1803,7 +1643,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
         libelle = (
             f"Pénalités de retard — facture {facture.reference} "
-            f"({jr} jour(s) de retard, {niveau.nom})")
+            f"({jr} jour(s) de retard, {niveau['nom']})")
 
         def _create(ref):
             return Facture.objects.create(

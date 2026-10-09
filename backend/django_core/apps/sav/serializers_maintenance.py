@@ -31,9 +31,9 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     expire = serializers.SerializerMethodField()
     en_periode_grace = serializers.SerializerMethodField()
     a_renouveler = serializers.SerializerMethodField()
-    # FG40 — facturation récurrente.
-    prochaine_facturation = serializers.SerializerMethodField()
-    facturation_due = serializers.SerializerMethodField()
+    # ASAV73 (D-ASAV-3 a) — ``prochaine_facturation`` / ``facturation_due``
+    # RETIRÉS : aucun écrivain ne facture plus les périodes (app contrats
+    # parquée, SOLMVP14) ; le prix du contrat reste servi.
     # XCTR2 — registre des équipements couverts (lecture enrichie).
     equipements_detail = serializers.SerializerMethodField()
     # XCTR3 — droits inclus (entitlements), compteurs consommés/restants.
@@ -54,7 +54,6 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   'prochaine_visite', 'due',
                   # FG40
                   'facturation_active', 'derniere_facturation',
-                  'prochaine_facturation', 'facturation_due',
                   # XSAV7 — overrides SLA optionnels du contrat.
                   'sla_response_days', 'sla_resolution_days',
                   # XCTR2 — registre des équipements couverts.
@@ -152,11 +151,3 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     def get_a_renouveler(self, obj):
         """AUD502 — date de renouvellement atteinte OU échéance dépassée."""
         return obj.a_renouveler()
-
-    def get_prochaine_facturation(self, obj):
-        """Date du prochain cycle de facturation (FG40)."""
-        return obj.prochaine_facturation().isoformat()
-
-    def get_facturation_due(self, obj):
-        """True si la facturation récurrente est due (FG40)."""
-        return obj.facturation_due()

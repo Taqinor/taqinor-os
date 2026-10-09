@@ -29,7 +29,7 @@ class SessionComptageViewSet(CompanyScopedModelViewSet):
     """FG324 — sessions de comptage tournant. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `statut`, `classe_abc`, `emplacement`."""
     queryset = SessionComptage.objects.select_related(
-        'emplacement', 'created_by').prefetch_related('lignes').all()
+        'emplacement', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = SessionComptageSerializer
 
     def get_permissions(self):

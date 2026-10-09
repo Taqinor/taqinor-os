@@ -1040,9 +1040,10 @@ class LivraisonLivreeWebhookTests(TestCase):
         self.client_obj = CrmClient.objects.create(company=self.co, nom='Cli')
         self.installation = Installation.objects.create(
             company=self.co, reference='CH-LIV', client=self.client_obj)
+        # ACHT19 — `livrer` exige une livraison expédiée (en transit).
         self.livraison = Livraison.objects.create(
             company=self.co, reference='LIV-1', installation=self.installation,
-            numero_suivi='TRACK-1',
+            numero_suivi='TRACK-1', statut=Livraison.Statut.EN_TRANSIT,
         )
         self.hook = Webhook.objects.create(
             company=self.co, target_url='https://example.com/hook',

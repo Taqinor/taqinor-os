@@ -16,7 +16,8 @@ class RelancerDormanceTests(TestCase):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM15', slug='taqinor-ntcrm15')
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         self.user = User.objects.create_user(
             username='vendeur_ntcrm15', password='x',
             company=self.company, role=self.role)

@@ -27,22 +27,56 @@ from .models import (
 
 
 # ── F9 — n° de série par composant → parc installé (sav.Equipement) ──────────
+MESSAGE_SERIE_DOUBLON = (
+    "Ce numéro de série est déjà relevé ou déjà au parc SAV.")
+MESSAGE_SERIE_AU_PARC = (
+    "Série déjà au parc SAV : corrigez-la depuis la fiche équipement.")
+
+
+def numero_serie_en_double(company, numero, *, exclude_id=None):
+    """ACHT37 — vrai si ce n° de série (non vide) existe déjà : relevé terrain
+    d'une AUTRE ligne de la société, ou équipement du parc SAV (contrainte
+    `uniq_equipement_serie_par_societe`). Évite l'`IntegrityError` (500) du
+    push au parc : le doublon est refusé dès la saisie."""
+    from .models import ComponentSerial
+    numero = (numero or '').strip()
+    if not numero:
+        return False
+    qs = ComponentSerial.objects.filter(
+        company=company, numero_serie__iexact=numero)
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    if qs.exists():
+        return True
+    from apps.sav.selectors import equipement_scoped_by_serial
+    return equipement_scoped_by_serial(company, numero) is not None
+
+
 def push_serials_to_parc(intervention, user):
     """F9 — pousse les n° de série relevés (avec un produit catalogue) vers le
     parc installé (sav.Equipement), comme la checklist chantier (N9). Idempotent
     via `pousse_parc` : un même relevé ne crée jamais deux équipements. Un n° de
     série VIDE n'empêche PAS la création (l'appareil est tracé sans série).
+    ACHT37 — appelé UNE fois à la clôture de l'intervention (jamais depuis un
+    GET) ; un n° déjà au parc est marqué poussé sans second équipement.
     Renvoie le nombre d'équipements créés."""
+    from apps.sav.selectors import equipement_scoped_by_serial
     from apps.sav.services import create_equipement_from_serial
     inst = intervention.installation
     created = 0
     for serial in intervention.serials.filter(
             pousse_parc=False, produit__isnull=False):
+        numero = (serial.numero_serie or '').strip() or None
+        if numero and equipement_scoped_by_serial(
+                intervention.company, numero) is not None:
+            serial.pousse_parc = True
+            serial.save(update_fields=['pousse_parc'])
+            continue
         create_equipement_from_serial(
             company=intervention.company, produit=serial.produit,
-            installation=inst,
-            numero_serie=(serial.numero_serie or '').strip() or None,
-            date_pose=inst.date_pose_reelle or timezone.localdate(),
+            installation=inst, numero_serie=numero,
+            date_pose=(inst.date_pose_reelle or intervention.date_realisee
+                       or timezone.localdate()),
             created_by=user)
         serial.pousse_parc = True
         serial.save(update_fields=['pousse_parc'])
@@ -66,6 +100,25 @@ def _bom_quantities(installation):
         key = (produit_id, designation)
         out[key] = out.get(key, Decimal('0')) + Decimal(qte)
     return out
+
+
+#: ACHT30 — messages des gardes communes (synchro terrain + vues).
+MESSAGE_CONSOMMATION_VALIDEE = 'Réconciliation déjà validée.'
+MESSAGE_INTERVENTION_VALIDEE = 'Intervention validée.'
+
+
+def consommation_modifiable(cons):
+    """ACHT30 (C-ACHT-028) — LA garde : une réconciliation validée (stock
+    déjà sorti) n'est plus modifiable, ni en ligne ni par la synchro."""
+    return cons is None or not cons.valide
+
+
+def intervention_modifiable(intervention):
+    """ACHT30 — une intervention validée ne reçoit plus de relevé terrain
+    (série, réserve) par la synchro."""
+    from .models import Intervention
+    return (intervention is None
+            or intervention.statut != Intervention.Statut.VALIDEE)
 
 
 def ensure_consommation(intervention):
@@ -127,8 +180,12 @@ def validate_consommation(cons, user):
     stock — idempotent via `stock_applique`. Lève ValueError si une variance
     n'est pas justifiée. Renvoie le nombre de SKU appliqués au stock.
 
-    La réservation N14 du chantier (estimation devis) est libérée : c'est la
-    consommation terrain, pas l'estimation, qui meut le stock."""
+    ACHT1 (D-ACHT-1) — la réservation N14 du chantier est SOLDÉE par la
+    quantité posée (`solder_reservations_consommation_terrain` : décrémentée,
+    `consomme=True` à 0, note « soldée par la consommation terrain »), puis le
+    reliquat non posé est libéré : c'est la consommation terrain, pas
+    l'estimation, qui meut le stock, et le « déjà sorti » reste lisible par
+    tout écrivain de réservation (V2, réactivation, reserver-stock)."""
     from django.db import transaction
     from apps.stock.selectors import lock_produit
     from apps.stock.services import (
@@ -142,6 +199,7 @@ def validate_consommation(cons, user):
             + ', '.join(li.designation for li in missing) + '.')
 
     applied = 0
+    poses = {}
     installation = cons.intervention.installation
     with transaction.atomic():
         lignes = (cons.lignes.select_for_update()
@@ -178,10 +236,14 @@ def validate_consommation(cons, user):
             li.stock_applique = True
             li.save(update_fields=['stock_applique'])
             applied += 1
-        # La réservation devis du chantier ne doit plus mouvoir le stock : on la
-        # libère (non consommée) pour éviter une double sortie au passage
-        # « Installé ». Idempotent côté service N14.
-        from .services import release_reservations
+            poses[li.produit_id] = poses.get(li.produit_id, Decimal('0')) + qte
+        # ACHT1 — la réservation devis est SOLDÉE par ce qui a été posé (jamais
+        # re-réservée par une V2 / réactivation / reserver-stock), puis le
+        # reliquat non posé est libéré : aucune double sortie à « Installé ».
+        from .services import (
+            release_reservations, solder_reservations_consommation_terrain,
+        )
+        solder_reservations_consommation_terrain(installation, poses)
         release_reservations(installation)
         cons.valide = True
         cons.valide_par = user

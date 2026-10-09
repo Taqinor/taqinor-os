@@ -19,7 +19,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.installations.models import Kit, OrdreAssemblage
+from apps.installations.models import Kit, KitComposant, OrdreAssemblage
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -92,6 +92,9 @@ class TestOrdreAssemblage(TestCase):
         self.user = make_user(self.company)
         self.api = auth(self.user)
         self.kit = Kit.objects.create(company=self.company, nom='Coffret')
+        # ACHT25 — un kit sans composant exploitable ne s'assemble plus.
+        KitComposant.objects.create(
+            kit=self.kit, produit=make_produit(self.company), quantite=2)
 
     def test_create_sets_reference_server_side(self):
         resp = self.api.post(f'{BASE}/ordres-assemblage/', {
@@ -122,6 +125,11 @@ class TestOrdreAssemblage(TestCase):
         composite = make_produit(self.company, nom='Coffret assemblé')
         kit = Kit.objects.create(
             company=self.company, nom='Coffret prêt', produit_compose=composite)
+        # ACHT25 — nomenclature non vide (composant en stock).
+        borne = make_produit(self.company, nom='Borne')
+        borne.quantite_stock = 10
+        borne.save(update_fields=['quantite_stock'])
+        KitComposant.objects.create(kit=kit, produit=borne, quantite=1)
         ordre = OrdreAssemblage.objects.create(
             company=self.company, reference='ASM-X', kit=kit, quantite=2)
         r1 = self.api.post(

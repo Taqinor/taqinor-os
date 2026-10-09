@@ -22,11 +22,53 @@ from ..serializers import (
     LivraisonSerializer, LivraisonLigneSerializer, RetourLivraisonSerializer,
 )
 from ..services import (
-    ventiler_stock_livraison, contre_transferer_stock_livraison,
-    generer_retour_livraison,
+    ExpeditionImpossible, ventiler_stock_livraison,
+    contre_transferer_stock_livraison, generer_retour_livraison,
 )
 
+#: ACHT20 — message unique d'une livraison expédiée (lignes et en-tête figés).
+MESSAGE_LIVRAISON_FIGEE = (
+    "Livraison expédiée : annulez-la puis recréez-la.")
+#: ACHT20 — champs d'en-tête figés dès `stock_mouvemente=True`.
+CHAMPS_FIGES_LIVRAISON = ('depot', 'mode_acheminement', 'installation')
+
+
+def _exiger_lignes_modifiables(livraison):
+    """ACHT20 — les lignes d'une livraison ventilée sont figées."""
+    if livraison is not None and livraison.stock_mouvemente:
+        raise ValidationError({'livraison': MESSAGE_LIVRAISON_FIGEE})
+
+
+def _valeur(obj):
+    return getattr(obj, 'pk', obj)
+
+
 READ_ACTIONS = ['list', 'retrieve']
+
+#: ACHT19 (C-ACHT-017) — table de transitions des livraisons, lue par
+#: `expedier`, `livrer` et `annuler` : planifiée → en transit → livrée ;
+#: annulation seulement avant livraison.
+_LS = Livraison.Statut
+TRANSITIONS_LIVRAISON = {
+    _LS.PLANIFIEE: {_LS.EN_TRANSIT, _LS.ANNULEE},
+    _LS.EN_TRANSIT: {_LS.LIVREE, _LS.ANNULEE},
+}
+_VERBES_LIVRAISON = {
+    _LS.EN_TRANSIT: "l'expédier", _LS.LIVREE: 'la livrer',
+    _LS.ANNULEE: "l'annuler",
+}
+
+
+def _exiger_transition_livraison(liv, cible):
+    """ACHT19 — 400 en français nommant la transition refusée, AVANT tout
+    effet (stock, notification, webhook)."""
+    if cible in TRANSITIONS_LIVRAISON.get(liv.statut, set()):
+        return
+    if liv.statut == _LS.PLANIFIEE and cible == _LS.LIVREE:
+        raise ValidationError({'statut': "Expédiez d'abord la livraison."})
+    raise ValidationError({'statut': (
+        f"Livraison {liv.get_statut_display().lower()} : impossible de "
+        f"{_VERBES_LIVRAISON.get(cible, 'changer son statut')}.")})
 
 
 class LivraisonViewSet(CompanyScopedModelViewSet):
@@ -34,7 +76,8 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
     responsable/admin. Filtrable par `installation`, `statut`, `depot`,
     `date_prevue`."""
     queryset = Livraison.objects.select_related(
-        'installation', 'depot', 'created_by').prefetch_related('lignes').all()
+        'installation', 'depot', 'created_by').prefetch_related(
+        'lignes__produit').all()
     serializer_class = LivraisonSerializer
 
     def get_permissions(self):
@@ -87,6 +130,18 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        liv = serializer.instance
+        if liv.stock_mouvemente:
+            actuels = {'depot': liv.depot_id,
+                       'mode_acheminement': liv.mode_acheminement,
+                       'installation': liv.installation_id}
+            modifies = [
+                nom for nom in CHAMPS_FIGES_LIVRAISON
+                if nom in serializer.validated_data
+                and _valeur(serializer.validated_data[nom]) != actuels[nom]]
+            if modifies:  # ACHT20
+                raise ValidationError(
+                    {nom: MESSAGE_LIVRAISON_FIGEE for nom in modifies})
         serializer.save(company=self.request.user.company)
 
     def _set_statut(self, request, statut):
@@ -111,6 +166,9 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
             liv.notifie_transit_le = timezone.now()
             liv.save(update_fields=['notifie_transit_le'])
         elif statut == Livraison.Statut.LIVREE:
+            # ACHT19 — une seule fois (horodatage persisté).
+            if liv.notifie_livree_le is not None:
+                return
             livraison_client_notify.notify_livraison_transition(
                 liv, 'livree', request=request)
 
@@ -119,13 +177,20 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         """FG329 — passe la livraison en transit. YSTCK5 : ventile le stock
         dépôt → van (idempotent, best-effort). XSTK22 : notifie le client
         (best-effort, une seule fois)."""
+        from django.db import transaction
+
         liv = self.get_object()
-        liv.statut = Livraison.Statut.EN_TRANSIT
-        liv.save(update_fields=['statut', 'date_modification'])
+        _exiger_transition_livraison(liv, Livraison.Statut.EN_TRANSIT)
+        # ACHT20 — ventilation exacte PUIS statut, dans la même transaction :
+        # une ligne en stock insuffisant refuse l'expédition (400 nommant la
+        # ligne), rien n'est transféré ni notifié.
         try:
-            ventiler_stock_livraison(liv, request.user)
-        except Exception:  # pragma: no cover - défensif, best-effort
-            pass
+            with transaction.atomic():
+                ventiler_stock_livraison(liv, request.user)
+                liv.statut = Livraison.Statut.EN_TRANSIT
+                liv.save(update_fields=['statut', 'date_modification'])
+        except ExpeditionImpossible as exc:
+            raise ValidationError({'lignes': str(exc)})
         self._notify_client(liv, Livraison.Statut.EN_TRANSIT, request)
         return Response(self.get_serializer(liv).data)
 
@@ -136,20 +201,25 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         (best-effort, jamais bloquant, via le SERVICE publicapi — jamais son
         modèle)."""
         liv = self.get_object()
+        _exiger_transition_livraison(liv, Livraison.Statut.LIVREE)
         liv.statut = Livraison.Statut.LIVREE
         liv.save(update_fields=['statut', 'date_modification'])
-        self._notify_client(liv, Livraison.Statut.LIVREE, request)
-        try:
-            from apps.publicapi.services import notify_livraison_livree
-            notify_livraison_livree(
-                company_id=liv.company_id,
-                livraison_id=liv.id,
-                reference=liv.reference,
-                installation_id=liv.installation_id,
-                numero_suivi=liv.numero_suivi,
-            )
-        except Exception:  # pragma: no cover - défensif, best-effort
-            pass
+        if liv.notifie_livree_le is None:
+            self._notify_client(liv, Livraison.Statut.LIVREE, request)
+            try:
+                from apps.publicapi.services import notify_livraison_livree
+                notify_livraison_livree(
+                    company_id=liv.company_id,
+                    livraison_id=liv.id,
+                    reference=liv.reference,
+                    installation_id=liv.installation_id,
+                    numero_suivi=liv.numero_suivi,
+                )
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
+            # ACHT19 — notification + webhook « livrée » : une seule fois.
+            liv.notifie_livree_le = timezone.now()
+            liv.save(update_fields=['notifie_livree_le'])
         return Response(self.get_serializer(liv).data)
 
     @action(detail=True, methods=['post'])
@@ -157,6 +227,7 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
         """FG329 — annule la livraison. YSTCK5 : contre-transfert van → dépôt
         si le stock avait été ventilé (idempotent, best-effort)."""
         liv = self.get_object()
+        _exiger_transition_livraison(liv, Livraison.Statut.ANNULEE)
         try:
             contre_transferer_stock_livraison(liv, request.user)
         except Exception:  # pragma: no cover - défensif, best-effort
@@ -176,7 +247,11 @@ class LivraisonViewSet(CompanyScopedModelViewSet):
                  'retour.'},
                 status=status.HTTP_400_BAD_REQUEST)
         motif = (request.data.get('motif') or '').strip()
-        retour = generer_retour_livraison(liv, request.user, motif=motif)
+        try:
+            retour = generer_retour_livraison(liv, request.user, motif=motif)
+        except ValueError as exc:  # ACHT21 — « Rien à retourner »
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(
             RetourLivraisonSerializer(retour).data,
             status=status.HTTP_201_CREATED)
@@ -254,8 +329,16 @@ class LivraisonLigneViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         self._check_parent(serializer)
+        _exiger_lignes_modifiables(
+            serializer.validated_data.get('livraison'))  # ACHT20
         serializer.save()
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
+        _exiger_lignes_modifiables(serializer.instance.livraison)  # ACHT20
+        _exiger_lignes_modifiables(serializer.validated_data.get('livraison'))
         serializer.save()
+
+    def perform_destroy(self, instance):
+        _exiger_lignes_modifiables(instance.livraison)  # ACHT20
+        instance.delete()
