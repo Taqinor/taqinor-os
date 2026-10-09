@@ -33,7 +33,8 @@ def seed_kits_outillage(company):
             company=company, nom=nom, defaults={'ordre': i})
 
 
-class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
+class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
+                       viewsets.ModelViewSet):
     """Catalogue d'outillage durable (F1). Lecture tout rôle ; écriture
     responsable/admin. Filtrable par statut et emplacement, recherche par
     nom / asset tag / n° de série. JAMAIS de stock vendable."""
@@ -49,6 +50,29 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in ['calibrer']:
             return [IsResponsableOrAdmin()]
         return [IsResponsableOrAdmin()]
+
+    def destroy_guard_message(self, outil):
+        """ACHT73 — un outil référencé par un retour d'outillage, un kit, une
+        préparation d'intervention ou une fiche de recette (instrument) ne se
+        supprime pas : l'historique disparaîtrait (CASCADE) ou perdrait son
+        instrument. Le statut « Perdu » / « En réparation » le retire du
+        parc sans rien effacer."""
+        from apps.installations.selectors import nb_fiches_recette_instrument
+        usages = []
+        for libelle, nb in (
+                ("retour(s) d'outillage", outil.tool_returns.count()),
+                ('kit(s)', outil.kit_items.count()),
+                ("préparation(s) d'intervention",
+                 outil.preparation_lignes.count()),
+                ('fiche(s) de recette (instrument)',
+                 nb_fiches_recette_instrument(outil.company, outil.pk))):
+            if nb:
+                usages.append(f'{nb} {libelle}')
+        if usages:
+            return ("Outil utilisé par " + ', '.join(usages)
+                    + " — marquez-le « Perdu » ou « En réparation » plutôt "
+                      "que de le supprimer.")
+        return None
 
     def get_queryset(self):
         qs = super().get_queryset()

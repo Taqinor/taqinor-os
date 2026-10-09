@@ -3210,6 +3210,20 @@ def instruments_par_essai_detail(record):
             for essai, iid in ids.items()}
 
 
+def instruments_supprimes_recette(record):
+    """ACHT73 — essais dont l'instrument (``instruments_par_essai``) ne
+    pointe plus un outil de la société (supprimé avant la garde d'usage)."""
+    from apps.outillage.models import Outillage
+    ids = {essai: iid for essai, iid
+           in (record.instruments_par_essai or {}).items() if iid}
+    if not ids:
+        return []
+    vivants = set(Outillage.objects.filter(
+        pk__in=list(ids.values()), company=record.company
+    ).values_list('pk', flat=True))
+    return [essai for essai, iid in ids.items() if iid not in vivants]
+
+
 def comparaison_recette_ci(record):
     """CIQ626 — bloc ``comparaison`` du contrat ``recette_ci.json`` (part
     I-V, PR, avertissements d'étalonnage). Aucun seuil inventé."""
@@ -3239,7 +3253,10 @@ def comparaison_recette_ci(record):
         'avertissements': [
             f"Instrument de l'essai « {essai} » : étalonnage expiré."
             for essai, detail in instruments_par_essai_detail(record).items()
-            if detail['etalonnage_expire']],
+            if detail['etalonnage_expire']] + [
+            # ACHT73 — donnée héritée : l'outil référencé n'existe plus.
+            f"Instrument de l'essai « {essai} » supprimé."
+            for essai in instruments_supprimes_recette(record)],
     }
     seuil_pr = _reglage_recette(record.company, 'recette_pr_seuil_interne')
     if seuil_pr is not None and pr is not None:

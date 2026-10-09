@@ -464,15 +464,12 @@ def ensure_fiche_releve(intervention):
         releve.template = template
         releve.save(update_fields=['template'])
     existing = {v.champ_id: v for v in releve.valeurs.all()}
-    seen = set()
     for champ in template.champs.all():
-        seen.add(champ.id)
         if champ.id not in existing:
             FicheInterventionValeur.objects.create(
                 company=intervention.company, releve=releve, champ=champ)
-    for champ_id, val in existing.items():
-        if champ_id not in seen:
-            val.delete()
+    # ACHT73 — on ne supprime JAMAIS une valeur saisie (changement de gabarit,
+    # champ retiré) : l'historique des mesures est conservé.
     return releve
 
 
@@ -485,6 +482,10 @@ def missing_required_fiche_champs(intervention):
         return []
     missing = []
     for val in releve.valeurs.select_related('champ').all():
+        # ACHT73 — seuls les champs du gabarit COURANT comptent (les valeurs
+        # d'un ancien gabarit restent en historique).
+        if val.champ.template_id != releve.template_id:
+            continue
         if not val.champ.obligatoire:
             continue
         if not (val.valeur or '').strip():

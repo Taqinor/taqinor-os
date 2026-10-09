@@ -2983,6 +2983,16 @@ def chantier_ville(company, chantier_id):
     return (getattr(chantier, 'site_ville', '') or '').strip() or None
 
 
+def nb_fiches_recette_instrument(company, outil_id):
+    """ACHT73 — nombre de fiches de recette IEC 62446-1 de la société dont
+    l'instrument est l'outil ``outil_id`` (``instrument_id`` entier, sans FK) ;
+    lecture seule, lue par la garde de suppression de l'outil."""
+    from .models import CommissioningRecord
+
+    return CommissioningRecord.objects.filter(
+        company=company, instrument_id=outil_id).count()
+
+
 def chantier_client_id(company, chantier_id):
     """AACQ5 — id du client propriétaire d'un chantier (``Installation.client``),
     ou ``None`` (chantier inconnu, d'une autre société, ou sans client).
