@@ -118,6 +118,12 @@ def rendre_message_relance(niveau, facture):
 #: Statuts qui sortent une facture de toute file de relance.
 STATUTS_NON_RELANCABLES = ('payee', 'annulee', 'brouillon')
 
+#: AFAC40 (C-AFAC-032) — UNE définition « document visible du client » : un
+#: brouillon (non émis) ou une facture annulée n'existe pas pour le client ;
+#: ni relevé (écran, PDF, portail, envoi mensuel) ni balance portail ne les
+#: comptent — même règle que ``kpis_factures`` (brouillons exclus).
+STATUTS_HORS_RELEVE = ('brouillon', 'annulee')
+
 
 def facture_relancable(facture):
     """``(True, '')`` si ``facture`` peut être relancée, sinon ``(False, motif)``.
@@ -537,7 +543,8 @@ def _releve_data(client, user=None):
     scopé) ; on ajoute la portée propriétaire. ``user=None`` (chemin interne) →
     aucun filtre de portée, comportement historique préservé.
     """
-    qs = Facture.objects.filter(client=client).exclude(statut='annulee')
+    qs = Facture.objects.filter(client=client).exclude(
+        statut__in=STATUTS_HORS_RELEVE)
     if user is not None:
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, user, ['created_by'])

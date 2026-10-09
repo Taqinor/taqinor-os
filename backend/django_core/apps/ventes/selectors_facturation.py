@@ -53,7 +53,7 @@ def releve_client_portail(client):
     from decimal import Decimal
 
     from .models import Facture
-    from .recouvrement import _releve_data
+    from .recouvrement import STATUTS_HORS_RELEVE, _releve_data
 
     data = _releve_data(client, user=None)
 
@@ -61,9 +61,10 @@ def releve_client_portail(client):
         'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
         'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
     }
+    # AFAC40 — même définition que le relevé : ni brouillon ni annulée.
     qs = (Facture.objects
           .filter(client=client)
-          .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE]))
+          .exclude(statut__in=[Facture.Statut.PAYEE, *STATUTS_HORS_RELEVE]))
     for facture in qs:
         du = facture.montant_du
         if not du:
