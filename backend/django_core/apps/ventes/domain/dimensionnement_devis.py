@@ -343,20 +343,50 @@ def _compter_modules_batterie_generique(lignes_vue):
     return (total, module_kwh) if total > 0 else (0, None)
 
 
+def lignes_vendues(devis, option=None):
+    """AMOT31 (C-AMOT-032) — LES LIGNES VENDUES d'un devis, ou ``[]``.
+
+    LE sélecteur des lecteurs de dimensionnement (capacité batterie, module,
+    configuration vendue, facteur de remise, matériel, compte de modules,
+    « Appliquer » une taille) : seule une ligne qui COMPTE DANS LES TOTAUX
+    (``LigneDevis.compte_dans_totaux`` : ligne produit NON optionnelle) est
+    vendue. Une ligne OPTIONNELLE non activée (XSAL5) ne change donc aucune
+    capacité, aucun calibre, aucun matériel ni aucun facteur de remise — et
+    « Appliquer » ne l'écrit jamais.
+
+    ``option`` (``'sans'`` / ``'avec'``) — la variante L-2OPT : lignes
+    communes + lignes de CETTE option (une ligne réservée à l'autre option
+    est écartée). ``None`` ⇒ toutes les lignes vendues. Ne lève jamais (un
+    devis non sauvegardé n'a pas de lignes)."""
+    try:
+        lignes = list(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        return []
+    autre = {'sans': 'avec', 'avec': 'sans'}.get(option)
+    vendues = []
+    for ligne in lignes:
+        compte = getattr(ligne, 'compte_dans_totaux', None)
+        if compte is None:
+            compte = (getattr(ligne, 'est_ligne_produit', True)
+                      and not getattr(ligne, 'optionnelle', False))
+        if not compte:
+            continue
+        if ligne.quantite is None or ligne.prix_unitaire is None:
+            continue
+        if autre and (getattr(ligne, 'variante', '') or '') == autre:
+            continue
+        vendues.append(ligne)
+    return vendues
+
+
 def _lignes_produit_du_devis(devis):
     """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
 
     Les intertitres de section et les notes (``XSAL14``) ne portent ni prix ni
     quantité : ils ne comptent dans aucun total, donc dans aucune lecture de
-    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes)."""
-    try:
-        lignes = list(devis.lignes.all())
-    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
-        return []
-    return [ligne for ligne in lignes
-            if getattr(ligne, 'est_ligne_produit', True)
-            and ligne.quantite is not None
-            and ligne.prix_unitaire is not None]
+    ce module. AMOT31 — ni les lignes OPTIONNELLES non activées : c'est
+    :func:`lignes_vendues` (toutes options). Ne lève jamais."""
+    return lignes_vendues(devis)
 
 
 def comptes_panneaux_valides(devis, option=None):
@@ -441,8 +471,7 @@ def facteur_remise_du_devis(devis) -> float:
     lisible : jamais un rabais inventé sur un devis qui n'en porte pas.
     """
     try:
-        lignes = [ligne for ligne in _lignes_produit_du_devis(devis)
-                  if (getattr(ligne, 'variante', '') or '') != 'sans']
+        lignes = lignes_vendues(devis, 'avec')
         brut = sum(_num(ligne.quantite) * _num(ligne.prix_unitaire)
                    for ligne in lignes)
         if brut <= 0:
@@ -553,9 +582,7 @@ def module_batterie_du_devis(devis):
         from apps.ventes.domain.catalogue import _is_battery, _parse_kwh
 
         capacites = {}  # calibre (kWh, ouvert par la 1re ligne) -> capacité
-        for ligne in _lignes_produit_du_devis(devis):
-            if (getattr(ligne, 'variante', '') or '') == 'sans':
-                continue
+        for ligne in lignes_vendues(devis, 'avec'):
             designation = getattr(ligne, 'designation', '') or ''
             if not _is_battery(designation):
                 continue

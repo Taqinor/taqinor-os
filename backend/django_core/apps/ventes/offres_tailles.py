@@ -310,11 +310,12 @@ def _materiel_du_devis(devis, variante):
     une famille manquée côté référence ferait accuser les autres tailles d'un
     ajout ou d'un retrait imaginaire.
     """
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
 
     admises = ('', 'sans') if variante == 'sans' else ('', 'avec')
     materiel, deja_vues, tout_classe = [], set(), True
-    for ligne in _lignes_produit_du_devis(devis):
+    # AMOT31 — les seules lignes VENDUES (jamais une ligne optionnelle).
+    for ligne in lignes_vendues(devis, variante):
         # L-2OPT — LA VARIANTE DÉCIDE. Un devis à deux options porte les lignes
         # des DEUX (onduleur réseau côté « sans », onduleur hybride + batterie
         # côté « avec ») plus les lignes communes. Les lire toutes faisait
@@ -1328,13 +1329,12 @@ def _banque_du_devis(contexte, kwc):
 
 def _compter_modules_du_devis(devis):
     """Le NOMBRE de modules batterie des lignes réelles (0 = aucun)."""
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_battery
 
     total = 0
-    for ligne in _lignes_produit_du_devis(devis):
-        if (getattr(ligne, 'variante', '') or '') == 'sans':
-            continue
+    # AMOT31 — lignes VENDUES de l'option avec (jamais une optionnelle).
+    for ligne in lignes_vendues(devis, 'avec'):
         if not _is_battery(getattr(ligne, 'designation', '') or ''):
             continue
         total += int(_num(getattr(ligne, 'quantite', 0)))
@@ -1941,13 +1941,11 @@ def _compter_panneaux_du_devis(devis):
     options, le compte affiché est celui de l'option 1, jamais la somme des
     deux — un nombre qui ne décrit aucune installation.
     """
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_panel
 
     total = 0
-    for ligne in _lignes_produit_du_devis(devis):
-        if (getattr(ligne, 'variante', '') or '') == 'avec':
-            continue
+    for ligne in lignes_vendues(devis, 'sans'):
         if not _is_panel(getattr(ligne, 'designation', '') or ''):
             continue
         total += int(_num(getattr(ligne, 'quantite', 0)))
@@ -1967,14 +1965,15 @@ def _porter_modules_batterie(devis, modules):
     """
     from decimal import Decimal as _Decimal
 
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_battery
 
     if not modules:
         return None
-    candidats = [ligne for ligne in _lignes_produit_du_devis(devis)
-                 if (getattr(ligne, 'variante', '') or '') != 'sans'
-                 and getattr(ligne, 'produit', None) is not None
+    # AMOT31 — « Appliquer » ne modifie QUE des lignes vendues : une ligne
+    # optionnelle (add-on hors total) n'est jamais réécrite.
+    candidats = [ligne for ligne in lignes_vendues(devis, 'avec')
+                 if getattr(ligne, 'produit', None) is not None
                  and _is_battery(getattr(ligne, 'designation', '') or '')]
     if not candidats:
         return None
@@ -2008,7 +2007,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     """
     from decimal import Decimal as _Decimal
 
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _est_au_prix_catalogue
 
     if not equipements:
@@ -2018,7 +2017,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     if not produits:
         return {}
 
-    lignes = list(_lignes_produit_du_devis(devis))
+    lignes = list(lignes_vendues(devis))
     a_ecrire = []
     for role, produit in produits.items():
         cibles = [ligne for ligne in lignes
