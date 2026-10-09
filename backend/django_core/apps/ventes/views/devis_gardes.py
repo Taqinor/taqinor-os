@@ -7,18 +7,13 @@ Vivent dans leur propre module parce que les mixins d'actions
 function-locaux (``..domain.modifiabilite``, ``..domain.verrou_devis``)
 gardent la même profondeur de paquet.
 
-ACAL278 y ajoute ``_pourcentage_saisi`` : la règle UNIQUE de ``taux_tva`` /
-``remise_globale`` partagée par ``from-layout`` (``devis_calepinage.py``) et
-``auto`` (``devis.py``) — ici, et non dans ``devis.py``, parce que
-``devis_calepinage.py`` ne peut pas importer ``devis.py`` (cycle).
+ACAL278 : la règle UNIQUE de ``taux_tva`` / ``remise_globale`` partagée par
+``from-layout`` (``devis_calepinage.py``) et ``auto`` (``devis.py``) vit depuis
+ATOT21 dans ``domain/bornes.pourcentage_saisi`` (avec son jumeau
+``montant_saisi``) ; les vues l'importent de là — aucun ré-export ici.
 """
 from rest_framework import status
 from rest_framework.response import Response
-
-# ATOT21 — la garde unique vit dans le domaine ; noms historiques conservés.
-from ..domain.bornes import (  # noqa: F401 — ré-export (from-layout, auto, tests)
-    montant_saisi as _montant_saisi, pourcentage_saisi as _pourcentage_saisi,
-)
 
 
 def _refus_modifiabilite(devis, geste):

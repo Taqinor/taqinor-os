@@ -38,10 +38,18 @@ DOSSIER_GENERATOR = "generator"
 # fichier -> {variable: raison}. Ne peut que rétrécir (cliquet).
 SITES_FIGES: dict = {
     "frontend/src/pages/ventes/DevisGenerator.jsx": {
-        "pompeHeures":
-            "AGNR26 : heures de pompage saisies mais ni lues par un calcul ni "
-            "envoyees dans etape_params (instantane + value= seulement) ; "
-            "retirer la ligne une fois AGNR26 faite.",
+        # Découpage du générateur (vague 3, SPL) : trois états passés tels
+        # quels (x={x}) aux composants extraits qui les LISENT — consommateur
+        # hors fichier, même cas que multiAccordionOpen ci-dessous.
+        "conflitVerrou":
+            "lu par generator/BandeauxEdition.jsx (bandeau « Modifié par … », "
+            "conflitVerrou={conflitVerrou}) : consommateur hors fichier.",
+        "leadValeursModifiees":
+            "lu par generator/CarteParametresTechniques.jsx "
+            "(champs={leadValeursModifiees}) : consommateur hors fichier.",
+        "previewCollapsed":
+            "lu par generator/ApercuSimulation.jsx (repli de l'aperçu, "
+            "classe m-collapsed) : consommateur hors fichier.",
         "multiAccordionOpen":
             "etat d'affichage (accordeon) lu par le composant enfant recevant "
             "multiAccordionOpen={...} : consommateur hors fichier, "

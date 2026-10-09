@@ -6,17 +6,15 @@
 # decision ANRE 02/25 art. 8) : conserves tant que le fondateur veut les afficher.
 backend/django_core/apps/ventes/quote_engine/constants.py::BLUE_LIGHT
 backend/django_core/apps/ventes/quote_engine/constants.py::BLUE_MAIN
-backend/django_core/apps/ventes/quote_engine/constants.py::EFFICIENCY
 backend/django_core/apps/ventes/quote_engine/constants.py::GREY_NEUTRAL
-backend/django_core/apps/ventes/quote_engine/constants.py::KG_CO2_PAR_ARBRE_AN
-backend/django_core/apps/ventes/quote_engine/constants.py::KWH_PRICE
 backend/django_core/apps/ventes/quote_engine/constants.py::ORANGE_ACCENT
-backend/django_core/apps/ventes/quote_engine/constants.py::PRODUCTIBLE_DEFAUT
 backend/django_core/apps/ventes/quote_engine/constants.py::TEXT_DARK
 backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TSS_C_KWH
 backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURD_C_KWH
 backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TURT_C_KWH
-backend/django_core/apps/ventes/quote_engine/constants_82_21.py::injection_annuelle
-backend/django_core/apps/ventes/quote_engine/constants_82_21.py::tarif_mt_moyen
-backend/django_core/apps/ventes/quote_engine/bareme.py::DIVERGENCES_PRICING
+# AMOT47 a supprime tarif_mt_moyen, seul lecteur de TARIF_MT_ONEE. La grille MT (lue depuis
+# apps/parametres/tarifs_officiels ; valeurs, ordre et plages gardes par test_qx50
+# TestTarifMtSource) reste le bareme documentaire de MENTION_MT : a retirer avec ses tests
+# quand le fondateur tranche (AMOT47 ne la nomme pas).
+backend/django_core/apps/ventes/quote_engine/constants_82_21.py::TARIF_MT_ONEE
 backend/django_core/apps/ventes/quote_engine/bareme.py::TIMBRE_ESPECES_PCT

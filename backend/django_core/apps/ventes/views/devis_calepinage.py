@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
-from .devis_gardes import _pourcentage_saisi  # ACAL278
+from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 
 
 def _emettre_layout_finalise(devis, user):
