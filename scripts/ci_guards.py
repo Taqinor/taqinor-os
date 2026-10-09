@@ -507,6 +507,13 @@ GARDES = {
         ('Test the proxys relayant le contrat (ADEV72) checker itself',
          'python -m unittest scripts.tests.test_check_proxy_relaie_contrat -v',
          '.'),
+        # AGNR41 - champs du générateur de devis sans consommateur.
+        ('Check champs ecran sans consommateur (AGNR41)',
+         'python scripts/check_champs_ecran_sans_consommateur.py',
+         '.'),
+        ('Test the champs ecran sans consommateur (AGNR41) checker itself',
+         'python -m unittest scripts.tests.test_check_champs_ecran_sans_consommateur -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
