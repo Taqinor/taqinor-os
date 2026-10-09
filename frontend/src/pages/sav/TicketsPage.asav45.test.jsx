@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import CONTRAT from '../../../../backend/django_core/apps/sav/contract_samples/ticket_detail.json'
 
@@ -9,43 +8,19 @@ import CONTRAT from '../../../../backend/django_core/apps/sav/contract_samples/t
 // serveur (contrat ticket_detail.json), sans recalcul local sur la date
 // constructeur.
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, updateTicket: () => {
-    const action = { type: 'sav/updateTicket/noop' }
-    action.unwrap = () => Promise.resolve({})
-    return action
-  } }
-})
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })) } }))
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
+vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock())
+vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
+import { ticketStore } from './__testutils__/ticketDetailMocks.js'
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-09T10:00:00')) })
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
 function renderDetail(ticket) {
-  const store = configureStore({ reducer: {
-    tickets: (state = { items: [] }) => state,
-    auth: (state = { role: 'responsable', permissions: [] }) => state,
-  } })
-  return render(<Provider store={store}><MemoryRouter>
+  return render(<Provider store={ticketStore('responsable')}><MemoryRouter>
     <TicketDetail ticket={{ ...CONTRAT.exemple, type: 'correctif', description: '',
       sous_garantie: 'a_determiner', couverture: 'a_determiner', devis_id_ext: null,
       facture_id_ext: null, instructions: '', ...ticket }}

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import CONTRAT from '../../../../backend/django_core/apps/sav/contract_samples/ticket_detail.json'
 
@@ -12,46 +11,29 @@ import CONTRAT from '../../../../backend/django_core/apps/sav/contract_samples/t
 
 const serveur = vi.hoisted(() => ({ ticket: null, journal: [], refus: false }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, updateTicket: ({ data }) => {
-    serveur.journal.push('PATCH')
-    serveur.ticket = { ...serveur.ticket, ...data }
-    const action = { type: 'sav/updateTicket/noop' }
-    action.unwrap = () => Promise.resolve(serveur.ticket)
-    return action
-  } }
-})
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ data }) => {
+  serveur.journal.push('PATCH')
+  serveur.ticket = { ...serveur.ticket, ...data }
+  return serveur.ticket
+}))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicket: vi.fn(() => Promise.resolve({ data: serveur.ticket })),
-    resoudreTicket: vi.fn(() => {
-      serveur.journal.push('POST resoudre')
-      if (serveur.refus) {
-        return Promise.reject({ response: { status: 400, data: { detail: 'Transition refusée par le serveur.' } } })
-      }
-      serveur.ticket = { ...serveur.ticket, statut: 'resolu', statuts_suivants: ['cloture'],
-        date_resolution: '2026-10-09' }
-      return Promise.resolve({ data: serveur.ticket })
-    }),
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+  getTicket: vi.fn(() => Promise.resolve({ data: serveur.ticket })),
+  resoudreTicket: vi.fn(() => {
+    serveur.journal.push('POST resoudre')
+    if (serveur.refus) {
+      return Promise.reject({ response: { status: 400, data: { detail: 'Transition refusée par le serveur.' } } })
+    }
+    serveur.ticket = { ...serveur.ticket, statut: 'resolu', statuts_suivants: ['cloture'],
+      date_resolution: '2026-10-09' }
+    return Promise.resolve({ data: serveur.ticket })
+  }),
 }))
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })) } }))
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
+import { ticketStore } from './__testutils__/ticketDetailMocks.js'
 
 beforeEach(() => {
   serveur.ticket = { ...CONTRAT.exemple, type: 'correctif', description: 'avant',
@@ -63,11 +45,7 @@ beforeEach(() => {
 afterEach(() => { cleanup() })
 
 function renderDetail() {
-  const store = configureStore({ reducer: {
-    tickets: (state = { items: [] }) => state,
-    auth: (state = { role: 'responsable', permissions: [] }) => state,
-  } })
-  return render(<Provider store={store}><MemoryRouter>
+  return render(<Provider store={ticketStore('responsable')}><MemoryRouter>
     <TicketDetail ticket={serveur.ticket} onClose={() => {}} onSaved={() => {}} />
   </MemoryRouter></Provider>)
 }

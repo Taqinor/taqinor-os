@@ -40,6 +40,12 @@ vi.mock('../../features/stock/store/stockSlice', () => ({
 
 import { downloadBlob } from '../../utils/downloadBlob'
 import MouvementsPage from './MouvementsPage.jsx'
+import { installJsdomPolyfills } from './__testutils__/jsdomPolyfills.js'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  installJsdomPolyfills()
+})
 
 function renderPage() {
   const store = configureStore({
@@ -56,18 +62,6 @@ function renderPage() {
     </Provider>,
   )
 }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-})
 
 describe('APRF34 — export des mouvements : 202 = en préparation', () => {
   it('sur 202 affiche « export en préparation » et ne télécharge rien', async () => {

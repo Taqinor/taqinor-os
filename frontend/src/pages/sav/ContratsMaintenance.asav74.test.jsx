@@ -19,12 +19,8 @@ vi.mock('../../api/savApi', () => ({
     saveContrat: (...a) => saveContrat(...a),
   },
 }))
-vi.mock('../../api/crmApi', () => ({
-  default: { getClients: vi.fn(() => Promise.resolve({ data: [{ id: 3, nom: 'ACME', prenom: '' }] })) },
-}))
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInstallations: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/crmApi', async () => (await import('./__testutils__/contratsMocks.js')).crmApiMock([{ id: 3, nom: 'ACME', prenom: '' }]))
+vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/contratsMocks.js')).installationsApiMock())
 
 import { Component as ContratsMaintenance } from './ContratsMaintenance.jsx'
 

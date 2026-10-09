@@ -441,11 +441,7 @@ export default function ProblemesPage() {
                   </td>
                   <td>{probleme.nb_tickets}</td>
                   <td>{probleme.impact}</td>
-                  <td>
-                    <button type="button" onClick={() => ouvrirProbleme(probleme)}>
-                      Gérer
-                    </button>
-                  </td>
+                  <td><button type="button" onClick={() => ouvrirProbleme(probleme)}>Gérer</button></td>
                 </tr>
               ))}
             </tbody>
