@@ -19,6 +19,26 @@
      ]
     ],
     [
+     "created_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "updated_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now": true
+      }
+     ]
+    ],
+    [
      "company",
      [
       "django.db.models.ForeignKey",
@@ -619,6 +639,26 @@
        "primary_key": true,
        "serialize": false,
        "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "created_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "updated_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now": true
       }
      ]
     ],
