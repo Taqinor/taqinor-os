@@ -9,10 +9,28 @@ aucun import de ``.selectors`` en tête (cycle) — ``devis_a_facturer`` vient d
 module FRÈRE ``.selectors_facturation``.
 """
 
+import functools
+import json
+from pathlib import Path
+
 from .selectors_facturation import devis_a_facturer
 
 
 # ── QX29/QX30/PACT17 — « Relances du jour » : file d'action des devis ────────
+
+#: APRF9 — le contrat partagé de « Relances du jour » (APRF1) : il DÉCLARE
+#: ``details_par_panier``, lu ici — jamais un littéral recopié.
+CONTRAT_ACTION_REQUISE = (Path(__file__).resolve().parent
+                          / 'contract_samples' / 'devis_action_requise.json')
+
+
+@functools.lru_cache(maxsize=1)
+def details_par_panier():
+    """APRF9 (contrat APRF1) — nombre de premiers ids (ordre ``id``
+    croissant) de chaque panier dont ``devis`` porte la ligne d'affichage."""
+    contrat = json.loads(CONTRAT_ACTION_REQUISE.read_text(encoding='utf-8'))
+    return int(contrat['details_par_panier'])
+
 
 #: ADEV64 — champs propriétaires qui ouvrent un devis à la portée d'un
 #: utilisateur dans « Relances du jour » : son AUTEUR, ou le RESPONSABLE du
@@ -62,7 +80,8 @@ def devis_action_requise(company, *, user=None, today=None,
         partout ailleurs.
       * ``devis`` porte de quoi RENDRE chaque ligne (référence, client,
         téléphone, WhatsApp, total, CAD115 : ``prochaine_touche_crm``) pour
-        les ids cités. Sans lui l'écran devait re-télécharger la liste des
+        les ``details_par_panier()`` premiers ids de chaque panier (APRF9,
+        contrat APRF1 : ``count``/``ids`` restent complets). Sans lui l'écran devait re-télécharger la liste des
         devis et n'y trouvait ni ``client_telephone`` ni ``client_whatsapp``
         (``DevisSerializer`` ne les publie pas) : les raccourcis « Appeler » /
         WhatsApp ne s'affichaient JAMAIS, et une référence au-delà de la
@@ -164,14 +183,17 @@ def devis_action_requise(company, *, user=None, today=None,
         'expirant_bientot': expirant_bientot,
         'engagement_relance': engagement_relance,
     }
-    cites = {i for ids in paniers.values() for i in ids}
-    # `prefetch_related('lignes')` : `Devis.total_ttc` itère les lignes — sans
-    # ce préchargement, une requête PAR devis affiché (N+1).
-    lignes = list(
+    # APRF9 (C-APRF-004/005) — lignes construites pour les SEULS
+    # ``details_par_panier()`` premiers ids (déjà en ordre ``id`` croissant)
+    # de chaque panier, totaux préchargés par ``devis_avec_totaux`` (APRF7) :
+    # requêtes et octets de détail ne croissent plus avec les paniers.
+    from .selectors import devis_avec_totaux
+    n = details_par_panier()
+    details = {i for ids in paniers.values() for i in ids[:n]}
+    lignes = list(devis_avec_totaux(
         Devis.objects
-        .filter(company=company, pk__in=cites)
-        .select_related('client', 'lead')
-        .prefetch_related('lignes'))
+        .filter(company=company, pk__in=details)
+        .select_related('client', 'lead')))
 
     # CAD115 — SIG9 : « Action requise » (vue Ventes) et la file calendaire du
     # CRM pouvaient réclamer le même devis le même jour avec deux messages
