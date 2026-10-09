@@ -145,3 +145,29 @@ test('EDC3 : les trois tableaux d’étude horaire passent par la barre collante
   const index = lire('../../../ui/index.js')
   assert.match(index.trimEnd().split('\n').at(-1), /^export \* from '\.\/BarreDefilementCollante'$/)
 })
+
+test('EDC9 : navigation collée sous la barre d’actions, cartes atteintes sous la barre', () => {
+  const b = blocEdc(9)
+  assert.match(b, /\.gen-nav-sections \{[^}]*position: sticky;[^}]*top: calc\(var\(--header-h, 0px\) \+ var\(--gen-colle-decalage, 0px\) \+ var\(--gen-barre-h, 0px\)\);/)
+  assert.match(b, /\.gen-root \[id\^="gen-sec-"\] \{ scroll-margin-top: calc\(var\(--gen-barre-h, 0px\) \+ 3\.5rem\); \}/)
+  assert.match(b, /\.gen-nav-puce\[aria-current="true"\] \{/)
+  // Mouvement réduit : aucune transition sur les puces ni sur le chevron.
+  assert.match(b, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.gen-nav-puce,\s*\.gen-carte-repli-icone \{ transition: none; \}/)
+  assert.doesNotMatch(b, /z-index:\s*\d/)
+})
+
+test('EDC9 : ancres de section posées sur les cartes, jamais sur l’argent', () => {
+  const gen = lire('../DevisGenerator.jsx')
+  for (const [id, libelle] of [
+    ['gen-sec-document', 'Document'], ['gen-sec-lead', 'Lead & Client'],
+    ['gen-sec-technique', 'Technique'], ['gen-sec-simulation', 'Simulation'],
+    ['gen-sec-lignes', 'Lignes'], ['gen-sec-echeancier', 'Échéancier'],
+    ['gen-sec-texte', 'Texte client'], ['gen-sec-enregistrer', 'Enregistrer'],
+  ]) {
+    assert.match(gen, new RegExp(`id="${id}" data-nav-libelle="${libelle}"`), id)
+  }
+  // Lignes / échéancier : jamais repliables (NN/g) — seules Simulation et
+  // Surcharges portent `repliable`.
+  assert.equal((gen.match(/\n\s*repliable[\s=]/g) || []).length, 2)
+  assert.match(gen, /<NavigationSections \/>/)
+})

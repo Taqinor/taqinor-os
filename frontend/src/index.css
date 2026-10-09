@@ -11625,3 +11625,80 @@ textarea.form-control {
   .lines-table-wrap.bdc-wrap { overflow: visible; }
   .lines-table-wrap + .bdc-proxy { display: none; }
 }
+
+/* ── EDC9 — Navigation de sections collante + cartes d'étude repliables ── */
+/* Repli de `--gen-nav-h` tant que NavigationSections.jsx n'a pas mesuré la
+   rangée (ResizeObserver, posé en ligne sur la racine). */
+.gen-root { --gen-nav-h: 0px; }
+/* Rangée de puces collée SOUS la barre d'actions (EDC4), un cran sous elle
+   (l'ombre de la barre passe par-dessus), au-dessus du contenu qui défile. */
+.gen-nav-sections {
+  position: sticky;
+  top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px) + var(--gen-barre-h, 0px));
+  z-index: calc(var(--z-sticky) - 1);
+  margin-top: -0.5rem;
+  padding: 0.4rem 0;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.gen-nav-sections[hidden] { display: none; }
+/* Rangée défilable sans barre visible (≤ 8 puces) ; le dégradé de bord dit
+   « il y a plus à droite » quand elle déborde (même indice que LW33). */
+.gen-nav-liste {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+}
+.gen-nav-liste::-webkit-scrollbar { display: none; }
+.gen-nav-liste > li { flex: 0 0 auto; }
+.gen-nav-puce {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .gen-nav-puce:hover { color: var(--foreground); background: var(--muted); }
+}
+.gen-nav-puce:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* Section visible : l'accent Ventes (brass), jamais la seule couleur — le
+   poids passe aussi en gras. */
+.gen-nav-puce[aria-current="true"] {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-brass) 14%, var(--card));
+  border-color: color-mix(in oklch, var(--module-accent-brass) 45%, transparent);
+}
+/* Une carte atteinte par une puce s'arrête SOUS la barre et la rangée. */
+.gen-root [id^="gen-sec-"] { scroll-margin-top: calc(var(--gen-barre-h, 0px) + 3.5rem); }
+/* Téléphone : la rangée défile avec la page (la hauteur d'écran manque pour
+   empiler deux bandeaux collants au-dessus du clavier). */
+@media (max-width: 768px) {
+  .gen-nav-sections { position: static; margin-top: 0; }
+}
+/* Bouton « Replier / Déplier » des cartes d'étude : chevron qui pivote. */
+.gen-carte-repli-icone { transition: transform var(--motion-fast) var(--ease-standard); }
+.gen-carte-repli-icone[data-replie="true"] { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .gen-nav-puce,
+  .gen-carte-repli-icone { transition: none; }
+}

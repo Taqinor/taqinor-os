@@ -209,6 +209,9 @@ import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 import BarreActionsDevis from './generator/BarreActionsDevis'
 // EDC5 — décision clavier du formulaire (module pur) : Entrée n'enregistre jamais.
 import { decisionTouche, champCorrespondant } from './generator/clavierDevis'
+// EDC9 — navigation de sections collante + cartes d'étude repliables (Édition complète).
+import NavigationSections from './generator/NavigationSections'
+import { useCartesRepliees } from './generator/cartesRepliees'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
 import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
@@ -587,6 +590,12 @@ export default function DevisGenerator({
   // recommandée et nombre de panneaux portent déjà la surcharge (QJR572).
   // L'endpoint reste IsResponsableOrAdmin ; le registre est lu pour tous.
   const estAdmin = useIsAdmin()
+  // EDC9 — en Édition complète, « Aperçu de la Simulation » et « Surcharges
+  // (registre) » sont repliées PAR DÉFAUT (choix mémorisé par utilisateur) ;
+  // en création, rien n'est repliable.
+  const [cartesRepliees, basculerCarte] = useCartesRepliees()
+  const simulationRepliee = Boolean(editDevis) && cartesRepliees.simulation
+  const surchargesRepliees = Boolean(editDevis) && cartesRepliees.surcharges
   const [overridesBusy, setOverridesBusy] = useState(false)
   // Un refus 400 est affiché TEL QUEL (le message FR du serveur, jamais avalé
   // ni remplacé par une phrase générique) — les formes varient selon le refus
@@ -3972,6 +3981,9 @@ export default function DevisGenerator({
           la table) ; Ctrl/Cmd+S et Ctrl/Cmd+Entrée enregistrent. Aucune
           validation à la frappe : la saisie numérique est inchangée. */}
       <form id="gen-form" onSubmit={handleSubmit} noValidate onKeyDown={onKeyDownFormulaire} className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {/* EDC9 — puces des cartes RÉELLEMENT rendues (`gen-sec-*`), collées
+            sous la barre d'actions ; un clic défile jusqu'à la carte. */}
+        <NavigationSections />
         {editDevis?.statut === 'envoye' && (
           <div
             data-testid="devis-envoye-banner"
@@ -4157,7 +4169,7 @@ export default function DevisGenerator({
         </Card>
 
         {/* ── Informations du document ── */}
-        <Card>
+        <Card id="gen-sec-document" data-nav-libelle="Document">
           <GenCardHeader icon={ClipboardList} title="Informations du document" />
           <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="grid gap-1.5">
@@ -4250,7 +4262,7 @@ export default function DevisGenerator({
         </Card>
 
         {/* ── Lead / Client (lead prioritaire) ── */}
-        <Card>
+        <Card id="gen-sec-lead" data-nav-libelle="Lead & Client">
           <GenCardHeader icon={User} title="Lead & Client" />
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -4456,7 +4468,7 @@ export default function DevisGenerator({
         />
 
         {/* ── Paramètres techniques ── */}
-        <Card>
+        <Card id="gen-sec-technique" data-nav-libelle="Technique">
           <GenCardHeader icon={Zap} title="Paramètres Techniques" />
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -4715,15 +4727,26 @@ export default function DevisGenerator({
 
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}
         {modeInstallation !== 'agricole' && (
-        <Card>
-          <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation">
-            {/* Repliable sur téléphone uniquement (bouton caché sur bureau) */}
-            <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
-                    onClick={() => setPreviewCollapsed(v => !v)}>
-              {previewCollapsed ? 'Afficher' : 'Replier'}
-            </Button>
+        <Card id="gen-sec-simulation" data-nav-libelle="Simulation">
+          {/* EDC9 — repliable en Édition complète (repliée par défaut, jamais
+              masquée) : le contenu reste MONTÉ (`hidden`), ses ancres
+              `data-figure` restent lisibles (parité écran / PDF). */}
+          <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation"
+                         repliable={Boolean(editDevis)}
+                         replie={simulationRepliee}
+                         onBasculer={() => basculerCarte('simulation')}
+                         controle="gen-sec-simulation-contenu">
+            {/* Repliable sur téléphone uniquement (bouton caché sur bureau) ;
+                en Édition complète, le repli EDC9 le remplace. */}
+            {!editDevis && (
+              <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
+                      onClick={() => setPreviewCollapsed(v => !v)}>
+                {previewCollapsed ? 'Afficher' : 'Replier'}
+              </Button>
+            )}
           </GenCardHeader>
-          <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
+          <CardContent id="gen-sec-simulation-contenu" hidden={simulationRepliee}
+                       className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
             {/* CJ2b — ORDRE FONDATEUR (20/08) : « on ne voit ni l'économie
                 réelle calculée, ni les données PVGIS — cette donnée devrait
                 être comparée à la courbe de consommation ». Résidentiel
@@ -5227,6 +5250,8 @@ export default function DevisGenerator({
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>
             possède la chaîne d'argent, DANS la même carte comme avant) ── */}
+        {/* EDC9 — ancre de navigation « Lignes » (jamais repliable). */}
+        <div id="gen-sec-lignes" data-nav-libelle="Lignes">
         <LigneTable
           lines={lines}
           produits={produits}
@@ -5285,6 +5310,7 @@ export default function DevisGenerator({
             kpiTotal={kpiTotal}
           />
         </LigneTable>
+        </div>
 
         {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
             APX16 — le panneau n'apparaissait QU'EN ÉDITION : on ne pouvait pas
@@ -5333,8 +5359,13 @@ export default function DevisGenerator({
             QJR574 — administrateurs seulement. */}
         {editDevis?.id && estAdmin && (
           <Card data-testid="overrides-panel">
-            <GenCardHeader icon={FileText} title="Surcharges (registre)" />
-            <CardContent className="pt-4 space-y-3">
+            {/* EDC9 — repliée par défaut (choix mémorisé), contenu monté. */}
+            <GenCardHeader icon={FileText} title="Surcharges (registre)"
+                           repliable replie={surchargesRepliees}
+                           onBasculer={() => basculerCarte('surcharges')}
+                           controle="gen-surcharges-contenu" />
+            <CardContent id="gen-surcharges-contenu" hidden={surchargesRepliees}
+                         className="pt-4 space-y-3">
               <div className="flex flex-wrap items-end gap-2">
                 <select
                   data-testid="overrides-chemin"
@@ -5424,17 +5455,20 @@ export default function DevisGenerator({
 
         {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
         {editDevis && (
-          <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                           mode={modeInstallation} effectifs={termesEffectifs}
-                           conditions={conditions} setCondition={setCondition}
-                           erreursConditions={erreursConditions(conditions)} clients={clients} />
+          // EDC9 — ancre de navigation « Échéancier » (jamais repliable).
+          <div id="gen-sec-echeancier" data-nav-libelle="Échéancier">
+            <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
+                             mode={modeInstallation} effectifs={termesEffectifs}
+                             conditions={conditions} setCondition={setCondition}
+                             erreursConditions={erreursConditions(conditions)} clients={clients} />
+          </div>
         )}
         {errors.conditions && (
           <p role="alert" className="text-xs text-destructive" data-testid="erreur-conditions">{errors.conditions}</p>
         )}
 
         {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}
-        <Card>
+        <Card id="gen-sec-texte" data-nav-libelle="Texte client">
           <GenCardHeader icon={StickyNote} title="Texte pour le client (imprimé sur le devis)" />
           <CardContent className="pt-4">
             <Textarea rows={3} value={note}
@@ -5461,7 +5495,7 @@ export default function DevisGenerator({
         )}
 
         {/* ── Création ── */}
-        <Card>
+        <Card id="gen-sec-enregistrer" data-nav-libelle="Enregistrer">
           <GenCardHeader icon={FileText}
                          title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
           <CardContent className="pt-4">
