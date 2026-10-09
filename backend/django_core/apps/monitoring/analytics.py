@@ -62,6 +62,34 @@ def _monthly_series(installation, since, today):
     return [(row['month'], Decimal(str(row['total'] or 0))) for row in qs]
 
 
+def jours_couverts_par_releves(releves, since, today):
+    """ASAV64 — nombre de jours de ``[since, today]`` couverts par l'UNION
+    des intervalles ``[date, date + period_days)`` des relevés (``releves`` =
+    itérable de ``(date, period_days)``). Un relevé mensuel couvre ses 30
+    jours ; deux relevés qui se chevauchent ne se comptent jamais deux fois."""
+    fin_fenetre = today + timedelta(days=1)  # borne haute exclusive
+    intervalles = []
+    for jour, periode in releves:
+        debut = max(jour, since)
+        fin = min(jour + timedelta(days=max(int(periode or 1), 1)),
+                  fin_fenetre)
+        if fin > debut:
+            intervalles.append((debut, fin))
+    intervalles.sort()
+    total = 0
+    courant_debut = courant_fin = None
+    for debut, fin in intervalles:
+        if courant_fin is None or debut > courant_fin:
+            if courant_fin is not None:
+                total += (courant_fin - courant_debut).days
+            courant_debut, courant_fin = debut, fin
+        elif fin > courant_fin:
+            courant_fin = fin
+    if courant_fin is not None:
+        total += (courant_fin - courant_debut).days
+    return total
+
+
 def jours_couverts_mois(mois, debut_effectif, today):
     """ASAV63 — nombre de jours du mois ``mois`` (1er du mois) réellement
     couverts : ni avant ``debut_effectif`` (mise en service / premier relevé /
@@ -105,10 +133,10 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     readings = analytics_queryset(ProductionReading.objects).filter(
         installation=installation, date__gte=since, date__lte=today)
     total_kwh = Decimal('0')
-    days_with_data = set()
+    releves_couverture = []
     for r in readings.values_list('energy_kwh', 'date', 'period_days'):
         total_kwh += Decimal(str(r[0]))
-        days_with_data.add(r[1])
+        releves_couverture.append((r[1], r[2]))
 
     expected = _expected_recent_kwh(
         installation, config, window_days, today=today)
@@ -116,9 +144,13 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     if expected and expected > 0:
         pr_pct = _q((total_kwh / expected) * Decimal('100'))
 
-    # Disponibilité : jours couverts / jours de la fenêtre.
-    availability_pct = _q(
-        (Decimal(len(days_with_data)) / Decimal(window_days)) * Decimal('100'))
+    # Disponibilité : jours couverts (UNION des intervalles des relevés,
+    # ASAV64) / jours de la fenêtre, plafonnée à 100 %.
+    jours_couverts = jours_couverts_par_releves(
+        releves_couverture, since, today)
+    availability_pct = _q(min(
+        Decimal(jours_couverts) / Decimal(window_days) * Decimal('100'),
+        Decimal('100')))
 
     # PR mensuel pour soiling + dégradation.
     monthly = _monthly_series(installation, since, today)
