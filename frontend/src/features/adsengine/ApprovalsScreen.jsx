@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  actionTypeLabel, budgetDiff, actionCreative, formatMAD, REJECTION_REASONS,
+  actionTypeLabel, budgetDiff, actionCreative, formatMoney, formatNumber, REJECTION_REASONS,
   actionWarnings, editCopyDiff, emptyGrid, actionResultKey,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
@@ -123,6 +123,16 @@ export default function ApprovalsScreen() {
   const removedIdsRef = useRef(new Set())
   // AACQ62 — troncature dite : `{ shown, total }` quand le serveur plafonne.
   const [truncation, setTruncation] = useState(null)
+  // AACQ63 — devise RÉELLE du compte publicitaire (connexion, comme
+  // CampaignsScreen) : les montants Meta d'une action budget y sont libellés.
+  const [currency, setCurrency] = useState('MAD')
+  useEffect(() => {
+    const connGet = adsengineApi.connection?.get
+    if (!connGet) return
+    connGet()
+      .then(r => setCurrency(r?.data?.currency || 'MAD'))
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(() => {
     // AACQ62 — filtre SERVEUR (`statut=en_attente` = proposee+approuvee,
@@ -465,21 +475,35 @@ export default function ApprovalsScreen() {
                           {a.reason_fr || 'Aucune raison fournie.'}
                         </p>
 
-                        {/* Artefact réel — diff budget avant→après */}
-                        {diff && (
+                        {/* Artefact réel — diff budget avant→après (AACQ63 :
+                            clés RÉELLES du payload, devise du compte). */}
+                        {diff && diff.mode === 'plafond' && (
                           <div className="ae-artifact-budget" data-testid="ae-artifact-budget"
                             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
                               background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: 6 }}>
-                            <span>{formatMAD(diff.avant)}</span>
+                            <span>Plafond de dépense :</span>
+                            <strong>{formatMoney(diff.plafond, currency)}</strong>
+                          </div>
+                        )}
+                        {diff && diff.mode === 'budget' && (
+                          <div className="ae-artifact-budget" data-testid="ae-artifact-budget"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
+                              flexWrap: 'wrap',
+                              background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: 6 }}>
+                            <span>Budget quotidien :</span>
+                            <span>{formatNumber(diff.avant)}</span>
                             <span aria-hidden="true">→</span>
                             <strong style={{
                               color: diff.direction === 'up' ? '#b91c1c'
                                 : diff.direction === 'down' ? '#15803d' : '#334155' }}>
-                              {formatMAD(diff.apres)}
+                              {formatMoney(diff.apres, currency)}
                             </strong>
-                            <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                              ({diff.delta > 0 ? '+' : ''}{formatMAD(diff.delta)})
-                            </span>
+                            {diff.cible != null && (
+                              <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                                (cible demandée {formatNumber(diff.cible)}
+                                {diff.bornee ? ', bornée par les garde-fous' : ''})
+                              </span>
+                            )}
                           </div>
                         )}
 

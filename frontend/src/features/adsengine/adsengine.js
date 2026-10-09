@@ -191,17 +191,36 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null
 }
 
-// Diff budget avant→après d'une EngineAction (depuis les champs plats ou le
-// payload). Retourne null s'il n'y a pas de diff budgétaire à montrer.
+// AACQ63 — Diff budget avant→après d'une EngineAction, lu UNIQUEMENT dans les
+// clés RÉELLES du payload serveur (contrat `engine_action.json`, producteur
+// `budget_applier._propose_budget_change`) : `current_budget` / `daily_budget`
+// en CENTIMES de la devise du compte (÷100), `new_daily_budget_mad` (budget
+// proposé), `target_daily_budget_mad` (cible demandée avant bornage) ; une
+// `set_spend_cap` porte `spend_cap` (unités mineures Meta, ÷100). Aucune clé
+// inventée (`budget_avant`/`budget_apres` n'existent pas côté serveur).
+// Retourne null s'il n'y a rien de budgétaire à montrer.
+const centimesToUnits = (v) => {
+  const n = numOrNull(v)
+  return n == null ? null : n / 100
+}
+
 export function budgetDiff(action) {
   if (!action) return null
   const p = action.payload || {}
-  const avant = numOrNull(action.budget_avant ?? p.budget_avant ?? p.budget_mad_avant)
-  const apres = numOrNull(action.budget_apres ?? p.budget_apres ?? p.budget_mad_apres)
+  const kind = action.kind ?? action.type
+  if (kind === 'set_spend_cap') {
+    const plafond = centimesToUnits(p.spend_cap)
+    return plafond == null ? null : { mode: 'plafond', plafond }
+  }
+  const avant = centimesToUnits(p.current_budget)
+  const apres = numOrNull(p.new_daily_budget_mad) ?? centimesToUnits(p.daily_budget)
   if (avant == null && apres == null) return null
+  const cible = numOrNull(p.target_daily_budget_mad)
   const delta = (apres ?? 0) - (avant ?? 0)
   return {
-    avant, apres, delta,
+    mode: 'budget', avant, apres, delta, cible,
+    // La cible demandée a été bornée (±15 %/jour, plafond quotidien).
+    bornee: cible != null && apres != null && cible !== apres,
     direction: delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat',
   }
 }

@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   // WIR208 — application RÉELLE d'une action approuvée (POST .../apply/).
   apply: vi.fn(),
+  // AACQ63 — devise du compte publicitaire (connexion).
+  connection: vi.fn(),
   // PUB10 — permissions effectives ; pleines par défaut (préserve le
   // comportement des tests existants), restreintes dans les tests dédiés.
   permissions: ['adsengine_approve', 'adsengine_manage'],
@@ -25,6 +27,7 @@ vi.mock('./adsengineApi', () => ({
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
       create: mocks.create, apply: mocks.apply,
     },
+    connection: { get: mocks.connection },
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
     // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
     alerts: { history: () => Promise.resolve({ data: [] }) },
@@ -43,13 +46,17 @@ vi.mock('./useAdsPermissions', () => ({
 }))
 
 import ApprovalsScreen from './ApprovalsScreen'
+// AACQ63 — la ligne budget vient du CONTRAT serveur (AACQ60), jamais d'un
+// mock fabriqué (l'ancien `budget_avant`/`budget_apres` n'existe pas côté
+// serveur : aucun bloc budget ne s'affichait en vrai).
+import ENGINE_ACTION from '../../../../backend/django_core/apps/adsengine/contract_samples/engine_action.json'
 
 const renderScreen = () => render(
   <MemoryRouter><ApprovalsScreen /></MemoryRouter>)
 
 const ACTIONS = [
-  { id: 11, type: 'adjust_budget', reason_fr: 'CPL en baisse — augmenter la portée.',
-    budget_avant: 80, budget_apres: 120 },
+  { ...ENGINE_ACTION.exemple, id: 11,
+    reason_fr: 'CPL en baisse — augmenter la portée.' },
   { id: 12, type: 'swap_creative', reason_fr: 'Créatif fatigué (fréquence 3,2).',
     creative: { designation: 'Reel toiture v2', type: 'reel', preview_url: 'https://cdn/x.jpg' } },
   { id: 13, type: 'create_campaign', reason_fr: 'Nouvelle ville : Marrakech.' },
@@ -70,6 +77,7 @@ beforeEach(() => {
   mocks.apply.mockImplementation((id) => Promise.resolve(applied(id)))
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
+  mocks.connection.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.permissions = ['adsengine_approve', 'adsengine_manage']
 })
 
@@ -80,12 +88,32 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
     // reason_fr rendu.
     expect(screen.getByText('CPL en baisse — augmenter la portée.')).toBeInTheDocument()
-    // Diff budget avant→après (artefact réel).
+    // Diff budget avant→après (artefact réel, clés RÉELLES du contrat).
     const budget = screen.getByTestId('ae-artifact-budget')
-    expect(budget).toHaveTextContent('80 MAD')
-    expect(budget).toHaveTextContent('120 MAD')
+    expect(budget).toHaveTextContent('200')
+    expect(budget).toHaveTextContent('100 MAD')
     // Préview créatif (artefact réel) avec alt accessible.
     expect(screen.getByAltText('Reel toiture v2')).toBeInTheDocument()
+  })
+
+  it("AACQ63 — montre l'avant/après d'une rebalance_adset_budget réelle", async () => {
+    mocks.connection.mockResolvedValue({ data: { currency: 'USD' } })
+    mocks.pending.mockResolvedValue({ data: [
+      { ...ENGINE_ACTION.exemple, id: 41 },
+      { ...ENGINE_ACTION.exemple, id: 42, kind: 'set_spend_cap',
+        payload: { campaign_id: 'c1', spend_cap: 500000 } },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(screen.getAllByTestId('ae-artifact-budget')).toHaveLength(2))
+    const [budget, plafond] = screen.getAllByTestId('ae-artifact-budget')
+    await waitFor(() => expect(budget).toHaveTextContent('100 USD'))
+    expect(budget).toHaveTextContent('Budget quotidien')
+    expect(budget).toHaveTextContent('200')
+    expect(budget).toHaveTextContent('cible demandée 230')
+    expect(budget).toHaveTextContent('bornée par les garde-fous')
+    expect(budget).not.toHaveTextContent('MAD')
+    expect(plafond).toHaveTextContent('Plafond de dépense')
+    expect(plafond).toHaveTextContent('5 000 USD')
   })
 
   it('WIR208 — approuver ne fait PAS quitter la boîte : la carte propose « Appliquer »', async () => {
