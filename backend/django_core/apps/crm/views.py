@@ -435,7 +435,17 @@ class ClientViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # clients rattachés à ses documents/leads visibles. 'all' → inchangé.
-        return scope_client_queryset(super().get_queryset(), self.request.user)
+        # APRF17 (C-APRF-006) — ce que ``ClientSerializer`` lit PAR LIGNE
+        # (créateur, nombre de devis, totaux facturé/payé : lignes, paiements
+        # et ventilations d'avances) est chargé EN LOT : la liste coûte le
+        # même nombre de requêtes à 5 et à 15 clients. Chemins en chaînes —
+        # aucun import des modèles ventes/facturation.
+        return (scope_client_queryset(super().get_queryset(),
+                                      self.request.user)
+                .select_related('created_by')
+                .prefetch_related(
+                    'devis', 'factures__lignes', 'factures__paiements',
+                    'factures__affectations_paiement__paiement'))
 
     def perform_create(self, serializer):
         # Traçabilité (L16) : société ET créateur forcés côté serveur — jamais
