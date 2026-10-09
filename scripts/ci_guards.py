@@ -315,7 +315,12 @@ GARDES = {
         ('Check propriété des fichiers (OWN — un propriétaire par fichier, tâches routées)',
          'python scripts/check_ownership.py',
          '.'),
-        # ANCRE-A4a-registre : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Check registre des audits (unites.yml <-> dossiers, AMET91)',
+         'python scripts/audit_registre.py --check',
+         '.'),
+        ('Tests du registre des audits (AMET91)',
+         'python -m unittest scripts.tests.test_audit_registre -v',
+         '.'),
         ('Test the file-ownership checker itself (OWN)',
          'python -m unittest scripts.tests.test_check_ownership -v',
          '.'),
