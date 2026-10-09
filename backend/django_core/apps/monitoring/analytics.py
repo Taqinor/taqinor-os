@@ -97,7 +97,8 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
         total_kwh += Decimal(str(r[0]))
         days_with_data.add(r[1])
 
-    expected = _expected_recent_kwh(installation, config, window_days)
+    expected = _expected_recent_kwh(
+        installation, config, window_days, today=today)
     pr_pct = None
     if expected and expected > 0:
         pr_pct = _q((total_kwh / expected) * Decimal('100'))

@@ -117,13 +117,41 @@ def sync_system(installation, *, user=None):
     return imported, config.provider
 
 
-def _expected_recent_kwh(installation, config, window_days):
-    """Production attendue (kWh) sur la fenêtre. None si inconnaissable."""
+def attendu_periode(installation, config, debut, fin):
+    """ASAV62 — production attendue (kWh) sur la période RÉELLEMENT couverte
+    de ``[debut, fin]`` : bornée par la mise en service et par le premier
+    relevé du système (un système neuf n'est pas jugé sur 365 jours dont il
+    n'a vécu que 30). ``None`` si aucune référence annuelle (CIQ643 — pas de
+    repli inventé). UN seul helper pour l'évaluation de sous-performance,
+    ``om_metrics``, ``fleet_overview``, ``benchmark_parc`` et le rapport O&M."""
     annual = config.expected_annual_kwh
     if annual is None:
         # CIQ643 — pas de repli inventé : « en attente de référence ».
         return None
-    return Decimal(str(annual)) * Decimal(window_days) / Decimal('365')
+    debut_effectif = debut
+    mise_en_service = getattr(installation, 'date_mise_en_service', None)
+    if mise_en_service and mise_en_service > debut_effectif:
+        debut_effectif = mise_en_service
+    premier = (ProductionReading.objects
+               .filter(installation=installation)
+               .order_by('date').values_list('date', flat=True).first())
+    if premier and premier > debut_effectif:
+        debut_effectif = premier
+    if debut_effectif == debut:
+        jours = (fin - debut).days  # fenêtre entière (comportement d'origine)
+    else:
+        # Période bornée : le jour de départ compte (un relevé par jour).
+        jours = (fin - debut_effectif).days + 1
+    jours = max(jours, 0)
+    return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
+
+
+def _expected_recent_kwh(installation, config, window_days, today=None):
+    """Production attendue (kWh) sur la fenêtre récente — voir
+    ``attendu_periode``. None si inconnaissable."""
+    today = today or timezone.localdate()
+    return attendu_periode(
+        installation, config, today - timedelta(days=window_days), today)
 
 
 def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
@@ -159,7 +187,8 @@ def evaluate_underperformance(installation, *, user=None, today=None):
               'ratio_pct': None, 'flag': None, 'ticket': None,
               'data_status': 'no_data_ever'}
 
-    expected = _expected_recent_kwh(installation, config, RECENT_WINDOW_DAYS)
+    expected = _expected_recent_kwh(
+        installation, config, RECENT_WINDOW_DAYS, today=today)
     # AUD522 — bornée à la MÊME fenêtre que `actual` (recent_production_kwh) :
     # un système dont le SEUL relevé date de plus d'un an n'a AUCUNE donnée
     # récente, même si `ProductionReading.objects.filter(installation=...)`

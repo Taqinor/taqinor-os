@@ -74,7 +74,8 @@ def fleet_overview(company, *, window_days=365, today=None):
         prod = Decimal(str(prod))
         total_kwh += prod
 
-        expected = _expected_recent_kwh(inst, config, window_days)
+        expected = _expected_recent_kwh(
+            inst, config, window_days, today=today)
         pr_pct = None
         if expected and expected > 0:
             total_expected += expected
@@ -400,7 +401,8 @@ def benchmark_parc(company, *, window_days=365, today=None):
         inst = config.installation
         if not getattr(inst, 'parc_actif', True):
             continue
-        expected = _expected_recent_kwh(inst, config, window_days)
+        expected = _expected_recent_kwh(
+            inst, config, window_days, today=today)
         if not expected or expected <= 0:
             continue
         prod = (ProductionReading.objects
