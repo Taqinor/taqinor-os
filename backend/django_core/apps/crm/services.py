@@ -9828,6 +9828,14 @@ def update_lead_from_public_api(*, company, lead_id, fields):
     clean = {k: v for k, v in (fields or {}).items()
              if k in PUBLIC_LEAD_WRITABLE_FIELDS}
     stage = clean.get('stage')
+    # ACRM58 — ``stage`` présent mais vide (null comme '') : erreur SOUS LE
+    # CHAMP (400 ``{stage: [...]}``), jamais un IntegrityError (500). Une
+    # ValidationError DRF (pas un ValueError) pour que la vue publique la
+    # rende telle quelle, champ nommé ; l'import en masse l'inscrit en ligne
+    # en erreur.
+    if 'stage' in clean and stage in (None, ''):
+        raise DRFValidationError(
+            {'stage': ["L'étape ne peut pas être vide."]})
     if stage is not None and stage not in stages.STAGES:
         raise ValueError(
             f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
