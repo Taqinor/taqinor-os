@@ -1023,6 +1023,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     equip_clim_kw = _PuissanceKwField(
         max_digits=5, decimal_places=2, required=False, allow_null=True)
 
+    # ENF6 — JSONField non nul (défaut {}) : sans type explicite le schéma
+    # accepterait null, que la base refuse.
+    web_questionnaire = serializers.DictField(required=False)
+    web_estimate = serializers.DictField(required=False)
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
@@ -2652,6 +2656,7 @@ class SavedViewSerializer(serializers.ModelSerializer):
     d'un 400 propre).
     """
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    payload = serializers.DictField(required=False)
 
     class Meta:
         model = SavedView
@@ -2858,6 +2863,8 @@ class PartenaireSerializer(serializers.ModelSerializer):
     """
     certification_expiree = serializers.BooleanField(read_only=True)
     rang_certification = serializers.IntegerField(read_only=True)
+    specialites = serializers.ListField(
+        child=serializers.CharField(), required=False)
 
     class Meta:
         model = Partenaire
