@@ -1659,7 +1659,8 @@ def proposal_data(request, token):
         # balayage de stockage (paliers RETENUS + premier REFUSÉ), même patron
         # additif que les clés ci-dessus.
         _balayage = (None if _ci_public
-                     else _balayage_stockage_publique(_dimensionnement))
+                     else _balayage_stockage_publique(_dimensionnement,
+                                                      devis))
         if _balayage is not None:
             payload['balayage_stockage'] = _balayage
         # L-PCMP (fondateur, 24/08/2026) — « le client doit pouvoir CHANGER son

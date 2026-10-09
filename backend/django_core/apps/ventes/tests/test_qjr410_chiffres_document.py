@@ -97,8 +97,10 @@ class A_PrixKwcEtPaybackSuiventLOptionTitree(_Base):
         devis = self._devis(LIGNES_DEUX_OPTIONS, etude_params=self.ETUDE)
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         self.assertEqual(data['nb_options'], 2)
-        attendu = round(data['total_avec'] / 20000, 1)
-        self.assertEqual(data['etude']['payback'], attendu)
+        # AMOT15 — le payback n'est plus le ratio LINÉAIRE total/économie : il
+        # est le croisement de la courbe 25 ans de l'option titrée (« avec »).
+        self.assertEqual(data['etude']['payback'], data['roi_a'])
+        self.assertNotEqual(data['roi_a'], data['roi_s'])
 
     def test_le_prix_par_kwc_decrit_l_option_titree(self):
         devis = self._devis(LIGNES_DEUX_OPTIONS, etude_params=self.ETUDE)
@@ -174,8 +176,9 @@ class NonRegressionMonoOptionNonRemise(_Base):
         data = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
         self.assertEqual(data['nb_options'], 1)
         # (a) mono-option « sans » : la branche titrée EST « sans ».
-        self.assertEqual(data['etude']['payback'],
-                         round(data['total_sans'] / 20000, 1))
+        # AMOT15 — croisement de la courbe de l'option « sans » (plus le
+        # ratio linéaire total/économie).
+        self.assertEqual(data['etude']['payback'], data['roi_s'])
         # (b) aucune remise ⇒ prix unitaires entiers, totaux inchangés.
         document = Decimal(str(data['totaux_all']['ht_net']))
         self.assertLessEqual(

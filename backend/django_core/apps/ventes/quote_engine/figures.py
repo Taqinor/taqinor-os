@@ -610,14 +610,31 @@ def options_affichees(quote: dict) -> tuple[str, ...]:
     return ("avec",) if quote.get("avec_ok", True) else ("sans",)
 
 
+def option_recommandee(quote: dict):
+    """AMOT33 (C-AMOT-043) — l'option RECOMMANDÉE par le serveur
+    (``builder`` : ``recommended``) sur un document à DEUX options :
+    ``'sans'`` / ``'avec'``, ou ``None`` (document mono-option, ou aucune
+    recommandation). Clé absente (dict antérieur) ⇒ ``'avec'``, le
+    comportement historique."""
+    if not bool(quote.get("deux_options", True)):
+        return None
+    reco = quote.get("recommended", "Avec batterie")
+    return {"Sans batterie": "sans", "Avec batterie": "avec"}.get(reco)
+
+
 def option_economique(quote: dict) -> str:
     """L'option que décrit la synthèse −N % / donut
-    (``renderer.synthese_economies`` : ``_avec``)."""
+    (``renderer.synthese_economies`` : ``_avec``).
+
+    AMOT33 — sur un document à deux options, c'est l'option RECOMMANDÉE par
+    le serveur (``option_recommandee``) ; sans recommandation, l'option
+    titrée (« avec »)."""
     opt = quote.get("eco_option")
     if opt in OPTIONS:
         return opt
-    avec = bool(quote.get("deux_options", True)) or bool(
-        quote.get("avec_ok", True))
+    if bool(quote.get("deux_options", True)):
+        return "sans" if option_recommandee(quote) == "sans" else "avec"
+    avec = bool(quote.get("avec_ok", True))
     return "avec" if avec else "sans"
 
 

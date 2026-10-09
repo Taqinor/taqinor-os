@@ -160,7 +160,7 @@ def _residuel_falaise_publiable(dimensionnement, devis) -> bool:
         _config_vendue(devis))
 
 
-def _balayage_stockage_publique(dimensionnement):
+def _balayage_stockage_publique(dimensionnement, devis=None):
     """ORDRE FONDATEUR (24/08/2026, soir) — sous-ensemble PUBLIC, client-safe,
     du mini-balayage de stockage (``apps.ventes.dimensionnement`` DIM2) :
     ``dimensionnement.recommandation_avec.balayage_stockage`` (les paliers de
@@ -226,12 +226,26 @@ def _balayage_stockage_publique(dimensionnement):
         capacite = palier.get('capacite_kwh')
         if nb_packs is None or not isinstance(capacite, (int, float)):
             continue
+        cout_ttc = palier.get('cout_ttc')
+        payback = _nombre_positif_ou_none(palier.get('payback_annees'))
+        if devis is not None:
+            # AMOT59 (C-AMOT-035) — le palier du curseur publie le prix de
+            # VENTE (coût catalogue × remise du devis, palier ARRONDI-100) par
+            # LA fonction de l'échelle et des cartes, et le payback publié
+            # (AMOT29) sur CE prix.
+            from apps.ventes.domain.dimensionnement_devis import (
+                prix_client_composition)
+            from apps.ventes.quote_engine.pricing import payback_publiable
+            cout_ttc = prix_client_composition(cout_ttc, devis)
+            payback = payback_publiable(
+                cout_ttc, _nombre_positif_ou_none(palier.get('economie_mad')),
+                stockage=True)['payback_annees']
         paliers_public.append({
             'nb_packs': nb_packs,
             'capacite_kwh': capacite,
-            'cout_ttc': palier.get('cout_ttc'),
+            'cout_ttc': cout_ttc,
             'remplissage_moyen_pct': _remplissage_moyen_pct(palier),
-            'payback_annees': _nombre_positif_ou_none(palier.get('payback_annees')),
+            'payback_annees': payback,
             'economie_mad': _nombre_positif_ou_none(palier.get('economie_mad')),
         })
 

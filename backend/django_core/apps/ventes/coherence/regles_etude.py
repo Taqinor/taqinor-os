@@ -550,3 +550,70 @@ def i8_parite(r, devis, ctx):
                                  ('scenario', 'pdf_mode', 'variante_option')
                                  if opts.get(k) is not None}},
         attendu='mêmes chiffres', cle={'champs': sorted(ecarts)})]
+
+
+#: AMOT50 — les chiffres client confrontés gabarit ↔ dict serveur.
+CLES_PARITE_GABARIT = ('couverture_pct', 'reduction_facture_pct',
+                       'economie_annuelle', 'payback_ans', 'total_ttc')
+
+
+def figures_gabarit_et_serveur(data, build_html=None):
+    """AMOT50 — ``(figures du HTML RENDU, figures du dict serveur)`` d'un devis
+    résidentiel, restreintes à :data:`CLES_PARITE_GABARIT`.
+
+    Le HTML est celui du gabarit (``render.build_html(renderer._augment(
+    data))``, sans réseau ni WeasyPrint), lu par L'extracteur unique
+    ``figures.extract_figures`` (celui de ``test_figures_parite``) ; le côté
+    serveur est ``figures.figures_depuis_proposition`` sur ``data`` et sa
+    ``synthese_economies``. Une exception du gabarit REMONTE (le moteur
+    d'audit la consigne en ``rule_errors`` nommée) ; seul ``Unsupported``
+    (devis hors gabarit) rend ``None``. ``build_html`` : injection de test
+    (un gabarit modifié), défaut = le gabarit réel."""
+    from apps.ventes.quote_engine.figures import (
+        cle_de, extract_figures, figures_depuis_proposition)
+    from apps.ventes.quote_engine.residential import render as RD
+    from apps.ventes.quote_engine.residential import renderer as R
+    try:
+        augmente = R._augment(dict(data))
+    except R.Unsupported:
+        return None
+    html = (build_html or RD.build_html)(augmente)
+    synthese = R.synthese_economies(data) or {}
+    serveur = figures_depuis_proposition(dict(synthese, quote=data))
+
+    def _filtre(figures):
+        return {ident: m for ident, m in (figures or {}).items()
+                if cle_de(ident) in CLES_PARITE_GABARIT}
+    return _filtre(extract_figures(html)), _filtre(serveur)
+
+
+def ecarts_gabarit(data, build_html=None):
+    """AMOT50 — les ``figures.Mismatch`` entre le gabarit rendu et le dict
+    serveur (``[]`` = parité, ou devis hors gabarit)."""
+    from apps.ventes.quote_engine.figures import compare_surfaces
+    paire = figures_gabarit_et_serveur(data, build_html)
+    if paire is None:
+        return []
+    gabarit, serveur = paire
+    return compare_surfaces({'serveur': serveur, 'gabarit': gabarit})
+
+
+@regle('ETU_I8B_PARITE_GABARIT',
+       "Le gabarit PDF imprime un chiffre client différent du dict serveur",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_DEVIS, besoin_rendu=True)
+def i8b_parite_gabarit(r, devis, ctx):
+    """AMOT50 (C-AMOT-039) — ``ETU_I8`` compare deux ``build_quote_data`` et
+    n'appelle jamais le rendu : un gabarit qui imprime une MAUVAISE clé
+    (``eco_a_ann`` à la place de ``eco_s_ann``) passait la nuit. Ici le HTML
+    RENDU (sans réseau) est relu par l'extracteur ``data-figure`` et confronté
+    au dict serveur : couverture, −N %, économie, retour, TTC."""
+    if not _residentiel(devis):
+        return []
+    data = ctx.donnees_devis(devis, {'pdf_mode': 'full'})
+    return [r.violation(
+        devis, f"Gabarit ≠ serveur sur « {e.identite} » : "
+               f"{e.surface_a} {e.texte_a} / {e.surface_b} {e.texte_b}.",
+        valeurs={'ident': e.identite, e.surface_a: str(e.texte_a),
+                 e.surface_b: str(e.texte_b)},
+        attendu=str(e.texte_a), cle={'ident': e.identite})
+        for e in ecarts_gabarit(data)]

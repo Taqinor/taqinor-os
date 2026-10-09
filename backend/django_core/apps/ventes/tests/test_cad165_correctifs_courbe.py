@@ -166,7 +166,7 @@ class AutoconsommationSansBatterieBornee(SimpleTestCase):
     def _etude(self, **extra):
         return EH.calculer_etude_horaire(
             kwc=20.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
-            equipements=self.VE_LOURD, **extra)
+            equipements=self.VE_LOURD, **{'tranches': None, 'charges_fixes_mad': None, **extra})
 
     def test_l_autoconsommation_ne_depasse_jamais_la_consommation(self):
         etude = self._etude()
@@ -209,6 +209,7 @@ class AutoconsommationSansBatterieBornee(SimpleTestCase):
         """Non-régression : sans couche qui déborde, la borne ne mord pas et
         les surplus/imports restent cohérents avec l'autoconsommation."""
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE)
         self.assertIsNotNone(etude)
         for mois in etude['mois']:

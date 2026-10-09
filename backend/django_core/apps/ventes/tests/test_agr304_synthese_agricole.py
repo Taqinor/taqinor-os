@@ -60,7 +60,9 @@ def _data_complete():
         'conception': {'mois_critique': 12, 'debit_conception_m3h': 30.7},
         'champ': {'kwc': 9.94, 'nb_panneaux': 14},
         'ha_irrigables': {'valeur': None, 'base': None, 'motif': 'x'},
-        'provenance_pompage': copy.deepcopy(PROVENANCE_MESUREE),
+        # AMOT43 — la forme RÉELLE du producteur (``domain.pompage``).
+        'provenance_pompage': {'entrees': copy.deepcopy(PROVENANCE_MESUREE),
+                               '_empreinte': 'fixture'},
         # Dérivées v1 écrites par le nouveau moteur pour son rendu.
         'pompe_cv': 10.2, 'pompe_kw': 7.5, 'hmt_m': 58.7,
         'debit_hmt_m3h': 30.5, 'm3_jour': 134.2, 'heures_pompage': 4.4,
@@ -212,9 +214,9 @@ class Agr304OmissionsTests(SimpleTestCase):
         data = _data_complete()
         etude = data['etude']
         etude['hmt_composantes'] = None
-        etude['provenance_pompage'] = {
-            'hmt_m': {'origine': 'lead', 'detail': 'client',
-                      'date': '2026-09-12'}}
+        etude['provenance_pompage'] = {'entrees': {
+            'hmt_saisie_m': {'origine': 'lead', 'detail': 'client',
+                             'date': '2026-09-12'}}}
         s = synthese_agricole(data)
         self.assertTrue(s['a_confirmer_par_visite'])
         self.assertIn('hmt_m', s['a_confirmer_par_visite'])

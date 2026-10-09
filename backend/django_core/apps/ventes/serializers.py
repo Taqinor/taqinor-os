@@ -296,6 +296,13 @@ class EcheancierValidationMixin:
                     [str(m) for msgs in tranche.errors.values()
                      for m in (msgs if isinstance(msgs, (list, tuple))
                                else [msgs])])
+        # AGNR12 — somme d'un échéancier tout en % = 100 %, aucune tranche
+        # vide (LA règle de ``utils.echeancier.valider_echeancier``).
+        from .utils.echeancier import EcheancierInvalide, valider_echeancier
+        try:
+            valider_echeancier(value)
+        except EcheancierInvalide as exc:
+            raise serializers.ValidationError(str(exc))
         return value
 
 

@@ -1047,17 +1047,19 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         return []
     sonde_ctx = dataclasses.replace(sonde_ctx, panel_watt=panel_watt)
 
-    etude_kwargs = {
+    # AMOT30 — LE constructeur unique des arguments du moteur horaire.
+    # QJR45 — LA DATE EST UNE ENTRÉE, PAS L'HORLOGE. Le même jour de
+    # référence sert l'étude SANS batterie et le mini-balayage du
+    # stockage : deux dates différentes dans un même tableau feraient
+    # comparer deux Ramadans.
+    from apps.ventes.etude_horaire import kwargs_moteur_horaire
+    etude_kwargs = kwargs_moteur_horaire({
         'conso_kwh_mensuelles': conso_kwh_mensuelles, 'ville': ville,
         'lat': lat, 'lon': lon, 'occupation': occupation,
         'equipements': equipements, 'tranches': tranches,
         'charges_fixes_mad': charges_fixes_mad,
-        # QJR45 — LA DATE EST UNE ENTRÉE, PAS L'HORLOGE. Le même jour de
-        # référence sert l'étude SANS batterie et le mini-balayage du
-        # stockage : deux dates différentes dans un même tableau feraient
-        # comparer deux Ramadans.
         'jour_reference': jour_reference,
-    }
+    })
 
     # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :
     # « add more panels so battery is always charged »). Une recharge VE

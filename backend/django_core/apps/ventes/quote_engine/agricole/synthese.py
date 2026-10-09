@@ -154,9 +154,28 @@ def _est_mesure(p):
 
 # ── blocs ───────────────────────────────────────────────────────────────────
 
+#: AMOT43 (C-AMOT-054) — LISTE BLANCHE d'affichage des provenances : le
+#: point d'eau, le volume, l'énergie et la HMT saisie — le bloc page 1 ne
+#: dépasse jamais ces entrées (aucun débordement par 30 clés techniques).
+LISTE_BLANCHE_PROVENANCE = ENTREES_POINT_D_EAU + (
+    "volume_m3_jour", "energie_actuelle", "hmt_m")
+#: Clés du producteur (``domain.pompage`` › ``entrees_resolues``) renommées
+#: dans le vocabulaire du rendu.
+_ALIAS_PROVENANCE = {"hmt_saisie_m": "hmt_m"}
+
+
 def _bloc_provenance(etude):
+    """AMOT43 — la provenance RÉELLE du point d'eau, lue dans la forme du
+    PRODUCTEUR (``domain.pompage.derivees_de_l_etude`` :
+    ``provenance_pompage = {'entrees': {cle: provenance}, '_empreinte': …}``)
+    — ``_empreinte`` ignorée, ``hmt_saisie_m`` lue comme ``hmt_m``, seules les
+    entrées de :data:`LISTE_BLANCHE_PROVENANCE` gardées."""
+    entrees = _dict(_dict(etude.get("provenance_pompage")).get("entrees"))
     sortie = {}
-    for cle, p in _dict(etude.get("provenance_pompage")).items():
+    for cle, p in entrees.items():
+        cle = _ALIAS_PROVENANCE.get(cle, cle)
+        if cle not in LISTE_BLANCHE_PROVENANCE:
+            continue
         prov = _provenance(p)
         if prov is not None:
             sortie[cle] = prov
