@@ -3,8 +3,14 @@ import zipfile
 from io import BytesIO
 
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,6 +29,7 @@ from .serializers import (
 )
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def health_score_view(request):
@@ -31,11 +38,22 @@ def health_score_view(request):
     return Response(calculer_health_score(request.user.company))
 
 
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'periode', OpenApiTypes.INT, required=False, default=30,
+        description='Fenêtre en jours (7/30/90).')],
+    responses=inline_serializer('AdoptionUsage', {
+        'par_module': drf_serializers.JSONField(),
+        'par_utilisateur': drf_serializers.JSONField(),
+    }))
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def adoption_view(request):
     """NTADM17 — adoption par module/utilisateur sur `periode` (7/30/90j)."""
-    jours = int(request.query_params.get('periode', 30))
+    try:
+        jours = int(request.query_params.get('periode', 30))
+    except (TypeError, ValueError):
+        return Response({'periode': ['Entier attendu.']}, status=400)
     return Response({
         'par_module': selectors.adoption_par_module(request.user.company, jours),
         'par_utilisateur': selectors.adoption_par_utilisateur(
@@ -43,20 +61,38 @@ def adoption_view(request):
     })
 
 
+class TrackerUsageSerializer(drf_serializers.Serializer):
+    module = drf_serializers.CharField(max_length=60)
+    ecran = drf_serializers.CharField(
+        max_length=120, required=False, allow_blank=True)
+
+
+@extend_schema(
+    request=TrackerUsageSerializer,
+    responses={201: inline_serializer(
+        'TrackerUsageOk', {'ok': drf_serializers.BooleanField()})})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def tracker_usage_view(request):
     """NTADM16 — enregistre un `EvenementUsage` (debounce côté front,
     max 1/minute/écran/utilisateur — le serveur accepte tel quel)."""
     from .models import EvenementUsage
-    module = request.data.get('module', '')[:60]
-    ecran = request.data.get('ecran', '')[:120]
-    if not module:
-        return Response({'detail': 'module requis'}, status=400)
+    ser = TrackerUsageSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    module = ser.validated_data['module']
+    ecran = ser.validated_data.get('ecran', '')
     EvenementUsage.objects.create(
         company=request.user.company, module=module, ecran=ecran,
         utilisateur=request.user)
     return Response({'ok': True}, status=201)
+
+
+class ExporterConfigSerializer(drf_serializers.Serializer):
+    nom = drf_serializers.CharField(max_length=150, required=False)
+
+
+class ContenuConfigSerializer(drf_serializers.Serializer):
+    contenu = drf_serializers.DictField()
 
 
 class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
@@ -64,11 +100,13 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = SandboxEnvironmentSerializer
     permission_classes = [IsAdministrateur]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         return SandboxEnvironment.objects.filter(
             company=self.request.user.company).order_by('-date_creation')
 
+    @extend_schema(request=None, responses={201: SandboxEnvironmentSerializer})
     @action(detail=False, methods=['post'])
     def creer(self, request):
         # NTADM39 — resserrement fin (au-delà de IsAdministrateur, déjà
@@ -88,6 +126,7 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
         self._audit_et_notifier(env, 'création')
         return Response(SandboxEnvironmentSerializer(env).data, status=201)
 
+    @extend_schema(request=None, responses=SandboxEnvironmentSerializer)
     @action(detail=True, methods=['post'])
     def prolonger(self, request, pk=None):
         env = self.get_object()
@@ -125,11 +164,14 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = ConfigPackageSerializer
     permission_classes = [IsAdministrateur]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         return ConfigPackage.objects.filter(
             company=self.request.user.company).order_by('-date_creation')
 
+    @extend_schema(request=ExporterConfigSerializer,
+                   responses={201: ConfigPackageSerializer})
     @action(detail=False, methods=['post'])
     def exporter(self, request):
         # NTADM39 — resserrement fin, cf. commentaire de SandboxEnvironmentViewSet.creer.
@@ -137,12 +179,16 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': "Permission 'adminops_config_package_exporter' requise."},
                 status=403)
-        nom = request.data.get('nom', 'Configuration')
+        ser = ExporterConfigSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        nom = ser.validated_data.get('nom', 'Configuration')
         package = config_package_service.exporter_config(
             request.user.company, nom=nom, user=request.user)
         self._audit_et_notifier(package, 'export')
         return Response(ConfigPackageSerializer(package).data, status=201)
 
+    @extend_schema(request=ContenuConfigSerializer,
+                   responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['post'])
     def previsualiser(self, request):
         contenu = request.data.get('contenu')
@@ -160,6 +206,8 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
             applique_par=request.user if getattr(request.user, 'pk', None) else None)
         return Response(diff)
 
+    @extend_schema(request=ContenuConfigSerializer,
+                   responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['post'])
     def appliquer(self, request):
         # NTADM39 — resserrement fin, cf. commentaire de SandboxEnvironmentViewSet.creer.
@@ -218,6 +266,8 @@ class AdminOpsSettingsView(APIView):
     """NTADM33/34 — réglages transverses (Administrateur only)."""
 
     permission_classes = [IsAdministrateur]
+    serializer_class = AdminOpsSettingsSerializer
+    parser_classes = [JSONParser]
 
     def get(self, request):
         reglage = AdminOpsSettings.get_or_default(request.user.company)
@@ -232,6 +282,7 @@ class AdminOpsSettingsView(APIView):
         return Response(AdminOpsSettingsSerializer(reglage).data)
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([IsTaqinorSupportOuAdministrateur])
 def diagnostic_view(request):
@@ -239,6 +290,7 @@ def diagnostic_view(request):
     return Response(selectors.diagnostic_tenant(request.user.company))
 
 
+@extend_schema(responses={(200, 'application/zip'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsTaqinorSupportOuAdministrateur])
 def support_bundle_view(request):
@@ -277,6 +329,12 @@ def support_bundle_view(request):
     return response
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('date_debut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('date_fin', OpenApiTypes.STR, required=False),
+    ],
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def journal_admin_pdf_view(request):
