@@ -895,8 +895,22 @@ def expire_stale_devis():
         # Flip to expired through the single status-change path: direct field
         # write + chatter log. Using the same field pattern as other beat jobs
         # (check_overdue_factures) — safe, reversible via git revert.
+        # ADEV47 (C-ADEV-013) — écriture CONDITIONNELLE : un devis accepté
+        # (ou refusé) entre la lecture et l'écriture reste dans SON statut ;
+        # chatter et événement ne partent que si la ligne a vraiment changé.
+        # La ligne est relue SOUS VERROU avec la condition `statut=ENVOYE`
+        # (équivalent d'un UPDATE conditionnel) puis sauvée normalement : les
+        # receveurs `pre_save`/`post_save` du devis (notifications, API
+        # publique) restent appelés comme avant.
+        from django.db import transaction
+        with transaction.atomic():
+            verrouille = Devis.objects.select_for_update().filter(
+                pk=devis.pk, statut=Devis.Statut.ENVOYE).first()
+            if verrouille is None:
+                continue
+            verrouille.statut = Devis.Statut.EXPIRE
+            verrouille.save(update_fields=['statut'])
         devis.statut = Devis.Statut.EXPIRE
-        devis.save(update_fields=['statut'])
 
         # Chatter entry via ventes.activity (exists for devis accepted/sent —
         # reuse the generic note pattern).
