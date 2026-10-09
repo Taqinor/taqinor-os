@@ -38,14 +38,16 @@ const formatDateFR = (iso) => {
 
 // Texte d'indicateur de garantie clair pour un équipement.
 export function garantieLabel(eq) {
+  // ASAV45 — fin de garantie EFFECTIVE servie ; repli sur la constructeur.
+  const fin = eq?.date_fin_garantie_effective ?? eq?.date_fin_garantie
   const etat = eq?.garantie_etat ?? 'non_renseignee'
   if (etat === 'non_renseignee') return 'Garantie non renseignée'
   if (etat === 'hors_garantie') return 'Hors garantie'
   const jours = eq?.garantie_jours_restants
   if (etat === 'expire_bientot' && typeof jours === 'number') {
-    return `Expire dans ${jours} j (le ${formatDateFR(eq.date_fin_garantie)})`
+    return `Expire dans ${jours} j (le ${formatDateFR(fin)})`
   }
-  return `Sous garantie jusqu'au ${formatDateFR(eq?.date_fin_garantie)}`
+  return `Sous garantie jusqu'au ${formatDateFR(fin)}`
 }
 
 export function garantieColor(eq) {
@@ -88,8 +90,8 @@ export function sortEquipements(items, key, dir) {
     let va
     let vb
     if (key === 'date_fin_garantie') {
-      va = a.date_fin_garantie ?? EMPTY
-      vb = b.date_fin_garantie ?? EMPTY
+      va = a.date_fin_garantie_effective ?? a.date_fin_garantie ?? EMPTY
+      vb = b.date_fin_garantie_effective ?? b.date_fin_garantie ?? EMPTY
     } else {
       va = a[key] ?? ''
       vb = b[key] ?? ''

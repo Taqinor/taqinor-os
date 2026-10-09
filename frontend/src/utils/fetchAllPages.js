@@ -17,9 +17,51 @@
 // dès qu'une page ARRIVE — l'appelant peut afficher la première page tout de
 // suite au lieu d'attendre la totalité (premier rendu « à la Odoo »). Le
 // retour final reste inchangé (tableau complet, ordre des pages).
+// APRF26 — BORNE GLOBALE : au plus MAX_EN_VOL requêtes de liste en vol, TOUTES listes
+// confondues (sémaphore de module). Sans elle, 7 lectures complètes simultanées
+// (tableau de bord) montaient à ~106 requêtes concurrentes et nginx
+// (limit_req burst=30) répondait 503. Un 429/503 reçu sur une page est REJOUÉ
+// (RETRY_MAX nouveaux essais, délai exponentiel) au lieu de faire échouer le thunk.
+// `fetchPage(page, { page_size })` : le 2e argument peut être ignoré (rétro-compatible).
+export const MAX_EN_VOL = 8
+const RETRY_MAX = 2
+let enVol = 0
+const fileAttente = []
+
+function acquerir() {
+  if (enVol < MAX_EN_VOL) { enVol += 1; return Promise.resolve() }
+  return new Promise((resolve) => { fileAttente.push(resolve) })
+}
+
+function liberer() {
+  const suivant = fileAttente.shift()
+  if (suivant) suivant() // le créneau passe directement au suivant
+  else enVol -= 1
+}
+
+const dormir = (ms) => new Promise((resolve) => { setTimeout(resolve, ms) })
+
+async function lirePage(fetchPage, page, pageSize, retryDelayMs) {
+  for (let essai = 0; ; essai += 1) {
+    await acquerir()
+    try {
+      return await fetchPage(page, { page_size: pageSize })
+    } catch (err) {
+      const statut = err?.response?.status
+      if ((statut !== 429 && statut !== 503) || essai >= RETRY_MAX) throw err
+    } finally {
+      liberer()
+    }
+    await dormir(retryDelayMs * 2 ** essai)
+  }
+}
+
 export async function fetchAllPages(
-  fetchPage, { concurrency = 20, maxPages = 200, onPage } = {},
+  fetchPageBrut, {
+    concurrency = 20, maxPages = 200, onPage, pageSize: pageSizeVoulue = 200, retryDelayMs = 250,
+  } = {},
 ) {
+  const fetchPage = (page) => lirePage(fetchPageBrut, page, pageSizeVoulue, retryDelayMs)
   const first = await fetchPage(1)
   if (!first || !Array.isArray(first.results)) return first
   onPage?.(first.results, { page: 1, first: true })

@@ -191,15 +191,17 @@ def _h_serial(company, user, payload):
     if not field_capture.intervention_modifiable(iv):  # ACHT30
         raise FieldOpError(field_capture.MESSAGE_INTERVENTION_VALIDEE)
     # ACHT37 — même contrôle de doublon que l'action en ligne.
-    if field_capture.numero_serie_en_double(
-            company, payload.get('numero_serie')):
-        raise FieldOpError(field_capture.MESSAGE_SERIE_DOUBLON)
+    raison = field_capture.raison_serie_en_double(
+        company, payload.get('numero_serie'))
+    if raison:
+        raise FieldOpError(raison)
     serial = ComponentSerial.objects.create(
         company=company, intervention=iv, produit=produit,
         designation=(payload.get('designation') or '').strip(),
         slot_cle=(payload.get('slot') or '').strip(),
         numero_serie=(payload.get('numero_serie') or '').strip(),
         created_by=user)
+    field_capture.pousser_si_cloturee(iv, user)  # ACHT47
     return {'serial': serial.id, 'numero_serie': serial.numero_serie}
 
 
@@ -329,8 +331,12 @@ def _h_terminer(company, user, payload):
 
 def _h_cocher_checklist(company, user, payload):
     """N91 — coche/décoche une étape de la checklist CHANTIER (last-write-wins).
-    Ne fait PAS la capture de série ici (les séries passent par op `serial`)."""
-    from .services import ensure_checklist_items
+    ACHT70 — accepte `equipements` ([{produit, numero_serie}], forme du corps
+    en ligne de `cocher-checklist`) et crée les équipements par le MÊME
+    service (`services.enregistrer_series_lot` → écrivain unique du parc) ;
+    sans `equipements` (files déjà en attente) l'op coche seulement. Le rejeu
+    ne recrée rien : une série déjà au parc ressort en `doublon`."""
+    from .services import ensure_checklist_items, enregistrer_series_lot
     inst = _chantier(company, payload, user)
     ensure_checklist_items(inst)
     item = inst.checklist.filter(cle=payload.get('cle')).first()
@@ -341,6 +347,10 @@ def _h_cocher_checklist(company, user, payload):
     item.fait_par = user if fait else None
     item.fait_le = _instant_saisie(payload) if fait else None
     item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    lignes = [eq for eq in (payload.get('equipements') or [])
+              if isinstance(eq, dict) and eq.get('produit')]
+    if lignes:
+        enregistrer_series_lot(inst, lignes, user=user)
     return {'cle': item.cle, 'fait': item.fait}
 
 

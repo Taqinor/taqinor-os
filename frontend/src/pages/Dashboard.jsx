@@ -55,7 +55,7 @@ import { fetchInstallations } from '../features/installations/store/installation
 // store (fetchTickets). Les endpoints existent — on ajoute seulement le fetch.
 import { fetchTickets } from '../features/sav/store/ticketsSlice'
 import {
-  ticketSlaLevel, TICKET_OPEN_STATUSES,
+  TICKET_OPEN_STATUSES,
 } from '../features/sav/ticketStatuses'
 // VX219 — « Mes chiffres » : carte de performance personnelle (tous rôles),
 // extraite comme composant réutilisable dans CrmInsightsPanel.jsx.
@@ -211,10 +211,13 @@ export function ticketsUrgents(tickets) {
   )
 }
 
-// Tickets en retard de SLA (réutilise ticketSlaLevel === 'late').
+// ASAV47 — Tickets en retard de SLA = ceux que le SERVEUR déclare `sla_breach=true`
+// (même source que la liste SAV) ; plus d'âge codé en dur 2/5/10 jours. Un ticket
+// d'une société au SLA désactivé n'a jamais `sla_breach` (rendu juste par ASAV17).
+// `now` est conservé pour compatibilité des appelants (ignoré).
 // eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
-export function ticketsSlaEnRetard(tickets, now = new Date()) {
-  return (tickets ?? []).filter((t) => ticketSlaLevel(t, now) === 'late')
+export function ticketsSlaEnRetard(tickets) {
+  return (tickets ?? []).filter((t) => t && t.sla_breach === true)
 }
 
 // VX219 — « Mes chiffres » : devis du MOIS COURANT scopés au vendeur

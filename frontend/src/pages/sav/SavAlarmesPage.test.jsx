@@ -3,6 +3,10 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 
 /* FG280 — alarmes onduleur : liste + acquitter + escalader. savApi mocké. */
 
+// ASAV61 — les gestes d'écriture dépendent du rôle ; ces tests historiques
+// exercent les gestes eux-mêmes (rôle responsable simulé, sans store d'auth).
+vi.mock('../../hooks/useHasPermission', async (io) => (await import('./__tests__/permissionsMock.js')).permissionsResponsable(await io()))
+
 vi.mock('../../api/savApi', () => ({
   default: {
     getAlarmes: vi.fn(),

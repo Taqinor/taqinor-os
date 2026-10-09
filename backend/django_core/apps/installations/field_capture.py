@@ -33,55 +33,109 @@ MESSAGE_SERIE_AU_PARC = (
     "Série déjà au parc SAV : corrigez-la depuis la fiche équipement.")
 
 
-def numero_serie_en_double(company, numero, *, exclude_id=None):
-    """ACHT37 — vrai si ce n° de série (non vide) existe déjà : relevé terrain
-    d'une AUTRE ligne de la société, ou équipement du parc SAV (contrainte
-    `uniq_equipement_serie_par_societe`). Évite l'`IntegrityError` (500) du
-    push au parc : le doublon est refusé dès la saisie."""
+MESSAGE_SERIE_DEJA_RELEVE = "N° de série déjà relevé."
+MESSAGE_SERIE_DEJA_AU_PARC = "N° de série déjà au parc SAV."
+
+
+def raison_serie_en_double(company, numero, *, exclude_id=None):
+    """ACHT47 — message lisible si ce n° de série (non vide) existe déjà :
+    relevé terrain d'une AUTRE ligne de la société, ou équipement du parc SAV
+    (contrainte `uniq_equipement_serie_par_societe`) ; ``None`` sinon. Évite
+    l'`IntegrityError` (500) : le doublon est refusé dès la saisie."""
     from .models import ComponentSerial
     numero = (numero or '').strip()
     if not numero:
-        return False
+        return None
     qs = ComponentSerial.objects.filter(
         company=company, numero_serie__iexact=numero)
     if exclude_id is not None:
         qs = qs.exclude(pk=exclude_id)
     if qs.exists():
-        return True
+        return MESSAGE_SERIE_DEJA_RELEVE
     from apps.sav.selectors import equipement_scoped_by_serial
-    return equipement_scoped_by_serial(company, numero) is not None
+    if equipement_scoped_by_serial(company, numero) is not None:
+        return MESSAGE_SERIE_DEJA_AU_PARC
+    return None
+
+
+def numero_serie_en_double(company, numero, *, exclude_id=None):
+    """ACHT37 — vrai si ce n° de série (non vide) existe déjà (voir
+    ``raison_serie_en_double``)."""
+    return raison_serie_en_double(
+        company, numero, exclude_id=exclude_id) is not None
+
+
+class ResultatPoussee(int):
+    """ACHT47 — nombre d'équipements créés (``int``, compatible avec les
+    appelants historiques) + ``conflits`` : relevés laissés ``pousse_parc=False``
+    parce que leur série est déjà au parc (donnée héritée)."""
+    conflits = ()
+
+
+def pousser_si_cloturee(intervention, user):
+    """ACHT47 — un relevé ajouté sur une intervention DÉJÀ terminée/validée est
+    poussé au parc tout de suite (la poussée de clôture est passée). Jamais
+    bloquant pour la saisie."""
+    from .models import Intervention
+    if intervention.statut not in (
+            Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE):
+        return None
+    try:
+        from django.db import transaction
+        with transaction.atomic():
+            return push_serials_to_parc(intervention, user)
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            'ACHT47: poussée immédiate au parc échouée (intervention %s)',
+            intervention.pk, exc_info=True)
+        return None
+
+
+def _quantites_bom_par_produit(installation):
+    from .services import lignes_bom_entieres
+    out = {}
+    for produit_id, _designation, qte in lignes_bom_entieres(
+            installation.bom):
+        out[produit_id] = out.get(produit_id, 0) + int(qte)
+    return out
 
 
 def push_serials_to_parc(intervention, user):
     """F9 — pousse les n° de série relevés (avec un produit catalogue) vers le
-    parc installé (sav.Equipement), comme la checklist chantier (N9). Idempotent
-    via `pousse_parc` : un même relevé ne crée jamais deux équipements. Un n° de
-    série VIDE n'empêche PAS la création (l'appareil est tracé sans série).
-    ACHT37 — appelé UNE fois à la clôture de l'intervention (jamais depuis un
-    GET) ; un n° déjà au parc est marqué poussé sans second équipement.
-    Renvoie le nombre d'équipements créés."""
-    from apps.sav.selectors import equipement_scoped_by_serial
-    from apps.sav.services import create_equipement_from_serial
+    parc installé par l'ÉCRIVAIN UNIQUE ``sav.services.assurer_equipement_
+    chantier`` (ACHT46/ACHT47) : date de pose = date de réception du chantier
+    si posée. Idempotent via `pousse_parc`. Un n° VIDE n'empêche PAS la
+    création. Un n° déjà au parc (donnée héritée) n'est JAMAIS une exception :
+    le relevé reste ``pousse_parc=False`` et est signalé dans ``.conflits``.
+    ACHT37 — appelé UNE fois à la clôture (jamais depuis un GET).
+    Renvoie le nombre d'équipements créés (``ResultatPoussee``)."""
+    from apps.sav.services import assurer_equipement_chantier
     inst = intervention.installation
+    quantites = _quantites_bom_par_produit(inst)
+    date_pose = (getattr(inst, 'date_reception', None)
+                 or inst.date_pose_reelle or intervention.date_realisee
+                 or timezone.localdate())
     created = 0
+    conflits = []
     for serial in intervention.serials.filter(
             pousse_parc=False, produit__isnull=False):
         numero = (serial.numero_serie or '').strip() or None
-        if numero and equipement_scoped_by_serial(
-                intervention.company, numero) is not None:
-            serial.pousse_parc = True
-            serial.save(update_fields=['pousse_parc'])
+        statut, _equip = assurer_equipement_chantier(
+            company=intervention.company, installation=inst,
+            produit=serial.produit, numero_serie=numero,
+            quantite_ligne=quantites.get(serial.produit_id, 1),
+            date_pose=date_pose, created_by=user)
+        if statut == 'doublon':
+            conflits.append({'serial': serial.pk, 'numero_serie': numero})
             continue
-        create_equipement_from_serial(
-            company=intervention.company, produit=serial.produit,
-            installation=inst, numero_serie=numero,
-            date_pose=(inst.date_pose_reelle or intervention.date_realisee
-                       or timezone.localdate()),
-            created_by=user)
         serial.pousse_parc = True
         serial.save(update_fields=['pousse_parc'])
-        created += 1
-    return created
+        if statut == 'cree':
+            created += 1
+    resultat = ResultatPoussee(created)
+    resultat.conflits = conflits
+    return resultat
 
 
 # ── F11 — construction / synchronisation de la réconciliation matériel ────────

@@ -13,6 +13,7 @@
 // à moitié rattaché.
 import { useEffect, useState } from 'react'
 import savApi from '../../api/savApi'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 const STATUT_LABELS = {
   identifie: 'Identifié',
@@ -39,6 +40,11 @@ const liste = (reponse) => {
 }
 
 export default function ProblemesPage() {
+  // ASAV61 — l'écriture d'un problème exige `sav_probleme_gerer` (comptes
+  // hérités sans rôle fin : repli responsable/admin, comme le serveur).
+  const permProbleme = useHasPermission('sav_probleme_gerer')
+  const respOuAdmin = useIsAdminOrResponsable()
+  const peutGerer = permProbleme || respOuAdmin
   const [problemes, setProblemes] = useState([])
   const [groupes, setGroupes] = useState([])
   const [chargement, setChargement] = useState(true)
@@ -52,6 +58,16 @@ export default function ProblemesPage() {
   const [coches, setCoches] = useState([])
   const [erreurTitre, setErreurTitre] = useState('')
   const [enCours, setEnCours] = useState(false)
+
+  // ASAV55 — gestion d'UN problème : tickets liés, liaison / déliaison,
+  // résolution avec cause racine, suppression confirmée.
+  const [selection, setSelection] = useState(null) // problème ouvert
+  const [ticketsLies, setTicketsLies] = useState([])
+  const [ticketALier, setTicketALier] = useState('')
+  const [statutEdit, setStatutEdit] = useState('identifie')
+  const [causeEdit, setCauseEdit] = useState('')
+  const [confirmSuppr, setConfirmSuppr] = useState(false)
+  const [occupe, setOccupe] = useState(false)
 
   const charger = () => {
     setChargement(true)
@@ -68,6 +84,74 @@ export default function ProblemesPage() {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { charger() }, [])
+
+  const chargerTicketsLies = (id) => savApi.getProblemeTickets(id)
+    .then((rep) => setTicketsLies(liste(rep)))
+    .catch(() => setErreur('Tickets du problème indisponibles pour le moment.'))
+
+  const ouvrirProbleme = (probleme) => {
+    setSelection(probleme)
+    setStatutEdit(probleme.statut || 'identifie')
+    setCauseEdit(probleme.cause_racine || '')
+    setTicketALier('')
+    setConfirmSuppr(false)
+    setErreur('')
+    chargerTicketsLies(probleme.id)
+  }
+
+  const lierTicket = async () => {
+    const numero = Number(ticketALier)
+    if (!numero) return
+    setOccupe(true)
+    setErreur('')
+    try {
+      await savApi.lierTicketProbleme(selection.id, numero)
+      setTicketALier('')
+      await chargerTicketsLies(selection.id)
+      charger()
+    } catch (e) {
+      setErreur(messageErreur(e, 'Le rattachement du ticket a échoué.'))
+    } finally { setOccupe(false) }
+  }
+
+  const delierTicket = async (ticketId) => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      await savApi.delierTicketProbleme(selection.id, ticketId)
+      await chargerTicketsLies(selection.id)
+      charger()
+    } catch (e) {
+      setErreur(messageErreur(e, 'Le détachement du ticket a échoué.'))
+    } finally { setOccupe(false) }
+  }
+
+  const enregistrerProbleme = async () => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      const rep = await savApi.saveProbleme(selection.id, {
+        statut: statutEdit, cause_racine: causeEdit,
+      })
+      setSelection((s) => ({ ...s, ...(rep?.data ?? {}), statut: statutEdit, cause_racine: causeEdit }))
+      charger()
+    } catch (e) {
+      setErreur(messageErreur(e, "L'enregistrement du problème a échoué."))
+    } finally { setOccupe(false) }
+  }
+
+  const supprimerProbleme = async () => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      await savApi.deleteProbleme(selection.id)
+      setSelection(null)
+      setConfirmSuppr(false)
+      charger()
+    } catch (e) {
+      setErreur(messageErreur(e, 'La suppression du problème a échoué.'))
+    } finally { setOccupe(false) }
+  }
 
   const ouvrirAssistant = (groupe) => {
     setAssistant(groupe)
@@ -230,12 +314,97 @@ export default function ProblemesPage() {
                   <span className="text-sm">
                     {groupe.titre_suggere} — {groupe.nb_tickets} tickets
                   </span>
-                  <button type="button" onClick={() => ouvrirAssistant(groupe)}>
-                    Créer le problème
-                  </button>
+                  {peutGerer && (
+                    <button type="button" onClick={() => ouvrirAssistant(groupe)}>
+                      Créer le problème
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+      )}
+
+      {selection && (
+        <section aria-label={`Problème ${selection.reference}`}
+                 className="flex flex-col gap-3 rounded-md border border-border p-4">
+          <h2 className="text-base font-semibold">
+            {selection.reference} — {selection.titre}
+          </h2>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium">
+              Tickets liés ({ticketsLies.length})
+            </span>
+            {ticketsLies.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun ticket lié.</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {ticketsLies.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 text-sm">
+                    <span>{t.reference}{t.client ? ` — ${t.client}` : ''}</span>
+                    {peutGerer && (
+                      <button type="button" disabled={occupe}
+                              onClick={() => delierTicket(t.id)}>
+                        Délier {t.reference}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {peutGerer && (
+            <div className="flex items-center gap-2">
+              <input type="number" placeholder="N° du ticket à lier" aria-label="N° du ticket à lier"
+                     value={ticketALier} onChange={(e) => setTicketALier(e.target.value)} />
+              <button type="button" disabled={occupe || !ticketALier} onClick={lierTicket}>
+                Lier un ticket
+              </button>
+            </div>
+            )}
+          </div>
+
+          {peutGerer && (
+          <div className="flex flex-col gap-2">
+            <label className="flex flex-col gap-1 text-sm">
+              Statut du problème
+              <select value={statutEdit} onChange={(e) => setStatutEdit(e.target.value)}>
+                {Object.entries(STATUT_LABELS).map(([valeur, nom]) => (
+                  <option key={valeur} value={valeur}>{nom}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Cause racine
+              <textarea value={causeEdit} onChange={(e) => setCauseEdit(e.target.value)} />
+            </label>
+            <div className="flex gap-2">
+              <button type="button" disabled={occupe} onClick={enregistrerProbleme}>
+                Enregistrer le problème
+              </button>
+              <button type="button" onClick={() => setSelection(null)}>Fermer</button>
+            </div>
+          </div>
+          )}
+          {!peutGerer && (
+            <button type="button" className="self-start" onClick={() => setSelection(null)}>Fermer</button>
+          )}
+
+          {peutGerer && ticketsLies.length === 0 && (
+            confirmSuppr ? (
+              <div className="flex items-center gap-2 text-sm">
+                <span>Supprimer définitivement {selection.reference} ?</span>
+                <button type="button" disabled={occupe} onClick={supprimerProbleme}>
+                  Confirmer la suppression
+                </button>
+                <button type="button" onClick={() => setConfirmSuppr(false)}>Annuler</button>
+              </div>
+            ) : (
+              <button type="button" className="self-start" onClick={() => setConfirmSuppr(true)}>
+                Supprimer ce problème
+              </button>
+            )
           )}
         </section>
       )}
@@ -257,6 +426,7 @@ export default function ProblemesPage() {
                 <th className="text-left">Statut</th>
                 <th className="text-left">Tickets</th>
                 <th className="text-left">Impact</th>
+                <th className="text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -271,6 +441,7 @@ export default function ProblemesPage() {
                   </td>
                   <td>{probleme.nb_tickets}</td>
                   <td>{probleme.impact}</td>
+                  <td><button type="button" onClick={() => ouvrirProbleme(probleme)}>Gérer</button></td>
                 </tr>
               ))}
             </tbody>

@@ -5,7 +5,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, MessageCircleQuestion, CalendarClock, Bell, CheckCircle2, Circle } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { ROUTE } from '../../lib/search/entityRoutes'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
+
+// ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
+// pour le total.
+const lireTout = (appel, params = {}) => fetchAllPages(
+  (page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
 const BUCKETS = [
   { key: 'a_repondre', label: 'À répondre', icon: MessageCircleQuestion, tone: 'danger' },
@@ -27,9 +35,8 @@ export default function SavActionBoardPage() {
       const allIds = Object.values(r.data.buckets ?? {}).flatMap((b) => b.ids)
       if (allIds.length === 0) { setTickets({}); return }
       // Récupère les références/clients affichés — la liste des tickets
-      // ouverts suffit largement (pas de pagination attendue sur ce volume).
-      return savApi.getTickets({ ouvert: 'tous' }).then((tr) => {
-        const rows = tr.data.results ?? tr.data ?? []
+      // ouverts, lue EN ENTIER (ASAV52) : toute référence de seau est résolue.
+      return lireTout(savApi.getTickets, { ouvert: 'tous' }).then((rows) => {
         const map = {}
         for (const t of rows) map[t.id] = t
         setTickets(map)
@@ -92,7 +99,7 @@ export default function SavActionBoardPage() {
                       const t = tickets[id]
                       return (
                         <li key={id}>
-                          <Link to="/sav" className="text-xs text-primary hover:underline">
+                          <Link to={ROUTE.ticket(id)} className="text-xs text-primary hover:underline">
                             {t?.reference ?? `#${id}`}{t?.client_nom ? ` — ${t.client_nom}` : ''}
                           </Link>
                         </li>

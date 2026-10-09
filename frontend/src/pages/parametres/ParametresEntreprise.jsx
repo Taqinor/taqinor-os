@@ -156,6 +156,7 @@ export default function ParametresEntreprise() {
   const [form, setForm] = useState({
     nom: '', adresse: '', email: '', telephone: '',
     siret: '', tva_intra: '', rib: '', banque: '',
+    capital_social: '', forme_juridique: '', // APDF22 (D-APDF-1)
     instructions_paiement: '', conditions_generales: '',
     ice: '', identifiant_fiscal: '', rc: '', patente: '', cnss: '',
     couleur_principale: '#1d4ed8',
@@ -624,6 +625,8 @@ export default function ParametresEntreprise() {
       tva_intra:         profile.tva_intra         ?? '',
       rib:               profile.rib               ?? '',
       banque:            profile.banque            ?? '',
+      capital_social:    profile.capital_social    ?? '',
+      forme_juridique:   profile.forme_juridique   ?? '',
       instructions_paiement: profile.instructions_paiement ?? '',
       conditions_generales:  profile.conditions_generales  ?? '',
       ice:               profile.ice               ?? '',

@@ -38,7 +38,7 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 _RULE_RE = re.compile(
     r"""^\s*grep\s+-qE\s+'(?P<regex>[^']+)'\s*<<<\s*"\$changed"\s*&&\s*(?P<assign>.+?)\s*(?:\|\|\s*true)?\s*$"""
 )
-_ASSIGN_RE = re.compile(r"\b(backend|frontend|web|yanbow)\s*=\s*true\b")
+_ASSIGN_RE = re.compile(r"\b(backend|frontend|web|yanbow|fastapi)\s*=\s*true\b")
 
 
 def _detect_step_script() -> str:
@@ -78,7 +78,8 @@ def _parse_rules(script: str):
 
 def _resolve(rules, changed_files):
     """Rejoue la resolution du job sur une liste de chemins modifies."""
-    out = {"backend": False, "frontend": False, "web": False, "yanbow": False}
+    out = {"backend": False, "frontend": False, "web": False, "yanbow": False,
+           "fastapi": False}
     for regex, surfaces in rules:
         rx = re.compile(regex)
         if any(rx.search(path) for path in changed_files):
@@ -165,6 +166,16 @@ class CiChangesFilterTest(unittest.TestCase):
             "ci.yml : un diff apps/web pose yanbow=true (regle trop large).",
         )
 
+    def test_fastapi_declenche_lane_securite(self):
+        """ADEP15 — un diff backend/fastapi_ia/** pose fastapi=true ; un diff
+        docs-only ou apps/web ne le pose pas."""
+        self.assertTrue(_resolve(
+            self.rules, ["backend/fastapi_ia/app/services/sql_agent_service.py"]
+        )["fastapi"])
+        for path in ("docs/PLAN.md", "apps/web/src/pages/index.astro",
+                     "backend/django_core/apps/crm/models.py"):
+            self.assertFalse(_resolve(self.rules, [path])["fastapi"], path)
+
     def test_docs_only_diff_stays_cheap(self):
         """Cas negatif : docs/**.md ne doit declencher aucun job lourd.
 
@@ -191,7 +202,7 @@ REQUIS_ALIMENTES_PAR_CHANGES = ("backend-lint", "backend-tests", "frontend-lint"
                                 "web-build-test")
 _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi",
              "backend-tests-shard", "frontend-static", "frontend-vitest-shard",
-             "e2e-shard", "web-build-test")
+             "e2e-shard", "web-build-test", "fastapi-security")
 
 
 def _expr(cond, results, outputs):
@@ -253,6 +264,36 @@ class AgregateursChangesTests(unittest.TestCase):
                     _verdict(self.jobs, nom, results, out), "failure",
                     f"ci.yml : `{nom}` reste vert quand `changes` echoue — un check REQUIS "
                     f"ne doit jamais passer sans que le filtre ait resolu.")
+
+    def test_backend_tests_suit_fastapi_security(self):
+        """ADEP15 (D-ADEP-1) — la lane PR `fastapi-security` est dans les `needs`
+        du check REQUIS `backend-tests` : son échec le fait rougir, son saut
+        (aucun diff fastapi_ia) le laisse vert. Test-du-test : retirer la lane
+        des `needs` de `backend-tests` fait échouer ce test."""
+        self.assertIn("fastapi-security", self.jobs["backend-tests"]["needs"])
+        base = {"backend": "false", "frontend": "false", "web": "false",
+                "yanbow": "false", "code": "false", "fastapi": "true"}
+        results, out = self._scenario("success", base)
+        results["fastapi-security"] = "failure"
+        self.assertEqual(
+            _verdict(self.jobs, "backend-tests", results, out), "failure",
+            "ci.yml : `backend-tests` reste vert quand `fastapi-security` echoue.")
+        results["fastapi-security"] = "success"
+        self.assertEqual(_verdict(self.jobs, "backend-tests", results, out),
+                         "success")
+        results["fastapi-security"] = "skipped"
+        self.assertEqual(_verdict(self.jobs, "backend-tests", results, out),
+                         "success")
+
+    def test_lane_fastapi_security_declaree(self):
+        job = self.jobs["fastapi-security"]
+        self.assertIn("fastapi == 'true'", job["if"])
+        script = " ".join(s.get("run", "") for s in job["steps"])
+        for suite in ("test_margin_guard", "test_sql_security",
+                      "test_permissions_agent", "test_jwt_security",
+                      "test_asec42_agent_sql_formes"):
+            self.assertIn(suite, script)
+        self.assertIn("verifier_sortie_unittest.py", script)
 
     def test_filtre_saute_reste_vert(self):
         tout_faux = {"backend": "false", "frontend": "false", "web": "false",

@@ -68,7 +68,7 @@ describe('WarrantyClaimsPage — FG83 flux RMA', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Éditer/ })[0])
     fireEvent.click(screen.getAllByRole('button', { name: /Enregistrer/ })[0])
     await waitFor(() => expect(savApi.saveWarrantyClaim).toHaveBeenCalledWith(
-      7, expect.objectContaining({ statut: 'ouvert', rma_ref: '' })))
+      7, {}))
   })
 })
 

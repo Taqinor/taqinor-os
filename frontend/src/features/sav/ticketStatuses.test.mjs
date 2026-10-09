@@ -11,10 +11,7 @@ import {
   filterTickets,
   sortTickets,
   EMPTY_TICKET_FILTERS,
-  isStatusTransitionAllowed,
   ticketAgeDays,
-  slaThresholdDays,
-  ticketSlaLevel,
   statusCounts,
 } from './ticketStatuses.js'
 
@@ -83,21 +80,6 @@ test('applyTicketStatutConfig surcharge libellé & ordre sans toucher aux clés'
   assert.ok(statusOrder('nouveau') < statusOrder('cloture'))
 })
 
-// ── L296 — garde de transition de statut ─────────────────────────────────────
-test('isStatusTransitionAllowed bloque les sauts en avant hors ordre', () => {
-  // Saut nouveau → clôturé (3 étapes) bloqué.
-  assert.equal(isStatusTransitionAllowed('nouveau', 'cloture'), false)
-  // Une seule étape en avant autorisée.
-  assert.equal(isStatusTransitionAllowed('nouveau', 'planifie'), true)
-  assert.equal(isStatusTransitionAllowed('planifie', 'en_cours'), true)
-  // Reculer autorisé.
-  assert.equal(isStatusTransitionAllowed('resolu', 'nouveau'), true)
-  // Rester / vide / inconnu : permissif.
-  assert.equal(isStatusTransitionAllowed('en_cours', 'en_cours'), true)
-  assert.equal(isStatusTransitionAllowed('', 'cloture'), true)
-  assert.equal(isStatusTransitionAllowed('nouveau', 'inconnu'), true)
-})
-
 // ── L298 — âge / SLA ─────────────────────────────────────────────────────────
 test('ticketAgeDays compte les jours depuis date_ouverture', () => {
   const now = new Date('2026-06-19T12:00:00')
@@ -108,26 +90,13 @@ test('ticketAgeDays compte les jours depuis date_ouverture', () => {
   assert.equal(ticketAgeDays({}, now), null)
 })
 
-test('slaThresholdDays raccourcit pour haute/urgente', () => {
-  assert.equal(slaThresholdDays('urgente'), 2)
-  assert.equal(slaThresholdDays('haute'), 5)
-  assert.equal(slaThresholdDays('normale'), 10)
-})
-
-test('ticketSlaLevel escalade les ouverts en retard, ignore les autres', () => {
-  const now = new Date('2026-06-19T12:00:00')
-  // Urgent ouvert depuis 3 j (seuil 2) → late.
-  assert.equal(ticketSlaLevel(
-    { statut: 'nouveau', priorite: 'urgente', date_ouverture: '2026-06-16' }, now), 'late')
-  // Normal ouvert depuis 1 j → ok.
-  assert.equal(ticketSlaLevel(
-    { statut: 'nouveau', priorite: 'normale', date_ouverture: '2026-06-18' }, now), 'ok')
-  // Clôturé : jamais d'escalade.
-  assert.equal(ticketSlaLevel(
-    { statut: 'cloture', priorite: 'urgente', date_ouverture: '2026-01-01' }, now), 'ok')
-  // Annulé : jamais d'escalade.
-  assert.equal(ticketSlaLevel(
-    { statut: 'nouveau', annule: true, priorite: 'urgente', date_ouverture: '2026-01-01' }, now), 'ok')
+// ASAV78 — le serveur est la seule définition du retard SLA (`sla_breach`) :
+// plus aucun seuil codé en dur côté écran.
+test('ASAV78 : les seuils SLA codés en dur n\'existent plus', async () => {
+  const module = await import('./ticketStatuses.js')
+  assert.equal('ticketSlaLevel' in module, false)
+  assert.equal('slaThresholdDays' in module, false)
+  assert.equal(typeof module.ticketAgeDays, 'function')
 })
 
 // ── L304/L305 — filtres annulé & urgent+garantie ─────────────────────────────

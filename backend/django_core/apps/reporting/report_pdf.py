@@ -108,14 +108,19 @@ _template = _jinja_env.from_string(_TEMPLATE_SRC)
 
 
 def _logo_data_uri(logo_key: str) -> str | None:
-    """Télécharge le logo depuis MinIO (bucket erp-media) et le rend data-URI."""
+    """Télécharge le logo depuis MinIO et le rend data-URI.
+
+    ADEP40 — lu dans ``settings.MINIO_BUCKET_UPLOADS``, là où
+    `parametres/views_uploads.py` l'écrit (l'ancien bucket ``erp-media``
+    n'existait nulle part : NoSuchBucket, rapport sans logo).
+    """
     if not logo_key:
         return None
     try:
         from django.conf import settings
         from apps.ventes.utils.minio_client import get_minio_client
         client = get_minio_client()
-        bucket = getattr(settings, 'MINIO_BUCKET_MEDIA', 'erp-media')
+        bucket = settings.MINIO_BUCKET_UPLOADS
         resp = client.get_object(Bucket=bucket, Key=logo_key)
         raw = resp['Body'].read()
         ext = logo_key.rsplit('.', 1)[-1].lower() if '.' in logo_key else 'png'

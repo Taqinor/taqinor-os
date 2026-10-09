@@ -54,7 +54,7 @@ def company_identity(company) -> dict:
             "nom": "", "adresse": "", "email": "", "telephone": "",
             "ice": "", "identifiant_fiscal": "", "rc": "", "patente": "",
             "cnss": "", "rib": "", "banque": "", "couleur_principale": "",
-            "site_web": "",
+            "site_web": "", "capital_social": "", "forme_juridique": "",
         }
     return {
         "nom": p.nom or "",
@@ -72,6 +72,9 @@ def company_identity(company) -> dict:
         # SCA27 — site web (pilote la ligne site + la base des liens fiches du
         # PDF résidentiel). Vide → littéraux historiques (taqinor.ma).
         "site_web": getattr(p, "site_web", "") or "",
+        # APDF21 (D-APDF-1) — identité légale de la bande légale du devis.
+        "capital_social": getattr(p, "capital_social", "") or "",
+        "forme_juridique": getattr(p, "forme_juridique", "") or "",
     }
 
 

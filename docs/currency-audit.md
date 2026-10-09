@@ -72,9 +72,9 @@ with no rate column at all — mono-MAD in practice.
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:541` | total |
 | sav | Ticket | `apps/sav/models.py:645` | cout |
-| sav | WarrantyClaim | `apps/sav/models.py:1399` | cout_recupere |
-| sav | ContratMaintenance | `apps/sav/models.py:1515` | prix |
-| sav | PrestationContrat | `apps/sav/models.py:1845` | prix_ht |
+| sav | WarrantyClaim | `apps/sav/models.py:1414` | cout_recupere |
+| sav | ContratMaintenance | `apps/sav/models.py:1530` | prix |
+| sav | PrestationContrat | `apps/sav/models.py:1860` | prix_ht |
 | statuspage | UptimeDayBucket | `apps/statuspage/models.py:160` | echantillons_total |
 | stock | AchatsParametres | `apps/stock/models.py:419` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:568` | tolerance_prix_absolu_mad, tolerance_prix_pct |

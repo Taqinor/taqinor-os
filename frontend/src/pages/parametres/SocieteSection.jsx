@@ -196,6 +196,15 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
                   <Input id="pe-banque" name="banque" value={form.banque} onChange={onField} {...errProps('banque')} placeholder="CIH, Attijariwafa…"/>
                   {fieldErr('banque')}
                 </Field>
+                {/* APDF22 (D-APDF-1) — identité légale imprimée sur la bande légale du devis. */}
+                <Field label="Capital social" htmlFor="pe-capital_social">
+                  <Input id="pe-capital_social" name="capital_social" value={form.capital_social ?? ''} onChange={onField} {...errProps('capital_social')} placeholder="100 000,00 MAD"/>
+                  {fieldErr('capital_social')}
+                </Field>
+                <Field label="Forme juridique" htmlFor="pe-forme_juridique">
+                  <Input id="pe-forme_juridique" name="forme_juridique" value={form.forme_juridique ?? ''} onChange={onField} {...errProps('forme_juridique')} placeholder="SARLAU, SARL, SA…"/>
+                  {fieldErr('forme_juridique')}
+                </Field>
               </div>
               {/* L772 — SIRET & TVA intra (inutiles au Maroc) repliés par défaut. */}
               <button type="button"

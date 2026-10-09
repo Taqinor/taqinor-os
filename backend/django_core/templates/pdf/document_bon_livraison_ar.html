@@ -121,6 +121,8 @@
     <strong>{{ entreprise_nom }}</strong>
     {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
     {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
+    {% set _legal = [('ICE : ' ~ entreprise_ice) if entreprise_ice else '', ('IF : ' ~ entreprise_if) if entreprise_if else '', ('RC : ' ~ entreprise_rc) if entreprise_rc else '', ('Patente : ' ~ entreprise_patente) if entreprise_patente else ''] | select | join(' | ') %}
+    {% if _legal %}<br />{{ _legal }}{% endif %}
     <br />{{ L('genere_le') }} {{ now.strftime('%d/%m/%Y à %H:%M') }}
   </div>
 </div>

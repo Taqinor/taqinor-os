@@ -12,10 +12,13 @@ import {
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
@@ -126,6 +129,8 @@ function CollapsibleSection({ icon: Icon, title, children }) {
 
 export function EquipementDetail({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
+  // ASAV61 — mise au rebut / réactivation : responsable/admin (serveur).
+  const peutRebuter = useIsAdminOrResponsable()
   const initial = useMemo(() => ({
     numero_serie: equipement.numero_serie ?? '',
     date_pose: equipement.date_pose ?? '',
@@ -163,10 +168,12 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
   // L628 — charge les options produit/chantier seulement quand on corrige.
   useEffect(() => {
     if (!correcting || produits.length) return
-    stockApi.getProduits()
-      .then((r) => setProduits(r.data.results ?? r.data ?? [])).catch(() => {})
-    installationsApi.getInstallations()
-      .then((r) => setInstallations(r.data.results ?? r.data ?? [])).catch(() => {})
+    // ASAV51 — catalogue produits et chantiers lus EN ENTIER (toutes les pages).
+    const tout = (appel) => fetchAllPages(
+      (page) => appel({ page, page_size: 200 }).then((r) => r.data),
+    ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+    tout((p) => stockApi.getProduits(p)).then(setProduits).catch(() => {})
+    tout((p) => installationsApi.getInstallations(p)).then(setInstallations).catch(() => {})
   }, [correcting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(
@@ -210,12 +217,13 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
     setCreatingTicket(true)
     setError(null)
     try {
-      await savApi.createTicket({
+      const cree = await savApi.createTicket({
         equipement: equipement.id, type: 'correctif',
         description: `Ticket ouvert depuis l'équipement ${equipement.numero_serie ?? equipement.produit_nom ?? ''}`.trim(),
       })
       toast.success('Ticket SAV créé')
-      navigate('/sav')
+      // ASAV58 — ouvre LE ticket créé, pas la liste.
+      navigate(cree?.data?.id ? ROUTE.ticket(cree.data.id) : '/sav')
     } catch (err) {
       setError(frError(err.response?.data, 'Création du ticket impossible.'))
     } finally {
@@ -274,9 +282,11 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
               <strong>Équipement mis au rebut.</strong>
               {current.motif_rebut ? ` Motif : ${current.motif_rebut}` : ''}
             </span>
-            <Button size="sm" variant="outline" loading={rebutBusy} onClick={reactiverRebut}>
-              Réactiver
-            </Button>
+            {peutRebuter && (
+              <Button size="sm" variant="outline" loading={rebutBusy} onClick={reactiverRebut}>
+                Réactiver
+              </Button>
+            )}
           </div>
         )}
 
@@ -355,7 +365,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
             {equipement.statut === 'remplace' && equipement.remplace_par_ticket && (
               <FormField label="Remplacement" fullWidth>
                 <Button type="button" variant="link" className="h-auto p-0"
-                        onClick={() => navigate('/sav')}>
+                        onClick={() => navigate(ROUTE.ticket(equipement.remplace_par_ticket))}>
                   Remplacé via ticket {equipement.remplace_par_ticket_reference ?? `#${equipement.remplace_par_ticket}`}
                 </Button>
               </FormField>
@@ -417,7 +427,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
           </p>
 
           <FormActions sticky={false}>
-            {!current.mis_au_rebut && (
+            {peutRebuter && !current.mis_au_rebut && (
               <Button type="button" variant="destructive" className="mr-auto"
                       onClick={() => setRebutOpen(true)}>
                 <Trash2 /> Mettre au rebut

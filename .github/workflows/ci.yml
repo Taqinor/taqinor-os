@@ -189,6 +189,7 @@ jobs:
       frontend: ${{ steps.detect.outputs.frontend }}
       web: ${{ steps.detect.outputs.web }}
       yanbow: ${{ steps.detect.outputs.yanbow }}
+      fastapi: ${{ steps.detect.outputs.fastapi }}
       code: ${{ steps.detect.outputs.code }}
     steps:
       - uses: actions/checkout@v4
@@ -203,7 +204,7 @@ jobs:
           PUSH_AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
-          backend=false; frontend=false; web=false; yanbow=false
+          backend=false; frontend=false; web=false; yanbow=false; fastapi=false
           run_all=false
 
           if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -226,7 +227,7 @@ jobs:
 
           if [ "$run_all" = true ]; then
             echo "Could not resolve a precise diff range — running the FULL suite (fail-open)."
-            backend=true; frontend=true; web=true; yanbow=true
+            backend=true; frontend=true; web=true; yanbow=true; fastapi=true
           else
             changed="$(git diff --name-only "$base" "$head")"
             echo "Changed files between ${base} and ${head}:"
@@ -253,6 +254,11 @@ jobs:
             grep -qE '^backend/'     <<< "$changed" && backend=true  || true
             grep -qE '^frontend/'    <<< "$changed" && frontend=true || true
             grep -qE '^apps/web/'    <<< "$changed" && web=true      || true
+            # ADEP15 (D-ADEP-1, 08/10/2026) — service IA : la lane PR
+            # `fastapi-security` (garde prix_achat, SQL, JWT, permissions) ne
+            # tourne que si backend/fastapi_ia/** change ; le check requis
+            # `backend-tests` la suit.
+            grep -qE '^backend/fastapi_ia/' <<< "$changed" && fastapi=true || true
             # YBW1 — site YanBow (apps/yanbow-web) : construit et teste DANS le
             # job requis `web-build-test` (aucun nouveau contexte requis). Le
             # motif `^apps/web/` ne le couvre PAS (autre dossier).
@@ -303,9 +309,10 @@ jobs:
             echo "frontend=$frontend"
             echo "web=$web"
             echo "yanbow=$yanbow"
+            echo "fastapi=$fastapi"
             echo "code=$code"
           } >> "$GITHUB_OUTPUT"
-          echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow e2e(code)=$code"
+          echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
 
   # ---------------------------------------------------------------------------
   # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
@@ -1055,8 +1062,77 @@ jobs:
   # be paired with a job still literally named `backend-tests`. Passes iff no
   # shard failed; also passes when the shards SKIP (backend=false), preserving the
   # path-filter "a skipped required check counts as success" behaviour.
+  # ---------------------------------------------------------------------------
+  # ADEP15 (D-ADEP-1, tranche par le fondateur le 08/10/2026 : option (a)) — LANE PR
+  # `fastapi-security`. Les 218 tests du service IA, dont la garde qui empeche
+  # `prix_achat` de sortir vers un client, ne tournaient que la nuit
+  # (release-verify, 03:00 UTC) : un ImportError d'`app.*` passait compileall et
+  # flake8 (`noqa`) et ne rougissait qu'a 03:00. Cette lane execute les cinq
+  # suites SECURITE, UNIQUEMENT quand `backend/fastapi_ia/**` change (sortie
+  # `fastapi` du filtre `changes`), sous `verifier_sortie_unittest.py` : un test
+  # SAUTE (dependance absente, import casse) ou un nombre de tests sous le plancher
+  # (78 = decompte statique des `def test_` des cinq fichiers) la fait echouer.
+  # Le check REQUIS `backend-tests` la suit (agregateur) : AUCUN nouveau contexte
+  # requis, aucun desserre. Le nightly `fastapi-tests` garde la suite complete.
+  # Budget de jobs simultanes : +1 UNIQUEMENT sur un diff fastapi_ia (la vague
+  # typique reste a 18-19 sur 20).
+  # ---------------------------------------------------------------------------
+  fastapi-security:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.fastapi == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # MUST match prod (python:3.11.x).
+      - name: Install FastAPI service dependencies
+        working-directory: backend/fastapi_ia
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run FastAPI security suites (margin guard / SQL / permissions / JWT)
+        working-directory: backend/fastapi_ia
+        run: |
+          set -o pipefail
+          python -m unittest -v \
+            tests.test_margin_guard \
+            tests.test_sql_security \
+            tests.test_permissions_agent \
+            tests.test_jwt_security \
+            tests.test_asec42_agent_sql_formes 2>&1 \
+            | python ../../scripts/verifier_sortie_unittest.py --plancher 78
+
   backend-tests:
-    needs: [changes, ci-image-check, backend-tests-shard]
+    needs: [changes, ci-image-check, backend-tests-shard, fastapi-security]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -1084,6 +1160,14 @@ jobs:
         if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
         run: |
           echo "A backend-tests shard did not pass (result=${{ needs.backend-tests-shard.result }})."
+          exit 1
+      # ADEP15 — la lane securite du service IA fait partie du check REQUIS : un echec
+      # (ou annulation) de `fastapi-security` rougit `backend-tests`. Sautee par le
+      # filtre de chemins (aucun diff fastapi_ia) = reste vert.
+      - name: Fail if the FastAPI security lane failed or was cancelled
+        if: ${{ needs.fastapi-security.result == 'failure' || needs.fastapi-security.result == 'cancelled' }}
+        run: |
+          echo "fastapi-security did not pass (result=${{ needs.fastapi-security.result }})."
           exit 1
       - name: All shards passed (or were skipped)
         run: echo "backend-tests-shard result=${{ needs.backend-tests-shard.result }} — gate OK."
@@ -1797,6 +1881,7 @@ jobs:
       - backend-lint-fast
       - backend-openapi
       - backend-tests-shard
+      - fastapi-security
       - frontend-static
       - frontend-vitest-shard
       - stage-names
@@ -1811,6 +1896,7 @@ jobs:
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
+          echo "fastapi-security=${{ needs.fastapi-security.result }}"
           echo "frontend-static=${{ needs.frontend-static.result }}"
           echo "frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }}"
           echo "e2e-shard=${{ needs.e2e-shard.result }}"
