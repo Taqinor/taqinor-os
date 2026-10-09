@@ -20,6 +20,8 @@ import copy
 
 from django.db import transaction
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -114,6 +116,13 @@ def _decider(calepinage, base, zone_id, operation, user):
                                   base_empreinte=base)
 
 
+@extend_schema(request=inline_serializer(
+    'CalepinageSuggestionsPenteRequete', {
+        'operation': drf_serializers.ChoiceField(
+            choices=['proposer', 'accepter', 'refuser']),
+        'base_empreinte': drf_serializers.CharField(),
+        'zone_id': drf_serializers.CharField(required=False),
+    }))
 @action(detail=True, methods=['post'], url_path='suggestions-pente',
         permission_classes=[PeutGererCalepinage])
 def suggestions_pente(self, request, pk=None):
