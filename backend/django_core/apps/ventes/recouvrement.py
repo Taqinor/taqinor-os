@@ -727,9 +727,12 @@ def client_releve_pdf(request, client_id):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def lettre_relance_pdf(request, facture_id):
-    facture = _scope(
-        Facture.objects.select_related('client'), request.user).filter(
-        pk=facture_id).first()
+    # AFAC54 (C-AFAC-048) — portée de `FactureViewSet` (créée par soi /
+    # l'équipe) : hors portée = 404, indistinct d'un id inexistant.
+    from authentication.scoping import scope_queryset
+    facture = scope_queryset(_scope(
+        Facture.objects.select_related('client'), request.user),
+        request.user, ['created_by']).filter(pk=facture_id).first()
     if facture is None:
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)

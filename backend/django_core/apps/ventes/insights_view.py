@@ -92,12 +92,15 @@ def cash_flow_forecast(request):
     next_month_end = _end_of_month(next_month_start)
 
     # Factures ouvertes (émises / en retard), toutes échéances.
-    open_factures = (
+    # AFAC54 (C-AFAC-048) — portée de `FactureViewSet` (créées par soi /
+    # l'équipe) : un rôle restreint ne voit pas l'encours des autres.
+    from authentication.scoping import scope_queryset
+    open_factures = scope_queryset(
         Facture.objects
         .filter(company=company, statut__in=('emise', 'en_retard'))
-        .prefetch_related('paiements', 'avoirs', 'client')
-        .order_by('date_echeance')
-    )
+        .prefetch_related('paiements', 'avoirs', 'client'),
+        request.user, ['created_by'],
+    ).order_by('date_echeance')
 
     # Compteurs par bucket.
     buckets = {k: {'montant': Decimal('0'), 'count': 0} for k in [

@@ -39,8 +39,13 @@ def client_credit_warning(request, client_id):
 
     # Scoping tenant (YRBAC11) : le client doit appartenir à la société —
     # helper canonique, 404 indistinct d'un id inexistant.
+    # AFAC54 (C-AFAC-048) — + la portée client (documents visibles du rôle) :
+    # le client d'un collègue hors portée répond 404 comme un id inexistant.
+    from authentication.scoping import scope_client_queryset
     try:
-        client = get_company_object(Client, client_id, request.user)
+        client = get_company_object(
+            Client, client_id, request.user,
+            extra_scope=scope_client_queryset)
     except Http404:
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)

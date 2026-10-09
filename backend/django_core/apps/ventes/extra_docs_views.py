@@ -35,9 +35,13 @@ def lettre_relance_premium(request, facture_id):
 
     ?niveau=1 (courtois) / 2 (ferme) / 3 (mise en demeure). Défaut : 1.
     """
-    facture = _scope(
-        Facture.objects.select_related('client'), request.user).filter(
-        pk=facture_id).first()
+    # AFAC54 (C-AFAC-048) — même portée que `FactureViewSet` (créée par soi
+    # / l'équipe) : une facture invisible répond 404, indistinct d'un id
+    # inexistant.
+    from authentication.scoping import scope_queryset
+    facture = scope_queryset(_scope(
+        Facture.objects.select_related('client'), request.user),
+        request.user, ['created_by']).filter(pk=facture_id).first()
     if facture is None:
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
