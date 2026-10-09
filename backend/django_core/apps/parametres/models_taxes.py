@@ -42,7 +42,7 @@ class TauxTVA(TenantModel):
     """Un taux de TVA de référence par société (code + libellé FR + taux)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='taux_tva_referentiel')
     # Code technique stable (standard/panneaux/exonere/tva14/tva7…), unique par
     # société — sert de clé d'idempotence au seed.

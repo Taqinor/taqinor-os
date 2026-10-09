@@ -33,7 +33,7 @@ class ApprovalPolicy(models.Model):
         ADMIN = 'admin', 'Administrateur uniquement'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='approval_policies')
     action_type = models.CharField(
         max_length=20, choices=ActionType.choices)

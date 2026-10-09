@@ -24,7 +24,7 @@ class ConditionPaiement(TenantModel):
     """Une condition de paiement nommée par société (délai + escompte)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='conditions_paiement_referentiel')
     libelle = models.CharField(
         max_length=120,
