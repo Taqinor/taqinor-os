@@ -403,10 +403,15 @@ const SLA_SETTINGS_DEFAULTS = {
   generation_auto_visites: false,
   visites_avance_jours: 7,
   worksheets_maintenance_actifs: false,
+  sla_par_priorite: null,
+  horaires_ouvres: null,
+  sla_heures_ouvrees_actif: false,
 }
 
 const SLA_TOGGLES = [
-  { key: 'sla_breach_enabled', label: 'Notifier le technicien au dépassement du SLA' },
+  // ASAV56 (D-ASAV-5 Q2 a) — le SLA est TOUJOURS calculé et affiché ;
+  // l'interrupteur ne gouverne que les notifications.
+  { key: 'sla_breach_enabled', label: 'Notifier le technicien au dépassement du SLA (le SLA reste toujours calculé et affiché)' },
   { key: 'notifications_client_sav', label: 'Notifications client aux transitions du ticket' },
   { key: 'sla_jours_ouvres', label: "Calculer l'échéance SLA en jours ouvrés" },
   { key: 'escalade_activee', label: 'Escalader au responsable à la violation du SLA' },
@@ -423,6 +428,93 @@ const SLA_NUMBER_FIELDS = [
   { key: 'recidive_fenetre_jours', label: 'Fenêtre de récidive (jours)' },
   { key: 'visites_avance_jours', label: 'Avance de génération des visites (jours)' },
 ]
+
+// ASAV56 — éditeur du SLA PAR PRIORITÉ (`sla_par_priorite`) et des horaires
+// ouvrés (`horaires_ouvres`) : chaque réglage affiché a l'éditeur de ses
+// données. Clés par priorité : response / resolution (jours) et
+// resolution_heures (chemin heures ouvrées, NTSRV11).
+const SLA_PRIORITES = [
+  { key: 'urgente', label: 'Urgente' },
+  { key: 'haute', label: 'Haute' },
+  { key: 'normale', label: 'Normale' },
+  { key: 'basse', label: 'Basse' },
+]
+const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+const HORAIRES_DEFAUT = { jours: [0, 1, 2, 3, 4], debut: '08:00', fin: '18:00' }
+
+function SlaParPrioriteEditor({ value, onChange, avecHeures }) {
+  const par = value ?? {}
+  const setCell = (prio, cle) => (e) => {
+    const brut = e.target.value
+    const suivant = { ...par, [prio]: { ...(par[prio] ?? {}) } }
+    if (brut === '') delete suivant[prio][cle]
+    else suivant[prio][cle] = Number(brut)
+    if (Object.keys(suivant[prio]).length === 0) delete suivant[prio]
+    onChange(Object.keys(suivant).length ? suivant : null)
+  }
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <span className="text-sm font-medium">SLA par priorité (vide = délai général ci-dessus)</span>
+      <div className="grid gap-2">
+        {SLA_PRIORITES.map((p) => (
+          <div key={p.key} className="grid items-end gap-2 sm:grid-cols-[6rem_1fr_1fr_1fr]">
+            <span className="text-sm">{p.label}</span>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Première réponse (jours)
+              <Input type="number" min="0" step="any" aria-label={`${p.label} — première réponse (jours)`}
+                     value={par[p.key]?.response ?? ''} onChange={setCell(p.key, 'response')} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Résolution (jours)
+              <Input type="number" min="0" step="any" aria-label={`${p.label} — résolution (jours)`}
+                     value={par[p.key]?.resolution ?? ''} onChange={setCell(p.key, 'resolution')} />
+            </label>
+            {avecHeures && (
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                Résolution (heures ouvrées)
+                <Input type="number" min="0" step="any" aria-label={`${p.label} — résolution (heures ouvrées)`}
+                       value={par[p.key]?.resolution_heures ?? ''} onChange={setCell(p.key, 'resolution_heures')} />
+              </label>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function HorairesOuvresEditor({ value, onChange }) {
+  const h = { ...HORAIRES_DEFAUT, ...(value ?? {}) }
+  const basculer = (j) => {
+    const jours = h.jours.includes(j) ? h.jours.filter((x) => x !== j) : [...h.jours, j].sort()
+    onChange({ ...h, jours })
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-2.5 text-sm">
+      <span className="font-medium">Horaires ouvrés</span>
+      <div className="flex flex-wrap gap-3">
+        {JOURS_SEMAINE.map((nom, j) => (
+          <label key={nom} className="flex items-center gap-1">
+            <input type="checkbox" checked={h.jours.includes(j)} onChange={() => basculer(j)} />
+            {nom}
+          </label>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <label className="flex items-center gap-2">
+          De
+          <Input type="time" className="w-32" aria-label="Début des horaires ouvrés" value={h.debut}
+                 onChange={(e) => onChange({ ...h, debut: e.target.value })} />
+        </label>
+        <label className="flex items-center gap-2">
+          à
+          <Input type="time" className="w-32" aria-label="Fin des horaires ouvrés" value={h.fin}
+                 onChange={(e) => onChange({ ...h, fin: e.target.value })} />
+        </label>
+      </div>
+    </div>
+  )
+}
 
 function SlaAutomationSection() {
   const [form, setForm] = useState(SLA_SETTINGS_DEFAULTS)
@@ -478,6 +570,18 @@ function SlaAutomationSection() {
                       onCheckedChange={setField(t.key)} />
             </div>
           ))}
+        </div>
+        <SlaParPrioriteEditor value={form.sla_par_priorite}
+                              avecHeures={!!form.sla_heures_ouvrees_actif}
+                              onChange={setField('sla_par_priorite')} />
+        {/* « Heures ouvrées » n'est proposé qu'AVEC son éditeur d'horaires. */}
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 text-sm text-foreground">
+            <span>Décompter le SLA en heures ouvrées</span>
+            <Switch aria-label="Décompter le SLA en heures ouvrées" checked={!!form.sla_heures_ouvrees_actif}
+                    onCheckedChange={setField('sla_heures_ouvrees_actif')} />
+          </div>
+          <HorairesOuvresEditor value={form.horaires_ouvres} onChange={setField('horaires_ouvres')} />
         </div>
         <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
           Enregistrer
