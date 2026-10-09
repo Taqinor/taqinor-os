@@ -26,6 +26,7 @@ import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { toast } from '../../../ui/confirm'
 import {
   Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
@@ -59,12 +60,20 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const dispatch = useDispatch()
   const navigate = useNavigate()
 
-  // phase: 'remise-input' | 'creating' | 'edit' | 'preview' | 'error'
+  // phase: 'remise-input' | 'creating' | 'chargement' | 'edit' | 'preview' | 'error'
+  // EDC8 — un devis EXISTANT demandé en édition ne monte PAS le générateur tout
+  // de suite : phase `chargement` (spinner) jusqu'à la lecture du devis, qui
+  // décide (modifiable → `edit`, sinon toast + `preview`). Avant, l'éditeur
+  // s'ouvrait puis se refermait d'un coup sur un devis figé (flash « ouvre puis
+  // referme ») : la garde du générateur n'est plus qu'un second rideau.
   const [phase, setPhase] = useState(
-    existingDevisId ? (mode === 'edit' ? 'edit' : 'preview')
+    existingDevisId ? (mode === 'edit' ? 'chargement' : 'preview')
       : mode === 'remise' ? 'remise-input'
         : mode === 'edit' ? 'edit'
           : 'creating')
+  // Vrai tant que la lecture qui doit trancher entre `edit` et `preview` n'est
+  // pas revenue (une seule décision, jamais rejouée par une relecture).
+  const ouvertureEnAttenteRef = useRef(!!existingDevisId && mode === 'edit')
   const [discount, setDiscount] = useState('0')
   const [errorMsg, setErrorMsg] = useState(null)
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
@@ -74,10 +83,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [devisRef, setDevisRef] = useState('')
   // QJR534 — le devis CHARGÉ (droits `modifiable` / `revision_possible` lus du
   // serveur, QJR516) : « Édition complète » seulement si modifiable, sinon
-  // « Réviser ». Tant qu'il n'est pas chargé (ou sans devis), le geste
-  // historique reste offert (le générateur refuse lui-même avec la raison).
+  // « Réviser ».
   const [devisRecord, setDevisRecord] = useState(null)
-  const editable = !devisRecord || peutEditerDevis(devisRecord)
+  // EDC8 — plus de `true` par défaut avant la lecture : sur un devis EXISTANT,
+  // « Édition complète » n'est rendu qu'une fois `devisRecord` chargé ET
+  // modifiable. Seul cas sans devis (échec de la création automatique) :
+  // ouvrir l'éditeur = CRÉER un devis à la main, toujours permis.
+  const editable = devisId ? peutEditerDevis(devisRecord) : true
   const revisable = !editable && peutReviserDevis(devisRecord)
   const reviser = () => reviserEtOuvrir({
     devis: { ...devisRecord, id: devisId },
@@ -174,15 +186,38 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Référence (pour le nom du fichier) une fois le devis connu.
+  // Référence (pour le nom du fichier) une fois le devis connu. EDC8 — c'est
+  // AUSSI cette lecture qui décide d'ouvrir l'éditeur d'un devis existant : le
+  // générateur n'est monté qu'ensuite (phase `chargement` d'ici là).
   useEffect(() => {
-    if (!devisId) return
+    if (!devisId) return undefined
+    let annule = false
     ventesApi.getDevisById(devisId)
       .then(({ data }) => {
+        if (annule) return
         setDevisRef(data.reference || `Devis_${devisId}`)
         setDevisRecord(data)
+        if (!ouvertureEnAttenteRef.current) return
+        ouvertureEnAttenteRef.current = false
+        if (peutEditerDevis(data)) {
+          setPhase('edit')
+          return
+        }
+        // Devis figé : on le DIT (la raison vient du serveur) et on montre
+        // l'aperçu ; « Réviser » y est offert si le serveur le permet.
+        toast.error(data.raison_non_modifiable
+          || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
+        setPhase('preview')
       })
-      .catch(() => setDevisRef(`Devis_${devisId}`))
+      .catch(() => {
+        if (annule) return
+        setDevisRef(`Devis_${devisId}`)
+        if (!ouvertureEnAttenteRef.current) return
+        ouvertureEnAttenteRef.current = false
+        setErrorMsg("Ce devis n'a pas pu être ouvert. Vérifiez votre connexion puis réessayez.")
+        setPhase('error')
+      })
+    return () => { annule = true }
   }, [devisId])
 
   const onEditDone = (id) => {
@@ -286,6 +321,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'creating' && (
             <div className="ldp-center">
               <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
+            </div>
+          )}
+
+          {/* EDC8 — lecture du devis avant de monter l'éditeur. */}
+          {phase === 'chargement' && (
+            <div className="ldp-center" data-testid="ldp-chargement">
+              <p className="gen-hint" role="status"><Spinner /> Ouverture du devis…</p>
             </div>
           )}
 
