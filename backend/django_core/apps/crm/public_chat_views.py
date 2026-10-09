@@ -18,7 +18,9 @@ import logging
 
 from django.conf import settings
 from django.utils import timezone
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     authentication_classes, api_view, permission_classes, throttle_classes,
 )
@@ -104,6 +106,12 @@ def _append_transcript(session, auteur, texte):
     return entry
 
 
+@extend_schema(
+    request=None,
+    responses={201: inline_serializer('PublicChatSessionOuverte', {
+        'token': serializers.CharField(),
+        'statut': serializers.CharField(),
+    }), 404: OpenApiTypes.OBJECT})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])

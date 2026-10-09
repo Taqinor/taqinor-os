@@ -17,6 +17,7 @@ nombre de visites déjà connues, jamais un identifiant de lead, jamais un
 corps inexploitable vaut aussi ``{"ok": true}`` : un beacon ne doit jamais
 faire apparaître une erreur dans la console d'un visiteur.
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import (
@@ -80,7 +81,7 @@ class PublicVisiteRateThrottle(SimpleRateThrottle):
     }),
     responses={200: inline_serializer('PublicVisiteReponse', {
         'ok': serializers.BooleanField(),
-    })},
+    }), 401: OpenApiTypes.OBJECT},
 )
 @api_view(['POST'])
 @authentication_classes([])

@@ -16,6 +16,7 @@ JAMAIS la somme des deux — l'ancien ``devis.total_ttc`` servait le brut.
 import hashlib
 import hmac
 
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, status
 from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
@@ -191,9 +192,11 @@ def _item_payload(item):
 
 
 @extend_schema(methods=['GET'], request=None,
-               responses={200: _SALLE_VENTE_RESPONSE})
+               responses={200: _SALLE_VENTE_RESPONSE, 403: OpenApiTypes.OBJECT,
+                          404: OpenApiTypes.OBJECT, 410: OpenApiTypes.OBJECT})
 @extend_schema(methods=['POST'], request=_SALLE_VENTE_ACCES_REQUEST,
-               responses={200: _SALLE_VENTE_RESPONSE})
+               responses={200: _SALLE_VENTE_RESPONSE, 403: OpenApiTypes.OBJECT,
+                          404: OpenApiTypes.OBJECT, 410: OpenApiTypes.OBJECT})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -217,9 +220,11 @@ def public_salle_vente(request, token):
     """
     salle = _resolve_salle(token)
     if salle is None:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Salle de vente introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
     if not salle.is_accessible:
-        return Response(status=status.HTTP_410_GONE)
+        return Response({'detail': 'Salle de vente expirée ou révoquée.'},
+                        status=status.HTTP_410_GONE)
     if salle.has_password:
         corps = request.data if hasattr(request.data, 'get') else {}
         mot_de_passe = corps.get('mot_de_passe') or ''
@@ -271,7 +276,8 @@ class PublicApporteurRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
         }
 
 
-@extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE})
+@extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE,
+                          403: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -286,7 +292,8 @@ def public_apporteur_mes_deals(request, token):
     apporteur = Apporteur.objects.filter(
         token_acces=token, actif=True).first()
     if apporteur is None:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
 
     deals = (apporteur.deals
              .select_related('lead')
