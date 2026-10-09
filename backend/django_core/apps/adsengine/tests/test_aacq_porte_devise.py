@@ -20,8 +20,10 @@ from apps.adsengine.models import (
 )
 
 TODAY = datetime.date(2026, 7, 16)
-RAISON = ("Seuil en MAD, compte facturé en USD : seuil non applicable tant "
-          "que la devise n'est pas décidée (aucun taux inventé).")
+# AACQ3 (D-AACQ-1 tranchée = a) : la raison invite à ressaisir le seuil dans la
+# devise du compte (même assertion d'égalité stricte qu'avant la décision).
+RAISON = ("Seuil en MAD, compte facturé en USD : seuil non applicable — "
+          "ressaisir le seuil dans la devise du compte (aucun taux inventé).")
 
 
 def _snap(company, obj, *, day, spend, results):

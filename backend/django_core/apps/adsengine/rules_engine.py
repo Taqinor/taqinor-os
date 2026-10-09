@@ -676,7 +676,9 @@ def _eval_metric_threshold(company, policy, template, *, now, config):
 
     # AACQ2 — seuil monétaire (``*_mad``) sur un compte non-MAD : non
     # applicable, AUCUNE comparaison (porte unique ``guardrails``).
-    blocked = (guardrails.mad_threshold_blocked_reason(company)
+    # AACQ3 — comparable si le seuil a été saisi dans la devise du compte.
+    blocked = (guardrails.mad_threshold_blocked_reason(
+                   company, getattr(policy, 'threshold_currency', ''))
                if str(spec['threshold_param']).endswith('_mad') else None)
 
     findings = []
@@ -1053,7 +1055,8 @@ def _eval_zero_delivery(company, policy, template, *, now, config):
     hours = float(params.get('hours', 48) or 48)
     min_spend = float(params.get('min_spend_mad', 0) or 0)
     days = max(1, int(math.ceil(hours / 24.0)))
-    blocked = guardrails.mad_threshold_blocked_reason(company)
+    blocked = guardrails.mad_threshold_blocked_reason(
+        company, getattr(policy, 'threshold_currency', ''))
     currency = account_currency(company)
     model, mirrors = _scoped_mirrors(company, policy, 'campaign')
     if model is None:
@@ -1285,7 +1288,12 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run,
                 "Budget à vie : montée de budget quotidien non applicable.")
             return None
         # AACQ2 — budget du compte vs plafond MAD : non applicable hors MAD.
-        blocked = guardrails.mad_threshold_blocked_reason(company)
+        # AACQ3 — plafond comparé dans sa devise de saisie.
+        if config is None:
+            from .models import GuardrailConfig
+            config = GuardrailConfig.objects.filter(company=company).first()
+        blocked = guardrails.mad_threshold_blocked_reason(
+            company, getattr(config, 'ceiling_currency', '') or '')
         if blocked:
             finding['blocked_fr'] = blocked
             return None

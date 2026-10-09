@@ -1,0 +1,40 @@
+---
+// Héros des pages produit (YBW62/YBW63) — bande « nuit » (principe B de la
+// direction retenue, YBWM12, avec les jetons et polices de A) : le titre est
+// une affirmation du registre, la capture CLAIRE flotte à droite (jamais
+// animée : c'est l'élément LCP), un seul appel « Prendre rendez-vous » avec le
+// sujet pré-sélectionné.
+import Affirmation from './Affirmation.astro';
+import Capture from './Capture.astro';
+import type { Locale } from '../i18n/config';
+import { L } from '../i18n/utils';
+import type { ValeurProduit } from '../lib/brand';
+
+interface Props {
+  locale: Locale;
+  surtitre: string;
+  /** Affirmation rendue comme titre de la page (h1). */
+  titre: string;
+  /** Affirmations sous le titre. */
+  intro: readonly string[];
+  cta: string;
+  produit: ValeurProduit;
+  secondaire: { texte: string; href: string };
+  ecran: string;
+}
+const { locale, surtitre, titre, intro, cta, produit, secondaire, ecran } = Astro.props;
+---
+<section class="bande-nuit" aria-labelledby="page-titre">
+  <div class="conteneur bande-nuit-int">
+    <div class="bande-nuit-texte">
+      <p class="surtitre">{surtitre}</p>
+      <h1 id="page-titre"><Affirmation id={titre} locale={locale} balise="span" /></h1>
+      {intro.map((id) => <Affirmation id={id} locale={locale} class="hero-intro" />)}
+      <div class="bande-nuit-actions">
+        <a class="bouton" href={`${L('rendezVous', locale)}?produit=${produit}`} data-appel-rdv data-produit={produit}>{cta}</a>
+        <a class="lien-fleche" href={secondaire.href}>{secondaire.texte}</a>
+      </div>
+    </div>
+    <Capture ecran={ecran} locale={locale} prioritaire />
+  </div>
+</section>

@@ -226,3 +226,66 @@ class AppliquerReglesTests(TestCase):
         self.assertEqual(a.classe, 'hors_sujet')
         self.assertEqual(a.verdict_courant.decide_par, 'humain')
         self.assertEqual(a.dropshipper_decide_par, 'humain')
+
+
+class DomainePlateformeTests(TestCase):
+    """AACQ38 — jamais un suffixe public ni l'hébergeur nu comme domaine ;
+    deux vendeurs de domaines différents ne sont jamais « doublon »."""
+
+    ATTENDUS = {
+        'boutique-a.myshopify.com': 'boutique-a.myshopify.com',
+        'https://chic-b.myshopify.com/products/robe': 'chic-b.myshopify.com',
+        'site-x.wixsite.com': 'site-x.wixsite.com',
+        'vendeur1.com.tr': 'vendeur1.com.tr',
+        'amazon.com.tr': 'amazon.com.tr',
+        'shop1.com.cn': 'shop1.com.cn',
+        'boutique.com.ma': 'boutique.com.ma',
+        'shop.net.au': 'shop.net.au',
+        'magasin.com.br': 'magasin.com.br',
+        'monshop.co.uk': 'monshop.co.uk',
+        'www.maison-lilas.fr': 'maison-lilas.fr',
+        'myshopify.com': '',
+        'wixsite.com': '',
+        'com.tr': '',
+        'net.au': '',
+        'com.br': '',
+    }
+
+    def test_legendes(self):
+        for legende, attendu in self.ATTENDUS.items():
+            with self.subTest(legende=legende):
+                self.assertEqual(vd.legende_vers_domaine(legende), attendu)
+
+    def _classer(self, slug, legendes):
+        company = Company.objects.create(nom=slug, slug=slug)
+        with override_settings(VEILLE_SOCIETES_AUTORISEES=[company.id]):
+            dec = vd.creer_decouverte(company, None, {
+                'mots_cles': [{'texte': 'robe', 'pays': ['FR']}],
+                'plafond_appels': 5, 'plafond_pages_par_requete': 5})
+        pubs = [
+            {'id': f'{slug}-{i}', 'page_id': f'{slug}-P{i}',
+             'page_name': f'Boutique {i}',
+             'ad_creative_bodies': [f'Texte propre numéro {i} de la page'],
+             'ad_creative_link_captions': [legende]}
+            for i, legende in enumerate(legendes)]
+        vd.ingerer_page(dec.requetes.get(), {'pubs': pubs, 'a_suivant': False},
+                        1)
+        compte = vr.appliquer_regles(dec, maintenant=MAINTENANT)
+        classes = list(VeilleAnnonceur.objects.filter(company=company)
+                       .values_list('classe', flat=True))
+        return compte, classes
+
+    def test_boutiques_hebergees_jamais_doublon(self):
+        temoin, _ = self._classer('aacq38-fr', ['boutique-a.fr', 'chic-b.fr'])
+        self.assertNotIn('doublon', temoin)
+        for slug, legendes in (
+                ('aacq38-shop', ['boutique-a.myshopify.com',
+                                 'chic-b.myshopify.com']),
+                ('aacq38-tr', ['vendeur1.com.tr', 'amazon.com.tr'])):
+            with self.subTest(legendes=legendes):
+                compte, classes = self._classer(slug, legendes)
+                self.assertNotIn('doublon', compte)
+                self.assertNotIn('doublon', classes)
+        compte, _ = self._classer('aacq38-shop2', ['boutique-a.myshopify.com',
+                                                   'chic-b.myshopify.com'])
+        self.assertEqual(compte, temoin)

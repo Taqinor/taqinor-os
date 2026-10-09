@@ -211,6 +211,40 @@ def leads_en_portee(user):
     return leads_visibles(user)
 
 
+def lead_signe_q():
+    """ACRM31 — LE prédicat « lead signé » (filtre ORM) : étape SIGNED
+    (clé lue de ``stages``/STAGES.py, jamais un littéral — règle #2), non
+    perdu, non archivé. Toute lecture qui compte des « signés » passe par lui
+    (ou par ``est_lead_signe`` pour un objet déjà chargé) afin que tous les
+    rapports comptent pareil sur le même jeu."""
+    from django.db.models import Q
+    from . import stages as stage_mod
+    return Q(stage=stage_mod.SIGNED, perdu=False, is_archived=False)
+
+
+def est_lead_signe(lead):
+    """ACRM31 — Jumeau Python de ``lead_signe_q`` pour un lead déjà chargé."""
+    from . import stages as stage_mod
+    return (getattr(lead, 'stage', None) == stage_mod.SIGNED
+            and not getattr(lead, 'perdu', False)
+            and not getattr(lead, 'is_archived', False))
+
+
+def cles_numeros_lead(lead):
+    """ACRM33 — Clés téléphone NORMALISÉES (QW10) d'un lead : son
+    ``telephone`` ET son ``whatsapp`` (vides ignorés). Helper unique partagé
+    par ``find_lead_id_by_phone`` et ``signed_lead_phone_keys`` — un lead
+    joignable seulement sur WhatsApp est reconnu partout pareil."""
+    from . import services as crm_services
+    keys = set()
+    for numero in (getattr(lead, 'telephone', None),
+                   getattr(lead, 'whatsapp', None)):
+        key = crm_services.normalize_phone(numero)
+        if key:
+            keys.add(key)
+    return keys
+
+
 def find_lead_id_by_phone(company, phone):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
@@ -231,8 +265,7 @@ def find_lead_id_by_phone(company, phone):
                  .filter(company=company, is_archived=False)
                  .only('id', 'telephone', 'whatsapp')
                  .order_by('-id')):
-        if (crm_services.normalize_phone(lead.telephone) == key
-                or crm_services.normalize_phone(lead.whatsapp) == key):
+        if key in cles_numeros_lead(lead):  # ACRM33 — helper unique
             return lead.id
     return None
 
@@ -247,17 +280,15 @@ def signed_lead_phone_keys(company):
     côté adsengine, et le stade SIGNÉ vient de ``STAGES.py`` (jamais codé en
     dur, règle #2). Lecture seule, scopée société ; ignore les numéros vides.
     Renvoie un ``set`` de clés non vides."""
-    from . import services as crm_services
-    from . import stages as stage_mod
     from .models import Lead
 
     keys = set()
-    for tel in (Lead.objects
-                .filter(company=company, stage=stage_mod.SIGNED)
-                .values_list('telephone', flat=True)):
-        key = crm_services.normalize_phone(tel)
-        if key:
-            keys.add(key)
+    # ACRM33 — telephone ET whatsapp (helper partagé avec
+    # ``find_lead_id_by_phone``).
+    for lead in (Lead.objects
+                 .filter(lead_signe_q(), company=company)
+                 .only('id', 'telephone', 'whatsapp')):
+        keys |= cles_numeros_lead(lead)
     return keys
 
 
@@ -276,7 +307,6 @@ def signed_leads_for_campaigns(company, utm_campaigns):
 
         {utm_campaign: {'signed_count': int, 'signed_lead_ids': [int, ...]}}
     """
-    from . import stages as stage_mod
     from .models import Lead
 
     result = {}
@@ -285,7 +315,7 @@ def signed_leads_for_campaigns(company, utm_campaigns):
             continue
         ids = list(
             Lead.objects
-            .filter(company=company, utm_campaign=key, stage=stage_mod.SIGNED)
+            .filter(lead_signe_q(), company=company, utm_campaign=key)
             .order_by('id')
             .values_list('id', flat=True))
         result[key] = {'signed_count': len(ids), 'signed_lead_ids': ids}
@@ -347,11 +377,11 @@ def attribution_lead_rows(company, qualifying_stage=None):
     qs = (Lead.objects
           .filter(company=company, is_archived=False)
           .only('id', 'meta_ad_id', 'utm_content', 'utm_campaign', 'canal',
-                'stage', 'perdu', 'motif_perte'))
+                'stage', 'perdu', 'motif_perte', 'is_archived'))
     for lead in qs:
         stage = lead.stage
         rank = _rank(stage)
-        is_signed = (stage == stage_mod.SIGNED)
+        is_signed = est_lead_signe(lead)  # ACRM31
         is_qualified = (
             stage != stage_mod.COLD and not lead.perdu
             and rank >= qual_rank)
@@ -1050,15 +1080,20 @@ def _lignes_pipeline_ouvertes(company, membre_ids=None):
 def _valeur_ponderee_leads(leads):
     """Valeur pipeline pondérée (FG362/XSAL15) : réutilise le même calcul que
     `apps.reporting.pipeline` (valeur du devis le plus récent × probabilité de
-    gain du lead), sans dupliquer la logique."""
+    gain du lead), sans dupliquer la logique.
+
+    ACRM34 — la valeur PONDÉRÉE est celle du forecast (XSAL7) :
+    ``_lead_forecast_value`` × ``_lead_win_weight`` (un devis refusé/expiré
+    ne pèse pas ; un lead sans devis actif pèse son ``montant_estime``), pour
+    que la carte « Mes équipes » affiche le même pondéré que le forecast."""
     from decimal import Decimal
-    from apps.reporting.pipeline import _lead_value, _lead_win_weight
+    from apps.reporting.pipeline import (
+        _lead_forecast_value, _lead_value, _lead_win_weight)
     valeur = Decimal('0')
     ponderee = Decimal('0')
     for lead in leads:
-        v = _lead_value(lead)
-        valeur += v
-        ponderee += v * _lead_win_weight(lead)
+        valeur += _lead_value(lead)
+        ponderee += _lead_forecast_value(lead) * _lead_win_weight(lead)
     return valeur, ponderee
 
 
@@ -1222,7 +1257,6 @@ def attribution_leads(company, debut=None, fin=None):
     société — jamais d'accès cross-tenant.
     """
     from decimal import Decimal
-    from . import stages as stage_mod
     from .models import Lead
 
     qs = Lead.objects.filter(company=company, is_archived=False)
@@ -1272,7 +1306,7 @@ def attribution_leads(company, debut=None, fin=None):
         })
         slot_src['nb_leads'] += 1
 
-        est_signe = lead.stage == stage_mod.SIGNED and not lead.perdu
+        est_signe = est_lead_signe(lead)  # ACRM31
         if est_signe:
             ca = _ca_signe_lead(lead)
             slot_com['nb_signes'] += 1
@@ -3601,26 +3635,36 @@ def clients_contact_identifiers(company):
     ]
 
 
-def leads_ville_rows(company):
+def leads_ville_rows(company, canaux=None, date_start=None, date_end=None):
     """PUB62 — Une ligne par lead PORTANT une ville renseignée : id, ville,
     signé (stade SIGNED, jamais perdu — STAGES.py, jamais codé en dur).
     Scopé société, leads vivants. Un lead SANS ville est simplement ABSENT
     (jamais une ville vide fabriquée — règle checked-facts). Point d'entrée
     cross-app pour la carte chaleur ville d'``apps.adsengine.reporting``
-    (jamais un import d'``apps.crm.models`` côté adsengine)."""
-    from . import stages as stage_mod
+    (jamais un import d'``apps.crm.models`` côté adsengine).
+
+    AACQ10 — filtres OPTIONNELS (défaut = comportement d'avant) : ``canaux``
+    (liste de clés ``Lead.Canal``) et ``date_start``/``date_end`` (dates
+    incluses, sur la date de création du lead) — la carte chaleur peut ainsi
+    ne demander que les leads Meta d'une fenêtre."""
     from .models import Lead
 
     rows = []
     qs = (Lead.objects
           .filter(company=company, is_archived=False)
           .exclude(ville__isnull=True).exclude(ville__exact='')
-          .only('id', 'ville', 'stage', 'perdu'))
+          .only('id', 'ville', 'stage', 'perdu', 'is_archived'))
+    if canaux is not None:
+        qs = qs.filter(canal__in=list(canaux))
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
     for lead in qs:
         rows.append({
             'id': lead.id,
             'ville': lead.ville.strip(),
-            'signed': lead.stage == stage_mod.SIGNED and not lead.perdu,
+            'signed': est_lead_signe(lead),  # ACRM31
         })
     return rows
 
@@ -3650,6 +3694,9 @@ def revenu_attribue_campagne(company, nom_campagne):
     revenu = Decimal('0')
     for lead in leads:
         signe_pour_ce_lead = False
+        # ACRM31 — seul un lead signé (prédicat unique) porte du CA attribué.
+        if not est_lead_signe(lead):
+            continue
         for devis in lead.devis.all():
             if _devis_compte_comme_signe(devis):  # ACRM10
                 signe_pour_ce_lead = True
@@ -4360,32 +4407,32 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     """
     import datetime
     from core.dates import aujourd_hui_local
-    from apps.ventes.selectors import date_validite_effective
+    from apps.ventes.selectors import devis_envoyes_expirant
     from .models import Lead
 
     today = today or aujourd_hui_local()
     limite = today + datetime.timedelta(days=dans_jours)
     # ACRM28 — portée propriétaire ET périmètre d'entités.
-    leads = portee_leads(
+    lead_ids = portee_leads(
         Lead.objects.filter(company=company, is_archived=False),
-        user).prefetch_related('devis')
+        user).values_list('id', flat=True)
 
+    # APRF23 — seuls les devis ENVOYÉS qui expirent avant la limite, filtrés
+    # EN SQL par le sélecteur ventes (date effective ACRM29), totaux
+    # préchargés : requêtes constantes.
     out = []
-    for lead in leads:
-        for devis in lead.devis.all():
-            if getattr(devis, 'statut', None) != 'envoye':
-                continue
-            exp = date_validite_effective(devis)
-            if exp is None or exp > limite:
-                continue
-            out.append({
-                'devis_id': devis.id,
-                'reference': getattr(devis, 'reference', '') or f'#{devis.id}',
-                'lead_id': lead.id,
-                'lead_nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
-                'date_expiration': exp,
-                'total_ttc': str(getattr(devis, 'total_ttc', None) or ''),
-            })
+    for ligne in devis_envoyes_expirant(company, limite, lead_ids):
+        devis = ligne['devis']
+        lead = devis.lead
+        exp = ligne['date_expiration']
+        out.append({
+            'devis_id': devis.id,
+            'reference': getattr(devis, 'reference', '') or f'#{devis.id}',
+            'lead_id': lead.id,
+            'lead_nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
+            'date_expiration': exp,
+            'total_ttc': str(getattr(devis, 'total_ttc', None) or ''),
+        })
     out.sort(key=lambda d: (d['date_expiration'], d['reference']))
     return out
 
@@ -4433,7 +4480,14 @@ def ma_file_commercial_items(company, user, today=None):
     today = today or aujourd_hui_local()
     items = []
 
-    for lead in relances_du_jour(company, user, scope='overdue', today=today):
+    # APRF23 — les familles « lead » ne lisent que id/nom/prénom/relance :
+    # aucun préchargement de devis/lignes ni colonne inutile.
+    def _leger(qs):
+        return (qs.select_related(None).prefetch_related(None)
+                .only('id', 'nom', 'prenom', 'relance_date'))
+
+    for lead in _leger(relances_du_jour(
+            company, user, scope='overdue', today=today)):
         nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
         items.append({
             'kind': 'relance',
@@ -4443,7 +4497,7 @@ def ma_file_commercial_items(company, user, today=None):
             'urgency': 'overdue',
         })
 
-    for lead in leads_chauds_non_contactes(company, user):
+    for lead in _leger(leads_chauds_non_contactes(company, user)):
         nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
         items.append({
             'kind': 'lead_chaud',
@@ -4468,7 +4522,7 @@ def ma_file_commercial_items(company, user, today=None):
     # VX223 — rappels demandés : signal le plus chaud du pipeline (un client a
     # explicitement demandé un rappel), jusqu'ici un badge passif jamais
     # remonté dans aucune file.
-    for lead in leads_rappel_demande(company, user):
+    for lead in _leger(leads_rappel_demande(company, user)):
         nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
         items.append({
             'kind': 'rappel',
@@ -4701,16 +4755,22 @@ def lead_capi_identifiers(company, lead_id):
     JAMAIS de donnée interne (aucun prix_achat n'existe côté lead)."""
     if not lead_id:
         return None
+    from .dsr_provider import LEAD_NOM_ANONYMISE
     from .models import Lead
     lead = (Lead.objects
             .filter(pk=lead_id, company=company)
             .only('id', 'external_system', 'external_id', 'telephone', 'email',
-                  'fbclid', 'canal', 'source')
+                  'fbclid', 'canal', 'source', 'nom')
             .first())
     if lead is None:
         return None
+    # AACQ20 — un lead EFFACÉ (DSR/rétention) ne fournit plus aucun
+    # identifiant publicitaire : ``external_id`` est gardé en base pour la
+    # dédup anti-résurrection, jamais renvoyé ici.
+    is_erased = lead.nom == LEAD_NOM_ANONYMISE
     leadgen_id = ''
-    if lead.external_system == _META_LEAD_ADS_SYSTEM and lead.external_id:
+    if (not is_erased and lead.external_system == _META_LEAD_ADS_SYSTEM
+            and lead.external_id):
         leadgen_id = str(lead.external_id)
     meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
     is_meta_origin = (
@@ -4722,8 +4782,9 @@ def lead_capi_identifiers(company, lead_id):
         'leadgen_id': leadgen_id,
         'phone': lead.telephone or '',
         'email': lead.email or '',
-        'fbclid': lead.fbclid or '',
+        'fbclid': '' if is_erased else (lead.fbclid or ''),
         'is_meta_origin': is_meta_origin,
+        'is_erased': is_erased,
     }
 
 
@@ -4737,10 +4798,14 @@ def meta_lead_match_coverage(company):
     Le score EMQ réel (0-10) exige l'API Dataset Quality de Meta (séparée) ; ce
     proxy local rend « visible » la qualité de match côté ERP en attendant.
     Renvoie ``{'meta_leads', 'with_leadgen_id', 'with_phone', 'strong_match'}``."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
     from .models import Lead
     meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
-    qs = Lead.objects.filter(company=company, is_archived=False).only(
-        'external_system', 'external_id', 'telephone', 'canal', 'source')
+    # AACQ20 — un lead effacé ne compte plus dans la couverture de match.
+    qs = (Lead.objects.filter(company=company, is_archived=False)
+          .exclude(nom=LEAD_NOM_ANONYMISE)
+          .only('external_system', 'external_id', 'telephone', 'canal',
+                'source'))
     meta_leads = with_leadgen = with_phone = strong = 0
     for lead in qs:
         is_meta = (lead.canal in meta_canaux
@@ -5621,7 +5686,7 @@ def portefeuille_commercial(company, user, now=None):
     Toujours scopé société + owner — jamais de fuite cross-tenant ni
     cross-commercial (aucun paramètre société/utilisateur accepté depuis la
     requête, seulement ``request.user``)."""
-    from .engagement import compute_engagement_score, engagement_label
+    from .engagement import engagement_label, engagement_pour_clients
     from .models import Client, Lead
 
     if company is None or user is None:
@@ -5630,10 +5695,13 @@ def portefeuille_commercial(company, user, now=None):
         Lead.objects.filter(company=company, owner=user, client__isnull=False)
         .values_list('client_id', flat=True).distinct()
     )
-    clients = Client.objects.filter(company=company, id__in=client_ids)
+    # APRF22 — plan de compte chargé avec le client, scores EN LOT.
+    clients = list(Client.objects.filter(company=company, id__in=client_ids)
+                   .select_related('plan_compte'))
+    scores = engagement_pour_clients(clients, now=now)
     out = []
     for client in clients:
-        score = compute_engagement_score(client, now=now)
+        score = scores.get(client.pk, 0)
         plan_compte_id = client.plan_compte.id if hasattr(client, 'plan_compte') else None
         out.append({
             'client_id': client.id,
@@ -5663,13 +5731,10 @@ def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     portée équipe) pour que rien de hors portée ne soit rendu. ``None`` = la
     société entière, voulu pour la commande système
     ``detecter_comptes_dormants`` (balayage sans utilisateur)."""
+    from django.db.models import Max, OuterRef, Q, Subquery
     from django.utils import timezone
 
-    from apps.ventes.selectors import (
-        devis_du_client_portail, factures_du_client_portail,
-    )
-
-    from .models import Client, Lead, LeadActivity, PointContact
+    from .models import Client, LeadActivity, PointContact
 
     if company is None:
         return []
@@ -5677,35 +5742,41 @@ def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     today = now.date() if hasattr(now, 'date') else now
 
     base = clients if clients is not None else Client.objects.all()
+    # APRF22 — dates EN LOT (annotations SQL) : dernier devis (actif, non
+    # brouillon — mêmes populations que ``devis_du_client_portail``),
+    # dernière facture (non brouillon — ``factures_du_client_portail``) par
+    # relations inverses en chaînes ; dernière activité et dernier point de
+    # contact des leads de la société par sous-requête. Un client sans
+    # devis/facture est écarté EN BASE. Requêtes constantes.
+    brouillon = 'brouillon'  # statut de DOCUMENT (couche séparée, règle #4)
+    derniere_activite = (
+        LeadActivity.objects
+        .filter(lead__client=OuterRef('pk'), lead__company=company)
+        .order_by('-created_at').values('created_at')[:1])
+    dernier_contact = (
+        PointContact.objects
+        .filter(lead__client=OuterRef('pk'), lead__company=company)
+        .order_by('-date_contact').values('date_contact')[:1])
+    annotes = (
+        base.filter(company=company)
+        .prefetch_related(None)  # le viewset précharge pour sa liste
+        .annotate(
+            _dernier_devis=Max('devis__date_creation', filter=Q(
+                devis__company=company, devis__is_active=True)
+                & ~Q(devis__statut=brouillon)),
+            _derniere_facture=Max('factures__date_emission', filter=Q(
+                factures__company=company) & ~Q(
+                    factures__statut=brouillon)),
+            _derniere_activite=Subquery(derniere_activite),
+            _dernier_contact=Subquery(dernier_contact))
+        .filter(Q(_dernier_devis__isnull=False)
+                | Q(_derniere_facture__isnull=False)))
     out = []
-    for client in base.filter(company=company):
-        devis_list = devis_du_client_portail(company, client.id, limit=1)
-        factures_list = factures_du_client_portail(company, client.id, limit=1)
-        if not devis_list and not factures_list:
-            continue  # jamais de devis/facture : hors périmètre de la dormance
-
-        dates = []
-        if devis_list:
-            dates.append(_as_date(devis_list[0]['date_creation']))
-        if factures_list:
-            dates.append(_as_date(factures_list[0]['date_emission']))
-
-        lead_ids = list(Lead.objects.filter(
-            company=company, client=client).values_list('id', flat=True))
-        if lead_ids:
-            last_activity = (
-                LeadActivity.objects
-                .filter(lead_id__in=lead_ids)
-                .order_by('-created_at')
-                .values_list('created_at', flat=True).first())
-            dates.append(_as_date(last_activity))
-            last_contact = (
-                PointContact.objects
-                .filter(lead_id__in=lead_ids)
-                .order_by('-date_contact')
-                .values_list('date_contact', flat=True).first())
-            dates.append(_as_date(last_contact))
-
+    for client in annotes:
+        dates = [_as_date(client._dernier_devis),
+                 _as_date(client._derniere_facture),
+                 _as_date(client._derniere_activite),
+                 _as_date(client._dernier_contact)]
         dates = [d for d in dates if d is not None]
         derniere = max(dates) if dates else None
         jours = (today - derniere).days if derniere is not None else None
@@ -6530,13 +6601,11 @@ def leads_signes_sans_devis_accepte(company):
 
     Renvoie une liste de dicts ``{'id', 'stage', 'source'}`` — aucune donnée
     personnelle (le nom n'est pas lu). Scopé à ``company``."""
-    from . import stages
     from .models import Lead
     from .services import _DEVIS_STATUT_ACCEPTE
     return list(
         Lead.objects
-        .filter(company=company, stage=stages.SIGNED, perdu=False,
-                is_archived=False)
+        .filter(lead_signe_q(), company=company)
         .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
         .exclude(devis__statut=_DEVIS_STATUT_ACCEPTE)
         .order_by('pk')

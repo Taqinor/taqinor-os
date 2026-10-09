@@ -94,6 +94,26 @@ class ChercherTests(SimpleTestCase):
         self.assertEqual(res['usage'], {'call_count': 12, 'total_cputime': 3,
                                         'total_time': 5})
 
+    def test_chercher_envoie_ad_type_all(self):
+        # AACQ37 — parité avec la sonde VEIL40 (ad_type=ALL).
+        enr = Enregistreur([ok([pub(1)])])
+        client_pour(enr).chercher('robe', 'FR')
+        params = enr.requetes[0].url.params
+        self.assertEqual(params['ad_type'], 'ALL')
+        for cle in ('search_terms', 'ad_reached_countries', 'search_type',
+                    'ad_active_status', 'fields'):
+            self.assertIn(cle, params)
+
+    def test_page_suivante_garde_ad_type(self):
+        enr = Enregistreur([ok([pub(1)]), ok([pub(2)], suivant=False)])
+        client = client_pour(enr)
+        p1 = client.chercher('robe', 'FR')
+        client.chercher('robe', 'FR', after=p1['after_suivant'], limit=25)
+        params = enr.requetes[1].url.params
+        self.assertEqual(params['ad_type'], 'ALL')
+        self.assertEqual(params['after'], 'CURSEUR2')
+        self.assertEqual(params['limit'], '25')
+
     def test_613_une_seule_requete_sans_reessai(self):
         enr = Enregistreur([erreur(613), ok([pub(1)])])
         with self.assertRaises(alc.QuotaAtteint) as ctx:

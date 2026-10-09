@@ -1,0 +1,42 @@
+---
+// Modules d'une page produit (YBW62/YBW63). Chaque module = un titre, ses
+// affirmations du registre et, s'il y en a une, sa capture (légende
+// « Données fictives »). Un module ne s'affiche QUE s'il garde au moins une
+// affirmation PUBLIABLE (`publiables`) — une affirmation dépubliée retire la
+// phrase, et le module entier s'il n'en reste aucune.
+import Affirmation from './Affirmation.astro';
+import Capture from './Capture.astro';
+import type { Locale } from '../i18n/config';
+import { AFFIRMATIONS, type Affirmation as Aff } from '../lib/claims';
+import { publiables, type Module } from '../lib/affirmer';
+
+interface Props {
+  locale: Locale;
+  surtitre: string;
+  titre: string;
+  modules: readonly Module[];
+  /** Surcharge du registre — réservée aux tests (fixture). */
+  registre?: readonly Aff[];
+}
+const { locale, surtitre, titre, modules, registre = AFFIRMATIONS } = Astro.props;
+const visibles = modules.map((m) => ({ ...m, ids: publiables(m.affirmations, registre) })).filter((m) => m.ids.length > 0);
+---
+<section id="modules" class="section" aria-labelledby="modules-titre">
+  <div class="conteneur">
+    <header class="section-tete">
+      <p class="surtitre">{surtitre}</p>
+      <h2 id="modules-titre">{titre}</h2>
+    </header>
+    <div class="modules">
+      {visibles.map((m) => (
+        <article class="module" data-module={m.id} aria-labelledby={`module-${m.id}`}>
+          <div class="module-texte">
+            <h3 id={`module-${m.id}`}>{m.titre}</h3>
+            {m.ids.map((id) => <Affirmation id={id} locale={locale} />)}
+          </div>
+          {m.ecran && <Capture ecran={m.ecran} locale={locale} />}
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

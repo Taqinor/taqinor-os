@@ -152,9 +152,39 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             # AACQ14 — garde-fou quatre yeux (écriture réservée à
             # ``adsengine_autonomy_toggle``, contrôlée par la vue).
             'require_four_eyes',
+            # AACQ3 — devise des plafonds, posée par le serveur (lecture seule).
+            'ceiling_currency',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['ceiling_currency', 'created_at', 'updated_at']
+
+    # AACQ3 (D-AACQ-1 = a) — champs exprimés dans la devise du compte.
+    _CURRENCY_FIELDS = (
+        'daily_budget_ceiling_mad', 'monthly_budget_ceiling_mad',
+        'exploration_floor_mad')
+
+    def _stamp_currency(self, instance, validated_data, company):
+        """Pose la devise du compte quand un plafond est SAISI (création, ou
+        valeur modifiée) ; jamais lue du corps."""
+        if company is None:
+            return
+        changed = any(
+            f in validated_data and (
+                instance is None
+                or validated_data[f] != getattr(instance, f))
+            for f in self._CURRENCY_FIELDS)
+        if instance is None or changed:
+            from .rules_engine import account_currency
+            validated_data['ceiling_currency'] = (
+                account_currency(company) or 'MAD').upper()
+
+    def create(self, validated_data):
+        self._stamp_currency(None, validated_data, validated_data.get('company'))
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._stamp_currency(instance, validated_data, instance.company)
+        return super().update(instance, validated_data)
 
 
 class AnnotationSerializer(serializers.ModelSerializer):
@@ -441,11 +471,42 @@ class RulePolicySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'template_key', 'enabled', 'mode', 'dry_run', 'conditions',
             'params', 'cadence_hours', 'cooldown_hours', 'last_evaluated_at',
-            'last_result', 'created_at', 'updated_at',
+            'last_result', 'threshold_currency', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'last_evaluated_at', 'last_result', 'created_at', 'updated_at',
+            'last_evaluated_at', 'last_result', 'threshold_currency',
+            'created_at', 'updated_at',
         ]
+
+    @staticmethod
+    def _mad_params(params):
+        return {k: v for k, v in (params or {}).items()
+                if str(k).endswith('_mad')}
+
+    def _stamp_currency(self, instance, validated_data, company):
+        """AACQ3 (D-AACQ-1 = a) — la devise des seuils ``*_mad`` est posée par
+        le serveur (devise du compte) à la création, ou quand un seuil est
+        ressaisi (valeur changée) ; jamais lue du corps."""
+        if company is None:
+            return
+        if instance is not None:
+            if 'params' not in validated_data:
+                return
+            new = self._mad_params(validated_data['params'])
+            old = self._mad_params(instance.params)
+            if not any(old.get(k) != v for k, v in new.items()):
+                return
+        from .rules_engine import account_currency
+        validated_data['threshold_currency'] = (
+            account_currency(company) or 'MAD').upper()
+
+    def create(self, validated_data):
+        self._stamp_currency(None, validated_data, validated_data.get('company'))
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._stamp_currency(instance, validated_data, instance.company)
+        return super().update(instance, validated_data)
 
     def validate(self, attrs):
         # État final = valeurs entrantes fondues sur l'instance existante.

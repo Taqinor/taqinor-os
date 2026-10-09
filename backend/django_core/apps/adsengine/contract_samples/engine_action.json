@@ -1,0 +1,42 @@
+{
+  "endpoint": "GET /api/django/adsengine/actions/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AACQ60 (PACT10) — contrat posé SEUL et EN PREMIER pour les moitiés front de la boîte d'approbation (AACQ62, AACQ63, AACQ64). `exemple` = UNE ligne d'`EngineActionSerializer` (la liste est paginée : `page`). Ligne réelle d'une action `rebalance_adset_budget` produite par `budget_applier._propose_budget_change` : `payload.current_budget` et `payload.daily_budget` sont en CENTIMES de la devise du compte (÷100 pour l'afficher), `new_daily_budget_mad` = budget proposé, `target_daily_budget_mad` = cible demandée avant bornage ; il n'existe AUCUNE clé `budget_avant`/`budget_apres`. Filtre `?statut=` (AACQ61) : `proposee`, `approuvee`, liste à virgules, alias `en_attente` = proposee+approuvee ; valeur inconnue → 400 « Statut inconnu : <valeur> ». Rejet : `POST /api/django/adsengine/actions/<id>/reject/` avec le corps `corps_reject` (le motif choisi part dans `commentaire`).",
+  "statuts_admis": [
+    "proposee",
+    "approuvee",
+    "en_attente"
+  ],
+  "corps_reject": {
+    "commentaire": "Budget trop élevé"
+  },
+  "page": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      "<exemple>"
+    ]
+  },
+  "exemple": {
+    "id": 101,
+    "kind": "rebalance_adset_budget",
+    "payload": {
+      "adset_id": "PRB_A1",
+      "daily_budget": 10000,
+      "current_budget": 20000,
+      "new_daily_budget_mad": 100.0,
+      "target_daily_budget_mad": 230.0
+    },
+    "reason_fr": "Rééquilibrage du bandit : budget borné à ±15 % par jour et au plafond quotidien.",
+    "status": "proposee",
+    "auto": false,
+    "proposed_by": null,
+    "approved_by": null,
+    "applied_at": null,
+    "result": {},
+    "error": "",
+    "created_at": "2026-10-08T09:00:00Z",
+    "updated_at": "2026-10-08T09:00:00Z"
+  }
+}

@@ -56,6 +56,10 @@ MAX_NOUVEAUX_ESSAIS = 2
 LONGUEUR_MAX_MOT_CLE = 100
 
 SEARCH_TYPES = ('KEYWORD_UNORDERED', 'KEYWORD_EXACT_PHRASE')
+# AACQ37 — ``ad_type=ALL`` sur chaque recherche ``ads_archive`` : parité avec
+# la sonde VEIL40 (``tools/adlib_probe/probe.py:244``, référence de parité) —
+# sans lui Meta peut ne renvoyer que les pubs politiques/sociales.
+AD_TYPE = 'ALL'
 AD_ACTIVE_STATUS = ('ACTIVE', 'INACTIVE', 'ALL')
 
 # Champs demandés (seuls ceux que l'API sert pour une pub commerciale UE/UK ;
@@ -138,7 +142,10 @@ class RequeteRefusee(AdLibraryErreur):
 
 
 class ErreurReseau(AdLibraryErreur):
-    pass
+    """Panne réseau / 5xx après tous les essais. ``essais`` = nombre RÉEL de
+    requêtes HTTP tentées (AACQ40 : chacune compte dans le quota consommé)."""
+
+    essais = 1
 
 
 # ── Outils purs ──────────────────────────────────────────────────────────────
@@ -272,6 +279,7 @@ class AdLibraryClient:
         self._timeout = timeout
         self._dormir = dormir if dormir is not None else time.sleep
         self.dernier_usage = {}
+        self.derniers_essais = 0
 
     def __repr__(self):
         return 'AdLibraryClient(jeton=••••••••)'
@@ -318,6 +326,8 @@ class AdLibraryClient:
         chemin = urlsplit(url).path
         derniere = None
         for essai in range(MAX_NOUVEAUX_ESSAIS + 1):
+            # AACQ40 — nombre réel de requêtes HTTP de cet appel.
+            self.derniers_essais = essai + 1
             if essai:
                 pause = self.attente_entre_essais[
                     min(essai - 1, len(self.attente_entre_essais) - 1)]
@@ -343,6 +353,7 @@ class AdLibraryClient:
                     f'Meta indisponible (HTTP {reponse.status_code}).')
                 continue
             return reponse
+        derniere.essais = MAX_NOUVEAUX_ESSAIS + 1
         raise derniere
 
     @staticmethod
@@ -398,6 +409,7 @@ class AdLibraryClient:
             'ad_reached_countries': json.dumps([pays]),
             'search_type': search_type,
             'ad_active_status': ad_active_status,
+            'ad_type': AD_TYPE,
             'fields': ','.join(champs or CHAMPS_DEFAUT),
         }
         if limit:
