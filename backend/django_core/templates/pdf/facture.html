@@ -26,6 +26,7 @@
   'facture_generee_le': 'Facture générée automatiquement le',
   'note_debit': 'Note de débit',
   'voir_ventilation': 'voir ventilation',
+  'date_livraison': 'Date de livraison / prestation',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -204,6 +205,15 @@
       <strong>{{ _L('statut') }}</strong>
       <span class="statut-badge">{{ _L(facture.get_statut_display()) }}</span>
     </div>
+    {# APDF26 (C-APDF-008) — la date contrôlée par ``mentions_manquantes``
+       et exportée à la DGI (TaxPointDate) est celle que le client lit ;
+       sans date : ni libellé ni case vide. #}
+    {% if facture.date_livraison %}
+    <div class="meta-item">
+      <strong>{{ _L('date_livraison') }}</strong>
+      <span>{{ facture.date_livraison.strftime('%d/%m/%Y') }}</span>
+    </div>
+    {% endif %}
     {% if facture.periode_service_debut and facture.periode_service_fin %}
     <div class="meta-item">
       <strong>{{ _L('periode_service') }}</strong>

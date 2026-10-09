@@ -58,6 +58,8 @@ LIBELLES = {
         'facture_generee_le': 'Facture générée automatiquement le',
         'note_debit': 'Note de débit',
         'voir_ventilation': 'voir ventilation',
+        # APDF26 (C-APDF-008) — date de livraison / prestation.
+        'date_livraison': 'Date de livraison / prestation',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -94,6 +96,7 @@ LIBELLES = {
         'facture_generee_le': 'فاتورة مُنشأة تلقائيا بتاريخ',
         'note_debit': 'إشعار مدين',
         'voir_ventilation': 'انظر التفصيل',
+        'date_livraison': 'تاريخ التسليم / الخدمة',
     },
 }
 
