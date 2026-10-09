@@ -107,4 +107,23 @@ describe('RemisesEncaissementPage (PACT46)', () => {
     // `company` n'est JAMAIS envoyée depuis le client (imposée serveur).
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('company')
   })
+
+  /* AFAC61 — la boîte de remise est alimentée par `?remisable=1` (toutes les
+     pages) et un 400 de déclaration affiche la raison du serveur. */
+  it('liste les paiements via ?remisable=1 et affiche le refus 400 réel', async () => {
+    const user = userEvent.setup()
+    api.post.mockRejectedValue({
+      response: { status: 400, data: { lignes: ['Le paiement 11 est déjà remis (REM-2026-0001).'] } },
+    })
+    render(<RemisesEncaissementPage />)
+    await screen.findByText('REM-2026-0003')
+    await user.click(screen.getByRole('button', { name: /Déclarer une remise/ }))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/ventes/paiements/',
+      { params: expect.objectContaining({ remisable: 1 }) }))
+    const montant = await screen.findByLabelText(/Montant déclaré/)
+    await user.type(montant, '4850')
+    await user.click(screen.getByRole('button', { name: 'Déclarer' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('déjà remis')
+  })
 })
