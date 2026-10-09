@@ -29,7 +29,7 @@ class CommissioningTest(models.Model):
         RESERVES = 'reserves', 'Conforme avec réserves'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='commissioning_tests', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL,
@@ -91,11 +91,11 @@ class IVCurveCapture(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='iv_curve_captures', verbose_name='Société')
     # Une capture appartient à une fiche de recette (mise en service).
     recette = models.ForeignKey(
-        CommissioningTest, on_delete=models.CASCADE,
+        CommissioningTest, on_delete=models.CASCADE,  # on_delete: IVCurveCapture est le détail de CommissioningTest — n'existe pas sans lui
         related_name='iv_curves', verbose_name='Fiche de recette')
     string_label = models.CharField(
         max_length=60, verbose_name='Chaîne (string)')
@@ -164,7 +164,7 @@ class AsBuiltPack(models.Model):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='asbuilt_packs', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL,
@@ -218,7 +218,7 @@ class AttestationConformite(models.Model):
         ANNULEE = 'annulee', 'Annulée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='attestations_conformite', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL,
@@ -284,7 +284,7 @@ class TestPerformanceReception(models.Model):
         REFUSE = 'refuse', 'Refusé (sous le seuil)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='tests_pr_reception', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL,
@@ -355,7 +355,7 @@ class AttestationRE(models.Model):
         ANNULEE = 'annulee', 'Annulée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='attestations_re', verbose_name='Société')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL,
