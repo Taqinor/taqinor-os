@@ -647,8 +647,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             return Response({'detail': 'Ligne inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
         coche = bool(request.data.get('coche', True))
-        ligne.coche = coche
-        ligne.save(update_fields=['coche'])
+        # ACHT72 — cocher = sortir l'outil du parc (409 si perdu / en
+        # réparation / déjà sorti).
+        try:
+            field_services.cocher_outil_ligne(ligne, coche)
+        except field_services.OutilIndisponible as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         if not coche and prep.tout_charge:
             prep.tout_charge = False
             prep.save(update_fields=['tout_charge'])
@@ -1617,12 +1622,35 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         sortie en cours. Renvoie {outil_id: intervention_id} en conflit."""
         if not outil_ids:
             return {}
-        busy = (ToolReturn.objects
-                .filter(company=interv.company, outil_id__in=list(outil_ids),
-                        rendu=False, confirme_le__isnull=True)
-                .exclude(intervention=interv)
-                .values_list('outil_id', 'intervention_id'))
-        return {oid: iid for oid, iid in busy}
+        # ACHT72 — lit les outils réellement SORTIS (statut « En
+        # intervention ») que CETTE intervention n'a pas elle-même chargés.
+        from apps.outillage.models import Outillage
+        from ..models import PreparationOutilLigne
+        ids = list(outil_ids)
+        sortis_ici = set(PreparationOutilLigne.objects.filter(
+            preparation__intervention=interv, coche=True, outil_id__in=ids
+        ).values_list('outil_id', flat=True))
+        sortis = list(Outillage.objects.filter(
+            company=interv.company, id__in=ids,
+            statut=Outillage.Statut.EN_INTERVENTION,
+        ).exclude(id__in=sortis_ici).values_list('id', flat=True))
+        if not sortis:
+            return {}
+        par_qui = {}
+        for oid, iid in (PreparationOutilLigne.objects
+                         .filter(company=interv.company, outil_id__in=sortis,
+                                 coche=True)
+                         .exclude(preparation__intervention=interv)
+                         .order_by('id')
+                         .values_list('outil_id',
+                                      'preparation__intervention_id')):
+            par_qui[oid] = iid
+        for oid, iid in (ToolReturn.objects
+                         .filter(company=interv.company, outil_id__in=sortis)
+                         .exclude(intervention=interv).order_by('id')
+                         .values_list('outil_id', 'intervention_id')):
+            par_qui.setdefault(oid, iid)
+        return {oid: par_qui.get(oid) for oid in sortis}
 
     def _tool_return_response(self, interv):
         # Amorce les lignes de retour depuis les outils de la préparation, de
@@ -1633,10 +1661,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         conflicts = {}
         if prep is not None:
             existing = {tr.outil_id for tr in interv.tool_returns.all()}
-            wanted = [ol.outil_id for ol in prep.outils.all()
+            lignes = [ol for ol in prep.outils.all()
                       if ol.outil_id and ol.outil_id not in existing]
+            wanted = [ol.outil_id for ol in lignes]
             conflicts = self._checkout_conflicts(interv, wanted)
-            for outil_id in wanted:
+            # ACHT72 — seules les lignes CHARGÉES (cochées) ont un retour à
+            # suivre : un outil non chargé n'est jamais matérialisé.
+            for outil_id in [ol.outil_id for ol in lignes if ol.coche]:
                 if outil_id in conflicts:
                     continue
                 ToolReturn.objects.get_or_create(
@@ -1683,10 +1714,24 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from apps.outillage.models import Outillage
         interv = self.get_object()
         self._tool_return_response(interv)
+        retours = list(interv.tool_returns.select_related('outil').all())
+        # ACHT72 — une 2e confirmation périmée n'écrase jamais un retour plus
+        # récent (outil repris par une autre intervention depuis).
+        if retours and all(tr.confirme_le for tr in retours):
+            return Response({'detail': 'Retour déjà confirmé.'},
+                            status=status.HTTP_409_CONFLICT)
+        prep = getattr(interv, 'preparation', None)
+        charges = set(prep.outils.filter(coche=True).values_list(
+            'outil_id', flat=True)) if prep is not None else set()
         non_rendus = []
-        for tr in interv.tool_returns.select_related('outil').all():
+        for tr in retours:
             outil = tr.outil
-            if outil is None:
+            if outil is None or tr.confirme_le:
+                continue
+            # ACHT72 — ne traite QUE les outils sortis par CETTE intervention :
+            # jamais un outil non chargé, Perdu, En réparation ou disponible.
+            if (outil.id not in charges
+                    or outil.statut != Outillage.Statut.EN_INTERVENTION):
                 continue
             if tr.rendu:
                 outil.statut = Outillage.Statut.DISPONIBLE

@@ -450,6 +450,10 @@ class TestToolReturn(_Base):
         prep.kit = kit
         prep.save()
         field_services._sync_outils(prep)
+        # ACHT72 — seul un outil CHARGÉ (ligne cochée) a un retour à suivre
+        # (le statut « En intervention » est posé ci-dessus, comme le ferait
+        # `cocher-outil`).
+        prep.outils.update(coche=True)
         return depot, outil
 
     def test_confirm_updates_tool(self):

@@ -300,6 +300,44 @@ def _sync_outils(prep):
             li.delete()
 
 
+class OutilIndisponible(Exception):
+    """ACHT72 — l'outil ne peut pas être sorti (perdu, en réparation, déjà
+    sorti) : 409 côté vue, `FieldOpError` côté synchro."""
+
+
+def cocher_outil_ligne(ligne, coche):
+    """ACHT72 — LE geste « charger / décharger un outil » de la préparation
+    (vue `cocher-outil` ET op de synchro `intervention.cocher_outil`).
+
+    Cocher sort l'outil du parc : statut « En intervention » (refus
+    `OutilIndisponible` s'il est Perdu, En réparation ou déjà sorti).
+    Décocher libère un outil que CETTE intervention avait sorti et dont le
+    retour n'a pas encore été confirmé. Un outil retiré du parc (``outil``
+    nul) ne porte que la case."""
+    from apps.outillage.models import Outillage
+
+    outil = ligne.outil
+    if outil is not None and coche and not ligne.coche:
+        if outil.statut == Outillage.Statut.PERDU:
+            raise OutilIndisponible('Outil perdu.')
+        if outil.statut == Outillage.Statut.EN_REPARATION:
+            raise OutilIndisponible('Outil en réparation.')
+        if outil.statut == Outillage.Statut.EN_INTERVENTION:
+            raise OutilIndisponible('Outil déjà sorti.')
+        outil.statut = Outillage.Statut.EN_INTERVENTION
+        outil.save(update_fields=['statut'])
+    elif outil is not None and not coche and ligne.coche:
+        deja_confirme = ligne.preparation.intervention.tool_returns.filter(
+            outil=outil, confirme_le__isnull=False).exists()
+        if outil.statut == Outillage.Statut.EN_INTERVENTION and (
+                not deja_confirme):
+            outil.statut = Outillage.Statut.DISPONIBLE
+            outil.save(update_fields=['statut'])
+    ligne.coche = coche
+    ligne.save(update_fields=['coche'])
+    return ligne
+
+
 def preparation_completion(prep):
     """F5 — pourcentage de complétion = (lignes matériel chargées + outils
     cochés) / (total lignes). None si la préparation est vide."""

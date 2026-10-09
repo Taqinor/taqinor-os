@@ -166,8 +166,11 @@ def _h_cocher_outil(company, user, payload):
     if ligne is None:
         raise FieldOpError('Ligne inconnue.')
     coche = bool(payload.get('coche', True))
-    ligne.coche = coche
-    ligne.save(update_fields=['coche'])
+    # ACHT72 — même geste que la vue (sortie d'outil, 409 → erreur d'op).
+    try:
+        field_services.cocher_outil_ligne(ligne, coche)
+    except field_services.OutilIndisponible as exc:
+        raise FieldOpError(str(exc))
     if not coche and prep.tout_charge:
         prep.tout_charge = False
         prep.save(update_fields=['tout_charge'])
