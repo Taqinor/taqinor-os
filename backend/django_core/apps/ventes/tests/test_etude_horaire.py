@@ -164,7 +164,7 @@ class BaremeDivergencesTest(SimpleTestCase):
         1,405116, la divergence assumée). Le fondateur a tranché : il n'y a
         plus qu'UNE valeur T5 dans l'ERP, celle de bareme.TRANCHES_2026. Si
         quelqu'un les fait diverger à nouveau, ce test le force à mettre
-        DIVERGENCES_PRICING à jour EN MÊME TEMPS."""
+        journal des divergences de ``bareme`` à jour EN MÊME TEMPS."""
         prix = dict((plafond, prix) for plafond, prix in pricing.ONEE_TRANCHES)
         reference = dict((c, p) for c, p in B.TRANCHES_2026)
         self.assertAlmostEqual(prix[500], 1.381704, places=6)
@@ -184,37 +184,14 @@ class BaremeDivergencesTest(SimpleTestCase):
         p2026 = dict((c, p) for c, p in B.TRANCHES_2026)[500]
         self.assertLess(abs(p2025 - p2026), 0.001)
 
-    def test_divergences_epinglees_et_motivees(self):
-        statuts = {d['tranche']: d for d in B.DIVERGENCES_PRICING}
-        self.assertEqual(len(statuts), 2)
-        for detail in B.DIVERGENCES_PRICING:
-            # 'propagé' (D5) = l'écart a été RÉSORBÉ dans pricing.py ; il reste
-            # listé pour garder la trace de la correction et de sa preuve.
-            self.assertIn(detail['statut'],
-                          ('corrigé', 'propagé', 'conflit_non_tranché'))
-            self.assertTrue(detail['preuve'].strip(),
-                            'une divergence sans preuve écrite est interdite')
-            if detail['statut'] == 'propagé':
-                self.assertAlmostEqual(detail['valeur_pricing'],
-                                       detail['valeur_moteur'], places=9)
-
-    def test_t5_est_propagee_et_non_plus_divergente(self):
-        """QJR26 / D5 : l'écart T5 n'existe plus — il est marqué comme tel."""
-        t5 = [d for d in B.DIVERGENCES_PRICING
-              if d['tranche'].startswith('311-510')]
-        self.assertEqual(len(t5), 1)
-        self.assertEqual(t5[0]['statut'], 'propagé')
-        prix = dict((c, p) for c, p in pricing.ONEE_TRANCHES)
-        self.assertAlmostEqual(t5[0]['valeur_pricing'], prix[500], places=9)
-
     def test_conflit_t6_reste_sur_la_valeur_du_repo(self):
         """On ne tranche RIEN sans facture : T6 garde 1,622856 et le conflit
         est déclaré, pas masqué."""
         prix = dict((c, p) for c, p in B.TRANCHES_2026)
         self.assertAlmostEqual(prix[None], 1.622856, places=6)
-        conflits = [d for d in B.DIVERGENCES_PRICING
-                    if d['statut'] == 'conflit_non_tranché']
-        self.assertEqual(len(conflits), 1)
+        # AMOT47 — le tuple ``DIVERGENCES_PRICING`` (sans lecteur) est devenu
+        # le journal commenté de ``bareme`` : il n'est plus un symbole.
+        self.assertFalse(hasattr(B, 'DIVERGENCES_PRICING'))
 
 
 class SilhouettesSourcePinTest(SimpleTestCase):

@@ -2609,16 +2609,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # AGR303 — plus de surcharge de l'énergie actuelle par une option de
     # rendu : l'étude rendue est l'étude STOCKÉE (énergie déclarée et datée,
     # D-AGR-5 ; le bloc AGR3 porte la dépense déclarée).
-    # QJ13 — tariff / self-consumption overrides from etude_params.
-    # Resolves: tarif_kwh_override → tranches_override → utility name → fallback.
-    # All are seller-editable via etude_params; nothing is fabricated from thin air.
-    _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
-    _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
+    # QJ13 — tarif : le barème de la SOCIÉTÉ (ci-dessous), sinon la grille
+    # nationale du distributeur. AMOT47 (C-AMOT-008) — les lectures
+    # ``etude.tarif_kwh`` / ``etude.tarif_tranches`` sont SUPPRIMÉES : aucune
+    # clé du schéma ``etude_params`` ne les écrit (aucun écran, aucune API),
+    # le commentaire qui les disait « éditables par le vendeur » mentait.
+    _tranches_override = None
     _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
     # ORDRE FONDATEUR (19/08/2026) — barème ONEE résidentiel RÉGLABLE par
     # société (« correct all prices and keep them changable in the settings »).
-    # Le vendeur (etude.tarif_tranches, ci-dessus) reste souverain s'il a collé
-    # un barème custom pour CE devis ; à défaut, si le fondateur a ÉDITÉ le
+    # Si le fondateur a ÉDITÉ le
     # barème de sa société (Paramètres → Tarification & ROI, apps/parametres
     # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
     # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
@@ -2711,7 +2711,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
         utility=_utility or None,
-        tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
         tranches_override=_tranches_override or None,
         # QJR409 — la redevance de compteur RÉGLÉE par la société atteint enfin
         # le modèle « factures » : sans elle, sa « Facture actuelle » comptait

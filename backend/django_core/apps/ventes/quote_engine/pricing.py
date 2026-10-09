@@ -169,7 +169,7 @@ class TrancheTable(list):
 #
 #   Les cinq autres tranches gardent leur valeur extrapolée : AUCUNE facture
 #   2026 ne les couvre, et on ne bouge pas un chiffre sans preuve (le conflit
-#   ouvert sur T6 est publié dans ``bareme.DIVERGENCES_PRICING``).
+#   ouvert sur T6 est noté dans le journal des divergences de ``bareme``).
 #
 # ÉDITABLE PAR SOCIÉTÉ (19/08/2026) — ces six valeurs restent le DÉFAUT codé
 # en dur ; une société peut les surcharger dans Paramètres → Tarification &
@@ -1439,7 +1439,8 @@ def calculate_savings_roi(
     tariff is unpublished; adding it would fabricate income).
 
     Tariff resolution order (first wins):
-      1. ``tarif_kwh_override`` (explicit flat price — seller sets it)
+      1. ``tarif_kwh_override`` (explicit flat price — appel direct
+         seulement : AMOT47, aucun devis ne le pose plus)
       2. ``tranches_override`` (caller-supplied schedule)
       3. ``utility`` NOMMÉ → grille nationale (ONEE/Lydec/Redal, et depuis
          CAD167 tout autre nom : SRM, « autre ») — aucun distributeur ⇒ 4.

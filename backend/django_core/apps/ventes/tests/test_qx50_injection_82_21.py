@@ -29,6 +29,15 @@ def _plages_py(saisons):
             for b in saisons for p in b['postes']]
 
 
+class TestFonctionsMortesSupprimees(SimpleTestCase):
+    """AMOT47 — les quatre fonctions sans lecteur ont disparu du module."""
+
+    def test_absentes(self):
+        for nom in ('injection_annuelle', 'tarif_mt_moyen',
+                    'normaliser_repartition_mt', 'tarif_mt_disponible'):
+            self.assertFalse(hasattr(c, nom), nom)
+
+
 class TestModuleSansNet(SimpleTestCase):
     """CIQ201 — aucune déduction TURD/TURT (ANRE 02/25 art. 8) : le « net »
     et les frais d'accès disparaissent du module (garde de grep)."""
@@ -44,35 +53,6 @@ class TestModuleSansNet(SimpleTestCase):
         self.assertEqual(c.TSS_C_KWH, 6.81)
         self.assertEqual(c.TURD_C_KWH, 6.07)
         self.assertEqual(c.TURT_C_KWH, 6.85)
-
-
-class TestInjectionBornes(SimpleTestCase):
-    def test_surplus_mt_valorise_au_brut_018(self):
-        # prod 400000, autoconso 352000 → surplus 48000 (< plafond 80000)
-        kwh, dh = c.injection_annuelle(400000, 352000)
-        self.assertEqual(kwh, 48000)
-        self.assertEqual(dh, round(48000 * 0.18))   # 8640, aucun net
-
-    def test_capped_at_20pct(self):
-        # prod 100000, autoconso 0 → surplus 100000 BORNÉ à 20 % = 20000
-        kwh, dh = c.injection_annuelle(100000, 0)
-        self.assertEqual(kwh, 20000)
-        self.assertEqual(dh, 3600)          # 20000 × 0,18
-
-    def test_pointe(self):
-        self.assertEqual(c.injection_annuelle(100000, 0, pointe=True),
-                         (20000, 4200))     # 20000 × 0,21
-
-    def test_no_surplus(self):
-        self.assertEqual(c.injection_annuelle(100000, 100000), (0, 0))
-
-    def test_never_negative(self):
-        # autoconso > prod ne donne jamais un surplus négatif
-        self.assertEqual(c.injection_annuelle(100000, 150000), (0, 0))
-
-    def test_defensive_on_bad_input(self):
-        self.assertEqual(c.injection_annuelle(None, None), (0, 0))
-        self.assertEqual(c.injection_annuelle("x", "y"), (0, 0))
 
 
 class TestSourcedConstants(SimpleTestCase):
@@ -157,41 +137,6 @@ class TestTarifMtSource(SimpleTestCase):
         self.assertIn('Tarif Général (MT)', c.MENTION_MT)
         self.assertIn('one.org.ma', c.MENTION_MT)
         self.assertIn('03/10/2026', c.MENTION_MT)
-
-    def test_bareme_disponible(self):
-        self.assertTrue(c.tarif_mt_disponible())
-
-
-class TestTarifMtMoyen(SimpleTestCase):
-    def test_repartition_normalisee_a_100(self):
-        parts = c.normaliser_repartition_mt(
-            {'pointe': 10, 'pleines': 20, 'creuses': 20})
-        self.assertEqual(parts, {'pointe': 20.0, 'pleines': 40.0, 'creuses': 40.0})
-
-    def test_repartition_absente_rend_none(self):
-        # AUCUNE répartition par défaut n'est inventée (plages MT non publiées).
-        self.assertIsNone(c.normaliser_repartition_mt(None))
-        self.assertIsNone(c.normaliser_repartition_mt({}))
-        self.assertIsNone(c.normaliser_repartition_mt(
-            {'pointe': 0, 'pleines': 0, 'creuses': 0}))
-        self.assertIsNone(c.normaliser_repartition_mt(
-            {'pointe': 'x', 'pleines': None, 'creuses': -5}))
-
-    def test_moyenne_ponderee(self):
-        # 20 % pointe / 40 % pleines / 40 % creuses
-        # = 0,2×1,4157 + 0,4×1,0101 + 0,4×0,7398 = 0,98310
-        moyen = c.tarif_mt_moyen({'pointe': 10, 'pleines': 20, 'creuses': 20})
-        self.assertAlmostEqual(moyen, 0.98310, places=5)
-
-    def test_poste_unique(self):
-        self.assertAlmostEqual(
-            c.tarif_mt_moyen({'creuses': 100}), 0.7398, places=4)
-
-    def test_sans_repartition_pas_de_tarif_de_repli(self):
-        # Le point CENTRAL de la règle « zéro chiffre inventé » : pas de prix
-        # moyen par défaut, pas de retour silencieux au tarif BT.
-        self.assertIsNone(c.tarif_mt_moyen(None))
-        self.assertIsNone(c.tarif_mt_moyen({}))
 
 
 class TestTarifMtSansJumeauJs(SimpleTestCase):
