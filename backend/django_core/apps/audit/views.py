@@ -28,6 +28,8 @@ from authentication.permissions import IsAdminRole
 from .models import AuditLog
 from .selectors import reconstruct_as_of
 from .serializers import AuditLogSerializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema_view
 
 CASABLANCA = ZoneInfo('Africa/Casablanca')
 
@@ -42,6 +44,19 @@ class CanViewActivityLog(BasePermission):
             user and user.is_authenticated
             and getattr(user, 'can_view_activity_log', False)
         )
+
+
+FILTRES_AUDIT = [
+    OpenApiParameter('user', OpenApiTypes.STR, required=False),
+    OpenApiParameter('action', OpenApiTypes.STR, required=False),
+    OpenApiParameter('module', OpenApiTypes.STR, required=False),
+    OpenApiParameter('model', OpenApiTypes.STR, required=False),
+    OpenApiParameter('object_id', OpenApiTypes.STR, required=False),
+    OpenApiParameter('from', OpenApiTypes.STR, required=False),
+    OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    OpenApiParameter('search', OpenApiTypes.STR, required=False),
+]
+LIMITE = OpenApiParameter('limit', OpenApiTypes.INT, required=False)
 
 
 def _company_qs(request):
@@ -128,6 +143,13 @@ def _period_bounds(period, anchor):
     return start, end, 'hour', keys
 
 
+@extend_schema(
+    parameters=FILTRES_AUDIT + [
+        OpenApiParameter('period', OpenApiTypes.STR, required=False,
+                         enum=['jour', 'semaine', 'mois']),
+        OpenApiParameter('date', OpenApiTypes.STR, required=False),
+    ],
+    responses=OpenApiTypes.ANY)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def stats(request):
@@ -197,6 +219,7 @@ def _apply_filters_no_range(qs, params):
     return qs
 
 
+@extend_schema(responses=OpenApiTypes.ANY)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def meta(request):
@@ -231,6 +254,7 @@ def meta(request):
     })
 
 
+@extend_schema_view(list=extend_schema(parameters=FILTRES_AUDIT))
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """Liste paginée filtrable du Journal d'activité (plus récent d'abord)."""
     serializer_class = AuditLogSerializer
@@ -255,6 +279,11 @@ SECURITY_ACTIONS = [
 ]
 
 
+@extend_schema(
+    parameters=FILTRES_AUDIT + [LIMITE],
+    responses=inline_serializer('AuditSecurityEvents', {
+        'count': serializers.IntegerField(),
+        'results': AuditLogSerializer(many=True)}))
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def security_events(request):
@@ -290,7 +319,8 @@ PORTAL_ACCESS_EVENTS_RESPONSE = inline_serializer('AuditPortalAccessEvents', {
 })
 
 
-@extend_schema(responses=PORTAL_ACCESS_EVENTS_RESPONSE)
+@extend_schema(parameters=FILTRES_AUDIT + [LIMITE],
+               responses=PORTAL_ACCESS_EVENTS_RESPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def portal_access_events(request):
@@ -316,6 +346,11 @@ def portal_access_events(request):
 # sans recevoir la visibilité sur TOUTE la boîte. Cet endpoint ajoute la 2e
 # borne de confiance — l'historique d'UN objet précis, autorisé au propriétaire
 # de l'objet même sans la permission Journal.
+@extend_schema(
+    parameters=[LIMITE],
+    responses=inline_serializer('AuditObjectHistory', {
+        'count': serializers.IntegerField(),
+        'results': AuditLogSerializer(many=True)}))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def object_history(request, content_type, object_id):
@@ -381,6 +416,9 @@ def object_history(request, content_type, object_id):
 # ``objets/<app_label>.<model>/<id>/as-of/?date=`` (content type désigné par
 # ``app_label.model`` dans l'URL, ex. ``crm.client``). Company-scopée : sans
 # société sur l'utilisateur (ni superuser), renvoie 404 plutôt qu'une fuite.
+@extend_schema(
+    parameters=[OpenApiParameter('date', OpenApiTypes.STR, required=False)],
+    responses=OpenApiTypes.ANY)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def object_as_of(request, content_type, object_id):
@@ -420,6 +458,10 @@ def object_as_of(request, content_type, object_id):
 # ``journal_activite_voir`` et EXCLUT délibérément l'admin légacy sans rôle fin
 # — or l'export est explicitement réservé au Directeur (cf. NTSEC19 accessreview,
 # même palier IsAdminRole).
+@extend_schema(
+    parameters=[OpenApiParameter('from', OpenApiTypes.STR, required=False),
+                OpenApiParameter('to', OpenApiTypes.STR, required=False)],
+    responses={(200, 'text/csv'): OpenApiTypes.STR})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def security_events_export(request):
