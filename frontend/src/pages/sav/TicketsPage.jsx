@@ -200,6 +200,70 @@ export function PrioriteBadge({ value }) {
   return <Badge tone={PRIORITE_TONES[value] ?? 'neutral'}>{TICKET_PRIORITE_LABELS[value] ?? value}</Badge>
 }
 
+/* ASAV48 — lecture UNIQUE de la réponse `actions-groupees` du serveur
+   ({traites: [id], echecs: [{id, raison}], nb_traites, nb_echecs}) partagée par
+   `bulkAction`, `bulkEditStatut` et l'annulation : plus de toast « réussi »
+   quand le serveur a répondu 200 avec des échecs. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseBulkResult(data) {
+  const traites = Array.isArray(data?.traites) ? data.traites : []
+  const echecs = Array.isArray(data?.echecs) ? data.echecs : []
+  return {
+    traites,
+    echecs,
+    nbTraites: data?.nb_traites ?? traites.length,
+    nbEchecs: data?.nb_echecs ?? echecs.length,
+  }
+}
+
+/* ASAV48 — édition de statut en masse : un seul appel atomique, puis pour
+   chaque ligne traitée on lit les `statuts_suivants` SERVIS (jamais une copie
+   du graphe) afin de ne proposer « Annuler » que si le retour est permis. */
+// eslint-disable-next-line react-refresh/only-export-components
+export async function executerEditionStatut(api, selRows, statut) {
+  const parId = new Map(selRows.map((r) => [String(r.id), r]))
+  const { data } = await api.actionsGroupeesTickets(
+    selRows.map((r) => r.id), 'statut', { statut })
+  const res = parseBulkResult(data)
+  const updated = await Promise.all(res.traites.map(async (tid) => {
+    // NTUX37 — `before` capturé AVANT l'écriture (depuis `selRows`).
+    const before = parId.get(String(tid))?.statut
+    let annulable = false
+    try {
+      const r = await api.getTicket(tid)
+      annulable = !!before && (r.data?.statuts_suivants ?? []).includes(before)
+    } catch { annulable = false }
+    return { id: tid, before, after: statut, annulable }
+  }))
+  const failed = res.echecs.map((e) => ({
+    id: e.id,
+    label: parId.get(String(e.id))?.reference,
+    reason: e.raison || 'Transition refusée.',
+  }))
+  return { updated, failed }
+}
+
+// ASAV48 — annulation : ré-applique le statut AVANT par groupe et RAPPORTE le
+// résultat serveur (traités / échecs) au lieu de présumer le succès.
+// eslint-disable-next-line react-refresh/only-export-components
+export async function annulerEditionStatut(api, rows) {
+  const idsParAvant = new Map()
+  for (const r of rows) {
+    if (!r.before) continue
+    if (!idsParAvant.has(r.before)) idsParAvant.set(r.before, [])
+    idsParAvant.get(r.before).push(r.id)
+  }
+  const reponses = await Promise.all(
+    [...idsParAvant.entries()].map(
+      ([statut, ids]) => api.actionsGroupeesTickets(ids, 'statut', { statut }),
+    ),
+  )
+  return reponses.reduce((acc, { data }) => {
+    const r = parseBulkResult(data)
+    return { nbTraites: acc.nbTraites + r.nbTraites, nbEchecs: acc.nbEchecs + r.nbEchecs }
+  }, { nbTraites: 0, nbEchecs: 0 })
+}
+
 // L298/L6 — badge SLA/âge des tickets ouverts (calculé à la lecture, sans
 // scheduler). Couleur escaladée pour les ouverts en retard. Rien sur les autres.
 export function TicketSlaBadge({ ticket }) {
@@ -1999,13 +2063,14 @@ export default function TicketsPage() {
   const bulkAction = async (selectedKeys, operation, extra, clear) => {
     try {
       const { data } = await savApi.actionsGroupeesTickets(selectedKeys, operation, extra)
-      if (data.nb_echecs === 0) {
+      const res = parseBulkResult(data)
+      if (res.nbEchecs === 0) {
         toast.success('Tickets mis à jour')
         clear?.()
-      } else if (data.nb_traites === 0) {
+      } else if (res.nbTraites === 0) {
         toast.error('Mise à jour groupée impossible.')
       } else {
-        toast.error(`${data.nb_echecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
+        toast.error(`${res.nbEchecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
       }
     } catch {
       toast.error('Mise à jour groupée impossible.')
@@ -2022,22 +2087,8 @@ export default function TicketsPage() {
      Traduit la réponse serveur ({traites, echecs:[{id, raison}]}) dans le
      contrat attendu par le tiroir ({updated, failed:[{id,label,reason}]}). */
   const bulkEditStatut = async (selRows, statut) => {
-    const parId = new Map(selRows.map((r) => [String(r.id), r]))
     try {
-      const { data } = await savApi.actionsGroupeesTickets(
-        selRows.map((r) => r.id), 'statut', { statut })
-      return {
-        // NTUX37 — `before` capturé AVANT l'écriture (depuis `selRows`, jamais
-        // relu après coup) : c'est la valeur que l'annulation (NTUX6) réapplique.
-        updated: (data?.traites ?? []).map((tid) => ({
-          id: tid, before: parId.get(String(tid))?.statut, after: statut,
-        })),
-        failed: (data?.echecs ?? []).map((e) => ({
-          id: e.id,
-          label: parId.get(String(e.id))?.reference,
-          reason: e.raison || 'Transition refusée.',
-        })),
-      }
+      return await executerEditionStatut(savApi, selRows, statut)
     } catch {
       return {
         updated: [],
@@ -2051,25 +2102,14 @@ export default function TicketsPage() {
   }
 
   // NTUX37 — annulation (NTUX6, fenêtre 10 s) : ré-applique le statut AVANT
-  // de chaque ligne, regroupé par valeur commune (un seul appel ATOMIQUE par
-  // groupe, MÊME endpoint que l'édition initiale — la machine d'états gardée
-  // côté serveur, apps/sav/machine_etats.py, autorise toujours un recul d'une
-  // étape ; une annulation qu'elle refuserait échoue normalement, jamais un
-  // contournement de la garde).
+  // de chaque ligne via le MÊME endpoint gardé. ASAV48 : le message dit ce que
+  // le serveur a réellement fait (`traites` / `echecs`), jamais « annulée »
+  // quand rien n'a été rétabli.
   const revertBulkStatut = async (rows) => {
-    const idsParAvant = new Map()
-    for (const r of rows) {
-      if (!r.before) continue
-      if (!idsParAvant.has(r.before)) idsParAvant.set(r.before, [])
-      idsParAvant.get(r.before).push(r.id)
-    }
     try {
-      await Promise.all(
-        [...idsParAvant.entries()].map(
-          ([statut, ids]) => savApi.actionsGroupeesTickets(ids, 'statut', { statut }),
-        ),
-      )
-      toast.success('Édition en masse annulée.')
+      const r = await annulerEditionStatut(savApi, rows)
+      if (r.nbEchecs === 0) toast.success('Édition en masse annulée.')
+      else toast.error(`${r.nbEchecs} ticket(s) n'ont pas pu être rétablis.`)
     } catch {
       toast.error('Annulation impossible.')
     } finally {
@@ -2107,9 +2147,17 @@ export default function TicketsPage() {
     onConfirm: bulkEditStatut,
     // NTUX37 — toast succès + bouton « Annuler » (NTUX6). Silencieux si tout
     // a échoué (`result.updated` vide) — voir notifyBulkUpdateWithUndo.js.
-    onDone: (res) => notifyBulkUpdateWithUndo(res, {
-      fieldLabel: 'statut', onUndo: revertBulkStatut,
-    }),
+    // ASAV48 — « Annuler » seulement si le retour est dans `statuts_suivants`
+    // pour CHAQUE ligne ; sinon simple confirmation, sans bouton trompeur.
+    onDone: (res) => {
+      const n = res?.updated?.length || 0
+      if (n === 0) return
+      if (res.updated.every((u) => u.annulable)) {
+        notifyBulkUpdateWithUndo(res, { fieldLabel: 'statut', onUndo: revertBulkStatut })
+      } else {
+        toast.success(`${n} ligne${n > 1 ? 's' : ''} (statut) mise${n > 1 ? 's' : ''} à jour`)
+      }
+    },
   }
 
   // PACT174 — note groupée dans l'historique de chaque ticket sélectionné.
