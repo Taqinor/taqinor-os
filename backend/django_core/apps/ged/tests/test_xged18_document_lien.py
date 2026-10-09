@@ -106,5 +106,5 @@ class GuardTests(XGed18Base):
         resp = api.post('/api/django/ged/demandes-signature/', {
             'document': doc.pk, 'signataire_nom': 'Karim',
             'signataire_email': 'k@x.com',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 400)

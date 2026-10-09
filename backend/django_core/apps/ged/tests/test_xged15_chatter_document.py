@@ -61,7 +61,7 @@ class MentionTests(XGed15Base):
         resp = api.post('/api/django/records/comments/', {
             'model': 'ged.document', 'id': self.doc.pk,
             'body': f'Merci de vérifier @{self.mentioned.username}',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertTrue(
             Notification.objects.filter(recipient=self.mentioned).exists())
@@ -100,7 +100,7 @@ class PlanificationTests(XGed15Base):
                 'libelle': 'Relancer le client',
                 'echeance': '2026-07-10',
                 'assigne_a': self.admin_a.pk,
-            })
+            }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_notifier_planifications_echues(self):
