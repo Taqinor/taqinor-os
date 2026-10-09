@@ -42,7 +42,8 @@ class BuildStageEventTests(TestCase):
     def test_lead_efface_non_eligible(self):
         """AACQ21 — un lead anonymisé ne construit aucun événement CAPI."""
         from apps.crm.dsr_provider import LEAD_NOM_ANONYMISE
-        lead = self._meta_lead(nom=LEAD_NOM_ANONYMISE)
+        lead = self._meta_lead(nom=LEAD_NOM_ANONYMISE,
+                               external_id='789456999')
         built = capi_crm.build_stage_event(
             self.company, lead.pk, CONTACTED, old_stage=NEW, now=1000)
         self.assertFalse(built['eligible'])

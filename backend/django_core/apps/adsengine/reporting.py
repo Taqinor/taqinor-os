@@ -620,8 +620,10 @@ def city_heatmap(company, *, date_start=None, date_end=None):
         region = city_region.get(ville)
         if region is not None:
             matched_region = region['key']
-            spend = (region['spend'] * slot['leads']
-                     / region_leads[region['key']])
+            # Quote-part de la ville dans les leads de sa région (prorata).
+            part = (Decimal(slot['leads'])
+                    / Decimal(region_leads[region['key']]))
+            spend = region['spend'] * part
         leads = slot['leads']
         signed = slot['signed']
         result.append({
@@ -714,7 +716,8 @@ def cold_recycling_report(company, *, date_start=None, date_end=None):
             'cac_actuel': None,
             'cac_note': 'non ventilable par mode',
         })
-    cac_melange = _q2(spend / total_leads) if total_leads else None
+    cac = metrics.cout_par_lead(spend, total_leads, source='crm').valeur
+    cac_melange = _q2(cac) if cac is not None else None
 
     buckets = cold_reactivation_by_age_bucket(company)
     has_cold_data = sum(b['total'] for b in buckets) >= MIN_COLD_RECYCLING_LEADS
