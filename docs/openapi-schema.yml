@@ -7593,6 +7593,1462 @@ operations:
 - post /api/v1/visites/visites/{id}/renvoyer/ -> v1_visites_visites_renvoyer_create
 - post /api/v1/visites/visites/{id}/terminer/ -> v1_visites_visites_terminer_create
 - post /api/v1/visites/visites/{id}/valider/ -> v1_visites_visites_valider_create
+query_params:
+  get /api/django/accessreview/campaigns/: ordering page page_size search
+  get /api/django/accessreview/sod-rules/: ordering page page_size search
+  get /api/django/achats/bons-commande-fournisseur/: ordering page page_size search
+  get /api/django/achats/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
+  get /api/django/achats/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
+  get /api/django/achats/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/django/achats/bons-commande-fournisseur/historique-prix/: fournisseur produit
+  get /api/django/achats/factures-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/django/achats/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/django/achats/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
+  get /api/django/achats/factures-fournisseur/suggestions-bcf/: fournisseur montant
+  post /api/django/achats/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/django/achats/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/django/achats/paiements-fournisseur/: facture ordering page page_size
+  get /api/django/achats/paiements-fournisseur/ras-tva/export/: date_debut date_fin
+  get /api/django/achats/prix-fournisseurs/: ordering page page_size produit
+  get /api/django/achats/prix-fournisseurs/effectif/: fournisseur produit quantite
+  get /api/django/achats/prix-fournisseurs/export-xlsx/: fournisseur
+  get /api/django/achats/receptions-fournisseur/: bon_commande ordering page page_size search statut
+  get /api/django/achats/receptions-fournisseur/scan-gs1/: code
+  get /api/django/achats/receptions-fournisseur/{id}/etiquettes/: sortie symbology
+  get /api/django/achats/retours-fournisseur/: fournisseur ordering page page_size search
+  get /api/django/adminops/adoption/: periode
+  get /api/django/adminops/config-packages/: ordering page page_size search
+  get /api/django/adminops/facturation-licences/: company statut
+  get /api/django/adminops/facturation-licences/export-csv/: company
+  get /api/django/adminops/impersonation/cibles/: societe
+  get /api/django/adminops/rapports/journal-admin/: date_debut date_fin
+  get /api/django/adminops/sandbox/: ordering page page_size search
+  get /api/django/adsengine/actions/: ordering page page_size search
+  get /api/django/adsengine/alertes/: ordering page page_size search
+  get /api/django/adsengine/annotations/: ordering page page_size search
+  get /api/django/adsengine/anomalies/: ordering page page_size search
+  get /api/django/adsengine/backlog-creatif/: ordering page page_size search
+  get /api/django/adsengine/bras/: ordering page page_size search
+  get /api/django/adsengine/campaigns/: ordering page page_size search
+  get /api/django/adsengine/concurrents/: ordering page page_size search
+  get /api/django/adsengine/connexions/: ordering page page_size search
+  get /api/django/adsengine/consentements/: ordering page page_size search
+  get /api/django/adsengine/creatifs/: ordering page page_size search
+  get /api/django/adsengine/decisions/: ordering page page_size search
+  get /api/django/adsengine/experiences/: ordering page page_size search
+  get /api/django/adsengine/faits/: ordering page page_size search
+  get /api/django/adsengine/gabarits-proposition/: ordering page page_size search
+  get /api/django/adsengine/garde-fous/: ordering page page_size search
+  get /api/django/adsengine/kit-marque/: ordering page page_size search
+  get /api/django/adsengine/lots-creatifs/: ordering page page_size search
+  get /api/django/adsengine/noeuds-hypothese/: ordering page page_size search
+  get /api/django/adsengine/observations-concurrents/: ordering page page_size search
+  get /api/django/adsengine/phases-vol/: ordering page page_size search
+  get /api/django/adsengine/plans-vol/: ordering page page_size search
+  get /api/django/adsengine/policy-creative/: ordering page page_size search
+  get /api/django/adsengine/reconciliations/: ordering page page_size search
+  get /api/django/adsengine/regles-mot-cle/: ordering page page_size search
+  post /api/django/adsengine/regles-mot-cle/proposer/: ordering page page_size search
+  get /api/django/adsengine/regles/: ordering page page_size search
+  get /api/django/adsengine/stats-bras/: ordering page page_size search
+  get /api/django/adsengine/table-faits/: ordering page page_size search
+  get /api/django/adsengine/veille/annonceurs/: ordering page page_size search
+  get /api/django/adsengine/veille/decouvertes/: ordering page page_size search
+  get /api/django/audit/entries/: action from model module object_id ordering page page_size search to user
+  get /api/django/audit/objets/{content_type}/{object_id}/as-of/: date
+  get /api/django/audit/objets/{content_type}/{object_id}/history/: limit
+  get /api/django/audit/portail/: action from limit model module object_id search to user
+  get /api/django/audit/security/: action from limit model module object_id search to user
+  get /api/django/audit/security/export/: from to
+  get /api/django/audit/stats/: action date from model module object_id period search to user
+  get /api/django/auth/demo-wizard/statut/: slug
+  get /api/django/auth/sessions/: ordering search
+  get /api/django/automation/approval-delegations/: ordering page page_size
+  get /api/django/automation/approval-request-types/: enabled ordering page page_size
+  get /api/django/automation/approval-requests/: mine ordering page page_size status
+  get /api/django/automation/approvals/: ordering page page_size status
+  get /api/django/automation/incoming-webhooks/: ordering page page_size
+  get /api/django/automation/rule-versions/: ordering page page_size rule search
+  get /api/django/automation/rules/: enabled ordering page page_size trigger_type
+  get /api/django/automation/runs/: ordering page page_size rule status
+  get /api/django/calepinage/calepinages/: ordering page page_size
+  get /api/django/calepinage/calepinages/modeles/: ordering page page_size
+  get /api/django/calepinage/calepinages/{id}/apercu-document/: code langue
+  get /api/django/calepinage/calepinages/{id}/bom-fixation/: systeme
+  get /api/django/calepinage/calepinages/{id}/chatter/historique/: ordering
+  get /api/django/calepinage/calepinages/{id}/comparatif.xlsx/: ids
+  get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
+  delete /api/django/calepinage/calepinages/{id}/etiquettes/: nom tag_id
+  get /api/django/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
+  get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
+  get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
+  get /api/django/calepinage/calepinages/{id}/resultat/: variante
+  get /api/django/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
+  get /api/django/calepinage/gabarits-dossiers/: ordering search
+  get /api/django/companies/: ordering page page_size search
+  get /api/django/companies/{id}/demo-kit/: format
+  get /api/django/core/branded-templates/: ordering search
+  get /api/django/core/changelog/: ordering search
+  get /api/django/core/consent-records/: ordering page page_size search
+  get /api/django/core/corbeille/: ordering search undo
+  get /api/django/core/dashboards-partages-internes/: ordering page page_size search
+  get /api/django/core/dashboards-partages/: ordering page page_size search
+  get /api/django/core/dashboards/: ordering search
+  get /api/django/core/dashboards/{id}/donnees/: filtre
+  get /api/django/core/dossiers/: ordering page page_size search statut type_dossier
+  get /api/django/core/dossiers/{id}/checklist/: ordering page page_size search
+  get /api/django/core/dossiers/{id}/historique/: ordering page page_size search
+  get /api/django/core/dsr-requests/: ordering page page_size search
+  get /api/django/core/export-reversibilite/historique/: ordering search
+  get /api/django/core/formulaire-champs/: ordering search
+  get /api/django/core/formulaires/: ordering search
+  get /api/django/core/jobs-status/: ordering page page_size search
+  get /api/django/core/maintenance-windows/: ordering search
+  get /api/django/core/matrices-approbation/: ordering search
+  get /api/django/core/module-toggles/: ordering search
+  post /api/django/core/modules/{id}/desactiver/: cascade
+  get /api/django/core/outbox/: event ordering page page_size search statut
+  get /api/django/core/paiements-en-ligne/: ordering page page_size search
+  get /api/django/core/registre-fiabilite/export-pdf/: periode_debut periode_fin
+  get /api/django/core/registre-traitements/: ordering search
+  get /api/django/core/sauvegardes/: ordering page page_size search
+  get /api/django/core/saved-queries/: ordering search
+  get /api/django/core/scheduled-exports/: ordering search
+  get /api/django/core/sla/: ordering search
+  get /api/django/core/sla/credits/: ordering search
+  get /api/django/core/sla/export-csv/: export
+  get /api/django/core/ui-boutons/: cible ordering page page_size search
+  get /api/django/core/ui-onglets/: cible ordering search target_id
+  get /api/django/core/usage/: company jour ordering page page_size search
+  get /api/django/core/usage/couts/: format periode
+  get /api/django/core/vues/: cible defaut ordering page page_size search
+  get /api/django/core/workflow-definitions/: ordering search
+  get /api/django/core/workflow-step-definitions/: ordering search
+  get /api/django/core/workflows/charge-approbateurs/: periode seuil
+  get /api/django/core/workflows/rapport-conformite/: export periode
+  get /api/django/core/workflows/{id}/analyse/: periode
+  get /api/django/crm/appareils-equipe/: ordering page page_size search
+  get /api/django/crm/appointments/: lead ordering page page_size search
+  get /api/django/crm/apporteurs/: ordering page page_size search
+  get /api/django/crm/canaux/: ordering page page_size search
+  get /api/django/crm/clients/: ordering page page_size search
+  get /api/django/crm/clients/dormants/: seuil
+  get /api/django/crm/clients/engagement-bulk/: ordering page page_size search
+  get /api/django/crm/clients/search/: q
+  get /api/django/crm/clients/segments/: segment
+  get /api/django/crm/concurrents-perte/: lead ordering page page_size search
+  get /api/django/crm/deals-enregistres/: ordering page page_size search
+  get /api/django/crm/deals-enregistres/a-payer/: ordering page page_size search
+  get /api/django/crm/defis/: actif ordering page page_size search
+  get /api/django/crm/equipes/: ordering page page_size search
+  get /api/django/crm/forecast-entries/: categorie ordering owner page page_size periode search
+  get /api/django/crm/forecast/historique/: owner semaines
+  get /api/django/crm/forecast/rollup/: equipe periode
+  get /api/django/crm/leads/: archived entite ordering page page_size search source stage
+  get /api/django/crm/leads/check-duplicates/: email exclude ordering page page_size phone search telephone
+  get /api/django/crm/leads/doublons/: archived ordering page page_size search
+  get /api/django/crm/leads/kpi-cadences/: jours
+  get /api/django/crm/leads/kpi-premier-contact/: jours
+  get /api/django/crm/leads/mesure-cadence/: jours
+  get /api/django/crm/leads/relances/: scope
+  get /api/django/crm/leads/roi-sources/: canal from ordering page page_size search to
+  post /api/django/crm/leads/{id}/appliquer-plan/: ordering page page_size search
+  get /api/django/crm/leads/{id}/duplicates/: ordering page page_size search
+  get /api/django/crm/leads/{id}/historique/: ordering page page_size search
+  get /api/django/crm/leads/{id}/message-visite/: cle
+  post /api/django/crm/leads/{id}/relance/initialiser/: ordering page page_size search
+  get /api/django/crm/message-templates/: archived ordering page page_size search
+  get /api/django/crm/motifs-perte/: ordering page page_size search
+  get /api/django/crm/objectifs/: metric ordering owner page page_size period_type search year
+  get /api/django/crm/objectifs/attainment/: ordering page page_size search
+  get /api/django/crm/parrainages/: ordering page page_size search
+  get /api/django/crm/partenaires/: ordering page page_size
+  get /api/django/crm/plans-activite/: ordering page page_size search
+  get /api/django/crm/plans-compte/: client ordering page page_size search
+  get /api/django/crm/plans-compte/{id}/chatter/historique/: ordering search
+  get /api/django/crm/playbook-etapes/: ordering page page_size search
+  get /api/django/crm/playbook-taches/: ordering page page_size search
+  get /api/django/crm/playbooks/: ordering page page_size search
+  get /api/django/crm/points-contact/: lead ordering page page_size search
+  get /api/django/crm/points-contact/attribution/: lead
+  get /api/django/crm/rapports/attribution/: debut fin
+  get /api/django/crm/relance-etapes/: lead owner scope
+  get /api/django/crm/relance-etapes/cadences-echues/: jours
+  get /api/django/crm/relance-etapes/controle/: jours owner segment
+  get /api/django/crm/relance-etapes/journal/: lead
+  get /api/django/crm/relance-etapes/kpi-adherence/: jours
+  get /api/django/crm/relance-etapes/suivi/: date_debut date_fin owner statut
+  get /api/django/crm/relance-etapes/{id}/message/: cle langue
+  get /api/django/crm/revues-compte/: ordering page page_size search
+  get /api/django/crm/salles-vente/: ordering page page_size search
+  get /api/django/crm/site-profiles/: client ordering page page_size search
+  get /api/django/crm/tags/: ordering page page_size search
+  get /api/django/crm/visites-externes/: appareil_id lead ordering page page_size point
+  get /api/django/crm/visites-externes/appareils/: appareil_id ordering page page_size
+  get /api/django/crm/vues-enregistrees/: ordering page search
+  post /api/django/crm/vues-enregistrees/reorder/: ordering search
+  get /api/django/crm/website-lead-payloads/: all ordering page page_size search
+  get /api/django/custom-fields/custom-objects/{object_code}/records/: ordering page page_size search
+  get /api/django/custom-fields/definitions/: module ordering page page_size search
+  get /api/django/custom-fields/objects/: ordering page page_size search
+  get /api/django/custom-fields/permissions-role/: field_def ordering page page_size search
+  get /api/django/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/django/entites/entites/: ordering page page_size search tree
+  get /api/django/entites/entites/mes-entites/: ordering page page_size search
+  get /api/django/entites/entites/{id}/historique/: ordering page page_size search
+  get /api/django/facturation/avoirs/: facture ordering page page_size search
+  get /api/django/facturation/factures-lignes/: ordering page page_size search
+  get /api/django/facturation/factures/: entite ordering page page_size search
+  get /api/django/facturation/factures/{id}/arrondi-caisse/: mode
+  get /api/django/facturation/niveaux-relance/: ordering page page_size search
+  get /api/django/facturation/notes-debit/: facture ordering page page_size search
+  get /api/django/facturation/paiements/: ordering page page_size remisable
+  get /api/django/facturation/paiements/attestations-ras-en-attente/: ordering page page_size
+  get /api/django/facturation/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/django/facturation/relances/: mes_relances
+  get /api/django/ged/acls/: document folder niveau ordering page page_size
+  get /api/django/ged/analytique/: date_debut date_fin
+  get /api/django/ged/annotations/: ordering page page_size version
+  get /api/django/ged/annotations/export-annote/: version
+  get /api/django/ged/archivages-legaux/: document ordering page page_size
+  get /api/django/ged/cabinets/: ordering page page_size search
+  get /api/django/ged/champs-signature/: demande modele ordering page page_size
+  get /api/django/ged/coffres/: ordering page page_size search
+  get /api/django/ged/coffres/{id}/documents/: ordering search
+  get /api/django/ged/demandes-approbation/: document en_attente ordering page page_size statut
+  get /api/django/ged/demandes-disposition/: ordering page page_size statut
+  get /api/django/ged/demandes-document/: folder ordering page page_size statut
+  get /api/django/ged/demandes-document/checklist/: folder ordering
+  get /api/django/ged/demandes-signature/: document ordering page page_size statut
+  get /api/django/ged/demandes-signature/tableau-bord/: date_debut date_fin emetteur
+  get /api/django/ged/depots-publics/: folder ordering page page_size
+  get /api/django/ged/documents/: coffre contact folder ordering page page_size proprietaire search statut tag
+  get /api/django/ged/documents/corbeille/: ordering page page_size search
+  get /api/django/ged/documents/docqa/: k q
+  get /api/django/ged/documents/recherche/: ordering page page_size q search
+  get /api/django/ged/documents/semantique/: q
+  get /api/django/ged/documents/{id}/comparer/: v1 v2
+  get /api/django/ged/documents/{id}/demandes/: ordering search
+  get /api/django/ged/documents/{id}/historique/: ordering search
+  get /api/django/ged/documents/{id}/journal-acces/: ordering page page_size search
+  get /api/django/ged/documents/{id}/permissions-effectives/: format
+  post /api/django/ged/documents/{id}/scinder/: ordering search
+  get /api/django/ged/documents/{id}/timeline/: ordering search
+  get /api/django/ged/dossiers/: cabinet ordering page page_size parent search
+  get /api/django/ged/dossiers/{id}/descendants/: ordering search
+  get /api/django/ged/dossiers/{id}/permissions-effectives/: format
+  get /api/django/ged/exigences-dossier/: ordering page page_size search
+  get /api/django/ged/journal-acces/: document ordering page page_size type_acces utilisateur
+  get /api/django/ged/legal-holds/: actif document ordering page page_size
+  get /api/django/ged/liens/: document id model ordering page page_size search
+  get /api/django/ged/lots-envoi/: ordering page page_size
+  get /api/django/ged/mes-recents/: limit
+  get /api/django/ged/modeles-document/: actif ordering page page_size search
+  get /api/django/ged/partages/: actif document ordering page page_size
+  get /api/django/ged/planifications/: document ordering page page_size
+  get /api/django/ged/politiques-retention/: actif ordering page page_size search
+  get /api/django/ged/politiques-retention/echus/: ordering search
+  get /api/django/ged/quotas-stockage/: ordering page page_size search
+  get /api/django/ged/regles-acl-metadonnee/: ordering page page_size
+  get /api/django/ged/regles-approbation/: ordering page page_size
+  get /api/django/ged/regles-dossier/: folder ordering page page_size
+  get /api/django/ged/regles-dossier/{id}/executions/: ordering
+  get /api/django/ged/roles-signataire/: ordering page page_size
+  get /api/django/ged/routages-documentaires/: ordering page page_size
+  get /api/django/ged/signataires-demande/: demande ordering page page_size
+  get /api/django/ged/tag-assignments/: document ordering page page_size search tag
+  get /api/django/ged/tags/: ordering page page_size parent search
+  get /api/django/ged/tags/{id}/documents/: descendants ordering search
+  get /api/django/ged/tampons-societe/: ordering page page_size
+  get /api/django/ged/types-champ-signature/: actif ordering page page_size
+  get /api/django/ged/validations-ocr/: en_attente ordering page page_size
+  get /api/django/ged/versions/: document ordering page page_size
+  get /api/django/ged/vues/: ordering page page_size
+  get /api/django/identity/ip-allow-rules/: ordering page page_size search
+  get /api/django/identity/login-banner/: username
+  get /api/django/identity/network-policies/: ordering page page_size search
+  get /api/django/identity/providers/: ordering page page_size search
+  get /api/django/identity/scim/v2/{company_slug}/Users: filter
+  get /api/django/identity/service-accounts/: ordering page page_size search
+  get /api/django/identity/trusted-devices/: ordering page page_size search
+  get /api/django/imports/mappings/: target
+  get /api/django/installations/appels-commande/: chantier ligne ordering page page_size search
+  get /api/django/installations/approbations-bcf/: bcf ordering page page_size search
+  get /api/django/installations/bin-affectations/: bin ordering page page_size produit search
+  get /api/django/installations/bin-locations/: archived emplacement ordering page page_size search
+  get /api/django/installations/categories-stockage/: ordering page page_size search
+  get /api/django/installations/chantiers/: annule art33 dossier_statut mine ordering page page_size parc regime search statut technicien type_installation
+  get /api/django/installations/chantiers/a-facturer/: ordering page page_size search
+  get /api/django/installations/chantiers/gantt/: ordering page page_size search
+  get /api/django/installations/chantiers/regime-suggestion/: hors_reseau kw_ac kwc niveau type_installation
+  get /api/django/installations/chantiers/{id}/cout/: tarif_jour
+  get /api/django/installations/chantiers/{id}/historique/: ordering page page_size search
+  get /api/django/installations/chantiers/{id}/releves/: ordering page page_size search
+  get /api/django/installations/chantiers/{id}/reserves/: ordering page page_size search
+  post /api/django/installations/chantiers/{id}/reserves/: ordering page page_size search
+  get /api/django/installations/checklist-etapes/: ordering page page_size search template
+  get /api/django/installations/checklist-templates/: ordering page page_size search
+  get /api/django/installations/colis-lignes/: colis ordering page page_size search
+  get /api/django/installations/colis/: installation ordering page page_size search statut
+  get /api/django/installations/colis/{id}/etiquette/: symbology
+  get /api/django/installations/commandes-cadre-lignes/: commande_cadre ordering page page_size search
+  get /api/django/installations/commandes-cadre/: fournisseur ordering page page_size search statut
+  get /api/django/installations/comptage-lignes/: ordering page page_size search session
+  get /api/django/installations/consignes-securite/: ordering page page_size search
+  get /api/django/installations/contrats-prix-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/django/installations/contrats-prix-fournisseur/prix-convenu/: date fournisseur produit
+  get /api/django/installations/contrats-prix-lignes/: contrat ordering page page_size search
+  get /api/django/installations/controle-budgetaire/: categorie montant projet
+  get /api/django/installations/controle-qualite-modeles/: kit ordering page page_size search
+  get /api/django/installations/demandes-achat-lignes/: demande ordering page page_size search
+  get /api/django/installations/demandes-achat/: ordering page page_size search
+  get /api/django/installations/demandes-achat/{id}/chatter/historique/: ordering search
+  get /api/django/installations/demandes-achat/{id}/etapes-approbation/: ordering page page_size search
+  get /api/django/installations/demandes-transfert/: ordering page page_size search
+  get /api/django/installations/dossiers-import/: fournisseur ordering page page_size search statut_douane
+  get /api/django/installations/equipes/: actif ordering page page_size search
+  get /api/django/installations/etapes-assemblage/: kit ordering page page_size search
+  get /api/django/installations/etapes-chantier/: ordering page page_size search
+  get /api/django/installations/fiche-intervention-champs/: ordering page page_size search template
+  get /api/django/installations/fiche-intervention-templates/: ordering page page_size search
+  get /api/django/installations/frais-import/: categorie dossier ordering page page_size search
+  get /api/django/installations/geofence-alertes/: chantier intervention ordering page page_size search type_franchissement
+  get /api/django/installations/gps-consentements/: ordering page page_size search technicien
+  get /api/django/installations/interventions/: annulee date_from date_to export installation ordering page page_size priorite statut ticket type_intervention
+  get /api/django/installations/interventions/calendrier/: date_from date_to ordering page page_size
+  get /api/django/installations/interventions/conflits-affectation/: debut fin
+  get /api/django/installations/interventions/ma-tournee/: date
+  get /api/django/installations/interventions/nivellement-charge/: debut fin heures_par_jour
+  get /api/django/installations/interventions/plan-de-charge/: debut fin heures_par_jour
+  get /api/django/installations/interventions/planning-camionnettes/: capacite_jour debut fin
+  post /api/django/installations/interventions/replanifier-en-masse/: simuler
+  get /api/django/installations/interventions/suggestions-creation/: technicien type_installation type_intervention
+  get /api/django/installations/interventions/taux-ponctualite/: debut fin technicien
+  get /api/django/installations/interventions/{id}/historique/: ordering page page_size
+  get /api/django/installations/interventions/{id}/memos/: ordering page page_size
+  get /api/django/installations/interventions/{id}/reserves/: ordering page page_size
+  get /api/django/installations/interventions/{id}/reverifications/: ordering page page_size
+  get /api/django/installations/interventions/{id}/serials/: ordering page page_size
+  get /api/django/installations/kit-composants/: kit ordering page page_size search
+  get /api/django/installations/kits/: active ordering page page_size search
+  get /api/django/installations/kits/{id}/composition-au/: date
+  get /api/django/installations/kits/{id}/revisions/: ordering page page_size search
+  get /api/django/installations/landed-cost-lignes/: dossier ordering page page_size search
+  get /api/django/installations/livraison-lignes/: livraison ordering page page_size search
+  get /api/django/installations/livraisons/: date_prevue depot installation mode_acheminement ordering page page_size search statut
+  get /api/django/installations/livraisons/portail/: client ordering page page_size search
+  get /api/django/installations/lots-prelevement/: ordering page page_size search statut
+  post /api/django/installations/lots-prelevement/{id}/cocher-ligne/: ordering page page_size search
+  get /api/django/installations/lots-prelevement/{id}/lignes/: ordering page page_size search
+  get /api/django/installations/materiels-consignes/: fournisseur ordering page page_size search statut type_materiel
+  get /api/django/installations/ordre-assemblage-lignes/: ordering ordre page page_size search
+  get /api/django/installations/ordre-demontage-lignes/: ordering ordre page page_size search
+  get /api/django/installations/ordres-assemblage/: date_prevue kit ordering page page_size responsable search statut
+  get /api/django/installations/ordres-assemblage/atelier/: date_debut date_fin
+  post /api/django/installations/ordres-assemblage/depuis-devis/: ordering page page_size search
+  get /api/django/installations/ordres-assemblage/rapport-rebuts/: date_debut date_fin ordering page page_size search
+  get /api/django/installations/ordres-assemblage/rapport-soustraitants/: ordering page page_size search
+  get /api/django/installations/ordres-assemblage/{id}/controle-qualite/: ordering page page_size search
+  get /api/django/installations/ordres-assemblage/{id}/etapes/: ordering page page_size search
+  get /api/django/installations/ordres-assemblage/{id}/etiquette/: symbology
+  get /api/django/installations/ordres-assemblage/{id}/historique/: ordering page page_size search
+  get /api/django/installations/ordres-assemblage/{id}/series/: ordering page page_size search
+  get /api/django/installations/ordres-demontage/: kit ordering page page_size search statut
+  get /api/django/installations/pick-list-lignes/: ordering page page_size pick_list search
+  get /api/django/installations/pick-lists/: installation ordering page page_size search statut
+  get /api/django/installations/positions-techniciens/: intervention ordering page page_size search technicien
+  get /api/django/installations/positions-techniciens/carte-live/: ordering page page_size search
+  get /api/django/installations/preuves-livraison/: livraison ordering page page_size search
+  get /api/django/installations/programme-budgets/: ordering page page_size projet search
+  get /api/django/installations/programme-chantiers/: ordering page page_size projet search
+  get /api/django/installations/programme-devis/: ordering page page_size projet search
+  get /api/django/installations/programme-engagements/: budget ordering page page_size search
+  get /api/django/installations/programme-taches/: assigne ordering page page_size parent projet search statut
+  get /api/django/installations/programme-tickets/: ordering page page_size projet search
+  get /api/django/installations/programmes/: client ordering page page_size search statut
+  get /api/django/installations/putaways/: emplacement ordering page page_size produit search statut
+  get /api/django/installations/receptions-non-facturees/: bon_commande lettre ordering page page_size search
+  get /api/django/installations/recettes-commissioning/: installation ordering page page_size search
+  get /api/django/installations/recettes-pompage/: installation ordering page page_size search
+  get /api/django/installations/regles-approbation-achat/: ordering page page_size search
+  get /api/django/installations/regles-rangement/: actif ordering page page_size produit search
+  get /api/django/installations/regles-reappro/: active emplacement_cible ordering page page_size produit search
+  get /api/django/installations/regles-reappro/propositions/: ordering page page_size search
+  get /api/django/installations/retour-livraison-lignes/: ordering page page_size retour search
+  get /api/django/installations/retour-materiel-lignes/: ordering page page_size retour search
+  get /api/django/installations/retours-livraison/: livraison ordering page page_size search statut
+  get /api/django/installations/retours-materiel/: installation ordering page page_size search statut
+  get /api/django/installations/series-entrepot/: ordering page page_size search
+  get /api/django/installations/sessions-comptage/: classe_abc emplacement ordering page page_size search statut
+  get /api/django/installations/seuils-approbation-bcf/: ordering page page_size search
+  get /api/django/installations/shotlist-slots/: ordering page page_size phase search
+  get /api/django/installations/sous-traitants/: actif metier search
+  get /api/django/installations/tournee-livraison/: depart_lat depart_lng jour
+  get /api/django/installations/transporteurs/: active ordering page page_size search type_transporteur
+  get /api/django/installations/types-intervention/: ordering page page_size search
+  get /api/django/monitoring/cleanings/: installation ordering page page_size search
+  get /api/django/monitoring/configs/: installation ordering page page_size search
+  get /api/django/monitoring/configs/attestation-carbone-client-pdf/: client since until
+  get /api/django/monitoring/configs/benchmark/: window_days
+  get /api/django/monitoring/configs/client-portal/: client
+  get /api/django/monitoring/configs/co2-fleet/: since until
+  get /api/django/monitoring/configs/fleet/: window_days
+  get /api/django/monitoring/configs/providers/: ordering page page_size search
+  get /api/django/monitoring/configs/{id}/attestation-carbone-pdf/: since until
+  get /api/django/monitoring/configs/{id}/co2/: since until
+  get /api/django/monitoring/configs/{id}/history/: export months
+  get /api/django/monitoring/configs/{id}/om-metrics/: window_days
+  get /api/django/monitoring/configs/{id}/om-report/: format period
+  get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
+  get /api/django/monitoring/configs/{id}/soiling/: window_days
+  get /api/django/monitoring/readings/: installation ordering page page_size search
+  get /api/django/monitoring/settings/: ordering search
+  get /api/django/monitoring/warranties/: installation ordering page page_size search
+  get /api/django/monitoring/warranties/{id}/curve/: drift_threshold_pct years
+  get /api/django/monitoring/warranties/{id}/status/: year
+  get /api/django/notifications/annonces/: active epinglee ordering page page_size search
+  get /api/django/notifications/calendar/check/: date
+  get /api/django/notifications/holidays/: ordering page page_size search year
+  get /api/django/notifications/messages-accueil/: ordering page page_size search
+  get /api/django/notifications/notifications/: ordering page page_size search unread
+  get /api/django/notifications/routing-rules/: enabled event_type ordering page page_size search
+  get /api/django/notifications/whatsapp-templates/: groupe ordering page page_size search statut_approbation
+  get /api/django/offlinesync/operations/: module ordering page page_size search statut
+  get /api/django/outillage/kit-items/: kit ordering page page_size search
+  get /api/django/outillage/kits/: ordering page page_size search
+  get /api/django/outillage/outils/: a_calibrer emplacement ordering page page_size search statut
+  get /api/django/parametres/approbations/: action_type ordering page page_size search
+  get /api/django/parametres/audit/: date_debut date_fin field limit offset section user
+  get /api/django/parametres/cadence-relance/: actif cadence ordering page page_size search
+  get /api/django/parametres/conditions-paiement/: actif ordering page page_size search
+  post /api/django/parametres/config-import/: mode
+  get /api/django/parametres/email-templates/: ordering page page_size search
+  get /api/django/parametres/fetes-mobiles/: annee
+  get /api/django/parametres/gabarits-document/: ordering page page_size search
+  get /api/django/parametres/gabarits-document/{code}/rendre/: cible_id
+  get /api/django/parametres/realisations/: actif ordering page page_size search
+  get /api/django/parametres/statuts/: domaine ordering page page_size search
+  get /api/django/parametres/statuts/effective/: domaine
+  get /api/django/parametres/tarification/productible/: azimuth lat lon peakpower tilt
+  get /api/django/parametres/taux-tva/: actif ordering page page_size search
+  get /api/django/parametres/traductions/: locale ordering page page_size search
+  get /api/django/parametres/unites-mesure/: actif ordering page page_size search
+  get /api/django/portail/acceptations-devis-portail/: ordering page page_size
+  get /api/django/portail/client/ma-consommation/: chantier
+  get /api/django/portail/client/recherche/: q
+  get /api/django/portail/client/tableau-de-bord/: chantier
+  get /api/django/portail/comptes-portail/: ordering page page_size
+  get /api/django/portail/demandes-ticket-portail/: ordering page page_size
+  get /api/django/portail/documents-client-portail/: ordering page page_size
+  get /api/django/portail/jalons-chantier-portail/: ordering page page_size
+  get /api/django/portail/mes-commissions/: debut fin
+  get /api/django/portail/mes-commissions/pdf/: debut fin
+  get /api/django/portail/paiements-facture-portail/: ordering page page_size statut
+  get /api/django/public/proposal/{token}/pdf/: variante
+  get /api/django/public/proposal/{token}/taille/{cle}/: variante
+  get /api/django/publicapi/keys/: ordering page page_size search
+  get /api/django/publicapi/webhooks/: ordering page page_size search
+  get /api/django/publicapi/webhooks/{id}/deliveries/: ordering page page_size search
+  get /api/django/records/activities/: id model open ordering page page_size personnelle search
+  get /api/django/records/activity-types/: ordering page page_size search
+  get /api/django/records/attachments-count/: id model
+  get /api/django/records/attachments/: id model ordering page page_size search
+  get /api/django/records/attachments/all/: mime mime_like model page phase since
+  get /api/django/records/comments/: id model ordering page page_size resolved search
+  get /api/django/records/followers/: id mine model ordering page page_size search
+  get /api/django/records/tagged-items/: id model ordering page page_size search
+  get /api/django/records/tags/: ordering page page_size q search
+  get /api/django/reporting/approbations-en-attente/: categorie priorite source trier
+  get /api/django/reporting/archive/chantier/{id}/: export
+  get /api/django/reporting/archive/client/{id}/: export
+  get /api/django/reporting/calendar.ics: token
+  get /api/django/reporting/calendar/: assignee from to types
+  get /api/django/reporting/classeurs/: ordering page page_size search
+  get /api/django/reporting/commercial/dashboard/: from to
+  get /api/django/reporting/commercial/win-loss-by-source/: from to
+  get /api/django/reporting/dashboard-config/: ordering page page_size search
+  get /api/django/reporting/dashboard/: compare export from to
+  get /api/django/reporting/envois-rapports/: ordering page page_size saved_report search statut
+  get /api/django/reporting/geo/: statuts types
+  get /api/django/reporting/insights/audit-log/: limit since type user
+  get /api/django/reporting/insights/cf-group-by/: code module
+  get /api/django/reporting/insights/cohorts/: from group_by to
+  get /api/django/reporting/insights/commissions/: from to
+  get /api/django/reporting/insights/profitability/: from segment to
+  get /api/django/reporting/insights/recurring-revenue/: export
+  get /api/django/reporting/insights/sales-leaderboard/: from to
+  get /api/django/reporting/insights/sav-sla/: export from priorite technicien to
+  get /api/django/reporting/insights/sav-taux-attache/: date_debut date_fin
+  get /api/django/reporting/insights/sav-tickets-pivot/: columns export rows
+  get /api/django/reporting/insights/technicien-scorecard/: export from technicien to
+  get /api/django/reporting/kpi-alertes/: ordering page page_size search
+  get /api/django/reporting/rapport-definitions/: ordering page page_size search
+  get /api/django/reporting/rapport-definitions/{id}/export/: format
+  get /api/django/reporting/reports/field/: equipe export from technicien to
+  get /api/django/reporting/reports/kpi-federes/: vue
+  get /api/django/reporting/reports/sales/: compare export from to
+  get /api/django/reporting/reports/service/: export from to
+  get /api/django/reporting/reports/stock/: export from to
+  get /api/django/reporting/saved-reports/: ordering page page_size search
+  get /api/django/reporting/search/: q
+  get /api/django/reporting/vitals/p75/: route
+  get /api/django/roles/: ordering page page_size search
+  get /api/django/roles/revue-acces/: dormant_days format
+  get /api/django/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
+  get /api/django/sav/categories-equipement/: ordering page page_size search
+  get /api/django/sav/categories-ticket/: actif ordering page page_size search
+  get /api/django/sav/causes-defaillance/: archived ordering page page_size search
+  get /api/django/sav/checklist-templates/: ordering page page_size search
+  get /api/django/sav/compatibilites-piece/: ordering page page_size produit_equipement search
+  get /api/django/sav/contrats-maintenance/: a_renouveler due ordering page page_size search
+  get /api/django/sav/contrats-maintenance/tournee/: lat lng
+  get /api/django/sav/contrats-maintenance/{id}/rapport-pdf/: date
+  get /api/django/sav/equipements/: categorie client garantie installation marque ordering page page_size produit rebut search statut
+  get /api/django/sav/equipements/etiquettes/: ids public symbology
+  get /api/django/sav/equipements/registre-garanties/: jours
+  get /api/django/sav/equipements/{id}/disponibilite/: debut fin
+  get /api/django/sav/equipements/{id}/downtime/: ordering page page_size search
+  get /api/django/sav/equipements/{id}/releves-compteur/: ordering page page_size search
+  get /api/django/sav/equipes-maintenance/: actif ordering page page_size search
+  get /api/django/sav/insights/sav-fcr/: date_debut date_fin export
+  get /api/django/sav/insights/sav-fiabilite/: limit
+  get /api/django/sav/insights/sav-pannes/: date_debut date_fin group_by
+  get /api/django/sav/insights/sav-parts-forecast/: months
+  get /api/django/sav/insights/sav-performance-agent/: date_debut date_fin export
+  get /api/django/sav/kb-articles/: categorie ordering page page_size produit search
+  get /api/django/sav/problemes/: ordering page page_size search statut
+  get /api/django/sav/problemes/regroupements-suggeres/: fenetre_jours seuil
+  get /api/django/sav/remedes-defaillance/: archived ordering page page_size search
+  get /api/django/sav/reponses-type/: archived canal ordering page page_size search ticket
+  get /api/django/sav/sla-settings/: ordering page page_size search
+  get /api/django/sav/tickets/: annule categorie client equipe equipement installation ordering ouvert page page_size priorite search statut technicien type
+  get /api/django/sav/tickets/{id}/activites/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/checklist/: ordering page page_size search
+  post /api/django/sav/tickets/{id}/checklist/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/emails/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/historique/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/pieces-retirees/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/pieces/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/prets-equipement/: ordering page page_size search
+  get /api/django/sav/tickets/{id}/similaires/: limit
+  get /api/django/sav/warranty-claims/: equipement ordering page page_size search statut ticket
+  get /api/django/sav/worksheet-modeles/: ordering page page_size search
+  get /api/django/statuspage/historique-statut/: ordering search
+  get /api/django/statuspage/public/incidents/: ordering page page_size search
+  get /api/django/stock/accords-rfa-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/django/stock/achats-parametres/checklist-cloture/: periode seuil_jours
+  get /api/django/stock/acomptes-fournisseur/: bon_commande ordering page page_size
+  get /api/django/stock/alertes-rappel/: ordering page page_size produit search statut
+  get /api/django/stock/avoirs-fournisseur/: fournisseur ordering page page_size search
+  get /api/django/stock/blocages-qualite/: bin ordering page page_size produit search statut
+  get /api/django/stock/bons-commande-fournisseur/: ordering page page_size search
+  get /api/django/stock/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
+  get /api/django/stock/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
+  get /api/django/stock/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/django/stock/bons-commande-fournisseur/historique-prix/: fournisseur produit
+  get /api/django/stock/budgets-departement/: actif annee mois ordering page page_size search
+  get /api/django/stock/budgets-departement/disponible/: montant
+  get /api/django/stock/casiers-hazmat/: bin classe_danger ordering page page_size search
+  get /api/django/stock/casiers/etiquettes-pdf/: emplacement sortie symbology
+  get /api/django/stock/catalogue-achat/: categorie fournisseur ordering page page_size q recent search
+  get /api/django/stock/catalogue-b2b/: categorie client limite marque offset q
+  get /api/django/stock/categories-fournisseur/: ordering page page_size
+  get /api/django/stock/categories/: ordering page page_size search
+  get /api/django/stock/conditionnements/: ordering page page_size produit search
+  get /api/django/stock/consignations/: client ordering page page_size search statut
+  get /api/django/stock/consignations/export-xlsx/: statut
+  get /api/django/stock/contacts-fournisseur/: fournisseur ordering page page_size
+  get /api/django/stock/documents-conformite-fournisseur/: fournisseur ordering page page_size
+  get /api/django/stock/documents-fournisseur/: dossier ordering page page_size search type_document
+  get /api/django/stock/dossiers-onboarding-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/django/stock/emplacements/: ordering page page_size search tiers_nom type_proprietaire
+  get /api/django/stock/emplacements/{id}/etiquettes-kanban/: ids sortie symbology
+  get /api/django/stock/engagements-budget/: budget demande ordering page page_size search statut
+  get /api/django/stock/entrepot/alertes-surcapacite/: emplacement seuil
+  get /api/django/stock/entrepot/cockpit/: emplacement horizon_peremption retard_heures
+  get /api/django/stock/entrepot/pertes/: debut fin
+  get /api/django/stock/entrepot/productivite/: debut fin
+  get /api/django/stock/expeditions/: ordering page page_size search statut
+  get /api/django/stock/expeditions/tarifs/: destination unite_logistique
+  get /api/django/stock/factures-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/django/stock/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/django/stock/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
+  get /api/django/stock/factures-fournisseur/suggestions-bcf/: fournisseur montant
+  post /api/django/stock/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/django/stock/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/django/stock/fiches-techniques/: ordering page page_size produit
+  get /api/django/stock/fournisseurs/: categorie ordering page page_size search show_archived
+  get /api/django/stock/fournisseurs/documents-expirants/: within
+  get /api/django/stock/fournisseurs/export-conformite/: debut export fin
+  get /api/django/stock/fournisseurs/{id}/delai-mesure/: fenetre_mois produit seuil_ecart_pct
+  get /api/django/stock/fournisseurs/{id}/otif/: fenetre_mois
+  get /api/django/stock/fournisseurs/{id}/portail-tokens/: ordering page page_size search
+  get /api/django/stock/incidents-qualite-fournisseur/: fournisseur gravite ordering page page_size produit resolu search
+  get /api/django/stock/inventaire-sessions/: ordering page page_size search
+  get /api/django/stock/inventaires-annuels/: ordering page page_size search
+  get /api/django/stock/kits/: avec_disponibilite ordering page page_size search
+  get /api/django/stock/kits/{id}/: avec_disponibilite
+  get /api/django/stock/kits/{id}/composition-au/: date
+  get /api/django/stock/kits/{id}/exploser/: quantite
+  get /api/django/stock/kits/{id}/revisions/: ordering page page_size search
+  get /api/django/stock/lots-entrepot/: avec_stock ordering page page_size produit search
+  get /api/django/stock/lots-entrepot/fefo/: produit quantite
+  get /api/django/stock/marques/: ordering page page_size search
+  get /api/django/stock/modeles-bcf/: ordering page page_size search
+  get /api/django/stock/mouvements-rebut/: motif ordering page page_size produit search
+  get /api/django/stock/mouvements/: date_max date_min ordering page page_size produit search type_mouvement
+  get /api/django/stock/mouvements/agregation/: date_max date_min export group_by
+  post /api/django/stock/mouvements/export-xlsx/: date_max date_min produit type_mouvement
+  get /api/django/stock/nomenclatures-code-barres/: ordering page page_size search
+  get /api/django/stock/paiements-fournisseur/: facture ordering page page_size
+  get /api/django/stock/paiements-fournisseur/ras-tva/export/: date_debut date_fin
+  get /api/django/stock/plans-chargement/: ordering page page_size search statut
+  get /api/django/stock/plans-comptage-tournant/: ordering page page_size search
+  get /api/django/stock/plans-echantillonnage/: ordering page page_size search
+  get /api/django/stock/portails-tiers/: ordering page page_size search tiers_nom
+  get /api/django/stock/prix-fournisseurs/: ordering page page_size produit
+  get /api/django/stock/prix-fournisseurs/effectif/: fournisseur produit quantite
+  get /api/django/stock/prix-fournisseurs/export-xlsx/: fournisseur
+  get /api/django/stock/produits/: categorie ordering page page_size search show_archived
+  get /api/django/stock/produits/analyse-achats/: date_debut date_fin nb_mois
+  get /api/django/stock/produits/analyse-achats/export-xlsx/: date_debut date_fin nb_mois
+  get /api/django/stock/produits/analyse-achats/pdf/: date_debut date_fin nb_mois
+  get /api/django/stock/produits/etiquettes-prix/: categorie ids largeur sortie zone
+  get /api/django/stock/produits/etiquettes/: ids sortie symbology
+  get /api/django/stock/produits/expirant-bientot/: jours
+  get /api/django/stock/produits/previsions-reappro/: nb_mois
+  get /api/django/stock/produits/rapport-pertes/: date_debut date_fin
+  get /api/django/stock/produits/resolve/: code
+  get /api/django/stock/produits/rotation/: jours
+  get /api/django/stock/produits/tracer/: lot serie
+  get /api/django/stock/produits/valorisation-a-date/: date
+  get /api/django/stock/produits/{id}/comparer-tco/: cout_rupture_jour fenetre_mois
+  get /api/django/stock/produits/{id}/historique-prix/: fournisseur
+  get /api/django/stock/produits/{id}/plan-picking/: quantite strategie
+  get /api/django/stock/produits/{id}/prix-fournisseurs/: ordering page page_size search
+  get /api/django/stock/profils-saisonniers/: actif categorie ordering page page_size produit search
+  get /api/django/stock/quais/: actif ordering page page_size search type_quai
+  get /api/django/stock/quais/planning/: date quai vue
+  get /api/django/stock/receptions-fournisseur/: bon_commande ordering page page_size search statut
+  get /api/django/stock/receptions-fournisseur/scan-gs1/: code
+  get /api/django/stock/receptions-fournisseur/{id}/etiquettes/: sortie symbology
+  get /api/django/stock/regles-code-barres/: ordering page page_size search
+  get /api/django/stock/rendez-vous-transporteur/: date ordering page page_size quai search statut
+  get /api/django/stock/reslotting-suggestions/: debut fin
+  get /api/django/stock/retours-client/: client ordering page page_size search statut
+  get /api/django/stock/retours-fournisseur/: fournisseur ordering page page_size search
+  get /api/django/stock/revalorisations-stock/: ordering page page_size produit search
+  get /api/django/stock/scanner/resoudre/: code
+  get /api/django/stock/scanner/retour-fournisseur/: code quantite
+  get /api/django/stock/seuils-reappro-casier/: bin ordering page page_size search
+  get /api/django/stock/simuler-capacite/: emplacement produit quantite zone
+  get /api/django/stock/tableau-bord-achats/: debut fin
+  get /api/django/stock/tache-retour/: limite zone
+  get /api/django/stock/taches-reappro-interne/: ordering page page_size search statut
+  get /api/django/stock/tolerances-rapprochement-categorie/: ordering page page_size search
+  get /api/django/stock/transferts/: ordering page page_size search statut
+  get /api/django/stock/unites-logistiques/: ordering page page_size search statut type_unite
+  post /api/django/stock/unites-logistiques/{id}/deplacer/: bin_destination
+  get /api/django/stock/unites-logistiques/{id}/etiquette-pdf/: sortie symbology
+  get /api/django/stock/unites-logistiques/{id}/export-asn/: telecharger
+  get /api/django/stock/vagues-picking/: ordering page page_size search statut
+  get /api/django/tiers/tiers/: ordering page page_size search
+  get /api/django/tiers/tiers/verifier-doublon/: email ice
+  get /api/django/trash/corbeille/: depuis jusqua ordering page page_size restaures search type
+  get /api/django/trash/corbeille/export-xlsx/: depuis jusqua restaures type
+  get /api/django/users/: ordering page page_size search
+  get /api/django/users/avatar-image/: key
+  get /api/django/uxviews/favoris/: ordering page page_size search
+  post /api/django/uxviews/favoris/{id}/reordonner/: ordering page page_size search
+  get /api/django/uxviews/saved-views/: ecran ordering page page_size search
+  get /api/django/uxviews/saved-views/toutes-company/: ordering page page_size search
+  get /api/django/ventes/attestations-conformite/: chantier ordering page page_size search statut
+  get /api/django/ventes/attestations-re/: chantier ordering page page_size search statut
+  get /api/django/ventes/avoirs/: facture ordering page page_size search
+  get /api/django/ventes/bons-commande/: ordering page page_size search
+  get /api/django/ventes/calendrier-reglementaire/: seuil statut validite
+  get /api/django/ventes/clients/{client_id}/credit-warning/: montant_ttc
+  get /api/django/ventes/courbes-iv/: defaut ordering page page_size recette search
+  get /api/django/ventes/dashboard/: end month start
+  get /api/django/ventes/devis-lignes/: ordering page page_size search
+  get /api/django/ventes/devis/: concevable entite lead ordering page page_size search statut
+  get /api/django/ventes/devis/prefill-site/: client
+  get /api/django/ventes/devis/{id}/declaration-raccordement/: format regime
+  post /api/django/ventes/devis/{id}/dupliquer-variante/: ordering page page_size search
+  get /api/django/ventes/devis/{id}/historique-configuration/: a b
+  delete /api/django/ventes/devis/{id}/overrides/: chemin
+  get /api/django/ventes/devis/{id}/overrides/: chemin
+  patch /api/django/ventes/devis/{id}/overrides/: chemin
+  get /api/django/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
+  get /api/django/ventes/devis/{id}/schema-unifilaire/: format
+  get /api/django/ventes/dossiers-checklist/: dossier ordering page page_size search
+  get /api/django/ventes/dossiers-echanges/: dossier ordering page page_size search type_echange
+  get /api/django/ventes/dossiers-reglementaires/: devis ordering page page_size search statut
+  get /api/django/ventes/etats/analyse-facturation/: debut end export fin month quarter start
+  get /api/django/ventes/export-comptable/: end fmt layout month quarter start
+  get /api/django/ventes/factures-lignes/: ordering page page_size search
+  get /api/django/ventes/factures/: entite ordering page page_size search
+  get /api/django/ventes/factures/{facture_id}/lettre-relance-premium/: niveau
+  get /api/django/ventes/factures/{id}/arrondi-caisse/: mode
+  get /api/django/ventes/insights/cash-flow/: mode
+  get /api/django/ventes/journal-ventes/: end month quarter start
+  get /api/django/ventes/listes-prix/: ordering page page_size search
+  get /api/django/ventes/mandats-paiement/: client ordering page page_size search
+  get /api/django/ventes/niveaux-relance/: ordering page page_size search
+  get /api/django/ventes/notes-debit/: facture ordering page page_size search
+  get /api/django/ventes/packs-asbuilt/: chantier ordering page page_size search
+  get /api/django/ventes/paiements/: ordering page page_size remisable
+  get /api/django/ventes/paiements/attestations-ras-en-attente/: ordering page page_size
+  get /api/django/ventes/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/django/ventes/parametrages-relance-client/: ordering page page_size search
+  get /api/django/ventes/plans-commission/: actif ordering owner page page_size search
+  get /api/django/ventes/plans-commission/resoudre/: owner
+  get /api/django/ventes/presets/: ordering search
+  get /api/django/ventes/prix-applicable/: client panier produit quantite
+  get /api/django/ventes/promesses-paiement/: ordering page page_size search
+  get /api/django/ventes/proposal/{token}/pdf/: variante
+  get /api/django/ventes/recettes-mes/: chantier devis ordering page page_size resultat search
+  get /api/django/ventes/regularisations-8221/: devis ordering page page_size search statut
+  get /api/django/ventes/relances/: mes_relances
+  get /api/django/ventes/remises-encaissement/: ordering page page_size search technicien
+  post /api/django/ventes/schema-unifilaire/: format
+  get /api/django/ventes/subventions/: devis ordering page page_size programme search statut
+  get /api/django/ventes/tests-pr-reception/: chantier ordering page page_size search verdict
+  get /api/django/visites/leads-recherche/: limit q
+  get /api/django/visites/ma-journee/: tous
+  get /api/django/visites/visites/: mine ordering page page_size search
+  get /api/public/v1/achats/demandes-achat/: ordering page page_size
+  get /api/public/v1/achats/rfq/: ordering page page_size
+  get /api/public/v1/calepinages/: ordering page page_size
+  get /api/public/v1/chantiers/: ordering page page_size
+  get /api/public/v1/devis/: ordering page page_size
+  get /api/public/v1/factures/: ordering page page_size
+  get /api/public/v1/favoris/: ordering page page_size
+  get /api/public/v1/jobs/: ordering page page_size search
+  get /api/public/v1/leads/: ordering page page_size
+  get /api/public/v1/produits/: ordering page page_size
+  get /api/public/v1/saved-views/: ordering page page_size
+  get /api/v1/accessreview/campaigns/: ordering page page_size search
+  get /api/v1/accessreview/sod-rules/: ordering page page_size search
+  get /api/v1/achats/bons-commande-fournisseur/: ordering page page_size search
+  get /api/v1/achats/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
+  get /api/v1/achats/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
+  get /api/v1/achats/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/v1/achats/bons-commande-fournisseur/historique-prix/: fournisseur produit
+  get /api/v1/achats/factures-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/v1/achats/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/v1/achats/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
+  get /api/v1/achats/factures-fournisseur/suggestions-bcf/: fournisseur montant
+  post /api/v1/achats/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/v1/achats/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/v1/achats/paiements-fournisseur/: facture ordering page page_size
+  get /api/v1/achats/paiements-fournisseur/ras-tva/export/: date_debut date_fin
+  get /api/v1/achats/prix-fournisseurs/: ordering page page_size produit
+  get /api/v1/achats/prix-fournisseurs/effectif/: fournisseur produit quantite
+  get /api/v1/achats/prix-fournisseurs/export-xlsx/: fournisseur
+  get /api/v1/achats/receptions-fournisseur/: bon_commande ordering page page_size search statut
+  get /api/v1/achats/receptions-fournisseur/scan-gs1/: code
+  get /api/v1/achats/receptions-fournisseur/{id}/etiquettes/: sortie symbology
+  get /api/v1/achats/retours-fournisseur/: fournisseur ordering page page_size search
+  get /api/v1/adminops/adoption/: periode
+  get /api/v1/adminops/config-packages/: ordering page page_size search
+  get /api/v1/adminops/facturation-licences/: company statut
+  get /api/v1/adminops/facturation-licences/export-csv/: company
+  get /api/v1/adminops/impersonation/cibles/: societe
+  get /api/v1/adminops/rapports/journal-admin/: date_debut date_fin
+  get /api/v1/adminops/sandbox/: ordering page page_size search
+  get /api/v1/adsengine/actions/: ordering page page_size search
+  get /api/v1/adsengine/alertes/: ordering page page_size search
+  get /api/v1/adsengine/annotations/: ordering page page_size search
+  get /api/v1/adsengine/anomalies/: ordering page page_size search
+  get /api/v1/adsengine/backlog-creatif/: ordering page page_size search
+  get /api/v1/adsengine/bras/: ordering page page_size search
+  get /api/v1/adsengine/campaigns/: ordering page page_size search
+  get /api/v1/adsengine/concurrents/: ordering page page_size search
+  get /api/v1/adsengine/connexions/: ordering page page_size search
+  get /api/v1/adsengine/consentements/: ordering page page_size search
+  get /api/v1/adsengine/creatifs/: ordering page page_size search
+  get /api/v1/adsengine/decisions/: ordering page page_size search
+  get /api/v1/adsengine/experiences/: ordering page page_size search
+  get /api/v1/adsengine/faits/: ordering page page_size search
+  get /api/v1/adsengine/gabarits-proposition/: ordering page page_size search
+  get /api/v1/adsengine/garde-fous/: ordering page page_size search
+  get /api/v1/adsengine/kit-marque/: ordering page page_size search
+  get /api/v1/adsengine/lots-creatifs/: ordering page page_size search
+  get /api/v1/adsengine/noeuds-hypothese/: ordering page page_size search
+  get /api/v1/adsengine/observations-concurrents/: ordering page page_size search
+  get /api/v1/adsengine/phases-vol/: ordering page page_size search
+  get /api/v1/adsengine/plans-vol/: ordering page page_size search
+  get /api/v1/adsengine/policy-creative/: ordering page page_size search
+  get /api/v1/adsengine/reconciliations/: ordering page page_size search
+  get /api/v1/adsengine/regles-mot-cle/: ordering page page_size search
+  post /api/v1/adsengine/regles-mot-cle/proposer/: ordering page page_size search
+  get /api/v1/adsengine/regles/: ordering page page_size search
+  get /api/v1/adsengine/stats-bras/: ordering page page_size search
+  get /api/v1/adsengine/table-faits/: ordering page page_size search
+  get /api/v1/adsengine/veille/annonceurs/: ordering page page_size search
+  get /api/v1/adsengine/veille/decouvertes/: ordering page page_size search
+  get /api/v1/audit/entries/: action from model module object_id ordering page page_size search to user
+  get /api/v1/audit/objets/{content_type}/{object_id}/as-of/: date
+  get /api/v1/audit/objets/{content_type}/{object_id}/history/: limit
+  get /api/v1/audit/portail/: action from limit model module object_id search to user
+  get /api/v1/audit/security/: action from limit model module object_id search to user
+  get /api/v1/audit/security/export/: from to
+  get /api/v1/audit/stats/: action date from model module object_id period search to user
+  get /api/v1/auth/demo-wizard/statut/: slug
+  get /api/v1/auth/sessions/: ordering search
+  get /api/v1/automation/approval-delegations/: ordering page page_size
+  get /api/v1/automation/approval-request-types/: enabled ordering page page_size
+  get /api/v1/automation/approval-requests/: mine ordering page page_size status
+  get /api/v1/automation/approvals/: ordering page page_size status
+  get /api/v1/automation/incoming-webhooks/: ordering page page_size
+  get /api/v1/automation/rule-versions/: ordering page page_size rule search
+  get /api/v1/automation/rules/: enabled ordering page page_size trigger_type
+  get /api/v1/automation/runs/: ordering page page_size rule status
+  get /api/v1/calepinage/calepinages/: ordering page page_size
+  get /api/v1/calepinage/calepinages/modeles/: ordering page page_size
+  get /api/v1/calepinage/calepinages/{id}/apercu-document/: code langue
+  get /api/v1/calepinage/calepinages/{id}/bom-fixation/: systeme
+  get /api/v1/calepinage/calepinages/{id}/chatter/historique/: ordering
+  get /api/v1/calepinage/calepinages/{id}/comparatif.xlsx/: ids
+  get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
+  delete /api/v1/calepinage/calepinages/{id}/etiquettes/: nom tag_id
+  get /api/v1/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
+  get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
+  get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
+  get /api/v1/calepinage/calepinages/{id}/resultat/: variante
+  get /api/v1/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
+  get /api/v1/calepinage/gabarits-dossiers/: ordering search
+  get /api/v1/companies/: ordering page page_size search
+  get /api/v1/companies/{id}/demo-kit/: format
+  get /api/v1/core/branded-templates/: ordering search
+  get /api/v1/core/changelog/: ordering search
+  get /api/v1/core/consent-records/: ordering page page_size search
+  get /api/v1/core/corbeille/: ordering search undo
+  get /api/v1/core/dashboards-partages-internes/: ordering page page_size search
+  get /api/v1/core/dashboards-partages/: ordering page page_size search
+  get /api/v1/core/dashboards/: ordering search
+  get /api/v1/core/dashboards/{id}/donnees/: filtre
+  get /api/v1/core/dossiers/: ordering page page_size search statut type_dossier
+  get /api/v1/core/dossiers/{id}/checklist/: ordering page page_size search
+  get /api/v1/core/dossiers/{id}/historique/: ordering page page_size search
+  get /api/v1/core/dsr-requests/: ordering page page_size search
+  get /api/v1/core/export-reversibilite/historique/: ordering search
+  get /api/v1/core/formulaire-champs/: ordering search
+  get /api/v1/core/formulaires/: ordering search
+  get /api/v1/core/jobs-status/: ordering page page_size search
+  get /api/v1/core/maintenance-windows/: ordering search
+  get /api/v1/core/matrices-approbation/: ordering search
+  get /api/v1/core/module-toggles/: ordering search
+  post /api/v1/core/modules/{id}/desactiver/: cascade
+  get /api/v1/core/outbox/: event ordering page page_size search statut
+  get /api/v1/core/paiements-en-ligne/: ordering page page_size search
+  get /api/v1/core/registre-fiabilite/export-pdf/: periode_debut periode_fin
+  get /api/v1/core/registre-traitements/: ordering search
+  get /api/v1/core/sauvegardes/: ordering page page_size search
+  get /api/v1/core/saved-queries/: ordering search
+  get /api/v1/core/scheduled-exports/: ordering search
+  get /api/v1/core/sla/: ordering search
+  get /api/v1/core/sla/credits/: ordering search
+  get /api/v1/core/sla/export-csv/: export
+  get /api/v1/core/ui-boutons/: cible ordering page page_size search
+  get /api/v1/core/ui-onglets/: cible ordering search target_id
+  get /api/v1/core/usage/: company jour ordering page page_size search
+  get /api/v1/core/usage/couts/: format periode
+  get /api/v1/core/vues/: cible defaut ordering page page_size search
+  get /api/v1/core/workflow-definitions/: ordering search
+  get /api/v1/core/workflow-step-definitions/: ordering search
+  get /api/v1/core/workflows/charge-approbateurs/: periode seuil
+  get /api/v1/core/workflows/rapport-conformite/: export periode
+  get /api/v1/core/workflows/{id}/analyse/: periode
+  get /api/v1/crm/appareils-equipe/: ordering page page_size search
+  get /api/v1/crm/appointments/: lead ordering page page_size search
+  get /api/v1/crm/apporteurs/: ordering page page_size search
+  get /api/v1/crm/canaux/: ordering page page_size search
+  get /api/v1/crm/clients/: ordering page page_size search
+  get /api/v1/crm/clients/dormants/: seuil
+  get /api/v1/crm/clients/engagement-bulk/: ordering page page_size search
+  get /api/v1/crm/clients/search/: q
+  get /api/v1/crm/clients/segments/: segment
+  get /api/v1/crm/concurrents-perte/: lead ordering page page_size search
+  get /api/v1/crm/deals-enregistres/: ordering page page_size search
+  get /api/v1/crm/deals-enregistres/a-payer/: ordering page page_size search
+  get /api/v1/crm/defis/: actif ordering page page_size search
+  get /api/v1/crm/equipes/: ordering page page_size search
+  get /api/v1/crm/forecast-entries/: categorie ordering owner page page_size periode search
+  get /api/v1/crm/forecast/historique/: owner semaines
+  get /api/v1/crm/forecast/rollup/: equipe periode
+  get /api/v1/crm/leads/: archived entite ordering page page_size search source stage
+  get /api/v1/crm/leads/check-duplicates/: email exclude ordering page page_size phone search telephone
+  get /api/v1/crm/leads/doublons/: archived ordering page page_size search
+  get /api/v1/crm/leads/kpi-cadences/: jours
+  get /api/v1/crm/leads/kpi-premier-contact/: jours
+  get /api/v1/crm/leads/mesure-cadence/: jours
+  get /api/v1/crm/leads/relances/: scope
+  get /api/v1/crm/leads/roi-sources/: canal from ordering page page_size search to
+  post /api/v1/crm/leads/{id}/appliquer-plan/: ordering page page_size search
+  get /api/v1/crm/leads/{id}/duplicates/: ordering page page_size search
+  get /api/v1/crm/leads/{id}/historique/: ordering page page_size search
+  get /api/v1/crm/leads/{id}/message-visite/: cle
+  post /api/v1/crm/leads/{id}/relance/initialiser/: ordering page page_size search
+  get /api/v1/crm/message-templates/: archived ordering page page_size search
+  get /api/v1/crm/motifs-perte/: ordering page page_size search
+  get /api/v1/crm/objectifs/: metric ordering owner page page_size period_type search year
+  get /api/v1/crm/objectifs/attainment/: ordering page page_size search
+  get /api/v1/crm/parrainages/: ordering page page_size search
+  get /api/v1/crm/partenaires/: ordering page page_size
+  get /api/v1/crm/plans-activite/: ordering page page_size search
+  get /api/v1/crm/plans-compte/: client ordering page page_size search
+  get /api/v1/crm/plans-compte/{id}/chatter/historique/: ordering search
+  get /api/v1/crm/playbook-etapes/: ordering page page_size search
+  get /api/v1/crm/playbook-taches/: ordering page page_size search
+  get /api/v1/crm/playbooks/: ordering page page_size search
+  get /api/v1/crm/points-contact/: lead ordering page page_size search
+  get /api/v1/crm/points-contact/attribution/: lead
+  get /api/v1/crm/rapports/attribution/: debut fin
+  get /api/v1/crm/relance-etapes/: lead owner scope
+  get /api/v1/crm/relance-etapes/cadences-echues/: jours
+  get /api/v1/crm/relance-etapes/controle/: jours owner segment
+  get /api/v1/crm/relance-etapes/journal/: lead
+  get /api/v1/crm/relance-etapes/kpi-adherence/: jours
+  get /api/v1/crm/relance-etapes/suivi/: date_debut date_fin owner statut
+  get /api/v1/crm/relance-etapes/{id}/message/: cle langue
+  get /api/v1/crm/revues-compte/: ordering page page_size search
+  get /api/v1/crm/salles-vente/: ordering page page_size search
+  get /api/v1/crm/site-profiles/: client ordering page page_size search
+  get /api/v1/crm/tags/: ordering page page_size search
+  get /api/v1/crm/visites-externes/: appareil_id lead ordering page page_size point
+  get /api/v1/crm/visites-externes/appareils/: appareil_id ordering page page_size
+  get /api/v1/crm/vues-enregistrees/: ordering page search
+  post /api/v1/crm/vues-enregistrees/reorder/: ordering search
+  get /api/v1/crm/website-lead-payloads/: all ordering page page_size search
+  get /api/v1/custom-fields/custom-objects/{object_code}/records/: ordering page page_size search
+  get /api/v1/custom-fields/definitions/: module ordering page page_size search
+  get /api/v1/custom-fields/objects/: ordering page page_size search
+  get /api/v1/custom-fields/permissions-role/: field_def ordering page page_size search
+  get /api/v1/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/v1/entites/entites/: ordering page page_size search tree
+  get /api/v1/entites/entites/mes-entites/: ordering page page_size search
+  get /api/v1/entites/entites/{id}/historique/: ordering page page_size search
+  get /api/v1/facturation/avoirs/: facture ordering page page_size search
+  get /api/v1/facturation/factures-lignes/: ordering page page_size search
+  get /api/v1/facturation/factures/: entite ordering page page_size search
+  get /api/v1/facturation/factures/{id}/arrondi-caisse/: mode
+  get /api/v1/facturation/niveaux-relance/: ordering page page_size search
+  get /api/v1/facturation/notes-debit/: facture ordering page page_size search
+  get /api/v1/facturation/paiements/: ordering page page_size remisable
+  get /api/v1/facturation/paiements/attestations-ras-en-attente/: ordering page page_size
+  get /api/v1/facturation/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/v1/facturation/relances/: mes_relances
+  get /api/v1/ged/acls/: document folder niveau ordering page page_size
+  get /api/v1/ged/analytique/: date_debut date_fin
+  get /api/v1/ged/annotations/: ordering page page_size version
+  get /api/v1/ged/annotations/export-annote/: version
+  get /api/v1/ged/archivages-legaux/: document ordering page page_size
+  get /api/v1/ged/cabinets/: ordering page page_size search
+  get /api/v1/ged/champs-signature/: demande modele ordering page page_size
+  get /api/v1/ged/coffres/: ordering page page_size search
+  get /api/v1/ged/coffres/{id}/documents/: ordering search
+  get /api/v1/ged/demandes-approbation/: document en_attente ordering page page_size statut
+  get /api/v1/ged/demandes-disposition/: ordering page page_size statut
+  get /api/v1/ged/demandes-document/: folder ordering page page_size statut
+  get /api/v1/ged/demandes-document/checklist/: folder ordering
+  get /api/v1/ged/demandes-signature/: document ordering page page_size statut
+  get /api/v1/ged/demandes-signature/tableau-bord/: date_debut date_fin emetteur
+  get /api/v1/ged/depots-publics/: folder ordering page page_size
+  get /api/v1/ged/documents/: coffre contact folder ordering page page_size proprietaire search statut tag
+  get /api/v1/ged/documents/corbeille/: ordering page page_size search
+  get /api/v1/ged/documents/docqa/: k q
+  get /api/v1/ged/documents/recherche/: ordering page page_size q search
+  get /api/v1/ged/documents/semantique/: q
+  get /api/v1/ged/documents/{id}/comparer/: v1 v2
+  get /api/v1/ged/documents/{id}/demandes/: ordering search
+  get /api/v1/ged/documents/{id}/historique/: ordering search
+  get /api/v1/ged/documents/{id}/journal-acces/: ordering page page_size search
+  get /api/v1/ged/documents/{id}/permissions-effectives/: format
+  post /api/v1/ged/documents/{id}/scinder/: ordering search
+  get /api/v1/ged/documents/{id}/timeline/: ordering search
+  get /api/v1/ged/dossiers/: cabinet ordering page page_size parent search
+  get /api/v1/ged/dossiers/{id}/descendants/: ordering search
+  get /api/v1/ged/dossiers/{id}/permissions-effectives/: format
+  get /api/v1/ged/exigences-dossier/: ordering page page_size search
+  get /api/v1/ged/journal-acces/: document ordering page page_size type_acces utilisateur
+  get /api/v1/ged/legal-holds/: actif document ordering page page_size
+  get /api/v1/ged/liens/: document id model ordering page page_size search
+  get /api/v1/ged/lots-envoi/: ordering page page_size
+  get /api/v1/ged/mes-recents/: limit
+  get /api/v1/ged/modeles-document/: actif ordering page page_size search
+  get /api/v1/ged/partages/: actif document ordering page page_size
+  get /api/v1/ged/planifications/: document ordering page page_size
+  get /api/v1/ged/politiques-retention/: actif ordering page page_size search
+  get /api/v1/ged/politiques-retention/echus/: ordering search
+  get /api/v1/ged/quotas-stockage/: ordering page page_size search
+  get /api/v1/ged/regles-acl-metadonnee/: ordering page page_size
+  get /api/v1/ged/regles-approbation/: ordering page page_size
+  get /api/v1/ged/regles-dossier/: folder ordering page page_size
+  get /api/v1/ged/regles-dossier/{id}/executions/: ordering
+  get /api/v1/ged/roles-signataire/: ordering page page_size
+  get /api/v1/ged/routages-documentaires/: ordering page page_size
+  get /api/v1/ged/signataires-demande/: demande ordering page page_size
+  get /api/v1/ged/tag-assignments/: document ordering page page_size search tag
+  get /api/v1/ged/tags/: ordering page page_size parent search
+  get /api/v1/ged/tags/{id}/documents/: descendants ordering search
+  get /api/v1/ged/tampons-societe/: ordering page page_size
+  get /api/v1/ged/types-champ-signature/: actif ordering page page_size
+  get /api/v1/ged/validations-ocr/: en_attente ordering page page_size
+  get /api/v1/ged/versions/: document ordering page page_size
+  get /api/v1/ged/vues/: ordering page page_size
+  get /api/v1/identity/ip-allow-rules/: ordering page page_size search
+  get /api/v1/identity/login-banner/: username
+  get /api/v1/identity/network-policies/: ordering page page_size search
+  get /api/v1/identity/providers/: ordering page page_size search
+  get /api/v1/identity/scim/v2/{company_slug}/Users: filter
+  get /api/v1/identity/service-accounts/: ordering page page_size search
+  get /api/v1/identity/trusted-devices/: ordering page page_size search
+  get /api/v1/imports/mappings/: target
+  get /api/v1/installations/appels-commande/: chantier ligne ordering page page_size search
+  get /api/v1/installations/approbations-bcf/: bcf ordering page page_size search
+  get /api/v1/installations/bin-affectations/: bin ordering page page_size produit search
+  get /api/v1/installations/bin-locations/: archived emplacement ordering page page_size search
+  get /api/v1/installations/categories-stockage/: ordering page page_size search
+  get /api/v1/installations/chantiers/: annule art33 dossier_statut mine ordering page page_size parc regime search statut technicien type_installation
+  get /api/v1/installations/chantiers/a-facturer/: ordering page page_size search
+  get /api/v1/installations/chantiers/gantt/: ordering page page_size search
+  get /api/v1/installations/chantiers/regime-suggestion/: hors_reseau kw_ac kwc niveau type_installation
+  get /api/v1/installations/chantiers/{id}/cout/: tarif_jour
+  get /api/v1/installations/chantiers/{id}/historique/: ordering page page_size search
+  get /api/v1/installations/chantiers/{id}/releves/: ordering page page_size search
+  get /api/v1/installations/chantiers/{id}/reserves/: ordering page page_size search
+  post /api/v1/installations/chantiers/{id}/reserves/: ordering page page_size search
+  get /api/v1/installations/checklist-etapes/: ordering page page_size search template
+  get /api/v1/installations/checklist-templates/: ordering page page_size search
+  get /api/v1/installations/colis-lignes/: colis ordering page page_size search
+  get /api/v1/installations/colis/: installation ordering page page_size search statut
+  get /api/v1/installations/colis/{id}/etiquette/: symbology
+  get /api/v1/installations/commandes-cadre-lignes/: commande_cadre ordering page page_size search
+  get /api/v1/installations/commandes-cadre/: fournisseur ordering page page_size search statut
+  get /api/v1/installations/comptage-lignes/: ordering page page_size search session
+  get /api/v1/installations/consignes-securite/: ordering page page_size search
+  get /api/v1/installations/contrats-prix-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/v1/installations/contrats-prix-fournisseur/prix-convenu/: date fournisseur produit
+  get /api/v1/installations/contrats-prix-lignes/: contrat ordering page page_size search
+  get /api/v1/installations/controle-budgetaire/: categorie montant projet
+  get /api/v1/installations/controle-qualite-modeles/: kit ordering page page_size search
+  get /api/v1/installations/demandes-achat-lignes/: demande ordering page page_size search
+  get /api/v1/installations/demandes-achat/: ordering page page_size search
+  get /api/v1/installations/demandes-achat/{id}/chatter/historique/: ordering search
+  get /api/v1/installations/demandes-achat/{id}/etapes-approbation/: ordering page page_size search
+  get /api/v1/installations/demandes-transfert/: ordering page page_size search
+  get /api/v1/installations/dossiers-import/: fournisseur ordering page page_size search statut_douane
+  get /api/v1/installations/equipes/: actif ordering page page_size search
+  get /api/v1/installations/etapes-assemblage/: kit ordering page page_size search
+  get /api/v1/installations/etapes-chantier/: ordering page page_size search
+  get /api/v1/installations/fiche-intervention-champs/: ordering page page_size search template
+  get /api/v1/installations/fiche-intervention-templates/: ordering page page_size search
+  get /api/v1/installations/frais-import/: categorie dossier ordering page page_size search
+  get /api/v1/installations/geofence-alertes/: chantier intervention ordering page page_size search type_franchissement
+  get /api/v1/installations/gps-consentements/: ordering page page_size search technicien
+  get /api/v1/installations/interventions/: annulee date_from date_to export installation ordering page page_size priorite statut ticket type_intervention
+  get /api/v1/installations/interventions/calendrier/: date_from date_to ordering page page_size
+  get /api/v1/installations/interventions/conflits-affectation/: debut fin
+  get /api/v1/installations/interventions/ma-tournee/: date
+  get /api/v1/installations/interventions/nivellement-charge/: debut fin heures_par_jour
+  get /api/v1/installations/interventions/plan-de-charge/: debut fin heures_par_jour
+  get /api/v1/installations/interventions/planning-camionnettes/: capacite_jour debut fin
+  post /api/v1/installations/interventions/replanifier-en-masse/: simuler
+  get /api/v1/installations/interventions/suggestions-creation/: technicien type_installation type_intervention
+  get /api/v1/installations/interventions/taux-ponctualite/: debut fin technicien
+  get /api/v1/installations/interventions/{id}/historique/: ordering page page_size
+  get /api/v1/installations/interventions/{id}/memos/: ordering page page_size
+  get /api/v1/installations/interventions/{id}/reserves/: ordering page page_size
+  get /api/v1/installations/interventions/{id}/reverifications/: ordering page page_size
+  get /api/v1/installations/interventions/{id}/serials/: ordering page page_size
+  get /api/v1/installations/kit-composants/: kit ordering page page_size search
+  get /api/v1/installations/kits/: active ordering page page_size search
+  get /api/v1/installations/kits/{id}/composition-au/: date
+  get /api/v1/installations/kits/{id}/revisions/: ordering page page_size search
+  get /api/v1/installations/landed-cost-lignes/: dossier ordering page page_size search
+  get /api/v1/installations/livraison-lignes/: livraison ordering page page_size search
+  get /api/v1/installations/livraisons/: date_prevue depot installation mode_acheminement ordering page page_size search statut
+  get /api/v1/installations/livraisons/portail/: client ordering page page_size search
+  get /api/v1/installations/lots-prelevement/: ordering page page_size search statut
+  post /api/v1/installations/lots-prelevement/{id}/cocher-ligne/: ordering page page_size search
+  get /api/v1/installations/lots-prelevement/{id}/lignes/: ordering page page_size search
+  get /api/v1/installations/materiels-consignes/: fournisseur ordering page page_size search statut type_materiel
+  get /api/v1/installations/ordre-assemblage-lignes/: ordering ordre page page_size search
+  get /api/v1/installations/ordre-demontage-lignes/: ordering ordre page page_size search
+  get /api/v1/installations/ordres-assemblage/: date_prevue kit ordering page page_size responsable search statut
+  get /api/v1/installations/ordres-assemblage/atelier/: date_debut date_fin
+  post /api/v1/installations/ordres-assemblage/depuis-devis/: ordering page page_size search
+  get /api/v1/installations/ordres-assemblage/rapport-rebuts/: date_debut date_fin ordering page page_size search
+  get /api/v1/installations/ordres-assemblage/rapport-soustraitants/: ordering page page_size search
+  get /api/v1/installations/ordres-assemblage/{id}/controle-qualite/: ordering page page_size search
+  get /api/v1/installations/ordres-assemblage/{id}/etapes/: ordering page page_size search
+  get /api/v1/installations/ordres-assemblage/{id}/etiquette/: symbology
+  get /api/v1/installations/ordres-assemblage/{id}/historique/: ordering page page_size search
+  get /api/v1/installations/ordres-assemblage/{id}/series/: ordering page page_size search
+  get /api/v1/installations/ordres-demontage/: kit ordering page page_size search statut
+  get /api/v1/installations/pick-list-lignes/: ordering page page_size pick_list search
+  get /api/v1/installations/pick-lists/: installation ordering page page_size search statut
+  get /api/v1/installations/positions-techniciens/: intervention ordering page page_size search technicien
+  get /api/v1/installations/positions-techniciens/carte-live/: ordering page page_size search
+  get /api/v1/installations/preuves-livraison/: livraison ordering page page_size search
+  get /api/v1/installations/programme-budgets/: ordering page page_size projet search
+  get /api/v1/installations/programme-chantiers/: ordering page page_size projet search
+  get /api/v1/installations/programme-devis/: ordering page page_size projet search
+  get /api/v1/installations/programme-engagements/: budget ordering page page_size search
+  get /api/v1/installations/programme-taches/: assigne ordering page page_size parent projet search statut
+  get /api/v1/installations/programme-tickets/: ordering page page_size projet search
+  get /api/v1/installations/programmes/: client ordering page page_size search statut
+  get /api/v1/installations/putaways/: emplacement ordering page page_size produit search statut
+  get /api/v1/installations/receptions-non-facturees/: bon_commande lettre ordering page page_size search
+  get /api/v1/installations/recettes-commissioning/: installation ordering page page_size search
+  get /api/v1/installations/recettes-pompage/: installation ordering page page_size search
+  get /api/v1/installations/regles-approbation-achat/: ordering page page_size search
+  get /api/v1/installations/regles-rangement/: actif ordering page page_size produit search
+  get /api/v1/installations/regles-reappro/: active emplacement_cible ordering page page_size produit search
+  get /api/v1/installations/regles-reappro/propositions/: ordering page page_size search
+  get /api/v1/installations/retour-livraison-lignes/: ordering page page_size retour search
+  get /api/v1/installations/retour-materiel-lignes/: ordering page page_size retour search
+  get /api/v1/installations/retours-livraison/: livraison ordering page page_size search statut
+  get /api/v1/installations/retours-materiel/: installation ordering page page_size search statut
+  get /api/v1/installations/series-entrepot/: ordering page page_size search
+  get /api/v1/installations/sessions-comptage/: classe_abc emplacement ordering page page_size search statut
+  get /api/v1/installations/seuils-approbation-bcf/: ordering page page_size search
+  get /api/v1/installations/shotlist-slots/: ordering page page_size phase search
+  get /api/v1/installations/sous-traitants/: actif metier search
+  get /api/v1/installations/tournee-livraison/: depart_lat depart_lng jour
+  get /api/v1/installations/transporteurs/: active ordering page page_size search type_transporteur
+  get /api/v1/installations/types-intervention/: ordering page page_size search
+  get /api/v1/monitoring/cleanings/: installation ordering page page_size search
+  get /api/v1/monitoring/configs/: installation ordering page page_size search
+  get /api/v1/monitoring/configs/attestation-carbone-client-pdf/: client since until
+  get /api/v1/monitoring/configs/benchmark/: window_days
+  get /api/v1/monitoring/configs/client-portal/: client
+  get /api/v1/monitoring/configs/co2-fleet/: since until
+  get /api/v1/monitoring/configs/fleet/: window_days
+  get /api/v1/monitoring/configs/providers/: ordering page page_size search
+  get /api/v1/monitoring/configs/{id}/attestation-carbone-pdf/: since until
+  get /api/v1/monitoring/configs/{id}/co2/: since until
+  get /api/v1/monitoring/configs/{id}/history/: export months
+  get /api/v1/monitoring/configs/{id}/om-metrics/: window_days
+  get /api/v1/monitoring/configs/{id}/om-report/: format period
+  get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
+  get /api/v1/monitoring/configs/{id}/soiling/: window_days
+  get /api/v1/monitoring/readings/: installation ordering page page_size search
+  get /api/v1/monitoring/settings/: ordering search
+  get /api/v1/monitoring/warranties/: installation ordering page page_size search
+  get /api/v1/monitoring/warranties/{id}/curve/: drift_threshold_pct years
+  get /api/v1/monitoring/warranties/{id}/status/: year
+  get /api/v1/notifications/annonces/: active epinglee ordering page page_size search
+  get /api/v1/notifications/calendar/check/: date
+  get /api/v1/notifications/holidays/: ordering page page_size search year
+  get /api/v1/notifications/messages-accueil/: ordering page page_size search
+  get /api/v1/notifications/notifications/: ordering page page_size search unread
+  get /api/v1/notifications/routing-rules/: enabled event_type ordering page page_size search
+  get /api/v1/notifications/whatsapp-templates/: groupe ordering page page_size search statut_approbation
+  get /api/v1/offlinesync/operations/: module ordering page page_size search statut
+  get /api/v1/outillage/kit-items/: kit ordering page page_size search
+  get /api/v1/outillage/kits/: ordering page page_size search
+  get /api/v1/outillage/outils/: a_calibrer emplacement ordering page page_size search statut
+  get /api/v1/parametres/approbations/: action_type ordering page page_size search
+  get /api/v1/parametres/audit/: date_debut date_fin field limit offset section user
+  get /api/v1/parametres/cadence-relance/: actif cadence ordering page page_size search
+  get /api/v1/parametres/conditions-paiement/: actif ordering page page_size search
+  post /api/v1/parametres/config-import/: mode
+  get /api/v1/parametres/email-templates/: ordering page page_size search
+  get /api/v1/parametres/fetes-mobiles/: annee
+  get /api/v1/parametres/gabarits-document/: ordering page page_size search
+  get /api/v1/parametres/gabarits-document/{code}/rendre/: cible_id
+  get /api/v1/parametres/realisations/: actif ordering page page_size search
+  get /api/v1/parametres/statuts/: domaine ordering page page_size search
+  get /api/v1/parametres/statuts/effective/: domaine
+  get /api/v1/parametres/tarification/productible/: azimuth lat lon peakpower tilt
+  get /api/v1/parametres/taux-tva/: actif ordering page page_size search
+  get /api/v1/parametres/traductions/: locale ordering page page_size search
+  get /api/v1/parametres/unites-mesure/: actif ordering page page_size search
+  get /api/v1/portail/acceptations-devis-portail/: ordering page page_size
+  get /api/v1/portail/client/ma-consommation/: chantier
+  get /api/v1/portail/client/recherche/: q
+  get /api/v1/portail/client/tableau-de-bord/: chantier
+  get /api/v1/portail/comptes-portail/: ordering page page_size
+  get /api/v1/portail/demandes-ticket-portail/: ordering page page_size
+  get /api/v1/portail/documents-client-portail/: ordering page page_size
+  get /api/v1/portail/jalons-chantier-portail/: ordering page page_size
+  get /api/v1/portail/mes-commissions/: debut fin
+  get /api/v1/portail/mes-commissions/pdf/: debut fin
+  get /api/v1/portail/paiements-facture-portail/: ordering page page_size statut
+  get /api/v1/publicapi/keys/: ordering page page_size search
+  get /api/v1/publicapi/webhooks/: ordering page page_size search
+  get /api/v1/publicapi/webhooks/{id}/deliveries/: ordering page page_size search
+  get /api/v1/records/activities/: id model open ordering page page_size personnelle search
+  get /api/v1/records/activity-types/: ordering page page_size search
+  get /api/v1/records/attachments-count/: id model
+  get /api/v1/records/attachments/: id model ordering page page_size search
+  get /api/v1/records/attachments/all/: mime mime_like model page phase since
+  get /api/v1/records/comments/: id model ordering page page_size resolved search
+  get /api/v1/records/followers/: id mine model ordering page page_size search
+  get /api/v1/records/tagged-items/: id model ordering page page_size search
+  get /api/v1/records/tags/: ordering page page_size q search
+  get /api/v1/reporting/approbations-en-attente/: categorie priorite source trier
+  get /api/v1/reporting/archive/chantier/{id}/: export
+  get /api/v1/reporting/archive/client/{id}/: export
+  get /api/v1/reporting/calendar.ics: token
+  get /api/v1/reporting/calendar/: assignee from to types
+  get /api/v1/reporting/classeurs/: ordering page page_size search
+  get /api/v1/reporting/commercial/dashboard/: from to
+  get /api/v1/reporting/commercial/win-loss-by-source/: from to
+  get /api/v1/reporting/dashboard-config/: ordering page page_size search
+  get /api/v1/reporting/dashboard/: compare export from to
+  get /api/v1/reporting/envois-rapports/: ordering page page_size saved_report search statut
+  get /api/v1/reporting/geo/: statuts types
+  get /api/v1/reporting/insights/audit-log/: limit since type user
+  get /api/v1/reporting/insights/cf-group-by/: code module
+  get /api/v1/reporting/insights/cohorts/: from group_by to
+  get /api/v1/reporting/insights/commissions/: from to
+  get /api/v1/reporting/insights/profitability/: from segment to
+  get /api/v1/reporting/insights/recurring-revenue/: export
+  get /api/v1/reporting/insights/sales-leaderboard/: from to
+  get /api/v1/reporting/insights/sav-sla/: export from priorite technicien to
+  get /api/v1/reporting/insights/sav-taux-attache/: date_debut date_fin
+  get /api/v1/reporting/insights/sav-tickets-pivot/: columns export rows
+  get /api/v1/reporting/insights/technicien-scorecard/: export from technicien to
+  get /api/v1/reporting/kpi-alertes/: ordering page page_size search
+  get /api/v1/reporting/rapport-definitions/: ordering page page_size search
+  get /api/v1/reporting/rapport-definitions/{id}/export/: format
+  get /api/v1/reporting/reports/field/: equipe export from technicien to
+  get /api/v1/reporting/reports/kpi-federes/: vue
+  get /api/v1/reporting/reports/sales/: compare export from to
+  get /api/v1/reporting/reports/service/: export from to
+  get /api/v1/reporting/reports/stock/: export from to
+  get /api/v1/reporting/saved-reports/: ordering page page_size search
+  get /api/v1/reporting/search/: q
+  get /api/v1/reporting/vitals/p75/: route
+  get /api/v1/roles/: ordering page page_size search
+  get /api/v1/roles/revue-acces/: dormant_days format
+  get /api/v1/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
+  get /api/v1/sav/categories-equipement/: ordering page page_size search
+  get /api/v1/sav/categories-ticket/: actif ordering page page_size search
+  get /api/v1/sav/causes-defaillance/: archived ordering page page_size search
+  get /api/v1/sav/checklist-templates/: ordering page page_size search
+  get /api/v1/sav/compatibilites-piece/: ordering page page_size produit_equipement search
+  get /api/v1/sav/contrats-maintenance/: a_renouveler due ordering page page_size search
+  get /api/v1/sav/contrats-maintenance/tournee/: lat lng
+  get /api/v1/sav/contrats-maintenance/{id}/rapport-pdf/: date
+  get /api/v1/sav/equipements/: categorie client garantie installation marque ordering page page_size produit rebut search statut
+  get /api/v1/sav/equipements/etiquettes/: ids public symbology
+  get /api/v1/sav/equipements/registre-garanties/: jours
+  get /api/v1/sav/equipements/{id}/disponibilite/: debut fin
+  get /api/v1/sav/equipements/{id}/downtime/: ordering page page_size search
+  get /api/v1/sav/equipements/{id}/releves-compteur/: ordering page page_size search
+  get /api/v1/sav/equipes-maintenance/: actif ordering page page_size search
+  get /api/v1/sav/insights/sav-fcr/: date_debut date_fin export
+  get /api/v1/sav/insights/sav-fiabilite/: limit
+  get /api/v1/sav/insights/sav-pannes/: date_debut date_fin group_by
+  get /api/v1/sav/insights/sav-parts-forecast/: months
+  get /api/v1/sav/insights/sav-performance-agent/: date_debut date_fin export
+  get /api/v1/sav/kb-articles/: categorie ordering page page_size produit search
+  get /api/v1/sav/problemes/: ordering page page_size search statut
+  get /api/v1/sav/problemes/regroupements-suggeres/: fenetre_jours seuil
+  get /api/v1/sav/remedes-defaillance/: archived ordering page page_size search
+  get /api/v1/sav/reponses-type/: archived canal ordering page page_size search ticket
+  get /api/v1/sav/sla-settings/: ordering page page_size search
+  get /api/v1/sav/tickets/: annule categorie client equipe equipement installation ordering ouvert page page_size priorite search statut technicien type
+  get /api/v1/sav/tickets/{id}/activites/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/checklist/: ordering page page_size search
+  post /api/v1/sav/tickets/{id}/checklist/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/emails/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/historique/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/pieces-retirees/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/pieces/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/prets-equipement/: ordering page page_size search
+  get /api/v1/sav/tickets/{id}/similaires/: limit
+  get /api/v1/sav/warranty-claims/: equipement ordering page page_size search statut ticket
+  get /api/v1/sav/worksheet-modeles/: ordering page page_size search
+  get /api/v1/statuspage/historique-statut/: ordering search
+  get /api/v1/statuspage/public/incidents/: ordering page page_size search
+  get /api/v1/stock/accords-rfa-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/v1/stock/achats-parametres/checklist-cloture/: periode seuil_jours
+  get /api/v1/stock/acomptes-fournisseur/: bon_commande ordering page page_size
+  get /api/v1/stock/alertes-rappel/: ordering page page_size produit search statut
+  get /api/v1/stock/avoirs-fournisseur/: fournisseur ordering page page_size search
+  get /api/v1/stock/blocages-qualite/: bin ordering page page_size produit search statut
+  get /api/v1/stock/bons-commande-fournisseur/: ordering page page_size search
+  get /api/v1/stock/bons-commande-fournisseur/achats-hors-contrat/: date_debut date_fin fournisseur
+  get /api/v1/stock/bons-commande-fournisseur/bcf-similaires/: fournisseur produits
+  get /api/v1/stock/bons-commande-fournisseur/en-retard/: ordering page page_size search
+  get /api/v1/stock/bons-commande-fournisseur/historique-prix/: fournisseur produit
+  get /api/v1/stock/budgets-departement/: actif annee mois ordering page page_size search
+  get /api/v1/stock/budgets-departement/disponible/: montant
+  get /api/v1/stock/casiers-hazmat/: bin classe_danger ordering page page_size search
+  get /api/v1/stock/casiers/etiquettes-pdf/: emplacement sortie symbology
+  get /api/v1/stock/catalogue-achat/: categorie fournisseur ordering page page_size q recent search
+  get /api/v1/stock/catalogue-b2b/: categorie client limite marque offset q
+  get /api/v1/stock/categories-fournisseur/: ordering page page_size
+  get /api/v1/stock/categories/: ordering page page_size search
+  get /api/v1/stock/conditionnements/: ordering page page_size produit search
+  get /api/v1/stock/consignations/: client ordering page page_size search statut
+  get /api/v1/stock/consignations/export-xlsx/: statut
+  get /api/v1/stock/contacts-fournisseur/: fournisseur ordering page page_size
+  get /api/v1/stock/documents-conformite-fournisseur/: fournisseur ordering page page_size
+  get /api/v1/stock/documents-fournisseur/: dossier ordering page page_size search type_document
+  get /api/v1/stock/dossiers-onboarding-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/v1/stock/emplacements/: ordering page page_size search tiers_nom type_proprietaire
+  get /api/v1/stock/emplacements/{id}/etiquettes-kanban/: ids sortie symbology
+  get /api/v1/stock/engagements-budget/: budget demande ordering page page_size search statut
+  get /api/v1/stock/entrepot/alertes-surcapacite/: emplacement seuil
+  get /api/v1/stock/entrepot/cockpit/: emplacement horizon_peremption retard_heures
+  get /api/v1/stock/entrepot/pertes/: debut fin
+  get /api/v1/stock/entrepot/productivite/: debut fin
+  get /api/v1/stock/expeditions/: ordering page page_size search statut
+  get /api/v1/stock/expeditions/tarifs/: destination unite_logistique
+  get /api/v1/stock/factures-fournisseur/: fournisseur ordering page page_size search statut
+  get /api/v1/stock/factures-fournisseur/en-exception/: ordering page page_size search
+  get /api/v1/stock/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
+  get /api/v1/stock/factures-fournisseur/suggestions-bcf/: fournisseur montant
+  post /api/v1/stock/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/v1/stock/factures-fournisseur/{id}/paiements/: ordering page page_size search
+  get /api/v1/stock/fiches-techniques/: ordering page page_size produit
+  get /api/v1/stock/fournisseurs/: categorie ordering page page_size search show_archived
+  get /api/v1/stock/fournisseurs/documents-expirants/: within
+  get /api/v1/stock/fournisseurs/export-conformite/: debut export fin
+  get /api/v1/stock/fournisseurs/{id}/delai-mesure/: fenetre_mois produit seuil_ecart_pct
+  get /api/v1/stock/fournisseurs/{id}/otif/: fenetre_mois
+  get /api/v1/stock/fournisseurs/{id}/portail-tokens/: ordering page page_size search
+  get /api/v1/stock/incidents-qualite-fournisseur/: fournisseur gravite ordering page page_size produit resolu search
+  get /api/v1/stock/inventaire-sessions/: ordering page page_size search
+  get /api/v1/stock/inventaires-annuels/: ordering page page_size search
+  get /api/v1/stock/kits/: avec_disponibilite ordering page page_size search
+  get /api/v1/stock/kits/{id}/: avec_disponibilite
+  get /api/v1/stock/kits/{id}/composition-au/: date
+  get /api/v1/stock/kits/{id}/exploser/: quantite
+  get /api/v1/stock/kits/{id}/revisions/: ordering page page_size search
+  get /api/v1/stock/lots-entrepot/: avec_stock ordering page page_size produit search
+  get /api/v1/stock/lots-entrepot/fefo/: produit quantite
+  get /api/v1/stock/marques/: ordering page page_size search
+  get /api/v1/stock/modeles-bcf/: ordering page page_size search
+  get /api/v1/stock/mouvements-rebut/: motif ordering page page_size produit search
+  get /api/v1/stock/mouvements/: date_max date_min ordering page page_size produit search type_mouvement
+  get /api/v1/stock/mouvements/agregation/: date_max date_min export group_by
+  post /api/v1/stock/mouvements/export-xlsx/: date_max date_min produit type_mouvement
+  get /api/v1/stock/nomenclatures-code-barres/: ordering page page_size search
+  get /api/v1/stock/paiements-fournisseur/: facture ordering page page_size
+  get /api/v1/stock/paiements-fournisseur/ras-tva/export/: date_debut date_fin
+  get /api/v1/stock/plans-chargement/: ordering page page_size search statut
+  get /api/v1/stock/plans-comptage-tournant/: ordering page page_size search
+  get /api/v1/stock/plans-echantillonnage/: ordering page page_size search
+  get /api/v1/stock/portails-tiers/: ordering page page_size search tiers_nom
+  get /api/v1/stock/prix-fournisseurs/: ordering page page_size produit
+  get /api/v1/stock/prix-fournisseurs/effectif/: fournisseur produit quantite
+  get /api/v1/stock/prix-fournisseurs/export-xlsx/: fournisseur
+  get /api/v1/stock/produits/: categorie ordering page page_size search show_archived
+  get /api/v1/stock/produits/analyse-achats/: date_debut date_fin nb_mois
+  get /api/v1/stock/produits/analyse-achats/export-xlsx/: date_debut date_fin nb_mois
+  get /api/v1/stock/produits/analyse-achats/pdf/: date_debut date_fin nb_mois
+  get /api/v1/stock/produits/etiquettes-prix/: categorie ids largeur sortie zone
+  get /api/v1/stock/produits/etiquettes/: ids sortie symbology
+  get /api/v1/stock/produits/expirant-bientot/: jours
+  get /api/v1/stock/produits/previsions-reappro/: nb_mois
+  get /api/v1/stock/produits/rapport-pertes/: date_debut date_fin
+  get /api/v1/stock/produits/resolve/: code
+  get /api/v1/stock/produits/rotation/: jours
+  get /api/v1/stock/produits/tracer/: lot serie
+  get /api/v1/stock/produits/valorisation-a-date/: date
+  get /api/v1/stock/produits/{id}/comparer-tco/: cout_rupture_jour fenetre_mois
+  get /api/v1/stock/produits/{id}/historique-prix/: fournisseur
+  get /api/v1/stock/produits/{id}/plan-picking/: quantite strategie
+  get /api/v1/stock/produits/{id}/prix-fournisseurs/: ordering page page_size search
+  get /api/v1/stock/profils-saisonniers/: actif categorie ordering page page_size produit search
+  get /api/v1/stock/quais/: actif ordering page page_size search type_quai
+  get /api/v1/stock/quais/planning/: date quai vue
+  get /api/v1/stock/receptions-fournisseur/: bon_commande ordering page page_size search statut
+  get /api/v1/stock/receptions-fournisseur/scan-gs1/: code
+  get /api/v1/stock/receptions-fournisseur/{id}/etiquettes/: sortie symbology
+  get /api/v1/stock/regles-code-barres/: ordering page page_size search
+  get /api/v1/stock/rendez-vous-transporteur/: date ordering page page_size quai search statut
+  get /api/v1/stock/reslotting-suggestions/: debut fin
+  get /api/v1/stock/retours-client/: client ordering page page_size search statut
+  get /api/v1/stock/retours-fournisseur/: fournisseur ordering page page_size search
+  get /api/v1/stock/revalorisations-stock/: ordering page page_size produit search
+  get /api/v1/stock/scanner/resoudre/: code
+  get /api/v1/stock/scanner/retour-fournisseur/: code quantite
+  get /api/v1/stock/seuils-reappro-casier/: bin ordering page page_size search
+  get /api/v1/stock/simuler-capacite/: emplacement produit quantite zone
+  get /api/v1/stock/tableau-bord-achats/: debut fin
+  get /api/v1/stock/tache-retour/: limite zone
+  get /api/v1/stock/taches-reappro-interne/: ordering page page_size search statut
+  get /api/v1/stock/tolerances-rapprochement-categorie/: ordering page page_size search
+  get /api/v1/stock/transferts/: ordering page page_size search statut
+  get /api/v1/stock/unites-logistiques/: ordering page page_size search statut type_unite
+  post /api/v1/stock/unites-logistiques/{id}/deplacer/: bin_destination
+  get /api/v1/stock/unites-logistiques/{id}/etiquette-pdf/: sortie symbology
+  get /api/v1/stock/unites-logistiques/{id}/export-asn/: telecharger
+  get /api/v1/stock/vagues-picking/: ordering page page_size search statut
+  get /api/v1/tiers/tiers/: ordering page page_size search
+  get /api/v1/tiers/tiers/verifier-doublon/: email ice
+  get /api/v1/trash/corbeille/: depuis jusqua ordering page page_size restaures search type
+  get /api/v1/trash/corbeille/export-xlsx/: depuis jusqua restaures type
+  get /api/v1/users/: ordering page page_size search
+  get /api/v1/users/avatar-image/: key
+  get /api/v1/uxviews/favoris/: ordering page page_size search
+  post /api/v1/uxviews/favoris/{id}/reordonner/: ordering page page_size search
+  get /api/v1/uxviews/saved-views/: ecran ordering page page_size search
+  get /api/v1/uxviews/saved-views/toutes-company/: ordering page page_size search
+  get /api/v1/ventes/attestations-conformite/: chantier ordering page page_size search statut
+  get /api/v1/ventes/attestations-re/: chantier ordering page page_size search statut
+  get /api/v1/ventes/avoirs/: facture ordering page page_size search
+  get /api/v1/ventes/bons-commande/: ordering page page_size search
+  get /api/v1/ventes/calendrier-reglementaire/: seuil statut validite
+  get /api/v1/ventes/clients/{client_id}/credit-warning/: montant_ttc
+  get /api/v1/ventes/courbes-iv/: defaut ordering page page_size recette search
+  get /api/v1/ventes/dashboard/: end month start
+  get /api/v1/ventes/devis-lignes/: ordering page page_size search
+  get /api/v1/ventes/devis/: concevable entite lead ordering page page_size search statut
+  get /api/v1/ventes/devis/prefill-site/: client
+  get /api/v1/ventes/devis/{id}/declaration-raccordement/: format regime
+  post /api/v1/ventes/devis/{id}/dupliquer-variante/: ordering page page_size search
+  get /api/v1/ventes/devis/{id}/historique-configuration/: a b
+  delete /api/v1/ventes/devis/{id}/overrides/: chemin
+  get /api/v1/ventes/devis/{id}/overrides/: chemin
+  patch /api/v1/ventes/devis/{id}/overrides/: chemin
+  get /api/v1/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
+  get /api/v1/ventes/devis/{id}/schema-unifilaire/: format
+  get /api/v1/ventes/dossiers-checklist/: dossier ordering page page_size search
+  get /api/v1/ventes/dossiers-echanges/: dossier ordering page page_size search type_echange
+  get /api/v1/ventes/dossiers-reglementaires/: devis ordering page page_size search statut
+  get /api/v1/ventes/etats/analyse-facturation/: debut end export fin month quarter start
+  get /api/v1/ventes/export-comptable/: end fmt layout month quarter start
+  get /api/v1/ventes/factures-lignes/: ordering page page_size search
+  get /api/v1/ventes/factures/: entite ordering page page_size search
+  get /api/v1/ventes/factures/{facture_id}/lettre-relance-premium/: niveau
+  get /api/v1/ventes/factures/{id}/arrondi-caisse/: mode
+  get /api/v1/ventes/insights/cash-flow/: mode
+  get /api/v1/ventes/journal-ventes/: end month quarter start
+  get /api/v1/ventes/listes-prix/: ordering page page_size search
+  get /api/v1/ventes/mandats-paiement/: client ordering page page_size search
+  get /api/v1/ventes/niveaux-relance/: ordering page page_size search
+  get /api/v1/ventes/notes-debit/: facture ordering page page_size search
+  get /api/v1/ventes/packs-asbuilt/: chantier ordering page page_size search
+  get /api/v1/ventes/paiements/: ordering page page_size remisable
+  get /api/v1/ventes/paiements/attestations-ras-en-attente/: ordering page page_size
+  get /api/v1/ventes/paiements/avances-non-affectees/: client ordering page page_size
+  get /api/v1/ventes/parametrages-relance-client/: ordering page page_size search
+  get /api/v1/ventes/plans-commission/: actif ordering owner page page_size search
+  get /api/v1/ventes/plans-commission/resoudre/: owner
+  get /api/v1/ventes/presets/: ordering search
+  get /api/v1/ventes/prix-applicable/: client panier produit quantite
+  get /api/v1/ventes/promesses-paiement/: ordering page page_size search
+  get /api/v1/ventes/proposal/{token}/pdf/: variante
+  get /api/v1/ventes/recettes-mes/: chantier devis ordering page page_size resultat search
+  get /api/v1/ventes/regularisations-8221/: devis ordering page page_size search statut
+  get /api/v1/ventes/relances/: mes_relances
+  get /api/v1/ventes/remises-encaissement/: ordering page page_size search technicien
+  post /api/v1/ventes/schema-unifilaire/: format
+  get /api/v1/ventes/subventions/: devis ordering page page_size programme search statut
+  get /api/v1/ventes/tests-pr-reception/: chantier ordering page page_size search verdict
+  get /api/v1/visites/leads-recherche/: limit q
+  get /api/v1/visites/ma-journee/: tous
+  get /api/v1/visites/visites/: mine ordering page page_size search
 components:
 - AbandonMotifEnum
 - AcceptationDevisPortail

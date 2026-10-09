@@ -249,6 +249,7 @@ def build_inventory(schema_path: Path) -> str:
     security = sorted((doc.get("components") or {}).get("securitySchemes") or {})
 
     operations = []
+    requetes = []
     for path in sorted(paths):
         item = paths[path] or {}
         for method in sorted(item):
@@ -256,6 +257,9 @@ def build_inventory(schema_path: Path) -> str:
                 continue
             op = item[method] or {}
             operations.append(f"- {method} {path} -> {op.get('operationId')}")
+            noms = _noms_requete(doc, item.get("parameters"), op.get("parameters"))
+            if noms:
+                requetes.append(f"  {method} {path}: {' '.join(noms)}")
 
     info = doc.get("info") or {}
     header = [
@@ -276,9 +280,39 @@ def build_inventory(schema_path: Path) -> str:
     ]
     header += [f"- {name}" for name in security]
     header.append("operations:")
-    body = operations
+    # ENF (garde check_frontend_query_params.py) — les parametres `in: query`
+    # DECLARES par operation (seulement celles qui en ont). Lignes indentees,
+    # sans tiret : ni `_operation_lines` ni `_component_lines` ne les lisent.
+    body = operations + [QUERY_SECTION] + requetes
     tail = ["components:"] + [f"- {name}" for name in sorted(schemas)]
     return "\n".join(header + body + tail) + "\n"
+
+
+QUERY_SECTION = "query_params:"
+
+
+def _noms_requete(doc: dict, *listes) -> list[str]:
+    """Noms tries des parametres `in: query` (niveau chemin + operation),
+    references `#/components/parameters/X` resolues."""
+    composants = (doc.get("components") or {}).get("parameters") or {}
+    noms = set()
+    for liste in listes:
+        for param in liste or ():
+            if not isinstance(param, dict):
+                continue
+            ref = param.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/parameters/"):
+                param = composants.get(ref.rsplit("/", 1)[-1]) or {}
+            if param.get("in") == "query" and param.get("name"):
+                noms.add(str(param["name"]))
+    return sorted(noms)
+
+
+def query_lines(text: str) -> set[str]:
+    """Lignes `  <methode> <chemin>: <noms>` de la section `query_params:`."""
+    _, _, reste = text.partition("\n" + QUERY_SECTION + "\n")
+    reste, _, _ = reste.partition("\ncomponents:\n")
+    return {ln for ln in reste.splitlines() if ln.startswith("  ") and ": " in ln}
 
 
 def _operation_lines(text: str) -> set[str]:
@@ -307,11 +341,14 @@ def derive_instantane(previous: str, inventory: str) -> dict | None:
         return None
     anciennes, nouvelles = _operation_lines(previous), _operation_lines(inventory)
     anciens, nouveaux = _component_lines(previous), _component_lines(inventory)
+    q_anciens, q_nouveaux = query_lines(previous), query_lines(inventory)
     return {
         "operations_manquantes": sorted(nouvelles - anciennes),
         "operations_en_trop": sorted(anciennes - nouvelles),
         "composants_manquants": sorted(nouveaux - anciens),
         "composants_en_trop": sorted(anciens - nouveaux),
+        "parametres_manquants": sorted(q_nouveaux - q_anciens),
+        "parametres_en_trop": sorted(q_anciens - q_nouveaux),
     }
 
 
@@ -327,12 +364,18 @@ def rapporter_derive(derive: dict, snapshot_rel: str) -> None:
           f"de l'instantane")
     print(f"  -{len(en_trop)} operation(s) presente(s) dans l'instantane et "
           f"DISPARUE(s) du code")
+    q_manquants = derive.get("parametres_manquants", [])
+    q_en_trop = derive.get("parametres_en_trop", [])
     if comp_manquants or comp_en_trop:
         print(f"  composants : +{len(comp_manquants)} / -{len(comp_en_trop)}")
+    if q_manquants or q_en_trop:
+        print(f"  parametres de requete : +{len(q_manquants)} / -{len(q_en_trop)} ligne(s)")
     for titre, lignes in (("ABSENTES de l'instantane", manquantes),
                           ("DISPARUES du code", en_trop),
                           ("composants absents", comp_manquants),
-                          ("composants disparus", comp_en_trop)):
+                          ("composants disparus", comp_en_trop),
+                          ("parametres de requete du code", q_manquants),
+                          ("parametres de requete de l'instantane", q_en_trop)):
         if not lignes:
             continue
         print(f"\n  {titre} :")
@@ -340,7 +383,8 @@ def rapporter_derive(derive: dict, snapshot_rel: str) -> None:
             print(f"    {ligne}")
         if len(lignes) > 40:
             print(f"    ... et {len(lignes) - 40} autre(s).")
-    if not (manquantes or en_trop or comp_manquants or comp_en_trop):
+    if not (manquantes or en_trop or comp_manquants or comp_en_trop
+            or q_manquants or q_en_trop):
         print("\n  (aucune operation ni composant ne differe : seul l'en-tete de "
               "l'instantane — compteurs, titre, version — a bouge.)")
     # WOW-CI3 — diagnostic : une derive PUREMENT `api/v1/` ne vient pas d'une
