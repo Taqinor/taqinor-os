@@ -356,8 +356,7 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
    code. Self-merge `dev` → `main` **exactly once**. The run ENDS at the merge — no deploy, no server verification (Deploys rule: Reda deploys in 2 min;
    the server's auto-deploy also fires by itself). When branch
    protection requires it, ONE batch PR used purely as the CI-gated merge vehicle counts as that
-   single self-merge. If the push is rejected because `main` advanced, repeat the sync-safe
-   integrate → CI → merge — never force.
+   single self-merge. **Merge queue (fondateur, 09/10/2026) :** `main` est derrière une merge queue GitHub — `gh pr merge --auto --merge` met la PR dans la file, qui la reconstruit sur `main` + les PR devant elle et la merge seule ; plus JAMAIS de boucle `gh pr update-branch` ni d'attente « à jour avec main ». Si la file retire la PR (checks rouges sur le groupe), corriger et re-mettre en file — never force.
 
 **Engine.** Prefer a dynamic `Workflow` `pipeline()` (build → review → local-test → fold as
 independent stages with no barriers; concurrency auto-caps at ~8 = native work-stealing). Fall
@@ -541,8 +540,8 @@ plan run works"** EXCEPT:
 - Local tests use `DB_NAME=erp_<domain>` (never the shared test DB); at most 2-3 sessions run
   heavy local docker on this box concurrently — further sessions run in the cloud and lean on the
   ~6-min CI gate instead.
-- It merges its own `dev-<domain>` branch to `main` independently (update-branch → ~6-min CI →
-  auto-merge). If `docs/CODEMAP.md` conflicts at update time (two sessions both moved the
+- It merges its own `dev-<domain>` branch to `main` independently (`gh pr merge --auto --merge` → merge queue → ~6-min CI sur le groupe →
+  merge automatique ; pas de boucle update-branch). If `docs/CODEMAP.md` conflicts at update time (two sessions both moved the
   STRUCTURE fingerprint), take the merged tree and re-run `codemap_fingerprint.py --write` —
   30 seconds, mechanical. Shared frontend files (router/nav/api): append-only additions; a
   conflict there = keep BOTH sides' additions.
