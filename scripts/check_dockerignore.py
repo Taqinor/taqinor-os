@@ -9,7 +9,7 @@ imbriques, donc tous embarques. Cette garde signale tout motif racine-seul de TO
   - motif ancre `**/...` ;
   - motif volontairement racine, ecrit `/motif` ;
   - negation `!...` ;
-  - ligne de la base decroissante `scripts/dockerignore_racine_allow.txt`
+  - ligne de la base decroissante `scripts/exceptions_permanentes.yml (dockerignore_racine)`
     (format `chemin/.dockerignore::motif`, cliquet : une ligne qui ne correspond plus a
     aucun motif racine-seul est elle-meme une erreur — la base ne fait que SE VIDER).
 
@@ -21,7 +21,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-ALLOW = 'scripts/dockerignore_racine_allow.txt'
+import _exceptions_permanentes  # ENF14 — exceptions permanentes signées
+
+ALLOW = 'scripts/exceptions_permanentes.yml'
 
 
 def motifs_racine_seul(texte: str) -> list[tuple[int, str]]:
@@ -50,11 +52,7 @@ def fichiers_dockerignore(racine: Path) -> list[Path]:
 
 
 def lire_allow(racine: Path) -> set[str]:
-    p = racine / ALLOW
-    if not p.is_file():
-        return set()
-    return {ligne.strip() for ligne in p.read_text(encoding='utf-8').splitlines()
-            if ligne.strip() and not ligne.lstrip().startswith('#')}
+    return _exceptions_permanentes.charger('dockerignore_racine', racine / ALLOW)
 
 
 def verifier(racine: Path) -> list[str]:

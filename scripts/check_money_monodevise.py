@@ -7,8 +7,18 @@ devise voyagent ensemble" (amount and currency travel together, see
 ``docs/money-convention.md``) lives only in the unstated assumption that
 everything is MAD.
 
-This is v1 (YDATA22): a pure ADVISORY sweep, never a hard CI gate — the plan
-task is explicit ("v1 : liste ... pas de blocage"). It:
+ENF13 — the sweep is now a BLOCKING gate (founder rule 09/10/2026): the
+mono-MAD hypothesis is documented, but two real invariants of
+``docs/money-convention.md`` fail the build on any violation:
+
+* ``DEVISE_MONTANT`` — a model holding a foreign-currency amount (a field named
+  ``*_devise``) must carry its currency: a ``devise``/``devise_defaut``/
+  ``currency`` field, or a ``devise`` accessor (property/method) deriving it
+  from its parent document. "montant + devise voyagent ensemble".
+* ``DEVISE_DEFAUT`` — a ``devise`` field's default can only be MAD (or blank =
+  inherit): the system is mono-MAD, a silent non-MAD default would corrupt sums.
+
+Originally (v1, YDATA22) it was a pure advisory listing. It:
 
 1. Walks every Django model class under ``backend/django_core/apps/*/models*.py``
    (plain ``models.py``, split ``models_*.py`` files, and ``models/*.py``
@@ -40,7 +50,7 @@ the committed document has drifted, so the anchors cannot rot silently again.
 
 Run
 ---
-    python scripts/check_money_monodevise.py            # prints the audit; advisory only, exit 0
+    python scripts/check_money_monodevise.py            # prints the audit; exit 1 on any finding
     python scripts/check_money_monodevise.py --write     # also regenerates docs/currency-audit.md
     python scripts/check_money_monodevise.py --check     # fails (exit 1) if the document has drifted
 """
@@ -101,6 +111,9 @@ class ModelMoneyInfo:
     money_fields: list = field(default_factory=list)
     has_devise: bool = False
     has_rate: bool = False
+    devise_amounts: list = field(default_factory=list)
+    has_devise_accessor: bool = False
+    bad_defaults: list = field(default_factory=list)
 
 
 def _scan_class(app: str, relpath: str, node: ast.ClassDef):
@@ -109,7 +122,12 @@ def _scan_class(app: str, relpath: str, node: ast.ClassDef):
     money_fields: list[str] = []
     has_devise = False
     has_rate = False
+    devise_amounts: list[str] = []
+    has_devise_accessor = False
+    bad_defaults: list[str] = []
     for stmt in node.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))                 and stmt.name in DEVISE_FIELD_NAMES:
+            has_devise_accessor = True
         targets: list[str] = []
         value = None
         if isinstance(stmt, ast.Assign):
@@ -124,6 +142,10 @@ def _scan_class(app: str, relpath: str, node: ast.ClassDef):
             lname = fname.lower()
             if lname in DEVISE_FIELD_NAMES:
                 has_devise = True
+                if _default_non_mad(value):
+                    bad_defaults.append(fname)
+            if lname.endswith("_devise") and MONEY_FIELD_RE.search(lname):
+                devise_amounts.append(fname)
             if lname in RATE_FIELD_NAMES:
                 has_rate = True
             if MONEY_FIELD_RE.search(lname):
@@ -133,7 +155,40 @@ def _scan_class(app: str, relpath: str, node: ast.ClassDef):
     return ModelMoneyInfo(
         app=app, relpath=relpath, model=node.name, lineno=node.lineno,
         money_fields=sorted(set(money_fields)), has_devise=has_devise, has_rate=has_rate,
+        devise_amounts=sorted(set(devise_amounts)),
+        has_devise_accessor=has_devise_accessor, bad_defaults=bad_defaults,
     )
+
+
+def _default_non_mad(call: ast.Call) -> bool:
+    """True si ``default=`` du champ devise est un littéral autre que MAD/vide
+    (``DeviseAchat.MAD`` accepté). Pas de ``default`` = pas de défaut non-MAD."""
+    for kw in call.keywords:
+        if kw.arg != "default":
+            continue
+        v = kw.value
+        if isinstance(v, ast.Constant) and isinstance(v.value, str):
+            return v.value not in ("MAD", "")
+        if isinstance(v, ast.Attribute):
+            return v.attr != "MAD"
+    return False
+
+
+def find_violations(models: list) -> list:
+    """ENF13 — constats BLOQUANTS (liste de messages, vide = vert)."""
+    out = []
+    for m in models:
+        where = f"{m.relpath}:{m.lineno} {m.app}.{m.model}"
+        if m.devise_amounts and not (m.has_devise or m.has_devise_accessor):
+            out.append(
+                f"DEVISE_MONTANT {where} : montant en devise "
+                f"({', '.join(m.devise_amounts)}) sans champ/accesseur "
+                f"`devise` — montant + devise voyagent ensemble.")
+        if m.bad_defaults:
+            out.append(
+                f"DEVISE_DEFAUT {where} : défaut de "
+                f"{', '.join(m.bad_defaults)} différent de MAD (mono-MAD).")
+    return out
 
 
 def scan_money_models() -> list:
@@ -189,8 +244,8 @@ def render_audit_markdown(models: list) -> str:
         "# Currency audit — YDATA22",
         "",
         "Generated by `python scripts/check_money_monodevise.py --write` — do not hand-edit,",
-        "re-run the script instead. Advisory sweep, not a CI gate (v1 per YDATA22: \"pas",
-        "de blocage\"). Confirms the mono-devise MAD hypothesis documented in",
+        "re-run the script instead. Blocking gate since ENF13 (DEVISE_MONTANT /",
+        "DEVISE_DEFAUT, see the script docstring). Confirms the mono-devise MAD hypothesis documented in",
         "`docs/money-convention.md`: every model below persists money with no explicit",
         "currency code EXCEPT the ones already carrying `devise`/`devise_defaut`",
         "(multi-currency purchasing/quoting/FX-revaluation models).",
@@ -235,14 +290,17 @@ def main() -> int:
         f"check_money_monodevise (YDATA22): {len(models)} modeles argent scannes, "
         f"{len(without_devise)} sans champ devise explicite (hypothese mono-MAD)."
     )
+    violations = find_violations(models)
+    for v in violations:
+        print(f"ECHEC check_money_monodevise : {v}")
+    rc = 1 if violations else 0
     if "--write" in sys.argv[1:]:
         AUDIT_DOC.write_text(render_audit_markdown(models), encoding="utf-8")
         print(f"  -> {AUDIT_DOC.relative_to(ROOT).as_posix()} regenere.")
     if "--check" in sys.argv[1:]:
         # AUD190 — le document est GÉNÉRÉ : il ne doit jamais dériver de la
         # source (ses ancres file:line pourrissent en silence sinon, comme
-        # `ventes.Facture:631` après le split ODX17). Mode explicite, non
-        # câblé en CI : la balayage YDATA22 reste advisory par défaut.
+        # `ventes.Facture:631` après le split ODX17).
         attendu = render_audit_markdown(models)
         actuel = (AUDIT_DOC.read_text(encoding="utf-8")
                   if AUDIT_DOC.exists() else "")
@@ -255,8 +313,7 @@ def main() -> int:
             )
             return 1
         print("check_money_monodevise --check: document a jour.")
-    # v1 = advisory only (YDATA22 spec: "pas de blocage") — never fails CI.
-    return 0
+    return rc
 
 
 if __name__ == "__main__":
