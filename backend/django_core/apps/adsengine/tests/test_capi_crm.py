@@ -39,6 +39,23 @@ class BuildStageEventTests(TestCase):
         defaults.update(kw)
         return Lead.objects.create(**defaults)
 
+    def test_lead_efface_non_eligible(self):
+        """AACQ21 — un lead anonymisé ne construit aucun événement CAPI."""
+        from apps.crm.dsr_provider import LEAD_NOM_ANONYMISE
+        lead = self._meta_lead(nom=LEAD_NOM_ANONYMISE)
+        built = capi_crm.build_stage_event(
+            self.company, lead.pk, CONTACTED, old_stage=NEW, now=1000)
+        self.assertFalse(built['eligible'])
+        self.assertEqual(built['reason'], 'erased')
+        self.assertIsNone(built['event'])
+        rdv = capi_crm.build_appointment_event(
+            self.company, lead.pk, 1, 'effectue', now=1000)
+        self.assertFalse(rdv['eligible'])
+        self.assertEqual(rdv['reason'], 'erased')
+        vivant = self._meta_lead()
+        self.assertTrue(capi_crm.build_stage_event(
+            self.company, vivant.pk, CONTACTED, old_stage=NEW)['eligible'])
+
     def test_event_name_is_stage_key_never_hardcoded(self):
         lead = self._meta_lead()
         built = capi_crm.build_stage_event(
