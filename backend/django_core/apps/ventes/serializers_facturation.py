@@ -362,7 +362,9 @@ class FactureSerializer(serializers.ModelSerializer):
                             # CIQ214 — posés par la tranche / ``liberer-retenue``.
                             'retenue_garantie_mad', 'retenue_liberee_le',
                             # ATOT5 — clé de tranche posée par le serveur.
-                            'cle_tranche']
+                            'cle_tranche',
+                            # APAR61 — identité vendeur figée à l'émission.
+                            'identite_vendeur']
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):

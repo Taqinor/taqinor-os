@@ -298,6 +298,11 @@ class Facture(TotauxDocumentMixin, models.Model):
     # factures antérieures (l'empreinte manquante force alors un re-rendu,
     # jamais un fichier périmé).
     pdf_render_meta = models.JSONField(null=True, blank=True)
+    # APAR61 (C-APAR-013, D-APAR-4) — identité vendeur FIGÉE à l'émission
+    # (raison sociale, ICE/RC/IF, RIB, banque, adresse, mentions, logo) : le
+    # PDF d'une facture émise se rend depuis cet instantané, jamais depuis le
+    # profil vivant. NULL (facture antérieure, brouillon) = profil vivant.
+    identite_vendeur = models.JSONField(null=True, blank=True)
     # ── Export structuré UBL 2.1 (N38) — clé MinIO du dernier XML généré.
     # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
     fichier_ubl = models.CharField(

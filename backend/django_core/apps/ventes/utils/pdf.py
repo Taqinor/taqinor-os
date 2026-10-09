@@ -169,6 +169,78 @@ def _to_data_uri(raw_bytes, key):
 
 # ── Company context ──────────────────────────────────────────────────────────
 
+#: APAR61 — clés TEXTE de l'identité vendeur figées à l'émission d'une
+#: facture (le logo est figé par sa clé MinIO, ``logo_key``).
+CLES_IDENTITE_VENDEUR = (
+    'entreprise_nom', 'entreprise_adresse', 'entreprise_email',
+    'entreprise_telephone', 'entreprise_siret', 'entreprise_tva_intra',
+    'entreprise_ice', 'entreprise_if', 'entreprise_rc', 'entreprise_patente',
+    'entreprise_cnss', 'couleur_principale', 'rib', 'banque',
+    'instructions_paiement', 'conditions_generales',
+)
+
+
+def identite_vendeur_courante(company):
+    """APAR61 — instantané JSON de l'identité vendeur du jour (sans aucun
+    téléchargement MinIO : le logo est désigné par sa clé)."""
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=company)
+    textes = _identite_textes(profile)
+    instantane = {k: (textes.get(k) or '') for k in CLES_IDENTITE_VENDEUR}
+    instantane['logo_key'] = profile.logo_key or ''
+    instantane['signature_key'] = profile.signature_key or ''
+    return instantane
+
+
+def _appliquer_identite_figee(ctx, identite, company=None):
+    """APAR61 — le contexte de rendu reprend l'identité FIGÉE (textes + logo
+    du jour de l'émission) à la place du profil vivant."""
+    if not isinstance(identite, dict) or not identite:
+        return ctx
+    for cle in CLES_IDENTITE_VENDEUR:
+        if cle in identite:
+            ctx[cle] = identite[cle]
+    for cle_fichier, cle_uri in (('logo_key', 'logo_uri'),
+                                 ('signature_key', 'signature_uri')):
+        if cle_fichier not in identite:
+            continue
+        cle = identite.get(cle_fichier) or ''
+        if not cle:
+            ctx[cle_uri] = None
+            continue
+        raw = _download(settings.MINIO_BUCKET_UPLOADS, cle)
+        if raw and cle_uri == 'logo_uri':
+            trimmed, ext = _trim_image_whitespace(raw)
+            ctx[cle_uri] = _to_data_uri(trimmed, ext or cle)
+        elif raw:
+            ctx[cle_uri] = _to_data_uri(raw, cle)
+    return ctx
+
+
+def _identite_textes(profile):
+    """Textes d'identité vendeur du profil (avec les replis ``settings``)."""
+    return {
+        'entreprise_nom': profile.nom or settings.ENTREPRISE_NOM,
+        'entreprise_adresse': profile.adresse or settings.ENTREPRISE_ADRESSE,
+        'entreprise_email': profile.email or settings.ENTREPRISE_EMAIL,
+        'entreprise_telephone': (
+            profile.telephone or settings.ENTREPRISE_TELEPHONE),
+        'entreprise_siret': profile.siret,
+        'entreprise_tva_intra': profile.tva_intra,
+        'entreprise_ice': getattr(profile, 'ice', ''),
+        'entreprise_if': getattr(profile, 'identifiant_fiscal', ''),
+        'entreprise_rc': getattr(profile, 'rc', ''),
+        'entreprise_patente': getattr(profile, 'patente', ''),
+        'entreprise_cnss': getattr(profile, 'cnss', ''),
+        'couleur_principale': (
+            profile.couleur_principale or settings.ENTREPRISE_COULEUR),
+        'rib': profile.rib,
+        'banque': profile.banque,
+        'instructions_paiement': getattr(profile, 'instructions_paiement', ''),
+        'conditions_generales': getattr(profile, 'conditions_generales', ''),
+    }
+
+
 def _company_context(company=None):
     """Return branding variables for PDF templates."""
     from apps.parametres.models import CompanyProfile
@@ -320,6 +392,10 @@ def generate_facture_pdf(facture_id):
     )
 
     context = _company_context(company=facture.company)
+    # APAR61 — une facture ÉMISE se rend depuis son identité vendeur FIGÉE
+    # (repli documenté : sans instantané, le profil vivant comme avant).
+    _appliquer_identite_figee(
+        context, getattr(facture, 'identite_vendeur', None))
     context['facture'] = facture
     # AFAC56 — ICE/IF/RC du client imprimés selon la règle B2B du modèle.
     context['client_est_pro'] = Facture._client_est_pro(facture.client)
@@ -525,6 +601,10 @@ def _facture_render_data(facture) -> dict:
         # reste à payer : un nouvel encaissement doit donc re-rendre le PDF
         # (sinon le fichier servi afficherait un « Reste à payer » périmé).
         'reglements': _reglements_empreinte(facture),
+        # APAR61 — l'identité vendeur figée entre dans l'empreinte (clé posée
+        # seulement si présente : empreinte d'hier inchangée sans instantané).
+        **({'identite_vendeur': facture.identite_vendeur}
+           if getattr(facture, 'identite_vendeur', None) else {}),
     }
 
 

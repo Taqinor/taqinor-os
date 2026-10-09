@@ -760,6 +760,13 @@
      null,
      false
     ],
+    "identite_vendeur": [
+     "JSONField",
+     true,
+     false,
+     null,
+     false
+    ],
     "is_overdue": [
      "SerializerMethodField",
      true,

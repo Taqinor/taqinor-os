@@ -143,6 +143,11 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
             facture.date_echeance = derivee
 
     facture.statut = Facture.Statut.EMISE
+    # APAR61 (D-APAR-4) — l'identité vendeur imprimée est FIGÉE à l'émission
+    # (un changement de RIB ne réécrit jamais une facture déjà émise).
+    if not facture.identite_vendeur:
+        from ..utils.pdf import identite_vendeur_courante
+        facture.identite_vendeur = identite_vendeur_courante(facture.company)
     facture.save()
 
     from core.events import facture_emise
