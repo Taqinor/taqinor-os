@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4816, operations: 7576, components: 3014}
+counts: {paths: 4816, operations: 7576, components: 3020}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -8099,6 +8099,7 @@ components:
 - CrmPieceRecueRequestRequest
 - CrmPlacementCadencesRequestRequest
 - CrmPlanifierVisiteRequestRequest
+- CrmPublicDetail
 - CrmQuestionnaireLienRequestRequest
 - CrmRelanceFaitRequestRequest
 - CrmRelanceLangueRequestRequest
@@ -8204,6 +8205,7 @@ components:
 - DevisActionPanier
 - DevisActionRequise
 - DevisConceptionElectriqueRequestRequest
+- DevisConceptionElectriqueResponse
 - DevisConcurrentsEnum
 - DevisContacterSuperieurRequestRequest
 - DevisContacterSuperieurResponse
@@ -8500,6 +8502,7 @@ components:
 - GedDocQaReponse
 - GedDocumentEchu
 - GedDocumentLienCorpsRequest
+- GedDossierPreuveArchivage
 - GedEnvoiMasseCorpsRequest
 - GedFavoriReponse
 - GedFichierCorpsRequest
@@ -8533,6 +8536,7 @@ components:
 - GedScinderCorpsRequest
 - GedServiceIndisponible
 - GedSignatairePublic
+- GedSignatairePublicAction
 - GedSignatairePublicCorpsActionEnum
 - GedSignatairePublicCorpsRequest
 - GedSignaturePublique
@@ -9996,7 +10000,9 @@ components:
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
 - ReleveImportCommitRequestRequest
+- ReleveImportCommitResponse
 - ReleveImportDryRunRequestRequest
+- ReleveImportDryRunResponse
 - RemedeDefaillance
 - RemedeDefaillanceRequest
 - RemiseEncaissement

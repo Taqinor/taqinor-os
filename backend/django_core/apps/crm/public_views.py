@@ -16,7 +16,7 @@ JAMAIS la somme des deux — l'ancien ``devis.total_ttc`` servait le brut.
 import hashlib
 import hmac
 
-from drf_spectacular.types import OpenApiTypes
+from .openapi_public import PUBLIC_DETAIL
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers, status
 from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
@@ -192,11 +192,11 @@ def _item_payload(item):
 
 
 @extend_schema(methods=['GET'], request=None,
-               responses={200: _SALLE_VENTE_RESPONSE, 403: OpenApiTypes.OBJECT,
-                          404: OpenApiTypes.OBJECT, 410: OpenApiTypes.OBJECT})
+               responses={200: _SALLE_VENTE_RESPONSE, 403: PUBLIC_DETAIL,
+                          404: PUBLIC_DETAIL, 410: PUBLIC_DETAIL})
 @extend_schema(methods=['POST'], request=_SALLE_VENTE_ACCES_REQUEST,
-               responses={200: _SALLE_VENTE_RESPONSE, 403: OpenApiTypes.OBJECT,
-                          404: OpenApiTypes.OBJECT, 410: OpenApiTypes.OBJECT})
+               responses={200: _SALLE_VENTE_RESPONSE, 403: PUBLIC_DETAIL,
+                          404: PUBLIC_DETAIL, 410: PUBLIC_DETAIL})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -277,7 +277,7 @@ class PublicApporteurRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
 
 
 @extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE,
-                          403: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT})
+                          403: PUBLIC_DETAIL, 404: PUBLIC_DETAIL})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

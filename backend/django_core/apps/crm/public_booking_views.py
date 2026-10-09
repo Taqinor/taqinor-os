@@ -9,7 +9,7 @@ confiance que ``public_chat_views.py`` : jeton long/imprévisible (comme
 ``ShareLink``), jamais de login, jamais de fuite d'un jeton invalide (404
 générique).
 """
-from drf_spectacular.types import OpenApiTypes
+from .openapi_public import PUBLIC_DETAIL
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -74,7 +74,7 @@ def public_booking_status(request, token):
         'detail': serializers.CharField(),
         'appointment_id': serializers.IntegerField(),
         'lead_id': serializers.IntegerField(),
-    }), 404: OpenApiTypes.OBJECT, 410: OpenApiTypes.OBJECT})
+    }), 404: PUBLIC_DETAIL, 410: PUBLIC_DETAIL})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])

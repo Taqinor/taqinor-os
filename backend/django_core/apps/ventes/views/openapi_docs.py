@@ -166,6 +166,26 @@ ReleveCommitRequest = _ser('ReleveImportCommitRequest', {
     'lignes': s.ListField(child=s.JSONField(), required=False),
 })
 
+ReleveDryRunResponse = _ser('ReleveImportDryRunResponse', {
+    'token': s.CharField(),
+    'columns': s.DictField(child=s.CharField()),
+    'unmapped': s.ListField(child=s.CharField()),
+    'total_rows': s.IntegerField(),
+    'preview': s.ListField(child=s.DictField()),
+    'revue': s.ListField(child=s.DictField()),
+    'matched': s.IntegerField(),
+    'ambigus': s.IntegerField(),
+    'already_paid': s.IntegerField(),
+    'deja_importe': s.BooleanField(),
+})
+ReleveCommitResponse = _ser('ReleveImportCommitResponse', {
+    'token': s.CharField(required=False),
+    'created': s.IntegerField(),
+    'skipped': s.IntegerField(),
+    'errors': s.IntegerField(),
+    'results': s.ListField(child=s.DictField()),
+})
+
 # --------------------------------------------------------------- divers
 ResoudrePlanResponse = _ser('PlanCommissionResoudreResponse', {
     'owner': s.IntegerField(allow_null=True),
@@ -202,6 +222,22 @@ ConceptionElectriqueRequest = _ser('DevisConceptionElectriqueRequest', {
         'dc_m', 'ac_m', 'phases', 'regime', 'batterie', 'zone_keraunique',
         'temp_froid_c', 'temp_chaud_c', 'longueur_chaine_forcee',
         'plafond_kwc_par_onduleur', 'inclure_prise_terre')
+})
+
+ConceptionElectriqueResponse = _ser('DevisConceptionElectriqueResponse', {
+    'chaines': s.ListField(child=s.DictField()),
+    'conformite': s.DictField(),
+    'ratio_dc_ac': s.FloatField(allow_null=True),
+    'ratio_ac_dc': s.FloatField(allow_null=True),
+    'protections': s.ListField(child=s.DictField()),
+    'cables': s.ListField(child=s.DictField()),
+    'bom': s.ListField(child=s.DictField()),
+    'note': s.ListField(child=s.CharField()),
+    'parametres': s.DictField(),
+    'materiel': s.DictField(required=False),
+    'version_moteur': s.CharField(required=False),
+    'schema_version': s.IntegerField(required=False),
+    'source_entree': s.DictField(required=False),
 })
 
 PdfOptionsRequest = _ser('DevisPdfOptionsRequest', {

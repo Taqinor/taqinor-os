@@ -332,7 +332,8 @@ class DevisCalepinageActionsMixin:
         # depuis le corps.
         return _ecrire_conception(devis, payload, request)
 
-    @extend_schema(request=D.ConceptionElectriqueRequest, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=D.ConceptionElectriqueRequest,
+                   responses=D.ConceptionElectriqueResponse)
     @action(detail=True, methods=['get', 'post'],
             url_path='conception-electrique',
             permission_classes=[IsResponsableOrAdmin])

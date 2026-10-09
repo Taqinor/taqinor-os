@@ -284,6 +284,34 @@ INTEGRITE_REPONSE = S('VerifierIntegriteReponse', {
     'total': s.IntegerField(), 'ok': s.IntegerField(),
     'altere': s.IntegerField(), 'indisponible': s.IntegerField(),
 })
+DOSSIER_PREUVE = S('DossierPreuveArchivage', {
+    'document': s.CharField(),
+    'archive_le': s.DateTimeField(),
+    'motif': s.CharField(allow_blank=True),
+    'hash_integrite_au_depot': s.CharField(allow_blank=True, allow_null=True),
+    'controles': s.ListField(child=s.DictField()),
+})
+# POST du circuit multi-signataires : 200 = fiche du destinataire (signer /
+# refuser / valider-code) OU résultat d'envoi du code (`envoyer-code` :
+# envoye / mode / detail) — d'où des clés toutes facultatives.
+PUBLIC_SIGNATAIRE_ACTION = S('SignatairePublicAction', {
+    'document_nom': s.CharField(required=False),
+    'document_id': s.IntegerField(required=False),
+    'apercu_url': s.CharField(required=False),
+    'apercu_mime': s.CharField(required=False, allow_blank=True),
+    'nom': s.CharField(required=False),
+    'role': s.CharField(required=False),
+    'ordre': s.IntegerField(required=False),
+    'statut': s.CharField(required=False),
+    'demande_statut': s.CharField(required=False),
+    'auth_extra': s.CharField(required=False, allow_null=True),
+    'otp_requis': s.BooleanField(required=False),
+    'otp_degrade': s.BooleanField(required=False),
+    'champs': s.ListField(child=s.DictField(), required=False),
+    'envoye': s.BooleanField(required=False),
+    'mode': s.CharField(required=False),
+    'detail': s.CharField(required=False),
+})
 QUOTA_ETAT = S('QuotaEtat', {
     'usage_octets': s.IntegerField(),
     'quota_octets': s.IntegerField(),

@@ -2943,7 +2943,7 @@ class ArchivageLegalViewSet(TenantMixin,
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @extend_schema(responses=oa.DOSSIER_PREUVE)
     @action(detail=True, methods=['get'], url_path='dossier-preuve')
     def dossier_preuve(self, request, pk=None):
         """XGED6 — Exporte le DOSSIER DE PREUVE JSON d'un archivage légal :
@@ -5233,7 +5233,7 @@ def _signataire_publique_payload(signataire):
 @extend_schema(methods=['GET'], responses={
     200: oa.PUBLIC_SIGNATAIRE, 410: oa.PUBLIC_ERREUR})
 @extend_schema(methods=['POST'], request=oa.PUBLIC_SIGNATAIRE_CORPS,
-               responses={200: OpenApiTypes.OBJECT, 403: oa.PUBLIC_ERREUR,
+               responses={200: oa.PUBLIC_SIGNATAIRE_ACTION, 403: oa.PUBLIC_ERREUR,
                           410: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
