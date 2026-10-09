@@ -1900,6 +1900,12 @@ class Lead(SoftDeleteModel):
     email_normalise = models.CharField(
         max_length=254, blank=True, default='', db_index=True,
         verbose_name='Email normalisé (dédup)')
+    # ACRM32 — clé normalisée du WHATSAPP (même normaliseur que
+    # ``phone_normalise``) : un message WhatsApp d'un numéro connu SEULEMENT
+    # en ``whatsapp`` retrouve son lead par une requête indexée.
+    whatsapp_normalise = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='WhatsApp normalisé (dédup)')
 
     # T-TRACE (25/08/2026) — identifiant de l'APPAREIL depuis lequel la
     # demande est arrivée (uuid localStorage posé par le site, transmis par
@@ -2259,6 +2265,9 @@ class Lead(SoftDeleteModel):
         from . import services as _crm_services
         self.phone_normalise = _crm_services.normalize_phone(self.telephone) or ''
         self.email_normalise = _crm_services.normalize_email(self.email) or ''
+        # ACRM32 — idem pour le WhatsApp (tronqué comme la colonne).
+        self.whatsapp_normalise = (
+            _crm_services.normalize_phone(self.whatsapp) or '')[:20]
         super().save(*args, **kwargs)
 
     class Meta:
@@ -2275,6 +2284,9 @@ class Lead(SoftDeleteModel):
                          name='crm_lead_phone_norm_idx'),
             models.Index(fields=['company', 'email_normalise'],
                          name='crm_lead_email_norm_idx'),
+            # ACRM32 — dédup indexée sur le WhatsApp normalisé.
+            models.Index(fields=['company', 'whatsapp_normalise'],
+                         name='crm_lead_wa_norm_idx'),
             # ADSENG1/ADSENG6 — jointure d'attribution PAR VARIANTE : on
             # regroupe les leads d'une société par leur ad Meta (meta_ad_id).
             models.Index(fields=['company', 'meta_ad_id'],

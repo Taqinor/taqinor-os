@@ -1150,16 +1150,13 @@ def _build_acceptance_wa_url(*, devis):
             client = getattr(devis, 'client', None)
             if client is not None:
                 phone_raw = getattr(client, 'telephone', '') or ''
-        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        # ACRM39 — normaliseur sanctionné (E.164), jumeau de
+        # ``crm.services._build_lead_wa_reply_url`` ; non normalisable ⇒ pas
+        # de lien (jamais un numéro inventé).
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone_raw)
         if not digits:
             return None
-        # Format international marocain (wa.me exige l'indicatif pays).
-        if digits.startswith('00'):
-            digits = digits[2:]
-        if digits.startswith('0'):
-            digits = '212' + digits[1:]
-        elif not digits.startswith('212'):
-            digits = '212' + digits
         nom = ''
         if lead is not None:
             nom = (getattr(lead, 'nom', '') or '').strip()

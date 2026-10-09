@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   // WIR208 — application RÉELLE d'une action approuvée (POST .../apply/).
   apply: vi.fn(),
+  // AACQ63 — devise du compte publicitaire (connexion).
+  connection: vi.fn(),
   // PUB10 — permissions effectives ; pleines par défaut (préserve le
   // comportement des tests existants), restreintes dans les tests dédiés.
   permissions: ['adsengine_approve', 'adsengine_manage'],
@@ -25,6 +27,7 @@ vi.mock('./adsengineApi', () => ({
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
       create: mocks.create, apply: mocks.apply,
     },
+    connection: { get: mocks.connection },
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
     // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
     alerts: { history: () => Promise.resolve({ data: [] }) },
@@ -43,13 +46,17 @@ vi.mock('./useAdsPermissions', () => ({
 }))
 
 import ApprovalsScreen from './ApprovalsScreen'
+// AACQ63 — la ligne budget vient du CONTRAT serveur (AACQ60), jamais d'un
+// mock fabriqué (l'ancien `budget_avant`/`budget_apres` n'existe pas côté
+// serveur : aucun bloc budget ne s'affichait en vrai).
+import ENGINE_ACTION from '../../../../backend/django_core/apps/adsengine/contract_samples/engine_action.json'
 
 const renderScreen = () => render(
   <MemoryRouter><ApprovalsScreen /></MemoryRouter>)
 
 const ACTIONS = [
-  { id: 11, type: 'adjust_budget', reason_fr: 'CPL en baisse — augmenter la portée.',
-    budget_avant: 80, budget_apres: 120 },
+  { ...ENGINE_ACTION.exemple, id: 11,
+    reason_fr: 'CPL en baisse — augmenter la portée.' },
   { id: 12, type: 'swap_creative', reason_fr: 'Créatif fatigué (fréquence 3,2).',
     creative: { designation: 'Reel toiture v2', type: 'reel', preview_url: 'https://cdn/x.jpg' } },
   { id: 13, type: 'create_campaign', reason_fr: 'Nouvelle ville : Marrakech.' },
@@ -70,6 +77,7 @@ beforeEach(() => {
   mocks.apply.mockImplementation((id) => Promise.resolve(applied(id)))
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
+  mocks.connection.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.permissions = ['adsengine_approve', 'adsengine_manage']
 })
 
@@ -80,12 +88,32 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
     // reason_fr rendu.
     expect(screen.getByText('CPL en baisse — augmenter la portée.')).toBeInTheDocument()
-    // Diff budget avant→après (artefact réel).
+    // Diff budget avant→après (artefact réel, clés RÉELLES du contrat).
     const budget = screen.getByTestId('ae-artifact-budget')
-    expect(budget).toHaveTextContent('80 MAD')
-    expect(budget).toHaveTextContent('120 MAD')
+    expect(budget).toHaveTextContent('200')
+    expect(budget).toHaveTextContent('100 MAD')
     // Préview créatif (artefact réel) avec alt accessible.
     expect(screen.getByAltText('Reel toiture v2')).toBeInTheDocument()
+  })
+
+  it("AACQ63 — montre l'avant/après d'une rebalance_adset_budget réelle", async () => {
+    mocks.connection.mockResolvedValue({ data: { currency: 'USD' } })
+    mocks.pending.mockResolvedValue({ data: [
+      { ...ENGINE_ACTION.exemple, id: 41 },
+      { ...ENGINE_ACTION.exemple, id: 42, kind: 'set_spend_cap',
+        payload: { campaign_id: 'c1', spend_cap: 500000 } },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(screen.getAllByTestId('ae-artifact-budget')).toHaveLength(2))
+    const [budget, plafond] = screen.getAllByTestId('ae-artifact-budget')
+    await waitFor(() => expect(budget).toHaveTextContent('100 USD'))
+    expect(budget).toHaveTextContent('Budget quotidien')
+    expect(budget).toHaveTextContent('200')
+    expect(budget).toHaveTextContent('cible demandée 230')
+    expect(budget).toHaveTextContent('bornée par les garde-fous')
+    expect(budget).not.toHaveTextContent('MAD')
+    expect(plafond).toHaveTextContent('Plafond de dépense')
+    expect(plafond).toHaveTextContent('5 000 USD')
   })
 
   it('WIR208 — approuver ne fait PAS quitter la boîte : la carte propose « Appliquer »', async () => {
@@ -158,8 +186,44 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(reason.tagName).toBe('SELECT')
     fireEvent.change(reason, { target: { value: 'creatif_non_conforme' } })
     fireEvent.click(screen.getByTestId('ae-reject-confirm-12'))
-    await waitFor(() => expect(mocks.reject).toHaveBeenCalledWith(12, { reason: 'creatif_non_conforme' }))
+    // AACQ64 — corps du contrat (`corps_reject`) : le LIBELLÉ sous `commentaire`.
+    await waitFor(() => expect(mocks.reject).toHaveBeenCalledWith(
+      12, { commentaire: 'Créatif non conforme (règle de marque)' }))
     await waitFor(() => expect(screen.queryByTestId('ae-reject-12')).toBeNull())
+  })
+
+  it('AACQ73 — un 403 quatre yeux affiche le detail serveur', async () => {
+    const detail = 'Double validation requise : le proposeur ne peut pas '
+      + 'approuver sa propre action (garde-fou quatre yeux actif).'
+    mocks.approve.mockRejectedValue(Object.assign(new Error('HTTP 403'), {
+      response: { status: 403, data: { detail } } }))
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    const err = await screen.findByTestId('ae-approvals-err')
+    expect(err).toHaveTextContent(detail)
+    expect(err).not.toHaveTextContent('permission ?')
+    // Sans réponse (réseau) : texte neutre, aucune cause devinée.
+    mocks.approve.mockRejectedValue(new Error('Network Error'))
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    await waitFor(() => expect(screen.getByTestId('ae-approvals-err'))
+      .toHaveTextContent('Serveur injoignable.'))
+  })
+
+  it('AACQ64 — le rejet envoie le libellé du motif sous commentaire', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-reject-11'))
+    const reason = await screen.findByTestId('ae-reject-reason-11')
+    fireEvent.change(reason, { target: { value: 'hors_budget' } })
+    fireEvent.click(screen.getByTestId('ae-reject-confirm-11'))
+    await waitFor(() => expect(mocks.reject).toHaveBeenCalledTimes(1))
+    const [id, corps] = mocks.reject.mock.calls[0]
+    expect(id).toBe(11)
+    expect(corps).toEqual({ commentaire: 'Hors budget' })
+    // Même forme que le corps du contrat serveur (engine_action.json).
+    expect(Object.keys(corps)).toEqual(Object.keys(ENGINE_ACTION.corps_reject))
+    expect(corps).not.toHaveProperty('reason')
   })
 
   it('batch PARTIEL : n\'approuve que les cases cochées', async () => {
@@ -447,5 +511,60 @@ describe('ApprovalsScreen — PUB56 cibles tactiles ≥44×44px', () => {
     const select = screen.getByTestId('ae-reject-reason-11')
     expect(parseInt(confirmBtn.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
     expect(parseInt(select.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+  })
+})
+
+/* AACQ62 — la boîte lit TOUTES les actions décidables (filtre serveur
+   `statut=en_attente` + toutes les pages) et dit une troncature ; jamais
+   Approuver/Rejeter sur une action rejetée, appliquée ou échouée. */
+describe('ApprovalsScreen — actions décidables, toutes les pages (AACQ62)', () => {
+  const ligne = (id, status) => ({
+    id, kind: 'pause', status, reason_fr: `Action ${id}.`, payload: {},
+  })
+  const PAGE1 = [
+    ligne(1, 'rejetee'), ligne(2, 'appliquee'), ligne(3, 'approuvee'),
+    ...Array.from({ length: 47 }, (_, i) => ligne(100 + i, 'proposee')),
+  ]
+  const PAGE2 = Array.from({ length: 9 }, (_, i) => ligne(200 + i, 'proposee'))
+
+  it("n'affiche que les actions décidables et lit la page 2", async () => {
+    mocks.pending.mockImplementation((params) => Promise.resolve({
+      data: (params?.page ?? 1) === 1
+        ? { count: 59, next: 'page2', previous: null, results: PAGE1 }
+        : { count: 59, next: null, previous: 'page1', results: PAGE2 },
+    }))
+    renderScreen()
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(57))
+    expect(mocks.pending).toHaveBeenCalledWith({ page: 2 })
+    expect(screen.queryAllByTestId(/^ae-approve-\d+$/)).toHaveLength(56)
+    expect(screen.getByTestId('ae-apply-3')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-approve-1')).toBeNull()
+    expect(screen.queryByTestId('ae-approve-2')).toBeNull()
+    expect(screen.getByTestId('ae-approve-208')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-approvals-truncated')).toBeNull()
+  })
+
+  it('dit la troncature quand le serveur plafonne', async () => {
+    mocks.pending.mockImplementation((params) => Promise.resolve({
+      data: (params?.page ?? 1) === 1
+        ? { count: 60, next: 'page2', previous: null, results: PAGE1 }
+        : { count: 60, next: null, previous: 'page1', results: [] },
+    }))
+    renderScreen()
+    expect(await screen.findByTestId('ae-approvals-truncated'))
+      .toHaveTextContent('50 actions sur 60')
+  })
+
+  it('une action rejetée localement ne revient pas au sondage suivant', async () => {
+    renderScreen()
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3))
+    fireEvent.click(screen.getByTestId('ae-reject-12'))
+    fireEvent.click(await screen.findByTestId('ae-reject-confirm-12'))
+    await waitFor(() => expect(screen.queryByTestId('ae-reject-12')).toBeNull())
+    // Le serveur (en retard) renvoie encore l'action 12 au sondage suivant.
+    fireEvent.click(screen.getByTestId('ae-approvals-refresh'))
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    expect(screen.queryByTestId('ae-reject-12')).toBeNull()
   })
 })

@@ -171,6 +171,22 @@ class RafraichisseurTests(_Base):
         self.assertEqual(apres['hypotheses'], avant['hypotheses'])
         self.assertEqual(apres['alertes'], avant['alertes'])
 
+    def test_cad177_apercu_taille_saisie_meme_bilan_que_l_etude_du_devis(self):
+        # CAD177 (CIQ334, nocturne 37871928670) — 49 kWc saisis se posent en
+        # 70 panneaux de 710 Wc (49,7 kWc) : l'aperçu calculait son bilan à
+        # 49 kWc, l'étude du devis (PDF) à 49,7 kWc — deux taux imprimés.
+        apercu = etude_ci.etudier_ci(self.co, dict(ENTREES, taille_explicite_kwc=49))
+        self.assertEqual(apercu['taille']['retenue_kwc'], 49.7)
+        panneaux = [lg for lg in apercu['composition']['lignes'] if lg['role'] == 'panneau']
+        self.assertEqual(panneaux[0]['quantite'], 70)
+        self.assertIn('taille_panneaux_entiers', {h['cle'] for h in apercu['hypotheses']})
+        devis = self._devis()
+        rafraichir_etudes_du_devis(devis)
+        devis.refresh_from_db()
+        etude = devis.etude_params['etude_ci']
+        for cle in ('production_kwh', 'autoconso_kwh', 'taux_autoconso', 'taux_couverture'):
+            self.assertAlmostEqual(apercu['bilan'][cle], etude['bilan'][cle], places=6, msg=cle)
+
     def test_plus_aucun_panneau_derivees_retirees(self):
         devis = self._devis()
         rafraichir_etudes_du_devis(devis)

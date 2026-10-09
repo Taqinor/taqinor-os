@@ -64,13 +64,15 @@ def escalader_rappels_demandes(now=None, dry_run=False):
 
         leads = selectors.leads_callback_sla_depasse(
             company, now=now, seuil_heures=seuil)
+        # APRF10 (jumeau) — déjà escaladés lus en UNE requête par société.
+        deja_escalades = set(LeadActivity.objects.filter(
+            lead__company=company, kind=LeadActivity.Kind.NOTE,
+            body__startswith=ESCALATION_MARKER,
+        ).values_list('lead_id', flat=True))
         for lead in leads:
-            already_escalated = LeadActivity.objects.filter(
-                lead=lead, kind=LeadActivity.Kind.NOTE,
-                body__startswith=ESCALATION_MARKER,
-            ).exists()
-            if already_escalated:
+            if lead.pk in deja_escalades:
                 continue
+            deja_escalades.add(lead.pk)
             nb_escalades += 1
             if dry_run:
                 continue

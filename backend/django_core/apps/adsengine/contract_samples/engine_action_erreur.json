@@ -1,0 +1,8 @@
+{
+  "endpoint": "POST /api/django/adsengine/actions/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AACQ60 (PACT10) — 400 du composeur manuel (`ManualActionComposer.jsx`) quand le payload est invalide : la clé `payload` porte le message PRÉCIS d'`ActionPayloadInvalid` (AACQ72), au lieu du générique « Données de l'action invalides. ». Les écrans l'affichent sous le champ (AACQ73).",
+  "exemple": {
+    "payload": "Champ requis manquant : l'id de la campagne."
+  }
+}

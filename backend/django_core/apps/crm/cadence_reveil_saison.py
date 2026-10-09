@@ -90,6 +90,12 @@ def motif_de_refus(lead, *, maintenant=None):
         return 'Le lead est archivé.'
     if getattr(lead, 'perdu', False):
         return 'Le lead est perdu — le réveil ne s’applique pas.'
+    # ACRM16 — la porte unique de `reveil_b` respecte l'OPPOSITION : aucune
+    # invitation à écrire à une personne qui a demandé à ne plus être
+    # contactée (même garde que le placement et le plan de relance).
+    if getattr(lead, 'ne_plus_contacter', False):
+        return ('Opposition (ne plus contacter) : aucun réveil n’est posé '
+                'pour cette personne.')
     if lead.stage != stages.COLD:
         return ('Le lead n’est pas au Froid : le réveil saisonnier ne '
                 's’adresse qu’aux dormants.')
@@ -163,8 +169,10 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     autres. Destinée au crochet planifié (qui n'existe pas encore : voir le
     rapport de la tâche), jamais déclenchée à l'insu de la commerciale.
     """
+    from django.db.models import Exists, OuterRef, Q, Subquery
+
     from . import stages
-    from .models import Lead
+    from .models import Lead, RelanceEtape
 
     local = _maintenant_local(maintenant)
     if not dans_la_fenetre_saison(local.date()):
@@ -172,9 +180,32 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     plafond = max(int(limite or 0), 0)
     if not plafond:
         return []
+    # ACRM18 — les refus de ``motif_de_refus`` qui tiennent un lead d'un
+    # passage à l'autre passent DANS la requête, AVANT la troncature : sinon
+    # les ``plafond`` premiers ids, déjà servis, étaient re-sélectionnés à
+    # chaque passage et les suivants jamais servis. ``motif_de_refus`` reste
+    # la porte unique, relue lead par lead.
+    touches = RelanceEtape.objects.filter(company=company, lead=OuterRef('pk'))
+    dernier_reveil = (touches.filter(cadence='reveil')
+                      .exclude(template_cle=REVEIL_SAISON_CLE)
+                      .order_by('-due_date', '-ordre')
+                      .values('due_date')[:1])
     dormants = (Lead.objects
                 .filter(company=company, stage=stages.COLD,
-                        is_archived=False, perdu=False)
+                        is_archived=False, perdu=False,
+                        ne_plus_contacter=False)
+                .exclude(type_installation='agricole')
+                .annotate(
+                    _deja_cette_annee=Exists(touches.filter(
+                        template_cle=REVEIL_SAISON_CLE,
+                        due_date__year=local.year)),
+                    _touche_ouverte=Exists(touches.filter(
+                        statut=RelanceEtape.Statut.A_FAIRE)),
+                    _dernier_reveil=Subquery(dernier_reveil))
+                .filter(_deja_cette_annee=False, _touche_ouverte=False)
+                .filter(Q(_dernier_reveil__isnull=True)
+                        | Q(_dernier_reveil__month__lt=REVEIL_SAISON_MOIS_DEBUT)
+                        | Q(_dernier_reveil__month__gt=REVEIL_SAISON_MOIS_FIN))
                 .order_by('id')[:plafond])
     posees = []
     for lead in dormants:
