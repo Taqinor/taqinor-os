@@ -5657,7 +5657,7 @@ def portefeuille_commercial(company, user, now=None):
     Toujours scopé société + owner — jamais de fuite cross-tenant ni
     cross-commercial (aucun paramètre société/utilisateur accepté depuis la
     requête, seulement ``request.user``)."""
-    from .engagement import compute_engagement_score, engagement_label
+    from .engagement import engagement_label, engagement_pour_clients
     from .models import Client, Lead
 
     if company is None or user is None:
@@ -5666,10 +5666,13 @@ def portefeuille_commercial(company, user, now=None):
         Lead.objects.filter(company=company, owner=user, client__isnull=False)
         .values_list('client_id', flat=True).distinct()
     )
-    clients = Client.objects.filter(company=company, id__in=client_ids)
+    # APRF22 — plan de compte chargé avec le client, scores EN LOT.
+    clients = list(Client.objects.filter(company=company, id__in=client_ids)
+                   .select_related('plan_compte'))
+    scores = engagement_pour_clients(clients, now=now)
     out = []
     for client in clients:
-        score = compute_engagement_score(client, now=now)
+        score = scores.get(client.pk, 0)
         plan_compte_id = client.plan_compte.id if hasattr(client, 'plan_compte') else None
         out.append({
             'client_id': client.id,
@@ -5699,13 +5702,10 @@ def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     portée équipe) pour que rien de hors portée ne soit rendu. ``None`` = la
     société entière, voulu pour la commande système
     ``detecter_comptes_dormants`` (balayage sans utilisateur)."""
+    from django.db.models import Max, OuterRef, Q, Subquery
     from django.utils import timezone
 
-    from apps.ventes.selectors import (
-        devis_du_client_portail, factures_du_client_portail,
-    )
-
-    from .models import Client, Lead, LeadActivity, PointContact
+    from .models import Client, LeadActivity, PointContact
 
     if company is None:
         return []
@@ -5713,35 +5713,41 @@ def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     today = now.date() if hasattr(now, 'date') else now
 
     base = clients if clients is not None else Client.objects.all()
+    # APRF22 — dates EN LOT (annotations SQL) : dernier devis (actif, non
+    # brouillon — mêmes populations que ``devis_du_client_portail``),
+    # dernière facture (non brouillon — ``factures_du_client_portail``) par
+    # relations inverses en chaînes ; dernière activité et dernier point de
+    # contact des leads de la société par sous-requête. Un client sans
+    # devis/facture est écarté EN BASE. Requêtes constantes.
+    brouillon = 'brouillon'  # statut de DOCUMENT (couche séparée, règle #4)
+    derniere_activite = (
+        LeadActivity.objects
+        .filter(lead__client=OuterRef('pk'), lead__company=company)
+        .order_by('-created_at').values('created_at')[:1])
+    dernier_contact = (
+        PointContact.objects
+        .filter(lead__client=OuterRef('pk'), lead__company=company)
+        .order_by('-date_contact').values('date_contact')[:1])
+    annotes = (
+        base.filter(company=company)
+        .prefetch_related(None)  # le viewset précharge pour sa liste
+        .annotate(
+            _dernier_devis=Max('devis__date_creation', filter=Q(
+                devis__company=company, devis__is_active=True)
+                & ~Q(devis__statut=brouillon)),
+            _derniere_facture=Max('factures__date_emission', filter=Q(
+                factures__company=company) & ~Q(
+                    factures__statut=brouillon)),
+            _derniere_activite=Subquery(derniere_activite),
+            _dernier_contact=Subquery(dernier_contact))
+        .filter(Q(_dernier_devis__isnull=False)
+                | Q(_derniere_facture__isnull=False)))
     out = []
-    for client in base.filter(company=company):
-        devis_list = devis_du_client_portail(company, client.id, limit=1)
-        factures_list = factures_du_client_portail(company, client.id, limit=1)
-        if not devis_list and not factures_list:
-            continue  # jamais de devis/facture : hors périmètre de la dormance
-
-        dates = []
-        if devis_list:
-            dates.append(_as_date(devis_list[0]['date_creation']))
-        if factures_list:
-            dates.append(_as_date(factures_list[0]['date_emission']))
-
-        lead_ids = list(Lead.objects.filter(
-            company=company, client=client).values_list('id', flat=True))
-        if lead_ids:
-            last_activity = (
-                LeadActivity.objects
-                .filter(lead_id__in=lead_ids)
-                .order_by('-created_at')
-                .values_list('created_at', flat=True).first())
-            dates.append(_as_date(last_activity))
-            last_contact = (
-                PointContact.objects
-                .filter(lead_id__in=lead_ids)
-                .order_by('-date_contact')
-                .values_list('date_contact', flat=True).first())
-            dates.append(_as_date(last_contact))
-
+    for client in annotes:
+        dates = [_as_date(client._dernier_devis),
+                 _as_date(client._derniere_facture),
+                 _as_date(client._derniere_activite),
+                 _as_date(client._dernier_contact)]
         dates = [d for d in dates if d is not None]
         derniere = max(dates) if dates else None
         jours = (today - derniere).days if derniere is not None else None
