@@ -73,7 +73,7 @@ class IpAllowRule(TenantModel):
 
     policy = models.ForeignKey(
         NetworkPolicy,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: IpAllowRule est le détail de NetworkPolicy — n'existe pas sans lui
         related_name='rules',
         verbose_name='Politique',
     )
