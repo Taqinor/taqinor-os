@@ -1,0 +1,247 @@
+{
+ "corps": {
+  "commerciaux": [
+   {
+    "id": "<id#10>",
+    "nom": "scission-http-comm"
+   },
+   {
+    "id": "<id#11>",
+    "nom": "scission-http-resp"
+   }
+  ],
+  "exceptions": {
+   "en_retard": {
+    "lignes": [],
+    "total": 0
+   },
+   "premier_contact_hors_delai": {
+    "lignes": [],
+    "total": 0
+   },
+   "reports": {
+    "lignes": [],
+    "plusieurs_fois": 0,
+    "total": 0
+   },
+   "sans_prochaine_etape": {
+    "lignes": [],
+    "total": 0
+   },
+   "taches_en_attente": {
+    "lignes": [],
+    "total": 0
+   }
+  },
+  "jours": [
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-17",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-18",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-19",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": false,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-20",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": false,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-21",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-22",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-23",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-24",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-25",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-26",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": false,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-27",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": false,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": false,
+    "date": "2026-09-28",
+    "du": 0,
+    "en_retard": 0,
+    "etat": "vide",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 1,
+    "aujourdhui": false,
+    "date": "2026-09-29",
+    "du": 1,
+    "en_retard": 0,
+    "etat": "vert",
+    "ouvert": 0,
+    "ouvre": true,
+    "sautees": 0
+   },
+   {
+    "a_temps": 0,
+    "aujourdhui": true,
+    "date": "2026-09-30",
+    "du": 3,
+    "en_retard": 0,
+    "etat": "en_cours",
+    "ouvert": 3,
+    "ouvre": true,
+    "sautees": 0
+   }
+  ],
+  "owner": null,
+  "par_type": [
+   {
+    "a_temps": 1,
+    "du": 1,
+    "en_retard": 0,
+    "est_tache": false,
+    "ouvert": 0,
+    "reponses": [
+     {
+      "cle": "joint",
+      "n": 1
+     }
+    ],
+    "reportees": 0,
+    "sautees": 0,
+    "type_etape": "contact_appel"
+   }
+  ],
+  "periode_jours": 14,
+  "premier_contact": {
+   "dans_le_delai": 1,
+   "delai_heures": 24,
+   "mediane_minutes": 0,
+   "nouveaux": 4,
+   "plus_longue_attente_heures": 0.0
+  },
+  "resultats": {
+   "devis_acceptes": 0,
+   "devis_envoyes": 0,
+   "visites_planifiees": 0
+  },
+  "segment": null,
+  "seuils": {
+   "premier_contact_heures": 24,
+   "reports_min": 2,
+   "retard_alerte_jours": 2,
+   "tache_attente_jours": 2
+  },
+  "verdict": {
+   "a_temps": 1,
+   "a_temps_pct": 100.0,
+   "du": 1,
+   "en_retard": 0,
+   "niveau": "ok",
+   "ouvert": 0,
+   "precedent_a_temps_pct": null,
+   "reportees": 0,
+   "sautees": 0
+  }
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/relance-etapes/controle/"
+}

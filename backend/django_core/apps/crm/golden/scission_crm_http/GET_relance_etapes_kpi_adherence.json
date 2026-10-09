@@ -1,0 +1,82 @@
+{
+ "corps": {
+  "a_lheure_pct": 100.0,
+  "absences_declarees": [],
+  "annulees_moteur": 0,
+  "conversion_par_stage": [
+   {
+    "entres": 4,
+    "passes_au_suivant": 2,
+    "stage": "NEW",
+    "taux_pct": 50.0
+   },
+   {
+    "entres": 2,
+    "passes_au_suivant": 1,
+    "stage": "CONTACTED",
+    "taux_pct": 50.0
+   },
+   {
+    "entres": 1,
+    "passes_au_suivant": 0,
+    "stage": "QUOTE_SENT",
+    "taux_pct": 0.0
+   },
+   {
+    "entres": 0,
+    "passes_au_suivant": 0,
+    "stage": "FOLLOW_UP",
+    "taux_pct": null
+   },
+   {
+    "entres": 0,
+    "passes_au_suivant": 0,
+    "stage": "SIGNED",
+    "taux_pct": null
+   }
+  ],
+  "leads_sans_touche": [
+   {
+    "en_retard_depuis_heures": null,
+    "lead_id": "<lead_id#2>",
+    "nom": "Alaoui bis Test",
+    "prochaine_touche": null,
+    "ville": "Casablanca"
+   }
+  ],
+  "par_etape": [
+   {
+    "a_lheure_pct": 100.0,
+    "annulees_moteur": 0,
+    "canal": "appel",
+    "faites": 1,
+    "libelle": "Appel clos",
+    "ordre": 2,
+    "sautees_humaines": 0
+   }
+  ],
+  "periode_jours": 30,
+  "sautees_humaines": 0,
+  "tendance_a_lheure": [
+   {
+    "a_lheure_pct": 100.0,
+    "semaine": "2026-09-28"
+   }
+  ],
+  "touches_en_retard_ouvertes": 0,
+  "touches_faites": 1,
+  "vitesse_premier_contact": {
+   "mediane_heures": 0.0,
+   "tendance_hebdo": [
+    {
+     "mediane_heures": 0.0,
+     "semaine": "2026-09-28"
+    }
+   ]
+  }
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/relance-etapes/kpi-adherence/"
+}

@@ -1,0 +1,28 @@
+{
+ "corps": {
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+   {
+    "actif": true,
+    "client": null,
+    "created_at": "2026-09-30T10:00:00Z",
+    "created_by": "<created_by#1>",
+    "expires_at": "2026-10-30T10:00:00Z",
+    "has_password": false,
+    "id": "<id#13>",
+    "items": [],
+    "lead": "<lead#1>",
+    "lien_public": "<secret>",
+    "titre": "Salle golden",
+    "token": "<secret>",
+    "updated_at": "2026-09-30T10:00:00Z"
+   }
+  ]
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/salles-vente/"
+}

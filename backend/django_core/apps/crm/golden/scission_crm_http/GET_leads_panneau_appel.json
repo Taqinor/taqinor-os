@@ -1,0 +1,680 @@
+{
+ "corps": {
+  "champs_a_poser": [
+   {
+    "champ": "occupation_jour",
+    "choix": [
+     {
+      "libelle": "Présent en journée",
+      "valeur": "present"
+     },
+     {
+      "libelle": "Absent en journée",
+      "valeur": "absent"
+     },
+     {
+      "libelle": "Présence partielle (télétravail/mi-temps)",
+      "valeur": "partiel"
+     }
+    ],
+    "libelle": "Présence en journée",
+    "nature": "choix",
+    "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? » (Présent/Absent/Présence partielle — vide = pas encore posée). Renseigné : PILOTE la silhouette de consommation servie (apps/ventes/courbes_journalieres.py _occupation) — sinon repli sur le défaut fondateur actuel, inchangé.",
+    "section": "occupation"
+   },
+   {
+    "champ": "nb_personnes_foyer",
+    "choix": null,
+    "libelle": "Nombre de personnes au foyer",
+    "nature": "nombre",
+    "question": "Question à l'appel : « Combien de personnes vivent dans ce logement ? » (vide = pas encore posée). Le moteur dit lui-même que son absence l'empêche de chiffrer le chauffe-eau par ordre de grandeur : sans ce nombre, la couche est OMISE plutôt qu’inventée.",
+    "section": "occupation"
+   },
+   {
+    "champ": "chauffage_electrique_hiver",
+    "choix": [
+     {
+      "libelle": "Oui",
+      "valeur": true
+     },
+     {
+      "libelle": "Non",
+      "valeur": false
+     }
+    ],
+    "libelle": "Chauffage électrique en hiver",
+    "nature": "choix",
+    "question": "Question à l'appel : « Vous chauffez-vous à l'électricité en hiver ? » (Oui/Non — vide = pas encore posée). Champ INFORMATIF : décision fondateur du 21/09/2026 — aucune couche de chauffage d'hiver n'est composée, donc il n’ajuste AUCUNE courbe.",
+    "section": "occupation"
+   },
+   {
+    "champ": "equip_piscine",
+    "choix": [
+     {
+      "libelle": "Oui",
+      "valeur": true
+     },
+     {
+      "libelle": "Non",
+      "valeur": false
+     }
+    ],
+    "libelle": "Piscine",
+    "nature": "choix",
+    "question": "Question à l'appel : « Avez-vous une piscine ? » (Oui/Non — laisser vide tant que la question n'a pas été posée : vide ≠ Non).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_piscine_pompe_kw",
+    "choix": null,
+    "libelle": "Puissance pompe piscine (kW)",
+    "nature": "nombre",
+    "question": "Puissance de la pompe de filtration (kW, plaque signalétique du moteur). Aucune valeur par défaut : le mémo ne cite aucune puissance fiable pour ce parc — à relever sur place ou à demander au client, sinon laisser vide (aucune couche piscine sans cette valeur).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_piscine_heures_jour",
+    "choix": null,
+    "libelle": "Piscine — heures de filtration/jour",
+    "nature": "nombre",
+    "question": "Durée réelle de filtration déclarée (h/jour), quand elle est connue : remplace la durée par défaut du mémo (8h, bloc 10h-18h). Vide : la couche piscine reste composée avec la fenêtre par défaut.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_piscine_creneau",
+    "choix": [
+     {
+      "libelle": "Matin",
+      "valeur": "matin"
+     },
+     {
+      "libelle": "Après-midi",
+      "valeur": "apres_midi"
+     },
+     {
+      "libelle": "Soir",
+      "valeur": "soir"
+     },
+     {
+      "libelle": "Toute la journée",
+      "valeur": "journee"
+     }
+    ],
+    "libelle": "Créneau de filtration de la piscine",
+    "nature": "choix",
+    "question": "Question à l'appel : « À quel moment la pompe de filtration tourne-t-elle le plus (matin/après-midi/soir/toute la journée) ? » Change l'heure de DÉPART de la fenêtre (equip_piscine_heures_jour en contrôle toujours la longueur). Seul, ne change rien.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_voiture_electrique",
+    "choix": [
+     {
+      "libelle": "Oui",
+      "valeur": true
+     },
+     {
+      "libelle": "Non",
+      "valeur": false
+     }
+    ],
+    "libelle": "Véhicule électrique",
+    "nature": "choix",
+    "question": "Question à l'appel : « Avez-vous ou prévoyez-vous un véhicule électrique ? » (Oui/Non — vide = pas encore posée).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_ve_km_semaine",
+    "choix": null,
+    "libelle": "VE — km parcourus/semaine",
+    "nature": "nombre",
+    "question": "Question à l'appel : « Combien de km parcourez-vous par semaine avec ce véhicule ? » SAISIE OBLIGATOIRE pour chiffrer la recharge (aucun défaut : mémo étage 2 — conversion ADEME 19,8 kWh/100 km, sans hypothèse de kilométrage).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_ve_chargeur_kw",
+    "choix": null,
+    "libelle": "Puissance chargeur VE (kW)",
+    "nature": "nombre",
+    "question": "Puissance du chargeur du véhicule électrique (kW, prise renforcée/wallbox). Avec le créneau ci-dessous : borne la fenêtre de recharge à l'énergie hebdomadaire ÷ cette puissance, au lieu de la fenêtre 21h-6h par défaut. Seule, ne change rien.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_ve_creneau",
+    "choix": [
+     {
+      "libelle": "Nuit",
+      "valeur": "nuit"
+     },
+     {
+      "libelle": "Jour",
+      "valeur": "jour"
+     },
+     {
+      "libelle": "Soir",
+      "valeur": "soir"
+     }
+    ],
+    "libelle": "Créneau de recharge du VE",
+    "nature": "choix",
+    "question": "Question à l'appel : « À quel moment rechargez-vous le véhicule (nuit/jour/soir) ? » Avec la puissance ci-dessus : borne la fenêtre de recharge réelle. Seul, ne change rien.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_clim",
+    "choix": [
+     {
+      "libelle": "Oui",
+      "valeur": true
+     },
+     {
+      "libelle": "Non",
+      "valeur": false
+     }
+    ],
+    "libelle": "Climatisation",
+    "nature": "choix",
+    "question": "Question à l'appel : « Avez-vous la climatisation ? » (Oui/Non — vide = pas encore posée).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_clim_pieces",
+    "choix": null,
+    "libelle": "Clim — nombre de pièces/unités",
+    "nature": "nombre",
+    "question": "Question à l'appel : « Combien de pièces/unités climatisées ? » (chaque unité ≈ 1,4 kWh/h pour un split 12000 BTU non-inverter — mémo étage 2).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_clim_kw",
+    "choix": null,
+    "libelle": "Puissance clim déclarée (kW)",
+    "nature": "nombre",
+    "question": "Puissance totale RÉELLE de la climatisation (kW, relevée sur plaque signalétique), quand elle est connue : remplace l'estimation par défaut (pièces × 1,4 kWh/h non-inverter). Vide : la couche clim reste composée depuis le nombre de pièces.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_clim_creneau",
+    "choix": [
+     {
+      "libelle": "Matin",
+      "valeur": "matin"
+     },
+     {
+      "libelle": "Après-midi",
+      "valeur": "apres_midi"
+     },
+     {
+      "libelle": "Soir",
+      "valeur": "soir"
+     },
+     {
+      "libelle": "Toute la journée",
+      "valeur": "journee"
+     }
+    ],
+    "libelle": "Créneau de fonctionnement de la clim",
+    "nature": "choix",
+    "question": "Question à l'appel : « À quel moment la climatisation tourne-t-elle le plus (matin/après-midi/soir/toute la journée) ? » Avec la puissance déclarée (ou à défaut l'estimation par pièces) : place la couche « clim » sur ce créneau au lieu du bloc 13h-21h par défaut. Seul, ne change rien.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_chauffe_eau_electrique",
+    "choix": [
+     {
+      "libelle": "Oui",
+      "valeur": true
+     },
+     {
+      "libelle": "Non",
+      "valeur": false
+     }
+    ],
+    "libelle": "Chauffe-eau électrique",
+    "nature": "choix",
+    "question": "Question à l'appel : « Votre chauffe-eau est-il électrique ? » Champ INFORMATIF uniquement : le mémo ne donne qu'un ordre de grandeur kWh/personne/an (aucun champ « nombre de personnes » collecté) — il n'ajuste AUCUNE courbe (omission plutôt qu'un défaut inventé).",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_chauffe_eau_kw",
+    "choix": null,
+    "libelle": "Puissance chauffe-eau (kW)",
+    "nature": "nombre",
+    "question": "Puissance de la résistance du chauffe-eau électrique (kW, plaque signalétique). Avec le créneau ci-dessous : compose une couche « impulsion » sur ce créneau. Seule, ne produit rien.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_chauffe_eau_creneau",
+    "choix": [
+     {
+      "libelle": "Matin",
+      "valeur": "matin"
+     },
+     {
+      "libelle": "Soir",
+      "valeur": "soir"
+     },
+     {
+      "libelle": "Nuit",
+      "valeur": "nuit"
+     },
+     {
+      "libelle": "Toute la journée",
+      "valeur": "journee"
+     }
+    ],
+    "libelle": "Créneau de chauffe du chauffe-eau",
+    "nature": "choix",
+    "question": "Question à l'appel : « À quel moment le chauffe-eau chauffe-t-il le plus (matin/soir/nuit/toute la journée) ? » Avec la puissance ci-dessus : compose une couche « impulsion » sur ce créneau. Seul, ne produit rien.",
+    "section": "equipements"
+   },
+   {
+    "champ": "equip_ve_statut",
+    "choix": [
+     {
+      "libelle": "Véhicule déjà là",
+      "valeur": "possede"
+     },
+     {
+      "libelle": "Véhicule seulement prévu",
+      "valeur": "prevu"
+     }
+    ],
+    "libelle": "Véhicule électrique — déjà là ou prévu ?",
+    "nature": "choix",
+    "question": "Question à l'appel : « Ce véhicule électrique, vous l'avez déjà, ou c'est un projet ? » (vide = pas encore posée). Précise le « avez-vous OU prévoyez-vous » du champ véhicule électrique : une voiture seulement PRÉVUE reste comptée, et le devis comme la proposition portent alors l’étiquette « avec votre future voiture » — sans elle, le chiffre mentirait.",
+    "section": "equipements"
+   },
+   {
+    "champ": "facture_hiver",
+    "choix": null,
+    "libelle": "facture hiver",
+    "nature": "nombre",
+    "question": "Question à l'appel : « Votre facture d'électricité, elle est de combien ? Elle couvre un mois ou deux mois ? » — le montant ENREGISTRÉ est toujours MENSUEL : une facture de deux mois est divisée par deux à la saisie.",
+    "section": "energie"
+   },
+   {
+    "champ": "facture_ete",
+    "choix": null,
+    "libelle": "facture ete",
+    "nature": "nombre",
+    "question": "",
+    "section": "energie"
+   },
+   {
+    "champ": "ete_differente",
+    "choix": [
+     {
+      "libelle": "Oui",
+      "valeur": true
+     },
+     {
+      "libelle": "Non",
+      "valeur": false
+     }
+    ],
+    "libelle": "ete differente",
+    "nature": "choix",
+    "question": "",
+    "section": "energie"
+   },
+   {
+    "champ": "conso_mensuelle_kwh",
+    "choix": null,
+    "libelle": "Consommation mensuelle (kWh)",
+    "nature": "nombre",
+    "question": "Question à l'appel : « Votre consommation du mois dernier, en kWh ? Elle est sur la facture. » (vide = pas encore posée).",
+    "section": "energie"
+   },
+   {
+    "champ": "raccordement",
+    "choix": [
+     {
+      "libelle": "Monophasé",
+      "valeur": "monophase"
+     },
+     {
+      "libelle": "Triphasé",
+      "valeur": "triphase"
+     },
+     {
+      "libelle": "Je ne sais pas",
+      "valeur": "inconnu"
+     },
+     {
+      "libelle": "Non raccordé (site isolé)",
+      "valeur": "aucun"
+     }
+    ],
+    "libelle": "raccordement",
+    "nature": "choix",
+    "question": "Question à l'appel : « Votre compteur est-il monophasé ou triphasé ? » (vide = pas encore posée).",
+    "section": "energie"
+   },
+   {
+    "champ": "objectif_projet",
+    "choix": [
+     {
+      "libelle": "Baisser la facture",
+      "valeur": "facture"
+     },
+     {
+      "libelle": "Tenir pendant les coupures",
+      "valeur": "secours_coupures"
+     },
+     {
+      "libelle": "Gagner en autonomie",
+      "valeur": "autonomie"
+     },
+     {
+      "libelle": "Revendre le surplus (si le client en parle)",
+      "valeur": "injection_8221"
+     },
+     {
+      "libelle": "Autre",
+      "valeur": "autre"
+     }
+    ],
+    "libelle": "Objectif du projet",
+    "nature": "choix",
+    "question": "Question à l'appel : « Qu'est-ce qui compte le plus pour vous — baisser la facture, tenir pendant les coupures, gagner en autonomie ? » (vide = pas encore posée). « Revendre le surplus » ne se coche QUE si le client en parle lui-même : ce n’est jamais proposé à l’appel. « Tenir pendant les coupures » est un ARGUMENT : aucun dimensionnement de secours n’en découle.",
+    "section": "energie"
+   },
+   {
+    "champ": "type_toiture",
+    "choix": [
+     {
+      "libelle": "Terrasse béton",
+      "valeur": "terrasse_beton"
+     },
+     {
+      "libelle": "Tôle/Métal",
+      "valeur": "tole_metal"
+     },
+     {
+      "libelle": "Tuiles",
+      "valeur": "tuiles"
+     },
+     {
+      "libelle": "Bac acier",
+      "valeur": "bac_acier"
+     },
+     {
+      "libelle": "Fibrociment",
+      "valeur": "fibrociment"
+     },
+     {
+      "libelle": "Autre",
+      "valeur": "autre"
+     }
+    ],
+    "libelle": "type toiture",
+    "nature": "choix",
+    "question": "Question à l'appel : « Comment est faite votre toiture : terrasse béton, tôle, tuiles, bac acier, fibrociment ? » (vide = pas encore posée).",
+    "section": "toiture"
+   },
+   {
+    "champ": "surface_toiture_m2",
+    "choix": null,
+    "libelle": "Surface disponible pour les panneaux (m²)",
+    "nature": "nombre",
+    "question": "Question à l'appel : « Quelle surface est libre pour les panneaux, en m² ? » (vide = pas encore posée).",
+    "section": "toiture"
+   },
+   {
+    "champ": "roof_age",
+    "choix": null,
+    "libelle": "Âge de la toiture (ans)",
+    "nature": "nombre",
+    "question": "",
+    "section": "toiture"
+   },
+   {
+    "champ": "ownership",
+    "choix": [
+     {
+      "libelle": "Propriétaire",
+      "valeur": "proprietaire"
+     },
+     {
+      "libelle": "Locataire",
+      "valeur": "locataire"
+     },
+     {
+      "libelle": "Autre",
+      "valeur": "autre"
+     }
+    ],
+    "libelle": "Statut d'occupation",
+    "nature": "choix",
+    "question": "",
+    "section": "toiture"
+   },
+   {
+    "champ": "type_bien",
+    "choix": [
+     {
+      "libelle": "Villa",
+      "valeur": "villa"
+     },
+     {
+      "libelle": "Appartement",
+      "valeur": "appartement"
+     },
+     {
+      "libelle": "Immeuble",
+      "valeur": "immeuble"
+     },
+     {
+      "libelle": "Riad",
+      "valeur": "riad"
+     },
+     {
+      "libelle": "Ferme",
+      "valeur": "ferme"
+     },
+     {
+      "libelle": "Autre",
+      "valeur": "autre"
+     }
+    ],
+    "libelle": "Type de bien",
+    "nature": "choix",
+    "question": "Question à l'appel : « De quel type de bien s'agit-il — villa, appartement, immeuble, riad, ferme ? » (vide = pas encore posée). Remplace l'idée de faire saisir le type de toit au téléphone : ce chemin-là est fermé depuis la décision du 18/08/2026.",
+    "section": "toiture"
+   },
+   {
+    "champ": "gps_lat",
+    "choix": null,
+    "libelle": "gps lat",
+    "nature": "nombre",
+    "question": "",
+    "section": "gps"
+   },
+   {
+    "champ": "gps_lng",
+    "choix": null,
+    "libelle": "gps lng",
+    "nature": "nombre",
+    "question": "",
+    "section": "gps"
+   },
+   {
+    "champ": "adresse",
+    "choix": null,
+    "libelle": "adresse",
+    "nature": "texte",
+    "question": "",
+    "section": "contact"
+   },
+   {
+    "champ": "decideur",
+    "choix": [
+     {
+      "libelle": "Décide seul",
+      "valeur": "seul"
+     },
+     {
+      "libelle": "Avec le conjoint / la famille",
+      "valeur": "conjoint_famille"
+     },
+     {
+      "libelle": "Avec un associé / la direction",
+      "valeur": "associe_direction"
+     },
+     {
+      "libelle": "Le propriétaire (un tiers) décide",
+      "valeur": "proprietaire_tiers"
+     }
+    ],
+    "libelle": "Qui décide",
+    "nature": "choix",
+    "question": "Question à l'appel : « Qui décide avec vous de ce projet ? » (vide = pas encore posée). Renseigné à « avec le conjoint / la famille » ou « avec un associé / la direction », il pose l’étiquette « Décision à plusieurs » qui pilote la touche du dimanche en famille. Question ORALE uniquement : jamais dans le questionnaire envoyé au client.",
+    "section": null
+   },
+   {
+    "champ": "devis_concurrents",
+    "choix": [
+     {
+      "libelle": "Non, aucun autre devis",
+      "valeur": "non"
+     },
+     {
+      "libelle": "En attente d’un autre devis",
+      "valeur": "en_attente"
+     },
+     {
+      "libelle": "A déjà reçu un autre devis",
+      "valeur": "recu"
+     }
+    ],
+    "libelle": "Autres devis en cours",
+    "nature": "choix",
+    "question": "Question à l'appel : « Avez-vous déjà reçu ou demandé un autre devis ? » (vide = pas encore posée). État de la comparaison EN COURS — le post-mortem d’une affaire perdue reste, lui, dans la fiche « concurrent ». Question ORALE uniquement.",
+    "section": null
+   },
+   {
+    "champ": "frein_principal",
+    "choix": [
+     {
+      "libelle": "Aucun frein",
+      "valeur": "aucun"
+     },
+     {
+      "libelle": "Prix",
+      "valeur": "prix"
+     },
+     {
+      "libelle": "Compare d’autres devis",
+      "valeur": "compare"
+     },
+     {
+      "libelle": "Timing",
+      "valeur": "timing"
+     },
+     {
+      "libelle": "Technique",
+      "valeur": "technique"
+     },
+     {
+      "libelle": "Confiance",
+      "valeur": "confiance"
+     }
+    ],
+    "libelle": "Frein principal",
+    "nature": "choix",
+    "question": "Question à l'appel : « Qu'est-ce qui vous retient aujourd’hui ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite, pour que le terrain et le téléphone se relisent. Question ORALE.",
+    "section": null
+   },
+   {
+    "champ": "declencheur",
+    "choix": [
+     {
+      "libelle": "Les économies",
+      "valeur": "economies"
+     },
+     {
+      "libelle": "Les coupures / l’autonomie",
+      "valeur": "coupures"
+     },
+     {
+      "libelle": "L’écologie",
+      "valeur": "ecologie"
+     },
+     {
+      "libelle": "La technologie",
+      "valeur": "technologie"
+     }
+    ],
+    "libelle": "Ce qui a accroché",
+    "nature": "choix",
+    "question": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
+    "section": null
+   }
+  ],
+  "equipements": [
+   {
+    "champs_manquants": [],
+    "cle": "piscine",
+    "compte_dans_etude": false,
+    "declare": false,
+    "libelle": "Piscine"
+   },
+   {
+    "champs_manquants": [],
+    "cle": "clim",
+    "compte_dans_etude": false,
+    "declare": false,
+    "libelle": "Climatisation"
+   },
+   {
+    "champs_manquants": [],
+    "cle": "ve",
+    "compte_dans_etude": false,
+    "declare": false,
+    "libelle": "Véhicule électrique"
+   },
+   {
+    "champs_manquants": [],
+    "cle": "chauffe_eau",
+    "compte_dans_etude": false,
+    "declare": false,
+    "libelle": "Chauffe-eau électrique"
+   }
+  ],
+  "fenetre_du_jour": {
+   "appelable": true,
+   "date": "2026-09-30",
+   "debut": "09:00",
+   "fin": "20:00",
+   "pause": null,
+   "ramadan": false
+  },
+  "lead_id": "<lead_id#1>",
+  "prefill": {
+   "email": "alaoui@example.test",
+   "ville": "Casablanca"
+  },
+  "profil_suppose": true,
+  "script": {
+   "langue": "fr",
+   "message": "",
+   "placeholders_manquants": []
+  },
+  "segment": null,
+  "segment_libelle": null,
+  "segment_suggere": null,
+  "touche": {
+   "canal": "appel",
+   "heure_cible": "12:00",
+   "id": "<id#6>",
+   "prevue_le": "2026-09-30",
+   "rang": 1,
+   "statut": "a_faire",
+   "template_cle": ""
+  }
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/leads/<id>/panneau-appel/"
+}

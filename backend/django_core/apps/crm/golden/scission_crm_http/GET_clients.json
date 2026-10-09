@@ -1,0 +1,63 @@
+{
+ "corps": {
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+   {
+    "adresse": null,
+    "adresse_siege": null,
+    "anonymized_at": null,
+    "avertissement_bloquant": false,
+    "avertissement_vente": "",
+    "cin": null,
+    "code_parrainage": "TQ-<n>",
+    "contact_fonction": null,
+    "contact_nom": null,
+    "created_by": null,
+    "created_by_nom": null,
+    "custom_data": null,
+    "date_creation": "2026-09-30T10:00:00Z",
+    "date_modification": "2026-09-30T10:00:00Z",
+    "delai_paiement_jours": null,
+    "derniere_alerte_dormance": null,
+    "devis_count": 0,
+    "email": "client.golden@example.test",
+    "fin_de_mois": false,
+    "ice": null,
+    "id": "<id#12>",
+    "identite_entreprise": {
+     "complete": true,
+     "manquants": [],
+     "requis_pour": {
+      "acceptation_en_ligne": [],
+      "devis": [],
+      "facture": []
+     },
+     "type_client": "particulier"
+    },
+    "if_fiscal": null,
+    "is_anonymized": false,
+    "langue_document": "fr",
+    "liste_prix": null,
+    "nom": "Client Golden",
+    "parent": null,
+    "plafond_credit": null,
+    "prenom": null,
+    "raison_sociale_a_confirmer": false,
+    "rc": null,
+    "releve_mensuel_auto": false,
+    "telephone": "+212661003010",
+    "tiers": "<tiers#1>",
+    "total_facture_ttc": "0",
+    "total_paye": "0",
+    "tva_recuperable": null,
+    "type_client": "particulier"
+   }
+  ]
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/clients/"
+}

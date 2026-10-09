@@ -1,0 +1,26 @@
+{
+ "corps": {
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+   {
+    "created_by": "<created_by#1>",
+    "date_creation": "2026-09-30T10:00:00Z",
+    "date_modification": "2026-09-30T10:00:00Z",
+    "id": "<id#13>",
+    "lead": "<lead#3>",
+    "lead_nom": "Bennani",
+    "notes": "Visite golden",
+    "reminder_sent": false,
+    "scheduled_at": "2026-10-02T10:00:00Z",
+    "statut": "planifie",
+    "statut_display": "Planifié"
+   }
+  ]
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/appointments/"
+}

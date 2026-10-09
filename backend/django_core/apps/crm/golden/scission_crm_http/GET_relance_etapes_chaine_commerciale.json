@@ -1,0 +1,21 @@
+{
+ "corps": {
+  "devis_a_preparer": {
+   "leads": [],
+   "total": 0
+  },
+  "joints_sans_devis": {
+   "leads": [],
+   "total": 0
+  },
+  "limite": 5,
+  "visites_a_venir": {
+   "leads": [],
+   "total": 0
+  }
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/relance-etapes/chaine-commerciale/"
+}

@@ -1,0 +1,25 @@
+{
+ "corps": [
+  {
+   "attachment_filename": null,
+   "attachment_mime": null,
+   "attachment_url": null,
+   "body": "Premier échange golden.",
+   "bulk": false,
+   "created_at": "2026-09-30T10:00:00Z",
+   "field": null,
+   "field_label": null,
+   "id": "<id#5>",
+   "kind": "note",
+   "new_value": null,
+   "old_value": null,
+   "outcome": "",
+   "pinned": false,
+   "user_nom": "scission-http-resp"
+  }
+ ],
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/leads/<id>/historique/"
+}

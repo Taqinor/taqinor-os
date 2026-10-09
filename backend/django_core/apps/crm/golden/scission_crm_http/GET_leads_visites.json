@@ -1,0 +1,11 @@
+{
+ "corps": {
+  "avertissement_sans_devis": "Aucun devis n’a encore été envoyé à ce client. Règle : la visite technique se propose APRÈS le devis (c’est un outil de closing). Vous pouvez la planifier quand même — elle sera signalée « sans devis » dans le suivi.",
+  "rappel_juridique": "Si le bon de commande se signe pendant la visite, chez le client : démarchage à domicile (loi 31-08, art. 45) — cocher « signé au domicile », formulaire de rétractation remis, aucun acompte encaissé avant 7 jours (art. 49 et 50).",
+  "visites": []
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/leads/<id>/visites/"
+}

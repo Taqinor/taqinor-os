@@ -1,0 +1,16 @@
+{
+ "corps": {
+  "mediane_minutes_calendaires": 0,
+  "mediane_minutes_ouvrees": 0,
+  "nb_leads": 4,
+  "nb_nuit": 0,
+  "nb_nuit_rappeles_avant_930": 0,
+  "nb_sous_objectif": 1,
+  "objectif_minutes": 5,
+  "pct_sous_objectif": 25.0
+ },
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/leads/kpi-premier-contact/"
+}

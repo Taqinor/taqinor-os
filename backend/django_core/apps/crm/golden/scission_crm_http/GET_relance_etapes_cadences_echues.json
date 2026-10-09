@@ -1,0 +1,13 @@
+{
+ "corps": {
+  "count": 0,
+  "jours": 1,
+  "results": []
+ },
+ "donnees": {
+  "jours": 1
+ },
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/relance-etapes/cadences-echues/"
+}

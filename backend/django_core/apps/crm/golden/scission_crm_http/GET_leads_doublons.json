@@ -1,0 +1,53 @@
+{
+ "corps": [
+  {
+   "match_keys": [
+    "telephone"
+   ],
+   "members": [
+    {
+     "completeness": 5,
+     "date_creation": "2026-09-30T10:00:00+00:00",
+     "email": "alaoui@example.test",
+     "id": "<id#1>",
+     "is_archived": false,
+     "nb_activites": 1,
+     "nb_devis": 0,
+     "nom": "Alaoui",
+     "prenom": "Test",
+     "societe": null,
+     "stage": "NEW",
+     "telephone": "+212661003001",
+     "ville": "Casablanca"
+    },
+    {
+     "completeness": 5,
+     "date_creation": "2026-09-30T10:00:00+00:00",
+     "email": "alaoui bis@example.test",
+     "id": "<id#2>",
+     "is_archived": false,
+     "nb_activites": 0,
+     "nb_devis": 0,
+     "nom": "Alaoui bis",
+     "prenom": "Test",
+     "societe": null,
+     "stage": "NEW",
+     "telephone": "+212661003001",
+     "ville": "Casablanca"
+    }
+   ],
+   "merge_preview": {
+    "activites": 0,
+    "champs_combles": [],
+    "devis": "<devis#1>",
+    "fiches_archivees": 1,
+    "relances": 0
+   },
+   "suggested_survivor_id": "<suggested_survivor_id#1>"
+  }
+ ],
+ "donnees": {},
+ "methode": "GET",
+ "statut": 200,
+ "url": "/api/django/crm/leads/doublons/"
+}
