@@ -1,0 +1,66 @@
+{
+  "endpoint": "PATCH /api/django/ventes/devis/<id>/etude-params/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AGNR5 (PACT10, C-AGNR-001 ; décision D-AGNR-1 option (a), AGNR4) — CONTRAT D'ABORD, posé SEUL sur `main` : aucun code. Les factures que l'écran (`applyLead`, `applySiteProfile`, `syncBillEstimator`) et le devis automatique (`createAutoQuote`) transmettent au moteur. D-AGNR-1 (a) : quand le client n'a donné que DEUX factures (hiver / été), l'écran et le devis auto n'envoient PLUS de série de douze mois fabriquée (la rampe) ; ils envoient la clé d'entrée ÉCRAN `factures_hiver_ete` = {hiver_mad, ete_mad, ete_differente}, et le MOTEUR dérive lui-même les marches (`horaire/conso.py::serie_mad_mensuelle` puis `profil_depuis_factures`), étiquetées `source: facture_hiver_ete`. `factures_mensuelles_reelles` est RÉSERVÉE à douze mois TAPÉS par le vendeur (jamais une série dérivée) ; la grille de l'écran montre les marches marquées « estimé ». La clé `factures_hiver_ete` est NOUVELLE : elle n'existe pas encore dans `domain/etude_schema.py::SCHEMA` (AGNR6 l'y ajoute, propriétaire ECRAN, ENTRÉE du client, nourrit le moteur) ; ce commit ne pose que le contrat. Consommateurs : AGNR6 (serveur : accepter la clé, dériver, étiqueter) et AGNR34 (écran : envoyer deux factures, marquer « estimé ») — tous deux portent `@after` sur ce fichier (PACT11). Les valeurs sont ILLUSTRATIVES sauf les sorties, qui sont celles des sondes V_VA p1/p2 rejouées sur `profil_depuis_factures` : hiver 500 / été 1 200 MAD ⇒ 5 779 kWh/an, `source: facture_hiver_ete`. Aucun prix d'achat, aucune marge, aucun statut de devis : la requête ne touche que `Devis.etude_params` (règle #4).",
+  "notes": {
+    "factures_hiver_ete": "clé d'entrée ÉCRAN : {hiver_mad: nombre > 0, ete_mad: nombre ou null, ete_differente: booléen}. Sans facture d'hiver exploitable (≤ 0 ou absente) : aucune série fabriquée, le moteur tombe sur la source suivante de `profil_depuis_factures`. `ete_differente` faux ou `ete_mad` ≤ 0 ⇒ la facture d'hiver est répétée sur les douze mois (source `facture_hiver`). Mois d'été = mai → octobre (indices 4 à 9, `MOIS_ETE_FACTURE`).",
+    "factures_mensuelles_reelles": "liste de DOUZE montants MAD TAPÉS par le vendeur, un par mois (janvier → décembre). Jamais écrite par l'écran à partir de deux factures, jamais dérivée : c'est la seule source qui porte une VRAIE variation mensuelle. Les deux clés peuvent coexister dans `etude_params` ; `profil_depuis_factures` prend les douze mois tapés d'abord, puis la paire hiver/été.",
+    "ordre_de_priorite_moteur": "kwh_mensuels_saisis (12 kWh) > kwh_mensuel_saisi (1 kWh répété) > factures_mensuelles_reelles (12 mois tapés) > facture_hiver_ete / facture_hiver (paire répétée en marches).",
+    "libelles_client": "le contrat FIXE le libellé client de chaque source (CLAUSE CLIENT d'AGNR5) : `facture_hiver_ete` → « Estimation — deux factures (hiver/été) » ; `factures_mensuelles_reelles` → « factures mensuelles réelles ». Le mot « réelles » ne s'imprime JAMAIS pour une source estimée. Aucun chiffre dans le libellé (règle de la note des économies mensuelles).",
+    "reponse": "PATCH renvoie LE BLOC FUSIONNÉ {etude_params, updated_at} (voir `devis_verrou_edition.json` pour le 409 `devis_modifie`) ; les blocs dérivés (`etude_horaire`, `dimensionnement`) sont recalculés en base, pas servis ici."
+  },
+  "corps_deux_factures": {
+    "factures_hiver_ete": {
+      "hiver_mad": 500,
+      "ete_mad": 1200,
+      "ete_differente": true
+    }
+  },
+  "corps_deux_factures_identiques": {
+    "factures_hiver_ete": {
+      "hiver_mad": 500,
+      "ete_mad": null,
+      "ete_differente": false
+    }
+  },
+  "corps_douze_mois_tapes": {
+    "factures_mensuelles_reelles": [420, 410, 430, 450, 640, 700, 760, 780, 690, 520, 440, 430]
+  },
+  "exemple": {
+    "etude_params": {
+      "factures_hiver_ete": {
+        "hiver_mad": 500,
+        "ete_mad": 1200,
+        "ete_differente": true
+      }
+    },
+    "updated_at": "2026-10-10T09:15:00+00:00"
+  },
+  "sorties_moteur": {
+    "facture_hiver_ete": {
+      "entree": "corps_deux_factures",
+      "source": "facture_hiver_ete",
+      "conso_annuelle_kwh": 5779,
+      "serie_kwh_mensuelle": [310, 310, 310, 310, 653, 653, 653, 653, 653, 653, 310, 310],
+      "methode": "inversion_bareme_tranches",
+      "etiquette_ecran": "estimé",
+      "libelle_client": "Estimation — deux factures (hiver/été)"
+    },
+    "factures_mensuelles_reelles": {
+      "entree": "corps_douze_mois_tapes",
+      "source": "factures_mensuelles_reelles",
+      "serie_kwh_mensuelle": "douze valeurs, une par facture tapée, back-calculées une à une au barème (`serie_kwh_depuis_mad`) — aucune marche",
+      "methode": "inversion_bareme_tranches",
+      "etiquette_ecran": null,
+      "libelle_client": "factures mensuelles réelles"
+    },
+    "facture_hiver": {
+      "entree": "corps_deux_factures_identiques",
+      "source": "facture_hiver",
+      "serie_kwh_mensuelle": "la même valeur sur les douze mois",
+      "methode": "inversion_bareme_tranches",
+      "etiquette_ecran": "estimé",
+      "libelle_client": "Estimation — facture d'hiver"
+    }
+  }
+}
