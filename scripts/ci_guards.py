@@ -589,6 +589,13 @@ GARDES = {
         ('Check for naive datetime / DateField timestamps (YDATA10/11)',
          'python scripts/check_naive_datetime.py',
          '.'),
+        # ACRM51 — toute lecture « devis accepté / envoyé » du CRM passe par la version en vigueur.
+        ('Check lecture de devis sans version en vigueur (is_active, ACRM51)',
+         'python scripts/check_version_en_vigueur.py',
+         '.'),
+        ('Test the version-en-vigueur checker itself (ACRM51)',
+         'python -m unittest scripts.tests.test_check_version_en_vigueur -v',
+         '.'),
         # ADOC79 — une seule primitive de lecture d'IP (core.throttling.ip_de_requete).
         ('Check lecture d IP hors primitive (ip_de_requete, ADOC79)',
          'python scripts/check_ip_primitive.py',
