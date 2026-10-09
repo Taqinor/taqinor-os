@@ -1,0 +1,125 @@
+# docs/audits/decisions.yml — décisions fondateur lisibles par machine (METHODE v3 §B.6, §C.4)
+#
+# Règle : une tâche ne dit JAMAIS « Si (a)/(b) » ; une tâche par option ; une tâche GATED nomme son D-id ;
+# quand la réponse arrive, les tâches dépendantes sont réécrites dans la même PR (`scripts/decisions.py appliquer`,
+# AMET, à construire) et `scripts/check_decisions.py` (AMET) refuse tout texte conditionnel sur une décision répondue.
+# Écrit UNIQUEMENT à partir d'un lot AskUserQuestion ; jamais une réponse inventée.
+#
+# Champs : id · question (une ligne) · options [{cle, texte}] · reponse (cle | ouverte) · date · source · taches [ids].
+# Les décisions antérieures au 09/10/2026 vivent dans docs/claude-memory/*decisions*.md (source de vérité historique) ;
+# elles sont référencées ici par pointeur, pas recopiées — l'inventaire complet est la tâche AMET « decisions ».
+
+version: 1
+date_maj: "2026-10-09"
+
+decisions:
+
+  - id: D-ECH-FIGE
+    question: "Les conditions de paiement sont lues en direct depuis Paramètres pour un devis signé sans échéancier propre : que faire ?"
+    options:
+      - {cle: a, texte: "figer l'échéancier sur le devis à l'acceptation ; devis déjà signés tamponnés avec les conditions du jour après dry-run"}
+      - {cle: b, texte: "figer à la signature, laisser les anciens signés en lecture directe"}
+      - {cle: c, texte: "garder la lecture directe comme choix produit"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09 (AskUserQuestion) ; constat C-AMET-003, sonde R3_V1"
+    taches: []
+
+  - id: D-ATOT5
+    question: "Un avoir émis avant la dernière échéance est refacturé dans cette échéance (avoir commercial 6 000 → solde +6 000) : quelle règle ?"
+    options:
+      - {cle: a, texte: "l'avoir réduit le dû total ; seuls les avoirs de CORRECTION se nettent dans l'échéance suivante ; champ type d'avoir"}
+      - {cle: b, texte: "garder le re-net de tout avoir dans la dernière échéance"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09 ; constat C-AMET-004 ; test_solde_net_des_avoirs à réécrire"
+    taches: []
+
+  - id: D-SIGN-AUTO
+    question: "À la signature, rien n'est créé en aval (ni BC ni facture) : que doit déclencher l'acceptation ?"
+    options:
+      - {cle: a, texte: "créer automatiquement la facture d'ACOMPTE en brouillon (éditable) depuis l'échéancier figé ; BC manuel"}
+      - {cle: b, texte: "créer BC et facture d'acompte en brouillon"}
+      - {cle: c, texte: "signature manuelle, choix produit explicite"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09 ; constat C-AMET-007"
+    taches: []
+
+  - id: D-OWN-FUSION
+    question: "Fusionner les propriétaires crm→lead et générateur→devis, déplacer 111 tâches TRANSVERSE verbatim, scinder 43 tâches multi-propriétaires, ordre correctifs-d'abord, TRANSVERSE = SPL atomiques seulement (casse l'append-only une fois) ?"
+    options:
+      - {cle: a, texte: "approuvé ; atterrit en PR dédiée après restauration des 21 chemins et 34 prédécesseurs perdus, moitiés web sous BUILD QUEUE, correctif planner F1"}
+      - {cle: b, texte: "fusion des propriétaires seulement, tâches laissées en place"}
+      - {cle: c, texte: "différer"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09 ; R2_4 + R3_V6 ; constat C-AMET-024"
+    taches: []
+
+  - id: D-FORMAT-V3
+    question: "Format de tâche v3 (14 clauses calculées) obligatoire pour toute tâche nouvelle ; tâches v2 ouvertes gelées par id ?"
+    options:
+      - {cle: a, texte: "oui — liste gelée scripts/taches_audit_v2.txt (ne fait que rétrécir), FORME 5 bi-format"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09 ; constat C-AMET-021"
+    taches: []
+
+  - id: D-SCOPE-0910
+    question: "Que livre la session du 09/10 ?"
+    options:
+      - {cle: a, texte: "méthode v3 + bascule de garde + tâches v3 (défauts vérifiés et outillage) ; les scripts sont construits par work on the plan audit_deploy"}
+      - {cle: b, texte: "idem + construction des scripts dans la session"}
+      - {cle: c, texte: "docs seulement"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09"
+    taches: []
+
+  - id: D-CLAUDEMD
+    question: "Qui édite CLAUDE.md pour les quatre règles de plan-run (acceptation, rapport de merge, générateur sur v2, @after inter-lanes) ?"
+    options:
+      - {cle: a, texte: "Claude, dans la même PR, en pesant quoi et comment changer"}
+      - {cle: b, texte: "Claude rédige, Reda colle"}
+    reponse: a
+    date: "2026-10-09"
+    source: "session 2026-10-09"
+    taches: []
+
+  - id: D-PROVENANCE
+    question: "Sept mécanismes « saisi par un humain » coexistent : lequel survit ?"
+    options:
+      - {cle: a, texte: "le motif Devis.overrides / prix_negocie généralisé : primitive apps/records/provenance.py (ecrire_si_libre), 1 migration additive + backfill Lead ; core→apps interdit"}
+    reponse: a
+    date: "2026-10-09"
+    source: "routine orchestrateur ; R2_3 + R3_V5 ; critère C16"
+    taches: []
+
+  - id: D-SPL-ATOMIQUE
+    question: "Où vivent les déplacements SPL atomiques multi-propriétaires ?"
+    options:
+      - {cle: a, texte: "dans PLAN_AUDIT_TRANSVERSE.md avec le tag (@atomique: <propriétaires>) — 13 lignes ouvertes après migration"}
+      - {cle: b, texte: "chez le propriétaire du fichier-dieu — 1 ligne"}
+    reponse: a
+    date: "2026-10-09"
+    source: "routine orchestrateur ; R2_4 + R3_V6"
+    taches: []
+
+  - id: ADEP92
+    question: "Variables d'environnement e-mail en prod : lecture des noms réels avant toute dérivation (ADEP91 (b) : Reda pose EMAIL_BACKEND lui-même)"
+    options:
+      - {cle: a, texte: "lire les noms de variables sur le serveur puis trancher"}
+    reponse: ouverte
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md"
+    taches: [ADEP92]
+
+# Pointeurs vers les décisions historiques (répondues, source de vérité = le fichier mémoire) :
+#   docs/claude-memory/decisions-audit-0810.md   — ASAV90-95, ACHT90/91/94/95, AFAC80-89, APDF92, AACQ90/95/96, AMOT1-7, ADEP90/91, AGNR4/43, ADEV61/62
+#   docs/claude-memory/asec-decisions-fondateur.md, astk-decisions-fondateur.md, ci-decisions-fondateur.md,
+#   agricole-decisions-fondateur.md, calepinage-decisions-fondateur.md, qjr5-decisions-fondateur.md, apdf-decisions-fondateur.md,
+#   apar-decisions-fondateur.md
+# Dépendants PÉRIMÉS mesurés le 09/10 (décision répondue (a), tâche encore « Si (a) » en GATED) : AMOT52, AMOT53, AMOT54,
+#   AMOT55, AMOT56 (ouvre sur « Si (b) » : garder la branche (a)), AMOT64, AMOT65, ADEV57, ADEV63 → réécrits par
+#   `scripts/decisions.py appliquer` (tâche AMET).
