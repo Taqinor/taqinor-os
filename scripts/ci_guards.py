@@ -487,7 +487,12 @@ GARDES = {
         ('Check frontière calepinage (aucun import neuf ao/ged/visites.models, CALX372)',
          'python scripts/check_frontiere_calepinage.py',
          '.'),
-        # ANCRE-A9-gardes-taches : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Check ancres des taches v3 : fichier::symbole resolu, jamais fichier:ligne nu (AMET83)',
+         'python scripts/check_ancres_taches.py',
+         '.'),
+        ('Tests de la garde des ancres (AMET83)',
+         'python -m unittest scripts.tests.test_check_ancres_taches -v',
+         '.'),
         ('Test the calepinage-frontier checker itself (CALX372)',
          'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
          '.'),
