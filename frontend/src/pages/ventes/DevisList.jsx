@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import {
   fetchDevis,
+  rafraichirDevis,
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi, { acceptationDejaFaite } from '../../api/ventesApi'
@@ -603,7 +604,7 @@ export default function DevisList() {
       await ventesApi.refuserDevis(d.id, corpsRefus({
         motifsPerte, motifId: refusMotifId, note: refusNote,
       }))
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(d.id))
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
       closeRefusModal()
     } catch (err) {
@@ -656,7 +657,7 @@ export default function DevisList() {
       }
     } finally {
       setAcceptBusy(false)
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(d.id))
     }
   }
 
@@ -671,7 +672,7 @@ export default function DevisList() {
     setChantierBusy(d.id)
     try {
       const res = await installationsApi.createFromDevis(d.id)
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(d.id))
       navigate(`/chantiers?id=${res.data.id}`)
     } catch (err) {
       toast.error(frenchError(err, 'Création du chantier impossible.'))
@@ -690,7 +691,7 @@ export default function DevisList() {
     setConvertingId(d.id)
     try {
       await dispatch(convertirDevisEnBC(d.id)).unwrap()
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(d.id))
       toast.success(`Bon de commande créé depuis ${d.reference}.`)
     } catch (err) {
       toast.error(frenchError(err, 'Conversion en bon de commande impossible.'))
@@ -726,7 +727,7 @@ export default function DevisList() {
       const res = await ventesApi.genererFacture(d.id)
       const f = res.data
       toast.success(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(d.id))
     } catch (err) {
       toast.error(frenchError(err, 'Génération de facture impossible.'))
     } finally {
