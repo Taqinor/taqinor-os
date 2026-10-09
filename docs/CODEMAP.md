@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: eb6bff01e47c4c3eff76a88efe06b09db14d49f1f7fd43d96c39157934aa490c
-Plan fingerprint: b9445738b99d61e3ef6fff4aa1d351834ccbbac442baa19f2f655667b593a1a8
+Structure fingerprint: f57d7fa3b50686d634a80ed247b968562fed44436f99fa250223fad3aed43035
+Plan fingerprint: c08ffd017d7f428f72940505f5dbaf1aa7f882b9f9f09bd679eb6cd4dcf852a4
 
 
 
@@ -393,8 +393,7 @@ through `frontend/src/lib/apps/` — **never a second app registry**:
 | `useAppBadges.js` | Live grid badges — ONE aggregated call on the existing federated endpoint `GET /reporting/reports/kpi-federes/`, never a local re-aggregation. |
 
 In immersion, `Sidebar`/`Header`/`BottomTabBar` render only the active app. The build flag
-`VITE_APPS_SHELL` (default ON) is an emergency kill-switch; removing it is task ODY33,
-gated on founder validation in production.
+the legacy « sidebar globale » shell and its `VITE_APPS_SHELL` kill-switch were REMOVED by ODY33 (10/10/2026, founder decision D-ODY33): one Apps shell in the code
 
 ### Routes
 
@@ -577,7 +576,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1158)**
+**Done (1159)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1565,6 +1564,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `QJR500` — Contrat d'abord : un devis dit s'il est modifiable et révisable ; la ligne devis du…
 - `QJR501` — Contrat d'abord : la proposition publique dit qu'elle est remplacée et porte le texte…
 - `QJR502` — Contrat d'abord : aperçu WhatsApp multi-devis du lead, sans aucun effet
@@ -1738,7 +1738,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (139)**
+**Open — to build (138)**
 
 - `AGR135` — [Reda 09/10/2026 — D-QXG3 : fiche et prix OSP pas encore disponibles, reste gaté]
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1861,7 +1861,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CRXB6` — [GATED] Frontière sortante contractée
 - `CRXB7` — [GATED] Registres LeadsPage/ListView + tests de rendu
 - `CRXB8` — [GATED] LeadViewSet dégonflé
-- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `PUB107` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
 - `PUB108` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
 - `PUB109` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
