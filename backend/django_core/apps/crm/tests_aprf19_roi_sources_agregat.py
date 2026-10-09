@@ -82,11 +82,11 @@ class RoiSourcesAgregatTests(TestCase):
         self.assertEqual(self._nb_requetes(), avant)
 
     def test_json_acrm10_acrm31(self):
-        self._lead_signe('site_web', 'mix', Decimal('100'))
-        self._lead_signe('site_web', 'mix', Decimal('200'), perdu=True,
+        self._lead_signe('site_web', 'mix', Decimal('1000'))
+        self._lead_signe('site_web', 'mix', Decimal('2000'), perdu=True,
                          motif_perte='Prix')
-        self._lead_signe('site_web', 'mix', Decimal('300'), is_archived=True)
-        _, v1 = self._lead_signe('site_web', 'mix', Decimal('400'))
+        self._lead_signe('site_web', 'mix', Decimal('3000'), is_archived=True)
+        _, v1 = self._lead_signe('site_web', 'mix', Decimal('4000'))
         Devis.objects.filter(pk=v1.pk).update(is_active=False)
         Lead.objects.create(company=self.company, nom='Ouvert',
                             canal='site_web', utm_campaign='mix',
@@ -96,6 +96,8 @@ class RoiSourcesAgregatTests(TestCase):
         # archivé hors périmètre ; perdu compté comme lead, pas comme signé.
         self.assertEqual(ligne['lead_count'], 4)
         self.assertEqual(ligne['signed_count'], 2)
-        # 100 HT → 120 TTC ; la V1 inactive (400) ne compte pas.
-        self.assertEqual(ligne['signed_value_ttc'], 120.0)
+        # 1000 HT → 1200 TTC ; la V1 inactive (4000) ne compte pas.
+        # Montants multiples de 100 TTC : le palier ARRONDI-100
+        # (argent.PAS_ARRONDI_DEVIS) ne les touche pas.
+        self.assertEqual(ligne['signed_value_ttc'], 1200.0)
         self.assertEqual(ligne['win_rate'], 50.0)
