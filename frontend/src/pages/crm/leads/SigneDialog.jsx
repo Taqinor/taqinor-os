@@ -18,6 +18,7 @@ import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 // elle restait cachée derrière le dialogue (z-index / transform / focus-trap).
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
 import { toastError } from '../../../lib/toast'
+import { useConfirmDialog } from '../../../ui/confirm'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
 import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
@@ -229,6 +230,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
     }
   }
 
+  const { confirm: confirmerDialogue } = useConfirmDialog()
   const confirm = async () => {
     if (!selected) return
     if (twoOptions && !option) {
@@ -238,9 +240,15 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
     // La date d'acceptation se propage en date de signature du chantier : une
     // date dans le futur demande une confirmation explicite avant d'enregistrer.
     const today = todayLocalStr()
-    if (date > today
-        && !window.confirm('Date d\'acceptation dans le futur — confirmer ?')) {
-      return
+    if (date > today) {
+      const ok = await confirmerDialogue({
+        title: 'Date d\'acceptation dans le futur',
+        description: 'Date d\'acceptation dans le futur — confirmer ?',
+        confirmLabel: 'Confirmer',
+        cancelLabel: 'Annuler',
+        destructive: false,
+      })
+      if (!ok) return
     }
     setBusy(true)
     setError(null)

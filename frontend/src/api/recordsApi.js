@@ -3,8 +3,9 @@ import api from './axios'
 // Activités planifiées + pièces jointes génériques (apps.records).
 const recordsApi = {
   // ── Activités ──
-  getActivities: (model, id) =>
-    api.get('/records/activities/', { params: { model, id } }),
+  // ALEA20 — `extra` (page, page_size…) : lecture COMPLÈTE par `fetchAllPages`.
+  getActivities: (model, id, extra) =>
+    api.get('/records/activities/', { params: { model, id, ...extra } }),
   getMyActivities: () => api.get('/records/activities/mine/'),
   // VX83 — « Ma file » : file de travail unifiée cross-module.
   getMaFile: () => api.get('/records/activities/ma-file/'),
