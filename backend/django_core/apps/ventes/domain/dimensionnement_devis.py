@@ -512,7 +512,9 @@ def prix_client_composition(cout_catalogue, devis=None, *, facteur=None):
     pas = float(PAS_ARRONDI_DEVIS)
     if prix >= pas:
         prix = math.floor(prix / pas) * pas
-    return round(prix, 2)
+    from decimal import Decimal, ROUND_HALF_UP
+    return float(Decimal(str(prix)).quantize(Decimal('0.01'),
+                                             rounding=ROUND_HALF_UP))
 
 
 def capacite_batterie_des_lignes(devis, lignes=None):

@@ -1316,7 +1316,9 @@ CLE_SOLAIRE_MENSUELLE = tuple(_POIDS_GHI)
 def repartir_mensuel(total, cle=CLE_SOLAIRE_MENSUELLE):
     """AMOT27 — ``total`` (MAD/an) réparti sur 12 mois ∝ ``cle``, au dirham,
     Σ des mois = ``round(total)`` exactement (plus forts restes)."""
-    cible = int(round(float(total or 0)))
+    from decimal import Decimal as _D, ROUND_HALF_UP as _HALF_UP
+    cible = int(_D(str(float(total or 0))).quantize(
+        _D("1"), rounding=_HALF_UP))
     poids = [float(p) for p in cle]
     somme = sum(poids) or 1.0
     bruts = [cible * p / somme for p in poids]
