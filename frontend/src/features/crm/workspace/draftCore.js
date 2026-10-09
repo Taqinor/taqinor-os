@@ -174,6 +174,15 @@ export function isDirty(state) {
   return dirtyKeys(state).length > 0
 }
 
+// ALEA18 — signature de la charge qu'un flush enverrait (clés sales + valeurs
+// du draft). Une charge refusée en 400 mémorise sa signature (`state.refused`) :
+// l'autosave ne la renvoie JAMAIS tant que le brouillon n'a pas changé.
+export function signatureCharge(state) {
+  return JSON.stringify(
+    dirtyKeys(state).sort().map((k) => [k, state.draft[k]]),
+  )
+}
+
 // VX249(b) — un champ « suggéré » : à la CRÉATION uniquement, une valeur par
 // défaut VX93 (owner=moi, dernière ville) non encore touchée. Dérivé de l'état
 // (pas d'état `touched` séparé) : dès que l'utilisateur édite, la clé entre
@@ -474,6 +483,7 @@ export function initState({
     inflight: null,          // { clé: valeur } envoyée, en attente | null
     saveState: 'idle',       // 'idle' | 'saving' | 'saved' | 'error'
     saveError: null,
+    refused: null,           // ALEA18 — signature de la charge refusée en 400 | null
     stale: null,             // { theirs, at } | null (garde VX243c, keyée)
     restored,                // chip « Brouillon restauré »
     composer: { note: restoredDraft && restoredDraft.note ? restoredDraft.note : '', file: null },
@@ -528,6 +538,7 @@ export function applyFlushSuccess(state, res) {
     inflight: null,
     saveState: 'saved',
     saveError: null,
+    refused: null,
     restored: false,
   }
 }
@@ -581,6 +592,7 @@ export function reducer(state, action) {
         inflight: null,
         saveState: 'error',
         saveError: action.error || "Échec d'enregistrement",
+        refused: action.refused ?? null,
       }
     }
 

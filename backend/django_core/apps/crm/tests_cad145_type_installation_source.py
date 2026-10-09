@@ -16,12 +16,19 @@ import pathlib
 
 from django.test import SimpleTestCase
 
+from apps.crm.tests_services_split_golden import modules_definissant_la_fixture
+
 _ICI = pathlib.Path(__file__).resolve().parent
 
 #: Fichiers qui portent les trois surfaces citées par le Done de CAD145 —
 #: le scoring et l'évaluation des playbooks/textes vivent tous deux dans
 #: `services.py` (rendu des messages) et `scoring.py` (calcul du score).
-_FICHIERS_A_VERIFIER = ('scoring.py', 'services.py')
+#: SPL1 : services.py se scinde en modules cibles — la garde lit aussi tout
+#: module qui définit un nom de la fixture du golden, JAMAIS models.py (qui
+#: contient légitimement `SiteProfile`).
+_FICHIERS_A_VERIFIER = tuple(dict.fromkeys(
+    ['scoring.py', 'services.py']
+    + [c.name for c in modules_definissant_la_fixture()]))
 
 
 class SourceUniqueTypeInstallationTests(SimpleTestCase):
