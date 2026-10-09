@@ -1762,6 +1762,43 @@ def _lever_blocages_reception_annulee(reception, user):
     return len(blocages)
 
 
+def _liberer_cross_dock_reception_annulee(reception):
+    """ERR-ASTK58 — libère les ``AffectationCrossDock`` d'une réception
+    annulée : la marchandise contre-passée sort du colis d'expédition non
+    scellé qui la portait (ligne de contenu décrémentée, supprimée à 0) puis
+    l'affectation est supprimée (le put-away n'est plus « sauté » pour une
+    réception qui n'existe plus). Un colis déjà SCELLÉ garde son contenu
+    figé (expédition à traiter par retour). Dans la transaction de
+    l'appelant. Renvoie le nombre d'affectations libérées."""
+    from .models_wms import (
+        AffectationCrossDock, UniteLogistique, UniteLogistiqueLigne,
+    )
+
+    affectations = list(AffectationCrossDock.objects.select_for_update()
+                        .filter(company=reception.company,
+                                reception=reception))
+    for affectation in affectations:
+        unite = (UniteLogistique.objects.select_for_update()
+                 .filter(pk=affectation.unite_logistique_id).first())
+        if unite is not None and not unite.est_figee:
+            reste = affectation.quantite or 0
+            for ligne in (UniteLogistiqueLigne.objects.select_for_update()
+                          .filter(unite=unite,
+                                  produit_id=affectation.produit_id)
+                          .order_by('-id')):
+                if reste <= 0:
+                    break
+                retire = min(reste, ligne.quantite or 0)
+                reste -= retire
+                if retire >= (ligne.quantite or 0):
+                    ligne.delete()
+                else:
+                    ligne.quantite = ligne.quantite - retire
+                    ligne.save(update_fields=['quantite'])
+        affectation.delete()
+    return len(affectations)
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1824,6 +1861,14 @@ def annuler_reception_confirmee(reception, user):
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
+        # ERR-ASTK58 — jumeaux de la confirmation : l'ajustement de pesée
+        # `PESEE-<réf>` est contre-passé AVANT la sortie (la sortie est
+        # plafonnée au stock en main : l'ordre inverse laisserait un reste),
+        # et les affectations cross-dock de la réception sont libérées.
+        from .services_catch_weight import contre_passer_pesee_reception
+        contre_passer_pesee_reception(reception=reception, user=user)
+        _liberer_cross_dock_reception_annulee(reception)
+
         # ASTK56 — quantités annulées, portées par l'événement émis après
         # commit (abonné installations : GR/IR, séries, réservation).
         lignes_annulees = []
