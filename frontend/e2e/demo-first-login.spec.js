@@ -10,7 +10,7 @@
 // le storageState partagé) : c'est tout l'intérêt du scénario « premier
 // login ».
 import { test, expect } from '@playwright/test'
-import { uiLogin, fermerMomentAccueil } from './helpers'
+import { uiLoginJusquAuxApps, fermerMomentAccueil } from './helpers'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -19,9 +19,35 @@ test.use({ storageState: { cookies: [], origins: [] } })
 // `taqinor-demo-full`) — jamais un secret, jeu de démo jetable.
 const DEMO_FULL_ADMIN = { username: 'demo_admin_full', password: 'DemoFull@2026!' }
 
+// CAD177 — UNE seule connexion UI à froid pour les quatre constats. Quatre
+// connexions en ~15 s (une par test) + celles des specs voisines dépassaient
+// le throttle « login » 5/min/IP (règle produit, jamais assouplie) : POST
+// /token/ 429 « Requête ralentie », (2) restait sur /login (nocturne
+// 37792898726). La connexion est le vrai « premier login » ; chaque test
+// repart ensuite d'un contexte NEUF (localStorage vide → moment d'accueil à
+// froid) muni des seuls cookies de session. Un 429 résiduel (specs voisines
+// dans la même minute) est ATTENDU puis rejoué — une condition observée,
+// comme `connexionApi`, jamais une pause aveugle.
+let cookiesSession = null
+
+test.beforeAll(async ({ browser }) => {
+  test.setTimeout(120_000)
+  const baseURL = test.info().project.use.baseURL
+  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
+  try {
+    const page = await ctx.newPage()
+    await uiLoginJusquAuxApps(page, DEMO_FULL_ADMIN)
+    cookiesSession = (await ctx.storageState()).cookies
+  } finally {
+    await ctx.close()
+  }
+})
+
 test.describe('NTDMO37 — premier login sur société démo fraîche', () => {
   test.beforeEach(async ({ page }) => {
-    await uiLogin(page, DEMO_FULL_ADMIN)
+    expect(cookiesSession, 'connexion à froid de demo_admin_full').toBeTruthy()
+    await page.context().addCookies(cookiesSession)
+    await page.goto('/apps')
     await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
     // CAD177 — premier login À FROID : le moment d'accueil VX156 (c2e0fa64)
     // s'ouvre et interceptait le clic de (4) sur « Démo & Onboarding »

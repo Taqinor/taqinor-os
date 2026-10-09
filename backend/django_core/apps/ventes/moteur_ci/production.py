@@ -87,6 +87,43 @@ def _alerte(code, champ, message, niveau='alerte', interne=False):
             'niveau': niveau, 'interne': interne}
 
 
+def traces_production(production, *, source=None, toit=None):
+    """Hypothèses et alertes qui ACCOMPAGNENT un bloc ``production``.
+
+    Rendues pour une production PVGIS (jamais pour celle d'un calepinage) :
+    inclinaison/azimut PVGIS, libellé de la source, et les alertes du toit
+    déclaré (orientation différente, pose à confirmer). CAD177 — fonction
+    séparée pour que le rafraîchisseur (CIQ119), qui REPREND une
+    ``production_figee`` au lieu de rappeler PVGIS, rende les mêmes traces :
+    sinon un ré-enregistrement sans aucun changement retirait ces lignes de
+    ``etude_ci`` (CIQ334/CIQ346, nocturne 37803204581).
+
+    Rend ``(hypotheses, alertes)``.
+    """
+    hypotheses, alertes = [], []
+    if not production or production.get('source') != 'pvgis':
+        return hypotheses, alertes
+    hypotheses.append({'cle': 'inclinaison_deg', 'valeur': PVGIS_ANGLE_DEG,
+                       'statut': 'source', 'source': 'pvgis_profils.PVGIS_ANGLE_DEG'})
+    hypotheses.append({'cle': 'azimut_deg', 'valeur': PVGIS_ASPECT_DEG,
+                       'statut': 'source', 'source': 'pvgis_profils.PVGIS_ASPECT_DEG'})
+    hypotheses.append({'cle': 'source_production', 'valeur': source,
+                       'statut': 'source', 'source': 'PVGIS'})
+    toit = toit or {}
+    pente = toit.get('pente_deg')
+    azimut = toit.get('azimut_deg')
+    orientation_differente = (
+        (pente is not None and _num(pente) != PVGIS_ANGLE_DEG)
+        or (azimut is not None and _num(azimut) != PVGIS_ASPECT_DEG))
+    if orientation_differente:
+        alertes.append(_alerte('orientation_non_prise_en_compte', 'toit',
+                               MESSAGE_ORIENTATION))
+    if toit.get('type_pose') in POSES_A_CONFIRMER:
+        alertes.append(_alerte('production_a_confirmer_calepinage', 'toit.type_pose',
+                               MESSAGE_A_CONFIRMER, niveau='info'))
+    return hypotheses, alertes
+
+
 def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnees_figees,
                        source=None, toit=None, calepinage=None):
     """Bloc ``production`` du contrat ``etude_ci_preview.json`` (par kWc).
@@ -141,23 +178,7 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
                         for m in par_mois],
     }
 
-    if origine == 'pvgis':
-        hypotheses.append({'cle': 'inclinaison_deg', 'valeur': PVGIS_ANGLE_DEG,
-                           'statut': 'source', 'source': 'pvgis_profils.PVGIS_ANGLE_DEG'})
-        hypotheses.append({'cle': 'azimut_deg', 'valeur': PVGIS_ASPECT_DEG,
-                           'statut': 'source', 'source': 'pvgis_profils.PVGIS_ASPECT_DEG'})
-        hypotheses.append({'cle': 'source_production', 'valeur': source,
-                           'statut': 'source', 'source': 'PVGIS'})
-        toit = toit or {}
-        pente = toit.get('pente_deg')
-        azimut = toit.get('azimut_deg')
-        orientation_differente = (
-            (pente is not None and _num(pente) != PVGIS_ANGLE_DEG)
-            or (azimut is not None and _num(azimut) != PVGIS_ASPECT_DEG))
-        if orientation_differente:
-            alertes.append(_alerte('orientation_non_prise_en_compte', 'toit',
-                                   MESSAGE_ORIENTATION))
-        if toit.get('type_pose') in POSES_A_CONFIRMER:
-            alertes.append(_alerte('production_a_confirmer_calepinage', 'toit.type_pose',
-                                   MESSAGE_A_CONFIRMER, niveau='info'))
+    hyp_prod, al_prod = traces_production(production, source=source, toit=toit)
+    hypotheses.extend(hyp_prod)
+    alertes.extend(al_prod)
     return production, hypotheses, alertes

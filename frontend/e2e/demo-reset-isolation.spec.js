@@ -15,7 +15,7 @@
 //     spec vit en e2e COMPLET (release-verify), pas dans le palier smoke
 //     par-merge de ci.yml (qui ne seed pas `taqinor-demo-full`).
 import { test, expect } from '@playwright/test'
-import { uiLogin, fermerMomentAccueil, rafraichirEtatPartage, AUTH_FILE } from './helpers'
+import { uiLoginJusquAuxApps, fermerMomentAccueil, rafraichirEtatPartage, AUTH_FILE } from './helpers'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -29,6 +29,8 @@ async function leadCount(requete) {
 }
 
 test('NTDMO38 — reset-demo sur taqinor-demo-full laisse taqinor-demo strictement intact', async ({ page, playwright, baseURL }) => {
+  // CAD177 — budget de la connexion rejouée (jusqu'à 90 s) + le reset.
+  test.setTimeout(180_000)
   // CAD177 — les comptes de la société RÉELLE voisine se lisent par l'API
   // avec la session admin PARTAGÉE (AUTH_FILE, revérifiée), plus par deux
   // connexions UI : juste après les 4 connexions à froid de
@@ -47,8 +49,10 @@ test('NTDMO38 — reset-demo sur taqinor-demo-full laisse taqinor-demo stricteme
   // 2) Change d'identité vers l'admin de la société DÉMO ciblée par le reset
   //    (jamais la même société que ci-dessus).
   await page.context().clearCookies()
-  await uiLogin(page, DEMO_FULL_ADMIN)
-  await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
+  // CAD177 — juste après demo-first-login, cette connexion tombait encore
+  // dans la minute du throttle « login » (429, nocturne 37803204581) :
+  // attendue puis rejouée jusqu'à `/apps`.
+  await uiLoginJusquAuxApps(page, DEMO_FULL_ADMIN)
   // CAD177 — premier login à froid : moment d'accueil VX156 à fermer.
   await fermerMomentAccueil(page)
 

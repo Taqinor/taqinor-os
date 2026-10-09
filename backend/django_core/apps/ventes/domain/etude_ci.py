@@ -865,19 +865,21 @@ def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
 
 
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
-               onduleurs_imposes=None):
+               onduleurs_imposes=None, source_production_figee=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
 
     ``production_figee`` (CIQ119) : le bloc ``production`` déjà figé sur le
     devis — il remplace l'appel PVGIS. ``onduleurs_imposes`` (CIQ119) :
     ``[{produit, nom, kw_ac, quantite}]`` lus sur les LIGNES du devis — la
-    combinaison n'est alors pas recherchée.
+    combinaison n'est alors pas recherchée. ``source_production_figee``
+    (CAD177) : le libellé PVGIS qui accompagnait ``production_figee`` — la
+    production reprise rend les MÊMES hypothèses/alertes que son calcul.
     """
     from apps.ventes import economie_ci, tarif_ci
     from apps.ventes.moteur_ci.charge import courbe_declaree
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
-    from apps.ventes.moteur_ci.production import bloc_production_ci
+    from apps.ventes.moteur_ci.production import bloc_production_ci, traces_production
     from apps.ventes.moteur_ci.taille import dimensionner_ci
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
 
@@ -912,8 +914,17 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                'Profil PVGIS indisponible : production non calculée, étude omise.',
                                niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
+    toit_declare = {'type_pose': res.valeur('type_pose'),
+                    'pente_deg': res.valeur('pente_deg'),
+                    'azimut_deg': res.valeur('azimut_deg')}
     if production_figee:
         production = production_figee
+        # CAD177 — mêmes traces que le calcul qui l'a figée (idempotence d'un
+        # ré-enregistrement sans changement, CIQ334/CIQ346).
+        hyp_prod, al_prod = traces_production(
+            production, source=source_production_figee, toit=toit_declare)
+        alertes.extend(al_prod)
+        hypotheses.extend(hyp_prod)
     else:
         productibles, formes, source = lecture
         production, hyp_prod, al_prod = bloc_production_ci(
@@ -921,9 +932,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             derate=PRODUCTION_DERATE,
             coordonnees_figees={'lat': _num(site.get('lat')), 'lon': _num(site.get('lon')),
                                 'date_appel': _aujourdhui().isoformat()},
-            source=source, toit={'type_pose': res.valeur('type_pose'),
-                                 'pente_deg': res.valeur('pente_deg'),
-                                 'azimut_deg': res.valeur('azimut_deg')})
+            source=source, toit=toit_declare)
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
     if production is None:
@@ -1201,6 +1210,15 @@ def _kwc_option_servie(devis, kwc_avec, kwc_sans):
     return kwc_sans
 
 
+def _source_production(etude):
+    """CAD177 — le libellé PVGIS (hypothèse ``source_production``) d'une
+    étude C&I déjà posée, ou ``None``."""
+    for hyp in (etude or {}).get('hypotheses') or []:
+        if isinstance(hyp, dict) and hyp.get('cle') == 'source_production':
+            return hyp.get('valeur')
+    return None
+
+
 def rafraichir_etude_ci_devis(devis, *, force=False):
     """CIQ119 — (re)pose ``etude_ci`` / ``production_figee`` d'un devis C&I.
 
@@ -1242,7 +1260,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
             company, {'mode': mode, 'taille_explicite_kwc': kwc}, devis=devis,
             lead=getattr(devis, 'lead', None),
             production_figee=params.get(CLE_PRODUCTION_FIGEE),
-            onduleurs_imposes=onduleurs or None)
+            onduleurs_imposes=onduleurs or None,
+            source_production_figee=_source_production(existant))
         if etude.get('bilan') is None:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,

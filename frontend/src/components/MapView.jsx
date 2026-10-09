@@ -111,6 +111,16 @@ export default function MapView({
     map.on('click', (e) => {
       if (mapClickRef.current) mapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng })
     })
+    // CAD177 — l'INERTIE du glisser (Leaflet 1.9 `Map.Drag._onDragEnd`) arme
+    // un `requestAnimFrame` → `panBy(…, { animate: true })` que `remove()`
+    // n'annule pas : quitter l'écran juste après un glisser levait « Cannot
+    // read properties of undefined (reading 'classList') » sur `_mapPane`
+    // détruit (marcheur aléatoire crm sur /carte, nocturne 37803204581). Une
+    // carte retirée n'a plus rien à déplacer : `panBy` devient inerte.
+    const panByLeaflet = map.panBy
+    map.panBy = function panByTantQueMontee(...args) {
+      return this._mapPane ? panByLeaflet.apply(this, args) : this
+    }
     mapRef.current = map
     return () => {
       // CAD177 — un zoom ANIMÉ (molette, double-clic, fitBounds) arme un

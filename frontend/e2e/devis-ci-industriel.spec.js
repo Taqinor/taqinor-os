@@ -19,7 +19,7 @@
 // Base partagée, workers: 1 : nettoyage best-effort en afterAll.
 import { test, expect } from '@playwright/test'
 import {
-  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe, textePdf,
+  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe, nombrePagesPdf, textePdf,
 } from './helpers'
 
 const ANNEE_FACTURES = new Date().getFullYear() - 1
@@ -40,11 +40,6 @@ const ENTREPRISE = {
 const devisIds = []
 const etat = { devisId: null, token: null, pdfTexte: null }
 
-/** Nombre de pages d'un PDF, lu sur ses objets /Type /Page (pas /Pages). */
-function nombrePages(octets) {
-  const texte = Buffer.from(octets).toString('latin1')
-  return (texte.match(/\/Type\s*\/Page(?![s\w])/g) || []).length
-}
 
 /** Toutes les clés d'un objet JSON, à toute profondeur. */
 function clesProfondes(v, out = []) {
@@ -104,8 +99,16 @@ test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rou
   await auto
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  // CAD177 — l'étude C&I part APRÈS la création, par la fusion
+  // `PATCH …/etude-params/` (QJR66, DevisGenerator) : relire le devis avant
+  // cette réponse lisait un etude_params réduit aux choix d'écran (nocturne
+  // 37792898726) — même attente que devis-ci-serveur.spec.js.
+  const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
+    && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
+    && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   const cree = await (await creation).json()
+  await etudeEcrite
   etat.devisId = cree.id ?? cree.devis?.id
   expect(etat.devisId, 'identifiant du devis créé').toBeTruthy()
   devisIds.push(etat.devisId)
@@ -136,7 +139,10 @@ test('CIQ346 — PDF : 4 pages avec ou sans étude, « TRI sur 25 ans » et VAN'
     const pdf = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full${suffixe}`)
     expect(pdf.status(), `/proposal${suffixe}`).toBe(200)
     const octets = await pdf.body()
-    expect(nombrePages(octets), `document industriel${suffixe} : 4 pages`).toBe(4)
+    // CAD177 — le moteur sert du PDF 1.7 à flux d'objets compressés : la
+    // regex « /Type /Page » comptait 0 (nocturne 37827548643) ; pdfjs lit
+    // le vrai nombre de pages, comme ci-site-mt-recette / devis-agricole.
+    expect(await nombrePagesPdf(octets), `document industriel${suffixe} : 4 pages`).toBe(4)
     if (!suffixe) etat.pdfTexte = await textePdf(octets)
   }
   expect(etat.pdfTexte).toMatch(/TRI sur 25 ans/)
@@ -156,8 +162,12 @@ test('CIQ346 — lien public : synthese_ci.argent = celui du PDF, aucune clé P9
   const p90 = clesProfondes(synthese).filter((k) => /p90/i.test(k))
   expect(p90, 'aucune clé P90 servie').toEqual([])
   // La VAN servie est celle imprimée (chiffres comparés sans séparateurs).
-  const van = synthese.argent.van_mad
-  expect(typeof van, 'synthese_ci.argent.van_mad (taux déclaré)').toBe('number')
+  // CAD177 — la VAN vit sous `argent.indicateurs` (contrat proposal_data.json,
+  // bloc « argent.indicateurs.van_mad » ; lue ainsi par apps/web
+  // proposition.ts et CarteEconomieCi) — `argent.van_mad` n'a jamais été
+  // servi (nocturne 37843456809).
+  const van = synthese.argent.indicateurs?.van_mad
+  expect(typeof van, 'synthese_ci.argent.indicateurs.van_mad (taux déclaré)').toBe('number')
   const chiffresPdf = etat.pdfTexte.replace(/[\s.,]/g, '')
   expect(chiffresPdf, `VAN ${van} MAD imprimée`).toContain(String(Math.round(Math.abs(van))))
 })
