@@ -278,6 +278,12 @@ _FILE_REF_RE = re.compile(r"([a-z_][a-z0-9_]*)/[A-Za-z0-9_./]+\.(?:py|jsx?|html|
 _DOTTED_REF_RE = re.compile(r"\b([a-z_][a-z0-9_]*)\.[A-Z][A-Za-z0-9_]+")
 _LANE_COMMENT_RE = re.compile(r"<!--\s*lanes?:\s*(?P<key>[^>]+?)\s*-->", re.IGNORECASE)
 _AT_LANE_RE = re.compile(r"@(?:lane|files):\s*(?P<key>[^@()\n]+)", re.IGNORECASE)
+# AMET96 — `(@atomique: crm, devis)` : déplacement multi-propriétaires construit
+# en UN commit (plan transverse). Lu ici ET par la règle (d) de
+# check_ownership.py (``proprietaires_atomiques``) ; exempté de PACT11. Le tag
+# est la parenthèse NUE : cité en prose entre backticks, ce n'en est pas un.
+_AT_ATOMIQUE_RE = re.compile(r"(?<!`)\(@atomique:\s*(?P<owners>[^@()`\n]+)\)",
+                             re.IGNORECASE)
 _AFTER_RE = re.compile(r"@after:\s*(?P<ids>[A-Z0-9,\s-]+)", re.IGNORECASE)
 _GATE_TOKEN_RE = re.compile(r"\b(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST|GALLERY)\b")
 _DEP_TOKEN_RE = re.compile(r"DEP:\s*([A-Za-z0-9_-]+)")
@@ -815,6 +821,14 @@ def _deps(label: str) -> set[str]:
     return out
 
 
+def proprietaires_atomiques(label: str) -> set[str] | None:
+    """Propriétaires nommés par `(@atomique: …)` ; ``None`` sans le tag."""
+    m = _AT_ATOMIQUE_RE.search(label)
+    if not m:
+        return None
+    return {o for o in re.split(r"[\s,/]+", m.group("owners").strip()) if o}
+
+
 # --- Task effort/cost (for time-balanced worker packing) -------------------
 # The plan tags each task's size inside its category paren, e.g.
 # ``(ROUTINE — L, sonnet)`` / ``(SCHEMA — S/M, …)``. We turn that size into a
@@ -1119,6 +1133,7 @@ def parse_tasks(path: Path) -> list[dict]:
         lane = lane or _section_lane(headers) or _lane_from_refs(label)
         lane = lane or _lane_from_keywords(headers.get("###", "")) or _lane_from_keywords(label)
         gate, reasons = _classify_gate(label)
+        atomique = proprietaires_atomiques(label)
         tasks.append({
             "id": m.group("id"),
             "prefix": _task_prefix(m.group("id")),
@@ -1137,6 +1152,8 @@ def parse_tasks(path: Path) -> list[dict]:
             "files_bruts": sorted(_task_files_brut(label)),
             # OWN — propriétaires (docs/ownership.yml) des fichiers déclarés.
             "owners": _proprietaires(_chemins_pour_proprietaires(label)),
+            # AMET96 — clé présente SEULEMENT avec le tag (JSON inchangé sans).
+            **({"atomique": sorted(atomique)} if atomique is not None else {}),
         })
     return tasks
 
@@ -1360,7 +1377,11 @@ def apply_contract_pairing_gate(
     autorisees: list[dict] = []
     refusees: list[dict] = []
     for t in tasks:
-        apps_front = _apps_frontend(t.get("files_bruts", ()))
+        # AMET96 : un déplacement `@atomique` (UN commit, plan transverse) n'est
+        # pas un écran qui consomme un contrat — jamais refusé ici. Il reste
+        # compté comme producteur (prudence : il peut toucher urls/selectors).
+        apps_front = (set() if "atomique" in t
+                      else _apps_frontend(t.get("files_bruts", ())))
         manquantes = []
         for app in sorted(apps_front):
             for producteur in producteurs.get(app, []):

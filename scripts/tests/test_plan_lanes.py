@@ -1235,6 +1235,19 @@ class Pact11Tests(unittest.TestCase):
         self.assertIn("PD2", apres)
         self.assertNotIn("PD2", construites)
 
+    def test_tache_atomique_exemptee_de_pact11(self):
+        # AMET96 : un déplacement multi-propriétaires `(@atomique: …)` se
+        # construit en UN commit — PACT11 ne le refuse pas comme un écran.
+        self.pool.write_text(self.POOL.replace(
+            "(@lane: pf2)", "(@lane: pf2) (@atomique: devis, generateur)"),
+            encoding="utf-8")
+        taches = pl.parse_tasks(self.pool)
+        _, refusees = pl.apply_contract_pairing_gate(taches)
+        self.assertEqual({t["id"] for t in refusees}, {"PF1"})
+        pf2 = next(t for t in taches if t["id"] == "PF2")
+        self.assertEqual(pf2["atomique"], ["devis", "generateur"])
+        self.assertNotIn("atomique", taches[0])  # sans tag : dict inchangé
+
 
 if __name__ == "__main__":
     unittest.main()
