@@ -78,8 +78,7 @@ Puissance PV (kWp) — calculée
 Type de Structure
 Acier galvanisé
 Aluminium
-Consommation diurne (%)
-60%
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
@@ -256,43 +255,42 @@ gen-realbill=
 gen-kwc-cible=12.87
 gen-nbpanneaux=18
 gen-panelw=715
-#27=60
 Nom du groupe 0=Équipement commun
 Nom du groupe 1=Villa A bis
 Nom du groupe 2=Villa B
-#31=on [ ]
-#32=Smart Meter
-#33=0
+#30=on [ ]
+#31=Smart Meter
+#32=0
 line-qty=1
-#35=1440
-#36=20
+#34=1440
+#35=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#38=Panneau Canadien Solar 715W
-#39=1
+#37=Panneau Canadien Solar 715W
+#38=1
 line-qty=8
-#41=1320
-#42=10
+#40=1320
+#41=10
 Ligne optionnelle (add-on hors total)=on [ ]
-#44=Onduleur réseau 5kW Monophasé
-#45=1
+#43=Onduleur réseau 5kW Monophasé
+#44=1
 line-qty=1
-#47=10800
-#48=20
+#46=10800
+#47=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#50=Panneau Canadien Solar 715W
-#51=2
+#49=Panneau Canadien Solar 715W
+#50=2
 line-qty=10
-#53=1320
-#54=10
+#52=1320
+#53=10
 Ligne optionnelle (add-on hors total)=on [ ]
-#56=Onduleur réseau 5kW Monophasé
-#57=2
+#55=Onduleur réseau 5kW Monophasé
+#56=2
 line-qty=1
-#59=10800
-#60=20
+#58=10800
+#59=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#62=0
-#63=
+#61=0
+#62=
 :id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
@@ -303,7 +301,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#74=
+#73=
 == APPELS ==
 {
   "crmApi.getClients": [

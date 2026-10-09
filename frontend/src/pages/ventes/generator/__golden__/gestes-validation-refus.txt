@@ -102,8 +102,7 @@ Puissance PV (kWp) — calculée
 Type de Structure
 Acier galvanisé
 Aluminium
-Consommation diurne (%)
-60%
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
@@ -226,10 +225,9 @@ gen-realbill=
 gen-kwc-cible=5.72
 gen-nbpanneaux=8
 gen-panelw=715
-#27=60
-#28=on [ ]
-#29=0
-#30=
+#27=on [ ]
+#28=0
+#29=
 :id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
@@ -240,7 +238,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#41=
+#40=
 == APPELS ==
 {
   "crmApi.getClients": [

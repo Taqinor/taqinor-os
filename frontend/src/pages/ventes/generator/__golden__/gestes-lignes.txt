@@ -79,8 +79,7 @@ Les lignes portent 10 panneaux, la cible en vise 8 — recomposer ? (Auto-rempli
 Type de Structure
 Acier galvanisé
 Aluminium
-Consommation diurne (%)
-60%
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
@@ -219,25 +218,24 @@ gen-realbill=
 gen-kwc-cible=5.72
 gen-nbpanneaux=8
 gen-panelw=715
-#27=60
-#28=on [ ]
-#29=Panneau Canadien Solar 715W
+#27=on [ ]
+#28=Panneau Canadien Solar 715W
 line-qty=10
-#31=1210
-#32=10
+#30=1210
+#31=10
 Ligne optionnelle (add-on hors total)=on [ ]
-#34=Onduleur réseau 5kW Monophasé
+#33=Onduleur réseau 5kW Monophasé
 line-qty=1
-#36=10800
-#37=20
+#35=10800
+#36=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#39=
+#38=
 line-qty=0
-#41=0
-#42=20
+#40=0
+#41=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#44=0
-#45=
+#43=0
+#44=
 :id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
@@ -248,7 +246,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#56=
+#55=
 == APPELS ==
 {
   "crmApi.getClients": [
