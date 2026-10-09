@@ -1,0 +1,35 @@
+/*
+ * Mouvement léger (YBW80) — là où il aide, jamais ailleurs.
+ *
+ * - Révélation douce des sections SOUS le premier écran, en CSS pur
+ *   (`animation-timeline: view()`) : aucun script, aucune dépendance, et
+ *   l'amélioration progressive disparaît telle quelle sur un navigateur qui ne
+ *   la connaît pas (contenu visible, rien ne bouge).
+ * - JAMAIS sur l'élément LCP : ni `.hero`, ni `.hero-page`, ni `.bande-nuit`,
+ *   ni un `h1`, ni la première section de `<main>`.
+ * - Seulement `transform` (compositeur ; jamais `opacity`, qui ferait échouer le contraste) : aucun décalage de mise en
+ *   page, donc aucun CLS ajouté (budget : CLS < 0,02, YBW16).
+ * - Entièrement enveloppé dans `prefers-reduced-motion: no-preference`.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    /* Glissement seul, SANS fondu : un texte en opacité partielle échoue au
+       contraste (axe color-contrast, /sur-mesure/) tant qu'il n'est pas
+       entièrement révélé. */
+    @keyframes revelation-douce {
+      from {
+        transform: translateY(0.75rem);
+      }
+      to {
+        transform: none;
+      }
+    }
+
+    main > .section:not(:first-child),
+    main > .bande:not(:first-child) {
+      animation: revelation-douce linear both;
+      animation-timeline: view();
+      animation-range: entry 5% entry 45%;
+    }
+  }
+}

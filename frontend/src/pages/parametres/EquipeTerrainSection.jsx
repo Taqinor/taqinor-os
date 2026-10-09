@@ -17,6 +17,12 @@ import {
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import installationsApi from '../../api/installationsApi'
+import { apiErrorMessage } from '../../lib/apiError'
+
+// Ajoute ou retire `userId` de la liste des membres (bascule).
+const basculerMembre = (membres, userId) => (membres.includes(userId)
+  ? membres.filter((id) => id !== userId)
+  : [...membres, userId])
 
 export default function EquipeTerrainSection({ assignables = [] }) {
   const { confirmDelete } = useConfirmDialog()
@@ -43,14 +49,19 @@ export default function EquipeTerrainSection({ assignables = [] }) {
       await installationsApi.saveEquipeTerrain(null, { nom: newNom.trim() })
       setNewNom('')
       load()
-    } catch {
-      setError("La création de l'équipe a échoué.")
+    } catch (e) {
+      setError(apiErrorMessage(e, "La création de l'équipe a échoué."))
     }
   }
 
   const renameEquipe = async (equipe, nom) => {
     if (!nom.trim() || nom === equipe.nom) return
-    await installationsApi.saveEquipeTerrain(equipe.id, { nom: nom.trim() }).catch(() => {})
+    try {
+      await installationsApi.saveEquipeTerrain(equipe.id, { nom: nom.trim() })
+      setError(null)
+    } catch (e) {
+      setError(apiErrorMessage(e, "Le renommage de l'équipe a échoué."))
+    }
     load()
   }
 
@@ -59,33 +70,44 @@ export default function EquipeTerrainSection({ assignables = [] }) {
     try {
       await installationsApi.saveEquipeTerrain(equipe.id, { chef: chefId || null })
       load()
+    } catch (e) {
+      setError(apiErrorMessage(e, "Le changement de chef a échoué."))
     } finally {
       setBusyId(null)
     }
   }
 
   const toggleMembre = async (equipe, userId) => {
-    const membres = equipe.membres ?? []
-    const next = membres.includes(userId)
-      ? membres.filter((id) => id !== userId)
-      : [...membres, userId]
+    const next = basculerMembre(equipe.membres ?? [], userId)
     setBusyId(equipe.id)
     try {
       await installationsApi.saveEquipeTerrain(equipe.id, { membres: next })
       load()
+    } catch (e) {
+      setError(apiErrorMessage(e, "La mise à jour des membres a échoué."))
     } finally {
       setBusyId(null)
     }
   }
 
   const archiveEquipe = async (equipe) => {
-    await installationsApi.saveEquipeTerrain(equipe.id, { actif: !equipe.actif }).catch(() => {})
+    try {
+      await installationsApi.saveEquipeTerrain(equipe.id, { actif: !equipe.actif })
+      setError(null)
+    } catch (e) {
+      setError(apiErrorMessage(e, "L'archivage de l'équipe a échoué."))
+    }
     load()
   }
 
   const delEquipe = async (equipe) => {
     if (!(await confirmDelete({ title: `Supprimer l'équipe terrain « ${equipe.nom} » ?`, description: 'Cette action est définitive.' }))) return
-    await installationsApi.deleteEquipeTerrain(equipe.id).catch(() => {})
+    try {
+      await installationsApi.deleteEquipeTerrain(equipe.id)
+      setError(null)
+    } catch (e) {
+      setError(apiErrorMessage(e, "Suppression de l'équipe impossible."))
+    }
     load()
   }
 
