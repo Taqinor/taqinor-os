@@ -52,7 +52,7 @@ export function BarreDefilementCollante({ bottom, className, children, ...props 
       setDims((d) => (d.scroll === scroll && d.client === client && d.barre === largeurBarre
         ? d : { scroll, client, barre: largeurBarre }))
     }
-    // Recopie de `scrollLeft` : n'écrit que sur un écart réel (> 0,5 px) — le
+    // Synchronisation de `scrollLeft` : n'écrit que sur un écart réel (> 0,5 px) — le
     // `scroll` que cette écriture déclenche en retour trouve un écart nul.
     const miroir = (source, cible) => () => {
       if (Math.abs(cible.scrollLeft - source.scrollLeft) > 0.5) cible.scrollLeft = source.scrollLeft

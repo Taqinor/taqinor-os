@@ -41,13 +41,17 @@ export function lireCartesRepliees(userId) {
   return etat
 }
 
+/** Mémorise le choix ; `false` si le stockage local est indisponible (vie
+ *  privée, quota) — le choix vaut alors pour la session seulement, jamais une
+ *  erreur montrée : rien du serveur n'est en jeu (garde EZ16). */
 function ecrireCartesRepliees(userId, etat) {
   try {
     const tout = lireTout()
     tout[cleUtilisateur(userId)] = etat
     window.localStorage.setItem(CLE_CARTES_REPLIEES, JSON.stringify(tout))
+    return true
   } catch {
-    /* stockage indisponible : le choix vaut pour la session seulement */
+    return false
   }
 }
 
