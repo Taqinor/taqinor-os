@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, MessageCircleQuestion, CalendarClock, Bell, CheckCircle2, Circle } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { ROUTE } from '../../lib/search/entityRoutes'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
 
@@ -98,7 +99,7 @@ export default function SavActionBoardPage() {
                       const t = tickets[id]
                       return (
                         <li key={id}>
-                          <Link to="/sav" className="text-xs text-primary hover:underline">
+                          <Link to={ROUTE.ticket(id)} className="text-xs text-primary hover:underline">
                             {t?.reference ?? `#${id}`}{t?.client_nom ? ` — ${t.client_nom}` : ''}
                           </Link>
                         </li>

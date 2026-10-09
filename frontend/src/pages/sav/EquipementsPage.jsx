@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
+import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import importApi from '../../api/importApi'
@@ -213,12 +214,13 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
     setCreatingTicket(true)
     setError(null)
     try {
-      await savApi.createTicket({
+      const cree = await savApi.createTicket({
         equipement: equipement.id, type: 'correctif',
         description: `Ticket ouvert depuis l'équipement ${equipement.numero_serie ?? equipement.produit_nom ?? ''}`.trim(),
       })
       toast.success('Ticket SAV créé')
-      navigate('/sav')
+      // ASAV58 — ouvre LE ticket créé, pas la liste.
+      navigate(cree?.data?.id ? ROUTE.ticket(cree.data.id) : '/sav')
     } catch (err) {
       setError(frError(err.response?.data, 'Création du ticket impossible.'))
     } finally {
@@ -358,7 +360,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
             {equipement.statut === 'remplace' && equipement.remplace_par_ticket && (
               <FormField label="Remplacement" fullWidth>
                 <Button type="button" variant="link" className="h-auto p-0"
-                        onClick={() => navigate('/sav')}>
+                        onClick={() => navigate(ROUTE.ticket(equipement.remplace_par_ticket))}>
                   Remplacé via ticket {equipement.remplace_par_ticket_reference ?? `#${equipement.remplace_par_ticket}`}
                 </Button>
               </FormField>

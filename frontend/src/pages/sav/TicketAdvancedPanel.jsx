@@ -4,6 +4,7 @@ import {
   Bell, BellOff, Sparkles, Copy, GitMerge, PackagePlus, UserPlus2, Undo2,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { ROUTE } from '../../lib/search/entityRoutes'
 import stockApi from '../../api/stockApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Badge, Button, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, toast } from '../../ui'
@@ -198,7 +199,7 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
           <ul className="flex flex-col gap-1">
             {similaires.map((s) => (
               <li key={s.id} className="text-sm">
-                <Link to="/sav" className="text-primary hover:underline">{s.reference}</Link>
+                <Link to={ROUTE.ticket(s.id)} className="text-primary hover:underline">{s.reference}</Link>
                 {s.produit_nom ? ` — ${s.produit_nom}` : ''}
               </li>
             ))}
