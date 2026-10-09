@@ -488,6 +488,10 @@ GARDES = {
         ('Test the gardes à dépôt déplacé (ADEP27) checker itself',
          'python -m unittest scripts.tests.test_gardes_depot_deplace -v',
          '.'),
+        # ADEP14 - sortie unittest du nightly FastAPI : aucun skip, plancher 218.
+        ('Test the verificateur de sortie unittest (ADEP14) checker itself',
+         'python -m unittest scripts.tests.test_verifier_sortie_unittest -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
