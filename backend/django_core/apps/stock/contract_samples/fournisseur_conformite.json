@@ -71,7 +71,11 @@
         "frais_livraison_estimes": "0.00",
         "nb_produits": 0,
         "nb_bons_commande": 0,
-        "contacts": []
+        "contacts": [],
+        "avertissements": {
+          "nom": null,
+          "ice": null
+        }
       },
       "exemple_corps": {
         "ice": "001234567000012",
@@ -115,7 +119,11 @@
         "nb_produits": 0,
         "nb_bons_commande": 0,
         "contacts": [],
-        "ice_duplicate_warning": "Attention : l'ICE 001234567000012 est déjà utilisé par « Autre Fournisseur »."
+        "ice_duplicate_warning": "Attention : l'ICE 001234567000012 est déjà utilisé par « Autre Fournisseur ».",
+        "avertissements": {
+          "nom": null,
+          "ice": "Attention : l'ICE 001234567000012 est déjà utilisé par « Autre Fournisseur »."
+        }
       },
       "exemple_corps": {
         "nom": "Fournisseur Test SARL",

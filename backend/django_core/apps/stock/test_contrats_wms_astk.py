@@ -1221,3 +1221,354 @@ class ContratKitsStockTests(WmsBase):
             'produit_nouveau': self.panneau.id}, format='json')
         self.assertEqual(rep.status_code, 400)
         self.assertEqual(rep.json(), rempl['exemple_erreur_400'])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ERR-ASTK163 — les clés « capturées par APIClient » des contrats expédition
+# (ASTK163), rappels/qualité (ASTK165) et fournisseur-conformité (ASTK166)
+# sont comparées à une VRAIE réponse, route par route.
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ContratListeMixin:
+    """Liste paginée : enveloppe = `exemple`, ligne = `exemple_element`."""
+
+    def assertListeContrat(self, rep, contrat, contexte):
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], f'{contexte} liste')
+        self.assertTrue(corps['results'], f'{contexte} : liste vide')
+        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+                             f'{contexte} élément')
+        return corps['results'][0]
+
+
+class ContratWmsExpeditionTests(ContratListeMixin, WmsBase):
+    """ASTK163 — wms_expedition.json."""
+
+    BASE = '/api/django/stock'
+
+    def _colis(self):
+        rep = self.api.post(f'{self.BASE}/unites-logistiques/', {
+            'type_unite': 'colis'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        return rep.json()
+
+    def test_unites_logistiques_lignes_et_sceller(self):
+        colis = self._colis()
+        self.assertMemesCles(
+            colis, route('wms_expedition', 'unites_logistiques')[
+                'exemple_element'], 'création')
+        contrat = route('wms_expedition', 'unites_logistiques_lignes')
+        rep = self.api.post(
+            f'{self.BASE}/unites-logistiques/{colis["id"]}/lignes/', {
+                'produit': self.produit.id, 'quantite': 2, 'lot': None},
+            format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'lignes')
+        contrat = route('wms_expedition', 'unites_logistiques_sceller')
+        rep = self.api.post(
+            f'{self.BASE}/unites-logistiques/{colis["id"]}/sceller/', {},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'sceller')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/unites-logistiques/'),
+            route('wms_expedition', 'unites_logistiques'),
+            'unites_logistiques')
+
+    def test_expeditions_liste_et_tracking(self):
+        from apps.stock.services import (
+            ajouter_ligne_unite_logistique, creer_expedition_transporteur,
+            creer_unite_logistique, sceller_unite_logistique,
+        )
+        colis = creer_unite_logistique(company=self.company)
+        ajouter_ligne_unite_logistique(
+            company=self.company, unite=colis, produit=self.produit,
+            quantite=1)
+        sceller_unite_logistique(unite=colis, user=self.admin)
+        colis.refresh_from_db()
+        expedition = creer_expedition_transporteur(
+            company=self.company, unite=colis)
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/expeditions/'),
+            route('wms_expedition', 'expeditions'), 'expeditions')
+        rep = self.api.get(
+            f'{self.BASE}/expeditions/{expedition.id}/tracking/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(),
+            route('wms_expedition', 'expeditions_tracking')['exemple'],
+            'tracking')
+
+    def test_plans_chargement_capacite_et_unites(self):
+        rep = self.api.post(f'{self.BASE}/plans-chargement/', {
+            'capacite_kg': '1000', 'capacite_m3': '12'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        plan = rep.json()
+        self.assertMemesCles(
+            plan, route('wms_expedition', 'plans_chargement')[
+                'exemple_element'], 'création')
+        colis = self._colis()
+        contrat = route('wms_expedition', 'plans_chargement_unites')
+        rep = self.api.post(
+            f'{self.BASE}/plans-chargement/{plan["id"]}/unites/', {
+                'unite_logistique': colis['id']}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'unites')
+        rep = self.api.post(
+            f'{self.BASE}/plans-chargement/{plan["id"]}/unites/', {
+                'unite_logistique': 99999999}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertMemesCles(rep.json(), contrat['exemple_erreur_400'],
+                             'unites 400')
+        rep = self.api.get(
+            f'{self.BASE}/plans-chargement/{plan["id"]}/verifier-capacite/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_expedition',
+                              'plans_chargement_verifier_capacite')['exemple'],
+            'verifier-capacite')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/plans-chargement/'),
+            route('wms_expedition', 'plans_chargement'), 'plans_chargement')
+
+    def test_mouvements_rebut(self):
+        contrat = route('wms_expedition', 'mouvements_rebut')
+        rep = self.api.post(f'{self.BASE}/mouvements-rebut/', {
+            'produit': self.produit.id, 'quantite': 1, 'motif': 'casse'},
+            format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'],
+                             'création')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/mouvements-rebut/'), contrat,
+            'mouvements_rebut')
+
+    def test_retours_client_receptionner_inspecter(self):
+        from apps.crm.models import Client
+        from apps.stock.models import RetourClient
+        client = Client.objects.create(
+            company=self.company, nom='Client', prenom='Contrat',
+            email='err-astk163@example.invalid')
+        contrat = route('wms_expedition', 'retours_client')
+        rep = self.api.post(f'{self.BASE}/retours-client/', {
+            'client': client.id, 'motif': 'Produit non conforme',
+            'lignes': [{'produit': self.produit.id, 'quantite': 1,
+                        'etat_constate': 'revendable'}]}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        retour = rep.json()
+        self.assertMemesCles(retour, contrat['exemple_element'], 'création')
+        rep = self.api.post(
+            f'{self.BASE}/retours-client/{retour["id"]}/receptionner/', {},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_expedition',
+                              'retours_client_receptionner')['exemple'],
+            'receptionner')
+        ligne = RetourClient.objects.get(pk=retour['id']).lignes.first()
+        rep = self.api.post(
+            f'{self.BASE}/retours-client/{retour["id"]}/inspecter/', {
+                'lignes': [{'ligne': ligne.id,
+                            'etat_constate': 'a_reparer'}]}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_expedition',
+                              'retours_client_inspecter')['exemple'],
+            'inspecter')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/retours-client/'), contrat,
+            'retours_client')
+
+
+class ContratWmsRappelsQualiteTests(ContratListeMixin, WmsBase):
+    """ASTK165 — wms_rappels_qualite.json."""
+
+    BASE = '/api/django/stock'
+
+    def test_alertes_rappel_impact_cloturer(self):
+        contrat = route('wms_rappels_qualite', 'alertes_rappel')
+        rep = self.api.post(f'{self.BASE}/alertes-rappel/', {
+            'produit': self.produit.id, 'motif': 'Défaut cellule'},
+            format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        alerte = rep.json()
+        self.assertMemesCles(alerte, contrat['exemple_element'], 'création')
+        rep = self.api.get(
+            f'{self.BASE}/alertes-rappel/{alerte["id"]}/impact/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_rappels_qualite',
+                              'alertes_rappel_impact')['exemple'], 'impact')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/alertes-rappel/'), contrat,
+            'alertes_rappel')
+        rep = self.api.post(
+            f'{self.BASE}/alertes-rappel/{alerte["id"]}/cloturer/', {},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_rappels_qualite',
+                              'alertes_rappel_cloturer')['exemple'],
+            'cloturer')
+
+    def test_blocages_lever_et_lever_quarantaine(self):
+        contrat = route('wms_rappels_qualite', 'blocages_qualite')
+        corps = {'produit': self.produit.id, 'quantite': 4,
+                 'bin': self.autre_casier.id, 'motif': 'Rappel'}
+        rep = self.api.post(f'{self.BASE}/blocages-qualite/', corps,
+                            format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        blocage = rep.json()
+        self.assertMemesCles(blocage, contrat['exemple_element'], 'création')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/blocages-qualite/'), contrat,
+            'blocages_qualite')
+        rep = self.api.post(
+            f'{self.BASE}/blocages-qualite/{blocage["id"]}/lever/', {},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(
+            rep.json(), route('wms_rappels_qualite',
+                              'blocages_qualite_lever')['exemple'], 'lever')
+        self.api.post(f'{self.BASE}/blocages-qualite/', corps,
+                      format='json')
+        lever_bin = route('wms_rappels_qualite',
+                          'blocages_qualite_lever_quarantaine')
+        rep = self.api.post(f'{self.BASE}/blocages-qualite/lever-quarantaine/',
+                            {'bin': self.autre_casier.id}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), lever_bin['exemple'],
+                             'lever-quarantaine')
+        rep = self.api.post(f'{self.BASE}/blocages-qualite/lever-quarantaine/',
+                            {}, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), lever_bin['exemple_erreur_400'])
+
+    def test_echantillonnage_et_controle_qualite(self):
+        from apps.stock.models import (
+            BonCommandeFournisseur, Categorie, Fournisseur,
+            PlanEchantillonnage, ReceptionFournisseur,
+        )
+        categorie = Categorie.objects.create(
+            company=self.company, nom='Batteries ERR-ASTK163')
+        PlanEchantillonnage.objects.create(
+            company=self.company, categorie=categorie,
+            taux_echantillon_pct=20)
+        self.produit.categorie = categorie
+        self.produit.save(update_fields=['categorie'])
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/plans-echantillonnage/'),
+            route('wms_rappels_qualite', 'plans_echantillonnage'),
+            'plans_echantillonnage')
+        fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur ERR-ASTK163')
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ERRASTK163',
+            fournisseur=fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        ligne_cmd = bc.lignes.create(
+            produit=self.produit, quantite=10,
+            prix_achat_unitaire=Decimal('10'))
+        reception = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-ERRASTK163',
+            bon_commande=bc)
+        reception.lignes.create(
+            ligne_commande=ligne_cmd, produit=self.produit, quantite=10)
+        echant = route('wms_rappels_qualite', 'receptions_echantillonnage')
+        url = f'{self.BASE}/receptions-fournisseur/{reception.id}/'
+        rep = self.api.get(f'{url}echantillonnage/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), echant['exemple'], 'sans contrôle')
+        contrat = route('wms_rappels_qualite', 'receptions_controle_qualite')
+        rep = self.api.post(f'{url}controle-qualite/', {
+            'resultat': 'conforme', 'unites_controlees': 2}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'contrôle')
+        rep = self.api.get(f'{url}echantillonnage/')
+        corps = rep.json()
+        self.assertMemesCles(corps, echant['exemple_avec_controle'],
+                             'avec contrôle')
+        self.assertMemesCles(corps['controle'],
+                             echant['exemple_avec_controle']['controle'],
+                             'contrôle imbriqué')
+
+    def test_casiers_hazmat(self):
+        contrat = route('wms_rappels_qualite', 'casiers_hazmat')
+        rep = self.api.post(f'{self.BASE}/casiers-hazmat/', {
+            'bin': self.pick.id, 'classe_danger': 'BATTERIE_LITHIUM'},
+            format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'],
+                             'création')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/casiers-hazmat/'), contrat,
+            'casiers_hazmat')
+        rep = self.api.post(f'{self.BASE}/casiers-hazmat/', {
+            'bin': self.pick.id, 'classe_danger': 'INCONNUE'},
+            format='json')
+        self.assertEqual(rep.status_code, 400)
+        # L'enveloppe YAPIC3 `error` est ADDITIVE (core/exceptions.py) :
+        # seules les clés de champ sont celles du contrat.
+        self.assertMemesCles(
+            [k for k in rep.json() if k != 'error'],
+            contrat['exemple_erreur_400'], 'hazmat 400')
+
+
+class ContratFournisseurConformiteTests(ContratListeMixin, WmsBase):
+    """ASTK166 — fournisseur_conformite.json."""
+
+    BASE = '/api/django/stock'
+
+    def setUp(self):
+        super().setUp()
+        from apps.stock.models import Fournisseur
+        self.fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur Contrat ERR-ASTK163')
+
+    def test_patch_champs_conformite_et_doublon_ice(self):
+        contrat = route('fournisseur_conformite',
+                        'fournisseurs_conformite_champs')
+        rep = self.api.patch(
+            f'{self.BASE}/fournisseurs/{self.fournisseur.id}/',
+            contrat['exemple_corps'], format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'PATCH')
+        doublon = route('fournisseur_conformite', 'fournisseurs_ice_doublon')
+        rep = self.api.post(f'{self.BASE}/fournisseurs/', {
+            'nom': 'Autre Fournisseur ERR-ASTK163',
+            'ice': doublon['exemple_corps']['ice']}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, doublon['exemple'], 'doublon ICE')
+        self.assertTrue(corps['ice_duplicate_warning'])
+
+    def test_documents_conformite(self):
+        contrat = route('fournisseur_conformite',
+                        'documents_conformite_fournisseur')
+        corps = dict(contrat['exemple_corps'], fournisseur=self.fournisseur.id)
+        rep = self.api.post(f'{self.BASE}/documents-conformite-fournisseur/',
+                            corps, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'],
+                             'création')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/documents-conformite-fournisseur/',
+                         {'fournisseur': self.fournisseur.id}),
+            contrat, 'documents_conformite_fournisseur')
+
+    def test_incidents_qualite(self):
+        contrat = route('fournisseur_conformite',
+                        'incidents_qualite_fournisseur')
+        corps = dict(contrat['exemple_corps'], fournisseur=self.fournisseur.id,
+                     produit=self.produit.id,
+                     date_incident=timezone.localdate().isoformat())
+        rep = self.api.post(f'{self.BASE}/incidents-qualite-fournisseur/',
+                            corps, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple_element'],
+                             'création')
+        self.assertListeContrat(
+            self.api.get(f'{self.BASE}/incidents-qualite-fournisseur/',
+                         {'fournisseur': self.fournisseur.id}),
+            contrat, 'incidents_qualite_fournisseur')

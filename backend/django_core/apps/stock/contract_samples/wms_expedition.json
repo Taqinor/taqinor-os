@@ -455,6 +455,12 @@
       "exemple": {
         "plan": 4,
         "nb_unites": 1,
+        "poids_kg": "18.500",
+        "volume_m3": "0.384",
+        "capacite_kg": "1000.00",
+        "capacite_m3": "12.000",
+        "poids_utilise_pct": "1.85",
+        "volume_utilise_pct": "3.20",
         "depassement": false,
         "avertissement": ""
       },
