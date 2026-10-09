@@ -16,6 +16,7 @@ import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
@@ -163,10 +164,12 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
   // L628 — charge les options produit/chantier seulement quand on corrige.
   useEffect(() => {
     if (!correcting || produits.length) return
-    stockApi.getProduits()
-      .then((r) => setProduits(r.data.results ?? r.data ?? [])).catch(() => {})
-    installationsApi.getInstallations()
-      .then((r) => setInstallations(r.data.results ?? r.data ?? [])).catch(() => {})
+    // ASAV51 — catalogue produits et chantiers lus EN ENTIER (toutes les pages).
+    const tout = (appel) => fetchAllPages(
+      (page) => appel({ page, page_size: 200 }).then((r) => r.data),
+    ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+    tout((p) => stockApi.getProduits(p)).then(setProduits).catch(() => {})
+    tout((p) => installationsApi.getInstallations(p)).then(setInstallations).catch(() => {})
   }, [correcting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(

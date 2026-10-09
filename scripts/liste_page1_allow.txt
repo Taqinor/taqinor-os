@@ -187,7 +187,6 @@ frontend/src/pages/sav/SavParametresPage.jsx::load
 frontend/src/pages/sav/SavSlaReportPage.jsx::charger
 frontend/src/pages/sav/SimpleRefListEditor.jsx::load
 frontend/src/pages/sav/TicketAdvancedPanel.jsx::creerPret
-frontend/src/pages/sav/TicketAdvancedPanel.jsx::retournerPret
 frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi
 frontend/src/pages/sav/TicketChecklistPanel.jsx::load
 frontend/src/pages/sav/TicketWorksheetPanel.jsx::TicketWorksheetPanel

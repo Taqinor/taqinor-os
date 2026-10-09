@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { Badge, Button, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, toast } from '../../ui'
 
 /**
@@ -106,7 +107,10 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
   const [pretBusy, setPretBusy] = useState(false)
   useEffect(() => {
     if (!pretFormOpen || produits.length) return
-    stockApi.getProduits().then((r) => setProduits(r.data.results ?? r.data ?? [])).catch(() => {})
+    // ASAV51 — catalogue complet (toutes les pages), pas la page 1.
+    fetchAllPages((page) => stockApi.getProduits({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setProduits(Array.isArray(res) ? res : (res?.results ?? [])))
+      .catch(() => {})
   }, [pretFormOpen]) // eslint-disable-line react-hooks/exhaustive-deps
   const creerPret = async () => {
     if (!pretProduitId) return

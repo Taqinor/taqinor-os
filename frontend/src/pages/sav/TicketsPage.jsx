@@ -33,6 +33,7 @@ import { timeAgo } from '../../lib/format'
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 // PACT174 — tags de l'enregistrement (records.TaggedItem, FG9), voisin direct
 // d'AttachmentsPanel : même contrat `model`/`id`, même feuille de style
@@ -109,6 +110,12 @@ const formatDateFR = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
+// ASAV51 — catalogue lu EN ENTIER (toutes les pages DRF), jamais la page 1 :
+// le 101e produit / le 51e chantier doivent se choisir.
+const lireTout = (appel) => fetchAllPages(
+  (page) => appel({ page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
 // L302/L11 — libellés FR des champs pour transformer une erreur DRF brute
@@ -522,8 +529,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       const neuf = rr?.data?.equipement_neuf ?? null
       setEquipementNeuf(neuf)
       if (neuf && current.installation) {
-        savApi.getEquipements({ installation: current.installation })
-          .then((r) => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
+        lireTout((params) => savApi.getEquipements({ installation: current.installation, ...params }))
+          .then(setEquipements).catch(() => {})
       }
       toast.success('Pièce retirée.')
       // WIR232 — 400 : le formulaire ne se vide QUE sur succès.
@@ -561,8 +568,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     loadInterventions()
     loadPieces()
     loadPiecesUnifiees()
-    api.get('/stock/produits/')
-      .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    lireTout((params) => api.get('/stock/produits/', { params }))
+      .then(setProduits).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
     // d'abord dans le picker). Vide silencieusement si pas d'équipement mappé,
     // et aussi si savApi.getPiecesCompatibles est absent (mocks partiels
