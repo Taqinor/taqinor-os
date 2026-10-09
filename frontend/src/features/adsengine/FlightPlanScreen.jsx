@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { Route, Check, X, Plus, Trash2, PlayCircle, Save } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  normalizePreflight, normalizeValidation, normalizeFlightTemplate,
+  normalizePreflight, normalizeValidation, normalizeFlightTemplate, erreurServeur,
 } from './adsengine'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 // PUB5 — picker « Audiences d'engagement » (ADSDEEP59), orphelin : construit +
 // testé mais jamais monté dans le composeur d'adset. Aucun composeur d'adset
 // dédié n'existe encore côté front — le composeur du plan de vol EST le seul
@@ -89,17 +90,26 @@ export default function FlightPlanScreen() {
         if (!p) return
         setPlanId(p.id)
         setNom(p.name || '')
-        return adsengineApi.flightplan.phases.list()
-          .then(pr => {
-            const allPhases = Array.isArray(pr.data) ? pr.data : (pr.data?.results || [])
+        // AACQ67 — TOUTES les pages de `phases-vol/` (le serveur ne filtre pas
+        // par plan) puis filtre `plan` ; l'id serveur de chaque phase est
+        // gardé pour la modifier EN PLACE au prochain enregistrement.
+        return fetchAllPages((page) => adsengineApi.flightplan.phases.list({ page })
+          .then(pr => pr?.data), { concurrency: 3 })
+          .then(data => {
+            const allPhases = Array.isArray(data) ? data : (data?.results || [])
             const mine = allPhases
               .filter(ph => ph && ph.plan === p.id)
               .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
             setPersistedPhaseIds(mine.map(ph => ph.id))
+            // Le gabarit de lancement est RELU (jamais remis à vide).
+            const tpl = mine.map(ph => ph.launch_template).find(Boolean)
+            if (tpl) setTemplateKey(tpl)
             setPhases(mine.map((ph, i) => ({
+              id: ph.id,
               key: ph.tested_variable || String(ph.id),
               label: ph.name || ph.tested_variable || `Phase ${i + 1}`,
               duree_mois: Number.isFinite(ph.week_span) ? ph.week_span / 4 : null,
+              server: ph,
             })))
           })
       })
@@ -164,6 +174,11 @@ export default function FlightPlanScreen() {
   // plan puis de chaque phase (num_arms au plancher backend, week_span
   // dérivé de la durée en mois choisie par le gabarit) ; les suivants
   // renomment le plan et REMPLACENT ses phases par la composition courante.
+  // AACQ67 — les phases DÉJÀ en base sont modifiées EN PLACE (PATCH par id,
+  // seulement les champs que l'écran édite et qui ont changé) : jamais un
+  // « tout supprimer puis recréer » qui écrasait gabarit, budget, dates et
+  // nombre de bras. Seules les DIFFÉRENCES sont créées/supprimées, et les
+  // suppressions n'ont lieu qu'APRÈS le succès de toutes les écritures.
   const savePlan = async () => {
     setSaving(true); setSaveMsg(''); setSaveErr('')
     try {
@@ -175,31 +190,62 @@ export default function FlightPlanScreen() {
         setPlanId(idToUse)
       } else {
         await adsengineApi.flightplan.update(idToUse, { name: nom })
-        for (const oldId of persistedPhaseIds) {
-          await adsengineApi.flightplan.phases.remove(oldId).catch(() => {})
-        }
       }
-      const createdIds = []
+      const keptIds = []
+      const next = []
       for (let i = 0; i < phases.length; i++) {
         const p = phases[i]
-        const r = await adsengineApi.flightplan.phases.create({
-          plan: idToUse, order: i, name: p.label || p.key || `Phase ${i + 1}`,
-          tested_variable: p.key || '',
-          num_arms: 2,
-          week_span: Math.max(1, Math.round((p.duree_mois || 0) * 4)),
-          launch_template: templateKey || '',
-          budget_mad: 0,
-        })
-        if (r.data?.id != null) createdIds.push(r.data.id)
+        const name = p.label || p.key || `Phase ${i + 1}`
+        const weekSpan = Math.max(1, Math.round((p.duree_mois || 0) * 4))
+        if (p.id != null && persistedPhaseIds.includes(p.id)) {
+          const s = p.server || {}
+          const diff = {}
+          if (s.order !== i) diff.order = i
+          if (s.name !== name) diff.name = name
+          if (s.tested_variable !== (p.key || '')) diff.tested_variable = p.key || ''
+          if (s.week_span !== weekSpan) diff.week_span = weekSpan
+          let server = s
+          if (Object.keys(diff).length) {
+            const r = await adsengineApi.flightplan.phases.update(p.id, diff)
+            server = (r?.data && typeof r.data === 'object' && r.data.id != null)
+              ? r.data : { ...s, ...diff }
+          }
+          keptIds.push(p.id)
+          next.push({ ...p, server })
+        } else {
+          const r = await adsengineApi.flightplan.phases.create({
+            plan: idToUse, order: i, name,
+            tested_variable: p.key || '',
+            num_arms: 2,
+            week_span: weekSpan,
+            launch_template: templateKey || '',
+            budget_mad: 0,
+          })
+          const id = r.data?.id
+          if (id != null) keptIds.push(id)
+          next.push({ ...p, id, server: r.data || null })
+        }
       }
-      setPersistedPhaseIds(createdIds)
+      // Suppressions EN DERNIER : rien n'est perdu si une écriture échoue.
+      for (const oldId of persistedPhaseIds) {
+        if (!keptIds.includes(oldId)) {
+          await adsengineApi.flightplan.phases.remove(oldId)
+        }
+      }
+      setPersistedPhaseIds(keptIds)
+      setPhases(next)
       setSaveMsg(wasNew ? 'Plan enregistré.' : 'Plan mis à jour.')
-    } catch {
-      setSaveErr('Enregistrement du plan impossible.')
+    } catch (e) {
+      // AACQ73 — la raison du serveur (ex. 400 « La durée d'une phase… »).
+      setSaveErr(erreurServeur(e, 'Enregistrement du plan impossible.'))
     } finally {
       setSaving(false)
     }
   }
+
+  // AACQ67 — libellé d'une phase éditable (modifié en place à l'enregistrement).
+  const setPhaseLabel = (i, label) =>
+    setPhases(ps => ps.map((p, idx) => (idx === i ? { ...p, label } : p)))
 
   const validate = async () => {
     setBusy(true); setValidation(null); setSimMsg('')
@@ -269,6 +315,12 @@ export default function FlightPlanScreen() {
                         background: '#f8fafc', padding: '0.4rem 0.7rem', borderRadius: 6 }}>
                       <span className="badge" style={{ background: '#e0e7ff', color: '#3730a3' }}>{i + 1}</span>
                       <strong>{p.label}</strong>
+                      <input className="form-input" type="text"
+                        data-testid={`ae-fp-phase-label-${i}`}
+                        aria-label={`Libellé de la phase ${i + 1}`}
+                        value={p.label || ''}
+                        onChange={e => setPhaseLabel(i, e.target.value)}
+                        style={{ maxWidth: 220 }} />
                       <span style={{ marginLeft: 'auto', color: '#64748b', fontSize: '0.85rem' }}>
                         {p.duree_mois != null ? `${p.duree_mois} mois` : '—'}
                       </span>
