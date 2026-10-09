@@ -4,6 +4,7 @@ import { useIsAdmin } from '../../hooks/useHasPermission'
 import { FileX2, FileText, Search } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import fetchAllPages from '../../utils/fetchAllPages'
+import { frenchError } from '../../lib/frenchError'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner, Input,
@@ -32,11 +33,14 @@ export default function AvoirsPage() {
   const [search, setSearch] = useState('')
   const [statutFilter, setStatutFilter] = useState('tous')
   const [actionError, setActionError] = useState('')
+  const [loadError, setLoadError] = useState('')
 
   const load = () => {
     setLoading(true)
     fetchAllPages((page) => ventesApi.getAvoirs({ page, page_size: 200 }).then((r) => r.data))
-      .then((res) => setAvoirs(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
+      .then((res) => { setAvoirs(Array.isArray(res) ? res : (res?.results ?? [])); setLoadError('') })
+      // AFAC61 — un échec de chargement n'est plus « Aucun avoir » : erreur affichée.
+      .catch((err) => setLoadError(frenchError(err, 'Chargement des avoirs impossible. Réessayez.')))
       .finally(() => setLoading(false))
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -56,8 +60,8 @@ export default function AvoirsPage() {
     try {
       await ventesApi.annulerAvoir(a.id)
       load()
-    } catch {
-      setActionError(`Annulation de l'avoir ${a.reference} impossible. Réessayez.`)
+    } catch (err) {
+      setActionError(frenchError(err, `Annulation de l'avoir ${a.reference} impossible. Réessayez.`))
     }
   }
 
@@ -101,6 +105,11 @@ export default function AvoirsPage() {
         ) : null}
       />
 
+      {loadError && (
+        <div role="alert" className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
       {actionError && (
         <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
@@ -121,7 +130,7 @@ export default function AvoirsPage() {
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
           <Spinner /> Chargement…
         </div>
-      ) : filtered.length === 0 ? (
+      ) : loadError && avoirs.length === 0 ? null : filtered.length === 0 ? (
         <EmptyState
           icon={FileX2}
           title={avoirs.length === 0 ? 'Aucun avoir' : 'Aucun résultat'}

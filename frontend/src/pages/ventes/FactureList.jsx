@@ -15,6 +15,7 @@ import {
   genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import { frenchError } from '../../lib/frenchError'
 import fetchAllPages from '../../utils/fetchAllPages'
 import parametresApi from '../../api/parametresApi'
 import api from '../../api/axios'
@@ -380,7 +381,7 @@ export default function FactureList() {
       dispatch(fetchFactures())
       toast.success('Avoir créé. Retrouvez-le dans Ventes → Avoirs.')
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? "Création de l'avoir impossible.")
+      toast.error(frenchError(err, "Création de l'avoir impossible."))
     } finally {
       setAvoirSaving(false)
     }
@@ -493,7 +494,7 @@ export default function FactureList() {
       setEcheanceEditId(null)
       dispatch(fetchFactures())
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Mise à jour de l’échéance impossible.')
+      toast.error(frenchError(err, 'Mise à jour de l’échéance impossible.'))
     } finally {
       setEcheanceSaving(false)
     }

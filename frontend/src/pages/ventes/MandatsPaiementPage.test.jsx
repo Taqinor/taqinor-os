@@ -73,4 +73,16 @@ describe('MandatsPaiementPage (PACT43)', () => {
     expect(screen.queryByText('ACME SARL')).not.toBeInTheDocument()
     expect(screen.getByText('Aucun mandat')).toBeInTheDocument()
   })
+
+  /* AFAC61 — un refus serveur de révocation affiche SA raison, pas un texte fixe. */
+  it('révocation refusée : la raison du serveur est affichée', async () => {
+    const user = userEvent.setup()
+    const { toast } = await import('../../ui/confirm')
+    api.post.mockRejectedValue({
+      response: { status: 400, data: { detail: 'Mandat déjà révoqué.' } },
+    })
+    render(<MandatsPaiementPage />)
+    await user.click(await screen.findByRole('button', { name: 'Révoquer' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Mandat déjà révoqué.'))
+  })
 })

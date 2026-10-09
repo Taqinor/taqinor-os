@@ -9,6 +9,7 @@ import {
 import { Table } from '../reporting/Table'
 import { formatDateTime } from '../../lib/format'
 import { toast, useConfirmDialog } from '../../ui/confirm'
+import { frenchError } from '../../lib/frenchError'
 
 /* ============================================================================
    PACT43 — Mandats de paiement récurrents (carte TOKENISÉE), vue INTERNE.
@@ -82,8 +83,8 @@ export default function MandatsPaiementPage() {
       toast.success('Mandat révoqué — encaissement manuel rétabli.')
       setLoading(true)
       await charger()
-    } catch {
-      toast.error('Révocation impossible.')
+    } catch (err) {
+      toast.error(frenchError(err, 'Révocation impossible.'))
     } finally {
       setBusyId(null)
     }
