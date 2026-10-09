@@ -293,7 +293,11 @@ def check_file(path: Path):
                             "same field (guaranteed migration/runtime "
                             "failure).",
                         ))
-                if field in TENANT_FIELD_NAMES:
+                # ENF16 — un `# on_delete: <raison>` justifie un SET_NULL sur
+                # un champ « owner/responsable » (assigné informatif, jamais
+                # le tenant — celui-ci est `company`), comme pour un CASCADE.
+                if field in TENANT_FIELD_NAMES and not \
+                        _has_justification_comment(lines, lineno):
                     debt_keys.append(allow_key)
                     if allow_key not in _ALLOW_CACHE:
                         findings.append((

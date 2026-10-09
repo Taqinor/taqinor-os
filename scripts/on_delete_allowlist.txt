@@ -53,7 +53,6 @@ backend/django_core/apps/crm/models.py::Canal.company
 backend/django_core/apps/crm/models.py::ChatSessionPublique.company
 backend/django_core/apps/crm/models.py::Client.company
 backend/django_core/apps/crm/models.py::CommissionPartenaire.company
-backend/django_core/apps/crm/models.py::CommissionPartenaire.partenaire
 backend/django_core/apps/crm/models.py::ConcurrentPerte.company
 backend/django_core/apps/crm/models.py::ConcurrentPerte.lead
 backend/django_core/apps/crm/models.py::EquipeCommerciale.company
@@ -533,7 +532,6 @@ backend/django_core/apps/sav/models.py::ContratMaintenance.company
 backend/django_core/apps/sav/models.py::EquipeMaintenance.company
 backend/django_core/apps/sav/models.py::EquipeMaintenance.responsable
 backend/django_core/apps/sav/models.py::Equipement.company
-backend/django_core/apps/sav/models.py::Equipement.installation
 backend/django_core/apps/sav/models.py::EquipementDowntime.company
 backend/django_core/apps/sav/models.py::EquipementDowntime.equipement
 backend/django_core/apps/sav/models.py::KbArticle.company
@@ -552,7 +550,6 @@ backend/django_core/apps/sav/models.py::RemedeDefaillance.company
 backend/django_core/apps/sav/models.py::ReponseType.company
 backend/django_core/apps/sav/models.py::SavSlaSettings.company
 backend/django_core/apps/sav/models.py::Ticket.company
-backend/django_core/apps/sav/models.py::Ticket.installation
 backend/django_core/apps/sav/models.py::TicketActiviteAFaire.company
 backend/django_core/apps/sav/models.py::TicketActiviteAFaire.ticket
 backend/django_core/apps/sav/models.py::TicketActivity.company
@@ -571,50 +568,6 @@ backend/django_core/apps/statuspage/models.py::ComponentStatus.company
 backend/django_core/apps/statuspage/models.py::IncidentPublic.company
 backend/django_core/apps/statuspage/models.py::IncidentUpdate.incident
 backend/django_core/apps/statuspage/models.py::UptimeDayBucket.company
-# --- backend/django_core/apps/stock/models.py
-backend/django_core/apps/stock/models.py::AchatsParametres.company
-backend/django_core/apps/stock/models.py::AcompteFournisseur.company
-backend/django_core/apps/stock/models.py::AvoirFournisseur.company
-backend/django_core/apps/stock/models.py::Categorie.company
-backend/django_core/apps/stock/models.py::CategorieFournisseur.company
-backend/django_core/apps/stock/models.py::ConditionnementProduit.company
-backend/django_core/apps/stock/models.py::ConditionnementProduit.produit
-backend/django_core/apps/stock/models.py::ContactFournisseur.company
-backend/django_core/apps/stock/models.py::ContactFournisseur.fournisseur
-backend/django_core/apps/stock/models.py::DocumentConformiteFournisseur.company
-backend/django_core/apps/stock/models.py::DocumentConformiteFournisseur.fournisseur
-backend/django_core/apps/stock/models.py::EcheanceFactureFournisseur.company
-backend/django_core/apps/stock/models.py::EcheanceFactureFournisseur.facture
-backend/django_core/apps/stock/models.py::EmplacementStock.company
-backend/django_core/apps/stock/models.py::Fournisseur.company
-backend/django_core/apps/stock/models.py::ImputationAvoirFournisseur.avoir
-backend/django_core/apps/stock/models.py::ImputationAvoirFournisseur.company
-backend/django_core/apps/stock/models.py::ImputationAvoirFournisseur.facture
-backend/django_core/apps/stock/models.py::InventaireAnnuel.company
-backend/django_core/apps/stock/models.py::InventaireSession.company
-backend/django_core/apps/stock/models.py::KitComposant.kit
-backend/django_core/apps/stock/models.py::KitProduit.company
-backend/django_core/apps/stock/models.py::LigneInventaire.session
-backend/django_core/apps/stock/models.py::LotEntrepot.company
-backend/django_core/apps/stock/models.py::Marque.company
-backend/django_core/apps/stock/models.py::MouvementStock.company
-backend/django_core/apps/stock/models.py::PalierPrixFournisseur.prix_fournisseur
-backend/django_core/apps/stock/models.py::PortailFournisseurToken.company
-backend/django_core/apps/stock/models.py::PortailFournisseurToken.fournisseur
-backend/django_core/apps/stock/models.py::Produit.company
-backend/django_core/apps/stock/models.py::ProfilSaisonnier.categorie
-backend/django_core/apps/stock/models.py::ProfilSaisonnier.company
-backend/django_core/apps/stock/models.py::ProfilSaisonnier.produit
-backend/django_core/apps/stock/models.py::RevalorisationStock.company
-backend/django_core/apps/stock/models.py::RevisionKit.company
-backend/django_core/apps/stock/models.py::RevisionKit.kit
-backend/django_core/apps/stock/models.py::SousTraitantProfile.company
-backend/django_core/apps/stock/models.py::SousTraitantProfile.fournisseur
-backend/django_core/apps/stock/models.py::StockEmplacement.company
-backend/django_core/apps/stock/models.py::StockEmplacement.emplacement
-backend/django_core/apps/stock/models.py::ToleranceRapprochementCategorie.categorie
-backend/django_core/apps/stock/models.py::ToleranceRapprochementCategorie.company
-backend/django_core/apps/stock/models.py::TransfertStock.company
 # --- backend/django_core/apps/tiers/models.py
 backend/django_core/apps/tiers/models.py::Tiers.company
 # --- backend/django_core/apps/ventes/models.py
@@ -650,11 +603,9 @@ backend/django_core/core/models.py::DataSubjectRequest.company
 backend/django_core/core/models.py::DeletionRecord.company
 backend/django_core/core/models.py::DeletionRecord.content_type
 backend/django_core/core/models.py::EsignRequest.company
-backend/django_core/core/models.py::EsignRequest.content_type
 backend/django_core/core/models.py::IntegrationConfig.company
 backend/django_core/core/models.py::ModuleToggle.company
 backend/django_core/core/models.py::PaymentTransaction.company
-backend/django_core/core/models.py::PaymentTransaction.content_type
 backend/django_core/core/models.py::RegistreTraitement.company
 backend/django_core/core/models.py::SavedQuery.company
 backend/django_core/core/models.py::SavedQuery.owner
