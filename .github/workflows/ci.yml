@@ -880,7 +880,7 @@ jobs:
       # avec 2048 verrous par transaction, ce qui règle la classe entière.
       # `redis` reste un service : rien à y configurer.
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine  # miroir ECR public : la limite anonyme Docker Hub (toomanyrequests) faisait tomber les shards
         ports:
           - 6379:6379
     env:
@@ -1116,7 +1116,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine  # miroir ECR public : la limite anonyme Docker Hub (toomanyrequests) faisait tomber les shards
         ports:
           - 6379:6379
     steps:
@@ -1570,7 +1570,7 @@ jobs:
       # avec 2048 verrous par transaction, ce qui règle la classe entière.
       # `redis` reste un service : rien à y configurer.
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine  # miroir ECR public : la limite anonyme Docker Hub (toomanyrequests) faisait tomber les shards
         ports:
           - 6379:6379
     env:
