@@ -61,9 +61,12 @@ const installationsApi = {
   getEtapesChantier: (id) => api.get(`/installations/chantiers/${id}/etapes/`),
   // CH2 — avance à l'étape `cle` donnée, ou à la suivante si omise. Rejet 400
   // avec `{detail, raisons[]}` si un gate bloquant n'est pas satisfait.
-  avancerEtape: (id, cle) =>
-    api.post(`/installations/chantiers/${id}/avancer-etape/`,
-      cle ? { etape: cle } : {}),
+  avancerEtape: (id, cle, motifOverrideAcompte) =>
+    api.post(`/installations/chantiers/${id}/avancer-etape/`, {
+      ...(cle ? { etape: cle } : {}),
+      // ACHT60 — dérogation « acompte non reçu » lue par le serveur.
+      ...(motifOverrideAcompte ? { motif_override_acompte: motifOverrideAcompte } : {}),
+    }),
 
   // CH3 — fiche de recette IEC 62446-1 (mise en service structurée).
   getRecette: (id) => api.get(`/installations/chantiers/${id}/recette/`),
@@ -143,7 +146,7 @@ const installationsApi = {
   // Interventions (sorties chantier) — F3/F4
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),
-  updateIntervention: (id, data) => api.patch(`/installations/interventions/${id}/`, data),
+  updateIntervention: (id, data, config) => api.patch(`/installations/interventions/${id}/`, data, config),
   deleteIntervention: (id) => api.delete(`/installations/interventions/${id}/`),
   getInterventionHistorique: (id) =>
     api.get(`/installations/interventions/${id}/historique/`),
@@ -214,8 +217,10 @@ const installationsApi = {
 
   // ── F9 — N° de série par composant (+ OCR swappable no-op) ──
   getSerials: (id) => api.get(`/installations/interventions/${id}/serials/`),
-  ajouterSerial: (id, { produit, designation, slot, numero_serie, file }) => {
+  ajouterSerial: (id, { produit, designation, slot, numero_serie, file, client_op_id }) => {
     const fd = new FormData()
+    // ADEP45 — clé d'idempotence (contrat op_terrain_en_ligne.json).
+    if (client_op_id) fd.append('client_op_id', client_op_id)
     if (produit) fd.append('produit', produit)
     if (designation) fd.append('designation', designation)
     if (slot) fd.append('slot', slot)

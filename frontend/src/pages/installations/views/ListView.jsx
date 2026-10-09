@@ -8,6 +8,7 @@ import {
   statusOrder,
   isPoseEnRetard,
   canMoveStatus,
+  canonicalStatus,
   INSTALLATION_STATUSES,
   STATUS_LABELS,
 } from '../../../features/installations/statuses'
@@ -29,7 +30,7 @@ const NONE = '__none__'
 // côté serveur par updateInstallation. Pour le statut, seules les lignes dont le
 // mouvement est autorisé (±1 pas sur l'entonnoir) sont modifiées ; les autres
 // sont ignorées avec un décompte FR.
-function BulkActionDialog({ kind, rows, users, onApply, onClose }) {
+function BulkActionDialog({ kind, rows, users, onApply, onDone, onClose }) {
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
@@ -39,29 +40,42 @@ function BulkActionDialog({ kind, rows, users, onApply, onClose }) {
 
   // Aperçu : combien de lignes seront effectivement modifiées (statut : gardes
   // d'adjacence ; installateur : toutes les lignes sélectionnées).
-  const applicables = useMemo(() => {
-    if (!isStatut) return rows.length
-    if (!value) return 0
-    return rows.filter((r) => canMoveStatus(r.statut, value)).length
+  const { applicables, dejaAuStatut } = useMemo(() => {
+    if (!isStatut) return { applicables: rows.length, dejaAuStatut: 0 }
+    if (!value) return { applicables: 0, dejaAuStatut: 0 }
+    return {
+      applicables: rows.filter((r) => canMoveStatus(r.statut, value)).length,
+      dejaAuStatut: rows.filter((r) => canonicalStatus(r.statut) === value).length,
+    }
   }, [isStatut, rows, value])
-  const ignorees = isStatut && value ? rows.length - applicables : 0
+  const ignorees = isStatut && value ? rows.length - applicables - dejaAuStatut : 0
 
+  // ACHT64 — chaque ligne est classée : modifiée, refusée (avec la raison du
+  // serveur) ou inchangée ; UNE seule relecture de la liste en fin de lot.
   const apply = async () => {
     if (!value && isStatut) return
     setBusy(true)
-    let done = 0
+    const bilan = { modifies: 0, refuses: [], inchanges: 0 }
     for (const r of rows) {
-      if (isStatut) {
-        if (!canMoveStatus(r.statut, value)) continue
-        await onApply(r, { statut: value })
-      } else {
-        const tech = value === NONE ? null : value
-        await onApply(r, { technicien_responsable: tech })
+      try {
+        if (isStatut) {
+          if (!canMoveStatus(r.statut, value)) { bilan.inchanges += 1; continue }
+          await onApply(r, { statut: value })
+        } else {
+          const tech = value === NONE ? null : value
+          await onApply(r, { technicien_responsable: tech })
+        }
+        bilan.modifies += 1
+      } catch (err) {
+        bilan.refuses.push({
+          ref: r.reference ?? `#${r.id}`,
+          raison: err?.message || 'Refusé par le serveur.',
+        })
       }
-      done += 1
     }
+    onDone?.()
     setBusy(false)
-    setResult(done)
+    setResult(bilan)
   }
 
   return (
@@ -100,7 +114,8 @@ function BulkActionDialog({ kind, rows, users, onApply, onClose }) {
             )}
             {isStatut && value && (
               <p className="text-xs text-muted-foreground">
-                {applicables} chantier(s) seront modifiés.
+                {applicables} seront modifiés
+                {dejaAuStatut > 0 && `, ${dejaAuStatut} déjà à ce statut`}.
                 {ignorees > 0 && (
                   <span className="text-warning-foreground">
                     {' '}{ignorees} ignoré(s) (saut d&apos;étape non autorisé).
@@ -110,10 +125,18 @@ function BulkActionDialog({ kind, rows, users, onApply, onClose }) {
             )}
           </div>
         ) : (
-          <p className="text-sm text-foreground">
-            {result} chantier(s) mis à jour.
-            {isStatut && ignorees > 0 && ` ${ignorees} ignoré(s).`}
-          </p>
+          <div className="flex flex-col gap-2 text-sm text-foreground" data-testid="bulk-result">
+            <p>
+              {result.modifies} mis à jour
+              {result.refuses.length > 0 && `, ${result.refuses.length} refusés`}
+              {result.inchanges > 0 && `, ${result.inchanges} inchangés`}.
+            </p>
+            {result.refuses.length > 0 && (
+              <ul className="flex flex-col gap-1 text-xs text-destructive">
+                {result.refuses.map((x) => <li key={x.ref}>{x.ref} : {x.raison}</li>)}
+              </ul>
+            )}
+          </div>
         )}
 
         <DialogFooter>
@@ -137,7 +160,10 @@ function BulkActionDialog({ kind, rows, users, onApply, onClose }) {
   )
 }
 
-export default function ListView({ items, onOpen, users, onChangeStatus, onReassign, nouveauxIds }) {
+export default function ListView({
+  items, onOpen, users, onChangeStatus, onReassign, nouveauxIds,
+  onChangeStatusStrict, onReassignStrict, onBatchDone,
+}) {
   // L10 — action groupée en cours ('statut' | 'technicien' | null) + lignes ciblées.
   const [bulk, setBulk] = useState(null) // { kind, rows, clear }
   const canBulk = typeof onChangeStatus === 'function' && typeof onReassign === 'function'
@@ -244,10 +270,11 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
     ]
     : undefined
 
+  // ACHT64 — variantes strictes (rejettent avec la raison) quand fournies.
   const applyBulk = (row, data) =>
-    Promise.resolve(
-      'statut' in data ? onChangeStatus(row, data.statut) : onReassign(row, data.technicien_responsable),
-    )
+    'statut' in data
+      ? (onChangeStatusStrict ?? onChangeStatus)(row, data.statut)
+      : (onReassignStrict ?? onReassign)(row, data.technicien_responsable)
 
   const closeBulk = () => {
     bulk?.clear?.()
@@ -279,6 +306,7 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
           rows={bulk.rows}
           users={users}
           onApply={applyBulk}
+          onDone={onBatchDone}
           onClose={closeBulk}
         />
       )}
