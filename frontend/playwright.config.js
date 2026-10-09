@@ -49,7 +49,8 @@ export default defineConfig({
     //    path) never runs it TWICE.
     {
       name: 'chromium',
-      testIgnore: /(auth\.setup|mobile\.spec|monkey\.spec)\.js/,
+      // AMET90 — les specs d'acceptation (e2e/acceptation/) sont exclues PAR MOTIF.
+      testIgnore: [/(auth\.setup|mobile\.spec|monkey\.spec)\.js/, /[\\/]acceptation[\\/]/],
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: AUTH_FILE },
     },
@@ -116,6 +117,24 @@ export default defineConfig({
         storageState: AUTH_FILE,
       },
     },
+
+    // AMET90 — specs d'ACCEPTATION en direct (CLAUDE.md 3-bis), jouées par
+    // l'orchestrateur sur la pile locale via `scripts/acceptation.ps1 <G>`
+    // (qui pose E2E_ACCEPTATION=1). Projet ABSENT sans cette variable : ni le
+    // shard par-merge ni `e2e-full` (tous projets, sans --project) ne le voient.
+    // Trace + capture TOUJOURS ; service worker bloqué (l'interception réseau
+    // des étapes hors-ligne doit voir chaque requête de la page).
+    ...(process.env.E2E_ACCEPTATION ? [{
+      name: 'acceptation',
+      testMatch: /[\\/]acceptation[\\/][^\\/]+\.spec\.js$/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: AUTH_FILE,
+        serviceWorkers: 'block',
+        trace: 'on',
+      },
+    }] : []),
   ],
 
   // Serve the built app. E2E_PROXY makes vite preview forward /api/django to
