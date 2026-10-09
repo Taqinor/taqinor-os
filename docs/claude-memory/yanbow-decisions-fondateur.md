@@ -20,3 +20,7 @@ Décisions de Reda du 06/10/2026 (question interactive, ne pas re-demander) :
 **Why:** fixé par Reda pendant la planification L3 du site (06/10/2026).
 **How to apply:** ne jamais écrire « Ancreto » ni présenter YanBow comme la SARLAU ; la vérification du nom YanBow
 (marques, OMPIC) reste non faite tant que Reda ne la demande pas. Voir [[propriete-fichiers]].
+
+## Design du site (YBWM12) — 09/10/2026
+
+**« A maison + bandes produit B »**, choisi par Reda via la question interactive du 09/10/2026 : candidat A « Encre et papier » pour tout le site ; le principe de B (capture claire flottante sur nuit) pour les bandes produit SolarBow / MarketingBow, refait avec les jetons et polices de A (jamais Urbanist/Geist mélangés à Outfit/Instrument). Critique Fable YBW43 : A > B > C.

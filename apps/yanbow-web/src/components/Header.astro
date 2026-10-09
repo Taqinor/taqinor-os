@@ -1,0 +1,63 @@
+---
+// En-tête commun (YBW60) — logo (nom, 180 px : minimum de la charte, YBW36 ;
+// jamais le slogan ici), 4 entrées (les deux produits de brand.ts, Sur mesure,
+// Société) + UN appel « Prendre rendez-vous ». Sélecteur de langue seulement
+// si une autre langue est ACTIVE (YBW13). Mobile : un <details> natif, sans
+// script (CSP `script-src 'self'`). Ne passe jamais à la ligne de 320 à
+// 1440 px (garde tests-e2e/chrome.spec.ts).
+import Logo from './Logo.astro';
+import { LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
+import { PAGES, type PageId } from '../i18n/pages';
+import { L, lecteur, selecteurLangue } from '../i18n/utils';
+import { fr } from '../i18n/components/chrome.fr';
+import { en } from '../i18n/components/chrome.en';
+import { PRODUITS } from '../lib/brand';
+
+interface Props {
+  page: PageId;
+  locale: Locale;
+  /** Surcharge des langues actives — réservée aux tests (fixture). */
+  locales?: readonly Locale[];
+}
+const { page, locale, locales = LOCALES_ACTIVES } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const entrees: { id: PageId; texte: string }[] = [
+  { id: 'solarbow', texte: PRODUITS.solarbow.nom },
+  { id: 'marketingbow', texte: PRODUITS.marketingbow.nom },
+  { id: 'surMesure', texte: tx('nav.surMesure') },
+  { id: 'societe', texte: tx('nav.societe') },
+];
+const autres = selecteurLangue(PAGES[page], locale, locales);
+const courant = (id: PageId) => (id === page ? 'page' : undefined);
+---
+<a class="lien-evitement" href="#contenu">{tx('evitement')}</a>
+<header class="entete">
+  <div class="conteneur entete-int">
+    <a class="entete-logo" href={L('accueil', locale)} aria-label={tx('accueil')}>
+      <Logo variante="nom" taille={180} locale={locale} />
+    </a>
+    <nav class="nav-bureau" aria-label={tx('nav.aria')}>
+      <ul>
+        {entrees.map((e) => <li><a href={L(e.id, locale)} aria-current={courant(e.id)}>{e.texte}</a></li>)}
+      </ul>
+    </nav>
+    <div class="entete-actions">
+      {autres.map((l) => (
+        <a class="lien-langue" href={l.href} hreflang={l.locale} lang={LANG_HTML[l.locale]}>{NOM_LANGUE[l.locale]}</a>
+      ))}
+      {page !== 'rendezVous' && <a class="bouton bouton-entete" href={L('rendezVous', locale)}>{tx('nav.rdv')}</a>}
+    </div>
+    <details class="nav-mobile">
+      <summary><span class="nav-mobile-icone" aria-hidden="true"></span>{tx('nav.menu')}</summary>
+      <nav aria-label={tx('nav.ariaMobile')}>
+        <ul>
+          {entrees.map((e) => <li><a href={L(e.id, locale)} aria-current={courant(e.id)}>{e.texte}</a></li>)}
+          {autres.map((l) => (
+            <li><a href={l.href} hreflang={l.locale} lang={LANG_HTML[l.locale]}>{NOM_LANGUE[l.locale]}</a></li>
+          ))}
+          {page !== 'rendezVous' && <li><a class="bouton" href={L('rendezVous', locale)}>{tx('nav.rdv')}</a></li>}
+        </ul>
+      </nav>
+    </details>
+  </div>
+</header>

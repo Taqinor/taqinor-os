@@ -4,6 +4,7 @@ import {
   MessagesSquare, Clock,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { erreurServeur } from './adsengine'
 
 /* ============================================================================
    ADSDEEP56 — Écran Instagram (compte Business relié).
@@ -67,8 +68,9 @@ export default function InstagramScreen() {
       await fn()
       markProposed(key)
       setReplyingId(null); setReplyText('')
-    } catch {
-      setErr("Action impossible (permission ?). Rien n'a été proposé.")
+    } catch (e) {
+      // AACQ73 — la raison du serveur, jamais une cause devinée.
+      setErr(`${erreurServeur(e, 'Action impossible.')} Rien n'a été proposé.`)
     } finally {
       setBusy(false)
     }
@@ -88,8 +90,8 @@ export default function InstagramScreen() {
       await adsengineApi.instagram.proposePublish(payload)
       setComposerMsg('Publication proposée — à approuver dans la boîte d’approbation.')
       setMediaUrl(''); setCaption(''); setScheduledAt('')
-    } catch {
-      setErr("Publication impossible (permission ?). Rien n'a été proposé.")
+    } catch (e) {
+      setErr(`${erreurServeur(e, 'Publication impossible.')} Rien n'a été proposé.`)
     } finally {
       setBusy(false)
     }

@@ -64,8 +64,15 @@ class DernierSautDeConfianceTests(SimpleTestCase):
             '203.0.113.9')
 
     def test_num_proxies_saute_nos_propres_proxies(self):
-        """``NUM_PROXIES=1`` : notre proxy ajoute UNE entrée, on la saute."""
+        """ASEC15 — sémantique ``get_ident`` de DRF : ``NUM_PROXIES=N`` rend le
+        N-ième saut en partant de la droite. ``NUM_PROXIES=1`` (prod) : le
+        dernier saut, celui que nginx a ajouté ; ``NUM_PROXIES=2`` : deux de nos
+        proxies ont ajouté leur entrée, le visiteur est l'avant-dernier."""
         with override_settings(NUM_PROXIES=1):
+            self.assertEqual(
+                ip_de_requete(_requete(xff='%s, 203.0.113.9' % _FORGEE)),
+                '203.0.113.9')
+        with override_settings(NUM_PROXIES=2):
             self.assertEqual(
                 ip_de_requete(_requete(
                     xff='%s, 203.0.113.9, 10.0.0.7' % _FORGEE)),

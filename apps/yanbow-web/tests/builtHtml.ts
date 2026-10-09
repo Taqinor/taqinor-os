@@ -36,12 +36,17 @@ function fichiersHtml(dir: string): string[] {
   return out;
 }
 
-/** `bonjour/index.html` → `/bonjour/` ; `index.html` → `/` ; `404.html` → `/404.html`. */
+/** `societe/index.html` → `/societe/` ; `index.html` → `/` ; `404.html` → `/404.html`. */
 export function urlDeFichier(fichierRelatif: string): string {
   const posix = fichierRelatif.split(sep).join('/');
   if (posix === 'index.html') return '/';
   if (posix.endsWith('/index.html')) return '/' + posix.slice(0, -'index.html'.length);
   return '/' + posix;
+}
+
+/** Langue d'une URL : `en` sous `/en/`, sinon `fr`. */
+export function langueDeUrl(url: string): 'fr' | 'en' {
+  return url === '/en/' || url.startsWith('/en/') ? 'en' : 'fr';
 }
 
 /** Toutes les pages HTML construites (les deux langues si actives), triées par URL. */
@@ -53,7 +58,7 @@ export function pagesRendues(): PageRendue[] {
       const html = readFileSync(fichier, 'utf-8');
       return {
         url,
-        langueUrl: url === '/en/' || url.startsWith('/en/') ? ('en' as const) : ('fr' as const),
+        langueUrl: langueDeUrl(url),
         fichier,
         html,
         document: new JSDOM(html).window.document,

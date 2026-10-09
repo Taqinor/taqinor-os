@@ -639,11 +639,18 @@ class SweepTaskTests(TestCase):
         from apps.sav.models import Ticket
         from .sweeps import _sweep_sav_breaching
 
+        from apps.sav.models import SavSlaSettings
+        # ASAV20 — le balayage suit le drapeau SLA : société au SLA activé,
+        # ticket dont l'échéance est dépassée.
+        sla = SavSlaSettings.get(self.company)
+        sla.sla_breach_enabled = True
+        sla.save()
         client = Client.objects.create(company=self.company, nom='ClientSAV')
         Ticket.objects.create(
             company=self.company, client=client, reference='T-SW-1',
             statut=Ticket.Statut.NOUVEAU,
-            date_ouverture=date.today() - timedelta(days=10))
+            date_ouverture=date.today() - timedelta(days=10),
+            sla_due_at=date.today() - timedelta(days=3))
 
         count = _sweep_sav_breaching(self.company)
         self.assertEqual(count, 1)

@@ -107,21 +107,24 @@ class SitesMetierTests(TestCase):
             self.assertFalse(partenaire.certification_expiree)
 
     def test_etape_de_relance_en_retard_sur_le_jour_marocain(self):
-        """Étape due le 2 mai, horloge au 2 mai 23 h 30 UTC : au Maroc on est
-        le 3, l'étape est EN RETARD. La date UTC l'aurait dite à l'heure."""
+        """Étape due le mardi 5 mai, horloge au 5 mai 23 h 30 UTC : au Maroc
+        on est le mercredi 6, l'étape est EN RETARD. La date UTC l'aurait
+        dite à l'heure. (ALEA32 : « en retard » se compte en jours OUVRÉS —
+        l'ancienne échéance d'un samedi n'est plus en retard un dimanche ;
+        la preuve du fuseau se fait donc sur deux jours ouvrés.)"""
         from apps.crm.models import Lead
 
         lead = Lead.objects.create(company=self.company, nom='Lead CRX26')
         etape = RelanceEtape.objects.create(
             company=self.company, lead=lead, ordre=1,
-            due_date=dt.date(2026, 5, 2),
+            due_date=dt.date(2026, 5, 5),
             canal=RelanceEtape.Canal.APPEL, libelle='Relancer')
-        soir = dt.datetime(2026, 5, 2, 23, 30, tzinfo=UTC)
+        soir = dt.datetime(2026, 5, 5, 23, 30, tzinfo=UTC)
 
         with patch('core.dates.timezone.now', return_value=soir):
             self.assertTrue(RelanceEtapeSerializer(etape).data['overdue'])
 
-        midi = dt.datetime(2026, 5, 2, 12, 0, tzinfo=UTC)
+        midi = dt.datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
         with patch('core.dates.timezone.now', return_value=midi):
             self.assertFalse(RelanceEtapeSerializer(etape).data['overdue'])
 

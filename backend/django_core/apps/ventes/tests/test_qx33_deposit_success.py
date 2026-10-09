@@ -52,9 +52,12 @@ class Qx33DepositSuccessTests(TestCase):
 
     @override_settings(COMPANY_RIB='001 TAQINOR BANK 1234567')
     def test_accept_success_payload_has_deposit(self):
+        from apps.ventes.public.signature_views import empreinte_contenu
         resp = self.api.post(
             f'/api/django/public/proposal/{self.link.token}/accept/',
-            {'nom': 'Client', 'consent_esign': True}, format='json')
+            {'nom': 'Client', 'consent_esign': True,
+             'empreinte_contenu': empreinte_contenu(self.devis)},
+            format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         pay = resp.data['paiement']
         # 10000 HT − 10 % = 9000 ; TTC 10800 ; acompte 30 % = 3240.
@@ -66,9 +69,12 @@ class Qx33DepositSuccessTests(TestCase):
 
     @override_settings(PAYMENT_PROVIDER='hosted')
     def test_card_slot_activates_with_psp(self):
+        from apps.ventes.public.signature_views import empreinte_contenu
         resp = self.api.post(
             f'/api/django/public/proposal/{self.link.token}/accept/',
-            {'nom': 'Client', 'consent_esign': True}, format='json')
+            {'nom': 'Client', 'consent_esign': True,
+             'empreinte_contenu': empreinte_contenu(self.devis)},
+            format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIsNotNone(resp.data['paiement']['card_payment_url'])
 

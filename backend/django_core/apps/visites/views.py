@@ -663,7 +663,9 @@ class LeadsRechercheView(APIView):
     def get(self, request):
         from apps.crm import selectors as crm_selectors
 
+        # ACRM30 — bornée aux leads visibles de l'appelant.
         return Response({'results': crm_selectors.rechercher_leads_minimal(
             request.user.company,
             request.query_params.get('q'),
-            limit=request.query_params.get('limit') or 10)})
+            limit=request.query_params.get('limit') or 10,
+            user=request.user)})

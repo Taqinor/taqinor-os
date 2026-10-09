@@ -1900,6 +1900,12 @@ class Lead(SoftDeleteModel):
     email_normalise = models.CharField(
         max_length=254, blank=True, default='', db_index=True,
         verbose_name='Email normalisé (dédup)')
+    # ACRM32 — clé normalisée du WHATSAPP (même normaliseur que
+    # ``phone_normalise``) : un message WhatsApp d'un numéro connu SEULEMENT
+    # en ``whatsapp`` retrouve son lead par une requête indexée.
+    whatsapp_normalise = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='WhatsApp normalisé (dédup)')
 
     # T-TRACE (25/08/2026) — identifiant de l'APPAREIL depuis lequel la
     # demande est arrivée (uuid localStorage posé par le site, transmis par
@@ -2259,6 +2265,9 @@ class Lead(SoftDeleteModel):
         from . import services as _crm_services
         self.phone_normalise = _crm_services.normalize_phone(self.telephone) or ''
         self.email_normalise = _crm_services.normalize_email(self.email) or ''
+        # ACRM32 — idem pour le WhatsApp (tronqué comme la colonne).
+        self.whatsapp_normalise = (
+            _crm_services.normalize_phone(self.whatsapp) or '')[:20]
         super().save(*args, **kwargs)
 
     class Meta:
@@ -2275,6 +2284,9 @@ class Lead(SoftDeleteModel):
                          name='crm_lead_phone_norm_idx'),
             models.Index(fields=['company', 'email_normalise'],
                          name='crm_lead_email_norm_idx'),
+            # ACRM32 — dédup indexée sur le WhatsApp normalisé.
+            models.Index(fields=['company', 'whatsapp_normalise'],
+                         name='crm_lead_wa_norm_idx'),
             # ADSENG1/ADSENG6 — jointure d'attribution PAR VARIANTE : on
             # regroupe les leads d'une société par leur ad Meta (meta_ad_id).
             models.Index(fields=['company', 'meta_ad_id'],
@@ -2745,6 +2757,34 @@ class MotifPerte(models.Model):
         ordering = ['nom']
         unique_together = [('company', 'nom')]
         verbose_name = 'Motif de perte'
+
+    def __str__(self):
+        return self.nom
+
+
+class MotifPerteStandardPropose(TenantModel):
+    """ACRM25 (C-ACRM-018) — la MÉMOIRE des motifs de perte STANDARD déjà
+    proposés à une société.
+
+    ``completer_motifs_perte`` ajoutait à CHAQUE lecture de la liste tout
+    motif standard absent par son NOM : un motif renommé (« Prix » → « Prix
+    trop élevé ») ou supprimé revenait aussitôt. Un motif standard n'est
+    désormais proposé qu'UNE fois par société — renommé ou supprimé ensuite,
+    il ne ressuscite jamais ; un motif standard AJOUTÉ plus tard au référentiel
+    (AGR521, CIQ514…) est, lui, toujours proposé une fois.
+
+    SCA4 — hérite de ``core.models.TenantModel`` (company + created_at/updated_at) ;
+    ``company`` redéclaré pour garder ``related_name='+'``."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: mémoire de référentiel 100 % fille du tenant
+        related_name='+')
+    nom = models.CharField(max_length=150)
+
+    class Meta:
+        verbose_name = 'Motif de perte standard proposé'
+        verbose_name_plural = 'Motifs de perte standard proposés'
+        unique_together = [('company', 'nom')]
 
     def __str__(self):
         return self.nom

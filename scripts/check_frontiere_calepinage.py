@@ -179,39 +179,49 @@ ENTETE_BASE = """\
 #
 # REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
 #   - retirer un import puis `python scripts/check_frontiere_calepinage.py
-#     --write-baseline` retire sa ligne ; un import simplement DEPLACE s'y
-#     re-enregistre a sa nouvelle ligne ;
+#     --write-baseline` retire sa ligne ; un import simplement DEPLACE ne
+#     change rien (la cle est fichier + module + compte) ;
 #   - `--write-baseline` REFUSE tout import NOUVEAU (plus d'imports d'un meme
 #     module dans un meme fichier que la base n'en porte). Ajouter une dette
 #     exige `--autoriser-croissance`, drapeau reserve au fondateur, visible en
 #     revue.
 #
-# Format : `<fichier>:<ligne>:<module>`.
+# Format : `<fichier>:<module>  <nombre d'imports>` (ACAL338 : plus de
+# numero de ligne — decaler un import ne change pas le verdict).
 """
 
-_LIGNE_BASE = re.compile(r"^(?P<cle>\S+:\d+:[\w.]+)\s*(?:#.*)?$")
+_LIGNE_BASE = re.compile(
+    r"^(?P<fichier>\S+):(?P<module>[\w.]+)\s+[x×]?(?P<n>\d+)\s*(?:#.*)?$")
 
 
-def charger_base(path: Path | None = None) -> list:
+def compter(constats: list) -> Counter:
+    """``Counter {(fichier, module): nombre d'imports}`` — la CLE de la base
+    est ``fichier:module`` + compte, JAMAIS un numéro de ligne (ACAL338 :
+    décaler un import d'une ligne ne change plus le verdict)."""
+    return Counter(_fichier_module(cle) for cle in constats)
+
+
+def charger_base(path: Path | None = None) -> Counter:
     path = path or BASELINE_PATH
+    base: Counter = Counter()
     if not path.is_file():
-        return []
-    base = []
+        return base
     for ligne in path.read_text(encoding="utf-8").splitlines():
         ligne = ligne.strip()
         if not ligne or ligne.startswith("#"):
             continue
         m = _LIGNE_BASE.match(ligne)
         if m:
-            base.append(m.group("cle"))
-    return sorted(set(base))
+            base[(m.group("fichier"), m.group("module"))] += int(m.group("n"))
+    return base
 
 
 def ecrire_base(constats: list, path: Path | None = None):
     path = path or BASELINE_PATH
-    corps = "\n".join(sorted(constats))
-    path.write_text(ENTETE_BASE + (corps + "\n" if corps else ""),
-                    encoding="utf-8", newline="\n")
+    corps = chr(10).join(f"{fichier}:{module}  {n}"
+                         for (fichier, module), n in sorted(compter(constats).items()))
+    path.write_text(ENTETE_BASE + (corps + chr(10) if corps else ""),
+                    encoding="utf-8", newline=chr(10))
 
 
 def _fichier_module(cle: str) -> tuple:
@@ -219,13 +229,12 @@ def _fichier_module(cle: str) -> tuple:
     return fichier, module
 
 
-def croissances(constats: list, base: list) -> list:
+def croissances(constats: list, base: Counter) -> list:
     """Les couples (fichier, module) qui porteraient PLUS d'imports que la base."""
-    actuel = Counter(_fichier_module(cle) for cle in constats)
-    avant = Counter(_fichier_module(cle) for cle in base)
-    return sorted(f"{fichier}:{module} ({avant[(fichier, module)]} -> {n})"
+    actuel = compter(constats)
+    return sorted(f"{fichier}:{module} ({base[(fichier, module)]} -> {n})"
                   for (fichier, module), n in actuel.items()
-                  if n > avant[(fichier, module)])
+                  if n > base[(fichier, module)])
 
 
 def main(argv=None) -> int:
@@ -274,12 +283,16 @@ def main(argv=None) -> int:
             return 1
         ecrire_base(constats)
         print(f"Base de reference reecrite : {BASELINE_PATH} "
-              f"({len(constats)} entree(s), "
-              f"{len(set(base) - set(constats))} retiree(s)).")
+              f"({len(constats)} entree(s)).")
         return 0
 
-    nouveaux = sorted(set(constats) - set(base))
-    perimes = sorted(set(base) - set(constats))
+    actuel = compter(constats)
+    nouveaux = sorted(cle for cle in constats
+                      if actuel[_fichier_module(cle)] > base[_fichier_module(cle)])
+    perimes = sorted(f"{fichier}:{module} ({base[(fichier, module)]} -> "
+                     f"{actuel[(fichier, module)]})"
+                     for (fichier, module) in base
+                     if actuel[(fichier, module)] < base[(fichier, module)])
     echec = False
 
     if nouveaux:
@@ -309,7 +322,7 @@ def main(argv=None) -> int:
         return 1
 
     print(f"OK : {len(lus)} fichier(s) de apps/calepinage/ lu(s) (hors tests), "
-          f"aucun import interdit hors base ({len(base)} dette(s) "
+          f"aucun import interdit hors base ({sum(base.values())} dette(s) "
           f"historique(s) gelée(s) ; {MODULES_ADMIS[0]} admis).")
     return 0
 

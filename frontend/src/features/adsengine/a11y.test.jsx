@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { AE_HOOKS } from './hooks'
+import ENGINE_ACTION from '../../../../backend/django_core/apps/adsengine/contract_samples/engine_action.json'
 
 /* ENG29 — specs a11y (axe SANS violation) + contrat de hooks `ae-*` sur les
    deux écrans à fort enjeu : ApprovalsScreen (vaisseau-amiral) et
@@ -48,8 +49,9 @@ beforeEach(() => {
     { id: 1, niveau: 'critique', message: 'Plafond quotidien dépassé' } ] } })
   mocks.leads.mockResolvedValue({ data: [] })
   mocks.pending.mockResolvedValue({ data: [
-    { id: 11, type: 'adjust_budget', reason_fr: 'CPL en baisse — augmenter la portée.',
-      budget_avant: 80, budget_apres: 120 },
+    // AACQ63 — ligne budget du CONTRAT serveur (jamais `budget_avant` inventé).
+    { ...ENGINE_ACTION.exemple, id: 11,
+      reason_fr: 'CPL en baisse — augmenter la portée.' },
     { id: 12, type: 'swap_creative', reason_fr: 'Créatif fatigué.',
       creative: { designation: 'Reel toiture v2', type: 'reel', preview_url: 'https://cdn/x.jpg' } },
   ] })

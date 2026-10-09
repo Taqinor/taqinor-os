@@ -21,9 +21,6 @@ export const PAGES = {
 
 export type PageId = keyof typeof PAGES;
 
-/** Page sonde technique (noindex, hors sitemap, supprimée par YBW61). */
-export const SONDE: CheminsParLocale = { fr: '/bonjour/', en: '/en/bonjour/' };
-
 /** Toutes les URL du registre (pages du plan de site seulement). */
 export function toutesLesUrl(): string[] {
   return Object.values(PAGES).flatMap((p) => [p.fr, p.en]);

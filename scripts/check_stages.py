@@ -28,6 +28,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _rel_parts(path, base=ROOT):
+    """ADEP27 - parties du chemin RELATIVES a la racine du depot : un depot
+    range sous un dossier nomme `build/`, `dist/` ou `tests/` doit donner le
+    meme verdict (jamais tester les dossiers du chemin absolu)."""
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return path.parts
+
 STAGES_FILE = ROOT / "STAGES.py"
 
 SCANNED_SUFFIXES = {".py", ".js", ".jsx"}
@@ -69,7 +80,7 @@ LITERAL_EXEMPT = {
 LITERAL_ALLOW = {
     "backend/django_core/apps/crm/selectors.py": 1,
     "backend/django_core/apps/crm/services.py": 3,
-    "backend/django_core/apps/crm/views.py": 2,
+    "backend/django_core/apps/crm/views.py": 1,
     "backend/django_core/core/win_probability.py": 6,
 }
 
@@ -120,7 +131,7 @@ def load_js_allow() -> dict[str, int]:
 
 
 def _is_js_test(path: Path) -> bool:
-    return is_test_file(path) or "__tests__" in path.parts or ".test." in path.name
+    return is_test_file(path) or "__tests__" in _rel_parts(path) or ".test." in path.name
 
 
 def scan_js_literals() -> dict[str, int]:
@@ -194,7 +205,7 @@ def is_test_file(path: Path) -> bool:
     A test may hardcode a stage key on purpose (to prove that the canonical
     key really is the one stored), and it ships no behaviour.
     """
-    if any(part in {"tests", "test"} for part in path.parts):
+    if any(part in {"tests", "test"} for part in _rel_parts(path)):
         return True
     name = path.name
     return (
@@ -231,7 +242,7 @@ def main() -> int:
     for path in ROOT.rglob("*"):
         if path.suffix not in SCANNED_SUFFIXES:
             continue
-        if any(part in SKIPPED_PARTS for part in path.parts):
+        if any(part in SKIPPED_PARTS for part in _rel_parts(path)):
             continue
         if path == STAGES_FILE:
             continue

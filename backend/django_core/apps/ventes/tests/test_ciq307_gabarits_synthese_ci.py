@@ -26,6 +26,8 @@ from apps.ventes.quote_engine.industriel import render as i_render
 from apps.ventes.quote_engine.industriel import renderer as i_renderer
 from apps.ventes.quote_engine.industriel import sample_data as i_sample
 
+from ._moteur_fixtures import etude_ci_au_kwc_servi
+
 _CONTRATS = Path(__file__).resolve().parents[1] / "contract_samples"
 
 
@@ -53,7 +55,7 @@ def _data(sample, *, methode="declare", reserve=False, argent=True):
     if argent:
         data["economie_ci"] = economie_ci_publique(
             copy.deepcopy(ECONOMIE_CI["exemple"]))
-    return data
+    return etude_ci_au_kwc_servi(data)
 
 
 def _valeur(figures, cle):

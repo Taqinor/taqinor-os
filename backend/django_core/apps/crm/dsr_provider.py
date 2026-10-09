@@ -35,6 +35,45 @@ PROVIDER_NAME = 'crm'
 #: endroit.
 LEAD_NOM_ANONYMISE = 'Anonymisé'
 
+#: ACRM19 (C-ACRM-012) — ce qui remplace une copie brute d'intake effacée.
+PAYLOAD_CAVIARDE = {'caviarde': True,
+                    'motif': 'effacement des données personnelles (loi 09-08)'}
+
+#: ACRM19 — TOUT modèle portant une clé vers ``crm.Lead`` est DÉCLARÉ ici :
+#: soit TRAITÉ par ``anonymiser_lead`` (ses PII partent avec le lead), soit
+#: EXEMPTÉ avec sa raison. Un modèle nouveau qui pointe un lead et n'est
+#: déclaré nulle part fait échouer ``tests_acrm_dsr_copies_brutes`` : un
+#: effacement ne peut plus oublier une copie en silence.
+MODELES_LEAD_TRAITES = {
+    'crm.WebsiteLeadPayload': 'payload brut caviardé, IP vidée',
+    'crm.ChatSessionPublique': 'transcript vidé',
+    'crm.VisiteExterne': 'IP, navigateur, appareil et suffixe de jeton vidés',
+    'crm.Parrainage': 'nom du filleul vidé',
+}
+MODELES_LEAD_EXEMPTES = {
+    'crm.LeadActivity': 'historique conservé par doctrine (archivage du '
+                        'chatter hors périmètre, LSVC4-5)',
+    'crm.RelanceEtape': 'touches de cadence : libellés et échéances, aucune '
+                        'copie de PII',
+    'crm.Appointment': 'rendez-vous : date, statut et notes métier ; '
+                       "l'identité est portée par le lead anonymisé",
+    'crm.BookingLink': 'jeton de réservation sans PII',
+    'crm.QuestionnaireLien': 'jeton de questionnaire sans PII',
+    'crm.ConcurrentPerte': 'intelligence concurrentielle sans PII',
+    'crm.DealEnregistre': "réservation d'antériorité d'un apporteur, sans PII",
+    'crm.ForecastEntry': 'catégorie et montant prévisionnels, sans PII',
+    'crm.LeadPlaybookProgress': 'progression de tâches, sans PII',
+    'crm.PointContact': "journal d'attribution (canal, source), sans PII",
+    'crm.SalleVente': 'espace de vente : documents commerciaux du dossier',
+    'ventes.Devis': 'document commercial conservé (intégrité comptable)',
+    'ventes.BonCommande': 'document comptable conservé (obligation légale)',
+    'facturation.Facture': 'document comptable conservé (obligation légale)',
+    'installations.Installation': 'chantier réalisé : obligation de garantie',
+    'visites.VisiteTerrain': 'relevé technique du site, rattaché au lead '
+                             'anonymisé',
+    'portail.DocumentClientPortail': 'document remis au client, conservé',
+}
+
 
 def _matcher(company, subject_identifier):
     """Renvoie (leads_qs, clients_qs) correspondant à ``subject_identifier``.
@@ -148,6 +187,29 @@ def _anonymiser_traces_visiteur(company, lead):
         ip='', user_agent='', appareil_id='', token_suffixe='')
 
 
+def _anonymiser_copies_brutes(company, lead, identifiants):
+    """ACRM19 (C-ACRM-012) — caviarde les copies brutes de la personne :
+
+    * ``WebsiteLeadPayload`` du lead, ou dont le corps brut porte l'un de
+      ses identifiants (un payload EN ERREUR n'a souvent jamais été
+      rattaché) : ``payload`` remplacé par ``PAYLOAD_CAVIARDE``,
+      ``remote_addr`` vidé — la ligne survit (trace de réception) ;
+    * ``ChatSessionPublique`` du lead : ``transcript`` vidé ;
+    * ``Parrainage`` dont il est le filleul : ``filleul_nom`` vidé.
+    Borné à ``company``."""
+    from .models import ChatSessionPublique, Parrainage, WebsiteLeadPayload
+
+    cible = Q(lead=lead)
+    for identifiant in identifiants:
+        cible |= Q(payload__icontains=identifiant)
+    WebsiteLeadPayload.objects.filter(company=company).filter(cible).update(
+        payload=PAYLOAD_CAVIARDE, remote_addr=None)
+    ChatSessionPublique.objects.filter(company=company, lead=lead).update(
+        transcript=[])
+    Parrainage.objects.filter(company=company, filleul_lead=lead).update(
+        filleul_nom='')
+
+
 def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     """Anonymise UN lead (jamais de suppression) + journalise la destruction.
 
@@ -163,6 +225,10 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     (adsengine, calepinage) s'y abonnent — le CRM n'en importe aucune.
     """
     phone_key = getattr(le, 'phone_normalise', '') or ''
+    # ACRM19 — les identifiants sont lus AVANT le scrub : ils retrouvent les
+    # copies brutes d'intake qui ne portent pas (encore) le lien au lead.
+    identifiants = [v.strip() for v in (le.email, le.telephone, le.whatsapp)
+                    if (v or '').strip()]
     le.nom = LEAD_NOM_ANONYMISE
     le.prenom = None
     le.email = None
@@ -180,18 +246,28 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # ClientViewSet le purgeait déjà ; le chemin DSR — le seul qui réponde
     # à une demande LÉGALE d'effacement — l'oubliait des deux côtés.
     le.custom_data = None
+    # AACQ20 — les identifiants de CLIC publicitaire partent aussi : un lead
+    # effacé ne doit plus rien fournir au CAPI. ``external_id`` reste (dédup
+    # anti-résurrection au rejeu webhook) — le sélecteur CAPI ne le renvoie
+    # plus pour un lead effacé.
+    le.fbclid = ''
+    le.gclid = ''
     # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
     # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
     # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
     # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
     le.save(update_fields=[
         'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
-        'appareil_id', 'custom_data',
-        'email_normalise', 'phone_normalise'])
+        'appareil_id', 'custom_data', 'fbclid', 'gclid',
+        'email_normalise', 'phone_normalise', 'whatsapp_normalise'])
     # Les traces de traçage du lead perdent leurs identifiants (IP,
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
     _anonymiser_traces_visiteur(company, le)
+    # ACRM19 — les COPIES BRUTES du lead : payloads d'intake (caviardés, IP
+    # vidée — y compris ceux en erreur, jamais rattachés) et transcripts de
+    # chat. Les purges par âge ne sont plus le seul rempart.
+    _anonymiser_copies_brutes(company, le, identifiants)
     # Lot 3 critique #1 — émis APRÈS l'écriture du lead : sans transaction
     # englobante (autocommit), ``on_commit`` exécute tout de suite — un
     # abonné (scrub calepinage, suppression IRRÉVERSIBLE des photos) ne doit

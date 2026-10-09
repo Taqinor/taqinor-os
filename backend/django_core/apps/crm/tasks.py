@@ -78,6 +78,9 @@ _ODOO_SYNC_LOCK_TIMEOUT = 1500
 def sync_odoo_leads_task():
     """MRY0 (lot C) — Enveloppe Celery Beat du miroir Odoo → ERP.
 
+    AACQ97 (D-AACQ, 08/10/2026) — n'est PLUS planifiée au beat : la synchro
+    Odoo est MANUELLE (lancement à la main uniquement), l'ERP fait foi.
+
     Le miroir n'était planifié NULLE PART (ni cron, ni timer, ni beat) : la
     dernière passe datait du 01/09/2026 et le cockpit de Meryem décrochait
     silencieusement. NO-OP PROPRE quand la config Odoo est incomplète ou que

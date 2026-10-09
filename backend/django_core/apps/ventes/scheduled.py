@@ -611,9 +611,17 @@ def engagement_followup_engine():
     now = timezone.now()
     posted = 0
 
+    from .selectors import devis_en_jeu
+
+    # ADEV45 — le lien d'une V1 remplacée par sa révision ne déclenche
+    # jamais de relance : seule la version EN JEU est candidate.
     links = (ShareLink.objects
              .filter(devis__isnull=False,
                      devis__statut=Devis.Statut.ENVOYE,
+                     devis__in=devis_en_jeu(Devis.objects.all()),
+                     # ACRM11 — explicite : jamais un signal sur une V1
+                     # remplacée (même règle que ``devis_en_jeu``).
+                     devis__is_active=True,
                      expires_at__gt=now)
              .select_related('devis', 'devis__created_by', 'company'))
 

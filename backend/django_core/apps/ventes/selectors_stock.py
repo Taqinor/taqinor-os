@@ -19,10 +19,13 @@ def frequence_co_achat(company, produit_id, *, limite=10):
     jamais de prix d'achat ni de marge."""
     from collections import Counter
     from .models import Devis, LigneDevis
+    from .selectors import devis_en_jeu
 
-    devis_ids = LigneDevis.objects.filter(
-        devis__company=company, devis__statut=Devis.Statut.ACCEPTE,
-        produit_id=produit_id).values_list('devis_id', flat=True)
+    # ADEV45 — seule la version EN JEU d'une installation compte : une V1
+    # remplacée par sa révision ne double pas la co-occurrence.
+    devis_ids = devis_en_jeu(Devis.objects.filter(
+        company=company, statut=Devis.Statut.ACCEPTE,
+        lignes__produit_id=produit_id)).values_list('id', flat=True)
     devis_ids = set(devis_ids)
     if not devis_ids:
         return []

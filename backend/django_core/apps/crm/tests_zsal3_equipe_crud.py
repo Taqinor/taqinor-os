@@ -2,7 +2,9 @@
 dashboard « Mes équipes » (tests_zsal3_equipes.py, qui couvre stats_equipe()).
 
 Covers:
-  - Lecture ouverte à tout rôle, écriture réservée responsable/admin.
+  - Lecture ouverte à tout rôle, écriture réservée au palier ADMIN
+    (ACRM26 : une équipe pilote une portée — un responsable non admin ne
+    s'y nomme plus).
   - Société forcée côté serveur (jamais acceptée du corps de la requête).
   - Isolation multi-tenant (une équipe d'une autre société n'apparaît jamais,
     n'est jamais modifiable/supprimable via l'API).
@@ -26,8 +28,9 @@ class TestEquipeCommercialeCRUD(TestCase):
     def setUp(self):
         self.company = make_company()
         self.other_company = make_company('zsal3crud-other')
+        # ACRM26 — l'écriture des équipes est réservée au palier admin.
         self.resp = User.objects.create_user(
-            username='zsal3cruresp', password='x', role_legacy='responsable',
+            username='zsal3cruresp', password='x', role_legacy='admin',
             company=self.company)
         self.commercial = User.objects.create_user(
             username='zsal3crucommercial', password='x', company=self.company)

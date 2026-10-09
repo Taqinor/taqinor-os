@@ -160,7 +160,7 @@ describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
     expect(h.cumulative).toBeNull();
     expect(h.annual).toBeNull();
     // le résidentiel est inchangé
-    expect(savingsHeadline(payload('residentiel'), 'sans_batterie').cumulative).toBe(24000 * 25);
+    expect(savingsHeadline(payload('residentiel', { economies_cumul_25_ans: { sans_batterie: 512000 } }), 'sans_batterie').cumulative).toBe(512000);
   });
 });
 

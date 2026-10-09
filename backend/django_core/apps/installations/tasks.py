@@ -33,34 +33,47 @@ def casablanca_today():
         return timezone.localdate()
 
 
-def _wa_draft_for_intervention(interv):
-    """Brouillon WhatsApp ``wa.me`` pour le RESPONSABLE, réutilisant le
-    patron ``apps.ventes.utils.whatsapp`` (rendu de gabarit + normalisation
-    téléphone). Renvoie l'URL, ou None si aucun numéro exploitable."""
-    from apps.parametres.models import MessageTemplate
-    from apps.ventes.utils.whatsapp import (
-        build_wa_url, render_message_template)
+def _rendre_rappel(interv, tpl, client):
+    """APAR62 — rendu du texte de rappel J-1 destiné au CLIENT. Aucun lien de
+    confirmation n'existe (le lien de confirmation de RDV n'est pas construit) :
+    la PHRASE qui porte ``{lien}`` est omise (règle d'omission de phrase du
+    moteur de relances), au lieu de laisser « Merci de confirmer : » orphelin
+    ou une accolade."""
+    import re
+
+    from apps.ventes.utils.whatsapp import render_message_template
 
     installation = interv.installation
-    client = getattr(installation, 'client', None)
     nom_client = ''
     if client is not None:
         nom_client = f"{getattr(client, 'prenom', '') or ''} {client.nom}".strip()
-
-    responsable = installation.technicien_responsable
-    if responsable is None:
-        return None
-    phone = getattr(responsable, 'phone_number', None)
-    if not phone:
-        return None
-
-    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', 'fr')
-    message = render_message_template(tpl, {
+    lien = ''
+    if not lien:
+        phrases = re.split(r'(?<=[.!?])\s+', tpl.strip())
+        tpl = ' '.join(p for p in phrases if '{lien}' not in p)
+    return render_message_template(tpl, {
         'civilite': '', 'nom': nom_client,
         'reference': installation.reference or installation.id,
-        'lien': '',
+        'lien': lien,
     })
-    return build_wa_url(phone, message)
+
+
+def _wa_draft_for_intervention(interv):
+    """Brouillon WhatsApp ``wa.me`` du rappel J-1, RÉDIGÉ POUR LE CLIENT et donc
+    adressé au téléphone du CLIENT (APAR62 — il partait au technicien
+    responsable), réutilisant le patron ``apps.ventes.utils.whatsapp``
+    (normalisation téléphone). Renvoie l'URL, ou None si le client n'a aucun
+    numéro exploitable."""
+    from apps.parametres.models import MessageTemplate
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    installation = interv.installation
+    client = getattr(installation, 'client', None)
+    phone = getattr(client, 'telephone', None) if client is not None else None
+    if not phone:
+        return None
+    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', 'fr')
+    return build_wa_url(phone, _rendre_rappel(interv, tpl, client))
 
 
 def _envoyer_email_client(interv):
@@ -71,19 +84,13 @@ def _envoyer_email_client(interv):
     from django.core.mail import send_mail
     from django.conf import settings
     from apps.parametres.models import MessageTemplate
-    from apps.ventes.utils.whatsapp import render_message_template
 
     installation = interv.installation
     client = getattr(installation, 'client', None)
     if client is None or not getattr(client, 'email', None):
         return False
-    nom_client = f"{getattr(client, 'prenom', '') or ''} {client.nom}".strip()
     tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', 'fr')
-    corps = render_message_template(tpl, {
-        'civilite': '', 'nom': nom_client,
-        'reference': installation.reference or installation.id,
-        'lien': '',
-    })
+    corps = _rendre_rappel(interv, tpl, client)
     try:
         send_mail(
             subject='Rappel de rendez-vous — demain',
@@ -107,28 +114,32 @@ def rappel_rdv_j1():
     politique manuel-first). Renvoie un compte {cibles, wa_generes, emails_envoyes}
     pour observabilité/tests."""
     from datetime import timedelta
+    from authentication.selectors import active_companies
     from .models import Intervention
 
     demain = casablanca_today() + timedelta(days=1)
-    qs = (Intervention.objects
-          .filter(date_prevue=demain, rdv_confirme=False)
-          .select_related('installation', 'installation__client',
-                          'installation__technicien_responsable'))
 
     cibles = 0
     wa_generes = 0
     emails_envoyes = 0
-    for interv in qs:
-        cibles += 1
-        try:
-            if _wa_draft_for_intervention(interv):
-                wa_generes += 1
-        except Exception as exc:  # pragma: no cover - défensif
-            logger.warning(
-                'XFSM6 : brouillon WhatsApp échoué (intervention %s) : %s',
-                interv.id, exc)
-        if _envoyer_email_client(interv):
-            emails_envoyes += 1
+    for company in active_companies():  # ACHT51 — pas les suspendus
+        # ACHT51 — jamais d'intervention annulée (rien n'est annoncé).
+        qs = (Intervention.objects.actives()
+              .filter(company=company, date_prevue=demain,
+                      rdv_confirme=False)
+              .select_related('installation', 'installation__client',
+                              'installation__technicien_responsable'))
+        for interv in qs:
+            cibles += 1
+            try:
+                if _wa_draft_for_intervention(interv):
+                    wa_generes += 1
+            except Exception as exc:  # pragma: no cover - défensif
+                logger.warning(
+                    'XFSM6 : brouillon WhatsApp échoué (intervention %s) : '
+                    '%s', interv.id, exc)
+            if _envoyer_email_client(interv):
+                emails_envoyes += 1
 
     return {
         'jour_cible': str(demain), 'cibles': cibles,
@@ -147,18 +158,27 @@ def meteo_planning_j3():
     compte {cibles, evaluees, a_risque} pour observabilité/tests."""
     from datetime import timedelta
 
+    from authentication.selectors import active_companies
+
     from . import weather
     from .models import Intervention
 
     jour_cible = casablanca_today() + timedelta(days=3)
-    qs = (Intervention.objects
-          .filter(date_prevue=jour_cible, type_intervention=Intervention.Type.POSE)
-          .select_related('installation', 'installation__technicien_responsable'))
 
     cibles = 0
     evaluees = 0
     a_risque = 0
-    for interv in qs:
+    # ACHT51 — sociétés actives, interventions non annulées uniquement.
+    interventions = [
+        interv
+        for company in active_companies()
+        for interv in (
+            Intervention.objects.actives()
+            .filter(company=company, date_prevue=jour_cible,
+                    type_intervention=Intervention.Type.POSE)
+            .select_related('installation',
+                            'installation__technicien_responsable'))]
+    for interv in interventions:
         cibles += 1
         inst = interv.installation
         lat = getattr(inst, 'gps_lat', None)

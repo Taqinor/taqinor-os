@@ -16,7 +16,15 @@ garde ANTI-RÉGRESSION. Il échoue si :
   1. ``JSON.stringify(err…)`` réapparaît sous ``frontend/src/pages/`` ou
      ``frontend/src/features/`` (hors tests) ;
   2. un ``toast.error(err)`` NU réapparaît (zéro occurrence aujourd'hui : la
-     garde est posée avant que le premier n'existe).
+     garde est posée avant que le premier n'existe) ;
+  3. (AFAC95, C-AFAC-053) un ``catch`` VIDE ou réduit à un commentaire
+     (``catch { /* */ }`` passe ``no-empty`` d'ESLint : le 400 du serveur est
+     avalé et l'écran ne dit rien) sous ``pages/`` ou ``features/``. Passif gelé
+     dans ``scripts/frontend_catch_vide_allow.txt`` (``fichier::fonction  N``,
+     N = nombre de catch vides de la fonction) : il ne peut que DÉCROÎTRE, une
+     clé morte (moins de catch vides que la base) fait échouer la garde.
+     Afficher l'erreur : ``utils/fetchAllPages`` pour les listes,
+     ``hooks/useServerFieldErrors`` pour les formulaires.
 
 Ce script N'ARBITRE PAS le contrat d'erreur unique (VX203, gaté) : il est
 purement mécanique. Sérialiser une erreur pour un LOG (``console``) reste
@@ -49,6 +57,18 @@ RE_TOAST_RAW = re.compile(r"toast\.(error|warning)\(\s*(err|error)\s*[,)]")
 # Allowlist VOLONTAIREMENT VIDE : le dernier site a été purgé par EZ16. Toute
 # entrée ajoutée ici doit être justifiée en commentaire ET datée.
 ALLOWLIST: set[str] = set()
+
+# 3) catch vide ou réduit à des commentaires (le corps ne contient que des
+#    espaces et des commentaires).
+RE_CATCH_VIDE = re.compile(
+    r"\bcatch\s*(?:\([^)]*\))?\s*\{(?:\s|/\*[\s\S]*?\*/|//[^\n]*)*\}")
+CATCH_VIDE_ALLOW = ROOT / "scripts" / "frontend_catch_vide_allow.txt"
+_DECLARATIONS = (
+    re.compile(r"\bfunction\s*\*?\s*(\w+)\s*\("),
+    re.compile(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>"),
+    re.compile(r"createAsyncThunk\(\s*['\"]([^'\"]+)['\"]"),
+)
+_MOTS_CLES = {"if", "for", "while", "switch", "catch", "return", "else", "try"}
 
 
 def _strip_comments(text: str) -> str:
@@ -86,8 +106,84 @@ def scan() -> list[str]:
     return offenders
 
 
+def _fonction_de(texte: str, position: int) -> str:
+    """Nom de la dernière déclaration reconnue AVANT ``position`` (clé de
+    contenu, jamais un numéro de ligne)."""
+    nom, dernier = "<module>", -1
+    for rx in _DECLARATIONS:
+        for m in rx.finditer(texte, 0, position):
+            if m.group(1) not in _MOTS_CLES and m.start() > dernier:
+                nom, dernier = m.group(1), m.start()
+    return nom
+
+
+def scan_catch_vide() -> dict:
+    """{``fichier::fonction``: nombre de catch vides} sous pages/ et features/."""
+    trouves: dict = {}
+    for base in SCANNED_DIRS:
+        if not base.exists():
+            continue
+        for path in sorted(base.rglob("*")):
+            if path.suffix not in SUFFIXES or any(m in path.name for m in TEST_MARKERS):
+                continue
+            rel = path.relative_to(ROOT).as_posix()
+            texte = path.read_text(encoding="utf-8")
+            if "catch" not in texte:
+                continue
+            # un `catch {}` CITÉ dans un commentaire de documentation /** */
+            # n'est pas du code : on blanchit ces blocs (positions conservées).
+            sans_doc = re.sub(r"/\*\*[\s\S]*?\*/",
+                              lambda m: " " * len(m.group(0)), texte)
+            for m in RE_CATCH_VIDE.finditer(sans_doc):
+                cle = f"{rel}::{_fonction_de(sans_doc, m.start())}"
+                trouves[cle] = trouves.get(cle, 0) + 1
+    return trouves
+
+
+def charger_catch_vide(chemin: Path | None = None) -> dict:
+    chemin = chemin or CATCH_VIDE_ALLOW
+    base: dict = {}
+    if not chemin.is_file():
+        return base
+    for ligne in chemin.read_text(encoding="utf-8").splitlines():
+        ligne = ligne.split("#", 1)[0].strip()
+        if ligne:
+            cle, _espace, n = ligne.rpartition(" ")
+            base[cle.strip()] = int(n)
+    return base
+
+
+def ecrire_catch_vide(trouves: dict, chemin: Path | None = None) -> None:
+    chemin = chemin or CATCH_VIDE_ALLOW
+    entete = (
+        "# AFAC95 - passif GELE de scripts/check_frontend_errors.py (regle 3) :\n"
+        "# `catch` vides ou reduits a un commentaire sous frontend/src/{pages,features}.\n"
+        "# Cle de CONTENU `fichier::fonction  N` (N = nombre de catch vides). Un site\n"
+        "# liste ici est CONSTATE, pas approuve : afficher l'erreur (fetchAllPages /\n"
+        "# useServerFieldErrors / frenchError) puis reduire la ligne. REGLE ABSOLUE :\n"
+        "# cette liste ne peut que DECROITRE.\n")
+    corps = "".join(f"{cle}  {n}\n" for cle, n in sorted(trouves.items()))
+    chemin.write_text(entete + corps, encoding="utf-8", newline="\n")
+
+
+def verifier_catch_vide(trouves: dict, base: dict) -> list:
+    erreurs = []
+    for cle, n in sorted(trouves.items()):
+        if n > base.get(cle, 0):
+            fichier, fonction = cle.split("::", 1)
+            erreurs.append(
+                f"{fichier} — {fonction} : catch vide ou réduit à un commentaire "
+                "(l'erreur du serveur est avalée) — afficher l'erreur "
+                "(utils/fetchAllPages, hooks/useServerFieldErrors, lib/frenchError.js)")
+    for cle, n in sorted(base.items()):
+        if trouves.get(cle, 0) < n:
+            erreurs.append(f"entrée MORTE de frontend_catch_vide_allow.txt : {cle} "
+                           f"({n} -> {trouves.get(cle, 0)}) — réduisez/retirez la ligne")
+    return erreurs
+
+
 def main() -> int:
-    offenders = scan()
+    offenders = scan() + verifier_catch_vide(scan_catch_vide(), charger_catch_vide())
     if offenders:
         print("[check_frontend_errors] ECHEC - jargon technique montre a l'utilisateur :")
         for line in offenders:

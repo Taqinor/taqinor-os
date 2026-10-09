@@ -30,7 +30,7 @@ class ColisViewSet(CompanyScopedModelViewSet):
     par `installation`, `statut`."""
     queryset = Colis.objects.select_related(
         'installation', 'controle_par', 'created_by'
-    ).prefetch_related('lignes').all()
+    ).prefetch_related('lignes__produit').all()
     serializer_class = ColisSerializer
 
     def get_permissions(self):

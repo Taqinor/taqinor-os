@@ -94,10 +94,13 @@ class RetardSlaUniqueTests(TestCase):
         t = self._ticket(
             company=autre, statut=Ticket.Statut.EN_COURS,
             sla_due_at=self.today - timedelta(days=5), sla_breach=True)
-        self.assertFalse(selectors.ticket_en_retard_sla(t, self.today))
+        # ASAV57 — le retard est calculé même interrupteur OFF, mais aucune
+        # notification n'est émise.
+        self.assertTrue(selectors.ticket_en_retard_sla(t, self.today))
         scan_sla_breaches()
         t.refresh_from_db()
-        self.assertFalse(t.sla_breach)
+        self.assertTrue(t.sla_breach)
+        self.assertEqual(self._notifs(t), 0)
 
     def test_performance_agent_effectif(self):
         t = self._ticket(

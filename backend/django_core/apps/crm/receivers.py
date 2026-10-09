@@ -62,6 +62,26 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+def _point_de_sauvegarde(fn):
+    """ADEV54 — un abonné BEST-EFFORT d'un événement devis tourne dans son
+    PROPRE point de sauvegarde (``transaction.atomic()``) : une erreur base y
+    est annulée seule et journalisée, jamais propagée à la transaction de
+    l'émetteur (la signature reste enregistrée, les autres abonnés tournent)."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        from django.db import transaction
+        try:
+            with transaction.atomic():
+                return fn(*args, **kwargs)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('ADEV54 : abonné %s en échec (isolé)',
+                           fn.__name__, exc_info=True)
+            return None
+    return wrapper
+
+
 @receiver(devis_accepted, dispatch_uid="crm_advance_stage_on_devis_accepted")
 def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
                                      **kwargs):
@@ -90,6 +110,7 @@ def _arreter_cadence_on_devis_accepted(sender, devis, user, ancien_statut,
 
 
 @receiver(devis_accepted, dispatch_uid="crm_deal_commission_on_devis_accepted")
+@_point_de_sauvegarde
 def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
                                                 ancien_statut, **kwargs):
     """NTCRM22 — À l'acceptation d'un devis lié à un ``DealEnregistre``
@@ -232,6 +253,7 @@ def _defaire_acceptation_on_acceptation_annulee(sender, devis, user,
 
 
 @receiver(devis_sent, dispatch_uid="crm_plan_apres_devis_on_devis_sent")
+@_point_de_sauvegarde
 def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                                          **kwargs):
     """MRY7 — L'ENVOI d'un devis bascule le lead sur la cadence « après devis ».
@@ -327,6 +349,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
 
 
 @receiver(devis_refused, dispatch_uid="crm_stop_apres_devis_on_devis_refused")
+@_point_de_sauvegarde
 def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
                                           **kwargs):
     """MRY7 — Un devis REFUSÉ arrête sa cadence de suivi, même quand le lead

@@ -138,12 +138,16 @@ class AcceptationNPlus1Tests(TestCase):
         il rend un PDF entier (WeasyPrint + MinIO) dont le bruit noierait le
         signal, et il n'est pas ce que ce chantier change.
         """
+        from apps.ventes.public.signature_views import empreinte_contenu
         link = ShareLink.for_devis(devis)
+        # ADEV51 — calculée HORS de la mesure : le corps renvoie l'empreinte lue.
+        empreinte = empreinte_contenu(devis)
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             with CaptureQueriesContext(connection) as ctx:
                 resp = self.api.post(
                     f'/api/django/public/proposal/{link.token}/accept/',
-                    {'nom': 'Client NPLUS1', 'consent_esign': True},
+                    {'nom': 'Client NPLUS1', 'consent_esign': True,
+                     'empreinte_contenu': empreinte},
                     format='json')
         lignes_sql = [q['sql'] for q in ctx.captured_queries
                       if TABLE_LIGNES in q['sql']

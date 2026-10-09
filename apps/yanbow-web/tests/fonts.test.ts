@@ -34,6 +34,11 @@ describe('YBW39 — familles OFL auto-hébergées', () => {
     });
   }
 
+  it('YBW44 : seules les familles retenues (Outfit + Instrument Sans) sont livrées', () => {
+    expect(FAMILLES.map((f) => f.nom)).toEqual(['Outfit', 'Instrument Sans']);
+    expect(CSS).not.toMatch(/Urbanist|Geist|Fraunces|Jakarta/);
+  });
+
   it('aucun fichier de police sans licence à côté', () => {
     const woff2 = readdirSync(POLICES).filter((n) => n.endsWith('.woff2'));
     expect(woff2.sort()).toEqual(FAMILLES.map((f) => fichierPolice(f.id)).sort());

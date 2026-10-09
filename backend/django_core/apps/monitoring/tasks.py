@@ -60,6 +60,9 @@ def balayage_quotidien():
                    .select_related('installation'))
         for config in configs:
             installation = config.installation
+            # ASAV69 — site retiré du parc : ni synchro ni évaluation.
+            if getattr(installation, 'parc_actif', True) is False:
+                continue
             try:
                 imported, _provider = sync_system(installation)
                 total_importes += imported

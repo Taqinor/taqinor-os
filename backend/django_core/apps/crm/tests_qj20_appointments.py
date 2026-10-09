@@ -29,7 +29,15 @@ def _make_company(slug):
 
 
 def _make_lead(company):
-    return Lead.objects.create(company=company, nom='TestLead', stage='NEW')
+    # ACRM42 — un rappel n'est marqué envoyé que s'il a PRÉVENU quelqu'un :
+    # le lead porte donc un responsable (le cas « personne à prévenir » vit
+    # dans tests_acrm_rappels_visite).
+    from django.contrib.auth import get_user_model
+    owner = get_user_model().objects.create_user(
+        username=f'qj20-owner-{company.slug}', password='x', company=company,
+        role_legacy='responsable')
+    return Lead.objects.create(company=company, nom='TestLead', stage='NEW',
+                               owner=owner)
 
 
 def _future(minutes=120):

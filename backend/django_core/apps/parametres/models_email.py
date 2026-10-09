@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # {civilite} {nom} {reference} {lien} {n} {entreprise}.
 # SCA25 — {entreprise} : nom de la société émettrice (CompanyProfile), résolu
 # par ``render`` ; à défaut de profil nommé, retombe sur le littéral historique
-# (« Taqinor », « TAQINOR » pour envoi_devis) — rendu byte-identique sans profil.
+# (APAR50 : remplacé par ``Company.nom`` — plus aucun littéral de marque).
 EMAIL_TEMPLATE_DEFAULTS = {
     'devis': {
         'sujet': 'Votre devis {entreprise} ({reference})',
@@ -167,8 +167,10 @@ EMAIL_TEMPLATE_PLACEHOLDERS = {
 # SCA25 — littéral de repli du placeholder {entreprise} quand la société n'a
 # pas de profil nommé : le littéral HISTORIQUE de chaque clé (casse préservée)
 # pour un rendu byte-identique à l'existant sans profil.
-_ENTREPRISE_FALLBACKS = {'envoi_devis': 'TAQINOR'}
-_ENTREPRISE_FALLBACK_DEFAULT = 'Taqinor'
+# APAR50 — plus aucun nom de marque codé en dur : sans profil nommé, le repli
+# est le nom de la société elle-même (``Company.nom``).
+_ENTREPRISE_FALLBACKS = {}
+_ENTREPRISE_FALLBACK_DEFAULT = ''
 
 
 class EmailTemplate(models.Model):
@@ -280,6 +282,8 @@ class EmailTemplate(models.Model):
                 nom = (company_identity(company).get('nom') or '').strip()
             except Exception:  # pragma: no cover — best-effort, jamais bloquant
                 nom = ''
+            if not nom:
+                nom = (getattr(company, 'nom', '') or '').strip()
             context['entreprise'] = nom or _ENTREPRISE_FALLBACKS.get(
                 cle, _ENTREPRISE_FALLBACK_DEFAULT)
         return {

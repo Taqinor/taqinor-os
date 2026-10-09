@@ -1,0 +1,18 @@
+---
+// Une affirmation publique du registre (YBW61-66), rendue telle quelle et
+// marquée `data-affirmation` (fiche de relecture YBW67, tests/pages.test.ts).
+import type { Locale } from '../i18n/config';
+import { texteAffirmation } from '../lib/affirmer';
+
+interface Props {
+  id: string;
+  locale: Locale;
+  /** Balise rendue (paragraphe par défaut). */
+  balise?: 'p' | 'li' | 'h1' | 'h2' | 'h3' | 'span';
+  class?: string;
+  /** Langue du texte quand elle diffère de la page (ex. le slogan, en anglais). */
+  lang?: string;
+}
+const { id, locale, balise: Balise = 'p', class: classe, lang } = Astro.props;
+---
+<Balise class={classe} lang={lang} data-affirmation={id}>{texteAffirmation(id, locale)}</Balise>

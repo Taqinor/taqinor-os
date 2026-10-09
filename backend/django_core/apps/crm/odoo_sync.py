@@ -52,6 +52,9 @@ ODOO_LEAD_FIELDS = [
     'id', 'name', 'contact_name', 'partner_name', 'email_from', 'phone',
     'street', 'street2', 'city', 'stage_id', 'active', 'expected_revenue',
     'create_date', 'user_id', 'tag_ids', 'lost_reason_id', 'description',
+    # AACQ31 — date du dernier changement d'étape côté Odoo (LECTURE seule) :
+    # comparée au dernier changement HUMAIN d'étape dans l'ERP.
+    'date_last_stage_update',
 ]
 
 # Emails « bouche-trou » posés par les formulaires Meta — à purger AVANT tout
@@ -401,6 +404,10 @@ def build_rows(odoo_leads, tag_names):
             # de rattrapage fausse les KPI de délai (CAD87).
             'date_creation_odoo': (str(lead['create_date'])
                                    if lead.get('create_date') else None),
+            # AACQ31 — dernier changement d'étape Odoo (UTC, texte Odoo).
+            'date_last_stage_update_odoo': (
+                str(lead['date_last_stage_update'])
+                if lead.get('date_last_stage_update') else None),
         }
         rows.append({k: v for k, v in row.items() if v is not None})
     return rows
@@ -427,7 +434,30 @@ class RapportAlignement:
     # avancés par l'alignement (le funnel d'un lead perdu ne bouge plus
     # automatiquement), comptés ici.
     geles: int = 0
+    # AACQ31 — écarts où le dernier changement d'étape HUMAIN dans l'ERP est
+    # plus récent que le dernier changement d'étape Odoo : l'ERP fait foi,
+    # rien n'est écrit (divergence assumée).
+    divergences_assumees: int = 0
     regressions: list = field(default_factory=list)
+
+
+def _humain_plus_recent(lead, row):
+    """AACQ31 — vrai si le dernier changement d'étape du lead dans l'ERP est
+    HUMAIN (activité de champ ``stage`` avec un utilisateur) et plus récent
+    que le dernier changement d'étape Odoo de la ligne (absent = inconnu :
+    l'ERP fait foi, D-AACQ 08/10/2026)."""
+    from apps.crm.management.commands.import_odoo_leads import _date_odoo
+    from apps.crm.models import LeadActivity
+
+    humain = (LeadActivity.objects
+              .filter(lead=lead, field='stage', user__isnull=False,
+                      kind=LeadActivity.Kind.MODIFICATION)
+              .order_by('-created_at')
+              .values_list('created_at', flat=True).first())
+    if humain is None:
+        return False
+    odoo = _date_odoo(row.get('date_last_stage_update_odoo'))
+    return odoo is None or humain > odoo
 
 
 def align_stages_from_rows(company, rows, apply_changes):
@@ -502,6 +532,11 @@ def align_stages_from_rows(company, rows, apply_changes):
                 continue
             if lead.stage == target:
                 rapport.deja_ok += 1
+                continue
+            if _humain_plus_recent(lead, row):
+                # AACQ31 — l'action humaine la plus récente fait foi : un
+                # recul confirmé dans l'ERP n'est jamais ré-avancé.
+                rapport.divergences_assumees += 1
                 continue
             if services._rang_funnel(target) <= services._rang_funnel(
                     lead.stage):

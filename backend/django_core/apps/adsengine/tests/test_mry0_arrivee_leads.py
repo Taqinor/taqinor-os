@@ -43,9 +43,11 @@ class BeatRegistrationTests(SimpleTestCase):
                 'adsengine.pull_meta_leads_recent']['queue'], 'scheduled')
 
     def test_sync_odoo_leads_scheduled_and_routed(self):
+        # AACQ97 (D-AACQ, 08/10/2026) — synchro Odoo MANUELLE : la tâche
+        # n'est plus planifiée, mais reste routée pour un lancement manuel.
         from erp_agentique.celery import app
         names = {e['task'] for e in app.conf.beat_schedule.values()}
-        self.assertIn('crm.sync_odoo_leads', names)
+        self.assertNotIn('crm.sync_odoo_leads', names)
         self.assertEqual(
             settings.CELERY_TASK_ROUTES['crm.sync_odoo_leads']['queue'],
             'scheduled')

@@ -129,6 +129,7 @@ EVENT_CATEGORY = {
     EventType.INTERVENTION_ANNULEE: 'chantier',
     EventType.TRANCHE_A_FACTURER: 'chantier',
     EventType.CHANTIER_MATERIEL_CONFIRME: 'chantier',
+    EventType.OUTILLAGE_CALIBRATION_PROCHE: 'chantier',  # ACHT75
     EventType.WARRANTY_EXPIRING: 'sav',
     EventType.MAINTENANCE_DUE: 'sav',
     EventType.SAV_TICKET_OPENED: 'sav',

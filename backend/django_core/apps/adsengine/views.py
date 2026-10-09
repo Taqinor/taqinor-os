@@ -1031,7 +1031,8 @@ class ExperimentViewSet(AdsengineViewSet):
         d'hypothèse lié via ``evidence.record_experiment_outcome`` (idempotent
         par expérience — re-clôturer ne double jamais l'évidence). L'opérateur
         décide, la machine enregistre — jamais l'inverse."""
-        from .evidence import record_experiment_outcome
+        from .evidence import (
+            record_experiment_outcome, recorded_experiment_verdict)
 
         experiment = self.get_object()  # borné société
         validated = request.data.get('validated')
@@ -1040,14 +1041,26 @@ class ExperimentViewSet(AdsengineViewSet):
                 {'detail': "Champ « validated » (booléen) requis : la clôture "
                            "porte un verdict explicite, jamais implicite."},
                 status=400)
+        # AACQ65 — un verdict CONTRAIRE à celui déjà enregistré est refusé
+        # (409, aucune écriture) ; la réponse porte toujours le verdict
+        # ENREGISTRÉ, jamais l'écho du bouton cliqué.
+        deja = recorded_experiment_verdict(experiment)
+        if deja is not None and deja != validated:
+            etat = 'CONFIRMÉE' if deja else 'INFIRMÉE'
+            return Response(
+                {'detail': f"Expérience déjà clôturée : hypothèse {etat} — "
+                           f"verdict inchangé.",
+                 'validated': deja}, status=409)
         node, log = record_experiment_outcome(experiment, validated=validated)
         if node is None:
             return Response(
                 {'detail': "Aucun nœud d'hypothèse rattaché à cette "
                            "expérience — verdict enregistré nulle part.",
                  'node': None}, status=200)
+        enregistre = recorded_experiment_verdict(experiment)
         return Response({'node': node.pk, 'decision_log': log.pk if log else None,
-                         'validated': validated}, status=200)
+                         'validated': (enregistre if enregistre is not None
+                                       else validated)}, status=200)
 
     @action(detail=True, methods=['post'], url_path='sync-ad-study',
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
@@ -1826,7 +1839,37 @@ class EngineActionViewSet(AdsengineViewSet):
             qs = qs.filter(created_at__date__gte=debut)
         if fin is not None:
             qs = qs.filter(created_at__date__lte=fin)
+        # AACQ61 — filtre serveur ``?statut=`` (liste à virgules ; alias
+        # ``en_attente`` = proposee+approuvee ; inconnu → 400). Sans paramètre,
+        # la liste (Journal d'actions, PUB40) est inchangée.
+        brut = self.request.query_params.get('statut')
+        if brut is not None and getattr(self, 'action', None) == 'list':
+            qs = qs.filter(status__in=self._statuts_demandes(brut))
         return qs
+
+    _STATUT_ALIAS = {
+        'en_attente': (EngineAction.Statut.PROPOSEE,
+                       EngineAction.Statut.APPROUVEE),
+    }
+
+    @classmethod
+    def _statuts_demandes(cls, brut):
+        from rest_framework.exceptions import ParseError
+        connus = set(EngineAction.Statut.values)
+        statuts = set()
+        for valeur in str(brut).split(','):
+            valeur = valeur.strip()
+            if not valeur:
+                continue
+            if valeur in cls._STATUT_ALIAS:
+                statuts.update(cls._STATUT_ALIAS[valeur])
+            elif valeur in connus:
+                statuts.add(valeur)
+            else:
+                raise ParseError(f'Statut inconnu : {valeur}')
+        if not statuts:
+            raise ParseError(f'Statut inconnu : {brut}')
+        return sorted(statuts)
 
     def perform_create(self, serializer):
         """ENGFIX2 — Garde policy créative sur le chemin de création API.
@@ -1857,11 +1900,12 @@ class EngineActionViewSet(AdsengineViewSet):
         # ICI le même contrôle avant ``save`` (jamais une action inapplicable).
         try:
             validate_manual_payload(kind, payload)
-        except ActionPayloadInvalid:
+        except ActionPayloadInvalid as exc:
             logger.warning('PUB22: payload manuel invalide (kind=%s)', kind,
                            exc_info=True)
-            raise drf_serializers.ValidationError(
-                {'payload': "Données de l'action invalides."})
+            # AACQ72 — la cause PRÉCISE (message FR d'``ActionPayloadInvalid``,
+            # destiné à l'utilisateur, sans donnée interne) sous ``payload``.
+            raise drf_serializers.ValidationError({'payload': str(exc)})
         # PUB103 — proposeur posé côté serveur (support du garde-fou quatre yeux).
         # ``serializer.save(company=…)`` force la société exactement comme
         # ``TenantMixin.perform_create`` ; on ajoute seulement ``proposed_by``.

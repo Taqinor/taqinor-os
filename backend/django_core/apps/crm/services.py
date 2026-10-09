@@ -44,6 +44,7 @@ from .cadence_config import (
     cle_de, est_etape, q_etape,
 )
 from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtape
+
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
@@ -528,8 +529,50 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     return True
 
 
+# ── ACRM35 — un geste de cadence à la fois par lead ─────────────────────────
+
+def _verrouiller_lead(lead):
+    """ACRM35 (C-ACRM-030) — pose un verrou de LIGNE sur ``lead``
+    (``SELECT … FOR UPDATE``) dans la transaction en cours : deux gestes de
+    cadence sur le MÊME lead (double clic, deux onglets, récepteur + clic)
+    s'exécutent l'un APRÈS l'autre, et le second lit l'état écrit par le
+    premier. À appeler sous ``transaction.atomic()``."""
+    if lead is None or getattr(lead, 'pk', None) is None:
+        return
+    list(Lead._base_manager.select_for_update()
+         .filter(pk=lead.pk).values_list('pk', flat=True))
+
+
+def _sous_verrou_du_lead(lead_de):
+    """ACRM35 — décorateur : exécute la fonction dans ``transaction.atomic()``
+    APRÈS ``_verrouiller_lead`` sur le lead que ``lead_de(*args, **kwargs)``
+    désigne. Les lectures d'idempotence de la fonction (touches ouvertes,
+    cadences actives, ordres déjà pris) se font donc APRÈS le verrou : deux
+    initialisations concurrentes ne créent qu'un plan."""
+    import functools
+
+    def decorer(fonction):
+        @functools.wraps(fonction)
+        def enveloppe(*args, **kwargs):
+            from django.db import transaction
+            with transaction.atomic():
+                _verrouiller_lead(lead_de(*args, **kwargs))
+                return fonction(*args, **kwargs)
+        return enveloppe
+    return decorer
+
+
+def _lead_premier_argument(lead, *args, **kwargs):
+    return lead
+
+
+def _lead_de_l_etape(etape, *args, **kwargs):
+    return getattr(etape, 'lead', None)
+
+
 # ── CAD-B ── CAD107 ─────────────────────────────────────────────────────────
 
+@_sous_verrou_du_lead(_lead_premier_argument)
 def reprendre_cadence_apres_reouverture(lead, user, *, origine=''):
     """CAD107 — UN seul comportement pour les trois chemins de réouverture.
 
@@ -1207,6 +1250,7 @@ def choix_devis_relance(devis_liste):
         for d in devis_liste]
 
 
+@_sous_verrou_du_lead(_lead_premier_argument)
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None, exiger_confirmation=False,
                              motif_remplacement=''):
@@ -1308,8 +1352,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # rendait l'étape de visite comme « plan déjà en cours » et aucun suivi
     # de proposition ne démarrait.
     ouvertes_deja = list(
-        deja.filter(statut=RelanceEtape.Statut.A_FAIRE)
-        .exclude(q_visite())
+        deja.filter(_q_plan_ouvert())  # ACRM46 — prédicat partagé
         .order_by('ordre', 'due_date'))
     if ouvertes_deja:
         return ouvertes_deja
@@ -1422,10 +1465,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         body=f'Plan de relance initialisé — cadence « {cadence} » '
              f'({len(echeances)} touche(s) prévue(s), première le {quand}).')
 
-    if not lead.relance_date or lead.relance_date > premiere.due_date:
-        lead.relance_date = premiere.due_date
-        lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique (``_recaler_file``) : une ancienne
+    # ``relance_date`` déjà passée n'est plus conservée — le lead n'apparaît
+    # plus « en retard » alors que sa première touche est à venir.
+    _recaler_file(lead, user)
     # VALID1 (fondateur 07/09/2026) — le plan après-devis POSE la validité
     # de la proposition (si vide) : valable jusqu'à la DERNIÈRE touche du
     # plan — une date dérivée des cadences du fondateur, jamais inventée.
@@ -1516,7 +1559,37 @@ _OUTCOMES_SANS_MATERIALISATION = (
     _OUTCOMES_ARRET_CADENCE | {OUTCOME_VISITE_ACCEPTEE})
 
 
-def materialiser_touche_suivante(etape_close, user=None):
+class RaisonSuite:
+    """ACRM12 (C-ACRM-007) — POURQUOI ``materialiser_touche_suivante`` n'a
+    rien fait naître. Seule ``FIN_GABARIT`` (aucun barreau ACTIF d'ordre
+    supérieur, relu sur ``CadenceRelanceEtape.cadence_pour``) autorise
+    ``marquer_etape_relance`` à CLORE la cadence (Froid + étiquette) ; les
+    autres raisons laissent le filet poser la suite."""
+
+    CREEE = 'creee'                  # une touche est née
+    FIN_GABARIT = 'fin_gabarit'      # plus aucun barreau actif après celle-ci
+    INDETERMINE = 'indetermine'      # ancre introuvable, panne : on ne sait pas
+    DEJA_PRISE = 'deja_prise'        # le barreau suivant existe déjà
+    NON_RELANCABLE = 'non_relancable'  # lead hors relance, filet, visite
+
+
+def materialiser_touche_suivante(etape_close, user=None, *, avec_raison=False):
+    """ACRM12 — ``avec_raison=True`` rend ``(etape | None, RaisonSuite.*)``
+    au lieu de la seule étape (les appelants historiques sont inchangés).
+
+    ACRM35 — sous ``transaction.atomic()`` + verrou du lead : la lecture
+    d'idempotence (ordres déjà pris) se fait APRÈS le verrou, donc deux
+    clôtures concurrentes ne font naître qu'UNE touche suivante. Appelée
+    depuis une transaction, l'``atomic`` est un point de sauvegarde : une
+    panne ici n'empoisonne pas la transaction de l'appelant."""
+    from django.db import transaction
+    with transaction.atomic():
+        _verrouiller_lead(getattr(etape_close, 'lead', None))
+        etape, raison = _materialiser_touche_suivante(etape_close, user)
+    return (etape, raison) if avec_raison else etape
+
+
+def _materialiser_touche_suivante(etape_close, user=None):
     """CKP2 — Fait naître LA touche suivante du gabarit, à partir d'une touche
     qu'on vient de CLORE sans avoir joint le client.
 
@@ -1549,8 +1622,11 @@ def materialiser_touche_suivante(etape_close, user=None):
     chatter : c'est l'appelant (``marquer_etape_relance``) qui recale la file
     en une fois, comme il le faisait déjà.
 
-    Rend la ``RelanceEtape`` créée, ou ``None`` (fin du gabarit, lead qu'on ne
-    relance plus, société sans gabarit, ancre introuvable)."""
+    Rend ``(RelanceEtape créée | None, RaisonSuite.*)`` — ACRM12 : la raison
+    d'une absence est TYPÉE (fin du gabarit, lead qu'on ne relance plus,
+    barreau déjà pris, ancre introuvable) et seule la fin réelle du gabarit
+    clôt la cadence. Un barreau DÉSACTIVÉ (celui de la touche close) n'est
+    plus une fin : la suite part du premier barreau actif d'ordre supérieur."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import cadence_temps, horaires
@@ -1559,7 +1635,7 @@ def materialiser_touche_suivante(etape_close, user=None):
     if (getattr(lead, 'ne_plus_contacter', False)
             or getattr(lead, 'perdu', False)
             or getattr(lead, 'is_archived', False)):
-        return None
+        return None, RaisonSuite.NON_RELANCABLE
 
     # Les étapes du FILET (MRY34 / QJ-INVARIANT) portent la cadence
     # `generique` mais ne sont PAS un barreau de protocole : ce sont des
@@ -1576,7 +1652,7 @@ def materialiser_touche_suivante(etape_close, user=None):
     # à faire naître « le PDF s'ouvre bien ? ».
     # PARAM-CADENCE — reconnues par leur CLÉ, jamais par leur libellé.
     if est_etape_de_filet(etape_close) or est_etape_de_visite(etape_close):
-        return None
+        return None, RaisonSuite.NON_RELANCABLE
 
     cadence = etape_close.cadence
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
@@ -1584,7 +1660,11 @@ def materialiser_touche_suivante(etape_close, user=None):
         # Cadence sans gabarit (« generique », posée à la main par le filet) :
         # il n'y a pas de suite à faire naître — l'invariant « jamais un lead
         # actif sans prochaine touche » reste tenu par le filet lui-même.
-        return None
+        return None, RaisonSuite.NON_RELANCABLE
+    # ACRM12 — la FIN du gabarit se lit sur les barreaux ACTIFS : aucun
+    # barreau d'ordre supérieur à celui de la touche close.
+    if not any(g.ordre > etape_close.ordre for g in gabarits):
+        return None, RaisonSuite.FIN_GABARIT
 
     ancre = etape_close.cadence_depart
     if ancre is None:
@@ -1595,15 +1675,25 @@ def materialiser_touche_suivante(etape_close, user=None):
                  .exclude(due_at=None).order_by('due_at')
                  .values_list('due_at', flat=True).first())
     if ancre is None:
-        return None
+        return None, RaisonSuite.INDETERMINE
 
     echeances = calculer_echeances_cadence(
         lead, cadence, ancre, gabarits=gabarits)
     rang = next((i for i, (g, _e) in enumerate(echeances)
                  if g.ordre == etape_close.ordre), None)
     if rang is None:
-        return None
-    gabarit_close = echeances[rang][0]
+        # ACRM12 — le barreau de la touche close a été DÉSACTIVÉ (ou
+        # renuméroté) : ce n'est pas une fin de gabarit. La suite part du
+        # premier barreau actif d'ordre supérieur ; l'écart intra-journée se
+        # lit alors depuis 0 (pas de barreau de référence).
+        premier = next((i for i, (g, _e) in enumerate(echeances)
+                        if g.ordre > etape_close.ordre), None)
+        if premier is None:
+            return None, RaisonSuite.FIN_GABARIT
+        rang = premier - 1
+        gabarit_close = None
+    else:
+        gabarit_close = echeances[rang][0]
 
     deja = lead.relance_etapes.filter(cadence=cadence)
     if etape_close.devis_id is not None:
@@ -1623,26 +1713,31 @@ def materialiser_touche_suivante(etape_close, user=None):
             # touches échues ont été matérialisées d'un coup). On s'arrête —
             # SAUTER par-dessus pour en créer un plus loin ferait naître deux
             # touches au lieu d'une et casserait l'ordre du protocole.
-            return None
+            return None, RaisonSuite.DEJA_PRISE
         if (gabarit.delai_jours == 0
                 and not getattr(gabarit, 'dimanche_ok', False)
                 and getattr(gabarit, 'heure_cible', None) is None):
             ecart = ((getattr(gabarit, 'delai_minutes', 0) or 0)
                      - (getattr(gabarit_close, 'delai_minutes', 0) or 0))
             base = etape_close.traite_le or timezone.now()
+            # ACRM36 — le samedi du barreau (CAD43) tient aussi ici.
             echeance = horaires.prochain_creneau_appel(
                 base + datetime.timedelta(minutes=max(0, ecart)),
                 lead.company,
-                canal=_canal_effectif(gabarit))
+                canal=_canal_effectif(gabarit),
+                samedi=bool(getattr(gabarit, 'samedi_ok', False)))
         # CAD22 — une touche ne NAÎT JAMAIS déjà échue : après l'appel du
         # dimanche (posé entre J+5 et J+11), la J+7 du protocole naissait avec
         # une date passée et ne pouvait plus jamais être « à l'heure ». Elle
         # est ramenée au prochain créneau joignable — le J+N du protocole
         # n'est pas touché, seule cette échéance-ci l'est.
+        # ACRM36 — samedi et heure cible du barreau transmis au recalage.
         echeance = cadence_temps.echeance_jamais_echue(
             echeance, company=lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
-            canal=_canal_effectif(gabarit))
+            canal=_canal_effectif(gabarit),
+            samedi=bool(getattr(gabarit, 'samedi_ok', False)),
+            heure_cible=getattr(gabarit, 'heure_cible', None))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance, due_initial_at=echeance,
@@ -1653,8 +1748,8 @@ def materialiser_touche_suivante(etape_close, user=None):
         if cadence == 'reveil':
             _adapter_gabarits_reveil(lead, [etape], rang_initial=suivant)
         etape.save()
-        return etape
-    return None
+        return etape, RaisonSuite.CREEE
+    return None, RaisonSuite.FIN_GABARIT
 
 
 #: MRY10 — canal de la touche → type d'activité du chatter. Une touche traitée
@@ -1752,6 +1847,7 @@ def est_note_de_report(activite):
             or corps.startswith(PREFIXE_NOTE_VEILLE))
 
 
+@_sous_verrou_du_lead(_lead_de_l_etape)
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
                           body='', suite=True, canal_reel=None):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
@@ -1900,11 +1996,16 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # « intéressé » n'arrête PAS le suivi de proposition, il en fait naître le
     # barreau suivant, exactement comme « pas de réponse ».
     suivante = None
+    raison_suite = None
     if suite and (statut == RelanceEtape.Statut.SAUTEE
                   or issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
-            suivante = materialiser_touche_suivante(etape, user)
+            suivante, raison_suite = materialiser_touche_suivante(
+                etape, user, avec_raison=True)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
+            # ACRM12 — une panne n'est JAMAIS une fin de cadence : raison
+            # INDÉTERMINÉE, le filet plus bas pose la suite (jamais le Froid).
+            raison_suite = RaisonSuite.INDETERMINE
             logger.warning(
                 'CKP2: touche suivante non matérialisée (étape #%s)',
                 getattr(etape, 'pk', '?'), exc_info=True)
@@ -1921,10 +2022,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
             logger.warning(
                 'VISITE-CADENCE: filet « planifier la visite » non posé '
                 '(étape #%s)', getattr(etape, 'pk', '?'), exc_info=True)
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique de la file (``_recaler_file``).
+    _recaler_file(lead, user)
     if not suite:
         # CAD-A — l'appelant pose (ou refuse) lui-même la suite.
         return etape
@@ -1952,7 +2051,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # Jamais plus : c'est le filet ci-dessous (QJ-INVARIANT) qui prend le
     # relais — le plan s'il est pendant, sinon « Rappeler — dernier essai
     # avant de chiffrer » (``_FILET_SANS_REPONSE_PALIERS``), puis le devis.
+    # ACRM12 (C-ACRM-007) — CINQUIÈME condition : la clôture n'a lieu que si
+    # le gabarit est RÉELLEMENT épuisé (``RaisonSuite.FIN_GABARIT``, relu sur
+    # les barreaux actifs). Un barreau désactivé, une panne, un barreau déjà
+    # pris ou un lead hors relance ne parquent plus le lead au Froid.
     if (restantes_avant == 0 and suivante is None
+            and raison_suite == RaisonSuite.FIN_GABARIT
             and (outcome or '') not in _OUTCOMES_SANS_CLOTURE
             and not est_etape_de_visite(etape)):
         cloturer_cadence(lead, user, etape.cadence)
@@ -2254,10 +2358,8 @@ def annuler_touche_relance(etape, user):
         etape.traite_par = None
         etape.traite_le = None
         etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
-        prochaine = _prochaine_touche_a_faire(lead)
-        lead.relance_date = prochaine.due_date if prochaine else None
-        lead.save(update_fields=['relance_date'])
-        sync_relance_activity(lead, user)
+        # ACRM37 — LE recalage unique de la file.
+        _recaler_file(lead, user)
         # JAMAIS un prénom en dur : l'auteur vient de la variable `user`.
         qui = getattr(user, 'username', '') or 'système'
         morceaux = [
@@ -2522,6 +2624,17 @@ def q_visite():
     return q_etape(*CLES_VISITE)
 
 
+def _q_plan_ouvert():
+    """ACRM46 — LE prédicat « plan ouvert » (TREADMILL-1538) : une touche
+    de cadence À FAIRE qui n'est pas un geste de visite. Partagé par
+    ``initialiser_plan_relance`` (idempotence) et le placement des anciens
+    leads (``deja_en_cadence``) : des touches toutes closes ne tiennent plus
+    un lead."""
+    from django.db.models import Q
+
+    return Q(statut=RelanceEtape.Statut.A_FAIRE) & ~q_visite()
+
+
 def q_filet():
     """``est_etape_de_filet`` en requête : les étapes du gabarit « Après
     l'appel » (par clé, ou libellé par défaut) et les deux hors gabarit."""
@@ -2588,8 +2701,10 @@ def _echeance_configuree(lead, config, *, depuis=None, jours=None):
         dimanche=bool(config.get('dimanche_ok')),
         samedi=bool(config.get('samedi_ok')))
     if echeance < maintenant:
+        # ACRM36 — les drapeaux du barreau voyagent jusqu'au recalage.
         echeance = cadence_temps.echeance_jamais_echue(
-            echeance, company=lead.company, canal=canal)
+            echeance, company=lead.company, canal=canal,
+            samedi=bool(config.get('samedi_ok')), heure_cible=heure)
     return echeance
 
 
@@ -2670,6 +2785,7 @@ def _poser_releve_point_eau(lead, user):
     return etape
 
 
+@_sous_verrou_du_lead(_lead_premier_argument)
 def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=None,
                                          avec_plan_devis=True,
@@ -2869,9 +2985,9 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         template_cle=config['template_cle'],
         due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
         note='Posée automatiquement : aucune autre relance ouverte.')
-    lead.relance_date = etape.due_date
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique : la file pointe la prochaine touche
+    # ouverte (celle-ci, sauf si une plus proche existe déjà).
+    _recaler_file(lead, user)
     # Note SYSTÈME (``user=None``, même motif que `arreter_cadence`) : poser
     # un rappel n'est pas AVOIR contacté le lead (garde QJ7).
     quand_local = quand.astimezone(horaires.CASABLANCA)
@@ -3777,7 +3893,7 @@ def _garde_cadence_contact(lead):
     doublons = [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
-            exclude_pk=lead.pk)
+            exclude_pk=lead.pk, whatsapp=lead.whatsapp)  # ACRM32
         if not autre.is_archived and not autre.perdu]
     # CAD128 — un homonyme SIGNÉ n'est pas un doublon vivant : c'est un CLIENT
     # qui revient, le meilleur lead du portefeuille. Il sort de la garde
@@ -4020,10 +4136,8 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
                   + f'{(cible.libelle or cible.get_canal_display())} »'
                   + FIN_NOTE_REPORT))
 
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique de la file (``_recaler_file``).
+    _recaler_file(lead, user)
     return cible
 
 
@@ -4081,10 +4195,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence {quelles} arrêtée ({len(pks)} touche(s)) : {motif}.')
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else None
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — LE recalage unique de la file (``_recaler_file``).
+    _recaler_file(lead, user)
     return len(pks)
 
 
@@ -4095,15 +4207,19 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
     pas faire retomber l'acceptation d'un devis déjà actée."""
     if not lead_id:
         return 0
+    from django.db import transaction
     try:
-        qs = Lead.objects.filter(pk=lead_id)
-        if company is not None:
-            qs = qs.filter(company=company)
-        lead = qs.first()
-        if lead is None:
-            return 0
-        return arreter_cadence(lead, user=user, motif=motif,
-                               cadences=cadences)
+        # ADEV54 — point de sauvegarde PROPRE : une erreur base pendant
+        # l'arrêt est annulée seule, jamais la signature du devis.
+        with transaction.atomic():
+            qs = Lead.objects.filter(pk=lead_id)
+            if company is not None:
+                qs = qs.filter(company=company)
+            lead = qs.first()
+            if lead is None:
+                return 0
+            return arreter_cadence(lead, user=user, motif=motif,
+                                   cadences=cadences)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
@@ -4482,13 +4598,35 @@ def normalize_name(nom, prenom=None, societe=None):
     return key if len(key) >= 4 else ''
 
 
+def _est_vide(instance, champ, valeur):
+    """ACRM13 (C-ACRM-008) — LA règle « champ vide » de la fusion : ``None``
+    et ``''`` seulement ; ``False`` uniquement pour un booléen NON nullable
+    (son « non renseigné »). Un ``0`` saisi (toit plat, 0 étage) n'est JAMAIS
+    vide — l'idiome ``in (None, '', False)`` le confondait avec l'absence
+    (``0 == False``) et l'écrasait par la valeur de l'absorbé."""
+    if valeur is None:
+        return True
+    if isinstance(valeur, str):
+        return valeur == ''
+    if valeur is False:
+        try:
+            from django.db import models as dj_models
+            champ_modele = type(instance)._meta.get_field(champ)
+        except Exception:  # noqa: BLE001 — champ inconnu : jamais « vide »
+            return False
+        return (isinstance(champ_modele, dj_models.BooleanField)
+                and not champ_modele.null)
+    return False
+
+
 def _completeness(lead):
     """Score « complétude » d'un lead : nombre de champs de fond renseignés.
-    Sert à proposer par défaut le survivant le plus riche lors d'une fusion."""
+    Sert à proposer par défaut le survivant le plus riche lors d'une fusion.
+    ACRM13 — « renseigné » = non vide au sens de ``_est_vide`` (un 0 compte)."""
     score = 0
     for field in _MERGE_FILL_FIELDS:
         val = getattr(lead, field, None)
-        if val not in (None, '', False):
+        if not _est_vide(lead, field, val):
             score += 1
     return score
 
@@ -4608,7 +4746,7 @@ def find_duplicate_leads(lead, *, queryset=None):
 
 
 def find_duplicates_by_contact(company, *, phone=None, email=None,
-                               exclude_pk=None, queryset=None):
+                               exclude_pk=None, queryset=None, whatsapp=None):
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
@@ -4624,12 +4762,18 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
     portée n'est jamais rendu (ni ses PII). ``None`` = la société entière,
     voulu pour les chemins SYSTÈME (webhooks, imports, WhatsApp entrant,
-    DSR) qui doivent rapprocher sans utilisateur."""
+    DSR) qui doivent rapprocher sans utilisateur.
+
+    ACRM32 — un numéro est cherché sur ``phone_normalise`` OU
+    ``whatsapp_normalise`` (un lead connu seulement par son WhatsApp est
+    retrouvé) ; ``whatsapp`` (optionnel) ajoute un second numéro à chercher
+    de la même façon."""
     from django.db.models import Q
 
-    phone = normalize_phone(phone)
+    numeros = {k for k in (normalize_phone(phone), normalize_phone(whatsapp))
+               if k}
     email = normalize_email(email)
-    if not phone and not email:
+    if not numeros and not email:
         return []
     base = queryset if queryset is not None else Lead.objects.all()
     qs = base.filter(company=company)
@@ -4637,8 +4781,9 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
         qs = qs.exclude(pk=exclude_pk)
 
     q = Q()
-    if phone:
-        q |= Q(phone_normalise=phone)
+    if numeros:
+        q |= (Q(phone_normalise__in=numeros)
+              | Q(whatsapp_normalise__in=numeros))
     if email:
         q |= Q(email_normalise=email)
     return list(qs.filter(q))
@@ -4777,6 +4922,12 @@ def raison_refus_suppression(lead):
     return None
 
 
+def _nom_fiche_client(client):
+    """ACRM40 — « Nom Prénom (#id) » d'une fiche client, pour la note."""
+    nom = f"{client.nom or ''} {client.prenom or ''}".strip() or 'Client'
+    return f'{nom} (#{client.pk})'
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -4794,8 +4945,17 @@ def merge_leads(survivor, others, user):
 
     ct = ContentType.objects.get_for_model(Lead)
     relances_reprises = 0
+    # ACRM40 (C-ACRM-035) — les fiches client DISTINCTES rencontrées : le
+    # survivant garde la sienne, les devis de l'autre restent sur l'autre.
+    deux_clients = []
     with transaction.atomic():
         for absorbed in others:
+            if (survivor.client_id and absorbed.client_id
+                    and survivor.client_id != absorbed.client_id):
+                deux_clients.append((
+                    absorbed.client,
+                    list(absorbed.devis.filter(client_id=absorbed.client_id)
+                         .order_by('pk').values_list('reference', flat=True))))
             # 1) Devis → survivant (related_name='devis').
             absorbed.devis.update(lead=survivor)
             # 2) Chantiers liés au lead → survivant (FK SET_NULL, on réassigne).
@@ -4832,12 +4992,13 @@ def merge_leads(survivor, others, user):
             # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
             if not survivor.client_id and absorbed.client_id:
                 survivor.client = absorbed.client
-            # 6) Compléter les champs VIDES du survivant.
+            # 6) Compléter les champs VIDES du survivant — ACRM13 : vide au
+            # sens de ``_est_vide`` (un 0 saisi du survivant SURVIT).
             for field in _MERGE_FILL_FIELDS:
                 cur = getattr(survivor, field, None)
-                if cur in (None, '', False):
+                if _est_vide(survivor, field, cur):
                     val = getattr(absorbed, field, None)
-                    if val not in (None, '', False):
+                    if not _est_vide(absorbed, field, val):
                         setattr(survivor, field, val)
             # 7) Fusionner les tags (union).
             tags = set()
@@ -4861,6 +5022,25 @@ def merge_leads(survivor, others, user):
                 kind=LeadActivity.Kind.NOTE,
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
+        # ACRM40 — DEUX fiches client pour une même personne : la fusion le
+        # DIT (chatter du survivant + ``survivor._clients_distincts`` que la
+        # vue rend) ; la fusion des clients reste un geste humain (outil de
+        # fusion de clients, NTDATA18) — jamais automatique.
+        survivor._clients_distincts = []
+        if deux_clients:
+            gardee = survivor.client
+            survivor._clients_distincts = [gardee.pk] + [
+                client.pk for client, _refs in deux_clients]
+            for client, refs in deux_clients:
+                devis_txt = (f"devis {', '.join(refs)} rattachés" if refs
+                             else 'aucun devis rattaché')
+                LeadActivity.objects.create(
+                    company=survivor.company, lead=survivor, user=user,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=(f'Deux fiches client pour ce lead : '
+                          f'{_nom_fiche_client(gardee)} (gardée) et '
+                          f'{_nom_fiche_client(client)} ({devis_txt}) — à '
+                          'fusionner (outil de fusion des clients).'))
         survivor.save()
     if relances_reprises:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
@@ -5201,6 +5381,22 @@ def _verrou_client_par_telephone(company_id, cle_telephone):
         yield True
 
 
+def _email_identite(valeur):
+    """ACRM38 (C-ACRM-033) — LA clé e-mail d'identité client : la même que
+    la dédup (``normalize_email`` : bords retirés, minuscules), et ``None``
+    pour un vide — jamais ``''`` ni ``' '`` (deux personnes sans e-mail ne
+    partagent jamais un client, et ``''`` heurtait la contrainte d'unicité
+    insensible à la casse)."""
+    return normalize_email(valeur) or None
+
+
+def _telephone_identite(valeur):
+    """ACRM38 — le téléphone d'identité, normalisé sur la valeur RÉELLEMENT
+    stockée côté Client (tronquée à 20 caractères) : deux résolutions du
+    même lead comparent la même chose."""
+    return normalize_phone((valeur or '')[:20])
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     if lead.client_id:
         # Rattache le Tiers du client déjà lié (stade amont ARC56), sans
@@ -5218,9 +5414,10 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     company=lead.company, ice__isnull=False).exclude(ice=''):
                 if _ice_normalise(candidate.ice) == lead_ice:
                     return candidate
-        if lead.email:
+        lead_email = _email_identite(lead.email)
+        if lead_email:
             match = Client.objects.filter(
-                company=lead.company, email__iexact=lead.email,
+                company=lead.company, email__iexact=lead_email,
             ).first()
             if match is not None:
                 _verifier_ice_compatible(match, lead_ice, "l'e-mail")
@@ -5234,11 +5431,11 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         # marocaines, quelques centaines à quelques milliers de clients par
         # société) ; à indexer (colonne normalisée + index, comme QW10 sur
         # Lead) si ce volume devient un goulot mesuré.
-        lead_phone = normalize_phone(lead.telephone)
+        lead_phone = _telephone_identite(lead.telephone)
         if not lead_phone:
             return None
         for candidate in Client.objects.filter(company=lead.company):
-            if normalize_phone(candidate.telephone) == lead_phone:
+            if _telephone_identite(candidate.telephone) == lead_phone:
                 _verifier_ice_compatible(candidate, lead_ice, 'le téléphone')
                 return candidate
         return None
@@ -5248,7 +5445,8 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     # (société, téléphone normalisé) le temps du « chercher puis créer ». Le
     # chemin e-mail garde son arbitrage par la base (contrainte unique
     # insensible à la casse + relecture) et le verrou y est un no-op.
-    cle_verrou = '' if lead.email else normalize_phone(lead.telephone)
+    cle_verrou = ('' if _email_identite(lead.email)
+                  else _telephone_identite(lead.telephone))
     with _verrou_client_par_telephone(lead.company_id, cle_verrou):
         client = _resoudre_ou_creer_client(lead, _find_existing)
 
@@ -5346,7 +5544,8 @@ def _resoudre_ou_creer_client(lead, _find_existing):
                 company=lead.company,
                 nom=lead.nom,
                 prenom=lead.prenom,
-                email=lead.email,
+                # ACRM38 — e-mail normalisé, jamais '' (NULL quand vide).
+                email=_email_identite(lead.email),
                 telephone=(lead.telephone or '')[:20] or None,
                 adresse=adresse or None,
                 langue_document=langue_document,
@@ -5457,7 +5656,8 @@ def identite_client_depuis_lead(lead, *, entreprise=False):
     identite = {
         'nom': getattr(lead, 'nom', None),
         'prenom': getattr(lead, 'prenom', None),
-        'email': getattr(lead, 'email', None),
+        # ACRM38 — la même clé e-mail que la création du client.
+        'email': _email_identite(getattr(lead, 'email', None)),
         'telephone': (getattr(lead, 'telephone', None) or '')[:20] or None,
         'adresse': adresse or None,
     }
@@ -5587,7 +5787,19 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
     return champs, message
 
 
-def convertir_lead_en_client(*, lead, user, mode, client_id=None):
+class ClientIntrouvable(ValueError):
+    """ACRM7 — le client à lier est absent OU hors de la portée de
+    l'appelant : les deux cas reçoivent la MÊME réponse (jamais un oracle
+    d'existence)."""
+
+    MESSAGE = 'Client introuvable.'
+
+    def __init__(self):
+        super().__init__(self.MESSAGE)
+
+
+def convertir_lead_en_client(*, lead, user, mode, client_id=None,
+                             clients=None):
     """ZSAL4 — assistant de conversion EXPLICITE lead → client (Odoo « Convert
     to Opportunity » : nouveau contact / lier un contact existant / ne pas
     lier), à la main du commercial.
@@ -5600,6 +5812,11 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None):
         société que le lead (``client_id`` obligatoire ; ValueError sinon,
         ou si le client n'existe pas / est d'une autre société).
       - ``'aucun'`` : marque le lead qualifié sans client (ne crée rien).
+
+    ACRM7 — ``clients`` (queryset) borne le mode ``'lier'`` à la PORTÉE de
+    l'appelant (la vue passe ``scope_client_queryset``) : un client hors
+    portée lève :class:`ClientIntrouvable`, exactement comme un id
+    inexistant. ``None`` = toute la société (chemins système).
 
     Toute conversion est journalisée dans le chatter du lead (choix +
     acteur). Retourne le :class:`Client` résolu (ou None pour ``'aucun'``).
@@ -5618,10 +5835,14 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None):
     if mode == 'lier':
         if not client_id:
             raise ValueError("client_id requis pour le mode « lier ».")
-        client = Client.objects.filter(
-            id=client_id, company=lead.company).first()
+        base = Client.objects if clients is None else clients
+        try:
+            client = base.filter(
+                id=int(client_id), company=lead.company).first()
+        except (TypeError, ValueError):
+            client = None
         if client is None:
-            raise ValueError("Client introuvable dans votre société.")
+            raise ClientIntrouvable()
         lead.client = client
         lead.save(update_fields=['client'])
         nom_client = f"{client.nom} {client.prenom or ''}".strip()
@@ -5781,7 +6002,7 @@ class CarteVisiteScanUnavailable(Exception):
     quand le fichier fourni n'est pas une image reconnue (400 côté vue)."""
 
 
-def scan_carte_visite(*, company, file_bytes, mime_hint=''):
+def scan_carte_visite(*, company, file_bytes, mime_hint='', queryset=None):
     """XSAL8 — Extrait nom/société/téléphone/email d'une photo de carte de
     visite, PRÉ-VÉRIFIE les doublons, et renvoie un dict prêt à pré-remplir le
     modal « Lead express » — NE CRÉE JAMAIS de lead (l'utilisateur valide).
@@ -5791,7 +6012,10 @@ def scan_carte_visite(*, company, file_bytes, mime_hint=''):
     n'est configuré (``ZHIPU_API_KEY`` absent — dégradation propre, jamais
     d'appel réseau). Ne persiste JAMAIS l'image reçue au-delà du traitement en
     mémoire (aucun stockage MinIO — contrairement aux autres flux OCR qui
-    rattachent le fichier en pièce jointe)."""
+    rattachent le fichier en pièce jointe).
+
+    ACRM7 (jumeau) — ``queryset`` borne la pré-vérification des doublons aux
+    leads de la PORTÉE de l'appelant (``None`` = toute la société)."""
     if not file_bytes:
         raise CarteVisiteScanUnavailable('Aucune image fournie.')
     if len(file_bytes) > _CARTE_VISITE_MAX_BYTES:
@@ -5825,7 +6049,8 @@ def scan_carte_visite(*, company, file_bytes, mime_hint=''):
     doublons = []
     if telephone or email:
         dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
+            company, phone=telephone or None, email=email or None,
+            queryset=queryset)
         doublons = [
             {'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
              'telephone': d.telephone, 'email': d.email}
@@ -5905,7 +6130,8 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     if telephone:
         lead.telephone = telephone
         lead.whatsapp = telephone
-        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise'])
+        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise',
+                                 'whatsapp_normalise'])
     return lead
 
 
@@ -6281,6 +6507,45 @@ def _apply_meta_form_extras(lead, extras):
     return changed
 
 
+def _enrichir_meta_trace(lead, extras):
+    """ACRM14 (C-ACRM-009) — applique ``_apply_meta_form_extras`` et
+    JOURNALISE chaque champ écrit (une ligne MODIFICATION par champ :
+    champ, ancienne → nouvelle valeur, acteur système) : un enrichissement
+    automatique est visible au chatter comme toute autre écriture. Enregistre
+    les champs modifiés et les rend."""
+    from . import activity as _activity
+
+    avant = {}
+    for champ in ('type_installation', 'facture_hiver',
+                  'facture_tranche_declaree', 'categorie_commerciale',
+                  'societe', 'fonction_contact', 'source_eau',
+                  'pompe_alim_actuelle', 'surface_irriguee_ha',
+                  'depense_carburant_mad_mois', 'priorite', 'project_timeline',
+                  'whatsapp'):
+        avant[champ] = getattr(lead, champ, None)
+    changed = _apply_meta_form_extras(lead, extras)
+    if changed:
+        lead.save(update_fields=changed)
+        for champ in changed:
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.MODIFICATION, field=champ,
+                field_label=_activity.TRACKED_FIELDS.get(champ, champ),
+                old_value=_activity._display(lead, champ, avant.get(champ)),
+                new_value=_activity._display(
+                    lead, champ, getattr(lead, champ, None)))
+    return changed
+
+
+def _meta_deja_enrichi(lead):
+    """ACRM14 — la note « [Formulaire Meta] » (marqueur EXISTANT de
+    ``_ensure_meta_form_note``) dit qu'une première passe a déjà enrichi ce
+    lead : une passe suivante (rejeu webhook, pull) ne réécrit plus rien —
+    une correction humaine faite entre-temps SURVIT."""
+    return LeadActivity.objects.filter(
+        lead=lead, body__startswith=_META_FORM_NOTE_MARKER).exists()
+
+
 def _ensure_meta_form_note(lead, extras, form_id=''):
     """Une note chatter avec TOUTES les réponses verbatim du formulaire —
     rien n'est perdu, même les questions non reconnues. Idempotente par
@@ -6459,18 +6724,24 @@ def create_lead_from_meta_lead_ads(
         company=company, external_system=_META_LEAD_ADS_SYSTEM,
         external_id=str(leadgen_id)).first()
     if existing is not None:
-        changed = _apply_meta_form_extras(existing, extras)
+        # ACRM14 — UNE seule passe d'enrichissement : déjà enrichi (note
+        # « [Formulaire Meta] » présente) → aucune écriture, la saisie
+        # humaine faite depuis la première passe gagne.
+        if _meta_deja_enrichi(existing):
+            return existing
+        _enrichir_meta_trace(existing, extras)
         if fields.get('ville') and not existing.ville:
             existing.ville = fields['ville']
-            changed.append('ville')
-        if changed:
-            existing.save(update_fields=changed)
+            existing.save(update_fields=['ville'])
         _ensure_meta_form_note(existing, extras, form_id=str(form_id or ''))
         return existing
 
     nom = (fields.get('nom') or '').strip() or 'Lead Meta Ads'
     telephone = fields.get('telephone') or ''
-    email = fields.get('email') or ''
+    # ACRM38 — l'e-mail du formulaire Meta est nettoyé et validé comme
+    # celui du site (``_clean_email``) : un « ' ' » n'est jamais une identité.
+    from .webhooks import _clean_email
+    email = _clean_email(fields.get('email')) or ''
 
     # ── D-CRX1 : plus AUCUNE absorption ─────────────────────────────────────
     # Les doublons sont cherchés ICI, AVANT la création, pour DEUX usages
@@ -6552,9 +6823,8 @@ def create_lead_from_meta_lead_ads(
     )
     # Réponses métier du formulaire → champs structurés (facture hiver,
     # type d'installation, priorité selon le délai déclaré, wa.me).
-    changed = _apply_meta_form_extras(lead, extras)
-    if changed:
-        lead.save(update_fields=changed)
+    # ACRM14 — chaque champ écrit est journalisé (ancien → nouveau).
+    _enrichir_meta_trace(lead, extras)
     # MRY0 (lot B) — vraie date d'arrivée : ``date_creation`` est
     # ``auto_now_add`` (models.py), donc jamais posable au ``create()``.
     moment_meta = _parse_meta_created_time(created_time)
@@ -7084,16 +7354,13 @@ def _build_lead_wa_reply_url(lead):
             or getattr(lead, 'telephone', None)
             or ''
         )
-        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        # ACRM39 — normaliseur sanctionné (E.164) : un numéro français reste
+        # 33…, « +212 (0)6… » perd son zéro ; non normalisable ⇒ pas de lien
+        # (jamais un numéro inventé).
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone_raw)
         if not digits:
             return None
-        # Format international marocain (wa.me exige l'indicatif pays).
-        if digits.startswith('00'):
-            digits = digits[2:]
-        if digits.startswith('0'):
-            digits = '212' + digits[1:]
-        elif not digits.startswith('212'):
-            digits = '212' + digits
         nom = (
             (getattr(lead, 'nom', '') or '').strip()
             or 'votre client'
@@ -7342,8 +7609,34 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
 # HYPOTHÈSE tant que CAD87 ne l'a pas mesuré. Rien ici ne classe, ne priorise
 # ni ne réordonne quoi que ce soit : on rend un fait visible, c'est tout.
 
+def noter_version_remplacee_ouverte(devis_reference: str, lead, *,
+                                    remplacee_par: str = '') -> bool:
+    """ACRM11 (C-ACRM-006, volet signaux) — le client a ouvert le lien d'une
+    version REMPLACÉE par une révision : UNE note système au chatter du lead
+    (« ancienne version <V1> (remplacée par <V2>) ouverte »), et RIEN
+    d'autre — ni touche « Proposition rouverte — appeler », ni report de la
+    prochaine touche, ni recalcul de score, ni notification : la relance
+    porte sur la version en vigueur. Idempotente (une seule note par
+    version remplacée, quel que soit le nombre d'ouvertures). Renvoie
+    ``True`` si la note vient d'être écrite. Best-effort côté appelant."""
+    if lead is None or getattr(lead, 'company_id', None) is None:
+        return False
+    corps = f'Ancienne version {devis_reference}'
+    if remplacee_par:
+        corps += f' (remplacée par {remplacee_par})'
+    corps += ' ouverte par le client — la relance porte sur la version en ' \
+             'vigueur.'
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE, body=corps).exists():
+        return False
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=corps)
+    return True
+
+
 def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
-                            resume='') -> None:
+                            resume='', remplacee_par=None) -> None:
     """CAD135 — « il relit le prix » / « il lit en détail » arrivent au lead.
 
     ``friction_section`` non vide ⇒ signal de FRICTION (relecture répétée
@@ -7355,7 +7648,20 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
     règle du 07/09/2026) puis notifie par le chemin commun. Best-effort
     intégral : un signal de lecture ne fait jamais retomber une requête
     publique.
+
+    ACRM11 — ``remplacee_par`` (non ``None``) : le signal vient d'une version
+    REMPLACÉE ; seule la note « ancienne version » est écrite
+    (``noter_version_remplacee_ouverte``), aucune notification.
     """
+    if remplacee_par is not None:
+        try:
+            noter_version_remplacee_ouverte(
+                devis_reference, lead, remplacee_par=remplacee_par)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'ACRM11 : note de version remplacée non écrite (lead #%s)',
+                getattr(lead, 'pk', None), exc_info=True)
+        return
     try:
         if lead is None or getattr(lead, 'company_id', None) is None:
             return
@@ -8219,6 +8525,45 @@ def coerce_id_list(raw):
     return out
 
 
+def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
+    """ACRM15 — le texte d'un message de la file WhatsApp en masse, rendu
+    avec la discipline de ``message_pour_etape`` (MRY13) :
+
+    * la LANGUE préférée du lead (``langue_relance_du_lead``) : un gabarit de
+      même nom dans cette langue est préféré au gabarit choisi ;
+    * ``{lien_rdv}`` résolu seulement s'il est présent ;
+    * une phrase dont un placeholder n'a PAS de valeur réelle (``{lien}`` —
+      aucun devis ici —, ``{lien_rdv}`` non généré, ``{prenom}``/``{ville}``
+      vides) est OMISE — jamais « Réservez votre visite : » suivi de rien."""
+    from apps.ventes.utils.whatsapp import render_message_template
+
+    from .models import MessageTemplate
+
+    corps = corps_direct or ''
+    if tpl is not None:
+        langue = langue_relance_du_lead(lead)
+        if tpl.langue != langue:
+            traduit = (MessageTemplate.objects
+                       .filter(company=lead.company, nom=tpl.nom,
+                               langue=langue, archived=False)
+                       .first())
+            if traduit is not None:
+                tpl = traduit
+        corps = tpl.corps or ''
+    contexte = {
+        'prenom': (lead.prenom or lead.nom or '').strip(),
+        'ville': (lead.ville or '').strip(),
+        'lien': '',
+    }
+    if '{lien_rdv}' in corps:
+        contexte['lien_rdv'] = (
+            resoudre_lien_rdv('{lien_rdv}', lead) or '')
+    manquants = [cle for cle, valeur in contexte.items()
+                 if '{' + cle + '}' in corps and not str(valeur).strip()]
+    return render_message_template(
+        _omettre_phrases_incompletes(corps, manquants), contexte)
+
+
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     """Applique une action en masse à une sélection de leads de la société.
 
@@ -8539,26 +8884,31 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
         from apps.ventes.utils.whatsapp import build_wa_url
         template_id = params.get('template_id')
         body_tpl = params.get('body') or ''
+        tpl = None
+        if template_id:
+            try:
+                from .models import MessageTemplate
+                tpl = MessageTemplate.objects.filter(
+                    company=company, id=template_id).first()
+            except Exception:  # noqa: BLE001 — id illisible : corps direct
+                tpl = None
         queue = []
         for lead in leads:
+            # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
+            # ``message_pour_etape`` / ``_lead_relancable``) : une personne
+            # qui a demandé à ne plus être contactée, un lead perdu ou
+            # archivé ne reçoit AUCUN message — sortis avec leur motif.
+            if getattr(lead, 'ne_plus_contacter', False):
+                skip(lead, 'ne plus contacter')
+                continue
+            if getattr(lead, 'perdu', False) or getattr(
+                    lead, 'is_archived', False):
+                skip(lead, 'perdu/archivé')
+                continue
             phone = lead.whatsapp or lead.telephone
             if not phone:
                 continue
-            # Résoudre le corps : template ou texte direct
-            corps = body_tpl
-            if template_id:
-                try:
-                    from .models import MessageTemplate
-                    tpl = MessageTemplate.objects.filter(
-                        company=company, id=template_id).first()
-                    if tpl:
-                        corps = tpl.render(
-                            prenom=lead.prenom or lead.nom or '',
-                            ville=lead.ville or '',
-                            lien='',
-                        )
-                except Exception:
-                    pass
+            corps = _corps_whatsapp_en_masse(lead, tpl, body_tpl)
             wa_url = build_wa_url(phone, corps)
             queue.append({
                 'lead_id': lead.id,
@@ -8571,6 +8921,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             'op': 'prepare_whatsapp',
             'queue': queue,
             'count': len(queue),
+            'skipped': skipped,
         }
 
     return {
@@ -8591,14 +8942,17 @@ _appt_logger = _logging.getLogger(__name__)
 # How many minutes before a scheduled appointment to send the reminder.
 APPOINTMENT_REMINDER_MINUTES = 60
 
-# RAMADAN-AWARE PACING: when the per-company flag ``ramadan_pacing`` is enabled
-# (a simple boolean stored in CompanyProfile), reminders are suppressed during
-# the iftar-sensitive window (18h–21h Africa/Casablanca, local time). This avoids
-# interrupting families at meal time. The window is deliberately simple and
-# documented — no external calendar needed. The beat job reschedules to just
-# after the window end (21h) when the slot would land inside.
-RAMADAN_AVOID_START_H = 18
-RAMADAN_AVOID_END_H = 21
+# RAMADAN-AWARE PACING : pendant la période de Ramadan SAISIE par la société
+# (``horaires.est_en_ramadan``), aucun rappel ne part dans la plage iftar
+# (``horaires.PLAGE_IFTAR_DEBUT``–``PLAGE_IFTAR_FIN``, heure de Casablanca)
+# pour ne pas déranger les familles au ftour. ACRM42 — un RDV dont la fenêtre
+# de rappel tomberait DANS la plage est rappelé AVANT elle (dernière heure
+# avant la plage, ``send_due_appointment_reminders``) : il n'est jamais « reporté
+# après 21 h » (l'ancien commentaire le prétendait, rien ne le faisait — un RDV
+# de 19 h 30 n'était JAMAIS rappelé). Une seule notion de Ramadan : celle de
+# ``horaires`` ; les constantes ci-dessous en dérivent (compatibilité).
+RAMADAN_AVOID_START_H = 18   # = horaires.PLAGE_IFTAR_DEBUT.hour
+RAMADAN_AVOID_END_H = 21     # = horaires.PLAGE_IFTAR_FIN.hour
 RAMADAN_TZ = 'Africa/Casablanca'
 
 
@@ -8629,14 +8983,11 @@ def _ramadan_pacing_enabled(company) -> bool:
 
 
 def _is_ramadan_iftar_window(dt_utc) -> bool:
-    """True si le datetime UTC tombe dans la plage iftar-sensible (18h–21h Casablanca).
-
-    Vérifie que l'heure locale (Africa/Casablanca) est dans [18, 21).
-    """
+    """True si le datetime tombe dans la plage iftar (``horaires``, ACRM42 :
+    une seule définition)."""
     try:
-        from zoneinfo import ZoneInfo
-        local_dt = dt_utc.astimezone(ZoneInfo(RAMADAN_TZ))
-        return RAMADAN_AVOID_START_H <= local_dt.hour < RAMADAN_AVOID_END_H
+        from . import horaires
+        return horaires.dans_plage_iftar(dt_utc)
     except Exception:
         return False
 
@@ -8867,10 +9218,53 @@ def reserver_creneau_public(token, *, scheduled_at, notes=None):
         appointment = book_appointment(
             lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
         BookingLink.objects.filter(pk=link.pk).update(appointment=appointment)
+        # ACRM41 — une note LISIBLE au chatter, dans la même transaction.
+        LeadActivity.objects.create(
+            company=link.lead.company, lead=link.lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Le client a réservé sa visite le '
+                  f'{_quand_local(scheduled_at)} via le lien de '
+                  'réservation.'))
+        # ACRM41 (C-ACRM-036) — le responsable (repli : managers) est
+        # prévenu APRÈS validation : une réservation annulée ne notifie rien.
+        transaction.on_commit(
+            lambda: _notifier_reservation_publique(appointment))
 
     link.used_at = maintenant
     link.appointment = appointment
     return appointment
+
+
+def _quand_local(instant):
+    """« JJ/MM/AAAA à HH:MM », heure de Casablanca."""
+    from . import horaires
+    return instant.astimezone(horaires.CASABLANCA).strftime(
+        '%d/%m/%Y à %H:%M')
+
+
+def _notifier_reservation_publique(appointment):
+    """ACRM41 — une visite réservée par le PROSPECT lui-même (lien public)
+    prévient son responsable et le supérieur de celui-ci
+    (``lead_notification_recipients`` : repli managers quand l'un manque).
+    Best-effort : la réservation est déjà validée."""
+    try:
+        lead = appointment.lead
+        destinataires = lead_notification_recipients(lead)
+        if not destinataires:
+            return
+        from apps.notifications.services import notify_many
+        notify_many(
+            destinataires, 'appointment_reminder',
+            f'Visite réservée — {lead.nom}',
+            body=(f'Le client a réservé sa visite le '
+                  f'{_quand_local(appointment.scheduled_at)} via le lien '
+                  f'de réservation (RDV #{appointment.pk}).'),
+            link=f'/crm/leads/{lead.pk}',
+            company=appointment.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        _appt_logger.warning(
+            'ACRM41 : notification de réservation échouée (RDV #%s)',
+            getattr(appointment, 'pk', '?'), exc_info=True)
 
 
 def dispatch_appointment_reminder(appointment) -> bool:
@@ -8916,8 +9310,11 @@ def dispatch_appointment_reminder(appointment) -> bool:
             f'Rappel : votre visite est prévue le {date_str}. '
             f'Notre équipe sera présente. Merci !'
         )
-        if phone:
-            digits = ''.join(c for c in phone if c.isdigit())
+        # ACRM39 — même normaliseur E.164 que les autres liens wa.me ;
+        # numéro non normalisable ⇒ aucun lien.
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone) if phone else None
+        if digits:
             wa_url = (f'https://wa.me/{digits}?text='
                       f'{urllib.parse.quote(msg)}')
             _appt_logger.info(
@@ -8927,29 +9324,44 @@ def dispatch_appointment_reminder(appointment) -> bool:
         _appt_logger.warning(
             'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
 
-    # 2) In-app notification to the lead owner (if any).
+    # 2) Notification in-app — ACRM42 : au responsable du lead ET à son
+    # supérieur (``lead_notification_recipients`` : repli managers quand l'un
+    # manque). Un lead SANS responsable n'est plus un rappel perdu.
+    notifies = 0
     try:
         from apps.notifications.services import notify
-        owner = getattr(lead, 'owner', None)
-        if owner is not None:
-            import zoneinfo
-            local = appointment.scheduled_at.astimezone(
-                zoneinfo.ZoneInfo(RAMADAN_TZ))
-            date_str = local.strftime('%d/%m/%Y à %H:%M')
-            notify(
-                user=owner,
-                event_type='appointment_reminder',
-                title=f'Rappel visite — {lead.nom}',
-                body=(
-                    f'Rendez-vous prévu le {date_str} '
-                    f'avec {lead.nom} (RDV #{appointment.pk}).'
-                ),
-                link=f'/crm/leads/{lead.pk}',
-                company=appointment.company,
-            )
+        import zoneinfo
+        local = appointment.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local.strftime('%d/%m/%Y à %H:%M')
+        for destinataire in lead_notification_recipients(lead):
+            try:
+                notify(
+                    user=destinataire,
+                    event_type='appointment_reminder',
+                    title=f'Rappel visite — {lead.nom}',
+                    body=(
+                        f'Rendez-vous prévu le {date_str} '
+                        f'avec {lead.nom} (RDV #{appointment.pk}).'
+                    ),
+                    link=f'/crm/leads/{lead.pk}',
+                    company=appointment.company,
+                )
+                notifies += 1
+            except Exception as exc:  # noqa: BLE001
+                _appt_logger.warning(
+                    'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
     except Exception as exc:  # noqa: BLE001
         _appt_logger.warning(
             'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
+
+    if not notifies:
+        # ACRM42 — personne n'a été prévenu : le rappel n'est PAS marqué
+        # envoyé, le passage suivant du beat le retente.
+        _appt_logger.warning(
+            'QJ20: aucun destinataire pour le rappel du RDV #%d — retenté',
+            appointment.pk)
+        return False
 
     # Mark as sent (idempotency guard).
     appointment.reminder_sent = True
@@ -8974,15 +9386,45 @@ def send_due_appointment_reminders() -> int:
     from django.utils import timezone as tz
     from .models import Appointment
 
+    from . import horaires
+
     now = tz.now()
     window_end = now + timedelta(minutes=APPOINTMENT_REMINDER_MINUTES)
+    # ACRM42 — candidats élargis à la durée de la plage iftar : un RDV dont
+    # la fenêtre de rappel tombe DANS la plage est rappelé dans l'heure qui
+    # la PRÉCÈDE (sinon un RDV de 19 h 30 n'était jamais rappelé).
+    duree_plage = (datetime.datetime.combine(
+        datetime.date.min, horaires.PLAGE_IFTAR_FIN) - datetime.datetime.combine(
+        datetime.date.min, horaires.PLAGE_IFTAR_DEBUT))
+    horizon = window_end + duree_plage
 
-    due = Appointment.objects.filter(
+    candidats = Appointment.objects.filter(
         statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
         scheduled_at__gte=now,
-        scheduled_at__lte=window_end,
+        scheduled_at__lte=horizon,
         reminder_sent=False,
     ).select_related('lead', 'lead__owner', 'company')
+
+    pacing = {}
+    due = []
+    for appt in candidats:
+        if appt.scheduled_at <= window_end:
+            due.append(appt)
+            continue
+        if appt.company_id not in pacing:
+            pacing[appt.company_id] = _ramadan_pacing_enabled(appt.company)
+        if not pacing[appt.company_id]:
+            continue
+        rappel_normal = appt.scheduled_at - timedelta(
+            minutes=APPOINTMENT_REMINDER_MINUTES)
+        debut = horaires.debut_plage_iftar(
+            rappel_normal.astimezone(horaires.CASABLANCA).date())
+        # Rappel normal DANS la plage et nous sommes dans l'heure qui la
+        # précède : c'est le dernier passage avant la plage.
+        if (horaires.dans_plage_iftar(rappel_normal)
+                and debut - timedelta(minutes=APPOINTMENT_REMINDER_MINUTES)
+                <= now < debut):
+            due.append(appt)
 
     sent = 0
     for appt in due:
@@ -9022,7 +9464,8 @@ def find_lead_by_email(company, email):
     casse). Point d'entrée cross-app sanctionné pour `apps.publicapi` (dédup
     upsert de l'import bulk) — jamais d'import direct de `Lead` ailleurs.
     Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
-    email = (email or '').strip()
+    # ACRM38 (jumeau) — la même clé que l'identité client.
+    email = _email_identite(email)
     if not email:
         return None
     return (
@@ -9053,13 +9496,20 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
     conservant la trace « Créé depuis le ticket SAV … » sur le chatter du lead.
 
     Renvoie ``(lead, created)``."""
+    # ACRM43 — la docstring dit « non archivé » : un lead archivé n'est
+    # jamais réutilisé (nouveau lead à la place).
     existant = (
         Lead.objects
-        .filter(company=company, client=client)
+        .filter(company=company, client=client, is_archived=False)
         .exclude(stage=stages.COLD)
         .order_by('-date_creation')
         .first())
     if existant is not None:
+        contexte_existant = (contexte or '').strip()
+        if contexte_existant:
+            # ACRM43 — le contexte du ticket est tracé au chatter du lead
+            # réutilisé (note SYSTÈME, même règle QJ7 que la création).
+            activity.log_note(existant, None, contexte_existant)
         return existant, False
 
     lead = Lead.objects.create(
@@ -9400,6 +9850,14 @@ def update_lead_from_public_api(*, company, lead_id, fields):
     clean = {k: v for k, v in (fields or {}).items()
              if k in PUBLIC_LEAD_WRITABLE_FIELDS}
     stage = clean.get('stage')
+    # ACRM58 — ``stage`` présent mais vide (null comme '') : erreur SOUS LE
+    # CHAMP (400 ``{stage: [...]}``), jamais un IntegrityError (500). Une
+    # ValidationError DRF (pas un ValueError) pour que la vue publique la
+    # rende telle quelle, champ nommé ; l'import en masse l'inscrit en ligne
+    # en erreur.
+    if 'stage' in clean and stage in (None, ''):
+        raise DRFValidationError(
+            {'stage': ["L'étape ne peut pas être vide."]})
     if stage is not None and stage not in stages.STAGES:
         raise ValueError(
             f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
@@ -9511,9 +9969,11 @@ def ajouter_note_lead_si_nouvelle(*, company, lead_id, user, body):
 # ─────────────────────────────────────────────────────────────────────────────
 # QX42 — Rétention PII des copies brutes d'intake (registre YOPSB10, core.retention)
 #
-# `WebsiteLeadPayload` (PII brute + IP, SET_NULL depuis Lead → l'effacement
-# RGPD d'un lead n'atteint JAMAIS ce payload brut) et `ChatSessionPublique`
-# s'accumulent INDÉFINIMENT. Le framework générique existe (`core.retention`)
+# `WebsiteLeadPayload` (PII brute + IP) et `ChatSessionPublique`
+# s'accumulaient INDÉFINIMENT. ACRM19 — l'effacement d'un lead
+# (`dsr_provider.anonymiser_lead`, DSR ET rétention) caviarde désormais LUI-MÊME
+# ces copies brutes : les purges par âge ci-dessous ne sont plus le seul
+# rempart, seulement le ménage de fond. Le framework générique existe (`core.retention`)
 # mais son registre est VIDE — aucune app n'y enregistre de politique. Ceci
 # enregistre la politique CRM (voir `CrmConfig.ready()`), fenêtre par défaut
 # 180 jours, override founder via `WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS` /
@@ -9570,7 +10030,13 @@ def purge_stale_chat_sessions(now, apply_) -> int:
     ``last_message_at`` — une session encore active récemment n'est jamais
     purgée même si ``created_at`` est ancien). Une session déjà liée à un
     Lead réel (``lead_id`` renseigné) garde son transcript — la conversation
-    fait partie de l'historique du lead, pas une trace anonyme jetable."""
+    fait partie de l'historique du lead, pas une trace anonyme jetable.
+
+    ACRM19 — SAUF celle d'un lead ANONYMISÉ : l'historique n'a plus de
+    personne à qui appartenir, l'exemption ne la protège plus."""
+    from django.db.models import Q
+
+    from .dsr_provider import LEAD_NOM_ANONYMISE
     from .models import ChatSessionPublique
 
     days = _retention_days(
@@ -9579,7 +10045,8 @@ def purge_stale_chat_sessions(now, apply_) -> int:
         return 0
     cutoff = now - timezone.timedelta(days=days)
     qs = ChatSessionPublique.objects.filter(
-        last_message_at__lt=cutoff, lead__isnull=True)
+        last_message_at__lt=cutoff).filter(
+            Q(lead__isnull=True) | Q(lead__nom=LEAD_NOM_ANONYMISE))
     count = qs.count()
     if apply_ and count:
         qs.delete()
@@ -10045,6 +10512,13 @@ PLACEMENT_LOT_MAX = 200
 PLACEMENT_APERCU_MAX = 20
 
 
+#: ACRM47/ACRM61 — message de la réponse 503 ``{detail}`` (contrat
+#: ``placement_anciens_leads.json``, ``exemple_erreur``).
+PLACEMENT_DEVIS_ILLISIBLES = (
+    "Lecture des devis acceptés indisponible : placement suspendu, rien "
+    "n'a été appliqué")
+
+
 class PlacementImpossible(Exception):
     """Un lead retenu n'a finalement pas pu être placé (cadence vide, gabarit
     absent…). Comptée dans ``erreurs`` du rapport, jamais propagée : le
@@ -10081,19 +10555,21 @@ def _placement_devis_du_lot(company, lead_ids):
     (jamais ``ventes.models`` — frontière M3) : les leads à devis ACCEPTÉ (à
     écarter) et le dernier devis ENVOYÉ de chacun (qui date la cadence).
 
-    Best-effort : si ``ventes`` est illisible, le placement continue SANS
-    information de devis plutôt que d'échouer en bloc — les décisions
-    retombent alors sur l'étape et l'ancienneté."""
+    ACRM47 — échoue FERMÉ : si ``ventes`` est illisible, la garde « devis
+    accepté » ne peut plus écarter les signés — continuer enverrait au Froid
+    un client qui a dit oui. ``PlacementImpossible`` (message français) est
+    levée AVANT toute écriture : la vue répond 503 ``{detail}``, la commande
+    sort en erreur, rien n'est appliqué."""
     try:
         from apps.ventes.selectors import (
             dernier_devis_envoye_par_lead, leads_avec_devis_accepte)
         return (leads_avec_devis_accepte(company, lead_ids),
                 dernier_devis_envoye_par_lead(company, lead_ids))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — journalisé puis échec fermé
         logger.warning(
             'MRY30: devis illisibles (société %s)',
             getattr(company, 'pk', '?'), exc_info=True)
-        return set(), {}
+        raise PlacementImpossible(PLACEMENT_DEVIS_ILLISIBLES) from exc
 
 
 def _decider_placements(company, maintenant, gabarits=None,
@@ -10124,15 +10600,23 @@ def _decider_placements(company, maintenant, gabarits=None,
         base = base.filter(pk__in=leads_en_portee.values('pk'))
     candidats = list(base.order_by('pk'))
     total = len(candidats)
-    ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0}
+    # ACRM61/ACRM20 — ``rappel_manuel_a_venir`` : entier, jamais null.
+    ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0,
+               'rappel_manuel_a_venir': 0}
     if not candidats:
         return [], ignores, total
+    # ACRM20 — date LOCALE du jour (Africa/Casablanca) du moment de décision.
+    aujourdhui = timezone.localtime(maintenant).date()
 
     ids = [lead.pk for lead in candidats]
     # Le moteur TIENT déjà ces dossiers : une seconde cadence dessus, ce sont
     # deux séries de messages parallèles à la même personne.
+    # ACRM46 — seul un plan OUVERT (touche À FAIRE, prédicat partagé avec
+    # ``initialiser_plan_relance``) tient le lead : des touches toutes closes
+    # (faites/sautées/annulées) le rendent candidat au placement.
     deja = set(RelanceEtape.objects.filter(
-        company=company, lead_id__in=ids).values_list('lead_id', flat=True))
+        _q_plan_ouvert(), company=company, lead_id__in=ids)
+        .values_list('lead_id', flat=True))
     acceptes, envoyes = _placement_devis_du_lot(company, ids)
 
     humaines = _placement_derniers_par_lead(
@@ -10152,6 +10636,12 @@ def _decider_placements(company, maintenant, gabarits=None,
             # relance : demander « alors, ce devis ? » à quelqu'un qui a dit
             # oui est le pire message du portefeuille.
             ignores['devis_accepte_non_signe'] += 1
+            continue
+        if lead.relance_date is not None and lead.relance_date >= aujourdhui:
+            # ACRM20 — un rappel MANUEL à venir (posé par la commerciale) tient
+            # le lead hors dormance : jamais de Froid, d'étiquette ni de
+            # Réveil, et sa ``relance_date`` n'est jamais remplacée.
+            ignores['rappel_manuel_a_venir'] += 1
             continue
         devis = envoyes.get(lead.pk)
         # L'ANCRE : le dernier signe de vie du dossier, quelle qu'en soit la
@@ -10443,10 +10933,8 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     # `initialiser_plan_relance` a pointé `relance_date` sur la PREMIÈRE
     # touche — celle qu'on vient peut-être de sauter. On la recale sur la
     # prochaine réellement à faire, exactement comme `marquer_etape_relance`.
-    prochaine = _prochaine_touche_a_faire(lead)
-    lead.relance_date = prochaine.due_date if prochaine else relance_avant
-    lead.save(update_fields=['relance_date'])
-    sync_relance_activity(lead, user)
+    # ACRM37 — par LE recalage unique (une touche au moins reste ouverte ici).
+    _recaler_file(lead, user)
     return True
 
 
@@ -12048,25 +12536,84 @@ def libelle_rappel_subvention(approbation):
             f'{limite:%d/%m} (3 mois — Guide FDA 2024, p.22-23)')
 
 
-def poser_rappel_subvention(lead):
+#: ACRM45 (C-ACRM-040) — la CLÉ STABLE du rappel FDA : l'étape se retrouve
+#: par elle, jamais par son libellé (qui porte la date d'approbation et
+#: changeait donc à chaque correction de cette date — deux rappels ouverts).
+CLE_RAPPEL_FDA = 'rappel_fda'
+
+#: Le début du libellé d'avant ACRM45 (``cle`` vide) : une étape ouverte
+#: posée avant la clé est ADOPTÉE (sa clé est posée), jamais doublée.
+_PREFIXE_LIBELLE_RAPPEL_FDA = 'Approbation préalable du '
+
+
+def _rappel_fda_ouvert(lead):
+    """ACRM45 — l'étape « délai FDA » OUVERTE du lead (clé stable, ou
+    libellé d'avant la clé), ou ``None``."""
+    from django.db.models import Q
+
+    return (lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .filter(Q(cle=CLE_RAPPEL_FDA)
+                    | Q(cle='',
+                        libelle__startswith=_PREFIXE_LIBELLE_RAPPEL_FDA,
+                        libelle__contains='Guide FDA'))
+            .order_by('due_date', 'pk').first())
+
+
+def poser_rappel_subvention(lead, user=None):
     """AGR522 — pose (ou retrouve) l'étape MANUELLE du délai FDA pour demain.
 
-    Idempotent : l'étape se retrouve par son libellé (``_poser_etape_de_filet``
-    ne pose jamais deux fois la même étape ouverte), donc rejouer ne double
-    rien. Renvoie l'étape, ou None si le lead n'est pas « accordé » daté."""
-    if (lead is None
-            or lead.dossier_subvention != Lead.DossierSubvention.ACCORDE
-            or lead.dossier_subvention_le is None):
+    ACRM45 — l'étape se retrouve par sa CLÉ STABLE (``CLE_RAPPEL_FDA``) :
+      * « accordé » daté, aucune étape ouverte → elle est posée (demain) ;
+      * la date d'approbation CHANGE → l'étape ouverte est DÉPLACÉE (libellé
+        à la nouvelle date, échéance au prochain créneau de demain) — jamais
+        un second rappel ;
+      * le statut QUITTE « accordé » → l'étape ouverte est ANNULÉE (tracée).
+    Puis la file est recalée (``_recaler_file``). Renvoie l'étape ouverte, ou
+    ``None`` quand il n'y en a plus."""
+    if lead is None:
         return None
+    ouverte = _rappel_fda_ouvert(lead)
+    accorde = (lead.dossier_subvention == Lead.DossierSubvention.ACCORDE
+               and lead.dossier_subvention_le is not None)
+    if not accorde:
+        if ouverte is not None:
+            ouverte.statut = RelanceEtape.Statut.ANNULEE
+            ouverte.note = ('Annulée : le dossier de subvention n\'est plus '
+                            '« accordé ».')
+            ouverte.traite_le = timezone.now()
+            ouverte.save(update_fields=['statut', 'note', 'traite_le'])
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=('Rappel du délai FDA annulé : le dossier de subvention '
+                      'n\'est plus « accordé ».'))
+            _recaler_file(lead, user)
+        return None
+    from . import horaires
+
     libelle = libelle_rappel_subvention(lead.dossier_subvention_le)
-    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
-    if deja is not None:
-        return deja
-    return _poser_etape_de_filet(
+    if ouverte is not None:
+        if ouverte.libelle != libelle or ouverte.cle != CLE_RAPPEL_FDA:
+            ouverte.libelle = libelle
+            ouverte.cle = CLE_RAPPEL_FDA
+            ouverte.save(update_fields=['libelle', 'cle'])
+            quand = horaires.prochain_creneau_appel(
+                timezone.now() + datetime.timedelta(days=1), lead.company,
+                canal=ouverte.canal)
+            ouverte = deplacer_echeance_etape(ouverte, quand)
+        _recaler_file(lead, user)
+        return ouverte
+    etape = _poser_etape_de_filet(
         lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL,
         vise=timezone.now() + datetime.timedelta(days=1),
         note='Posée automatiquement : dossier de subvention accordé — délai '
              'interne, jamais écrit au client.')
+    if etape.cle != CLE_RAPPEL_FDA:
+        etape.cle = CLE_RAPPEL_FDA
+        etape.save(update_fields=['cle'])
+    _recaler_file(lead, user)
+    return etape
 
 
 # ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
@@ -12870,7 +13417,7 @@ def homonymes_signes(lead):
     return [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
-            exclude_pk=lead.pk)
+            exclude_pk=lead.pk, whatsapp=lead.whatsapp)  # ACRM32 (jumeau)
         if not autre.is_archived and not autre.perdu
         and autre.stage == stages.SIGNED
     ]
@@ -13596,6 +14143,83 @@ MOTIF_BULK_CADENCE_ACTIVE = (
 )
 
 
+#: APAR51 — les issues de ``appliquer_champ_automatique``.
+CHAMP_AUTO_APPLIQUE = 'applique'
+CHAMP_AUTO_INCHANGE = 'inchange'
+CHAMP_AUTO_INVALIDE = 'invalide'
+CHAMP_AUTO_CADENCE = 'cadence_active'
+
+
+def appliquer_champ_automatique(lead, champ, valeur, user=None):
+    """APAR51 (C-APAR-032) — LA porte d'écriture d'un champ de lead par une
+    AUTOMATISATION (règle SET_FIELD, action serveur, assignation) : la même
+    discipline que le geste manuel.
+
+    * la valeur est VALIDÉE par le champ du modèle (choix, longueur, type) —
+      hors choix ⇒ ``(CHAMP_AUTO_INVALIDE, motif)``, rien n'est écrit ;
+    * ``relance_date`` sur un lead à CADENCE ACTIVE ⇒ refus CAD49
+      (``(CHAMP_AUTO_CADENCE, MOTIF_BULK_CADENCE_ACTIVE)``) : la date vient
+      de la prochaine touche du plan ;
+    * une valeur égale ⇒ ``(CHAMP_AUTO_INCHANGE, '')`` ;
+    * sinon le champ est écrit et UNE ligne MODIFICATION (ancien → nouveau)
+      entre au chatter, l'acteur étant ``user`` (la règle).
+
+    ``champ='owner'`` accepte un utilisateur (ou son identifiant) de la
+    société du lead. Rend ``(issue, motif)``."""
+    from django.core.exceptions import ValidationError
+
+    from . import activity as _activity
+
+    try:
+        champ_modele = Lead._meta.get_field(champ)
+    except Exception:  # noqa: BLE001
+        return CHAMP_AUTO_INVALIDE, f'Champ « {champ} » inconnu.'
+    if champ == 'owner':
+        from django.contrib.auth import get_user_model
+        pk = getattr(valeur, 'pk', valeur)
+        cible = get_user_model().objects.filter(
+            pk=pk, company=lead.company).first() if pk else None
+        if cible is None:
+            return CHAMP_AUTO_INVALIDE, 'Utilisateur cible inconnu.'
+        ancien = lead.owner
+        if ancien is not None and ancien.pk == cible.pk:
+            return CHAMP_AUTO_INCHANGE, ''
+        lead.owner = cible
+        lead.save(update_fields=['owner'])
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.MODIFICATION, field='owner',
+            field_label=_activity.TRACKED_FIELDS.get('owner', 'owner'),
+            old_value=_activity._display(lead, 'owner', ancien),
+            new_value=_activity._display(lead, 'owner', cible))
+        return CHAMP_AUTO_APPLIQUE, ''
+    try:
+        propre = champ_modele.clean(valeur, lead)
+    except ValidationError as exc:
+        hors_choix = bool(getattr(champ_modele, 'choices', None))
+        detail = '; '.join(exc.messages)
+        return CHAMP_AUTO_INVALIDE, (
+            f'Valeur hors choix pour « {champ} » : {valeur!r}.' if hors_choix
+            else f'Valeur invalide pour « {champ} » : {detail}')
+    if champ == 'relance_date' and leads_avec_cadence_active(
+            lead.company, [lead.pk]):
+        return CHAMP_AUTO_CADENCE, MOTIF_BULK_CADENCE_ACTIVE
+    ancien = getattr(lead, champ, None)
+    if ancien == propre:
+        return CHAMP_AUTO_INCHANGE, ''
+    setattr(lead, champ, propre)
+    lead.save(update_fields=[champ])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION, field=champ,
+        field_label=_activity.TRACKED_FIELDS.get(champ, champ),
+        old_value=_activity._display(lead, champ, ancien),
+        new_value=_activity._display(lead, champ, propre))
+    if champ == 'relance_date':
+        sync_relance_activity(lead, user)
+    return CHAMP_AUTO_APPLIQUE, ''
+
+
 def leads_avec_cadence_active(company, lead_ids):
     """CAD49 — le sous-ensemble de ``lead_ids`` portant AU MOINS une touche de
     relance encore À FAIRE. Renvoie un ``set`` d'identifiants.
@@ -13920,24 +14544,86 @@ CONSENT_SOURCE_OPPOSITION_FICHE = 'case « Ne plus contacter » de la fiche'
 CONSENT_SOURCE_OPPOSITION_TOUCHE = 'réponse « Ne plus me contacter »'
 
 
+#: ACRM59 (C-ACRM-044) — les FINALITÉS DE CONTACT du registre : une
+#: opposition les refuse TOUTES (la prospection, et chaque canal recueilli à
+#: l'intake — WhatsApp —, plus l'e-mail et le SMS que le registre connaît).
+#: Aucune finalité nouvelle n'est inventée : ce sont celles que
+#: ``enregistrer_consentement_lead`` documente.
+FINALITES_CONTACT = (CONSENT_PURPOSE_PROSPECTION, 'whatsapp', 'email', 'sms')
+
+#: ACRM59 — la source d'une opposition LEVÉE depuis la fiche.
+CONSENT_SOURCE_OPPOSITION_LEVEE = 'opposition levée par {utilisateur}'
+
+
+def _identifiants_registre(lead):
+    """ACRM59 — CHAQUE identifiant de la personne (e-mail ET téléphone,
+    sans doublon) : une opposition lue sous le téléphone doit tenir autant
+    que sous l'e-mail."""
+    vus = []
+    for valeur in (getattr(lead, 'email', None),
+                   getattr(lead, 'telephone', None)):
+        valeur = (valeur or '').strip()
+        if valeur and valeur not in vus:
+            vus.append(valeur)
+    return vus
+
+
+def _ecrire_registre_contact(lead, *, granted, source, occurred_at=None):
+    """ACRM59 — une ligne par (identifiant, finalité de contact)."""
+    from core.models import ConsentRecord
+
+    quand = occurred_at or timezone.now()
+    lignes = [
+        ConsentRecord(
+            company=lead.company, subject_identifier=identifiant,
+            purpose=finalite, granted=granted, source=source[:120],
+            occurred_at=quand)
+        for identifiant in _identifiants_registre(lead)
+        for finalite in FINALITES_CONTACT]
+    if not lignes:
+        return None
+    ConsentRecord.objects.bulk_create(lignes)
+    return lignes[0]
+
+
+def tracer_levee_opposition_registre(lead, user, *, occurred_at=None):
+    """ACRM59 — décocher « ne plus contacter » sur la fiche inscrit au
+    registre une ligne ``granted=True`` par finalité de contact et par
+    identifiant, dont la source NOMME l'utilisateur (« opposition levée par
+    <utilisateur> »). Best-effort, comme l'opposition."""
+    try:
+        qui = getattr(user, 'username', '') or 'utilisateur inconnu'
+        return _ecrire_registre_contact(
+            lead, granted=True,
+            source=CONSENT_SOURCE_OPPOSITION_LEVEE.format(utilisateur=qui),
+            occurred_at=occurred_at)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'ACRM59 : levée d\'opposition non écrite au registre (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
+
+
 def tracer_opposition_registre(lead, *, source, occurred_at=None):
     """CAD91 — inscrit l'opposition au registre ``core.ConsentRecord``.
 
-    UNE entrée ``granted=False`` pour la prospection
-    (``CONSENT_PURPOSE_PROSPECTION``), datée de l'instant où elle est
-    recueillie, dont la ``source`` porte le geste ET la base légale. Même
-    porte d'entrée que CAD90 (``enregistrer_consentement_lead``) : le
-    registre reste un historique append-only, et l'état courant s'y lit sur
-    la ligne la plus récente.
+    ACRM59 — une entrée ``granted=False`` par FINALITÉ DE CONTACT
+    (``FINALITES_CONTACT`` : prospection, WhatsApp, e-mail, SMS) et sous
+    CHAQUE identifiant de la personne (e-mail ET téléphone) : la ligne
+    WhatsApp « accordée » posée à l'intake n'est plus la dernière, et un
+    lecteur qui interroge le téléphone voit l'opposition. Datée de
+    l'instant où elle est recueillie ; la ``source`` porte le geste ET la
+    base légale (une base légale CAD90 reste distincte par sa source). Le
+    registre reste un historique append-only.
 
     Best-effort intégral : l'opposition elle-même (case cochée, cadences
     arrêtées) ne tombe jamais parce que le registre n'a pas pu être écrit.
-    Renvoie l'entrée créée, ou ``None`` (lead sans e-mail ni téléphone, ou
-    écriture impossible)."""
+    Renvoie la première entrée créée, ou ``None`` (lead sans e-mail ni
+    téléphone, ou écriture impossible)."""
     try:
-        return enregistrer_consentement_lead(
-            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
-            source=f'{source} — {BASE_LEGALE_OPPOSITION}'[:120],
+        return _ecrire_registre_contact(
+            lead, granted=False,
+            source=f'{source} — {BASE_LEGALE_OPPOSITION}',
             occurred_at=occurred_at)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
@@ -14226,6 +14912,9 @@ def prolonger_validite_attente_accord(lead, user=None):
 #: va dans la note.
 LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
 
+#: ACRM45 (jumeau) — la clé stable de l'étape « validité à renouveler ».
+CLE_VALIDITE_A_RENOUVELER = 'validite_a_renouveler'
+
 
 def texte_validite_a_renouveler(reference, validite, decision):
     """CIQ512 — le texte de l'étape « validité à renouveler »."""
@@ -14263,14 +14952,23 @@ def poser_etape_validite_a_renouveler(lead, decision):
         return None
     from . import horaires
     libelle = LIBELLE_VALIDITE_A_RENOUVELER.format(reference=devis.reference)
-    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
+    # ACRM45 (jumeau) — retrouvée par sa CLÉ STABLE + la référence du devis
+    # (libellé), ou par le libellé seul pour une étape d'avant la clé.
+    from django.db.models import Q
+    deja = lead.relance_etapes.filter(
+        Q(cle=CLE_VALIDITE_A_RENOUVELER) | Q(cle=''),
+        libelle=libelle).first()
     if deja is not None:
         return deja
     vise = datetime.datetime.combine(
         validite, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
-    return _poser_etape_de_filet(
+    etape = _poser_etape_de_filet(
         lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL, vise=vise,
         note=texte_validite_a_renouveler(devis.reference, validite, decision))
+    if etape.cle != CLE_VALIDITE_A_RENOUVELER:
+        etape.cle = CLE_VALIDITE_A_RENOUVELER
+        etape.save(update_fields=['cle'])
+    return etape
 
 
 # ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
@@ -14379,11 +15077,15 @@ def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
         config = cadence_config.config_cle(lead.company, cle)
         if a_la_date is not None:
             canal_config = _canal_configure(config)
+            # ACRM36 — le samedi de la clé (CAD43) tient aussi à la date
+            # convenue ; l'heure cible n'y entre pas (l'heure est convenue).
             quand = horaires.prochain_creneau_appel(
-                a_la_date, lead.company, canal=canal_config)
+                a_la_date, lead.company, canal=canal_config,
+                samedi=bool(config.get('samedi_ok')))
             if quand < timezone.now():
                 quand = cadence_temps.echeance_jamais_echue(
-                    quand, company=lead.company, canal=canal_config)
+                    quand, company=lead.company, canal=canal_config,
+                    samedi=bool(config.get('samedi_ok')))
         else:
             quand = _echeance_configuree(lead, config, jours=jours)
         libelle = config['libelle']
@@ -15149,7 +15851,7 @@ def _marquer_locataire(lead, user):
     activity.log_changes(avant, lead, user)
 
 
-def creer_lead_proprietaire(locataire, user, donnees):
+def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
     """CAD164 — le propriétaire est joignable : SA fiche, liée au locataire.
 
     Un propriétaire DÉJÀ connu (même téléphone, même société) est RELIÉ, jamais
@@ -15157,6 +15859,12 @@ def creer_lead_proprietaire(locataire, user, donnees):
     « recommandation » de CAD127 s'applique à sa première touche), avec le
     logement du locataire (adresse, repère, segment) et le même responsable,
     puis sa cadence de prise de contact démarre par le chemin ordinaire.
+
+    ACRM7 (D-ACRM-1) — ``queryset`` borne le rapprochement aux leads de la
+    PORTÉE de l'appelant (la vue passe ses leads en portée) : un propriétaire
+    connu d'un collègue hors portée est traité comme ABSENT (fiche neuve,
+    aucune note ni identité chez le collègue). ``None`` (chemins système) =
+    toute la société, comportement historique.
 
     Renvoie ``(fiche du propriétaire, créée ?)``."""
     from django.db import transaction
@@ -15169,7 +15877,7 @@ def creer_lead_proprietaire(locataire, user, donnees):
         _marquer_locataire(locataire, user)
         existant = next(iter(find_duplicates_by_contact(
             locataire.company, phone=telephone or whatsapp,
-            exclude_pk=locataire.pk)), None)
+            exclude_pk=locataire.pk, queryset=queryset)), None)
         cree = existant is None
         if cree:
             proprietaire = Lead(

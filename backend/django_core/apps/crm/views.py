@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from core.entite_scoping import EntiteScopeMixin
 from core.mixins import TenantMixin
+from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
@@ -44,6 +45,7 @@ from .serializers import (
     SalleVenteSerializer, SalleVenteItemSerializer,
     ApporteurSerializer, DealEnregistreSerializer, DefiSerializer,
     VisiteExterneSerializer,
+    masquer_pii_dict,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity, stages
@@ -93,6 +95,56 @@ def _best_effort(libelle, fn, *args, **kwargs):
         logger.warning('ALEA30: effet secondaire « %s » échoué', libelle,
                        exc_info=True)
         return None
+
+
+class GesteToucheEchoue(APIException):
+    """ACRM22 — un geste de touche (fait, sauter, réponse, pièce reçue,
+    note, report, WhatsApp) a échoué en cours d'écriture : la transaction
+    est annulée, RIEN n'est écrit (ni touche close, ni chatter, ni pièce),
+    et la réponse le dit explicitement."""
+    status_code = 500
+    default_detail = ('Le geste n’a pas pu être enregistré : rien n’a été '
+                      'écrit. Réessayez.')
+    default_code = 'geste_touche_echoue'
+
+
+def _geste_atomique(methode):
+    """ACRM22 (C-ACRM-015) — exécute un geste de touche dans
+    ``transaction.atomic()`` : une panne du 2ᵉ ou 3ᵉ appel (report de la
+    prochaine touche, enregistrement de la pièce…) annule AUSSI les
+    écritures des appels précédents. Les fichiers déjà poussés au stockage
+    par le geste (``request._acrm22_cles``) sont supprimés si la transaction
+    échoue — jamais une pièce orpheline. Les refus (400/403/404) passent
+    tels quels."""
+    import functools
+
+    @functools.wraps(methode)
+    def enveloppe(self, request, *args, **kwargs):
+        from django.core.exceptions import PermissionDenied
+        from django.db import transaction
+        from django.http import Http404
+
+        request._acrm22_cles = []
+        try:
+            with transaction.atomic():
+                return methode(self, request, *args, **kwargs)
+        except (APIException, Http404, PermissionDenied):
+            _supprimer_fichiers_du_geste(request)
+            raise
+        except Exception as exc:
+            _supprimer_fichiers_du_geste(request)
+            logger.warning('ACRM22: geste de touche annulé (%s)',
+                           getattr(methode, '__name__', '?'), exc_info=True)
+            raise GesteToucheEchoue() from exc
+    return enveloppe
+
+
+def _supprimer_fichiers_du_geste(request):
+    """ACRM22 — retire du stockage les fichiers poussés par un geste dont
+    la transaction n'a pas été validée (best-effort)."""
+    from apps.records.storage import delete_attachment
+    for cle in getattr(request, '_acrm22_cles', None) or []:
+        delete_attachment(cle)
 
 
 def _parse_rappel(date_str, heure_str=''):
@@ -146,6 +198,75 @@ def _refus_date_passee(quand, libelle_champ):
 
 
 READ_ACTIONS = ['list', 'retrieve']
+
+#: ACRM3 — les LECTURES de l'annuaire clients (en plus de ``READ_ACTIONS``) :
+#: elles exigent ``crm_voir`` ou le code de lecture d'un module consommateur.
+CLIENT_LECTURE_ACTIONS = [
+    'documents', 'search', 'dormants', 'engagement', 'engagement_bulk',
+    'mon_portefeuille',
+]
+
+
+def _voit_le_crm(user):
+    """ACRM3 — vrai si ``user`` lit le CRM (``crm_voir``), même règle que
+    ``HasPermissionOrLegacy('crm_voir')`` : superuser, rôle fin portant le
+    code, ou compte historique responsable sans rôle fin."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(user, 'role', None):
+        return user.has_erp_permission('crm_voir')
+    return bool(getattr(user, 'is_responsable', False))
+
+
+class _PorteeEnfantsMixin:
+    """ACRM9 (C-ACRM-005) — les LECTURES d'un viewset ENFANT d'un lead ou
+    d'un client sont bornées à la portée du rôle : une ligne dont le lead
+    (``portee_leads``) sort de ``selectors.leads_en_portee(user)``, ou dont
+    le client (``portee_clients``) sort de ``scope_client_queryset``, est
+    ABSENTE — liste vide sur ``?lead=<hors portée>``, 404 en détail. Une
+    relation vide (``NULL``) ne masque rien. Un admin (portée « all ») voit
+    tout, comme avant."""
+
+    portee_leads = ()
+    portee_clients = ()
+
+    def get_queryset(self):
+        from django.db.models import Q
+
+        from .selectors import leads_en_portee
+
+        qs = super().get_queryset()
+        user = self.request.user
+        if self.portee_leads:
+            leads = leads_en_portee(user).values('pk')
+            for champ in self.portee_leads:
+                qs = qs.filter(Q(**{f'{champ}__isnull': True})
+                               | Q(**{f'{champ}__in': leads}))
+        if self.portee_clients:
+            clients = scope_client_queryset(
+                Client.objects.filter(company_id=user.company_id),
+                user).values('pk')
+            for champ in self.portee_clients:
+                qs = qs.filter(Q(**{f'{champ}__isnull': True})
+                               | Q(**{f'{champ}__in': clients}))
+        return qs
+
+
+def _refus_pii_whatsapp(request):
+    """ACRM4 — le partage WhatsApp d'un devis rend le NUMÉRO du client
+    (``phone``, ``wa_url``) : refusé 403 ``droit_manquant`` sans
+    ``client_pii_voir``, exactement comme ``resume_associe``. ``None`` si
+    l'appelant a le droit."""
+    from .serializers import pii_masquee_pour
+    if not pii_masquee_pour(request.user):
+        return None
+    return Response(
+        {'detail': "Vous n'avez pas la permission de voir les coordonnées "
+                   'du client.',
+         'code': 'droit_manquant'},
+        status=status.HTTP_403_FORBIDDEN)
+
+
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 #: CAD4 (résiduel) — le refus d'un appel coché « Fait » sans issue NOMME les
@@ -314,7 +435,17 @@ class ClientViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # clients rattachés à ses documents/leads visibles. 'all' → inchangé.
-        return scope_client_queryset(super().get_queryset(), self.request.user)
+        # APRF17 (C-APRF-006) — ce que ``ClientSerializer`` lit PAR LIGNE
+        # (créateur, nombre de devis, totaux facturé/payé : lignes, paiements
+        # et ventilations d'avances) est chargé EN LOT : la liste coûte le
+        # même nombre de requêtes à 5 et à 15 clients. Chemins en chaînes —
+        # aucun import des modèles ventes/facturation.
+        return (scope_client_queryset(super().get_queryset(),
+                                      self.request.user)
+                .select_related('created_by')
+                .prefetch_related(
+                    'devis', 'factures__lignes', 'factures__paiements',
+                    'factures__affectations_paiement__paiement'))
 
     def perform_create(self, serializer):
         # Traçabilité (L16) : société ET créateur forcés côté serveur — jamais
@@ -362,15 +493,38 @@ class ClientViewSet(CompanyScopedModelViewSet):
         # sur leur @action, mais get_permissions() PRIME dessus — sans les
         # lister ICI elles retombaient sur le défaut `IsAdminRole` (403 pour
         # tout rôle Commercial/Responsable non-admin).
-        if self.action in READ_ACTIONS + [
-            'export_xlsx', 'documents', 'search', 'dormants', 'engagement',
-            'engagement_bulk', 'mon_portefeuille', 'relancer_dormance',
-        ]:
+        #
+        # ACRM3 (C-ACRM-001) — « tout rôle authentifié » laissait le
+        # Commercial terrain (app Visites seule) et l'Admin RH lire
+        # l'annuaire clients et chercher des leads avec leur téléphone : les
+        # LECTURES exigent désormais un code fin de lecture — ``crm_voir``,
+        # ou celui d'un module qui CONSOMME l'annuaire clients (``sav_voir``
+        # pour le SAV, ``installation_voir`` pour les chantiers) — et la
+        # relance (une écriture au chatter du lead) ``crm_modifier``.
+        # ``OrLegacy`` préserve les comptes historiques sans rôle fin.
+        if self.action in READ_ACTIONS + CLIENT_LECTURE_ACTIONS:
+            return [(HasPermissionOrLegacy('crm_voir')
+                     | HasPermissionOrLegacy('sav_voir')
+                     | HasPermissionOrLegacy('installation_voir'))()]
+        elif self.action == 'relancer_dormance':
+            return [HasPermissionOrLegacy('crm_modifier')()]
+        elif self.action == 'export_xlsx':
+            # Export : garde propre (ASEC50, code ``crm_export``) — hors
+            # périmètre d'ACRM3.
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
+        # ACRM21 (C-ACRM-014) — les autres @action (consolidation,
+        # data-export, anonymize, segments) sont gardées par CE QUE LEUR
+        # DÉCORATEUR DÉCLARE (patron ``declared_action_permissions``) : le
+        # repli brut ``IsAdminRole`` refusait au Commercial le bloc « CA
+        # groupe » (déclaré ``IsAnyRole``) et l'export RGPD (déclaré
+        # ``IsResponsableOrAdmin``).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         return [IsAdminRole()]
 
     @action(detail=True, methods=['post'], url_path='dupliquer',
@@ -397,7 +551,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
-        return export_clients_xlsx(qs.order_by('nom'))
+        # ACRM4 — sans ``client_pii_voir`` : export sans colonnes PII.
+        from .serializers import pii_masquee_pour
+        return export_clients_xlsx(
+            qs.order_by('nom'), masquer_pii=pii_masquee_pour(request.user))
 
     @action(detail=False, methods=['get'], url_path='search',
             permission_classes=[IsAnyRole])
@@ -419,6 +576,11 @@ class ClientViewSet(CompanyScopedModelViewSet):
         results = (search_companies(request.user.company, q,
                                     user=request.user)
                    if q else [])
+        # ACRM3 — un module consommateur (SAV, chantiers) cherche des
+        # CLIENTS : sans ``crm_voir``, aucun lead (ni son téléphone) ne sort
+        # de l'autocomplete.
+        if not _voit_le_crm(request.user):
+            results = [r for r in results if r.get('source') != 'lead']
         return Response({'results': results})
 
     @action(detail=True, methods=['get'], url_path='documents',
@@ -527,6 +689,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
             if client.date_creation else None,
             'is_anonymized': client.is_anonymized,
         }
+        # ACRM53 — même règle que ``ClientSerializer`` : un rôle sans
+        # ``client_pii_voir`` reçoit l'export sans téléphone/email/adresse.
+        from .serializers import masquer_pii_dict
+        masquer_pii_dict(identite, request.user)
         documents = {
             'devis': [
                 {'reference': d.reference, 'statut': getattr(d, 'statut', None),
@@ -587,8 +753,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
             )
 
     # FG32 — Segmentation clients ────────────────────────────────────────────
+    # ACRM21 — déclaration EXPLICITE (admin) : c'est la garde qui
+    # s'appliquait déjà par le repli ; elle est désormais lue sur l'@action.
     @action(detail=False, methods=['get'], url_path='segments',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAdminRole])
     def segments(self, request):
         """Segmentation client : top clients, sans devis récent, à recontacter.
 
@@ -708,8 +876,12 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from . import activity
         from .models import Lead
         client = self.get_object()
-        lead = (Lead.objects
-                .filter(company=client.company, client=client)
+        # ACRM7 — le lead relancé est choisi parmi ceux de la PORTÉE de
+        # l'appelant : jamais une note chez un collègue hors portée.
+        lead = (scope_queryset(
+                    Lead.objects.filter(company=client.company,
+                                        client=client),
+                    request.user, ['owner'])
                 .order_by('-date_creation').first())
         if lead is None:
             return Response(
@@ -718,7 +890,8 @@ class ClientViewSet(CompanyScopedModelViewSet):
         act = activity.log_note(
             lead, request.user,
             f'Relance dormance — compte {client} réactivé manuellement.')
-        return Response(LeadActivitySerializer(act).data,
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='engagement',
@@ -800,7 +973,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else list(queryset)
+        donnees = self._serialiser_leads_en_lot(objects)
+        if page is not None:
+            return self.get_paginated_response(donnees)
+        return Response(donnees)
 
+    def _serialiser_leads_en_lot(self, objects):
+        """APRF18 (C-APRF-009) — LA sérialisation EN LOT d'une liste de
+        leads : les cartes ``{lead_id/devis_id: …}`` (prochaine activité,
+        chantiers, ancienneté d'étape, liens de partage, lectures) sont
+        calculées UNE fois pour tout le lot et posées dans le contexte, que le
+        sérialiseur préfère à son repli requête-par-ligne. Partagée par
+        ``list``, ``relances`` et ``sla_breach`` : aucune des trois ne paie
+        une requête par lead."""
+        objects = list(objects)
         extra_context = {
             'next_activity_map': self._next_activity_map(objects),
             'chantier_map': self._chantier_map(objects),
@@ -808,15 +994,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'share_link_map': self._share_link_map(objects),
             'lecture_map': self._lecture_map(objects),
         }
-        if page is not None:
-            serializer = self.get_serializer(
-                page, many=True, context={
-                    **self.get_serializer_context(), **extra_context})
-            return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(
             objects, many=True, context={
                 **self.get_serializer_context(), **extra_context})
-        return Response(serializer.data)
+        return serializer.data
 
     def retrieve(self, request, *args, **kwargs):
         """LW30 — pose ``include_chatter_recent`` dans le contexte pour que
@@ -938,7 +1119,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 qs = qs.filter(is_archived=True)
             elif archived != 'all':
                 qs = qs.filter(is_archived=False)
-        qs = self._annoter_prochaine_touche(qs)
+        qs = self._annoter_prochaine_touche(qs, self.request.user.company)
         # CAD133 (correctif de budget) — le score d'une ligne lit désormais
         # des signaux de COMPORTEMENT (proposition ouverte/rouverte/lue,
         # questionnaire répondu, client joint) et la fraîcheur de la DERNIÈRE
@@ -956,12 +1137,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """ALEA27 — les leads que CET utilisateur peut voir (société + portée
         équipe/sous-arbre + entité), SANS les annotations de liste : la base
         de toute action annexe (bulk, doublons, contrôle de doublons). Une
-        seule source de vérité : ``get_queryset()``."""
-        return Lead.objects.filter(
-            pk__in=self.get_queryset().values('pk'))
+        seule source de vérité : ``get_queryset()``.
+
+        ACRM8 — la règle vit désormais dans ``selectors.leads_en_portee``
+        (une seule définition, partagée avec les viewsets enfants) ; seul le
+        filtre optionnel ``?entite=`` de la requête s'y ajoute ici."""
+        from core.entite_scoping import filtre_entite_demandee
+
+        from .selectors import leads_en_portee
+        return filtre_entite_demandee(
+            leads_en_portee(self.request.user), self.request)
 
     @staticmethod
-    def _annoter_prochaine_touche(qs):
+    def _annoter_prochaine_touche(qs, company):
         """MRY5 — la prochaine touche de cadence, EN UNE requête.
 
         Le badge « touche due » et la chip « À relancer » (MRY16) doivent
@@ -970,9 +1158,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `SerializerMethodField` qui interrogerait la base par lead.
         """
         from django.db.models import (
-            Count, DateTimeField, Exists, F, OuterRef, Q, Subquery)
+            Count, DateTimeField, F, IntegerField, OuterRef, Subquery)
+        from django.db.models.functions import Coalesce
 
-        from core.dates import aujourd_hui_local
         from .models import LeadActivity, RelanceEtape
 
         ouvertes = RelanceEtape.objects.filter(
@@ -985,21 +1173,40 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 output_field=DateTimeField()),
             prochaine_touche_canal=Subquery(
                 prochaines.values('canal')[:1]),
-            touche_en_retard_flag=Exists(
-                ouvertes.filter(due_date__lt=aujourd_hui_local())),
+            # ALEA32 — « en retard » = au moins un jour COMPTÉ (calendrier
+            # de la société) depuis l'échéance. Le queryset ne porte que la
+            # PLUS ANCIENNE échéance ouverte (même requête) ; le sérialiseur
+            # la compare au seuil unique ``seuil_retard``, lu UNE fois par
+            # requête et SEULEMENT si une échéance est déjà passée :
+            # « ∃ échéance < seuil » ⇔ « min(échéances) < seuil ». Une action
+            # qui ne sérialise pas le lead (historique…) ne lit plus le
+            # calendrier pour rien.
+            plus_ancienne_touche_ouverte=Subquery(
+                ouvertes.filter(due_date__isnull=False)
+                .order_by('due_date').values('due_date')[:1]),
             # MRY20 — combien de fois a-t-on VRAIMENT essayé ? Seules les
             # tentatives HUMAINES comptent (appel / WhatsApp / e-mail avec un
             # auteur) : compter les lignes système gonflerait le chiffre
             # jusqu'à le rendre inutilisable, et c'est lui qui décide quand
             # un dossier a été assez travaillé pour être classé.
-            nb_tentatives=Count(
-                'activites',
-                filter=Q(activites__kind__in=[
-                    LeadActivity.Kind.APPEL,
-                    LeadActivity.Kind.WHATSAPP,
-                    LeadActivity.Kind.EMAIL,
-                ], activites__user__isnull=False),
-                distinct=True),
+            # APRF20 — sous-requête CORRÉLÉE (et non un ``Count`` joint) : la
+            # page de leads ne joint plus ``crm_leadactivity`` au niveau
+            # principal, le tri/limite ne porte plus sur leads × activités.
+            nb_tentatives=Coalesce(
+                Subquery(
+                    LeadActivity.objects
+                    .filter(lead=OuterRef('pk'), user__isnull=False,
+                            kind__in=[
+                                LeadActivity.Kind.APPEL,
+                                LeadActivity.Kind.WHATSAPP,
+                                LeadActivity.Kind.EMAIL,
+                            ])
+                    .order_by()
+                    .values('lead')
+                    .annotate(n=Count('pk'))
+                    .values('n')[:1],
+                    output_field=IntegerField()),
+                0),
         )
 
     def perform_create(self, serializer):
@@ -1052,7 +1259,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     #: quand leur source est dans le corps : les inclure systématiquement
     #: réécrirait la dédup depuis une copie périmée.
     COLONNES_DERIVEES = {'telephone': 'phone_normalise',
-                         'email': 'email_normalise'}
+                         'email': 'email_normalise',
+                         'whatsapp': 'whatsapp_normalise'}  # ACRM32
 
     @staticmethod
     def _champs_ecrivables(noms):
@@ -1246,13 +1454,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # AGR522 — au passage à « accordé » (approbation préalable FDA), une
         # étape MANUELLE datée rappelle le délai de 3 mois (interne, hors
         # gabarit). Best-effort : jamais bloquant pour l'enregistrement.
-        if (new_lead.dossier_subvention == Lead.DossierSubvention.ACCORDE
-                and (old.dossier_subvention != new_lead.dossier_subvention
-                     or old.dossier_subvention_le
-                     != new_lead.dossier_subvention_le)):
+        # ACRM45 — et quand le statut QUITTE « accordé », l'étape est
+        # annulée (même point d'entrée, clé stable ``rappel_fda``).
+        accorde = Lead.DossierSubvention.ACCORDE
+        if ((new_lead.dossier_subvention == accorde
+             and (old.dossier_subvention != new_lead.dossier_subvention
+                  or old.dossier_subvention_le
+                  != new_lead.dossier_subvention_le))
+                or (old.dossier_subvention == accorde
+                    and new_lead.dossier_subvention != accorde)):
             from .services import poser_rappel_subvention
             try:
-                poser_rappel_subvention(new_lead)
+                poser_rappel_subvention(new_lead, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning('AGR522: rappel FDA non posé (lead #%s)',
                                new_lead.pk, exc_info=True)
@@ -1339,6 +1552,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
             tracer_opposition_registre(
                 new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
+        # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
+        # finalité de contact, dont la source nomme l'utilisateur.
+        if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
+            from .services import tracer_levee_opposition_registre
+            tracer_levee_opposition_registre(new_lead, self.request.user)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
         # est le meilleur signal d'achat qui existe. Les trois chemins de
@@ -1584,6 +1802,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         change donc ni le statut, ni la date d'envoi, ni le funnel."""
         from apps.ventes.utils.whatsapp import build_wa_url
 
+        refus = _refus_pii_whatsapp(request)
+        if refus is not None:
+            return refus
         lead = self.get_object()
         erreur, built = self._whatsapp_devis_message(
             request, lead, enregistrer=False)
@@ -1699,6 +1920,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """
         from apps.ventes.utils.whatsapp import build_wa_url
 
+        refus = _refus_pii_whatsapp(request)
+        if refus is not None:
+            return refus
         lead = self.get_object()
         erreur, built = self._whatsapp_devis_message(
             request, lead, enregistrer=True)
@@ -1807,8 +2031,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .services import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
         dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
+        # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``
+        # (``match_fort`` est calculé AVANT, sur les vraies valeurs).
         return Response([
-            {
+            masquer_pii_dict({
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
                 'societe': d.societe, 'telephone': d.telephone,
                 'email': d.email, 'stage': d.stage,
@@ -1816,7 +2042,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'nb_devis': d.devis.count(),
                 'match_fort': is_strong_identity_match(
                     d, phone=lead.telephone, email=lead.email),
-            }
+            }, request.user)
             for d in dups
         ])
 
@@ -1839,8 +2065,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         dups = find_duplicates_by_contact(
             request.user.company, phone=phone, email=email,
             exclude_pk=exclude_pk, queryset=self._leads_en_portee())
+        # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
         return Response([
-            {
+            masquer_pii_dict({
                 'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
                 'societe': d.societe, 'telephone': d.telephone,
                 'email': d.email, 'stage': d.stage,
@@ -1848,7 +2075,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'nb_devis': d.devis.count(),
                 'match_fort': is_strong_identity_match(
                     d, phone=phone, email=email),
-            }
+            }, request.user)
             for d in dups
         ])
 
@@ -1875,8 +2102,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             upload.close()
 
         try:
+            # ACRM7 (jumeau) — doublons cherchés dans la PORTÉE.
             result = scan_carte_visite(
-                company=request.user.company, file_bytes=content)
+                company=request.user.company, file_bytes=content,
+                queryset=self._leads_en_portee())
         except CarteVisiteScanUnavailable as exc:
             message = str(exc)
             unavailable = 'configuré' in message
@@ -1884,6 +2113,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': message},
                 status=(status.HTTP_503_SERVICE_UNAVAILABLE if unavailable
                         else status.HTTP_400_BAD_REQUEST))
+        # ACRM4 (jumeau) — les doublons pré-vérifiés sont des leads EXISTANTS :
+        # leur PII suit la règle unique du masquage (``client_pii_voir``).
+        for doublon in result.get('doublons') or []:
+            masquer_pii_dict(doublon, request.user)
         return Response(result)
 
     scan_carte.throttle_scope = 'crm_ocr_scan'
@@ -1900,7 +2133,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         POURQUOI chaque groupe est rapproché et la décision reste humaine."""
         from .services import (
             find_duplicate_clusters, _completeness, cluster_match_keys,
-            _MERGE_FILL_FIELDS,
+            _MERGE_FILL_FIELDS, _est_vide,
         )
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
@@ -1929,9 +2162,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
             for field in _MERGE_FILL_FIELDS:
+                # ACRM13 — la MÊME règle « vide » que la fusion (un 0 saisi
+                # n'est jamais annoncé comme « complété »).
                 cur = getattr(suggested, field, None)
-                if cur in (None, '', False):
-                    if any(getattr(d, field, None) not in (None, '', False)
+                if _est_vide(suggested, field, cur):
+                    if any(not _est_vide(d, field, getattr(d, field, None))
                            for d in others):
                         champs_combles.append(field_labels.get(field, field))
             out.append({
@@ -1945,8 +2180,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     # CAD106 — combien de touches OUVERTES quittent leur plan.
                     'relances': relances_reprises,
                 },
+                # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
                 'members': [
-                    {
+                    masquer_pii_dict({
                         'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
                         'societe': d.societe, 'telephone': d.telephone,
                         'email': d.email, 'ville': d.ville, 'stage': d.stage,
@@ -1955,7 +2191,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'nb_activites': LeadActivity.objects.filter(lead=d).count(),
                         'completeness': _completeness(d),
                         'date_creation': d.date_creation.isoformat(),
-                    }
+                    }, request.user)
                     for d in group
                 ],
             })
@@ -1979,8 +2215,13 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         merge_leads(survivor, others, request.user)
         survivor.refresh_from_db()
-        return Response(
+        data = dict(
             LeadSerializer(survivor, context={'request': request}).data)
+        # ACRM40 — clé ADDITIVE : les fiches client distinctes (gardée en
+        # tête), vide quand il n'y en avait qu'une.
+        data['clients_distincts'] = getattr(
+            survivor, '_clients_distincts', [])
+        return Response(data)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
@@ -2058,7 +2299,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if not act.pinned:
             act.pinned = True
             act.save(update_fields=['pinned'])
-        return Response(LeadActivitySerializer(act).data)
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data)
 
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/desepingler',
@@ -2075,7 +2317,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if act.pinned:
             act.pinned = False
             act.save(update_fields=['pinned'])
-        return Response(LeadActivitySerializer(act).data)
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data)
 
     @action(detail=True, methods=['post'], url_path='appliquer-plan',
             permission_classes=[IsResponsableOrAdmin])
@@ -2321,9 +2564,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
                            f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
         # ALEA25 — borné par la portée du viewset (société + équipe).
-        rapport = placer_anciens_leads(
-            request.user.company, request.user, apply=apply, limite=limite,
-            leads_en_portee=self._leads_en_portee())
+        from rest_framework.exceptions import APIException
+
+        from .services import PlacementImpossible
+
+        class _PlacementSuspendu(APIException):
+            # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas
+            # renvoyée, pour ne pas entrer ``detail`` dans la forme du rapport.
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+        try:
+            rapport = placer_anciens_leads(
+                request.user.company, request.user, apply=apply,
+                limite=limite, leads_en_portee=self._leads_en_portee())
+        except PlacementImpossible as exc:
+            raise _PlacementSuspendu(str(exc))
         return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
@@ -2427,16 +2682,30 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         mode = (request.data.get('mode') or '').strip()
         client_id = request.data.get('client_id')
-        from .services import convertir_lead_en_client
+        from .services import ClientIntrouvable, convertir_lead_en_client
         try:
+            # ACRM7 — le client à lier est cherché dans la PORTÉE de
+            # l'appelant (même règle que ``ClientViewSet.get_queryset``).
             client = convertir_lead_en_client(
-                lead=lead, user=request.user, mode=mode, client_id=client_id)
+                lead=lead, user=request.user, mode=mode, client_id=client_id,
+                clients=scope_client_queryset(
+                    Client.objects.filter(company=lead.company),
+                    request.user))
+        except ClientIntrouvable as exc:
+            # LEVÉ, pas renvoyé (même motif que `placement_cadences`) : le
+            # contrat de la vue reste la forme de son 200 ; DRF rend le 400
+            # ``{client_id: [...]}``.
+            raise DRFValidationError({'client_id': [str(exc)]})
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({
             'mode': mode,
-            'client': ClientSerializer(client).data if client else None,
+            # ACRM4 — contexte transmis : la PII du client suit la règle
+            # unique du masquage (``client_pii_voir``).
+            'client': (ClientSerializer(
+                client, context={'request': request}).data
+                if client else None),
         })
 
     @action(detail=True, methods=['get'], url_path='points-contact',
@@ -2564,8 +2833,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # agrégats (16 requêtes par carte sur la file du jour).
         from .signaux import annotations_signaux
         qs = qs.annotate(**annotations_signaux())
-        serializer = LeadSerializer(qs, many=True, context={'request': request})
-        return Response({'count': qs.count(), 'results': serializer.data})
+        # APRF18 — sérialisation EN LOT (mêmes cartes que la liste).
+        return Response({'count': qs.count(),
+                         'results': self._serialiser_leads_en_lot(qs)})
 
     # ── FG34 — ROI par source / campagne ────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='roi-sources',
@@ -2599,36 +2869,47 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if canal_filter:
             qs = qs.filter(canal=canal_filter)
 
-        # Grouper par canal puis par campagne
+        # APRF19 — AGRÉGATS : comptes par (canal, campagne) en UNE requête
+        # (prédicat « signé » unique d'ACRM31, clé d'étape lue de STAGES.py),
+        # valeur signée sur les devis retenus par ACRM10, préchargés AVEC
+        # leurs totaux — nombre de requêtes indépendant du nombre de
+        # campagnes et de leads signés.
+        from django.db.models import Count
+        from apps.reporting.pipeline import leads_avec_devis_totaux
+        from .selectors import _devis_compte_comme_signe, lead_signe_q
+
+        base = Lead.objects.filter(pk__in=qs.values('pk'))
+        groupes = list(
+            base.order_by().values('canal', 'utm_campaign')
+            .annotate(lead_count=Count('pk', distinct=True),
+                      signed_count=Count('pk', filter=lead_signe_q(),
+                                         distinct=True))
+            .order_by('canal', 'utm_campaign'))
+        valeurs = {}
+        for lead in leads_avec_devis_totaux(base.filter(lead_signe_q())):
+            cle = (lead.canal, lead.utm_campaign)
+            for d in lead.devis.all():
+                # ACRM10 — la V2 seule d'une révision acceptée.
+                if not _devis_compte_comme_signe(d):
+                    continue
+                try:
+                    valeurs[cle] = valeurs.get(cle, 0) + float(d.total_ttc)
+                except Exception:
+                    pass
         result = []
-        for canal_key in (qs.values_list('canal', flat=True)
-                          .order_by('canal').distinct()):
-            canal_qs = qs.filter(canal=canal_key)
-            # Par campagne UTM (None = pas de campagne)
-            campaigns = (canal_qs.values_list('utm_campaign', flat=True)
-                         .order_by('utm_campaign').distinct())
-            for campaign in campaigns:
-                grp = canal_qs.filter(utm_campaign=campaign)
-                lead_count = grp.count()
-                signed = grp.filter(stage='SIGNED')
-                signed_count = signed.count()
-                # Somme des devis TTC des leads signés
-                signed_value = 0
-                for lead in signed.prefetch_related('devis'):
-                    for d in lead.devis.filter(statut='accepte'):
-                        try:
-                            signed_value += float(d.total_ttc)
-                        except Exception:
-                            pass
-                result.append({
-                    'canal': canal_key,
-                    'utm_campaign': campaign,
-                    'lead_count': lead_count,
-                    'signed_count': signed_count,
-                    'win_rate': round(signed_count / lead_count * 100, 1)
-                              if lead_count else 0,
-                              'signed_value_ttc': round(signed_value, 2),
-                              })
+        for grp in groupes:
+            lead_count = grp['lead_count']
+            signed_count = grp['signed_count']
+            signed_value = valeurs.get((grp['canal'], grp['utm_campaign']), 0)
+            result.append({
+                'canal': grp['canal'],
+                'utm_campaign': grp['utm_campaign'],
+                'lead_count': lead_count,
+                'signed_count': signed_count,
+                'win_rate': round(signed_count / lead_count * 100, 1)
+                if lead_count else 0,
+                'signed_value_ttc': round(signed_value, 2),
+            })
         return Response(result)
 
     # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────
@@ -2680,14 +2961,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         result = []
         for c in found:
-            result.append({
+            # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
+            result.append(masquer_pii_dict({
                 'id': c.id,
                 'nom': f"{c.nom} {c.prenom or ''}".strip(),
                 'email': c.email,
                 'telephone': c.telephone,
                 'nb_devis': c.devis.count(),
                 'nb_chantiers': c.installations.count() if hasattr(c, 'installations') else 0,
-            })
+            }, request.user))
         return Response(result)
 
     # ── MRY21 — KPI de cadence (Cockpit + bilan hebdomadaire) ────────────────
@@ -2815,11 +3097,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # agrégats (16 requêtes par carte sur la file du jour).
         from .signaux import annotations_signaux
         qs = qs.annotate(**annotations_signaux())
-        serializer = LeadSerializer(qs, many=True, context={'request': request})
+        # APRF18 — sérialisation EN LOT (mêmes cartes que la liste).
         return Response({
             'sla_hours': sla,
             'count': qs.count(),
-            'results': serializer.data,
+            'results': self._serialiser_leads_en_lot(qs),
         })
 
     # ── VISITE-CADENCE — LA VISITE TECHNIQUE, VUE DEPUIS LA FICHE LEAD ───────
@@ -3006,8 +3288,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # le corps) ; une charge illisible est refusée sur `proprietaire`.
             corps = refus if 'proprietaire' in refus else {'proprietaire': refus}
             return Response(corps, status=status.HTTP_400_BAD_REQUEST)
+        # ACRM7 — rapprochement borné aux leads en portée (D-ACRM-1).
         proprietaire, cree = creer_lead_proprietaire(
-            lead, request.user, donnees)
+            lead, request.user, donnees, queryset=self._leads_en_portee())
         lead.refresh_from_db()
         return Response({
             'issue': 'proprietaire_cree' if cree else 'proprietaire_relie',
@@ -3118,6 +3401,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],
             parser_classes=[MultiPartParser, FormParser, JSONParser])
+    @_geste_atomique
     def noter(self, request, pk=None):
         """Note manuelle (appel, commentaire…) — auteur pris de la requête.
 
@@ -3144,6 +3428,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             meta, err = store_attachment(file, company=request.user.company)
             if err:
                 return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+            # ACRM22 — supprimée du stockage si le geste échoue ensuite.
+            request._acrm22_cles.append(meta.get('file_key'))
             ct = ContentType.objects.get(app_label='crm', model='lead')
             attachment = Attachment.objects.create(
                 company=request.user.company, content_type=ct, object_id=lead.id,
@@ -3157,7 +3443,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
         from .services import marquer_premier_contact
         marquer_premier_contact(lead)
-        return Response(LeadActivitySerializer(act).data,
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
@@ -3232,7 +3519,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         'ALEA30: report de touche échoué sur le lead #%s — '
                         'interaction annulée', lead.pk, exc_info=True)
                     raise ReportToucheEchoue() from exc
-        return Response(LeadActivitySerializer(act).data,
+        return Response(LeadActivitySerializer(
+            act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='bulk',
@@ -3317,7 +3605,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT,
                detail=f'Export leads (.xlsx) — {len(ids)} ligne(s)')
-        return export_leads_xlsx(leads)
+        # ACRM4 — sans ``client_pii_voir`` : export sans colonnes PII.
+        from .serializers import pii_masquee_pour
+        return export_leads_xlsx(
+            leads, masquer_pii=pii_masquee_pour(request.user))
 
     # ── CAD-L ── CAD148 — le panneau d'appel guidé.
     @action(detail=True, methods=['get'], url_path='panneau-appel',
@@ -3350,12 +3641,25 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):
-        # MRY2 — amorçage paresseux des étiquettes standard (même patron que
-        # MotifPerteViewSet/CanalViewSet). ADDITIF : une étiquette déjà
-        # présente n'est jamais touchée, aucune n'est supprimée.
-        if request.user.company_id:
+        # MRY2 — amorçage paresseux des étiquettes standard. ACRM25 — UNE
+        # fois par société, quand la liste est VIDE (patron ``seed_canaux``) :
+        # à chaque GET, une étiquette standard supprimée ou renommée
+        # ressuscitait.
+        if (request.user.company_id and not LeadTag.objects.filter(
+                company=request.user.company).exists()):
             seed_tags(request.user.company)
         return super().list(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        """ACRM25 — renommer une étiquette EN USAGE renomme aussi le jeton
+        dans ``Lead.tags`` (une ligne « en masse » au chatter de chaque
+        lead) : sinon l'étiquette renommée comptait 0 lead et les fiches
+        gardaient l'ancien libellé."""
+        ancien = serializer.instance.nom
+        tag = serializer.save()
+        if tag.nom != ancien:
+            _renommer_tag_sur_leads(tag.company, ancien, tag.nom,
+                                    self.request.user)
 
     def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
@@ -3463,12 +3767,54 @@ def completer_motifs_perte(company):
     `seed_motifs_perte` ne seede QUE les sociétés qui n'ont AUCUN motif : une
     société déjà personnalisée n'a donc jamais reçu les cinq motifs de MRY2.
     Cette fonction complète, sans jamais toucher un motif existant (libellé,
-    `est_junk`, archivage) ni en supprimer un."""
+    `est_junk`, archivage) ni en supprimer un.
+
+    ACRM25 — chaque motif standard n'est proposé qu'UNE fois par société
+    (``MotifPerteStandardPropose``) : un motif standard renommé ou supprimé
+    par la société ne ressuscite jamais ; un motif standard ajouté plus tard
+    au référentiel est proposé une fois."""
+    from .models import MotifPerteStandardPropose
+
     if company is None:
         return
+    deja = set(MotifPerteStandardPropose.objects.filter(
+        company=company).values_list('nom', flat=True))
     for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
+        if nom in deja:
+            continue
         MotifPerte.objects.get_or_create(
             company=company, nom=nom, defaults={'est_junk': est_junk})
+        MotifPerteStandardPropose.objects.get_or_create(
+            company=company, nom=nom)
+
+
+def _renommer_motif_sur_leads(company, ancien, nouveau, user):
+    """ACRM25 — ``Lead.motif_perte`` suit le renommage du motif, avec une
+    ligne « modification en masse » au chatter de chaque lead."""
+    for lead in Lead.objects.filter(company=company,
+                                    motif_perte__iexact=ancien):
+        activity.log_bulk_change(lead, user, 'motif_perte',
+                                 lead.motif_perte, nouveau)
+        Lead.objects.filter(pk=lead.pk).update(motif_perte=nouveau)
+
+
+def _renommer_tag_sur_leads(company, ancien, nouveau, user):
+    """ACRM25 — le JETON ``ancien`` de ``Lead.tags`` (texte libre séparé
+    par des virgules, comparaison insensible à la casse) devient
+    ``nouveau`` ; une ligne « modification en masse » au chatter de chaque
+    lead touché."""
+    cible = (ancien or '').strip().casefold()
+    if not cible:
+        return
+    for lead in Lead.objects.filter(company=company, tags__icontains=ancien):
+        jetons = [(t or '').strip() for t in (lead.tags or '').split(',')]
+        if not any(j.casefold() == cible for j in jetons):
+            continue
+        nouveaux = [nouveau if j.casefold() == cible else j
+                    for j in jetons if j]
+        valeur = ', '.join(nouveaux)[:500]
+        activity.log_bulk_change(lead, user, 'tags', lead.tags, valeur)
+        Lead.objects.filter(pk=lead.pk).update(tags=valeur)
 
 
 def seed_motifs_perte(company):
@@ -3476,11 +3822,16 @@ def seed_motifs_perte(company):
     (idempotent, additif) — mêmes garanties que ``seed_canaux`` : ne touche
     jamais une liste déjà personnalisée par le fondateur, jamais de doublon
     (``get_or_create`` par nom), jamais de modification d'un motif existant."""
+    from .models import MotifPerteStandardPropose
+
     if company is None or MotifPerte.objects.filter(company=company).exists():
         return
     for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
         MotifPerte.objects.get_or_create(
             company=company, nom=nom, defaults={'est_junk': est_junk})
+        # ACRM25 — mémoire : proposé une fois, jamais ressuscité.
+        MotifPerteStandardPropose.objects.get_or_create(
+            company=company, nom=nom)
 
 
 class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
@@ -3507,9 +3858,22 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
             # MRY2 — `seed_motifs_perte` ne sert QUE les sociétés sans aucun
             # motif : une liste déjà personnalisée n'avait donc jamais reçu
             # les motifs standard ajoutés après coup. On COMPLÈTE ici, sans
-            # jamais modifier ni supprimer un motif existant.
+            # jamais modifier ni supprimer un motif existant. ACRM25 — chaque
+            # motif standard n'est proposé qu'UNE fois (mémoire
+            # ``MotifPerteStandardPropose``) : renommé ou supprimé, il ne
+            # ressuscite plus.
             completer_motifs_perte(request.user.company)
         return super().list(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        """ACRM25 — renommer un motif EN USAGE renomme aussi
+        ``Lead.motif_perte`` des leads qui le portent (une ligne « en masse »
+        au chatter de chacun)."""
+        ancien = serializer.instance.nom
+        motif = serializer.save()
+        if motif.nom != ancien:
+            _renommer_motif_sur_leads(motif.company, ancien, motif.nom,
+                                      self.request.user)
 
     def destroy_guard_message(self, motif):
         if _motif_en_usage(motif.company, motif.nom) > 0:
@@ -3573,12 +3937,16 @@ class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         return None
 
 
-class ParrainageViewSet(CompanyScopedModelViewSet):
+class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
 
     À la création, la récompense est pré-remplie depuis Paramètres
     (referral_reward) quand elle n'est pas fournie. ?stats=1 ajoute un petit
     tableau de bord (totaux par statut + récompenses)."""
+    # ACRM9 — lectures bornées à la portée (leads : filleul_lead ;
+    # clients : parrain, filleul_client).
+    portee_leads = ('filleul_lead',)
+    portee_clients = ('parrain', 'filleul_client')
     queryset = Parrainage.objects.select_related(
         'parrain', 'filleul_lead', 'filleul_client').all()
     serializer_class = ParrainageSerializer
@@ -3627,20 +3995,27 @@ class ParrainageViewSet(CompanyScopedModelViewSet):
 
 # ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
 
-class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
     liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
     une action (mapping en erreur OU sans lead rattaché). ``?all=1`` renvoie
     la liste complète (comportement admin). LECTURE SEULE — la seule écriture
     possible est l'action ``replay``, qui rejoue EXACTEMENT le même mapping
     que le webhook (jamais une seconde implémentation)."""
+    # ACRM52 — détail/rejeu désormais adressables hors filtre « à traiter » :
+    # bornés à la portée du lead rattaché (sans lead : visible, comme avant).
+    portee_leads = ('lead',)
+    portee_clients = ()
     queryset = WebsiteLeadPayload.objects.select_related('lead').all()
     serializer_class = WebsiteLeadPayloadSerializer
     permission_classes = [IsResponsableOrAdmin]
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.request.query_params.get('all'):
+        # AACQ30 — le filtre « à traiter » ne vaut que pour la LISTE : un
+        # payload déjà rattaché reste adressable en détail et rejouable
+        # (« Déjà rattaché au lead #… », jamais 404 ni second lead).
+        if self.action != 'list' or self.request.query_params.get('all'):
             return qs
         # Défaut : ce qui mérite une action — erreur de mapping OU jamais
         # rattaché à un lead (payload traité mais orphelin, ex. ping
@@ -3678,13 +4053,17 @@ class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
-class SiteProfileViewSet(CompanyScopedModelViewSet):
+class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Saisi une fois par client, le générateur de devis le pré-remplit ensuite
     (y compris pour les devis sans lead). Société ET créateur forcés côté
     serveur (jamais lus du corps de requête). Lecture tout rôle, écriture
     responsable/admin. Filtrable par ?client=<id>."""
+    # ACRM9 — lectures bornées à la portée (leads : — ;
+    # clients : client).
+    portee_leads = ()
+    portee_clients = ('client',)
     queryset = SiteProfile.objects.select_related('client').all()
     serializer_class = SiteProfileSerializer
 
@@ -3779,11 +4158,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         qs = super().get_queryset()
         if not self.request.user.company_id:
             return qs
-        from authentication.scoping import scope_queryset
-        leads_visibles = scope_queryset(
-            Lead.objects.filter(company=self.request.user.company),
-            self.request.user, ['owner'])
-        return qs.filter(lead_id__in=leads_visibles.values('id'))
+        # ACRM28 — portée propriétaire ET périmètre d'entités (une seule
+        # définition, ``selectors.leads_visibles``).
+        from .selectors import leads_visibles
+        visibles = leads_visibles(
+            self.request.user, self.request.user.company)
+        return qs.filter(lead_id__in=visibles.values('id'))
 
     def list(self, request, *args, **kwargs):
         """File « Relances du jour ». ``?scope=overdue|today|all`` (défaut
@@ -3805,8 +4185,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         lead_id = request.query_params.get('lead')
         owner = request.query_params.get('owner')
         if lead_id:
+            # APRF21 — ``traite_par`` chargé (``traite_par_nom`` par touche).
             qs = (self.get_queryset().filter(lead_id=lead_id)
-                  .select_related('lead', 'lead__owner', 'devis')
+                  .select_related('lead', 'lead__owner', 'devis',
+                                  'traite_par')
                   .order_by('cadence', 'ordre', 'due_date'))
         else:
             from .selectors import relance_etapes_dues
@@ -4105,6 +4487,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             request.user.company, request.user, jours=jours, owner=owner,
             segment=segment))
 
+    @_geste_atomique
     def _marquer(self, request, statut):
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
@@ -4378,6 +4761,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             _prochaine_touche_a_faire(etape.lead))
         return Response(data)
 
+    @_geste_atomique
     def _repondre(self, request, reponse):
         """CAD-A — une RÉPONSE du client saisie sur la touche (``reponse``).
 
@@ -4610,6 +4994,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             langue=langue or None))
 
     @action(detail=True, methods=['post'])
+    @_geste_atomique
     def whatsapp(self, request, pk=None):
         """MRY13 — Le CLIC : même rendu, puis le clic est JOURNALISÉ.
 
@@ -4649,19 +5034,20 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 status=status.HTTP_400_BAD_REQUEST)
         journaliser_whatsapp_ouvert(etape, request.user)
         marquer_premier_contact(etape.lead)
-        try:
+
+        def _audit():
             from apps.audit.models import AuditLog
             from apps.audit.recorder import record
             record(AuditLog.Action.WHATSAPP, instance=etape.lead,
                    detail=f'Message de relance ouvert (touche #{etape.pk})')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'MRY13: AuditLog non écrit (étape #%s)', etape.pk,
-                exc_info=True)
+        # ACRM22 — AuditLog et mesure CAD178 en BEST-EFFORT (point de
+        # sauvegarde propre) : leur panne n'annule pas le geste.
+        _best_effort('AuditLog WhatsApp', _audit)
         # CAD178 — compteur BEST-EFFORT du geste « WhatsApp », par famille
         # d'appareil.
         from .mesure_cadence import enregistrer_geste_appareil
-        enregistrer_geste_appareil(
+        _best_effort(
+            'mesure CAD178 WhatsApp', enregistrer_geste_appareil,
             etape.company, 'whatsapp', request.META.get('HTTP_USER_AGENT', ''))
         rendu['etape'] = self.get_serializer(etape).data
         return Response(rendu)
@@ -4710,6 +5096,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     @action(detail=True, methods=['post'], url_path='piece-recue',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
+    @_geste_atomique
     def piece_recue(self, request, pk=None):
         """CAD101 — « pièce reçue » : le client a envoyé sa facture, son
         adresse ou sa localisation (sur WhatsApp, le plus souvent).
@@ -4745,6 +5132,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response(
                     {'erreurs': {'fichier': f'« Pièce jointe » : {err}'}},
                     status=status.HTTP_400_BAD_REQUEST)
+            # ACRM22 — supprimée du stockage si le geste échoue ensuite.
+            request._acrm22_cles.append(meta.get('file_key'))
             attachment = Attachment.objects.create(
                 company=etape.company,
                 content_type=ContentType.objects.get(
@@ -4759,6 +5148,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])
+    @_geste_atomique
     def reporter(self, request, pk=None):
         """MRY10 — Reporte CETTE touche (et décale les suivantes du même
         delta). Corps : ``{due_at}`` (ISO) ou ``{rappel_le, rappel_heure?}``.
@@ -4811,9 +5201,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response({'erreurs': {champ: refus}},
                             status=status.HTTP_400_BAD_REQUEST)
         # CAD178 — compteur BEST-EFFORT du geste « Reporter », par famille
-        # d'appareil (les deux modes, decaler ET veille, comptent).
+        # d'appareil (les deux modes, decaler ET veille, comptent). ACRM22 —
+        # dans son propre point de sauvegarde.
         from .mesure_cadence import enregistrer_geste_appareil
-        enregistrer_geste_appareil(
+        _best_effort(
+            'mesure CAD178 reporter', enregistrer_geste_appareil,
             etape.company, 'reporter', request.META.get('HTTP_USER_AGENT', ''))
         if mode == 'veille':
             from .services import mettre_en_veille
@@ -4834,14 +5226,20 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
     """ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM). Lecture
     tout rôle (le dashboard « Mes équipes » y référence des noms), écriture
-    responsable/admin. Société forcée côté serveur (TenantMixin)."""
+    ADMIN. Société forcée côté serveur (TenantMixin).
+
+    ACRM26 (C-ACRM-021) — l'écriture (création, modification dont
+    ``responsable``, suppression) passe au palier ADMIN : une équipe pilote
+    une PORTÉE (le rollup du forecast, les cartes « Mes équipes ») — un
+    Commercial pouvait se nommer responsable d'une équipe et lire son
+    pipeline."""
     queryset = EquipeCommerciale.objects.prefetch_related('membres').all()
     serializer_class = EquipeCommercialeSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
 
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
@@ -4897,20 +5295,49 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
         lien = request.data.get('lien', '')
         lien_rdv = ''
         lead_id = request.data.get('lead_id')
-        if lead_id and '{lien_rdv}' in (tmpl.corps or ''):
+        lead = None
+        if lead_id:
+            # ACRM8 — le lead est résolu dans la PORTÉE : un lead hors
+            # portée (ou inexistant) → 400, aucun lien de réservation créé.
+            from .selectors import leads_en_portee
+            lead = (leads_en_portee(request.user).filter(pk=lead_id).first()
+                    if str(lead_id).isdigit() else None)
+            if lead is None:
+                # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
+                raise DRFValidationError({'lead': ['Lead introuvable.']})
+        if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
             from .services import public_booking_url
-            lead = Lead.objects.filter(
-                pk=lead_id, company=request.user.company).first()
-            if lead is not None:
-                try:
-                    lien_rdv = public_booking_url(lead, request=request)
-                except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
-                    lien_rdv = ''
+            try:
+                lien_rdv = public_booking_url(lead, request=request)
+            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+                lien_rdv = ''
         return Response({'texte': tmpl.render(
             prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)})
 
 
 # ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────
+
+def _libelle_statut_rdv(statut):
+    """ACRM23 — le libellé FR d'un statut de rendez-vous."""
+    return dict(Appointment.Statut.choices).get(statut, statut or '—')
+
+
+def _quand_rdv(quand):
+    """ACRM23 — « JJ/MM/AAAA à HH:MM » (heure de Casablanca)."""
+    if quand is None:
+        return '—'
+    from . import horaires
+    return quand.astimezone(horaires.CASABLANCA).strftime('%d/%m/%Y à %H:%M')
+
+
+def _noter_rdv(lead, user, corps):
+    """ACRM23 — une ligne de chatter du lead pour un geste sur un RDV,
+    l'acteur nommé (jamais un prénom en dur)."""
+    if lead is None:
+        return
+    qui = getattr(user, 'username', '') or 'système'
+    activity.log_note(lead, user, f'{corps} (par {qui}).')
+
 
 class AppointmentViewSet(CompanyScopedModelViewSet):
     """QJ20 — Rendez-vous planifiés sur les leads (visites commerciales/techniques).
@@ -4961,6 +5388,46 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # and return the already-created appointment via the serializer for the
         # response. Patch self so the serializer picks up the instance.
         serializer.instance = appt
+
+    def perform_update(self, serializer):
+        """ACRM23 (C-ACRM-016) — l'annulation, le changement de statut et le
+        DÉPLACEMENT d'un rendez-vous sont journalisés au chatter du lead
+        (acteur + ancien → nouveau) ; un déplacement RÉARME le rappel
+        (``reminder_sent=False``). Un PATCH qui ne change rien reste muet."""
+        avant = serializer.instance
+        ancien_statut = avant.statut
+        ancien_quand = avant.scheduled_at
+        ancien_lead_id = avant.lead_id
+        rdv = serializer.save()
+        changements = []
+        if rdv.statut != ancien_statut:
+            changements.append(
+                f'{_libelle_statut_rdv(ancien_statut)} → '
+                f'{_libelle_statut_rdv(rdv.statut)}')
+        if rdv.scheduled_at != ancien_quand:
+            changements.append(
+                f'déplacé du {_quand_rdv(ancien_quand)} au '
+                f'{_quand_rdv(rdv.scheduled_at)}')
+            if rdv.reminder_sent:
+                rdv.reminder_sent = False
+                rdv.save(update_fields=['reminder_sent'])
+        if changements and rdv.lead_id:
+            _noter_rdv(rdv.lead, self.request.user,
+                       f'RDV #{rdv.pk} : ' + ' ; '.join(changements))
+        if rdv.lead_id and rdv.lead_id != ancien_lead_id and ancien_lead_id:
+            _noter_rdv(Lead.objects.filter(pk=ancien_lead_id).first(),
+                       self.request.user,
+                       f'RDV #{rdv.pk} : rattaché à un autre lead')
+
+    def perform_destroy(self, instance):
+        """ACRM23 — la SUPPRESSION d'un rendez-vous est journalisée au
+        chatter du lead (acteur, date du rendez-vous)."""
+        lead = instance.lead
+        pk, quand = instance.pk, instance.scheduled_at
+        super().perform_destroy(instance)
+        if lead is not None:
+            _noter_rdv(lead, self.request.user,
+                       f'RDV #{pk} du {_quand_rdv(quand)} : supprimé')
 
     @action(detail=True, methods=['get'], url_path='ics')
     def ics(self, request, pk=None):
@@ -5115,7 +5582,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
-class ConcurrentPerteViewSet(CompanyScopedModelViewSet):
+class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
@@ -5131,6 +5598,10 @@ class ConcurrentPerteViewSet(CompanyScopedModelViewSet):
     (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
     l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
     """
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
+    portee_clients = ()
     serializer_class = ConcurrentPerteSerializer
     queryset = ConcurrentPerte.objects.select_related(
         'lead', 'company', 'saisi_par').all()
@@ -5171,7 +5642,7 @@ class ConcurrentPerteViewSet(CompanyScopedModelViewSet):
             pass
 
 
-class PointContactViewSet(CompanyScopedModelViewSet):
+class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """FG204 — journal multi-touch des points de contact d'un lead.
 
     Au-delà du first-touch (``Lead.canal``), on consigne chaque point de contact
@@ -5188,6 +5659,10 @@ class PointContactViewSet(CompanyScopedModelViewSet):
     (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
     l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
     """
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
+    portee_clients = ()
     serializer_class = PointContactSerializer
     queryset = PointContact.objects.select_related(
         'lead', 'company', 'saisi_par').all()
@@ -5255,8 +5730,10 @@ class PointContactViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Paramètre ?lead=<id> requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        lead = Lead.objects.filter(
-            pk=lead_id, company=request.user.company).first()
+        # ACRM8 — lead résolu dans la PORTÉE (hors portée = absent : 404).
+        from .selectors import leads_en_portee
+        lead = (leads_en_portee(request.user).filter(pk=lead_id).first()
+                if str(lead_id).isdigit() else None)
         if lead is None:
             return Response(
                 {'detail': 'Lead inconnu.'},
@@ -5276,7 +5753,7 @@ class PointContactViewSet(CompanyScopedModelViewSet):
 
 # ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
 
-class ForecastEntryViewSet(CompanyScopedModelViewSet):
+class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
 
     Routes :
@@ -5284,6 +5761,10 @@ class ForecastEntryViewSet(CompanyScopedModelViewSet):
       GET/PATCH /crm/forecast-entries/{id}/
     La réponse liste inclut ``totaux_par_categorie`` (somme des montants
     effectifs des lignes filtrées, par catégorie)."""
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
+    portee_clients = ()
     queryset = ForecastEntry.objects.select_related('lead', 'lead__owner')
     serializer_class = ForecastEntrySerializer
 
@@ -5396,12 +5877,16 @@ def forecast_historique_view(request):
 
 # ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
 
-class PlanCompteViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
+class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
     """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
     ``records.Activity`` — création + changements de champ suivis journalisés
     via ``records.services`` (le « mail.thread » maison), jamais un modèle
     ``*Activity`` local. Le mixin ``ChatterViewSetMixin`` ajoute en plus les
     actions génériques ``chatter/historique`` (GET) et ``chatter/noter`` (POST)."""
+    # ACRM9 — lectures bornées à la portée (leads : — ;
+    # clients : client).
+    portee_leads = ()
+    portee_clients = ('client',)
     queryset = PlanCompte.objects.select_related('client')
     serializer_class = PlanCompteSerializer
 
@@ -5588,14 +6073,31 @@ class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
         return parent.playbook.company_id
 
 
+class _LeadPlaybookPermission(IsAnyRole):
+    """ACRM8 — lire la progression : tout rôle interne ; cocher une tâche
+    (POST) est une écriture commerciale : ``crm_modifier``."""
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return True
+        return HasPermissionOrLegacy('crm_modifier')().has_permission(
+            request, view)
+
+
 @api_view(['GET', 'POST'])
-@permission_classes([IsAnyRole])
+@permission_classes([_LeadPlaybookPermission])
 def lead_playbook_view(request, lead_id):
     """NTCRM12 — ``GET`` : progression playbook du lead (toutes les tâches
     générées pour son étape courante ou une étape antérieure). ``POST``
     ``{'tache': <id>, 'fait': true}`` : coche/décoche UNE tâche, pose
-    l'acteur+la date côté serveur (jamais silencieux)."""
-    lead = Lead.objects.filter(pk=lead_id, company=request.user.company).first()
+    l'acteur+la date côté serveur (jamais silencieux).
+
+    ACRM8/ACRM9 — le lead est résolu dans la PORTÉE de l'appelant : hors
+    portée = absent (404)."""
+    from .selectors import leads_en_portee
+    lead = leads_en_portee(request.user).filter(pk=lead_id).first()
     if lead is None:
         return Response({'detail': 'Lead introuvable.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -5700,13 +6202,17 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         return Response(SavedViewSerializer(result, many=True).data)
 
 
-class SalleVenteViewSet(CompanyScopedModelViewSet):
+class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
 
     ``company`` posé côté serveur (TenantMixin). ``created_by`` forcé à la
     création. Lecture tout rôle, écriture responsable/admin (mêmes gardes
     que ``PointContactViewSet``). Ajout/retrait d'items via des actions
     dédiées (jamais un PATCH imbriqué non trivial du serializer nested)."""
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : client).
+    portee_leads = ('lead',)
+    portee_clients = ('client',)
     serializer_class = SalleVenteSerializer
     queryset = SalleVente.objects.select_related(
         'company', 'lead', 'client', 'created_by').prefetch_related('items').all()
@@ -5837,12 +6343,16 @@ class ApporteurViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class DealEnregistreViewSet(CompanyScopedModelViewSet):
+class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
 
     ``approuver``/``rejeter`` : actions dédiées plutôt qu'un PATCH direct du
     statut — un rejet/expiration lève la protection immédiatement pour un
     futur enregistrement concurrent (`clean()` du modèle)."""
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
+    portee_clients = ()
     serializer_class = DealEnregistreSerializer
     queryset = DealEnregistre.objects.select_related(
         'company', 'apporteur', 'lead').all()
@@ -6109,9 +6619,20 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         l'utilisateur connecté (jamais un prénom en dur) : un libellé déjà
         saisi à la main dans l'écran Visiteurs n'est jamais écrasé."""
         appareil_id = str(request.data.get('appareil_id') or '').strip()
+        cookie = str(request.COOKIES.get(COOKIE_APPAREIL) or '').strip()
+        # ACRM24 (C-ACRM-017) — l'identifiant du CORPS n'est retenu que s'il
+        # est CELUI de ce navigateur (cookie ``tq_appareil``) ou n'a jamais
+        # servi à une visite rattachée à un lead : sinon n'importe quel rôle
+        # pourrait inscrire l'appareil d'un PROSPECT (lu dans « Visiteurs »)
+        # comme appareil d'équipe — et ses ouvertures de devis ne
+        # notifieraient plus personne. Refusé → un identifiant NEUF.
+        if (_UUID_APPAREIL_RE.match(appareil_id) and appareil_id != cookie
+                and VisiteExterne.objects.filter(
+                    company=request.user.company, appareil_id=appareil_id,
+                    lead__isnull=False).exists()):
+            appareil_id = ''
         if not _UUID_APPAREIL_RE.match(appareil_id):
-            appareil_id = str(
-                request.COOKIES.get(COOKIE_APPAREIL) or '').strip()
+            appareil_id = cookie
         if not _UUID_APPAREIL_RE.match(appareil_id):
             appareil_id = str(uuid.uuid4())
 

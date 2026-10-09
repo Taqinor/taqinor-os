@@ -163,12 +163,15 @@ class TestPublicEndpoint(TestCase):
         forbidden = [
             'cout', 'company', 'client', 'installation', 'equipement',
             'technicien_responsable', 'created_by', 'sla_due_at',
-            'sla_breach', 'sous_garantie', 'activites', 'annule',
-            'custom_data', 'share_token',
+            'sla_breach', 'sous_garantie', 'activites',
+            'motif_annulation', 'custom_data', 'share_token',
         ]
         for field in forbidden:
             self.assertNotIn(field, resp.data,
                              msg=f"Champ interdit exposé : {field!r}")
+        # ASAV30/ASAV1 — `annule` (booléen seul) est désormais servi au client
+        # pour afficher l'état « Annulé » ; le motif, lui, reste interne.
+        self.assertIs(resp.data['annule'], False)
 
     def test_invalid_token_returns_404(self):
         resp = self.anon.get(self.PUBLIC_URL.format('jeton-inexistant-fg86'))

@@ -189,6 +189,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         # Admin Ventes ne portent pas → 403. On garde ces deux actions par le
         # code ventes que ces rôles détiennent (`ventes_creer`), sans leur
         # ouvrir les autres écritures du chantier.
+        # ACHT55 — recette-pompage / recette / reserves / pack-remise : lecture
+        # tout rôle, ÉCRITURE (POST) au rôle chantier — fini les gardes
+        # inline `user.is_responsable` (vrai dès qu'UN code d'écriture existe
+        # dans N'IMPORTE quel module : Admin RH / Commercial terrain passaient).
+        if (self.action in ('recette_pompage', 'recette', 'reserves',
+                            'pack_remise')
+                and self.request.method not in ('GET', 'HEAD', 'OPTIONS')):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'commander_besoin':
+            # ACHT54 — crée un BCF : `achats_commander` en plus du module.
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('achats_commander')()]
         if self.action == 'creer_depuis_devis':
             return [(IsResponsableOrAdmin
                      | HasPermissionOrLegacy('ventes_creer'))()]
@@ -965,26 +977,16 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         rendement, tarif, co2.
         """
         from django.http import HttpResponse
-        from datetime import datetime
         from .. import energy_report
         inst = self.get_object()
 
-        def _parse_date(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
-
-        qp = request.query_params
-        params = {
-            'nb_mois': qp.get('nb_mois'),
-            'date_debut': _parse_date(qp.get('date_debut')),
-            'date_fin': _parse_date(qp.get('date_fin')),
-            'production_annuelle_kwh': qp.get('production_annuelle_kwh'),
-            'rendement_kwh_par_kwc_an': qp.get('rendement'),
-            'tarif_mad_par_kwh': qp.get('tarif'),
-            'co2_kg_par_kwh': qp.get('co2'),
-        }
+        # ACHT49 — paramètres validés AVANT tout calcul : 400 FR nommant le
+        # champ, jamais un PDF à zéros, un 500 ou un défaut silencieux.
+        params, erreurs = energy_report.valider_parametres_rapport(
+            request.query_params, inst.puissance_installee_kwc)
+        if erreurs:
+            return Response({champ: [msg] for champ, msg in erreurs.items()},
+                            status=status.HTTP_400_BAD_REQUEST)
         pdf_bytes = energy_report.render_energy_report_pdf(inst, params)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
@@ -999,9 +1001,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         issues des jalons (date_signature → date_cloture). Lecture seule. Renvoie
         chantiers actifs (non clôturés, non annulés) avec leurs jalons datés pour
         un rendu recharts/Gantt côté frontend."""
-        company = request.user.company
-        qs = (Installation.objects
-              .filter(company=company, annule=False)
+        # ACHT50 — part du queryset du viewset (société + portée de
+        # visibilité Feature F) ; les préchargements de la liste sont inutiles
+        # ici (lecture de colonnes à plat).
+        qs = (self.get_queryset().prefetch_related(None)
+              .filter(annule=False)
               .exclude(statut=Installation.Statut.CLOTURE)
               .select_related('client', 'technicien_responsable')
               .order_by('date_pose_prevue', 'date_creation'))
@@ -1294,8 +1298,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         recette = RecettePompage.objects.filter(installation=inst).first()
         ctx = {'request': request}
         if request.method == 'POST':
-            if not request.user.is_responsable:
-                return Response(status=status.HTTP_403_FORBIDDEN)
             if inst.type_installation != Installation.TypeInstallation.AGRICOLE:
                 return Response(
                     {'detail': "La recette pompage est réservée à un "
@@ -1325,8 +1327,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from ..serializers_commissioning import CommissioningRecordSerializer
         inst = self.get_object()
         if request.method == 'POST':
-            if not request.user.is_responsable:
-                return Response(status=status.HTTP_403_FORBIDDEN)
             record = ensure_commissioning_record(inst, request.user)
             return Response(
                 CommissioningRecordSerializer(record).data,
@@ -1350,8 +1350,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         inst = self.get_object()
         if request.method == 'GET':
             return Response(reserves_contrat(inst))
-        if not request.user.is_responsable:
-            return Response(status=status.HTTP_403_FORBIDDEN)
         data = request.data
         description = (data.get('description') or '').strip()
         if not description:
@@ -1435,8 +1433,6 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         from ..serializers_commissioning import HandoverPackSerializer
         inst = self.get_object()
         if request.method == 'POST':
-            if not request.user.is_responsable:
-                return Response(status=status.HTTP_403_FORBIDDEN)
             pack = generer_handover_pack(inst, request.user)
             return Response(
                 HandoverPackSerializer(pack).data,

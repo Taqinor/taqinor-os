@@ -115,6 +115,14 @@ ON_DEMAND_ALLOWLIST = {
     # ``ExportReversibiliteRun``). Jamais périodique — personne ne veut
     # reconstruire chaque nuit l'archive complète de chaque société.
     'core.export_reversibilite_tenant',
+    # AACQ97 (décision fondateur 08/10/2026, D-AACQ — « Odoo MANUEL, l'ERP
+    # fait foi ») — les deux lectures Odoo planifiées ont été RETIRÉES du
+    # beat (`crm-sync-odoo-leads`, `adsengine-emit-capi-signatures`, voir
+    # ``erp_agentique/celery.py``) : ces tâches ne se lancent plus qu'à la
+    # main, sur demande. Décision consignée, pas une dette : ne pas les
+    # replanifier sans nouvel accord du fondateur.
+    'crm.sync_odoo_leads',
+    'adsengine.emit_capi_signatures',
 }
 
 

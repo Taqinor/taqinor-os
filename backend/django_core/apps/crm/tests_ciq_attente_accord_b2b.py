@@ -336,7 +336,9 @@ class ValiditeARenouvelerTests(_Base):
         etape = etapes.get()
         self.assertEqual(etape.due_date, self.validite)
         self.assertEqual(etape.cadence, 'generique')
-        self.assertEqual(etape.cle, '')
+        # ACRM45 — l'étape porte désormais sa clé STABLE (retrouvée et
+        # recalée par elle, jamais par son libellé).
+        self.assertEqual(etape.cle, 'validite_a_renouveler')
         self.assertEqual(
             etape.note,
             f'La proposition DEV-CIQ512-0010 expire le '

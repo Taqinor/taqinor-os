@@ -43,6 +43,73 @@ def _to_decimal(value, default=None):
         return default
 
 
+def valider_parametres_rapport(qp, puissance_kwc):
+    """ACHT49 — valide les paramètres de requête du rapport AVANT tout calcul.
+
+    Renvoie ``(params, erreurs)`` : ``params`` = les surcharges prêtes pour
+    ``render_energy_report_pdf`` ; ``erreurs`` = ``{champ: message FR}`` (vide
+    si tout est valide). Règles : ``tarif``, ``rendement``, ``nb_mois``,
+    ``production_annuelle_kwh`` finis et > 0 ; ``co2`` fini et ≥ 0 ; dates
+    AAAA-MM-JJ avec ``date_fin`` ≥ ``date_debut`` ; chantier sans puissance
+    installée refusé (sauf production annuelle saisie). Jamais de défaut
+    substitué en silence à une valeur invalide (``tarif=0`` ne devient plus
+    1,40)."""
+    from datetime import datetime
+
+    erreurs = {}
+
+    def _nombre(cle, nom_param, minimum_strict):
+        brut = qp.get(nom_param)
+        if brut is None or str(brut).strip() == '':
+            return None
+        try:
+            valeur = Decimal(str(brut).strip())
+        except (InvalidOperation, ValueError, TypeError):
+            erreurs[nom_param] = 'Nombre invalide.'
+            return None
+        if not valeur.is_finite():
+            erreurs[nom_param] = 'Nombre invalide.'
+            return None
+        if minimum_strict and valeur <= 0:
+            erreurs[nom_param] = 'Doit être supérieur à 0.'
+            return None
+        if not minimum_strict and valeur < 0:
+            erreurs[nom_param] = 'Ne peut pas être négatif.'
+            return None
+        return valeur
+
+    def _date(nom_param):
+        brut = qp.get(nom_param)
+        if brut is None or str(brut).strip() == '':
+            return None
+        try:
+            return datetime.strptime(str(brut).strip(), '%Y-%m-%d').date()
+        except ValueError:
+            erreurs[nom_param] = 'Date invalide (AAAA-MM-JJ).'
+            return None
+
+    params = {
+        'nb_mois': _nombre('nb_mois', 'nb_mois', True),
+        'date_debut': _date('date_debut'),
+        'date_fin': _date('date_fin'),
+        'production_annuelle_kwh': _nombre(
+            'production_annuelle_kwh', 'production_annuelle_kwh', True),
+        'rendement_kwh_par_kwc_an': _nombre('rendement', 'rendement', True),
+        'tarif_mad_par_kwh': _nombre('tarif', 'tarif', True),
+        'co2_kg_par_kwh': _nombre('co2', 'co2', False),
+    }
+    if (params['date_debut'] and params['date_fin']
+            and params['date_fin'] < params['date_debut']):
+        erreurs['date_fin'] = (
+            'La date de fin doit suivre la date de début.')
+    puissance = _to_decimal(puissance_kwc)
+    if (puissance is None or puissance <= 0) and (
+            params['production_annuelle_kwh'] is None):
+        erreurs['puissance_installee_kwc'] = (
+            'Puissance installée non renseignée.')
+    return params, erreurs
+
+
 def _months_between(start, end):
     """Nombre de mois (≥ 0, Decimal) couverts par [start, end] inclus, calculé
     au jour près (≈ 30,44 jours/mois)."""
@@ -354,7 +421,20 @@ def render_energy_report_pdf(installation, params):
     CompanyProfile (multi-tenant) ; le client vient du chantier. Aucun prix
     d'achat n'est lu — strictement client-facing.
     """
+    from apps.parametres.selectors import tariff_for
     from apps.ventes.utils.pdf import _company_context, _html_to_pdf
+
+    # APDF39 — sans surcharge explicite, le rendement et le tarif sont ceux de
+    # Paramètres (``tariff_for``, repères du devis de la MÊME société) ; les
+    # constantes DEFAULT_* ne servent plus que de repli de ``compute_energy_
+    # estimate`` appelé hors rapport.
+    reperes = tariff_for(installation.company)
+    rendement = params.get('rendement_kwh_par_kwc_an')
+    if rendement is None:
+        rendement = reperes.get('productible_kwh_kwc')
+    tarif = params.get('tarif_mad_par_kwh')
+    if tarif is None:
+        tarif = reperes.get('onee_tarif_kwh')
 
     est = compute_energy_estimate(
         installation.puissance_installee_kwc,
@@ -362,8 +442,8 @@ def render_energy_report_pdf(installation, params):
         date_debut=params.get('date_debut'),
         date_fin=params.get('date_fin'),
         production_annuelle_kwh=params.get('production_annuelle_kwh'),
-        rendement_kwh_par_kwc_an=params.get('rendement_kwh_par_kwc_an'),
-        tarif_mad_par_kwh=params.get('tarif_mad_par_kwh'),
+        rendement_kwh_par_kwc_an=rendement,
+        tarif_mad_par_kwh=tarif,
         co2_kg_par_kwh=params.get('co2_kg_par_kwh'),
     )
 

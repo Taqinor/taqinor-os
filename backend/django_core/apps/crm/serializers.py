@@ -40,9 +40,13 @@ from .scoring import compute_score, score_label, score_reasons
 # l'enveloppe uniforme ARC9).
 #: CAD144 — + le téléphone du contact SECONDAIRE (co-associé, technicien) :
 #: un numéro reste une PII, qu'il soit le premier ou le second de la fiche.
+#: ACRM5 — + la clé normalisée du numéro (``phone_normalise``, exposée par
+#: ``fields='__all__'``) : le numéro masqué ressortait en clair sous sa forme
+#: de dédoublonnage.
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
                    'gps_lat', 'gps_lng', 'lien_maps',
-                   'contact_secondaire_telephone')
+                   'contact_secondaire_telephone', 'phone_normalise',
+                   'whatsapp_normalise')  # ACRM32
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'
@@ -53,6 +57,18 @@ def pii_masquee_pour(user) -> bool:
     ``client_pii_voir``. Sans utilisateur (rendu serveur/interne, tâche de
     fond), rien n'est masqué — comportement historique."""
     return user is not None and not getattr(user, 'can_view_client_pii', True)
+
+
+def masquer_pii_dict(dico, user, champs=LEAD_PII_FIELDS):
+    """ACRM4 — la MÊME règle (``pii_masquee_pour``) appliquée à un dict fait
+    main (doublons, rapprochement client, autocomplete…) : chaque champ PII
+    présent est vidé (``None``, comme ``ClientSerializer``/``LeadSerializer``)
+    pour un rôle sans ``client_pii_voir``. Rend le dict (modifié sur place)."""
+    if pii_masquee_pour(user):
+        for name in champs:
+            if name in dico:
+                dico[name] = None
+    return dico
 
 
 def masquer_valeurs_chatter(field, old_value, new_value, user):
@@ -386,8 +402,13 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         return getattr(obj.devis, 'reference', '') or ''
 
     def get_overdue(self, obj) -> bool:
-        from core.dates import aujourd_hui_local
-        return obj.due_date < aujourd_hui_local()
+        # ALEA32 — LA définition unique (jours ouvrés + absences), celle du
+        # cockpit ; le mémo du contexte évite de relire le calendrier par
+        # ligne d'une liste.
+        from .controle_suivi import etape_en_retard
+        memo = (self.context.setdefault('_alea32_retard', {})
+                if isinstance(self.context, dict) else None)
+        return etape_en_retard(obj, memo=memo)
 
     def get_traite_par_nom(self, obj) -> str:
         # `select_related('traite_par')` côté sélecteur de période : jamais
@@ -495,18 +516,45 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
         Le préfixe de reconnaissance vient de ``services`` — la même fonction
         que l'écriture, jamais un second littéral."""
-        if obj.statut != RelanceEtape.Statut.A_FAIRE:
-            return None
-        if obj.canal not in (RelanceEtape.Canal.WHATSAPP,
-                             RelanceEtape.Canal.EMAIL):
+        if not self._message_eligible(obj):
             return None
         from .services import prefixe_activite_message_ouvert
-        return (LeadActivity.objects
-                .filter(lead_id=obj.lead_id,
-                        kind=LeadActivity.Kind.WHATSAPP,
-                        body__startswith=prefixe_activite_message_ouvert(obj))
-                .order_by('-created_at')
-                .values_list('created_at', flat=True).first())
+        # APRF21 — lecture EN LOT : la première touche éligible de la page
+        # lit UNE fois les activités « WhatsApp ouvert » de tous les leads
+        # éligibles (patron ``_visite_du_lead``), carte posée en contexte.
+        cache = self.context.setdefault('_aprf21_messages_ouverts', {})
+        if obj.lead_id not in cache:
+            instances = getattr(self.parent, 'instance', None)
+            touches = ([t for t in instances if self._message_eligible(t)]
+                       if instances is not None else [obj])
+            if obj not in touches:
+                touches.append(obj)
+            lead_ids = {t.lead_id for t in touches}
+            import os.path
+            commun = os.path.commonprefix(
+                [prefixe_activite_message_ouvert(t) for t in touches])
+            for lid in lead_ids:
+                cache[lid] = []
+            for lid, body, cree in (
+                    LeadActivity.objects
+                    .filter(lead_id__in=lead_ids,
+                            kind=LeadActivity.Kind.WHATSAPP,
+                            body__startswith=commun)
+                    .order_by('-created_at')
+                    .values_list('lead_id', 'body', 'created_at')):
+                cache[lid].append((body, cree))
+        prefixe = prefixe_activite_message_ouvert(obj)
+        for body, cree in cache[obj.lead_id]:
+            if (body or '').startswith(prefixe):
+                return cree
+        return None
+
+    @staticmethod
+    def _message_eligible(obj):
+        """RLC3 — seule une touche MESSAGE encore À FAIRE lit « ouvert »."""
+        return (obj.statut == RelanceEtape.Statut.A_FAIRE
+                and obj.canal in (RelanceEtape.Canal.WHATSAPP,
+                                  RelanceEtape.Canal.EMAIL))
 
 
 class _CurrentCompanyDefault:
@@ -548,6 +596,74 @@ class _CompanyScopedRelationsMixin:
             field = fields.get(name)
             if field is not None:
                 scope_related_field(field)
+        return fields
+
+
+#: ACRM8 — la réponse d'un lead hors portée, IDENTIQUE à un id inexistant.
+LEAD_INTROUVABLE = 'Lead introuvable.'
+
+
+class _LeadEnPorteeMixin:
+    """ACRM8 — le champ ``lead`` d'un sérialiseur ENFANT n'accepte que les
+    leads de la PORTÉE de l'utilisateur (``selectors.leads_en_portee``) :
+    hors portée ou inexistant → la même erreur ``{lead: ["Lead
+    introuvable."]}``. Posé en PREMIÈRE base (avant
+    ``_CompanyScopedRelationsMixin``) : la portée resserre le re-scope société.
+    Sans requête (rendu interne), rien ne change.
+
+    ACRM52 — ``champs_lead_portee`` nomme les champs lead bornés (défaut
+    ``lead`` ; ex. ``filleul_lead`` pour un parrainage)."""
+
+    champs_lead_portee = ('lead',)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request') if hasattr(
+            self, 'context') else None
+        user = getattr(request, 'user', None)
+        for nom in self.champs_lead_portee:
+            field = fields.get(nom)
+            if (field is not None and not field.read_only
+                    and getattr(field, 'queryset', None) is not None
+                    and user is not None and user.is_authenticated):
+                from .selectors import leads_en_portee
+                field.queryset = leads_en_portee(user)
+                field.error_messages = dict(
+                    field.error_messages, does_not_exist=LEAD_INTROUVABLE,
+                    incorrect_type=LEAD_INTROUVABLE)
+        return fields
+
+
+#: ACRM52 — la réponse d'un client hors portée, IDENTIQUE à un id inexistant.
+CLIENT_INTROUVABLE = 'Client inconnu.'
+
+
+class _ClientEnPorteeMixin:
+    """ACRM52 — symétrique de ``_LeadEnPorteeMixin`` pour les champs CLIENT
+    d'un sérialiseur ENFANT (``champs_client_portee``) : seuls les clients de
+    la PORTÉE de l'utilisateur (``scope_client_queryset``, la règle des
+    lectures ``_PorteeEnfantsMixin``) sont acceptés ; hors portée ou
+    inexistant → la même erreur. Sans requête (rendu interne), rien ne
+    change."""
+
+    champs_client_portee = ('client',)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request') if hasattr(
+            self, 'context') else None
+        user = getattr(request, 'user', None)
+        for nom in self.champs_client_portee:
+            field = fields.get(nom)
+            if (field is not None and not field.read_only
+                    and getattr(field, 'queryset', None) is not None
+                    and user is not None and user.is_authenticated):
+                from core.scoping import scope_client_queryset
+                field.queryset = scope_client_queryset(
+                    Client.objects.filter(company_id=user.company_id), user)
+                field.error_messages = dict(
+                    field.error_messages, does_not_exist=CLIENT_INTROUVABLE,
+                    incorrect_type=CLIENT_INTROUVABLE)
         return fields
 
 
@@ -996,6 +1112,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # jamais `None`, quand l'annotation est absente (un `retrieve` servi par
     # un autre queryset ne doit pas afficher un trou).
     nb_tentatives = serializers.SerializerMethodField()
+    # ACAL249 — LE repère toit du lead (pin, source, contour_utilisable),
+    # calculé par ``crm.selectors.repere_toit`` (QJR598) — lecture seule,
+    # jamais recopié ni accepté en écriture (contrat lead_repere_toit.json).
+    repere_toit = serializers.SerializerMethodField()
     # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
     # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
     # seul il n'autorise RIEN — il déclenche seulement la vérification
@@ -1599,13 +1719,43 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """MRY20 — lit l'annotation ; 0 par défaut, jamais une requête."""
         return int(getattr(obj, 'nb_tentatives', 0) or 0)
 
+    @extend_schema_field(serializers.DictField())
+    def get_repere_toit(self, obj):
+        """ACAL249 — ``{pin: {lat, lng} | None, source, contour_utilisable}``
+        par le sélecteur unique ``repere_toit`` (calcul pur, aucune requête).
+        Le pin est une coordonnée du domicile : masqué (``None``) comme le GPS
+        pour un rôle sans ``client_pii_voir``."""
+        from .selectors import repere_toit
+        pin, source, utilisable = repere_toit(obj)
+        if pin is not None and self._pii_masked():
+            pin = None
+        return {'pin': pin, 'source': source,
+                'contour_utilisable': bool(utilisable)}
+
     def get_touche_en_retard(self, obj) -> bool:
         """MRY5 — une touche de cadence est-elle ÉCHUE sur ce lead ?
 
-        Lit l'annotation ``touche_en_retard_flag`` posée par
-        ``LeadViewSet.get_queryset`` (Exists) ; ``False`` quand l'annotation
-        est absente — jamais une requête supplémentaire par lead."""
-        return bool(getattr(obj, 'touche_en_retard_flag', False))
+        Lit l'annotation ``plus_ancienne_touche_ouverte`` posée par
+        ``LeadViewSet.get_queryset`` ; ``False`` quand l'annotation est
+        absente — jamais une requête supplémentaire par lead. ALEA32 : en
+        retard ssi cette échéance précède ``seuil_retard`` (la règle unique
+        des filtres) ; le seuil n'est lu que si l'échéance est déjà passée
+        (il ne dépasse jamais aujourd'hui), et une seule fois par requête
+        (mémo du contexte, partagé par toutes les lignes d'une liste)."""
+        echeance = getattr(obj, 'plus_ancienne_touche_ouverte', None)
+        if echeance is None:
+            return False
+        from core.dates import aujourd_hui_local
+        today = aujourd_hui_local()
+        if echeance >= today:
+            return False
+        from .controle_suivi import seuil_retard
+        memo = (self.context.setdefault('_alea32_seuil', {})
+                if isinstance(self.context, dict) else {})
+        cle = (obj.company_id, today)
+        if cle not in memo:
+            memo[cle] = seuil_retard(obj.company_id, today)
+        return echeance < memo[cle]
 
     def get_conception(self, obj):
         """PV78 — ``{kwc, image_url}`` de la conception 3D du lead.
@@ -1934,9 +2084,13 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class ParrainageSerializer(serializers.ModelSerializer):
+class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
+                           serializers.ModelSerializer):
     """N98 — parrainage. Société posée côté serveur ; parrain/filleul vérifiés
-    appartenir à la même société (multi-tenant)."""
+    appartenir à la même société (multi-tenant) ET à la portée du rôle
+    (ACRM52)."""
+    champs_lead_portee = ('filleul_lead',)
+    champs_client_portee = ('parrain', 'filleul_client')
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
         source='parrain.nom', read_only=True, default=None)
@@ -1978,7 +2132,8 @@ class ParrainageSerializer(serializers.ModelSerializer):
 
 # DC12 — Profil site/énergie réutilisable par client ─────────────────────────
 
-class SiteProfileSerializer(serializers.ModelSerializer):
+class SiteProfileSerializer(_ClientEnPorteeMixin,
+                            serializers.ModelSerializer):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Société posée CÔTÉ SERVEUR (HiddenField — jamais lue du corps de requête,
@@ -2026,7 +2181,7 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
 
 # QJ20 — Rendez-vous (visites commerciales/techniques) ───────────────────────
 
-class AppointmentSerializer(serializers.ModelSerializer):
+class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     """QJ20 — Rendez-vous sur un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -2139,7 +2294,7 @@ class ObjectifAttainmentSerializer(serializers.Serializer):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
-class ConcurrentPerteSerializer(serializers.ModelSerializer):
+class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -2188,7 +2343,7 @@ class ConcurrentPerteSerializer(serializers.ModelSerializer):
         return value
 
 
-class PointContactSerializer(serializers.ModelSerializer):
+class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -2284,7 +2439,8 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
 
 # ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
 
-class ForecastEntrySerializer(_CompanyScopedRelationsMixin,
+class ForecastEntrySerializer(_LeadEnPorteeMixin,
+                              _CompanyScopedRelationsMixin,
                               serializers.ModelSerializer):
     # CRX13 — ``lead`` est un OneToOne : DRF lui greffe automatiquement un
     # ``UniqueValidator`` sur TOUTES les sociétés. Le champ est re-scopé ET son
@@ -2346,7 +2502,8 @@ class RevueCompteSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = ['created_by', 'created_at']
 
 
-class PlanCompteSerializer(_CompanyScopedRelationsMixin,
+class PlanCompteSerializer(_ClientEnPorteeMixin,
+                           _CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
     scoped_relations = ('client',)
@@ -2546,7 +2703,8 @@ class ApporteurSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'token_acces']
 
 
-class DealEnregistreSerializer(_CompanyScopedRelationsMixin,
+class DealEnregistreSerializer(_LeadEnPorteeMixin,
+                               _CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
     (``clean()`` du modèle) est appliquée via ``full_clean()`` explicite

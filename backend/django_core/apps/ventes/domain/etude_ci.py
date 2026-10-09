@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import calendar
 import logging
+import math
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -847,6 +848,28 @@ def _vide_etude(res, alertes, hypotheses, sous_reserve=None):
     }
 
 
+def _taille_en_panneaux_entiers(taille, module, hypotheses):
+    """CAD177 — une taille saisie se pose en panneaux ENTIERS.
+
+    La composition pose ``ceil(kWc / Pmax)`` panneaux : un bilan calculé à la
+    taille saisie (20 kWc) décrivait une autre installation que celle vendue
+    (29 × 710 Wc = 20,59 kWc), et l'étude rafraîchie depuis les lignes
+    (CIQ119, kWc réel des panneaux) — celle du PDF — imprimait d'autres taux
+    que l'aperçu de l'écran. Sans Pmax publiée : la taille saisie, telle quelle.
+    """
+    kwc = _num(taille)
+    pmax = _num((module or {}).get('pmax_wc'))
+    if not kwc or kwc <= 0 or not pmax or pmax <= 0:
+        return taille
+    nb = int(math.ceil(kwc * 1000.0 / pmax - 1e-9))
+    pose = round(nb * pmax / 1000.0, 6)
+    if abs(pose - kwc) > 1e-9:
+        hypotheses.append({
+            'cle': 'taille_panneaux_entiers', 'valeur': pose, 'statut': 'declare',
+            'source': '%d panneaux de %g Wc pour la taille saisie de %g kWc' % (nb, pmax, kwc)})
+    return pose
+
+
 def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
     """CIQ119 — les onduleurs RÉELLEMENT au devis, au format CIQ111."""
     prix = {o['produit']: o.get('prix') for o in catalogue_onduleurs}
@@ -1031,7 +1054,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                 'phase': {'kwc': None, 'motif': 'triphasé : aucune borne de phase'
                           if phase == 'tri' else 'phase : voir la combinaison d’onduleurs'}},
         puissance_souscrite_kva=res.valeur('puissance_souscrite_kva'),
-        revente_choisie=revente, taille_explicite_kwc=res.valeur('taille_explicite_kwc'),
+        revente_choisie=revente,
+        taille_explicite_kwc=_taille_en_panneaux_entiers(
+            res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
         taux_tva_pct=20)
     alertes.extend(resultat['alertes'])
     hypotheses.extend(resultat['hypotheses'])
@@ -1191,6 +1216,25 @@ def _empreinte(entrees_stockees, kwc, onduleurs):
                           .encode('utf-8')).hexdigest()[:16]
 
 
+def _kwc_option_servie(devis, kwc_avec, kwc_sans):
+    """AMOT62 (C-AMOT-052) — le kWc de l'option que le document C&I SERT.
+
+    ``etudes.puissances_etude_horaire`` rend ``(kWc AVEC, kWc SANS)`` sur un
+    devis à panneaux variantés (``kwc_sans`` ``None`` sinon : une seule
+    puissance). Un C&I à deux options titre l'offre RÉSEAU seule (CIQ302,
+    ``utils.options.option_mise_en_avant`` → SANS), sauf option AVEC acceptée
+    (QJR401) — même règle que ``builder`` (``option_servie``). L'étude décrit
+    donc CETTE option : kWc, production, taux et économies imprimés parlent
+    de la même installation (sonde VC lci8 : étude 49,7 kWc imprimée à côté
+    de 35,5 kWc servis)."""
+    if not kwc_sans:
+        return kwc_avec
+    from apps.ventes.utils.options import AVEC_BATTERIE
+    if (getattr(devis, 'option_acceptee', '') or '') == AVEC_BATTERIE:
+        return kwc_avec or kwc_sans
+    return kwc_sans
+
+
 def _source_production(etude):
     """CAD177 — le libellé PVGIS (hypothèse ``source_production``) d'une
     étude C&I déjà posée, ou ``None``."""
@@ -1219,7 +1263,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         if mode not in MODES:
             return None
         params = dict(getattr(devis, 'etude_params', None) or {})
-        kwc, _kwc_sans = puissances_etude_horaire(devis)
+        kwc = _kwc_option_servie(devis, *puissances_etude_horaire(devis))
         if not kwc:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,

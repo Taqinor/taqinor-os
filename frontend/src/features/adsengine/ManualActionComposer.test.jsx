@@ -22,6 +22,7 @@ vi.mock('./adsengineApi', () => ({
 
 import ManualActionComposer from './ManualActionComposer'
 import { findAction } from './manualActions'
+import ERREUR_CONTRAT from '../../../../backend/django_core/apps/adsengine/contract_samples/engine_action_erreur.json'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -135,5 +136,35 @@ describe('ManualActionComposer', () => {
     expect(params.grid).toBeTypeOf('object')
     expect(Array.isArray(params.grid.mon)).toBe(true)
     expect(params.reason_fr).toBe('Heures ouvrables.')
+  })
+})
+
+/* AACQ73 — le composeur affiche la raison RENVOYÉE par le serveur (400
+   `payload` précis d'AACQ72, contrat engine_action_erreur.json), jamais une
+   cause devinée ; sans réponse (réseau) → « Serveur injoignable. ». */
+describe('ManualActionComposer — erreur serveur (AACQ73)', () => {
+  const remplirEtEnvoyer = () => {
+    const descriptor = findAction('set_spend_cap', 'campaign')
+    render(<ManualActionComposer descriptor={descriptor}
+      target={{ metaId: 'camp-1', scope: 'campaign' }} />)
+    fireEvent.change(screen.getByTestId('ae-maction-field-spend_cap'), { target: { value: '0' } })
+    fireEvent.change(screen.getByTestId('ae-maction-reason'), { target: { value: 'Plafond.' } })
+    fireEvent.click(screen.getByTestId('ae-maction-submit'))
+  }
+
+  it("le 400 payload s'affiche", async () => {
+    mocks.create.mockRejectedValue(Object.assign(new Error('HTTP 400'), {
+      response: { status: 400, data: ERREUR_CONTRAT.exemple } }))
+    remplirEtEnvoyer()
+    expect(await screen.findByTestId('ae-maction-err'))
+      .toHaveTextContent(ERREUR_CONTRAT.exemple.payload)
+    expect(screen.getByTestId('ae-maction-err')).not.toHaveTextContent('permission')
+  })
+
+  it('sans réponse serveur : texte neutre, aucune cause devinée', async () => {
+    mocks.create.mockRejectedValue(new Error('Network Error'))
+    remplirEtEnvoyer()
+    expect(await screen.findByTestId('ae-maction-err'))
+      .toHaveTextContent('Serveur injoignable.')
   })
 })

@@ -1,48 +1,27 @@
-"""YOPSB13 / SCA43 — budget de requêtes sur GET /api/django/ventes/devis/ (liste).
+"""YOPSB13 / SCA43 / APRF5 — budget de requêtes sur GET /api/django/ventes/devis/.
 
-DevisViewSet.queryset a DÉJÀ select_related('client', 'created_by', …)
-.prefetch_related('lignes', 'factures…', 'share_links', 'installations')
-(apps/ventes/views/devis.py) — ce test est la garde de RÉGRESSION : le nombre de
-requêtes ne doit PAS grandir avec le nombre de lignes (peuple 10 puis 25 devis,
-chacun avec 2 lignes).
+Garde de RÉGRESSION N+1 : le nombre de requêtes ne doit PAS grandir avec le
+nombre de devis listés (page de 10 puis de 25 devis).
 
-SCA43 — ce module était SKIPPÉ : ``DevisSerializer._display`` appelle le moteur
-(``build_quote_data``) UNE FOIS PAR DEVIS pour le total d'affichage. Il y avait
-DEUX N+1 distincts :
-  1. chaque appel refaisait ~6 lectures de config identiques pour la MÊME
-     société (CompanyProfile + DocumentTemplates + identité) ;
-  2. ``_line_to_item`` lit ``ligne.produit`` (marque/description/garantie) PAR
-     LIGNE, et le queryset de liste ne préchargeait que ``lignes`` (pas
-     ``lignes__produit``) → un produit-par-ligne, croissant avec le nombre de
-     devis.
-Correctifs SCA43 : (1) un mémo de config PAR REQUÊTE (``core.request_cache``,
-contextvar, ouvert par ``RequestConfigCacheMiddleware``) au niveau des ACCESSEURS
-que le moteur consomme — EN AMONT du moteur, qui reste intact (RÈGLE #4 : il
-rend, il ne change rien) ; (2) ``lignes__produit`` ajouté au prefetch du
-``DevisViewSet.queryset`` (même prefetch que ``generate_premium_devis_pdf``).
-Config ET produits sont désormais lus une seule fois par requête quel que soit
-le nombre de devis → O(1). Le test est dé-skippé.
+Historique : SCA43 avait dé-skippé puis RE-SKIPPÉ ce module — chaque ligne de
+liste faisait un passage moteur (``display_totals``) qui ré-interrogeait ses
+lignes, PLUS un second ``build_quote_data`` complet pour la carte A/B des devis
+à deux options (``get_comparaison_options``). APRF3 a ouvert le chemin
+« totaux seuls » (lignes servies depuis le préchargement, aucune lecture
+d'affiche / révision / ShareLink), APRF4 a complété le préchargement du
+viewset, et APRF5 fait passer chaque ligne par UN SEUL passage moteur :
+``DevisSerializer._display`` mémoïse le ``data`` et la carte A/B le relit (elle
+RESTE servie en liste — ``DevisRow.jsx`` la lit). Le skip est retiré.
 
-RE-SKIPPÉ (SCA43 partiel — O(1) STRICT déféré à NTPLT16)
---------------------------------------------------------
-Le cache de config PAR REQUÊTE (SCA43) ET le prefetch ``lignes__produit``
-réduisent RÉELLEMENT le N+1, mais le test de CROISSANCE exige un O(1) STRICT
-(count@10 == count@25) qui reste HORS d'atteinte sans un remaniement du moteur
-de devis. Cause racine (analysée) : ``LigneDevis.taux_tva_effectif``
-(``apps/ventes/models.py:336``) retombe sur ``self.devis.taux_tva`` quand la
-ligne n'a pas de taux (cas du test) — un accès FK-inverse que
-``prefetch_related('lignes')`` NE re-peuple PAS → 1 requête ``ventes_devis`` par
-ligne (via ``total_tva``/``total_ttc``/``get_solde``), PLUS une 2ᵉ via les
-re-requêtes ``devis.lignes.select_related('produit')`` FRAÎCHES de
-``utils/options.py:77,97`` et de ``build_quote_data`` (qui ré-interrogent les
-lignes PAR DEVIS, donc croissant avec le nombre de devis). Rendre ce test vert
-au sens STRICT impose que ``build_quote_data``/``options`` consomment les lignes
-PRÉCHARGÉES (au lieu de re-requêter) — un changement du MOTEUR (voisin règle #4)
-qui appartient à la tâche canonique de budget-requêtes NTPLT16, pas à SCA43.
-On RE-SKIP donc ici (comme avant SCA43) plutôt que de forcer un correctif
-non vérifié ; les gains SCA43 (cache + ``lignes__produit``) restent en place."""
+Page MIXTE : devis mono-option, devis à deux options, devis facturés, aucun
+lien de partage (un GET de liste ne doit en écrire aucun — AMOT13).
+
+Test-du-test : remettre ``@unittest.skip`` ⇒ APRF27 rougit ; retirer la
+mémoïsation de ``data`` ⇒ la page à 25 fait un second ``build_quote_data``
+par devis à deux options et ``test_query_count_does_not_grow_with_row_count``
+échoue.
+"""
 from decimal import Decimal
-import unittest
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -55,12 +34,18 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.models import Devis, LigneDevis
+from apps.ventes.models import Devis, Facture, LigneDevis
 from core.test_utils import AssertQueryBudgetMixin
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
 DEVIS_URL = '/api/django/ventes/devis/'
+DEUX_OPTIONS = {'scenario': 'Les deux (Sans + Avec)'}
+
+MONO = [('Panneau mono 550W', '12', '1100'),
+        ('Onduleur réseau 5kW', '1', '11700')]
+DEUX = MONO + [('Onduleur hybride 5kW', '1', '15000'),
+               ('Batterie 5 kWh', '1', '14000')]
 
 
 def _api(user):
@@ -69,11 +54,12 @@ def _api(user):
     return api
 
 
-@unittest.skip(
-    "SCA43 partiel : le cache de config + le prefetch lignes__produit réduisent "
-    "le N+1 de la liste devis, mais l'O(1) STRICT (build_quote_data/options "
-    "ré-interrogent les lignes par devis via taux_tva_effectif → self.devis) "
-    "exige un remaniement du moteur — déféré à NTPLT16 (voir docstring module).")
+def _ecritures(ctx):
+    return [q['sql'] for q in ctx.captured_queries
+            if q['sql'].lstrip().upper().startswith(
+                ('INSERT', 'UPDATE', 'DELETE'))]
+
+
 class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Budget Devis SARL')
@@ -84,63 +70,94 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client', prenom='Budget',
             email='budget@example.com', telephone='+212600000002')
-        # SCA43 — pré-crée les singletons de config société (CompanyProfile +
-        # DocumentTemplates) AVANT toute requête mesurée. Le mémo de config est
-        # PAR REQUÊTE, donc la config est lue une fois par requête quel que soit
-        # le nombre de devis (O(1)) ; sans ce pré-amorçage, la 1ʳᵉ requête paierait
-        # en plus le get_or_create « à froid » (INSERT + savepoints), faussant la
-        # comparaison de CROISSANCE 10↔25. On isole ainsi le coût O(1) réel.
-        from apps.parametres.models import CompanyProfile
+        # Les singletons de config société (profil, modèles de documents,
+        # barème) sont créés à la PREMIÈRE lecture : posés ici pour mesurer ce
+        # qu'une liste coûte À CHAQUE affichage, pas l'amorçage d'une société.
+        from apps.parametres.models import CompanyProfile, TariffSettings
         from apps.parametres.models_documents import DocumentTemplates
         CompanyProfile.get(company=self.company)
         DocumentTemplates.get(company=self.company)
+        TariffSettings.get(company=self.company)
 
     def _seed_devis(self, count, start=0):
+        """Page MIXTE : 1 sur 2 à deux options, 1 sur 3 facturé."""
         for i in range(start, start + count):
+            deux = bool(i % 2)
             devis = Devis.objects.create(
                 company=self.company, reference=f'DEV-{MONTH}-{i:04d}',
                 client=self.client_obj, created_by=self.user,
-                taux_tva=Decimal('20'))
-            for j, (desig, pu) in enumerate(
-                    [('Onduleur', '11700'), ('Panneau', '1100')]):
+                taux_tva=Decimal('20'),
+                etude_params=dict(DEUX_OPTIONS) if deux else None)
+            for j, (desig, qte, pu) in enumerate(DEUX if deux else MONO):
                 produit = Produit.objects.create(
                     company=self.company, nom=desig, sku=f'{i}-{j}-{desig}',
                     prix_vente=Decimal(pu), prix_achat=Decimal('1'),
                     quantite_stock=100)
                 LigneDevis.objects.create(
                     devis=devis, produit=produit, designation=desig,
-                    quantite=Decimal('1'), prix_unitaire=Decimal(pu))
+                    quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                    remise=Decimal('0'))
+            if i % 3 == 0:
+                Facture.objects.create(
+                    company=self.company, reference=f'FAC-{MONTH}-{i:04d}',
+                    devis=devis, client=self.client_obj,
+                    statut=Facture.Statut.EMISE, montant_ht=Decimal('100'),
+                    montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
+                    created_by=self.user)
+
+    def _get_liste(self):
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.api.get(DEVIS_URL, {'page_size': 100})
+        self.assertEqual(resp.status_code, 200)
+        return resp, ctx
+
+    @staticmethod
+    def _lignes(resp):
+        data = resp.data
+        return data.get('results', data) if isinstance(data, dict) else data
 
     def test_query_count_does_not_grow_with_row_count(self):
         self._seed_devis(10)
-        with CaptureQueriesContext(connection) as ctx_10:
-            resp = self.api.get(DEVIS_URL)
-        self.assertEqual(resp.status_code, 200)
-        count_at_10 = len(ctx_10.captured_queries)
+        resp_10, ctx_10 = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_10)), 10)
 
         self._seed_devis(15, start=10)  # total 25
-        with CaptureQueriesContext(connection) as ctx_25:
-            resp = self.api.get(DEVIS_URL)
-        self.assertEqual(resp.status_code, 200)
-        count_at_25 = len(ctx_25.captured_queries)
+        resp_25, ctx_25 = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_25)), 25)
 
         self.assertEqual(
-            count_at_10, count_at_25,
-            'Le nombre de requêtes a grandi avec le nombre de lignes '
-            '(N+1) — vérifier select_related/prefetch_related sur '
-            'DevisViewSet.queryset (client, created_by, lignes).')
+            len(ctx_10.captured_queries), len(ctx_25.captured_queries),
+            'Le nombre de requêtes a grandi avec le nombre de devis (N+1) — '
+            'vérifier le préchargement de DevisViewSet.queryset et le passage '
+            'moteur UNIQUE de DevisSerializer._display.')
+        # CLAUSE PERSISTANCE n/a — une lecture n'écrit rien (aucun ShareLink).
+        self.assertEqual(_ecritures(ctx_25), [])
 
     def test_query_count_stays_within_fixed_budget(self):
-        # SCA43 — plafond O(1) après DEUX correctifs : le cache de config PAR
-        # REQUÊTE (contextvar) ET le prefetch `lignes__produit` sur le queryset
-        # (build_quote_data lit `ligne.produit` par ligne pour le total
-        # d'affichage). Le test de CROISSANCE ci-dessus reste la garde N+1
-        # AUTORITAIRE (prouve le O(1)) ; ce plafond borne l'absolu. Il est calé
-        # sur le coût O(1) MESURÉ (~32 requêtes à 10 devis : select_related +
-        # prefetchs imbriqués factures→paiements/avoirs + get_or_create « à
-        # froid » CompanyProfile/DocumentTemplates + savepoints) avec une marge
-        # de régression — très en-deçà des ~51 (croissants) d'avant le prefetch.
+        # Plafond absolu calé sur le coût O(1) mesuré par SCA43 (~32 requêtes
+        # à 10 devis), marge de régression comprise. Le test de CROISSANCE
+        # ci-dessus est la garde N+1 AUTORITAIRE.
         self._seed_devis(10)
         with self.assertMaxQueries(40):
             resp = self.api.get(DEVIS_URL)
         self.assertEqual(resp.status_code, 200)
+
+    def test_carte_ab_en_liste(self):
+        """La carte A/B reste servie EN LISTE, mêmes valeurs qu'au détail."""
+        self._seed_devis(6)
+        resp, _ctx = self._get_liste()
+        lignes = self._lignes(resp)
+        deux = [r for r in lignes if r.get('nb_options') == 2]
+        self.assertTrue(deux)
+        for ligne in lignes:
+            detail = self.api.get('%s%s/' % (DEVIS_URL, ligne['id']))
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(ligne['total_affiche'],
+                             detail.data['total_affiche'])
+            self.assertEqual(ligne['nb_options'], detail.data['nb_options'])
+            self.assertEqual(ligne['comparaison_options'],
+                             detail.data['comparaison_options'])
+        for ligne in deux:
+            carte = ligne['comparaison_options']
+            self.assertIsNotNone(carte['sans']['ttc'])
+            self.assertIsNotNone(carte['avec']['ttc'])

@@ -124,6 +124,13 @@ def ensure_equipement_for_bom_line(*, company, produit, installation,
     return equip, True
 
 
+#: ACHT45 (D-ACHT-1 a) — types de catégorie qui n'entrent PAS au parc SAV à
+#: la réception : prestations et consommables (câbles, structures,
+#: protections, accessoires). Une catégorie sans type entre (historique).
+TYPES_HORS_PARC = frozenset(
+    {'service', 'cable', 'structure', 'protection', 'accessoire'})
+
+
 def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
                       resolve_produit):
     """FG70 — balaye la nomenclature gelée du chantier (`installation.bom`) et
@@ -145,23 +152,33 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
     crees = 0
     existants = 0
     lignes = []
-    seen = set()
+    # ACHT46 — une entrée par produit, quantité cumulée des lignes.
+    ordre = []
+    quantites = {}
+    designations = {}
     for ligne in bom:
         produit_id = (ligne or {}).get('produit_id')
         if not produit_id:
             continue
-        # Plusieurs lignes peuvent référencer le même produit : on ne crée
-        # qu'un seul équipement par produit (idempotence intra-balayage).
-        if produit_id in seen:
-            continue
+        if produit_id not in quantites:
+            ordre.append(produit_id)
+            quantites[produit_id] = 0
+            designations[produit_id] = ligne.get('designation')
+        quantites[produit_id] += _quantite_ligne(ligne)
+    for produit_id in ordre:
         produit = resolve_produit(produit_id)
         if produit is None:
             continue
-        seen.add(produit_id)
-        _equip, created = ensure_equipement_for_bom_line(
-            company=company, produit=produit, installation=installation,
-            date_pose=date_pose, created_by=created_by)
-        designation = (ligne.get('designation')
+        # ACHT45 (D-ACHT-1 a) — seuls les biens à garantie suivis à l'unité
+        # entrent au parc ; une catégorie non typée entre toujours.
+        categorie = getattr(produit, 'categorie', None)
+        if getattr(categorie, 'type_equipement', None) in TYPES_HORS_PARC:
+            continue
+        created = _balayer_produit(
+            company=company, installation=installation, produit=produit,
+            quantite_ligne=quantites[produit_id], date_pose=date_pose,
+            created_by=created_by)
+        designation = (designations[produit_id]
                        or getattr(produit, 'nom', '') or '')
         lignes.append({'designation': designation, 'cree': created})
         if created:
@@ -169,6 +186,120 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
         else:
             existants += 1
     return {'crees': crees, 'existants': existants, 'lignes': lignes}
+
+
+def _quantite_ligne(ligne):
+    """Quantité entière (≥ 1) d'une ligne de nomenclature."""
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+    try:
+        qte = int(Decimal(str((ligne or {}).get('quantite') or 1)).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError):
+        qte = 1
+    return max(qte, 1)
+
+
+def _equipements_produit(company, installation, produit):
+    """(séries relevées, placeholders sans série) du chantier pour ce produit,
+    hors équipements mis au rebut."""
+    from django.db.models import Q
+
+    from .models import Equipement
+    base = Equipement.objects.filter(
+        company=company, installation=installation, produit=produit,
+        mis_au_rebut=False)
+    sans_serie = Q(numero_serie__isnull=True) | Q(numero_serie='')
+    return base.exclude(sans_serie), base.filter(sans_serie).order_by('pk')
+
+
+def _balayer_produit(*, company, installation, produit, quantite_ligne,
+                     date_pose, created_by):
+    """ACHT46 — état cible du parc d'un (chantier, produit) à la réception,
+    indépendant de l'ordre réception / relevé : les équipements à série
+    relevés AVANT la réception (datés du jour du relevé) sont recalés à la
+    date de réception, et un placeholder sans série existe tant que les séries
+    relevées sont moins nombreuses que la quantité de la ligne. Renvoie True
+    si un équipement a été créé."""
+    series, placeholders = _equipements_produit(company, installation, produit)
+    nb_series = series.count()
+    if date_pose:
+        for eq in series:
+            cree_le = (timezone.localtime(eq.date_creation).date()
+                       if eq.date_creation else None)
+            if eq.date_pose == cree_le and eq.date_pose != date_pose:
+                eq.date_pose = date_pose
+                eq.recompute_garanties()
+                eq.save(update_fields=[
+                    'date_pose', 'date_fin_garantie',
+                    'date_fin_garantie_production'])
+    if placeholders.exists() or nb_series >= quantite_ligne:
+        return False
+    create_equipement_from_serial(
+        company=company, produit=produit, installation=installation,
+        numero_serie=None, date_pose=date_pose, created_by=created_by)
+    return True
+
+
+def assurer_equipement_chantier(*, company, installation, produit,
+                                numero_serie, quantite_ligne, date_pose,
+                                created_by):
+    """ACHT46 — ÉCRIVAIN UNIQUE du parc d'un chantier : le relevé d'une série
+    remplit le placeholder sans série de (chantier, produit) quand c'est la
+    dernière série attendue de la ligne, sinon crée l'équipement et laisse le
+    placeholder. Garde de doublon alignée sur la contrainte DB
+    ``(company, numero_serie)`` + savepoint : jamais d'exception.
+
+    Renvoie ``('cree'|'rempli'|'doublon', equipement)``."""
+    from django.db import IntegrityError, transaction
+
+    from .models import Equipement
+
+    numero_serie = (numero_serie or '').strip() or None
+    if numero_serie:
+        existant = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).first()
+        if existant is not None:
+            return 'doublon', existant
+    series, placeholders = _equipements_produit(company, installation, produit)
+    placeholder = placeholders.first() if numero_serie else None
+    quantite_ligne = max(int(quantite_ligne or 1), 1)
+    try:
+        with transaction.atomic():
+            if placeholder is not None and series.count() + 1 >= quantite_ligne:
+                placeholder.numero_serie = numero_serie
+                placeholder.save(update_fields=['numero_serie'])
+                return 'rempli', placeholder
+            equip = create_equipement_from_serial(
+                company=company, produit=produit, installation=installation,
+                numero_serie=numero_serie, date_pose=date_pose,
+                created_by=created_by)
+            return 'cree', equip
+    except IntegrityError:
+        existant = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).first()
+        return 'doublon', existant
+
+
+def recaler_garanties_chantier(*, company, installation, ancienne_date,
+                               nouvelle_date):
+    """ACHT46 — la date de réception d'un chantier est corrigée : les
+    équipements datés de l'ANCIENNE date passent à la nouvelle (garanties
+    recalculées) ; un équipement dont la date a été modifiée à la main est
+    intact. Renvoie le nombre d'équipements recalés."""
+    from .models import Equipement
+
+    if not nouvelle_date or ancienne_date == nouvelle_date:
+        return 0
+    recales = 0
+    for eq in Equipement.objects.filter(
+            company=company, installation=installation,
+            date_pose=ancienne_date, mis_au_rebut=False):
+        eq.date_pose = nouvelle_date
+        eq.recompute_garanties()
+        eq.save(update_fields=[
+            'date_pose', 'date_fin_garantie', 'date_fin_garantie_production'])
+        recales += 1
+    return recales
 
 
 def assign_technicien_auto(*, company):
@@ -252,8 +383,8 @@ def compute_sla_reponse_due_at(company, client, priorite, date_ouverture):
     from .models import SavSlaSettings
 
     sla = SavSlaSettings.get(company)
-    if not sla.sla_breach_enabled:
-        return None
+    # ASAV57 (D-ASAV-5 Q2 a) — l'interrupteur ``sla_breach_enabled`` ne
+    # gouverne plus que les NOTIFICATIONS : l'échéance est toujours calculée.
     jours = response_days_pour(company, client, priorite)
     if jours is None:
         return None
@@ -304,8 +435,9 @@ def compute_sla_echeance(company, client, priorite, date_ouverture,
     from .models import SavSlaSettings
 
     sla = SavSlaSettings.get(company)
-    if not sla.sla_breach_enabled:
-        return None, None
+    # ASAV57 (D-ASAV-5 Q2 a) — l'échéance est TOUJOURS calculée ;
+    # ``sla_breach_enabled`` ne gouverne plus que les notifications (scan,
+    # pré-alerte, escalade).
 
     # NTSRV11 — chemin HEURES ouvrées (opt-in double : flag + clé de priorité).
     if sla.sla_heures_ouvrees_actif:
@@ -753,6 +885,58 @@ class RetraitProduitIncoherentError(ValueError):
 class EquipementDejaRemplaceError(Exception):
     """ASAV8 — l'équipement est déjà remplacé : un rejeu ne recrée ni retrait,
     ni mouvement de stock, ni RMA, ni signal (409)."""
+
+
+class SerieNeuveDejaAuParcError(Exception):
+    """ASAV9 — la série de l'appareil neuf est déjà au parc (400 sous
+    ``serie_neuve``)."""
+
+
+def remplacer_equipement(*, ticket, ancien, produit_neuf, serie_neuve,
+                         date_pose, user):
+    """ASAV9 — entrée du NEUF au parc quand ``ancien`` vient d'être retiré
+    (ASAV8, ``retirer_piece``) : création par l'écrivain unique du parc
+    (ACHT46) sur le même chantier / client, substitution dans le registre des
+    contrats de maintenance, garantie selon D-ASAV-1 (repart à la date du
+    remplacement avec la durée du produit neuf, au moins la fin restante de
+    l'ancien — jamais moins que ce que le client avait).
+
+    Lève ``SerieNeuveDejaAuParcError`` (aucune écriture) si la série neuve
+    est déjà au parc. Renvoie l'équipement neuf."""
+    from .models import ContratMaintenance, Equipement
+
+    serie_neuve = (serie_neuve or '').strip()
+    company = ticket.company
+    if Equipement.objects.filter(
+            company=company, numero_serie=serie_neuve).exists():
+        raise SerieNeuveDejaAuParcError(
+            'Ce numéro de série est déjà au parc.')
+    date_pose = date_pose or timezone.localdate()
+    # quantite_ligne démesurée : un remplacement CRÉE toujours l'équipement,
+    # il ne remplit jamais le placeholder sans série d'une ligne de chantier.
+    statut, neuf = assurer_equipement_chantier(
+        company=company, installation=ancien.installation,
+        produit=produit_neuf or ancien.produit, numero_serie=serie_neuve,
+        quantite_ligne=10 ** 6, date_pose=date_pose, created_by=user)
+    if statut == 'doublon':
+        raise SerieNeuveDejaAuParcError(
+            'Ce numéro de série est déjà au parc.')
+    champs = []
+    if ancien.client_vente_id and not neuf.client_vente_id:
+        neuf.client_vente_id = ancien.client_vente_id
+        champs.append('client_vente')
+    reste = ancien.date_fin_garantie_effective
+    if reste and reste > date_pose:
+        if neuf.date_fin_garantie is None or neuf.date_fin_garantie < reste:
+            neuf.date_fin_garantie = reste
+            champs.append('date_fin_garantie')
+    if champs:
+        neuf.save(update_fields=champs)
+    for contrat in ContratMaintenance.objects.filter(
+            company=company, equipements=ancien):
+        contrat.equipements.add(neuf)
+        contrat.equipements.remove(ancien)
+    return neuf
 
 
 def _equipement_dans_perimetre_ticket(equipement, ticket):
@@ -1368,6 +1552,34 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
         if ticket.date_resolution:
             ticket.date_resolution = None
             update_fields.append('date_resolution')
+    # ASAV16 — cycle SLA attaché aux transitions : la résolution clôt la
+    # pause « en attente client » (jours figés, l'échéance cesse de glisser) ;
+    # la réouverture (D-ASAV-5 Q1) repart de la date de réouverture avec le
+    # délai de la priorité, remet les drapeaux d'alerte à False et ne
+    # réactive pas la pause.
+    if ticket.statut in clotures and old.statut not in clotures:
+        if ticket.en_attente_client:
+            ticket.reprendre_apres_attente()
+            update_fields += ['en_attente_client', 'attente_depuis',
+                              'jours_pause']
+    elif old.statut in clotures and ticket.statut in Ticket.OPEN_STATUTS:
+        due, echeance_at = compute_sla_echeance(
+            ticket.company, ticket.client, ticket.priorite,
+            timezone.localdate())
+        if due is not None:
+            ticket.sla_due_at = due
+            ticket.sla_echeance_at = echeance_at
+            update_fields += ['sla_due_at', 'sla_echeance_at']
+        ticket.en_attente_client = False
+        ticket.attente_depuis = None
+        ticket.jours_pause = 0
+        ticket.sla_pre_alert_notifiee = False
+        ticket.sla_escalade_notifiee = False
+        ticket.sla_escalade_paliers_notifies = None
+        update_fields += [
+            'en_attente_client', 'attente_depuis', 'jours_pause',
+            'sla_pre_alert_notifiee', 'sla_escalade_notifiee',
+            'sla_escalade_paliers_notifies']
     ticket.save(update_fields=update_fields)
     emettre_ticket_resolu(
         ticket, company=ticket.company, user=user, ancien_statut=old.statut)
@@ -1518,7 +1730,12 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
                 notes__contains=f'[devis:{pred_id}]').exists():
             return None
 
-    lignes = list(devis.lignes.select_related('produit').all())
+    # ADEV55 — seules les lignes de l'OPTION ACCEPTÉE (comme le gel de
+    # nomenclature du chantier) ; les lignes optionnelles non activées sont
+    # exclues : le client n'est pas engagé sur la maintenance d'un équipement
+    # qu'il n'a pas acheté.
+    from apps.ventes.utils.options import option_lines
+    lignes = list(option_lines(devis))
     lignes_recurrentes = [
         ligne for ligne in lignes
         if getattr(ligne.produit, 'est_recurrent', False)
@@ -1692,6 +1909,12 @@ def creer_ticket_depuis_email_alias(message, company):
     categorie = categorie_pour_alias(company, message)
     if categorie is None:
         return None  # pas d'alias configuré → route générique inchangée.
+
+    # ASAV35 — un message d'un fil CONNU ne crée jamais de ticket, même adressé
+    # à l'alias d'une catégorie (« répondre à tous ») : le handler de fil
+    # (NTSRV1) le rattache au ticket d'origine.
+    if ticket_du_fil_email(company, message) is not None:
+        return None
 
     from apps.crm.selectors import find_client_by_email
     from apps.ventes.utils.references import create_with_reference
@@ -2426,3 +2649,80 @@ def ensure_modele_entretien_ci(company):
             company=company, template=modele, cle=cle, libelle=libelle,
             ordre=i)
     return modele
+
+
+# ── ASAV20 — retards SLA à signaler (lu par le balayage notifications) ──────
+def signaler_tickets_en_retard(company, today=None):
+    """ASAV20 — tickets de ``company`` NOUVELLEMENT en retard SLA, marqués
+    ``sla_breach=True`` ici même (clé partagée avec ``scan_sla_breaches`` :
+    qui pose le drapeau le premier notifie, l'autre voit « déjà signalé » —
+    UNE notification par ticket et par épisode de retard).
+
+    Vide quand la société n'a pas activé le SLA (l'interrupteur gouverne les
+    notifications, ASAV57). La décision du retard est
+    ``selectors.ticket_en_retard_sla`` (pauses décomptées)."""
+    from .models import SavSlaSettings, Ticket
+    from .selectors import ticket_en_retard_sla
+
+    if not SavSlaSettings.get(company).sla_breach_enabled:
+        return []
+    today = today or timezone.localdate()
+    signales = []
+    candidats = (Ticket.objects
+                 .filter(company=company, statut__in=Ticket.OPEN_STATUTS,
+                         annule=False, sla_due_at__isnull=False,
+                         sla_breach=False)
+                 .select_related('technicien_responsable', 'client'))
+    for ticket in candidats:
+        if not ticket_en_retard_sla(ticket, today, sla_actif=True):
+            continue
+        ticket.sla_breach = True
+        ticket.save(update_fields=['sla_breach'])
+        signales.append(ticket)
+    return signales
+
+
+# ── ASAV2 — UNE décision « qui paie » pour toutes les portes ────────────────
+def decision_facturation(ticket, user, override=False):
+    """ASAV2 — LE service qui décide qui paie un ticket SAV, appelé par
+    ``generer-facture``, ``facturer`` et ``creer-devis`` (les trois portes
+    donnent la même réponse sur les mêmes cas).
+
+    Ordre : (1) récidive non facturable (XFSM15) → refus 403 sauf
+    ``override`` d'un responsable/admin ; (2) couverture : celle posée à la
+    main si elle l'est, sinon la couverture calculée (garantie, contrat —
+    quotas inclus —, facturable), jugée à l'ouverture du ticket (ASAV4).
+
+    Renvoie un dict ``{'refuse': bool, 'http': int|None, 'detail': str,
+    'couverture': str, 'couvert': bool}``. ``couvert`` = garantie ou contrat
+    : la facture est posée à 0 DH et aucun devis n'est créé."""
+    from .models import Ticket
+
+    if ticket.non_facturable:
+        est_responsable = (
+            getattr(user, 'is_admin_role', False)
+            or getattr(user, 'is_responsable', False))
+        if not override or not est_responsable:
+            return {
+                'refuse': True, 'http': 403,
+                'detail': ('Ticket récidive marqué non-facturable — '
+                           'override responsable requis.'),
+                'couverture': ticket.couverture, 'couvert': False,
+            }
+    couverture = ticket.couverture
+    if couverture == Ticket.Couverture.A_DETERMINER:
+        couverture = ticket.couverture_calculee()
+    if couverture == Ticket.Couverture.A_DETERMINER:
+        # ASAV11 (D-ASAV-2) — garantie de chantier à confirmer : jamais
+        # facturé d'office.
+        return {
+            'refuse': True, 'http': 409,
+            'detail': 'Garantie de chantier à confirmer avant de facturer.',
+            'couverture': couverture, 'couvert': False,
+        }
+    return {
+        'refuse': False, 'http': None, 'detail': '',
+        'couverture': couverture,
+        'couvert': couverture in (
+            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT),
+    }
