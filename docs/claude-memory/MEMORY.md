@@ -35,3 +35,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Décision TVA par défaut (D-APAR-1)](apar-decisions-fondateur.md) — 09/10/2026 : le profil `tva_standard` est l'unique source ; bouton « Par défaut » du référentiel retiré
 - [Tous les contrôles bloquants](enforce-all-checks.md) — 09/10/2026 : api-fuzz tous checks bloquant, aucun contrôle advisory, dettes des gardes ramenées à zéro
 - [Décision clés .env inertes (D-ADEP-3)](deploy-decisions-fondateur.md) — 09/10/2026 : aucune des 11 clés (WhatsApp Cloud, e-signature, GED PAdES, CMI, GeoIP, OpenSearch, IP Cloudflare) n'est dans le .env prod → ADEP32/35-39 n'activent rien ; une fonction ne s'allume qu'en ajoutant sa clé
+- [Merge queue sur main](merge-queue-main.md) — 09/10/2026 : `main` derrière une merge queue GitHub ; `gh pr merge --auto --merge` met en file, plus jamais de boucle update-branch ; CI répond à `merge_group`
