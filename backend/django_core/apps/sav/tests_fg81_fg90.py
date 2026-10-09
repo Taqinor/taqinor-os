@@ -144,7 +144,7 @@ class TestSavSlaSettings(TestCase):
         self.assertEqual(ticket.sla_due_at, expected)
 
     def test_sla_breach_false_when_not_enabled(self):
-        """FG81 — sla_due_at est None quand breach non activé."""
+        """FG81/ASAV57 — l'échéance est calculée même interrupteur OFF."""
         make_produit(self.co, sku='SLAP2')
         inst, client = make_installation(self.co, ref='CHT-SLA2')
         r = self.api.post('/api/django/sav/tickets/', {
@@ -153,7 +153,7 @@ class TestSavSlaSettings(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 201)
         ticket = Ticket.objects.get(pk=r.data['id'])
-        self.assertIsNone(ticket.sla_due_at)
+        self.assertIsNotNone(ticket.sla_due_at)
 
     def test_recompute_sla_breach(self):
         """FG81 — recompute_sla_breach marque True si dépassé et ouvert."""

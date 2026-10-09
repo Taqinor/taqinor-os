@@ -368,8 +368,11 @@ class TestIpDeRequete(TestCase):
         requete = self._requete(
             HTTP_X_FORWARDED_FOR='41.77.1.5, 198.51.100.7, 10.0.0.1',
             REMOTE_ADDR='10.0.0.1')
-        with override_settings(NUM_PROXIES=1):
+        # ASEC15 — sémantique get_ident (DRF) : N-ième saut depuis la droite.
+        with override_settings(NUM_PROXIES=2):
             self.assertEqual(visites.ip_de_requete(requete), '198.51.100.7')
+        with override_settings(NUM_PROXIES=1):
+            self.assertEqual(visites.ip_de_requete(requete), '10.0.0.1')
 
     def test_les_entrees_vides_sont_ignorees(self):
         """Un proxy peut poser une entrée VIDE : elle ne compte pas comme saut."""

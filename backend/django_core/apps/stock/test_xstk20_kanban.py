@@ -17,10 +17,21 @@ Couvre :
 Run :
     python manage.py test apps.stock.test_xstk20_kanban -v2
 """
+from decimal import Decimal
+
 from apps.installations.models import DemandeTransfert
 from apps.stock.models import EmplacementStock, Produit, StockEmplacement
 from apps.stock import labels
 from testkit.base import TenantAPITestCase
+
+
+# Sentinelle du prix d'achat : une valeur qu'AUCUN identifiant auto-incrémenté
+# ne peut atteindre. Avec `900`, le run CI 37871744044 (09/10/2026) a vu le
+# produit recevoir l'id 900 sur la base `--keepdb` restaurée du cache, et le
+# jeton légitime `KANBAN:900:52` faisait échouer `assertNotIn('900', …)` —
+# le test ne disait plus rien du prix d'achat, seulement du hasard des séquences.
+PRIX_ACHAT_SENTINELLE = Decimal('9876543.21')
+PRIX_ACHAT_MOTIF = '9876543'       # présent dans tout rendu du prix (point/virgule)
 
 
 class TestKanbanCards(TenantAPITestCase):
@@ -34,7 +45,7 @@ class TestKanbanCards(TenantAPITestCase):
             company=self.company, nom='Camionnette 1')
         self.produit = Produit.objects.create(
             company=self.company, nom='Panneau 550W', sku='PAN-550',
-            prix_vente=1500, prix_achat=900)
+            prix_vente=1500, prix_achat=PRIX_ACHAT_SENTINELLE)
         StockEmplacement.objects.create(
             company=self.company, produit=self.produit,
             emplacement=self.camion, quantite=2, seuil_min=1, seuil_max=10)
@@ -53,7 +64,7 @@ class TestKanbanCards(TenantAPITestCase):
         resp = self.client_as().get(
             f'/api/django/stock/emplacements/{self.camion.id}/'
             f'etiquettes-kanban/?ids={self.produit.id}&sortie=html')
-        self.assertNotIn('900', resp.content.decode())
+        self.assertNotIn(PRIX_ACHAT_MOTIF, resp.content.decode())
 
     def test_etiquette_kanban_requires_ids(self):
         resp = self.client_as().get(
@@ -86,7 +97,7 @@ class TestKanbanScanCreatesDemande(TenantAPITestCase):
             company=self.company, nom='Camionnette 1')
         self.produit = Produit.objects.create(
             company=self.company, nom='Panneau 550W', sku='PAN-550',
-            prix_vente=1500, prix_achat=900)
+            prix_vente=1500, prix_achat=PRIX_ACHAT_SENTINELLE)
         self.token = labels.kanban_token(self.produit.id, self.camion.id)
 
     def _scan(self, token=None, client=None):
@@ -188,4 +199,4 @@ class TestKanbanScanCreatesDemande(TenantAPITestCase):
 
     def test_scan_response_never_exposes_prix_achat(self):
         resp = self._scan()
-        self.assertNotIn('900', resp.content.decode())
+        self.assertNotIn(PRIX_ACHAT_MOTIF, resp.content.decode())

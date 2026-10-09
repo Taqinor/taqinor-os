@@ -84,6 +84,71 @@ def haversine_km(lat1, lng1, lat2, lng2):
     return round(2 * r * asin(sqrt(a)), 3)
 
 
+class CoordonneesInvalides(ValueError):
+    """ACHT43 — lat/lng fournis mais non numériques."""
+
+
+def _lire_gps(lat, lng):
+    """(lat, lng) arrondis à 6 décimales, ou None si absents ; lève
+    `CoordonneesInvalides` si fournis mais illisibles."""
+    if lat in (None, '') or lng in (None, ''):
+        return None
+    try:
+        return round(float(lat), 6), round(float(lng), 6)
+    except (TypeError, ValueError):
+        raise CoordonneesInvalides('Coordonnées invalides.')
+
+
+def enregistrer_arrivee(interv, instant, lat, lng, user, *, suffixe=''):
+    """ACHT43 — LE geste d'arrivée sur site (vue `checkin` ET synchro
+    `intervention.checkin`) : horodatage, position GPS d'arrivée, ponctualité
+    XFSM5 (`arrivee_dans_fenetre`, dérivée de l'instant vs la fenêtre promise,
+    heure locale du serveur), trace au chatter. Lève `CoordonneesInvalides`
+    AVANT toute écriture."""
+    from . import intervention_activity
+
+    gps = _lire_gps(lat, lng)
+    interv.arrivee_site_le = instant
+    fields = ['arrivee_site_le']
+    if gps is not None:
+        interv.arrivee_gps_lat, interv.arrivee_gps_lng = gps
+        fields += ['arrivee_gps_lat', 'arrivee_gps_lng']
+    if interv.fenetre_debut is not None and interv.fenetre_fin is not None:
+        heure_arrivee = timezone.localtime(instant).time()
+        interv.arrivee_dans_fenetre = (
+            interv.fenetre_debut <= heure_arrivee <= interv.fenetre_fin)
+        fields.append('arrivee_dans_fenetre')
+    interv.save(update_fields=fields)
+    dist = distance_to_site(interv)
+    intervention_activity.log_note(
+        interv, user,
+        "Arrivée sur site enregistrée"
+        + (f" (≈ {dist} km du chantier)" if dist is not None else "")
+        + suffixe + ".")
+    return interv
+
+
+def enregistrer_depart_depot(interv, instant, lat, lng, user, *, suffixe=''):
+    """ACHT43 — LE geste de départ dépôt (vue `depart-depot` ET synchro) :
+    horodatage + position de départ (XFSM7, sert à l'ETA du lien public ;
+    des coordonnées illisibles sont ignorées, jamais bloquantes) + trace."""
+    from . import intervention_activity
+
+    interv.depart_depot_le = instant
+    fields = ['depart_depot_le']
+    try:
+        gps = _lire_gps(lat, lng)
+    except CoordonneesInvalides:
+        gps = None
+    if gps is not None:
+        interv.depart_gps_lat, interv.depart_gps_lng = gps
+        fields += ['depart_gps_lat', 'depart_gps_lng']
+    interv.save(update_fields=fields)
+    intervention_activity.log_note(
+        interv, user, "Départ dépôt enregistré" + suffixe + ".")
+    return interv
+
+
 def distance_to_site(intervention):
     """F6 — distance (km) entre la position d'arrivée enregistrée et le GPS du
     chantier, ou None si l'une des deux manque."""
@@ -235,6 +300,44 @@ def _sync_outils(prep):
             li.delete()
 
 
+class OutilIndisponible(Exception):
+    """ACHT72 — l'outil ne peut pas être sorti (perdu, en réparation, déjà
+    sorti) : 409 côté vue, `FieldOpError` côté synchro."""
+
+
+def cocher_outil_ligne(ligne, coche):
+    """ACHT72 — LE geste « charger / décharger un outil » de la préparation
+    (vue `cocher-outil` ET op de synchro `intervention.cocher_outil`).
+
+    Cocher sort l'outil du parc : statut « En intervention » (refus
+    `OutilIndisponible` s'il est Perdu, En réparation ou déjà sorti).
+    Décocher libère un outil que CETTE intervention avait sorti et dont le
+    retour n'a pas encore été confirmé. Un outil retiré du parc (``outil``
+    nul) ne porte que la case."""
+    from apps.outillage.models import Outillage
+
+    outil = ligne.outil
+    if outil is not None and coche and not ligne.coche:
+        if outil.statut == Outillage.Statut.PERDU:
+            raise OutilIndisponible('Outil perdu.')
+        if outil.statut == Outillage.Statut.EN_REPARATION:
+            raise OutilIndisponible('Outil en réparation.')
+        if outil.statut == Outillage.Statut.EN_INTERVENTION:
+            raise OutilIndisponible('Outil déjà sorti.')
+        outil.statut = Outillage.Statut.EN_INTERVENTION
+        outil.save(update_fields=['statut'])
+    elif outil is not None and not coche and ligne.coche:
+        deja_confirme = ligne.preparation.intervention.tool_returns.filter(
+            outil=outil, confirme_le__isnull=False).exists()
+        if outil.statut == Outillage.Statut.EN_INTERVENTION and (
+                not deja_confirme):
+            outil.statut = Outillage.Statut.DISPONIBLE
+            outil.save(update_fields=['statut'])
+    ligne.coche = coche
+    ligne.save(update_fields=['coche'])
+    return ligne
+
+
 def preparation_completion(prep):
     """F5 — pourcentage de complétion = (lignes matériel chargées + outils
     cochés) / (total lignes). None si la préparation est vide."""
@@ -361,15 +464,12 @@ def ensure_fiche_releve(intervention):
         releve.template = template
         releve.save(update_fields=['template'])
     existing = {v.champ_id: v for v in releve.valeurs.all()}
-    seen = set()
     for champ in template.champs.all():
-        seen.add(champ.id)
         if champ.id not in existing:
             FicheInterventionValeur.objects.create(
                 company=intervention.company, releve=releve, champ=champ)
-    for champ_id, val in existing.items():
-        if champ_id not in seen:
-            val.delete()
+    # ACHT73 — on ne supprime JAMAIS une valeur saisie (changement de gabarit,
+    # champ retiré) : l'historique des mesures est conservé.
     return releve
 
 
@@ -382,6 +482,10 @@ def missing_required_fiche_champs(intervention):
         return []
     missing = []
     for val in releve.valeurs.select_related('champ').all():
+        # ACHT73 — seuls les champs du gabarit COURANT comptent (les valeurs
+        # d'un ancien gabarit restent en historique).
+        if val.champ.template_id != releve.template_id:
+            continue
         if not val.champ.obligatoire:
             continue
         if not (val.valeur or '').strip():

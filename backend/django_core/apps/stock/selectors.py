@@ -1632,10 +1632,18 @@ def annonces_livraison_bon_commande(bon_commande):
     """
     if bon_commande is None or not getattr(bon_commande, 'pk', None):
         return []
+    # APRF33 — en liste, le viewset précharge `annonces_livraison` (tri du
+    # Meta : -date_expedition, -id) : on lit ce cache au lieu de rouvrir un
+    # queryset neuf par BCF. Hors liste : repli inchangé (requête triée).
+    if 'annonces_livraison' in getattr(
+            bon_commande, '_prefetched_objects_cache', {}):
+        annonces = bon_commande.annonces_livraison.all()
+    else:
+        annonces = bon_commande.annonces_livraison.order_by(
+            '-date_expedition', '-id')
     return [
         _ligne_annonce_livraison(annonce, bon_commande=bon_commande)
-        for annonce in bon_commande.annonces_livraison.order_by(
-            '-date_expedition', '-id')
+        for annonce in annonces
     ]
 
 

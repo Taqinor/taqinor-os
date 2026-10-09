@@ -37,11 +37,7 @@ PRIMITIVE = "backend/django_core/core/throttling.py"
 #: Lecteurs historiques gelés PAR FICHIER (décroissant seulement).
 EXCEPTIONS = {
     "backend/django_core/apps/crm/webhooks.py",
-    "backend/django_core/apps/identity/middleware.py",
-    "backend/django_core/apps/identity/views.py",
     "backend/django_core/apps/reporting/diffusion_views.py",
-    "backend/django_core/authentication/views.py",
-    "backend/django_core/core/views.py",
 }
 
 _PARTIES_EXCLUES = {"migrations", "tests", "test", "__pycache__", "parked",

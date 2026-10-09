@@ -19,7 +19,8 @@ class PortefeuilleCommercialSelectorTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor NTCRM29', slug='taqinor-ntcrm29')
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         self.com1 = User.objects.create_user(
             username='com1_ntcrm29', password='x', company=self.company, role=self.role)
         self.com2 = User.objects.create_user(
@@ -48,7 +49,8 @@ class PortefeuilleCommercialSelectorTests(TestCase):
     def test_pas_de_fuite_cross_tenant(self):
         autre = Company.objects.create(nom='Autre NTCRM29', slug='autre-ntcrm29')
         role_autre = Role.objects.create(
-            company=autre, nom='Commercial', permissions=['crm_creer'])
+            company=autre, nom='Commercial',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         com_autre = User.objects.create_user(
             username='com_autre_ntcrm29', password='x', company=autre, role=role_autre)
         resultats = portefeuille_commercial(autre, com_autre)
@@ -60,7 +62,8 @@ class PortefeuilleCommercialEndpointTests(TestCase):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM29 API', slug='taqinor-ntcrm29-api')
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         self.com1 = User.objects.create_user(
             username='com1_ntcrm29_api', password='x', company=self.company, role=self.role)
         self.client_a = Client.objects.create(company=self.company, nom='Compte API')

@@ -18,3 +18,11 @@ Audit L3 du 30/09/2026 du parcours devis → groupe **QJR5** (QJR500-QJR670) dan
 **Why:** Reda ne pouvait pas corriger un devis déjà envoyé (« let me correct errors ») et voulait un parcours modifiable à chaque étape, une seule fonction par geste.
 
 **How to apply:** toute tâche touchant l'édition, l'envoi ou la révision d'un devis suit ces règles ; 11 questions restent GATED dans le groupe (QJR659-QJR669).
+
+## Décisions D-ADEV (audit devis, groupe ADEV de docs/plans/PLAN_AUDIT_DEVIS.md) — 09/10/2026
+
+Option (a) recommandée retenue à chaque fois, choisi par Reda via la question interactive du 09/10/2026 (ne jamais re-demander) :
+
+- **D-ADEV-1 = (a)** : la V1 reste la vente « signée en vigueur » (comptée une fois) jusqu'à la signature de la V2 ; supprimer / archiver / refuser / laisser expirer la V2 RÉACTIVE la V1 dans la même transaction (chatter « révision abandonnée »). Recopiée dans ADEV16 et ADEV46.
+- **D-ADEV-2 = (a)** : accepter un brouillon exécute d'abord les mêmes gels que l'envoi (approbation de remise exigée, CGV gelées, marge figée, `date_envoi` = date d'acceptation) et refuse (400 nommé) si la remise n'est pas approuvée. Recopiée dans ADEV12.
+- **D-ADEV-4 = (a)** : la tuile « kWc conçus / signés » (et la pastille de la fiche lead) compte le kWc du PROJET (×N villas). Recopiée dans ADEV40.

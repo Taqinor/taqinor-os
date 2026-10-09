@@ -101,7 +101,10 @@ class TestWarrantyComputation(TestCase):
         r = self._create_equip(produit, '2020-01-15')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertIsNone(r.data['date_fin_garantie'])
-        self.assertEqual(r.data['garantie_etat'], 'non_renseignee')
+        # ASAV44 — l'état se juge sur la garantie EFFECTIVE : sans durée
+        # constructeur, la garantie légale (24 mois, loi 31-08) fait foi ;
+        # posé en 2020 elle est échue.
+        self.assertEqual(r.data['garantie_etat'], 'hors_garantie')
 
     def test_fin_garantie_empty_when_no_pose_date(self):
         produit = make_produit(self.company, sku='OND-NODATE', garantie_mois=120)

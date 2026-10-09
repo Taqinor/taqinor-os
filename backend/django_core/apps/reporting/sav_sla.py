@@ -59,6 +59,10 @@ def sav_sla_insight(request):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     from apps.sav.models import Ticket
+    # ASAV18 — UNE définition du respect du SLA, celle du KPI d'agent :
+    # résolution contre l'échéance EFFECTIVE (pauses décomptées),
+    # première réponse contre l'échéance de RÉPONSE (jamais ``sla_due_at``).
+    from apps.sav.selectors import premiere_reponse_respectee, sla_respecte
 
     qs = Ticket.objects.filter(**co, annule=False)
 
@@ -83,20 +87,16 @@ def sav_sla_insight(request):
         subset = [t for t in tickets if t.priorite == choice_val]
         if not subset:
             continue
-        reponse_ok = [
-            t for t in subset
-            if t.date_premiere_reponse and t.sla_due_at
-            # CRX26/AUD836 — date MÉTIER : `.date()` sur le datetime chargé
-            # (UTC brut) décale d'un jour autour de minuit heure marocaine.
-            and maintenant_local(t.date_premiere_reponse).date() <= t.sla_due_at
-        ]
-        reponse_total = [t for t in subset if t.date_premiere_reponse]
-        resolution_ok = [
-            t for t in subset
-            if t.date_resolution and t.sla_due_at
-            and t.date_resolution <= t.sla_due_at
-        ]
-        resolution_total = [t for t in subset if t.date_resolution]
+        # Dénominateur = tickets MESURABLES (résultat non ``None``), comme
+        # ``performance_agent`` : un ticket sans échéance n'est ni respecté
+        # ni manqué.
+        reponse_mesures = [
+            (t, premiere_reponse_respectee(t)) for t in subset]
+        reponse_total = [t for t, r in reponse_mesures if r is not None]
+        reponse_ok = [t for t, r in reponse_mesures if r]
+        resolution_mesures = [(t, sla_respecte(t)) for t in subset]
+        resolution_total = [t for t, r in resolution_mesures if r is not None]
+        resolution_ok = [t for t, r in resolution_mesures if r]
         par_priorite[choice_val] = {
             'priorite': choice_val,
             'label': str(choice_label),
@@ -120,15 +120,15 @@ def sav_sla_insight(request):
             'reouvertures': 0,
         })
         entry['total'] += 1
-        if t.date_premiere_reponse:
+        reponse = premiere_reponse_respectee(t)
+        if reponse is not None:
             entry['reponse_total'] += 1
-            if (t.sla_due_at
-                    and maintenant_local(t.date_premiere_reponse).date()
-                    <= t.sla_due_at):
+            if reponse:
                 entry['reponse_ok'] += 1
-        if t.date_resolution:
+        resolution = sla_respecte(t)
+        if resolution is not None:
             entry['resolution_total'] += 1
-            if t.sla_due_at and t.date_resolution <= t.sla_due_at:
+            if resolution:
                 entry['resolution_ok'] += 1
         # XSAV11 — taux de réouverture, seulement si le champ existe déjà.
         reopen_count = getattr(t, 'reopen_count', None)

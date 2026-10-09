@@ -4395,9 +4395,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # posée que lorsqu'au moins une clause a été figée → un devis sans clause
     # reste octet-identique. Imprimées par tous les gabarits
     # (``clauses_cgv.bloc_clauses_html``).
+    # ADEV30 / APDF20 — les GELS INTERNES (CGV société, barème des forfaits,
+    # textes contractuels) ne sont jamais des clauses particulières.
+    from apps.ventes.domain.envoi import est_gel_interne as _gel_interne
     _clauses = [
         c for c in (getattr(devis, "clauses_appliquees", None) or [])
-        if isinstance(c, dict) and c.get("type") != "cgv_gelees"]
+        if isinstance(c, dict) and not _gel_interne(c)]
     if _clauses:
         data["clauses_cgv"] = [
             {
@@ -4795,16 +4798,23 @@ def echapper_textes_client(data: dict) -> dict:
     return sortie
 
 
-def display_totals(devis, *, lignes_prechargees=False) -> dict:
+def display_totals(devis, *, lignes_prechargees=False, donnees=None) -> dict:
     """Total d'affichage canonique pour la liste des devis — calculé par le
     MÊME chemin que les PDF (mode une-page, qui ne lève jamais), donc identique
-    au document au dirham près. Repli sûr sur le total stocké."""
+    au document au dirham près. Repli sûr sur le total stocké.
+
+    APRF5 — ``donnees`` (dict, optionnel) reçoit le ``data`` COMPLET du
+    passage moteur quand il réussit : la carte A/B de la liste
+    (``DevisSerializer.get_comparaison_options``) le relit au lieu d'un second
+    ``build_quote_data`` par devis à deux options. Inchangé sinon."""
     try:
         # APRF3 — drapeau serveur « totaux seuls » : aucune lecture hors
         # préchargement (affiche, révision, lien), mêmes totaux au centime.
         data = build_quote_data(devis, {
             "pdf_mode": "onepage", "_totaux_seuls": True,
             "_lignes_prechargees": bool(lignes_prechargees)})
+        if isinstance(donnees, dict):
+            donnees.update(data)
         # ERR-QAC-MULTIVILLA-TOTAL-XN — la liste, le Kanban, la salle de vente
         # et la page publique des gammes affichent le total ×N que le
         # document imprime et que l'ERP facture (décision fondateur

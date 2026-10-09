@@ -430,4 +430,7 @@ def _verifier_digests(test, cle, scenarios, cles_ids=sg.CLES_IDS_PAR_DEFAUT):
     test.assertTrue(
         attendu, f'golden de comportement « {cle} » non capturé : lancer une '
         'fois SPLIT_GOLDEN_CAPTURE=1 sur ce module (voir la docstring)')
+    # CI #890 — un écart doit NOMMER ses scénarios dans le log CI (sans base
+    # locale, c'est la seule façon de savoir lesquels recapturer).
+    test.maxDiff = None
     test.assertEqual(digests, attendu)

@@ -6754,6 +6754,43 @@ def router_document_module(source, *, company, file, filename='',
     return document
 
 
+# ADOC75 — routages par défaut des documents client de ventes (source →
+# dossier cible). Mêmes valeurs dans la migration de données ged.0056.
+ROUTAGES_DEFAUT_VENTES = (
+    ('ventes_facture', 'Ventes/Factures/{{ annee }}'),
+    ('ventes_avoir', 'Ventes/Avoirs/{{ annee }}'),
+    ('ventes_note_debit', 'Ventes/Notes de débit/{{ annee }}'),
+    ('ventes_remise', 'Ventes/Remises/{{ annee }}'),
+)
+CABINET_ROUTAGES_DEFAUT = 'Documents clients'
+
+
+def semer_routages_defaut(company):
+    """ADOC75 — crée, pour `company`, un RoutageDocumentaire actif par défaut
+    pour chaque source de ``ROUTAGES_DEFAUT_VENTES`` ABSENTE ; ne modifie
+    jamais un routage existant (même inactif ou personnalisé). Idempotent.
+    Renvoie le nombre de routages créés."""
+    if company is None:
+        return 0
+    cabinet = None
+    crees = 0
+    for source, dossier in ROUTAGES_DEFAUT_VENTES:
+        if RoutageDocumentaire.objects.filter(
+                company=company, source=source).exists():
+            continue
+        if cabinet is None:
+            cabinet = Cabinet.objects.filter(
+                company=company, nom=CABINET_ROUTAGES_DEFAUT).first()
+            if cabinet is None:
+                cabinet = Cabinet.objects.create(
+                    company=company, nom=CABINET_ROUTAGES_DEFAUT)
+        RoutageDocumentaire.objects.create(
+            company=company, source=source, cabinet_cible=cabinet,
+            dossier_cible=dossier, actif=True, seme_par_defaut=True)
+        crees += 1
+    return crees
+
+
 # ── NTDOC9 — Durcissement anti-abus des liens de signature PUBLICS ──────────
 #
 # Trois protections indépendantes, toutes best-effort (jamais bloquantes pour

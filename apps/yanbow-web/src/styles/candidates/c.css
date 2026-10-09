@@ -1,0 +1,345 @@
+/*
+ * Candidat C « Continuité du deck » (YBW42, corrigé YBW43) — mise en page,
+ * CLAIR seulement. La page se lit comme le deck de rendez-vous : des
+ * « diapositives » pleine largeur, bleu nuit pour les temps forts (titres
+ * Fraunces en orange de la flèche), blanc et ivoire pour le contenu. Un seul
+ * accent (YBW43 C-1). Aucune couleur ici (c.tokens.css).
+ */
+@import './c.tokens.css';
+@import './socle.css';
+
+body {
+  font-family: var(--police-texte);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--police-titre);
+  font-weight: var(--poids-titre);
+  font-optical-sizing: auto;
+  color: var(--texte-titre);
+}
+
+.nuit {
+  background-color: var(--fond);
+  color: var(--texte);
+}
+
+/* ------------------------------------------------------------ en-tête */
+.entete {
+  border-block-end: 1px solid var(--trait);
+  background-color: var(--fond);
+}
+
+.entete-int {
+  min-block-size: 4.75rem;
+}
+
+.bouton-entete {
+  min-block-size: 44px;
+  padding-inline: var(--espace-6);
+}
+
+/* ------------------------------------------------------------ surtitres */
+.surtitre {
+  display: flex;
+  align-items: center;
+  gap: var(--espace-3);
+  font-size: var(--texte-xs);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-texte);
+}
+
+.surtitre::after {
+  content: '';
+  flex: 1;
+  max-inline-size: 6rem;
+  block-size: 1px;
+  background-color: currentColor;
+}
+
+/* ------------------------------------------------------------ héros (diapositive) */
+.hero {
+  padding-block: clamp(3.5rem, 9vw, 7.5rem) clamp(3rem, 7vw, 5.5rem);
+}
+
+.hero-grille {
+  display: grid;
+  gap: clamp(2rem, 5vw, 3.5rem);
+}
+
+.hero-titre {
+  max-inline-size: 16ch;
+  font-size: clamp(2.5rem, 1.2rem + 5vw, 5rem);
+  font-weight: 500;
+  line-height: 1.03;
+  letter-spacing: -0.02em;
+  color: var(--titre-grand);
+}
+
+.hero-cote {
+  display: grid;
+  gap: var(--espace-6);
+  align-content: end;
+}
+
+.hero-intro {
+  max-inline-size: 34rem;
+  font-size: var(--texte-lg);
+  line-height: 1.6;
+  color: var(--texte-attenue);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espace-4);
+  align-items: center;
+}
+
+.hero .lien-fleche {
+  color: var(--texte);
+}
+
+@media (min-width: 64rem) {
+  .hero-grille {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    column-gap: clamp(3rem, 6vw, 6rem);
+  }
+}
+
+/* ------------------------------------------------------------ capture (diapositive ivoire) */
+.diapo-capture {
+  padding-block: clamp(3rem, 7vw, 5.5rem);
+  background-color: var(--fond-alt);
+}
+
+.diapo-capture .capture-cadre {
+  box-shadow: 0 1.75rem 3.5rem -2rem var(--ombre);
+}
+
+/* ------------------------------------------------------------ sections */
+.section {
+  padding-block: clamp(4rem, 9vw, 7.5rem);
+}
+
+.section-tete {
+  display: grid;
+  gap: var(--espace-4);
+  margin-block-end: clamp(2.5rem, 6vw, 4rem);
+}
+
+.section-tete h2 {
+  max-inline-size: 24ch;
+  font-size: clamp(2rem, 1.2rem + 2.6vw, 3.25rem);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+
+.section-tete p:not(.surtitre) {
+  max-inline-size: 38rem;
+  font-size: var(--texte-lg);
+  color: var(--texte-attenue);
+}
+
+/* ------------------------------------------------------------ produits */
+.produits-grille {
+  display: grid;
+  gap: var(--espace-8);
+}
+
+@media (min-width: 52rem) {
+  .produits-grille {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.produit {
+  display: grid;
+  align-content: start;
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon-1);
+  overflow: hidden;
+  background-color: var(--fond-surface);
+  scroll-margin-block-start: var(--espace-8);
+}
+
+.produit-tete {
+  display: grid;
+  gap: var(--espace-2);
+  padding: clamp(1.5rem, 3vw, 2rem);
+  background-color: var(--fond-alt);
+  border-block-start: 4px solid var(--accent-graphique);
+}
+
+.produit-surtitre {
+  color: var(--texte-attenue);
+  font-size: var(--texte-xs);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.produit h3 {
+  font-size: clamp(2rem, 1.5rem + 1.6vw, 2.75rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.produit-corps {
+  display: grid;
+  gap: var(--espace-4);
+  padding: clamp(1.5rem, 3vw, 2rem);
+}
+
+.produit-description {
+  color: var(--texte-attenue);
+}
+
+.points {
+  display: grid;
+  gap: var(--espace-3);
+  list-style: none;
+  padding: 0;
+}
+
+.points li {
+  position: relative;
+  padding-inline-start: var(--espace-6);
+}
+
+.points li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0.55em;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  background-color: var(--accent-graphique);
+}
+
+.produit .lien-fleche {
+  justify-self: start;
+}
+
+/* ------------------------------------------------------------ sur mesure */
+.sur-mesure {
+  border-block-start: 1px solid var(--trait);
+}
+
+.etapes {
+  counter-reset: etape;
+  display: grid;
+  gap: var(--espace-8);
+  list-style: none;
+  padding: 0;
+}
+
+.etapes li {
+  counter-increment: etape;
+  display: grid;
+  gap: var(--espace-2);
+  align-content: start;
+}
+
+.etapes li::before {
+  content: counter(etape);
+  display: grid;
+  place-items: center;
+  inline-size: 3rem;
+  block-size: 3rem;
+  margin-block-end: var(--espace-3);
+  border-radius: var(--rayon-plein);
+  background-color: var(--bouton-fond);
+  color: var(--bouton-texte);
+  font-family: var(--police-titre);
+  font-size: var(--texte-lg);
+}
+
+.etape-titre {
+  font-family: var(--police-titre);
+  font-size: var(--texte-xl);
+  line-height: 1.2;
+  color: var(--texte-titre);
+}
+
+.etape-detail {
+  color: var(--texte-attenue);
+}
+
+@media (min-width: 48rem) {
+  .etapes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .etapes {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------ société */
+.societe {
+  background-color: var(--fond-alt);
+}
+
+.societe-int {
+  display: grid;
+  gap: var(--espace-8);
+  align-items: center;
+}
+
+.societe-int h2 {
+  max-inline-size: 24ch;
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  line-height: 1.12;
+}
+
+.societe-int p:not(.surtitre) {
+  max-inline-size: 40rem;
+  margin-block-start: var(--espace-4);
+  font-size: var(--texte-lg);
+  color: var(--texte-attenue);
+}
+
+@media (min-width: 48rem) {
+  .societe-int {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: clamp(2rem, 6vw, 5rem);
+  }
+}
+
+/* ------------------------------------------------------------ appel final (diapositive) */
+.rdv {
+  padding-block: clamp(4.5rem, 10vw, 8rem);
+}
+
+.rdv-int {
+  display: grid;
+  gap: var(--espace-6);
+  justify-items: start;
+}
+
+.rdv h2 {
+  max-inline-size: 18ch;
+  font-size: clamp(2.25rem, 1.2rem + 4vw, 4.5rem);
+  font-weight: 500;
+  line-height: 1.04;
+  color: var(--titre-grand);
+}
+
+.rdv p:not(.surtitre) {
+  max-inline-size: 34rem;
+  font-size: var(--texte-lg);
+  color: var(--texte-attenue);
+}
+
+/* ------------------------------------------------------------ pied */
+.pied {
+  padding-block: clamp(3rem, 6vw, 4rem);
+  border-block-start: 1px solid var(--trait);
+}

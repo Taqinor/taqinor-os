@@ -27,22 +27,56 @@ from .models import (
 
 
 # ── F9 — n° de série par composant → parc installé (sav.Equipement) ──────────
+MESSAGE_SERIE_DOUBLON = (
+    "Ce numéro de série est déjà relevé ou déjà au parc SAV.")
+MESSAGE_SERIE_AU_PARC = (
+    "Série déjà au parc SAV : corrigez-la depuis la fiche équipement.")
+
+
+def numero_serie_en_double(company, numero, *, exclude_id=None):
+    """ACHT37 — vrai si ce n° de série (non vide) existe déjà : relevé terrain
+    d'une AUTRE ligne de la société, ou équipement du parc SAV (contrainte
+    `uniq_equipement_serie_par_societe`). Évite l'`IntegrityError` (500) du
+    push au parc : le doublon est refusé dès la saisie."""
+    from .models import ComponentSerial
+    numero = (numero or '').strip()
+    if not numero:
+        return False
+    qs = ComponentSerial.objects.filter(
+        company=company, numero_serie__iexact=numero)
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    if qs.exists():
+        return True
+    from apps.sav.selectors import equipement_scoped_by_serial
+    return equipement_scoped_by_serial(company, numero) is not None
+
+
 def push_serials_to_parc(intervention, user):
     """F9 — pousse les n° de série relevés (avec un produit catalogue) vers le
     parc installé (sav.Equipement), comme la checklist chantier (N9). Idempotent
     via `pousse_parc` : un même relevé ne crée jamais deux équipements. Un n° de
     série VIDE n'empêche PAS la création (l'appareil est tracé sans série).
+    ACHT37 — appelé UNE fois à la clôture de l'intervention (jamais depuis un
+    GET) ; un n° déjà au parc est marqué poussé sans second équipement.
     Renvoie le nombre d'équipements créés."""
+    from apps.sav.selectors import equipement_scoped_by_serial
     from apps.sav.services import create_equipement_from_serial
     inst = intervention.installation
     created = 0
     for serial in intervention.serials.filter(
             pousse_parc=False, produit__isnull=False):
+        numero = (serial.numero_serie or '').strip() or None
+        if numero and equipement_scoped_by_serial(
+                intervention.company, numero) is not None:
+            serial.pousse_parc = True
+            serial.save(update_fields=['pousse_parc'])
+            continue
         create_equipement_from_serial(
             company=intervention.company, produit=serial.produit,
-            installation=inst,
-            numero_serie=(serial.numero_serie or '').strip() or None,
-            date_pose=inst.date_pose_reelle or timezone.localdate(),
+            installation=inst, numero_serie=numero,
+            date_pose=(inst.date_pose_reelle or intervention.date_realisee
+                       or timezone.localdate()),
             created_by=user)
         serial.pousse_parc = True
         serial.save(update_fields=['pousse_parc'])

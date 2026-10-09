@@ -34,6 +34,8 @@ EVENT_MODULE = {
     EventType.RELANCE_DUE: 'crm',
     EventType.PREMIER_CONTACT_DEPASSE: 'crm',
     EventType.CRM_BILAN_HEBDO: 'crm',
+    # ACRM41/42 — rappels et réservations de visite : agenda CRM.
+    EventType.APPOINTMENT_REMINDER: 'crm',
     # ventes (Devis + Facture + BonCommande vivent dans apps.ventes)
     EventType.DEVIS_ACCEPTED: 'ventes',
     EventType.DEVIS_OPENED: 'ventes',

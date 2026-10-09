@@ -79,10 +79,12 @@ describe('WJ15 — fenêtre de validité (jamais inventée, jamais de compte-à-
     expect(v.label).toBe('30 septembre 2026');
   });
 
-  it('signale une échéance déjà passée', () => {
-    const p = makeProposal({ date_validite: '2026-01-01' });
+  it('ADEV52 — signale une échéance passée quand le SERVEUR le dit (offre_expiree)', () => {
+    const p = makeProposal({ date_validite: '2026-01-01', offre_expiree: true });
     const v = resolveValidity(p, new Date(Date.UTC(2026, 5, 22)));
     expect(v.expired).toBe(true);
+    // Sans verdict serveur, aucune expiration déduite localement.
+    expect(resolveValidity(makeProposal({ date_validite: '2026-01-01' })).expired).toBe(false);
   });
 
   it('repli HONNÊTE sans date backend : aucun label fabriqué', () => {
@@ -96,29 +98,23 @@ describe('WJ15 — fenêtre de validité (jamais inventée, jamais de compte-à-
 // ── WJ9 · Argent dans le temps ───────────────────────────────────────────────
 
 describe('WJ9 — économies cumulées + cadrage mensuel (depuis le backend)', () => {
-  it('WJ75 — eco_a_cumul backend est un TAUX PAR AN (comme le moteur PDF), multiplié par years — jamais affiché tel quel', () => {
-    // Le backend réel (apps/ventes/quote_engine/pricing.py) fixe
-    // eco_a_cumul = economie_opt2 (= eco_a_ann) — PAS un total déjà cumulé — et
-    // generate_devis_premium.py bâtit sa courbe par `eco_a_cumul * y`. Un fixture
-    // à 16000 (légèrement différent de eco_a_ann=15000, pour prouver qu'on lit
-    // BIEN eco_a_cumul et pas eco_a_ann) doit donc ressortir en `16000 × 25`, PAS
-    // en `16000` brut (l'ancien bug affichait le taux annuel comme s'il s'agissait
-    // déjà du cumul sur 25 ans — une sous-estimation ≈25× du chiffre le plus
-    // visible de la page).
-    const p = makeProposal({ quote: { eco_a_cumul: 16000 } });
+  it('ADEV50 — le cumul 25 ans est `economies_cumul_25_ans[opt]` SERVI, tel quel (plus de × 25)', () => {
+    const p = makeProposal({
+      quote: { eco_a_cumul: 16000 },
+      economies_cumul_25_ans: { sans_batterie: 342314, avec_batterie: 346653 },
+    });
     const h = savingsHeadline(p, 'avec_batterie', 25);
-    expect(h.cumulative).toBe(16000 * 25);
+    expect(h.cumulative).toBe(346653);
     expect(h.cumulativeFromBackend).toBe(true);
     expect(h.annual).toBe(15000); // eco_a_ann, inchangé — distinct de eco_a_cumul
     expect(h.monthly).toBe(1250); // 15000 / 12
     expect(h.payback).toBe('7,2 ans');
   });
 
-  it('cumul calculé depuis l’annuel × horizon quand eco_a_cumul absent', () => {
+  it('ADEV50 — clé servie absente → aucun cumul (jamais l’annuel × horizon)', () => {
     const p = makeProposal();
     const h = savingsHeadline(p, 'avec_batterie', SAVINGS_HORIZON_YEARS);
-    // inflation 0 % par défaut → 15000 × 25
-    expect(h.cumulative).toBe(15000 * 25);
+    expect(h.cumulative).toBeNull();
     expect(h.cumulativeFromBackend).toBe(false);
     expect(h.years).toBe(25);
   });

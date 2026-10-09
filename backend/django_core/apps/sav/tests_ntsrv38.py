@@ -79,6 +79,11 @@ class NTSRV38VerrouTest(TestCase):
             company=self.company, libelle='J+0 responsable', ordre=1,
             seuil_jours_apres_echeance=0,
             notifier_utilisateur=self.responsable)
+        # ASAV57 (D-ASAV-5 Q2 a) — les balayages ne notifient que société
+        # activée (interrupteur sla_breach_enabled).
+        reglages = SavSlaSettings.get(self.company)
+        reglages.sla_breach_enabled = True
+        reglages.save(update_fields=['sla_breach_enabled'])
         Notification.objects.all().delete()
 
     def tearDown(self):

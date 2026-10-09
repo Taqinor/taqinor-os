@@ -43,7 +43,9 @@ def _current_session_mfa_at(request):
         if not raw:
             return None
         try:
-            jti = RefreshToken(raw).get('jti')
+            token = RefreshToken(raw)
+            # ASEC49 — refresh tourné : la session se retrouve par ``sid``.
+            jti = token.get('sid') or token.get('jti')
         except TokenError:
             return None
         if not jti:

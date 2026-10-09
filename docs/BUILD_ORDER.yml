@@ -453,6 +453,9 @@ unmapped_ok:
   # CIQM — tâches MANUELLES du Groupe CIQ (Reda / fiscaliste / juriste / assureur /
   # distributeur, pas du code) : jamais dispatchées à un agent, pass-through.
   - CIQM
+  # ENF — tous les contrôles bloquants (décision fondateur 09/10/2026, groupe ENF de
+  # PLAN.md) : auto-ordonné par ses propres @after (ENF1/ENF2 d'abord, ENF14 avant les dettes).
+  - ENF
   # RLC — Relances : retour arriere, journal & etat client (Groupe RLC de
   # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
   # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.

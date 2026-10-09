@@ -397,9 +397,19 @@ def ensure_checklist_items(installation):
     ``exige_*`` de l'écran « étapes »), croyait devoir tout recréer — violation
     de l'unicité ``(installation, cle)`` → 500. Le manager interroge la base."""
     company = installation.company
-    template = template_for_installation(installation)
     a_jour = ChantierChecklistItem.objects.filter(installation=installation)
-    existing = set(a_jour.values_list('cle', flat=True))
+    # ACHT78 / D-ACHT-2 (ACHT95, option a) — la checklist d'un chantier est
+    # FIGÉE à sa première matérialisation : ni ajout, ni renommage, ni option
+    # du modèle ne la modifie ensuite (comme la désactivation, N57). Un
+    # chantier jamais ouvert reçoit le modèle courant ; un chantier
+    # réceptionné ou clôturé n'est plus JAMAIS modifié.
+    if a_jour.exists():
+        return list(a_jour)
+    if Installation.canonical_statut(installation.statut) in (
+            Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE):
+        return []
+    template = template_for_installation(installation)
+    existing = set()
     modeles = ChecklistEtapeModele.objects.filter(
         company=company, actif=True)
     if template is not None:
@@ -512,6 +522,53 @@ def _freeze_bom(devis):
             'marque': getattr(produit, 'marque', None) if produit else None,
         })
     return bom
+
+
+def divergence_devis_chantier(installation):
+    """ACHT66 — écart entre la nomenclature GELÉE du chantier
+    (``Installation.bom``) et ce que le devis lié produirait aujourd'hui
+    (``_freeze_bom`` : option retenue × N villas, réutilisé tel quel, jamais
+    recopié). Forme du contrat ``installation_divergence_devis.json`` :
+    ``{diverge, lignes: [{produit_id, designation, quantite_bom,
+    quantite_devis}]}`` ; une ligne n'apparaît que si les quantités diffèrent
+    (``None`` = produit absent d'un côté). Sans devis : aucun écart."""
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return {'diverge': False, 'lignes': []}
+
+    def _cumul(bom):
+        out = {}
+        for ligne in bom or []:
+            produit_id = ligne.get('produit_id')
+            cle = ('p', produit_id) if produit_id else (
+                'd', ligne.get('designation') or '')
+            entree = out.setdefault(cle, {
+                'produit_id': produit_id,
+                'designation': ligne.get('designation') or '',
+                'quantite': 0.0})
+            try:
+                entree['quantite'] += float(ligne.get('quantite') or 0)
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    gele = _cumul(installation.bom)
+    courant = _cumul(_freeze_bom(devis))
+    lignes = []
+    for cle in list(gele) + [c for c in courant if c not in gele]:
+        a, b = gele.get(cle), courant.get(cle)
+        qte_bom = round(a['quantite'], 4) if a else None
+        qte_devis = round(b['quantite'], 4) if b else None
+        if qte_bom == qte_devis:
+            continue
+        ref = a or b
+        lignes.append({
+            'produit_id': ref['produit_id'],
+            'designation': ref['designation'],
+            'quantite_bom': qte_bom,
+            'quantite_devis': qte_devis,
+        })
+    return {'diverge': bool(lignes), 'lignes': lignes}
 
 
 def _devis_successeurs_revision_ids(devis):
@@ -3163,6 +3220,20 @@ def instruments_par_essai_detail(record):
             for essai, iid in ids.items()}
 
 
+def instruments_supprimes_recette(record):
+    """ACHT73 — essais dont l'instrument (``instruments_par_essai``) ne
+    pointe plus un outil de la société (supprimé avant la garde d'usage)."""
+    from apps.outillage.models import Outillage
+    ids = {essai: iid for essai, iid
+           in (record.instruments_par_essai or {}).items() if iid}
+    if not ids:
+        return []
+    vivants = set(Outillage.objects.filter(
+        pk__in=list(ids.values()), company=record.company
+    ).values_list('pk', flat=True))
+    return [essai for essai, iid in ids.items() if iid not in vivants]
+
+
 def comparaison_recette_ci(record):
     """CIQ626 — bloc ``comparaison`` du contrat ``recette_ci.json`` (part
     I-V, PR, avertissements d'étalonnage). Aucun seuil inventé."""
@@ -3192,7 +3263,10 @@ def comparaison_recette_ci(record):
         'avertissements': [
             f"Instrument de l'essai « {essai} » : étalonnage expiré."
             for essai, detail in instruments_par_essai_detail(record).items()
-            if detail['etalonnage_expire']],
+            if detail['etalonnage_expire']] + [
+            # ACHT73 — donnée héritée : l'outil référencé n'existe plus.
+            f"Instrument de l'essai « {essai} » supprimé."
+            for essai in instruments_supprimes_recette(record)],
     }
     seuil_pr = _reglage_recette(record.company, 'recette_pr_seuil_interne')
     if seuil_pr is not None and pr is not None:
@@ -4363,6 +4437,90 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
     return {'jour': str(jour), 'propositions': propositions}
 
 
+MESSAGE_DATE_INVALIDE = 'Date invalide (AAAA-MM-JJ).'
+
+
+def parser_date_rdv(brut):
+    """ACHT38 — date de rendez-vous parsée et validée (AAAA-MM-JJ). Lève
+    `ValueError(MESSAGE_DATE_INVALIDE)` : jamais d'écriture d'une chaîne brute
+    sur un `DateField` (500 + transaction cassée)."""
+    import datetime
+    from django.utils.dateparse import parse_date
+
+    if isinstance(brut, datetime.datetime):
+        return brut.date()
+    if isinstance(brut, datetime.date):
+        return brut
+    try:
+        valeur = parse_date(str(brut or '').strip())
+    except ValueError:
+        valeur = None
+    if valeur is None:
+        raise ValueError(MESSAGE_DATE_INVALIDE)
+    return valeur
+
+
+def enregistrer_report_rdv(intervention, ancienne_date, motif, user, *,
+                           confirme=None, trace=True):
+    """ACHT38 — effets d'un REPORT de rendez-vous (la date est déjà écrite) :
+    confirmation remise à zéro (le client n'a pas accepté la nouvelle date),
+    compteur `rdv_reschedule_count` incrémenté atomiquement (F, AUD829), trace
+    au chatter. `confirme` (optionnel) repose explicitement la confirmation
+    après le report (geste « confirmer-rdv » avec nouvelle date)."""
+    from django.db.models import F
+    from django.utils import timezone
+    from . import intervention_activity
+
+    intervention.rdv_confirme = bool(confirme)
+    intervention.rdv_confirme_le = timezone.now() if confirme else None
+    intervention.save(update_fields=['rdv_confirme', 'rdv_confirme_le'])
+    type(intervention).objects.filter(pk=intervention.pk).update(
+        rdv_reschedule_count=F('rdv_reschedule_count') + 1)
+    intervention.refresh_from_db(fields=['rdv_reschedule_count'])
+    if trace:
+        motif = (motif or '').strip()
+        intervention_activity.log_note(
+            intervention, user,
+            f"RDV reporté du {ancienne_date or '—'} au "
+            f"{intervention.date_prevue}"
+            f"{f' ({motif})' if motif else ''} "
+            f"(report n°{intervention.rdv_reschedule_count}).")
+    return intervention
+
+
+def replanifier(intervention, date, motif, user, *, confirme=None,
+                technicien_id=None, trace=True):
+    """ACHT38 — SERVICE UNIQUE de report d'un rendez-vous d'intervention
+    (`confirmer-rdv`, replanification de masse ; le PATCH de `date_prevue`
+    passe par `enregistrer_report_rdv`). La date est PARSÉE avant toute
+    écriture (`ValueError` → 400 côté vue). Une date identique à l'actuelle
+    n'est pas un report : seule la confirmation éventuelle est posée.
+    Renvoie `True` si c'était un report."""
+    nouvelle = parser_date_rdv(date)
+    ancienne = intervention.date_prevue
+    champs = []
+    if technicien_id is not None and (
+            intervention.technicien_id != technicien_id):
+        intervention.technicien_id = technicien_id
+        champs.append('technicien')
+    report = nouvelle != ancienne
+    if report:
+        intervention.date_prevue = nouvelle
+        champs.append('date_prevue')
+    if champs:
+        intervention.save(update_fields=champs)
+    if report:
+        enregistrer_report_rdv(
+            intervention, ancienne, motif, user, confirme=confirme,
+            trace=trace)
+    elif confirme is not None:
+        from django.utils import timezone
+        intervention.rdv_confirme = bool(confirme)
+        intervention.rdv_confirme_le = timezone.now() if confirme else None
+        intervention.save(update_fields=['rdv_confirme', 'rdv_confirme_le'])
+    return report
+
+
 def appliquer_replanification_masse(company, *, jour, motif, user,
                                     technicien_id=None, intervention_ids=None):
     """XFSM3 — applique en UN appel les propositions de
@@ -4396,13 +4554,10 @@ def appliquer_replanification_masse(company, *, jour, motif, user,
             ancien_tech_id = interv.technicien_id
             nouvelle_date = proposition['date']
             nouveau_tech_id = proposition['technicien_id']
-            interv.technicien_id = nouveau_tech_id
-            if str(interv.date_prevue) != nouvelle_date:
-                interv.rdv_reschedule_count = (
-                    interv.rdv_reschedule_count or 0) + 1
-            interv.date_prevue = nouvelle_date
-            interv.save(update_fields=[
-                'technicien_id', 'date_prevue', 'rdv_reschedule_count'])
+            # ACHT38 — service unique : date parsée, compteur, confirmation
+            # remise à zéro (la trace de masse ci-dessous reste la ligne).
+            replanifier(interv, nouvelle_date, motif, user,
+                        technicien_id=nouveau_tech_id, trace=False)
             intervention_activity.log_note(
                 interv, user,
                 f"Replanification en masse ({motif or 'sans motif'}) : "
@@ -5644,7 +5799,8 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
             "avant démarrage »)." + detail)
 
 
-def changer_statut_intervention(intervention, nouveau_statut, user):
+def changer_statut_intervention(intervention, nouveau_statut, user, *,
+                                etat_avant=None):
     """AUD317 — LE point d'écriture de `Intervention.statut`.
 
     Applique la garde F5/F8/ZFSM1 (`field_services.transition_block_reason`)
@@ -5655,7 +5811,12 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
 
     Lève `TransitionRefusee` quand la garde refuse. Renvoie un reçu
     `{'ancien', 'nouveau', 'effets': {...}}`. No-op (reçu sans effet) quand le
-    statut demandé est déjà celui de l'intervention."""
+    statut demandé est déjà celui de l'intervention.
+
+    ACHT35 — `etat_avant` (optionnel) : l'instance capturée AVANT la sauvegarde
+    des autres champs d'un PATCH ; le chatter journalise alors TOUS les champs
+    suivis modifiés (pas seulement le statut), patron de
+    `changer_statut_chantier`."""
     from . import activity, field_services, intervention_activity
     from .models_intervention import Intervention as _Intervention
 
@@ -5671,9 +5832,17 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
     if raison_securite:
         raise TransitionRefusee([raison_securite])
 
-    old = _Intervention.objects.get(pk=intervention.pk)
+    old = etat_avant if etat_avant is not None else (
+        _Intervention.objects.get(pk=intervention.pk))
+    termines = (_Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
     intervention.statut = nouveau_statut
-    intervention.save(update_fields=['statut'])
+    champs_ecrits = ['statut']
+    if ancien in termines and nouveau_statut not in termines:
+        # ACHT36 — RECUL d'une intervention clôturée : la date de réalisation
+        # est remise à vide (tracée au chatter) ; la re-clôture la reposera.
+        intervention.date_realisee = None
+        champs_ecrits.append('date_realisee')
+    intervention.save(update_fields=champs_ecrits)
 
     effets = {}
     _stamp_date_realisee_intervention(intervention)
@@ -5685,15 +5854,33 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
             f"Intervention modifiée : "
             f"{intervention.get_type_intervention_display()}")
         effets['chatter_chantier'] = True
-    termines = (_Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
-    if ancien not in termines and intervention.statut in termines:
+    if (ancien not in termines and intervention.statut in termines
+            and intervention.cloturee_notifiee_le is None):
         # YSERV2 — sav s'y abonne pour avancer le ticket lié (installations
         # n'importe JAMAIS sav) ; ZFSM4 y accroche la facturation.
+        # ACHT36 — émis SEULEMENT à la première clôture.
+        from django.utils import timezone as _tz
         from core.events import intervention_completed
+        intervention.cloturee_notifiee_le = _tz.now()
+        intervention.save(update_fields=['cloturee_notifiee_le'])
         intervention_completed.send(
             sender=_Intervention, intervention=intervention,
             company=intervention.company, user=user)
         effets['intervention_completed'] = True
+    if ancien not in termines and intervention.statut in termines:
+        # ACHT37 — poussée des n° de série vers le parc SAV à la clôture
+        # (idempotente via `pousse_parc`), plus depuis le GET compte-rendu.
+        # Jamais bloquante pour la clôture.
+        try:
+            from django.db import transaction as _tx
+            from . import field_capture
+            with _tx.atomic():
+                field_capture.push_serials_to_parc(intervention, user)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                'ACHT37: poussée des séries au parc échouée (intervention %s)',
+                intervention.pk, exc_info=True)
     if (ancien != _Intervention.Statut.VALIDEE
             and intervention.statut == _Intervention.Statut.VALIDEE):
         # ZFSM2 — jeton du lien public « compte-rendu signé » (lazy, idempotent).
@@ -6830,13 +7017,20 @@ def _notifier_prochaine_etape_approbation_achat(demande):
             demande.company, EventType.APPROVAL_REQUESTED)
         reason = resolve_recipients_reason(
             demande.company, EventType.APPROVAL_REQUESTED)
+        # ACHT16 — le montant (estimation d'achat) n'est écrit que si TOUS
+        # les destinataires voient les prix d'achat (`prix_achat_voir`).
+        recipients = list(recipients)
+        montant_ligne = (
+            f'Montant estimé : {demande.montant_estime} DH.\n'
+            if all(getattr(u, 'can_view_buy_prices', False)
+                   for u in recipients) else '')
         notify_many(
             recipients, EventType.APPROVAL_REQUESTED,
             title=(f'Étape {etape.niveau} à approuver — réquisition '
                    f'{demande.reference}'),
             body=(f'La réquisition {demande.reference} attend votre '
                   f'approbation (étape {etape.niveau}).\n'
-                  f'Montant estimé : {demande.montant_estime} DH.\n'
+                  f'{montant_ligne}'
                   f'Objet : {demande.objet}'),
             link='/approbations?source=installations',
             company=demande.company, reason=reason)

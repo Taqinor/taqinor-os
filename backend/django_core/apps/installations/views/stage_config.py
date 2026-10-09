@@ -94,4 +94,10 @@ class StageModeleViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     def destroy_guard_message(self, stage):
         if stage.protege:
             return "Cette étape système est protégée — désactivez-la plutôt."
+        # ACHT73 — `Installation.etape` est SET_NULL : supprimer une étape
+        # portée par un chantier le repositionnerait en silence.
+        nb = stage.chantiers.count()
+        if nb:
+            return (f"Utilisé par {nb} chantier{'s' if nb > 1 else ''} — "
+                    "désactivez cette étape plutôt que de la supprimer.")
         return None

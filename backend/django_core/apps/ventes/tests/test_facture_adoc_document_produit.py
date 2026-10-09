@@ -73,9 +73,10 @@ class AdocDocumentProduitTests(TestCase):
     def _router(self):
         cab = Cabinet.objects.create(company=self.co, nom='Ventes')
         for source, dossier in SOURCES.items():
-            RoutageDocumentaire.objects.create(
-                company=self.co, source=source, cabinet_cible=cab,
-                dossier_cible=dossier + '/{{ annee }}')
+            RoutageDocumentaire.objects.update_or_create(
+                company=self.co, source=source,
+                defaults={'cabinet_cible': cab,
+                          'dossier_cible': dossier + '/{{ annee }}'})
 
     def _docs(self, reference):
         return Document.objects.filter(
@@ -134,6 +135,8 @@ class AdocDocumentProduitTests(TestCase):
             DocumentVersion.objects.filter(document=docs.get()).count(), 2)
 
     def test_sans_routage_no_op(self, _dl, _up):
+        # ADOC75 : routages par défaut semés à la création de la société.
+        RoutageDocumentaire.objects.filter(company=self.co).delete()
         self._generer_tout()
         self.assertFalse(Document.objects.filter(company=self.co).exists())
         self.avoir.refresh_from_db()

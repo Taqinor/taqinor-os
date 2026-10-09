@@ -1509,3 +1509,22 @@ def notify_integration_health(company, recipients, *, title, valeur, paliers,
     notify_many(recipients, event_type, title, body=body, link=link,
                 company=company, reason=reason)
     return palier
+
+
+def supprimer_abonnement_push(user, endpoint):
+    """APAR57 — supprime l'abonnement push d'un APPAREIL (par endpoint).
+
+    Même règle que la vue ``push_unsubscribe`` : bornée à ``user`` (on ne
+    supprime jamais l'abonnement d'autrui). Appelée par ``LogoutView`` pour
+    qu'un navigateur déconnecté ne reçoive plus de push porteur de jetons
+    « Approuver/Refuser ». Rend le nombre de lignes supprimées (0 si endpoint
+    vide/inconnu)."""
+    if not isinstance(endpoint, str) or user is None:
+        return 0
+    endpoint = endpoint.strip()
+    if not endpoint:
+        return 0
+    from .models import PushSubscription
+    deleted, _ = PushSubscription.objects.filter(
+        user=user, endpoint=endpoint).delete()
+    return deleted

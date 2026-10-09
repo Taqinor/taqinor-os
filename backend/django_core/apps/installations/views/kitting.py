@@ -121,7 +121,8 @@ class KitViewSet(CompanyScopedModelViewSet):
     responsable/admin. Filtrable par `active`. XMFG18 : révisions de
     nomenclature (`revisions/`, `composition-au/`) + `dupliquer/`."""
     queryset = Kit.objects.select_related(
-        'produit_compose', 'created_by').prefetch_related('composants').all()
+        'produit_compose', 'created_by').prefetch_related(
+        'composants__produit').all()
     serializer_class = KitSerializer
 
     def get_permissions(self):
@@ -1116,7 +1117,8 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
     """XMFG12 — ordres de démontage (unbuild) : composite → composants.
     Lecture tout rôle, écriture responsable/admin. Référence/société/
     `created_by` posés serveur. Filtrable par `statut`, `kit`."""
-    queryset = OrdreDemontage.objects.select_related('kit', 'created_by').all()
+    queryset = OrdreDemontage.objects.select_related(
+        'kit', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = OrdreDemontageSerializer
 
     def get_permissions(self):

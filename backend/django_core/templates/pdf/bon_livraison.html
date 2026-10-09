@@ -38,6 +38,9 @@
 <body>
 <div class="page">
 
+  {% if annulee %}
+  <div style="background:#b3261e;color:#fff;font-weight:bold;text-align:center;padding:6px 0;margin-bottom:10px;">ANNULÉE</div>
+  {% endif %}
   <div class="header">
     <div class="header-left">
       {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}

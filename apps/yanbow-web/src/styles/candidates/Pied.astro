@@ -1,0 +1,27 @@
+---
+// Pied de page commun aux candidats (YBW42) : nom (180 px), liens juridiques
+// YBW30 (rien tant que les pages sont incomplètes), slogan en version lockup
+// SEULEMENT à 420 px et plus (masqué sous 768 px, jamais dans l'en-tête).
+import Logo from '../../components/Logo.astro';
+import LegalLinks from '../../components/LegalLinks.astro';
+import type { Locale } from '../../i18n/config';
+import { textes } from './candidats';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const tx = textes(locale);
+---
+<footer class="pied" aria-label={tx('pied.aria')}>
+  <div class="conteneur pied-int">
+    <div class="pied-marque">
+      <Logo variante="nom" taille={180} locale={locale} />
+      <p class="pied-note">{tx('pied.note')}</p>
+      <LegalLinks locale={locale} />
+    </div>
+    <div class="pied-slogan">
+      <Logo variante="slogan" taille={420} locale={locale} />
+    </div>
+  </div>
+</footer>

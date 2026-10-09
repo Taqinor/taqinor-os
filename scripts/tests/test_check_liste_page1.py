@@ -74,11 +74,11 @@ router.register(r'tout-en-un', ToutEnUnViewSet, basename='tout-en-un')
 
 
 class Depot(unittest.TestCase):
-    def _monter(self, fichiers, backend=None, allow=""):
+    def _monter(self, fichiers, backend=None, allow="", dossier="features"):
         tmp = Path(tempfile.mkdtemp())
         feat = tmp / "frontend" / "src" / "features"
         for nom, contenu in fichiers.items():
-            cible = feat / nom
+            cible = tmp / "frontend" / "src" / dossier / nom
             cible.parent.mkdir(parents=True, exist_ok=True)
             cible.write_text(contenu, encoding="utf-8")
         be = tmp / "backend" / "django_core" / "apps" / "portail"
@@ -163,6 +163,64 @@ class TestAllowlist(Depot):
         decale = "// commentaire\n// commentaire\n" + PAGE1
         self._monter({"portail/ComptesPortailAdmin.jsx": decale},
                      allow=self.CLE + "\n")
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
+
+SLICE = """
+import { createAsyncThunk } from '@reduxjs/toolkit'
+
+export const fetchPaiements = createAsyncThunk('ventes/fetchPaiements', async () => {
+  const response = await api.get('/ventes/paiements/')
+  return response.data.results
+})
+"""
+
+
+class PagesEtStoreTests(Depot):
+    """AFAC95 : la garde voit aussi pages/** et store/**."""
+
+    def test_page_lisant_results_signalee(self):
+        self._monter({"ventes/PaiementsPage.jsx": PAGE1}, dossier="pages")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("frontend/src/pages/ventes/PaiementsPage.jsx", out)
+
+    def test_slice_store_signale(self):
+        self._monter({"ventesSlice.js": SLICE}, dossier="store")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("frontend/src/store/ventesSlice.js", out)
+        self.assertIn("fetchPaiements", out)
+
+
+class PagesTests(Depot):
+    """ASAV77 : un nouvel écran de pages/ qui lit .results sans fetchAllPages."""
+
+    def test_page_signalee(self):
+        self._monter({"sav/Liste.jsx": PAGE1}, dossier="pages")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("pages/sav/Liste.jsx", out)
+
+    def test_fetch_all_pages_accepte(self):
+        self._monter({"sav/Liste.jsx": TOUTES_LES_PAGES,
+                      "sav/Suite.jsx": LIT_NEXT}, dossier="pages")
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
+    def test_cle_morte_echoue(self):
+        cle = "frontend/src/pages/sav/Liste.jsx::charger"
+        self._monter({"sav/Liste.jsx": TOUTES_LES_PAGES}, allow=cle + chr(10),
+                     dossier="pages")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("MORTES", out)
+
+    def test_page_gelee_dans_la_liste_ne_rougit_pas(self):
+        cle = "frontend/src/pages/sav/Liste.jsx::charger"
+        self._monter({"sav/Liste.jsx": PAGE1.replace("ComptesPortailAdmin", "Liste")},
+                     allow=cle + chr(10), dossier="pages")
         code, out = self._main()
         self.assertEqual(code, 0, out)
 

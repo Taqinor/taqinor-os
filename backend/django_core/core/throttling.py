@@ -59,8 +59,9 @@ def ip_de_requete(request) -> str:
     1. ``X-Forwarded-For`` — nginx **APPEND** à cette chaîne : le DERNIER saut
        est donc l'adresse que notre propre proxy a vue, la seule que l'appelant
        ne peut pas forger. ``NUM_PROXIES`` (même nom et même sémantique que
-       DRF) déclare combien de proxies À NOUS ajoutent leur entrée : on saute
-       ces ``n`` derniers pour retrouver le visiteur. Absent ⇒ dernier saut.
+       DRF) déclare combien de proxies À NOUS ajoutent leur entrée : on rend le
+       ``n``-ième saut en partant de la droite (ASEC15, identique à
+       ``get_ident``). Absent ⇒ dernier saut.
     2. ``CF-Connecting-IP`` — une seule adresse, posée par Cloudflare. Elle est
        DÉCLARATIVE comme les autres : elle n'est honorée que si le déploiement
        déclare Cloudflare comme proxy de confiance
@@ -76,8 +77,11 @@ def ip_de_requete(request) -> str:
         from django.conf import settings
 
         meta = getattr(request, 'META', None) or {}
-        transmise = _texte_ip(meta.get('HTTP_X_FORWARDED_FOR'))
+        transmise = meta.get('HTTP_X_FORWARDED_FOR')
         if transmise:
+            # ASEC15 — découper la chaîne AVANT de borner chaque saut : borner
+            # la chaîne entière à ``MAX_LONGUEUR_IP`` laissait un préfixe forgé
+            # long pousser le saut réel (à droite) hors de la fenêtre lue.
             sauts = [s for s in (_texte_ip(x)
                                  for x in str(transmise).split(',')) if s]
             if sauts:
@@ -94,11 +98,17 @@ def ip_de_requete(request) -> str:
                 except (TypeError, ValueError):
                     nb_proxies = 0
                 nb_proxies = max(0, nb_proxies)
-                indice = len(sauts) - 1 - nb_proxies
+                # ASEC15 — sémantique de ``get_ident`` (DRF) : avec
+                # ``NUM_PROXIES=N`` (N ≥ 1) on rend le N-ième saut en partant
+                # de la DROITE — le saut que NOTRE proxy le plus externe a
+                # ajouté (nginx append l'adresse du visiteur après realip).
+                # Avant ASEC15 l'indice était ``len - 1 - N`` : avec N=1 (prod)
+                # on rendait l'avant-dernier saut, c'est-à-dire une valeur
+                # choisie par l'appelant. Absent / 0 ⇒ dernier saut (inchangé).
                 # Une chaîne plus courte que le nombre de proxies déclarés est
                 # une chaîne TRONQUÉE (ou forgée) : on garde le saut le plus à
                 # gauche disponible plutôt que de sortir du tableau.
-                return sauts[max(0, indice)]
+                return sauts[-min(max(1, nb_proxies), len(sauts))]
         if getattr(settings, 'CF_CONNECTING_IP_TRUSTED', False):
             cloudflare = _texte_ip(meta.get('HTTP_CF_CONNECTING_IP'))
             if cloudflare:
