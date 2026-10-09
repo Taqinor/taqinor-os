@@ -102,8 +102,10 @@ def fleet_overview(company, *, window_days=365, today=None):
         fleet_pr = _q(
             (total_kwh_avec_attendu / total_expected) * Decimal('100'))
 
+    # ASAV69 — les alertes d'un site retiré du parc ne comptent plus.
     open_alerts = UnderperformanceFlag.objects.filter(
-        company=company, is_open=True).count()
+        company=company, is_open=True,
+        installation__parc_actif=True).count()
 
     return {
         'window_days': window_days,

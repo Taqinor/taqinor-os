@@ -216,6 +216,12 @@ def evaluate_underperformance(installation, *, user=None, today=None):
               'ratio_pct': None, 'flag': None, 'ticket': None,
               'data_status': 'no_data_ever'}
 
+    # ASAV69 — un site RETIRÉ du parc n'est ni évalué ni signalé : aucun
+    # drapeau, aucun ticket SAV au nom d'un client dont le site est retiré.
+    if getattr(installation, 'parc_actif', True) is False:
+        result['data_status'] = 'site_retire'
+        return result
+
     expected = _expected_recent_kwh(
         installation, config, RECENT_WINDOW_DAYS, today=today)
     # AUD522 — bornée à la MÊME fenêtre que `actual` (recent_production_kwh) :
