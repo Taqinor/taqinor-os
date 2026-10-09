@@ -20,7 +20,8 @@ from apps.stock.models import (
     Produit, Fournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
 )
 from apps.stock.services import (
-    average_cost, average_cost_with_source, fifo_cost_with_source,
+    average_cost, average_cost_with_source, definir_frais_annexes_ligne_bcf,
+    fifo_cost_with_source,
     valuation_cost_with_source, stock_valuation_method,
     VALUATION_WAVG, VALUATION_FIFO,
 )
@@ -83,6 +84,57 @@ class TestLandedCost(FG67Base):
         bc = self._bcf_recu(4, '1000', frais=0)
         self.assertEqual(
             bc.lignes.first().cout_unitaire_debarque, Decimal('1000'))
+
+
+class TestFraisAnnexesCoutFige(FG67Base):
+    """ERR-ASTK63 (D-ASTK63 = a) — coût figé une fois reçu : les frais annexes
+    d'une ligne REÇUE ne passent que par le flux coût débarqué DC38, tracé."""
+
+    def _traces(self, bc):
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        return Comment.objects.filter(
+            company=self.company, object_id=bc.pk,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur))
+
+    def test_ligne_recue_appel_direct_refuse(self):
+        bc = self._bcf_recu(10, '100', ref='BCF-FIGE-1')
+        with self.assertRaisesMessage(ValueError, 'BCF-FIGE-1'):
+            definir_frais_annexes_ligne_bcf(
+                self.company, bc.id, self.produit.id, 500)
+        self.assertEqual(bc.lignes.get().frais_annexes, Decimal('0'))
+        self.assertEqual(average_cost(self.produit), Decimal('100.00'))
+        self.assertFalse(self._traces(bc).exists())
+
+    def test_ligne_recue_via_dc38_acceptee_cout_recalcule_trace(self):
+        bc = self._bcf_recu(10, '100', ref='BCF-FIGE-2')
+        n = definir_frais_annexes_ligne_bcf(
+            self.company, bc.id, self.produit.id, 500,
+            via_cout_debarque=True)
+        self.assertEqual(n, 1)
+        self.assertEqual(bc.lignes.get().frais_annexes, Decimal('500.00'))
+        # 100 + 500/10 = 150 : le coût moyen pondéré relu intègre les frais.
+        self.assertEqual(
+            average_cost_with_source(self.produit),
+            (Decimal('150.00'), 'achats'))
+        trace = self._traces(bc).get()
+        self.assertIn('frais_annexes', trace.body)
+        self.assertIn('100.00 → 150.00', trace.body)
+
+    def test_ligne_non_recue_comportement_inchange(self):
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-FIGE-3',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bc, produit=self.produit, quantite=10,
+            prix_achat_unitaire=Decimal('100'), quantite_recue=0)
+        n = definir_frais_annexes_ligne_bcf(
+            self.company, bc.id, self.produit.id, 300)
+        self.assertEqual(n, 1)
+        self.assertEqual(bc.lignes.get().frais_annexes, Decimal('300.00'))
+        self.assertFalse(self._traces(bc).exists())
 
 
 class TestValuationMethod(FG67Base):
