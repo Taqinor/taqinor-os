@@ -237,6 +237,58 @@ class AcceptationTests(unittest.TestCase):
         self.assertEqual(code, 0, sortie)
         self.assertIn("ATST1", sortie)
 
+    # -- AMET90 : l'enregistrement tel que l'ecrit la spec exemple ---------------
+    def ecrire_exemple_adep(self, vider_etape=None):
+        """Paire .md / .results.json ecrite A LA MAIN dans la forme EXACTE de
+        frontend/e2e/acceptation/_enregistrement.js (spec adep.spec.js)."""
+        self.depot.plan(*(ligne("x", i, "P5.1 — Playwright sur la pile locale")
+                          for i in ("ADEP16", "ADEP17", "ADEP18", "ADEP19", "ADEP99")),
+                        ligne("x", "ACHT69", "P4.2 — compte terrain, lot refuse"))
+        sha = "189c655e0" + "a" * 31
+        oracles = {str(i): "NA" for i in range(1, 11)}
+        oracles.update({"1": "PASS", "2": "PASS", "3": "PASS", "4": "PASS", "8": "PASS"})
+        pas = [("P5.1", ["ADEP16", "ADEP17", "ADEP99"]), ("P5.2", ["ADEP16", "ADEP99"]),
+               ("P5.3", ["ADEP18", "ACHT69", "ADEP99"]), ("P5.3-500", ["ACHT69", "ADEP99"]),
+               ("P5.4", ["ADEP19", "ADEP99"])]
+        etapes = [{"id": i, "taches": t, "verdict": "PASS", "base_verdict": None,
+                   "trace": f"docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-{i}.jpg",
+                   "oracles": dict(oracles, **({"5": "PASS"} if i in ("P5.1", "P5.2") else {})),
+                   "notes": ""} for i, t in pas]
+        if vider_etape is not None:
+            etapes[vider_etape].update(oracles={}, trace="")
+        couvre = ["ADEP16", "ADEP17", "ADEP18", "ADEP19", "ACHT69", "ADEP99"]
+        res = {"sha": sha, "date": "2026-10-10", "groupe": "ADEP", "verdict": "PASS",
+               "couvre": couvre, "couvre_avec_ecart": [], "etapes": etapes}
+        dossier = self.depot.racine / cacc.DOSSIER / "ADEP"
+        dossier.mkdir(parents=True)
+        nom = "2026-10-10-189c655e0"
+        (dossier / f"{nom}.results.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
+        tete = "".join(f"  - id: {i}\n    tache: [{', '.join(t)}]\n    verdict: PASS\n"
+                       for i, t in pas)
+        (dossier / f"{nom}.md").write_text(
+            f"---\nsha: {sha}\ndate: 2026-10-10\ngroupe: ADEP\ncouvre: [{', '.join(couvre)}]\n"
+            f"couvre_avec_ecart: []\nverdict: PASS\netapes:\n{tete}---\n\n"
+            "# Acceptation ADEP — 2026-10-10 (189c655e0)\n\n"
+            "| Étape | Tâches | Verdict | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | Trace |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+            "| P5.1 | ADEP16, ADEP17, ADEP99 | PASS | PASS | PASS | PASS | PASS | PASS | NA | NA "
+            "| PASS | NA | NA | docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.1.jpg |\n",
+            encoding="utf-8")
+
+    def test_enregistrement_produit_par_la_spec_exemple_est_pass(self):
+        self.ecrire_exemple_adep()
+        code, sortie = self.lancer()
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("ADEP : 5 cochée(s) à preuve, 5 couverte(s), 0 en dette", sortie)
+        self.assertIn("ACHT : 1 cochée(s) à preuve, 1 couverte(s), 0 en dette", sortie)
+
+    def test_enregistrement_spec_exemple_mutant_etape_vide_echoue(self):
+        """Mutant : une etape sans oracles ni trace ⇒ la garde DOIT echouer."""
+        self.ecrire_exemple_adep(vider_etape=2)
+        code, sortie = self.lancer()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("étape 3 vide ou incomplète", sortie)
+
     def test_dossier_brut_non_conforme_ignore(self):
         brut = self.depot.racine / cacc.DOSSIER / "2026-10-07-adoc171"
         brut.mkdir(parents=True)
