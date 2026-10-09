@@ -62,6 +62,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = ROOT / "backend" / "django_core"
 
+
+def _rel_parts(path, base=BACKEND_ROOT):
+    """ADEP27 - parties du chemin RELATIVES a la racine du depot : un depot
+    range sous un dossier nomme `build/`, `dist/` ou `tests/` doit donner le
+    meme verdict (jamais tester les dossiers du chemin absolu)."""
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return path.parts
+
+
 SKIPPED_PARTS = {".git", "node_modules", "migrations", "dist", "build",
                  "__pycache__"}
 
@@ -379,7 +390,7 @@ def _iter_python_files():
     if not BACKEND_ROOT.exists():
         return
     for path in sorted(BACKEND_ROOT.rglob("*.py")):
-        if any(part in SKIPPED_PARTS for part in path.parts):
+        if any(part in SKIPPED_PARTS for part in _rel_parts(path)):
             continue
         yield path
 
@@ -389,7 +400,7 @@ def is_test_file(path: Path) -> bool:
     name = path.name
     return (name.startswith("test_") or name.startswith("tests_")
             or name.endswith("_test.py") or name == "tests.py"
-            or "tests" in path.parts)
+            or "tests" in _rel_parts(path))
 
 
 # A module can only create a tenant root by naming one of TARGETS on a manager.

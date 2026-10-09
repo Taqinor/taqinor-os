@@ -484,6 +484,10 @@ GARDES = {
         ('Test the routes GET calepinage sous contrat (ACAL348) checker itself',
          'python -m unittest scripts.tests.test_check_calepinage_routes_sous_contrat -v',
          '.'),
+        # ADEP27 - mêmes verdicts des gardes quand le dépôt vit sous build/, dist/ ou parked/.
+        ('Test the gardes à dépôt déplacé (ADEP27) checker itself',
+         'python -m unittest scripts.tests.test_gardes_depot_deplace -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',

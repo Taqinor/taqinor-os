@@ -101,7 +101,7 @@ def segments_non_pagines() -> set:
     reg_re = re.compile(r"register\(\s*r?['\"]([^'\"]+)['\"]\s*,\s*(\w+)")
     for path in sorted(BACKEND.rglob("*.py")):
         if any(p in ("migrations", "tests", "node_modules", "parked")
-               for p in path.parts):
+               for p in path.relative_to(BACKEND).parts):
             continue
         try:
             texte = path.read_text(encoding="utf-8")

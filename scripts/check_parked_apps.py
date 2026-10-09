@@ -128,7 +128,7 @@ def fichiers_py(racine: Path, sous_dossier: str, labels):
     if not base.is_dir():
         return
     for chemin in sorted(base.rglob('*.py')):
-        if any(part in IGNORES for part in chemin.parts):
+        if any(part in IGNORES for part in chemin.relative_to(racine).parts):
             continue
         chemin_rel = rel(racine, chemin)
         if est_exempt(chemin_rel, labels):
@@ -344,7 +344,7 @@ def regle_d(racine: Path, labels):
     for chemin in sorted(base.rglob('*')):
         if chemin.is_dir() or chemin.suffix not in suffixes:
             continue
-        if any(part in IGNORES for part in chemin.parts):
+        if any(part in IGNORES for part in chemin.relative_to(racine).parts):
             continue
         chemin_rel = rel(racine, chemin)
         if est_exempt(chemin_rel, labels):

@@ -112,6 +112,17 @@ ROOT = Path(__file__).resolve().parent.parent
 DJANGO_ROOT = ROOT / "backend" / "django_core"
 FASTAPI_ROOT = ROOT / "backend" / "fastapi_ia"
 FRONT_SRC = ROOT / "frontend" / "src"
+
+
+def _rel_parts(path, base=ROOT):
+    """ADEP27 - parties du chemin RELATIVES a la racine du depot : un depot
+    range sous un dossier nomme `build/`, `dist/` ou `tests/` doit donner le
+    meme verdict (jamais tester les dossiers du chemin absolu)."""
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return path.parts
+
 BASELINE_PATH = ROOT / "scripts" / "api_contract_allow.txt"
 
 ROOT_URLCONF = "erp_agentique.urls"
@@ -159,7 +170,7 @@ SKIP_DIRS = {"migrations", "__pycache__", "node_modules", ".git", "tests"}
 
 def _iter_python_files(root: Path):
     for path in root.rglob("*.py"):
-        if any(part in SKIP_DIRS for part in path.parts):
+        if any(part in SKIP_DIRS for part in _rel_parts(path, root)):
             continue
         # Les suites de tests ne definissent aucun ViewSet route : les lire
         # doublerait le temps d'analyse pour rien.
@@ -1255,7 +1266,7 @@ def frontend_files():
         for path in sorted(FRONT_SRC.rglob(pattern)):
             if any(marker in path.name for marker in FRONT_SKIP):
                 continue
-            if "node_modules" in path.parts:
+            if "node_modules" in _rel_parts(path, FRONT_SRC):
                 continue
             seen.setdefault(path, True)
     return list(seen)
