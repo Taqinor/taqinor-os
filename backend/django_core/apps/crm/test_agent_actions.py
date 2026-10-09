@@ -156,8 +156,10 @@ class CrmAgentWhatsappPrepareTest(TestCase):
         self.company = Company.objects.create(nom='AG6 WA Co', slug='ag6-wa')
         self.role = Role.objects.create(
             company=self.company, nom='Commercial',
+            # ACRM4 — le partage WhatsApp rend le numéro du client : il exige
+            # ``client_pii_voir`` (que le rôle Commercial réel porte).
             permissions=['crm_voir', 'crm_creer', 'crm_modifier',
-                         'ventes_voir'])
+                         'ventes_voir', 'client_pii_voir'])
         self.user = User.objects.create_user(
             username='ag6_wa', password='x', role=self.role,
             company=self.company)
