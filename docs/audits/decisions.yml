@@ -361,6 +361,17 @@ decisions:
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
     taches: [ADOC149]
 
+  - id: D-YBWM13
+    question: "Approuver le texte français du site YanBow (REVIEW_FR.md) avant toute traduction ?"
+    options:
+      - {cle: a, texte: "approuvé tel quel"}
+      - {cle: b, texte: "approuvé avec corrections"}
+      - {cle: c, texte: "pas encore"}
+    reponse: b
+    date: "2026-10-10"
+    source: "session « loop work on all plans » (Reda_Laptop) — Reda délègue la relecture à Claude ; relecture contre les règles du site (faits vérifiés, sans prix, YanBow = Ltd UK + SARLAU) ; corrections : apostrophes typographiques du formulaire, « sur-mesure » substantif"
+    taches: [YBWM13, YBW70, YBW71]
+
 # Pointeurs vers les décisions historiques (répondues, source de vérité = le fichier mémoire) :
 #   docs/claude-memory/decisions-audit-0810.md   — ASAV90-95, ACHT90/91/94/95, AFAC80-89, APDF92, AACQ90/95/96, AMOT1-7, ADEP90/91, AGNR4/43, ADEV61/62
 #   docs/claude-memory/asec-decisions-fondateur.md, astk-decisions-fondateur.md, ci-decisions-fondateur.md,
