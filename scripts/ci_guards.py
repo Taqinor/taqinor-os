@@ -492,6 +492,10 @@ GARDES = {
         ('Test the verificateur de sortie unittest (ADEP14) checker itself',
          'python -m unittest scripts.tests.test_verifier_sortie_unittest -v',
          '.'),
+        # ADEP6 - aucun Dockerfile ni requirements orphelin.
+        ('Test the dockerfiles construits (ADEP6) checker itself',
+         'python -m unittest scripts.tests.test_dockerfiles_construits -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
