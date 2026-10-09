@@ -5,7 +5,9 @@ Directeur (rôle Administrateur). Tout est scopé société côté serveur : la
 société n'est jamais lue du corps de requête.
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import mixins, permissions, serializers, viewsets
 from rest_framework.exceptions import APIException
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -176,8 +178,10 @@ class LoginBannerView(APIView):
     throttle_classes = [LoginBannerThrottle]
     parser_classes = [JSONParser]
 
-    @extend_schema(responses=inline_serializer('LoginBannerTexte', {
-        'login_banner_text': serializers.CharField(allow_blank=True)}))
+    @extend_schema(
+        parameters=[OpenApiParameter('username', OpenApiTypes.STR, required=False)],
+        responses=inline_serializer('LoginBannerTexte', {
+            'login_banner_text': serializers.CharField(allow_blank=True)}))
     def get(self, request):
         profile = _banner_profile(request)
         text = getattr(profile, 'login_banner_text', '') if profile else ''
