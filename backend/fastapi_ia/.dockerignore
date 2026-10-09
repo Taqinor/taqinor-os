@@ -22,8 +22,9 @@
 **/staticfiles/
 
 # Modèles téléchargés à l'exécution (cache HuggingFace) : jamais dans l'image
+# (racine seulement : `**/models/` exclurait le paquet de code app/models/)
 **/.cache/
-**/models/
+/models/
 
 # Secrets : ne doivent JAMAIS entrer dans une couche d'image
 **/.env
