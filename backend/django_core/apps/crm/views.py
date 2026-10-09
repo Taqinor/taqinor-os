@@ -3581,12 +3581,25 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):
-        # MRY2 — amorçage paresseux des étiquettes standard (même patron que
-        # MotifPerteViewSet/CanalViewSet). ADDITIF : une étiquette déjà
-        # présente n'est jamais touchée, aucune n'est supprimée.
-        if request.user.company_id:
+        # MRY2 — amorçage paresseux des étiquettes standard. ACRM25 — UNE
+        # fois par société, quand la liste est VIDE (patron ``seed_canaux``) :
+        # à chaque GET, une étiquette standard supprimée ou renommée
+        # ressuscitait.
+        if (request.user.company_id and not LeadTag.objects.filter(
+                company=request.user.company).exists()):
             seed_tags(request.user.company)
         return super().list(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        """ACRM25 — renommer une étiquette EN USAGE renomme aussi le jeton
+        dans ``Lead.tags`` (une ligne « en masse » au chatter de chaque
+        lead) : sinon l'étiquette renommée comptait 0 lead et les fiches
+        gardaient l'ancien libellé."""
+        ancien = serializer.instance.nom
+        tag = serializer.save()
+        if tag.nom != ancien:
+            _renommer_tag_sur_leads(tag.company, ancien, tag.nom,
+                                    self.request.user)
 
     def destroy_guard_message(self, tag):
         if _tag_en_usage(tag.company, tag.nom) > 0:
@@ -3694,12 +3707,54 @@ def completer_motifs_perte(company):
     `seed_motifs_perte` ne seede QUE les sociétés qui n'ont AUCUN motif : une
     société déjà personnalisée n'a donc jamais reçu les cinq motifs de MRY2.
     Cette fonction complète, sans jamais toucher un motif existant (libellé,
-    `est_junk`, archivage) ni en supprimer un."""
+    `est_junk`, archivage) ni en supprimer un.
+
+    ACRM25 — chaque motif standard n'est proposé qu'UNE fois par société
+    (``MotifPerteStandardPropose``) : un motif standard renommé ou supprimé
+    par la société ne ressuscite jamais ; un motif standard ajouté plus tard
+    au référentiel est proposé une fois."""
+    from .models import MotifPerteStandardPropose
+
     if company is None:
         return
+    deja = set(MotifPerteStandardPropose.objects.filter(
+        company=company).values_list('nom', flat=True))
     for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
+        if nom in deja:
+            continue
         MotifPerte.objects.get_or_create(
             company=company, nom=nom, defaults={'est_junk': est_junk})
+        MotifPerteStandardPropose.objects.get_or_create(
+            company=company, nom=nom)
+
+
+def _renommer_motif_sur_leads(company, ancien, nouveau, user):
+    """ACRM25 — ``Lead.motif_perte`` suit le renommage du motif, avec une
+    ligne « modification en masse » au chatter de chaque lead."""
+    for lead in Lead.objects.filter(company=company,
+                                    motif_perte__iexact=ancien):
+        activity.log_bulk_change(lead, user, 'motif_perte',
+                                 lead.motif_perte, nouveau)
+        Lead.objects.filter(pk=lead.pk).update(motif_perte=nouveau)
+
+
+def _renommer_tag_sur_leads(company, ancien, nouveau, user):
+    """ACRM25 — le JETON ``ancien`` de ``Lead.tags`` (texte libre séparé
+    par des virgules, comparaison insensible à la casse) devient
+    ``nouveau`` ; une ligne « modification en masse » au chatter de chaque
+    lead touché."""
+    cible = (ancien or '').strip().casefold()
+    if not cible:
+        return
+    for lead in Lead.objects.filter(company=company, tags__icontains=ancien):
+        jetons = [(t or '').strip() for t in (lead.tags or '').split(',')]
+        if not any(j.casefold() == cible for j in jetons):
+            continue
+        nouveaux = [nouveau if j.casefold() == cible else j
+                    for j in jetons if j]
+        valeur = ', '.join(nouveaux)[:500]
+        activity.log_bulk_change(lead, user, 'tags', lead.tags, valeur)
+        Lead.objects.filter(pk=lead.pk).update(tags=valeur)
 
 
 def seed_motifs_perte(company):
@@ -3707,11 +3762,16 @@ def seed_motifs_perte(company):
     (idempotent, additif) — mêmes garanties que ``seed_canaux`` : ne touche
     jamais une liste déjà personnalisée par le fondateur, jamais de doublon
     (``get_or_create`` par nom), jamais de modification d'un motif existant."""
+    from .models import MotifPerteStandardPropose
+
     if company is None or MotifPerte.objects.filter(company=company).exists():
         return
     for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
         MotifPerte.objects.get_or_create(
             company=company, nom=nom, defaults={'est_junk': est_junk})
+        # ACRM25 — mémoire : proposé une fois, jamais ressuscité.
+        MotifPerteStandardPropose.objects.get_or_create(
+            company=company, nom=nom)
 
 
 class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
@@ -3738,9 +3798,22 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
             # MRY2 — `seed_motifs_perte` ne sert QUE les sociétés sans aucun
             # motif : une liste déjà personnalisée n'avait donc jamais reçu
             # les motifs standard ajoutés après coup. On COMPLÈTE ici, sans
-            # jamais modifier ni supprimer un motif existant.
+            # jamais modifier ni supprimer un motif existant. ACRM25 — chaque
+            # motif standard n'est proposé qu'UNE fois (mémoire
+            # ``MotifPerteStandardPropose``) : renommé ou supprimé, il ne
+            # ressuscite plus.
             completer_motifs_perte(request.user.company)
         return super().list(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        """ACRM25 — renommer un motif EN USAGE renomme aussi
+        ``Lead.motif_perte`` des leads qui le portent (une ligne « en masse »
+        au chatter de chacun)."""
+        ancien = serializer.instance.nom
+        motif = serializer.save()
+        if motif.nom != ancien:
+            _renommer_motif_sur_leads(motif.company, ancien, motif.nom,
+                                      self.request.user)
 
     def destroy_guard_message(self, motif):
         if _motif_en_usage(motif.company, motif.nom) > 0:

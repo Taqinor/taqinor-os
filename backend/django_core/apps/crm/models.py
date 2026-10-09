@@ -2750,6 +2750,32 @@ class MotifPerte(models.Model):
         return self.nom
 
 
+class MotifPerteStandardPropose(models.Model):
+    """ACRM25 (C-ACRM-018) — la MÉMOIRE des motifs de perte STANDARD déjà
+    proposés à une société.
+
+    ``completer_motifs_perte`` ajoutait à CHAQUE lecture de la liste tout
+    motif standard absent par son NOM : un motif renommé (« Prix » → « Prix
+    trop élevé ») ou supprimé revenait aussitôt. Un motif standard n'est
+    désormais proposé qu'UNE fois par société — renommé ou supprimé ensuite,
+    il ne ressuscite jamais ; un motif standard AJOUTÉ plus tard au référentiel
+    (AGR521, CIQ514…) est, lui, toujours proposé une fois."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: mémoire de référentiel 100 % fille du tenant
+        related_name='+')
+    nom = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Motif de perte standard proposé'
+        verbose_name_plural = 'Motifs de perte standard proposés'
+        unique_together = [('company', 'nom')]
+
+    def __str__(self):
+        return self.nom
+
+
 class MessageTemplate(models.Model):
     """FG36 — Modèles de messages WhatsApp/SMS réutilisables en CRM.
 
