@@ -1118,6 +1118,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <FormField label="Statut" htmlFor="ch-statut">
                   <Select
                     value={fields.statut ?? ''}
+                    disabled={!!current.annule}
                     onValueChange={(v) => {
                       // Garde de transition côté client : on n'accepte qu'un pas
                       // (avant/arrière) depuis le statut STOCKÉ du chantier, ou la
@@ -1144,7 +1145,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     </SelectContent>
                   </Select>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Le statut n&apos;avance ou ne recule que d&apos;une étape à la fois.
+                    {current.annule
+                      ? 'Chantier annulé — réactivez-le pour changer son statut.'
+                      : 'Le statut n’avance ou ne recule que d’une étape à la fois.'}
                   </p>
                 </FormField>
                 <FormField label="Adresse du site" htmlFor="ch-adr" className="sm:col-span-2">
@@ -1404,7 +1407,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                                  series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
                                  onChanged={() => { refreshInstallation(); loadEquipements() }} />
             </Section>
-            {/* ── Mise en service ── */}
+            {/* ── Mise en service ── (ACHT3 : masquée sur un chantier annulé) */}
+            {!current.annule && (
             <Section icon={Zap} title="Mise en service">
               {current.date_mise_en_service && (
                 <Hint>Mise en service enregistrée le {formatDate(current.date_mise_en_service)}.</Hint>
@@ -1427,9 +1431,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Textarea id="mes-notes" rows={2} value={mes.mes_pv_notes ?? ''}
                           onChange={(e) => setMes(s => ({ ...s, mes_pv_notes: e.target.value }))} />
               </FormField>
-              <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
-                Enregistrer la mise en service
-              </Button>
+              {/* ACHT3 — le serveur refuse la mise en service avant « Installé » :
+                  le geste n'est offert que lorsqu'il est actionnable. */}
+              {canMoveStatus(current.statut, 'receptionne') ? (
+                <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
+                  Enregistrer la mise en service
+                </Button>
+              ) : (
+                <Hint>Enregistrement de la mise en service disponible à partir d’Installé.</Hint>
+              )}
               {current.type_installation === 'industriel' && (
                 <div className="flex flex-col gap-1" data-testid="reception-definitive">
                   {current.date_reception_definitive ? (
@@ -1449,6 +1459,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </div>
               )}
             </Section>
+            )}
             </TabsContent>
 
             <TabsContent value="materiel" className="flex flex-col gap-4">
