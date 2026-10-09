@@ -59,3 +59,39 @@ def fmt_dirhams(v, sep="\u202f"):
     except (InvalidOperation, ValueError, TypeError):
         return str(v)
     return f"{int(d):,}".replace(",", sep)
+
+
+def pu_ht_remise(it):
+    """AMOT45 — P.U. HT d'une ligne APRÈS remise globale (QJRREM :
+    ``pu_ht_remise`` posé par le builder), le catalogue à défaut."""
+    valeur = (it or {}).get("pu_ht_remise")
+    if valeur is None:
+        return float((it or {}).get("prix_unit_ht") or 0)
+    return float(valeur)
+
+
+def total_ht_remise(it):
+    """AMOT45 — total HT d'une ligne APRÈS remise globale
+    (``total_ht_remise`` du builder), P.U. catalogue × quantité à défaut."""
+    valeur = (it or {}).get("total_ht_remise")
+    if valeur is None:
+        return float((it or {}).get("prix_unit_ht") or 0) * float(
+            (it or {}).get("quantite") or 0)
+    return float(valeur)
+
+
+def lignes_remisees(items):
+    """AMOT45 (C-AMOT-057) — LE helper unique de la remise ligne par ligne
+    (extrait du résidentiel) : pour chaque item, ``(item, pu_catalogue,
+    pu_remise, total_catalogue, total_remise, remisee)``. Σ ``total_remise``
+    = Total HT de la chaîne (répartition du noyau, QJRREM) ; ``remisee`` dit
+    si le catalogue doit être barré."""
+    sortie = []
+    for it in items or []:
+        pu_cat = float((it or {}).get("prix_unit_ht") or 0)
+        qte = float((it or {}).get("quantite") or 0)
+        pu_rem = pu_ht_remise(it)
+        tot_rem = total_ht_remise(it)
+        sortie.append((it, pu_cat, pu_rem, pu_cat * qte, tot_rem,
+                       abs(pu_rem - pu_cat) > 0.004))
+    return sortie

@@ -164,10 +164,13 @@ def build(ctx):
                          f'letter-spacing:.5px;background:{wash};">{txt}</td></tr>')
             continue
         qte = _num(it.get("quantite"))
-        # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité : la
-        # colonne s'additionne au « Sous-total HT » ; aucun calcul TTC par ligne.
-        pu_ht = _num(it.get("prix_unit_ht"))
-        total = pu_ht * qte
+        # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité.
+        # AMOT45 (C-AMOT-057) — la remise GLOBALE ligne par ligne (QJRREM),
+        # par LE helper unique ``montants.lignes_remisees`` : catalogue
+        # barré + P.U. remisé, Σ des totaux de ligne = Total HT.
+        from ..montants import lignes_remisees
+        (_it, pu_cat, pu_ht, _tot_cat, total,
+         _remisee) = lignes_remisees([it])[0]
         taux = _num(it.get("taux_tva"))
         taux_txt = f"{taux:g}\u202f%"
         marque = (it.get("marque") or "").strip()
@@ -176,7 +179,10 @@ def build(ctx):
         rows += (
             f'<tr><td class="c2-d">{desig}{m}</td>'
             f'<td class="c2-q">{qte:g}</td>'
-            f'<td class="c2-p">{fmt_mad(pu_ht)}</td>'
+            f'<td class="c2-p">'
+            + (f'<span style="text-decoration:line-through;opacity:.6;">'
+               f'{fmt_mad(pu_cat)}</span> ' if _remisee else '')
+            + f'{fmt_mad(pu_ht)}</td>'
             f'<td class="c2-v">{taux_txt}</td>'
             f'<td class="c2-t">{fmt_mad(total)}</td></tr>')
 

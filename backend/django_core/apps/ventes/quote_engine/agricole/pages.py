@@ -24,7 +24,7 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes
+from ..montants import fmt_centimes, lignes_remisees
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
@@ -155,6 +155,7 @@ def _css(C, fonts, compact):
   vertical-align:top; }}
 .ag-lines td.t {{ font-weight:700; color:{C['navy']}; }}
 .ag-mq {{ font-size:6.6pt; color:{C['muted_2']}; }}
+.ag-was {{ text-decoration:line-through; color:{C['muted_2']}; }}
 .ag-tot {{ display:table; width:100%; margin-top:5px; }}
 .ag-tot-g {{ display:table-cell; width:52%; vertical-align:top;
   padding-right:10px; }}
@@ -507,8 +508,7 @@ _LIBELLE_REGROUPEMENT = {
 def _ligne_regroupee(reste, lg):
     """AMOT37 — UNE ligne qui regroupe ``reste`` : total HT = Σ des lignes
     regroupées (aucun dirham ne disparaît), TVA affichée si unique."""
-    total = sum((_num(it.get("prix_unit_ht")) or 0)
-                * (_num(it.get("quantite")) or 0) for it in reste)
+    total = sum(ligne[4] for ligne in lignes_remisees(reste))
     taux = {(_num(it.get("taux_tva")) or 0) for it in reste}
     taux_txt = f"{taux.pop():g} %" if len(taux) == 1 else "—"
     libelle = _LIBELLE_REGROUPEMENT.get(lg, _LIBELLE_REGROUPEMENT["fr"])
@@ -537,15 +537,22 @@ def _lignes(d):
                         f'</b></td></tr>')
             continue
         qte = _num(it.get("quantite")) or 0
-        pu = _num(it.get("prix_unit_ht")) or 0
         taux = _num(it.get("taux_tva")) or 0
         marque = (it.get("marque") or "").strip()
         mq = f' <span class="ag-mq">{marque}</span>' if marque else ""
+        # AMOT45 (C-AMOT-057) — la remise globale LIGNE PAR LIGNE (QJRREM),
+        # par LE helper unique : P.U. catalogue barré + P.U. remisé, et
+        # Σ des totaux de ligne = Total HT.
+        (_it, pu_cat, pu_rem, _tot_cat, tot_rem,
+         remisee) = lignes_remisees([it])[0]
+        pu_txt = (f'<span class="ag-was">{fmt_centimes(pu_cat)}</span> '
+                  f'{fmt_centimes(pu_rem)}' if remisee
+                  else fmt_centimes(pu_rem))
         rows.append(
             f'<tr><td>{it.get("designation") or ""}{mq}</td>'
-            f'<td class="r">{qte:g}</td><td class="r">{fmt_centimes(pu)}</td>'
+            f'<td class="r">{qte:g}</td><td class="r">{pu_txt}</td>'
             f'<td class="r">{taux:g} %</td>'
-            f'<td class="r t">{fmt_centimes(pu * qte)}</td></tr>')
+            f'<td class="r t">{fmt_centimes(tot_rem)}</td></tr>')
     if reste:
         rows.append(_ligne_regroupee(reste, _langue(d)))
     return "".join(rows)

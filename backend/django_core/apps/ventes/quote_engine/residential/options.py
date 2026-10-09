@@ -149,20 +149,17 @@ def _name_html(it, produits_base):
 
 
 def _pu_ht_affiche(it):
-    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut."""
-    valeur = it.get("pu_ht_remise")
-    if valeur is None:
-        return float(it.get("prix_unit_ht") or 0)
-    return float(valeur)
+    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut.
+    AMOT45 — LE helper unique ``montants.pu_ht_remise`` (survivant)."""
+    from ..montants import pu_ht_remise
+    return pu_ht_remise(it)
 
 
 def _total_ht_affiche(it):
-    """Total HT de la ligne à afficher : après remise globale, ou catalogue."""
-    valeur = it.get("total_ht_remise")
-    if valeur is None:
-        return float(it.get("prix_unit_ht") or 0) * float(
-            it.get("quantite") or 0)
-    return float(valeur)
+    """Total HT de la ligne à afficher : après remise globale, ou catalogue.
+    AMOT45 — LE helper unique ``montants.total_ht_remise`` (survivant)."""
+    from ..montants import total_ht_remise
+    return total_ht_remise(it)
 
 
 def _deux_prix(fmt, valeur_catalogue, valeur_remisee):
