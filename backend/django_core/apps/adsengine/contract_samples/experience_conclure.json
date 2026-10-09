@@ -3,7 +3,7 @@
   "forme_serveur": "partielle",
   "pourquoi": "AACQ60 (PACT10) — contrat de la clôture d'expérience, consommé par ExperimentsScreen (AACQ66) et produit par AACQ65. Corps : `{\"validated\": true|false}`. 200 `{node, decision_log, validated}` où `validated` = le verdict ENREGISTRÉ (jamais l'écho du bouton). Second appel avec le MÊME verdict : 200 `second_appel_meme_verdict` (`decision_log` null : rien de nouveau écrit). Verdict CONTRAIRE à un verdict déjà enregistré : 409 `reponse_409` (aucune écriture). Aucun nœud d'hypothèse rattaché : 200 `{detail, node: null}`.",
   "reponse_409": {
-    "detail": "Verdict déjà enregistré pour cette expérience : il ne peut pas être inversé.",
+    "detail": "Expérience déjà clôturée : hypothèse INFIRMÉE — verdict inchangé.",
     "validated": false
   },
   "second_appel_meme_verdict": {

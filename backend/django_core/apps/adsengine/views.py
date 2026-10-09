@@ -1031,7 +1031,8 @@ class ExperimentViewSet(AdsengineViewSet):
         d'hypothèse lié via ``evidence.record_experiment_outcome`` (idempotent
         par expérience — re-clôturer ne double jamais l'évidence). L'opérateur
         décide, la machine enregistre — jamais l'inverse."""
-        from .evidence import record_experiment_outcome
+        from .evidence import (
+            record_experiment_outcome, recorded_experiment_verdict)
 
         experiment = self.get_object()  # borné société
         validated = request.data.get('validated')
@@ -1040,14 +1041,26 @@ class ExperimentViewSet(AdsengineViewSet):
                 {'detail': "Champ « validated » (booléen) requis : la clôture "
                            "porte un verdict explicite, jamais implicite."},
                 status=400)
+        # AACQ65 — un verdict CONTRAIRE à celui déjà enregistré est refusé
+        # (409, aucune écriture) ; la réponse porte toujours le verdict
+        # ENREGISTRÉ, jamais l'écho du bouton cliqué.
+        deja = recorded_experiment_verdict(experiment)
+        if deja is not None and deja != validated:
+            etat = 'CONFIRMÉE' if deja else 'INFIRMÉE'
+            return Response(
+                {'detail': f"Expérience déjà clôturée : hypothèse {etat} — "
+                           f"verdict inchangé.",
+                 'validated': deja}, status=409)
         node, log = record_experiment_outcome(experiment, validated=validated)
         if node is None:
             return Response(
                 {'detail': "Aucun nœud d'hypothèse rattaché à cette "
                            "expérience — verdict enregistré nulle part.",
                  'node': None}, status=200)
+        enregistre = recorded_experiment_verdict(experiment)
         return Response({'node': node.pk, 'decision_log': log.pk if log else None,
-                         'validated': validated}, status=200)
+                         'validated': (enregistre if enregistre is not None
+                                       else validated)}, status=200)
 
     @action(detail=True, methods=['post'], url_path='sync-ad-study',
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
