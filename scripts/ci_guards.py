@@ -457,11 +457,18 @@ GARDES = {
          'python -m unittest scripts.tests.test_check_resultat_ecrivain_unique -v',
          '.'),
         # ACAL322 - saisies électriques admises branchées des deux côtés.
-        ('Check saisies électriques branchées (lecteur backend + écrivain d'écran, ACAL322)',
+        ('Check saisies électriques branchées (lecteur backend + écrivain d écran, ACAL322)',
          'python scripts/check_saisies_electriques_branchees.py',
          '.'),
-        ('Test the saisies électriques branchées (lecteur backend + écrivain d'écran, ACAL322) checker itself',
+        ('Test the saisies électriques branchées (lecteur backend + écrivain d écran, ACAL322) checker itself',
          'python -m unittest scripts.tests.test_check_saisies_electriques_branchees -v',
+         '.'),
+        # ACAL341 - plus de test squelette (skip inconditionnel + NotImplementedError).
+        ('Check tests squelettes (skip inconditionnel, ACAL341)',
+         'python scripts/check_tests_skips_inconditionnels.py',
+         '.'),
+        ('Test the tests squelettes (skip inconditionnel, ACAL341) checker itself',
+         'python -m unittest scripts.tests.test_check_tests_skips_inconditionnels -v',
          '.'),
     ],
     'backend-lint-fast': [
