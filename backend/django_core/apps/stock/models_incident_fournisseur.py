@@ -54,6 +54,12 @@ class IncidentQualiteFournisseur(TenantModel):
     date_incident = models.DateField()
     resolu = models.BooleanField(default=False)
     date_resolution = models.DateField(null=True, blank=True)
+    # ERR-ASTK226 — auteur de la résolution, posé PAR LE SERVEUR à la bascule
+    # `resolu=true` (avec `date_resolution` = date serveur) ; jamais lu du
+    # corps de la requête.
+    resolu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='incidents_qualite_resolus')
     cout_impact_mad = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text='Coût constaté de l\'incident (MAD). INTERNE — alimente le '

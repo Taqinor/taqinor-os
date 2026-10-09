@@ -286,7 +286,7 @@
     },
     "scanner_mouvement": {
       "endpoint": "POST /api/django/stock/scanner/mouvement/",
-      "pourquoi": "NTWMS5 — pose un mouvement de stock SCANNÉ, casiers source/destination tracés (`scanner_mouvement_view`, views/scanner.py:82, permission stock_modifier ; passe par `record_stock_movement`). Corps : {produit, type_mouvement ∈ entree/sortie/transfert, quantite, bin_source?, bin_destination?, reference? (défaut SCAN), note?}. Un transfert ne change pas le total (quantite_avant = quantite_apres). 201 sur succès ; 400 {detail} sinon — messages réels : « Type de mouvement non scannable. », « Quantité invalide. », « La quantité doit être positive. », « Produit introuvable dans cette société. », « Casier introuvable dans cette société. », « Stock insuffisant (<n> disponible). ».",
+      "pourquoi": "NTWMS5 — pose un mouvement de stock SCANNÉ, casiers source/destination tracés (`scanner_mouvement_view`, views/scanner.py:82, permission stock_modifier ; passe par `record_stock_movement`). Corps : {produit, type_mouvement ∈ entree/sortie/transfert, quantite, bin_source?, bin_destination?, reference? (défaut SCAN), note?}. Un transfert ne change pas le total (quantite_avant = quantite_apres). 201 sur succès ; 400 {detail} sinon — messages réels : « Type de mouvement non scannable. », « Quantité invalide. », « La quantité doit être positive. », « Produit introuvable dans cette société. », « Casier introuvable dans cette société. », « Stock insuffisant (<n> disponible). ». ERR-ASTK196 : un TRANSFERT sans aucun casier répond 400 field-keyed `bin_source` (+ enveloppe YAPIC3 `error`) — `exemple_erreur_400_transfert_sans_casier`, affirmé par test_contrats_wms_astk.py et lu par PosteScannerPage.test.jsx.",
       "exemple": {
         "id": 1203,
         "produit": 88,
@@ -306,6 +306,21 @@
       },
       "exemple_erreur_400": {
         "detail": "La quantité doit être positive."
+      },
+      "exemple_erreur_400_transfert_sans_casier": {
+        "bin_source": [
+          "Un transfert scanné exige un casier source ou destination."
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'bin_source': [ErrorDetail(string='Un transfert scanné exige un casier source ou destination.', code='invalid')]}",
+          "fields": {
+            "bin_source": [
+              "Un transfert scanné exige un casier source ou destination."
+            ]
+          },
+          "request_id": "<request_id>"
+        }
       }
     },
     "scanner_retour_fournisseur": {

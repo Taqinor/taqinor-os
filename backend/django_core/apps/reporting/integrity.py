@@ -117,14 +117,23 @@ def contrats_maintenance_actifs_expires(company):
 def factures_payees_avec_solde(company):
     """Facture `payee` dont `montant_du` (propriété calculée) reste ≠ 0
     (règlement partiel comptabilisé à tort comme payée). Renvoie une liste
-    d'ids de ``Facture``."""
+    d'ids de ``Facture``.
+
+    APRF13 (C-APRF-025) — factures préchargées par
+    ``facturation.selectors.factures_avec_montant_du`` (APRF11) et
+    ``montant_du`` évalué UNE fois par facture : requêtes constantes quel que
+    soit le nombre de factures payées (endpoint, commande, tâche beat)."""
     from decimal import Decimal
+    from apps.facturation.selectors import factures_avec_montant_du
     from apps.ventes.models import Facture
 
     out = []
-    for f in Facture.objects.filter(company=company, statut=Facture.Statut.PAYEE):
+    payees = factures_avec_montant_du(
+        Facture.objects.filter(company=company, statut=Facture.Statut.PAYEE))
+    for f in payees:
         try:
-            if f.montant_du != Decimal('0') and f.montant_du != 0:
+            du = f.montant_du
+            if du != Decimal('0'):
                 out.append(f.id)
         except Exception:  # pragma: no cover - dégradation défensive
             continue

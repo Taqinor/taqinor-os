@@ -160,3 +160,68 @@ class LotExpeditionTests(TestCase):
         self.assertEqual(
             self.lot_a.quantite_restante + self.lot_b.quantite_restante,
             self.produit.quantite_stock)
+
+
+class SortieSansLotTests(TestCase):
+    """ERR-ASTK205-SORTIE-SANS-LOT-REGISTRE — une SORTIE manuelle sans lot
+    sur un produit suivi par lot reste permise, mais le registre la marque
+    « Non affectée à un lot » et l'écart lots/stock est nommé."""
+
+    def setUp(self):
+        self.co = make_company('errastk205-co', 'ERR ASTK205 Co')
+        self.resp = User.objects.create_user(
+            username='errastk205_resp', password='x',
+            role_legacy='admin', company=self.co)
+        self.api = auth_client(self.resp)
+        self.produit = Produit.objects.create(
+            company=self.co, nom='Batterie ERR-ASTK205', sku='ERRASTK205-1',
+            prix_achat=Decimal('100'), prix_vente=Decimal('200'),
+            quantite_stock=10)
+        self.lot = LotEntrepot.objects.create(
+            company=self.co, produit=self.produit, numero_lot='LOT-E205',
+            quantite_recue=10, quantite_restante=10,
+            reference_reception='R-E205')
+        self.sans_lot = Produit.objects.create(
+            company=self.co, nom='Câble ERR-ASTK205', sku='ERRASTK205-2',
+            prix_achat=Decimal('1'), prix_vente=Decimal('2'),
+            quantite_stock=10)
+
+    def _sortie(self, produit, quantite, note=''):
+        return self.api.post('/api/django/stock/mouvements/', {
+            'produit': produit.id, 'type_mouvement': 'sortie',
+            'quantite': quantite, 'note': note}, format='json')
+
+    def test_sortie_manuelle_sans_lot_marquee(self):
+        from apps.stock.services_wms import (
+            MENTION_SORTIE_SANS_LOT, ecart_lots_non_affecte,
+        )
+        r = self._sortie(self.produit, 3, note='Casse atelier')
+        self.assertEqual(r.status_code, 201, r.content)
+        mouvement = MouvementStock.objects.get(pk=r.data['id'])
+        self.assertIn(MENTION_SORTIE_SANS_LOT, mouvement.note)
+        self.assertIn('Casse atelier', mouvement.note)
+        self.produit.refresh_from_db()
+        self.lot.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 7)
+        self.assertEqual(self.lot.quantite_restante, 10)
+        # Écart nommé : 3 unités sorties sans lot.
+        self.assertEqual(ecart_lots_non_affecte(self.co, self.produit), 3)
+
+    def test_sortie_scannee_sans_lot_marquee(self):
+        from apps.stock.services import enregistrer_mouvement_scanne
+        from apps.stock.services_wms import MENTION_SORTIE_SANS_LOT
+        mouvement = enregistrer_mouvement_scanne(
+            company=self.co, user=self.resp, produit_id=self.produit.id,
+            type_mouvement='sortie', quantite=2)
+        mouvement.refresh_from_db()
+        self.assertIn(MENTION_SORTIE_SANS_LOT, mouvement.note)
+
+    def test_produit_sans_lot_note_inchangee(self):
+        from apps.stock.services_wms import (
+            MENTION_SORTIE_SANS_LOT, ecart_lots_non_affecte,
+        )
+        r = self._sortie(self.sans_lot, 3, note='Chantier')
+        self.assertEqual(r.status_code, 201, r.content)
+        mouvement = MouvementStock.objects.get(pk=r.data['id'])
+        self.assertNotIn(MENTION_SORTIE_SANS_LOT, mouvement.note or '')
+        self.assertEqual(ecart_lots_non_affecte(self.co, self.sans_lot), 0)

@@ -29,13 +29,3 @@ backend/django_core/apps/installations/services.py::valider_retour_materiel
 backend/django_core/apps/installations/services.py::decider_demande_achat
 backend/django_core/apps/installations/services.py::valider_retour_livraison
 backend/django_core/apps/offlinesync/services.py::resoudre_conflit
-
-# ASTK53 - idem, apps/stock : sites NON couverts par ASTK48-ASTK52, a ouvrir comme taches stock (fichiers du proprietaire stock, en cours d'edition par une autre session).
-backend/django_core/apps/stock/services.py::creer_avoir_depuis_retour
-backend/django_core/apps/stock/services_qualite_reception.py::enregistrer_controle_reception
-backend/django_core/apps/stock/services_wms.py::creer_expedition_transporteur
-backend/django_core/apps/stock/services_wms.py::generer_etiquette_expedition
-backend/django_core/apps/stock/services_wms.py::configurer_liberation_vague
-backend/django_core/apps/stock/services_wms.py::deplacer_unite_logistique
-backend/django_core/apps/stock/services_wms.py::receptionner_retour_client
-backend/django_core/apps/stock/services_wms.py::inspecter_retour_client

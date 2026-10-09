@@ -529,6 +529,10 @@ def factory_lane_roi(company, *, date_start=None, date_end=None):
 
 # ── PUB62 — Carte chaleur ville : CPL, coût-par-signature, ticket moyen ──────
 
+# Canaux d'acquisition Meta (clés ``crm.Lead.Canal``) — AACQ11.
+META_LEAD_CANAUX = ('meta_ads', 'whatsapp_ctwa')
+
+
 def _normalize_place_fr(value):
     return (value or '').strip().lower()
 
@@ -578,7 +582,11 @@ def city_heatmap(company, *, date_start=None, date_end=None):
         if r['key']
     ]
 
-    lead_rows = leads_ville_rows(company)
+    # AACQ11 — leads Meta de la MÊME fenêtre que la dépense (jamais l'histoire
+    # entière ni d'autres canaux) ; dépense de région répartie au prorata.
+    lead_rows = leads_ville_rows(
+        company, canaux=META_LEAD_CANAUX,
+        date_start=date_start, date_end=date_end)
     signed_lead_ids = [r['id'] for r in lead_rows if r['signed']]
     totals_by_lead = devis_accepted_totals_by_lead(company, signed_lead_ids)
 
@@ -591,15 +599,31 @@ def city_heatmap(company, *, date_start=None, date_end=None):
             slot['signed'] += 1
             slot['signed_total'] += totals_by_lead.get(row['id'], Decimal('0'))
 
-    result = []
-    for ville, slot in cities.items():
+    # AACQ11 — chaque ville rattachée à UNE région ; la dépense de la région
+    # est répartie entre ses villes au prorata de leurs leads (somme exacte).
+    city_region = {}
+    for ville in cities:
         norm = _normalize_place_fr(ville)
-        matched_region, spend = None, None
         for region in regions:
             rnorm = _normalize_place_fr(region['key'])
             if norm and rnorm and (norm in rnorm or rnorm in norm):
-                matched_region, spend = region['key'], region['spend']
+                city_region[ville] = region
                 break
+    region_leads = {}
+    for ville, region in city_region.items():
+        region_leads[region['key']] = (
+            region_leads.get(region['key'], 0) + cities[ville]['leads'])
+
+    result = []
+    for ville, slot in cities.items():
+        matched_region, spend = None, None
+        region = city_region.get(ville)
+        if region is not None:
+            matched_region = region['key']
+            # Quote-part de la ville dans les leads de sa région (prorata).
+            part = (Decimal(slot['leads'])
+                    / Decimal(region_leads[region['key']]))
+            spend = region['spend'] * part
         leads = slot['leads']
         signed = slot['signed']
         result.append({
@@ -649,6 +673,15 @@ def _company_spend_window(company, date_start, date_end):
     return total or Decimal('0')
 
 
+def _account_currency_label(company):
+    """AACQ11 — devise du compte publicitaire (défaut MAD)."""
+    try:
+        from .rules_engine import account_currency
+        return account_currency(company) or 'MAD'
+    except Exception:  # pragma: no cover - lecture best-effort
+        return 'MAD'
+
+
 def cold_recycling_report(company, *, date_start=None, date_end=None):
     """PUB64 — Calculateur d'aide à la décision GO/NO-GO « réactiver un lead
     COLD vs acheter un lead neuf », basé sur les taux de conversion
@@ -672,13 +705,19 @@ def cold_recycling_report(company, *, date_start=None, date_end=None):
     leads_by_mode = new_leads_by_mode_meta(
         company, date_start=date_start, date_end=date_end)
 
+    # AACQ11 — la dépense n'est PAS ventilable par mode : UN coût mélangé
+    # (dépense ÷ tous les leads Meta neufs), jamais 100 % de la dépense par mode.
+    total_leads = sum(leads_by_mode.values())
     cac_par_mode = []
     for mode, count in sorted(leads_by_mode.items()):
         cac_par_mode.append({
             'mode_installation': mode or '(non renseigné)',
             'leads_neufs_meta': count,
-            'cac_actuel': _q2(spend / count) if count else None,
+            'cac_actuel': None,
+            'cac_note': 'non ventilable par mode',
         })
+    cac = metrics.cout_par_lead(spend, total_leads, source='crm').valeur
+    cac_melange = _q2(cac) if cac is not None else None
 
     buckets = cold_reactivation_by_age_bucket(company)
     has_cold_data = sum(b['total'] for b in buckets) >= MIN_COLD_RECYCLING_LEADS
@@ -689,6 +728,8 @@ def cold_recycling_report(company, *, date_start=None, date_end=None):
                     'fin': date_end.isoformat()},
         'depense_totale': _q2(spend),
         'cac_par_mode': cac_par_mode,
+        'cac_melange': cac_melange,
+        'devise': _account_currency_label(company),
         'reconversion_par_age_cold': buckets,
         'donnees_suffisantes': donnees_suffisantes,
         'avertissement': (

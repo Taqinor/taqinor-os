@@ -127,6 +127,21 @@ describe('BacklogScreen (ENG41/PACT111)', () => {
     expect(await screen.findAllByTestId('ae-backlog-lot')).toHaveLength(2)
   })
 
+  it('AACQ68 — l\'item sans lot en page 2 est listé', async () => {
+    mocks.rawItems.mockImplementation(({ page } = {}) => Promise.resolve({
+      data: page === 2
+        ? { count: 3, next: null, results: [{ id: 903, asset: 77, batch: null, target_campaign: 5, source: 'manuel', status: 'en_file' }] }
+        : { count: 3, next: 'p2', results: [
+          { id: 900, asset: 12, batch: 51, target_campaign: 5, source: 'recombinaison', status: 'en_file' },
+          { id: 901, asset: 34, batch: 51, target_campaign: 5, source: 'recombinaison', status: 'en_file' },
+        ] },
+    }))
+    renderScreen()
+    const rows = await screen.findAllByTestId('ae-backlog-sans-lot-item')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('Asset #77')
+  })
+
   it('PACT111 — déclenche le pipeline RÉEL de génération ancrée aux faits', async () => {
     renderScreen()
     fireEvent.change(screen.getByTestId('ae-backlog-seed-brief'),

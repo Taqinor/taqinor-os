@@ -11,11 +11,11 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/achats/models.py::ReceptionFournisseur.company` | backend/django_core/apps/achats/models.py:386 | authentication.Company | CASCADE |
 | `backend/django_core/apps/achats/models.py::LigneReceptionFournisseur.produit` | backend/django_core/apps/achats/models.py:434 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/achats/models.py::FactureFournisseur.company` | backend/django_core/apps/achats/models.py:499 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::ImputationAcompteFournisseur.company` | backend/django_core/apps/achats/models.py:636 | authentication.Company | PROTECT |
-| `backend/django_core/apps/achats/models.py::LigneFactureFournisseur.produit` | backend/django_core/apps/achats/models.py:665 | stock.Produit | SET_NULL |
-| `backend/django_core/apps/achats/models.py::PaiementFournisseur.company` | backend/django_core/apps/achats/models.py:719 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::RetourFournisseur.company` | backend/django_core/apps/achats/models.py:791 | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py::LigneRetourFournisseur.produit` | backend/django_core/apps/achats/models.py:824 | stock.Produit | PROTECT |
+| `backend/django_core/apps/achats/models.py::ImputationAcompteFournisseur.company` | backend/django_core/apps/achats/models.py:643 | authentication.Company | PROTECT |
+| `backend/django_core/apps/achats/models.py::LigneFactureFournisseur.produit` | backend/django_core/apps/achats/models.py:672 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/achats/models.py::PaiementFournisseur.company` | backend/django_core/apps/achats/models.py:726 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::RetourFournisseur.company` | backend/django_core/apps/achats/models.py:798 | authentication.Company | CASCADE |
+| `backend/django_core/apps/achats/models.py::LigneRetourFournisseur.produit` | backend/django_core/apps/achats/models.py:831 | stock.Produit | PROTECT |
 | `backend/django_core/apps/adminops/models.py::SandboxEnvironment.sandbox_company` | backend/django_core/apps/adminops/models.py:54 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py::DemandeInscription.company_creee` | backend/django_core/apps/adminops/models.py:274 | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py::AdminOpsSettings.company` | backend/django_core/apps/adminops/models.py:430 | authentication.Company | CASCADE |

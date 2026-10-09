@@ -74,16 +74,16 @@ describe('ASTK216 — PosteScannerPage', () => {
   })
 
   it('affiche le 400 transfert sans casier', async () => {
-    api.post.mockRejectedValue({
-      response: { status: 400, data: { detail: 'Un transfert exige un casier source et un casier destination.' } },
-    })
+    // ERR-ASTK196 — le corps d'erreur vient du contrat (affirmé côté serveur
+    // par test_contrats_wms_astk.py), jamais retapé à la main.
+    const corps = MV.exemple_erreur_400_transfert_sans_casier
+    api.post.mockRejectedValue({ response: { status: 400, data: corps } })
     monter()
     await scanner('MIC-001')
     await screen.findByText(/Micro-onduleur/)
     fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '5' } })
     fireEvent.click(screen.getByRole('button', { name: /Valider le mouvement/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Un transfert exige un casier source et un casier destination.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(corps.bin_source[0])
   })
 
   it('refuse 7.5 sous le champ', async () => {
