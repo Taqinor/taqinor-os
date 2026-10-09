@@ -414,7 +414,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     lead_nom = serializers.SerializerMethodField()
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
-        source='updated_by.username', read_only=True, default=None)
+        source='updated_by.username', read_only=True, allow_null=True, default=None)
     # Contexte « quote-aware » du lead lié (profil énergétique) — lecture seule,
     # pour un aperçu au survol dans la liste des devis. None si pas de lead.
     lead_facture_hiver = serializers.SerializerMethodField()
@@ -500,14 +500,17 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
             obj._peremption_layout_cache = peremption_layout_devis(obj)
         return obj._peremption_layout_cache
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lead_facture_hiver(self, obj):
         return str(obj.lead.facture_hiver) if obj.lead_id and \
             obj.lead.facture_hiver is not None else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lead_meta_ad_id(self, obj):
         return obj.lead.meta_ad_id if obj.lead_id and \
             obj.lead.meta_ad_id else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lead_type_installation(self, obj):
         if not obj.lead_id:
             return None
@@ -528,9 +531,11 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
             obj._display_data_cache = donnees or None
         return obj._display_totals_cache
 
+    @extend_schema_field(serializers.FloatField())
     def get_total_affiche(self, obj):
         return self._display(obj)['total']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_options(self, obj):
         return self._display(obj)['nb_options']
 
@@ -538,11 +543,13 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     # de l'échéancier. Calculé par l'unique helper apps.ventes.utils.echeancier.
     solde = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lead_nom(self, obj):
         if not obj.lead_id:
             return None
         return f"{obj.lead.nom} {obj.lead.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.DictField(child=serializers.CharField()))
     def get_solde(self, obj):
         from .utils.echeancier import solde_devis
         s = solde_devis(obj)
@@ -590,9 +597,11 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     def get_revision_possible(self, obj) -> bool:
         return self._verdict_modifiabilite(obj)['revision_possible']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_superseded_by_ref(self, obj):
         return obj.superseded_by.reference if obj.superseded_by_id else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_version_parent_ref(self, obj):
         return obj.version_parent.reference if obj.version_parent_id else None
 
@@ -602,10 +611,12 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
             return bool(annote)
         return obj.versions_enfants.filter(is_active=True).exists()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_expired(self, obj):
         from .utils.expiry import is_expired
         return is_expired(obj)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_date_expiration(self, obj):
         from .utils.expiry import date_expiration
         d = date_expiration(obj)
@@ -614,6 +625,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     # Chantier lié (s'il existe) — pour le lien devis ↔ chantier dans l'UI.
     chantier = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_chantier(self, obj):
         # N+1 réel corrigé (YOPSB13) : ``installation_for_devis`` exécute une
         # requête PAR devis (Installation.objects.filter(devis=devis).first())
@@ -646,6 +658,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     # existante ; ne change aucun statut.
     bon_commande_etat = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_factures_liees(self, obj):
         # related_name='factures' depuis Facture.devis (FK). Triées par référence
         # pour un rendu stable. Référence + statut (+ libellé du statut) suffisent
@@ -664,6 +677,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
             for f in sorted(obj.factures.all(), key=lambda f: f.reference)
         ]
 
+    @extend_schema_field(serializers.DictField())
     def get_bon_commande_etat(self, obj):
         # Reverse OneToOne : l'accès lève RelatedObjectDoesNotExist quand aucun
         # BC n'existe — on le rattrape pour renvoyer un état « absent » propre.
@@ -698,6 +712,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     # Vaut None pour un devis mono-option (pas de deuxième option).
     comparaison_options = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_comparaison_options(self, obj):
         """Retourne {sans, avec, roi, nb_options} si nb_options=2, sinon None.
 
@@ -773,6 +788,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     est_signe = serializers.SerializerMethodField()
     signature_info = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_est_signe(self, obj):
         """True si un DevisSignature (loi 53-05) existe pour ce devis."""
         try:
@@ -780,6 +796,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
         except Exception:
             return False
 
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_signature_info(self, obj):
         """Informations minimales de signature (sans données personnelles)."""
         try:
@@ -826,16 +843,19 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
         obj._active_share_link_cache = result
         return result
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nombre_vues(self, obj):
         link = self._active_share_link(obj)
         return link.view_count if link else 0
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_derniere_consultation(self, obj):
         link = self._active_share_link(obj)
         if link and link.last_viewed_at:
             return link.last_viewed_at.isoformat()
         return None
 
+    @extend_schema_field(serializers.BooleanField())
     def get_deja_consulte(self, obj):
         link = self._active_share_link(obj)
         return bool(link and link.first_viewed_at is not None)
@@ -844,6 +864,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     # n'a pas ouvert l'étude »). Vide sans beacon — comportement QJ1 inchangé.
     engagement = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.DictField())
     def get_engagement(self, obj):
         link = self._active_share_link(obj)
         return link.engagement_summary if link else {}
@@ -854,6 +875,7 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     # champ modèle, cette méthode le NEUTRALISE pour les non-managers.
     marge_snapshot = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_marge_snapshot(self, obj):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
@@ -1057,7 +1079,7 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
 class DevisActivitySerializer(serializers.ModelSerializer):
     """Chatter d'un devis (N25) — lecture seule côté API."""
     user_nom = serializers.CharField(
-        source='user.username', read_only=True, default=None)
+        source='user.username', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = DevisActivity
@@ -1069,7 +1091,7 @@ class DevisActivitySerializer(serializers.ModelSerializer):
 class EmailLogSerializer(serializers.ModelSerializer):
     """Fil des emails (N87/N88) — lecture seule côté API."""
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True, default=None)
 
     class Meta:
         from .models import EmailLog
@@ -1085,7 +1107,7 @@ class EmailLogSerializer(serializers.ModelSerializer):
 
 class DevisPresetSerializer(serializers.ModelSerializer):
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = DevisPreset
@@ -1368,9 +1390,9 @@ class PlanCommissionSerializer(serializers.ModelSerializer):
     serveur (``perform_create``/``perform_update``), jamais lue du corps.
     Contrat partage : ``apps/ventes/contract_samples/plan_commission.json``."""
     owner_nom = serializers.CharField(
-        source='owner.username', read_only=True, default=None)
+        source='owner.username', read_only=True, allow_null=True, default=None)
     base_display = serializers.CharField(
-        source='get_base_display', read_only=True, default=None)
+        source='get_base_display', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = PlanCommission
