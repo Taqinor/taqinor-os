@@ -34,7 +34,7 @@ class ReferentielsDoublonTests(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
 
-    def test_condition_doublon_400(self):
+    def test_condition_doublon_409(self):
         ConditionPaiement.objects.get_or_create(
             company=self.company, delai_jours=30, fin_de_mois=False,
             escompte_pct=Decimal('0'), defaults={'libelle': '30 jours'})
@@ -42,9 +42,10 @@ class ReferentielsDoublonTests(TestCase):
         r = self.api.post(f'{BASE}conditions-paiement/', {
             'libelle': '30 jours (bis)', 'delai_jours': 30,
             'fin_de_mois': False, 'escompte_pct': '0'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('delai_jours', r.data)
-        self.assertIn('existe déjà', str(r.data['delai_jours']))
+        # ENF2 : doublon par société → 409 unique_conflict, champ nommé.
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('delai_jours', r.data['error']['fields'])
+        self.assertIn('existe', str(r.data['error']['fields']['delai_jours']))
         self.assertEqual(
             ConditionPaiement.objects.filter(company=self.company).count(),
             avant)
