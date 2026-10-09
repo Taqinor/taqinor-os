@@ -9474,13 +9474,20 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
     conservant la trace « Créé depuis le ticket SAV … » sur le chatter du lead.
 
     Renvoie ``(lead, created)``."""
+    # ACRM43 — la docstring dit « non archivé » : un lead archivé n'est
+    # jamais réutilisé (nouveau lead à la place).
     existant = (
         Lead.objects
-        .filter(company=company, client=client)
+        .filter(company=company, client=client, is_archived=False)
         .exclude(stage=stages.COLD)
         .order_by('-date_creation')
         .first())
     if existant is not None:
+        contexte_existant = (contexte or '').strip()
+        if contexte_existant:
+            # ACRM43 — le contexte du ticket est tracé au chatter du lead
+            # réutilisé (note SYSTÈME, même règle QJ7 que la création).
+            activity.log_note(existant, None, contexte_existant)
         return existant, False
 
     lead = Lead.objects.create(
