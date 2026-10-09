@@ -5,7 +5,7 @@ import {
   Copy, Send, X, Eye, AlertTriangle, Box, ExternalLink,
   Link2, Link2Off, MoreHorizontal, Bell, Share2,
 } from 'lucide-react'
-import { fetchDevis } from '../../../features/ventes/store/ventesSlice.js'
+import { rafraichirDevis } from '../../../features/ventes/store/ventesSlice.js'
 import ventesApi from '../../../api/ventesApi.js'
 import {
   Button, Badge, StatusPill, Checkbox, Textarea,
@@ -777,7 +777,7 @@ export default function DevisRow({ d, ctx }) {
                   // avertit si chantier en cours (VX216(a)), dit le résultat,
                   // ouvre la V2 en Édition complète.
                   reviserEtOuvrir({
-                    devis: d, navigate, onApres: () => dispatch(fetchDevis()),
+                    devis: d, navigate, onApres: () => dispatch(rafraichirDevis(d.id)),
                   })
                 }}>
                   Réviser (nouvelle version)
@@ -787,7 +787,7 @@ export default function DevisRow({ d, ctx }) {
                 && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
                 <DropdownMenuItem onSelect={() => {
                   ventesApi.approuverRemise(d.id)
-                    .then(() => dispatch(fetchDevis())).catch(() => {})
+                    .then(() => dispatch(rafraichirDevis(d.id))).catch(() => {})
                 }}>
                   Approuver la remise
                 </DropdownMenuItem>
@@ -1047,7 +1047,7 @@ export default function DevisRow({ d, ctx }) {
             <p className="mb-2 text-xs font-medium text-muted-foreground">
               Étude bancable — {d.reference}
             </p>
-            <EtudeBancable devis={d} onRefresh={() => dispatch(fetchDevis())} />
+            <EtudeBancable devis={d} onRefresh={() => dispatch(rafraichirDevis(d.id))} />
           </div>
         </td>
       </tr>

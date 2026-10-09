@@ -38,6 +38,22 @@ export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { sign
   ),
 )
 
+// APRF8 — après une action UNITAIRE sur un devis (envoi, PDF, acceptation,
+// refus, relance, révision…), on ne relit PLUS toute la liste (40 requêtes à
+// 2 000 devis) : UN `GET devis/<id>/` remplace la seule ligne touchée
+// (`devisPatched`). Si la lecture échoue, repli sûr sur la relecture complète.
+export const rafraichirDevis = createAsyncThunk('ventes/rafraichirDevis', async (id, { dispatch }) => {
+  if (id == null) return null
+  try {
+    const res = await ventesApi.getDevisById(id)
+    dispatch(devisPatched(res.data))
+    return res.data
+  } catch {
+    dispatch(fetchDevis())
+    return null
+  }
+})
+
 export const createDevis = createAsyncThunk('ventes/createDevis', async (data, { rejectWithValue }) => {
   try {
     const res = await ventesApi.createDevis(data)
@@ -322,6 +338,14 @@ const ventesSlice = createSlice({
     factureUpdateSeq: {},
   },
   reducers: {
+    // APRF8 — remplace UNE ligne du store par id (ordre conservé) ; ligne
+    // absente de la liste = ignorée (jamais ajoutée).
+    devisPatched(state, action) {
+      const d = action.payload
+      if (!d || d.id == null) return
+      const i = state.devis.findIndex((x) => x.id === d.id)
+      if (i !== -1) state.devis[i] = d
+    },
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
@@ -445,5 +469,5 @@ const ventesSlice = createSlice({
   },
 })
 
-export const { clearError } = ventesSlice.actions
+export const { clearError, devisPatched } = ventesSlice.actions
 export default ventesSlice.reducer

@@ -27,11 +27,23 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      101
     ],
     [
       "ventesApi.telechargerPdfDevis",
       101
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ],
     [
       "URL.createObjectURL",
@@ -73,11 +85,23 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      101
     ],
     [
       "ventesApi.telechargerPdfDevis",
       101
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ],
     [
       "URL.createObjectURL",
@@ -140,7 +164,19 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      101
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ],
     [
       "ventesApi.etatPdfDevis",
@@ -148,7 +184,19 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      102
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ]
   ],
   "pdf_proforma_bc": [
@@ -223,11 +271,23 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      101
     ],
     [
       "toast.success",
       "PDF partagé — devis marqué envoyé."
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ]
   ],
   "email": [
@@ -244,7 +304,11 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      101
     ],
     [
       "toast.success",
@@ -253,6 +317,14 @@
         "icon": "☀️",
         "description": "ACME · 42 000,00 MAD · Devis envoyé. La balle est dans le camp du client."
       }
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ]
   ],
   "whatsapp": [
@@ -277,7 +349,19 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      101
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ]
   ],
   "whatsapp_relance": [
@@ -307,7 +391,19 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      102
+    ],
+    [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ]
   ],
   "copie_liens": [
@@ -335,15 +431,27 @@
     ],
     [
       "dispatch",
-      "ventes/fetchDevis/noop"
+      "ventes/rafraichirDevis/pending"
+    ],
+    [
+      "ventesApi.getDevisById",
+      102
     ],
     [
       "clipboard.writeText",
       "https://taqinor.ma/proposition/tok123"
     ],
     [
+      "dispatch",
+      "ventes/devisPatched"
+    ],
+    [
       "toast.success",
       "Lien copié — devis marqué envoyé."
+    ],
+    [
+      "dispatch",
+      "ventes/rafraichirDevis/fulfilled"
     ],
     [
       "--- aperçu interne ---"
