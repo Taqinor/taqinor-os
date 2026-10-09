@@ -2,6 +2,9 @@
 
     python -m unittest scripts.tests.test_check_ancres_taches -v
 """
+import contextlib
+import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -33,6 +36,20 @@ class FauxDepot:
             "".join(f"- [ ] {t}\n" for t in taches), encoding="utf-8")
         return ["docs/plans/PLAN_AUDIT_X.md"]
 
+    def git(self, *args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                       cwd=self.racine, check=True, capture_output=True)
+
+    def valider(self, message="c"):
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", message)
+
+    def lancer(self, *args) -> tuple:
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = cat.main(list(args))
+        return code, sortie.getvalue()
+
     def fermer(self):
         ctc.ROOT = self._sauve
         self.tmp.cleanup()
@@ -63,6 +80,28 @@ class AncresTests(unittest.TestCase):
 
     def test_citation_entre_backticks_de_la_regle_nest_pas_une_ancre(self):
         self.assertEqual(self.depot.echecs("AAA9 — une ancre `(l.123)` ou `chemin:123` est citee"), [])
+
+    def test_seule_une_tache_touchee_echoue(self):
+        mauvaise = "BBB1 — voir `mod.py::absent` fin"
+        self.depot.plan(mauvaise)
+        self.depot.valider("base")
+        code, sortie = self.depot.lancer("--base", "HEAD")
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("Rapport", sortie)
+        self.depot.plan(mauvaise + " modifiee")
+        self.assertEqual(self.depot.lancer("--base", "HEAD")[0], 1)
+        self.depot.plan(mauvaise, "BBB2 — voir `mod.py::autre` fin")
+        code, sortie = self.depot.lancer("--base", "HEAD")
+        self.assertEqual(code, 1)
+        self.assertIn("ECHEC BBB2", sortie)
+        self.assertNotIn("ECHEC BBB1", sortie)
+
+    def test_base_indisponible_traite_tout_comme_touche(self):
+        self.depot.plan("BBB3 — voir `mod.py::absent` fin")
+        os.environ.pop("GITHUB_ACTIONS", None)
+        code, sortie = self.depot.lancer("--base", "refs/inexistante")
+        self.assertEqual(code, 1)
+        self.assertIn("base indisponible", sortie)
 
     def test_v2_rapporte_sans_echouer(self):
         self.assertEqual(self.depot.echecs("AAA6 — `mod.py::nope` `mod.py:9`", v2=("AAA6",)), [])

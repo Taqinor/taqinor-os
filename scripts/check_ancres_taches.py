@@ -6,11 +6,17 @@ Dans une tache OUVERTE v3 (id hors scripts/taches_audit_v2.txt) :
      (AST pour .py via audit_tache.resoudre — aucun second parseur) ;
   2. une ancre de ligne nue `chemin.ext:123` ou `(l.123)` / `l.123` sans
      aucune ancre `::symbole` dans la meme tache est un ECHEC.
-Tache v2 : le nombre d'ancres derivees est imprime, jamais bloque.
+Option --base <ref> (defaut origin/main) : seules les taches v3 TOUCHEES (id absent du plan
+a la base, ou ligne modifiee) font echouer ; les autres vont au rapport. Base indisponible :
+tout est touche (echec ferme). « Meme clause » = la tache entiere.
+Tache v2 : le nombre d ancres derivees est imprime, jamais bloque.
 
     python scripts/check_ancres_taches.py        # exit 1 si ECHEC
 """
+import argparse
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -70,27 +76,72 @@ def analyser_tache(tache, v2: bool, racine) -> tuple:
     return echecs, len(ancres)
 
 
+def _git(racine, *args, timeout=60):
+    try:
+        p = subprocess.run(["git", *args], cwd=racine, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return p.stdout if p.returncode == 0 else None
+
+
+def base_disponible(base: str, racine) -> bool:
+    """Meme logique que check_acceptation.base_disponible (fetch CI de origin/main)."""
+    if _git(racine, "rev-parse", "--verify", "--quiet", base + "^{commit}") is not None:
+        return True
+    if os.environ.get("GITHUB_ACTIONS") and base == "origin/main":
+        _git(racine, "fetch", "--no-tags", "--depth=1", "origin",
+             "+refs/heads/main:refs/remotes/origin/main", timeout=120)
+        return _git(racine, "rev-parse", "--verify", "--quiet", base + "^{commit}") is not None
+    return False
+
+
+def lignes_a_la_base(base: str, rel: str, racine) -> dict:
+    """{id: ligne} du plan `rel` au `base` ; {} si le fichier est absent a la base."""
+    brut = _git(racine, "show", f"{base}:{rel}") or ""
+    return {m.group("id"): m.group(0).rstrip() for m in
+            re.finditer(r"^- \[.\]\s*(?P<id>[A-Z][A-Za-z0-9]*[0-9]+)\b.*$", brut, re.M)}
+
+
+def _ascii(texte: str) -> str:
+    return texte.encode("ascii", "replace").decode()
+
+
 def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Garde des ancres de taches (AMET83)")
+    parser.add_argument("--base", default="origin/main")
+    args = parser.parse_args(argv)
     racine = ctc.ROOT
     ids_v2 = ctc.charger_ids_v2()
-    echecs = []
+    dispo = base_disponible(args.base, racine)
+    if not dispo:
+        print("Avis : base indisponible - toutes les taches v3 traitees comme touchees")
+    bloquants, rapport = [], []
     nb_v3 = anc_v3 = nb_v2 = anc_v2 = 0
-    fichiers = [f for f in ctc.fichiers_de_plan() if "PLAN_AUDIT_" in f]
-    for tache in ctc.lire_taches(fichiers):
-        if tache.etat != " ":
-            continue
-        v2 = ctc.version_de(tache.identifiant, ids_v2) == "v2"
-        res, nb = analyser_tache(tache, v2, racine)
-        echecs += res
-        if v2:
-            nb_v2, anc_v2 = nb_v2 + 1, anc_v2 + nb
-        else:
+    for rel in [f for f in ctc.fichiers_de_plan() if "PLAN_AUDIT_" in f]:
+        base_lignes = lignes_a_la_base(args.base, rel, racine) if dispo else {}
+        for tache in ctc.lire_taches([rel]):
+            if tache.etat != " ":
+                continue
+            v2 = ctc.version_de(tache.identifiant, ids_v2) == "v2"
+            res, nb = analyser_tache(tache, v2, racine)
+            if v2:
+                nb_v2, anc_v2 = nb_v2 + 1, anc_v2 + nb
+                continue
             nb_v3, anc_v3 = nb_v3 + 1, anc_v3 + nb
-    for identifiant, ancre, raison in echecs:
-        print(f"ECHEC {identifiant} : {ancre} - {raison}".encode("ascii", "replace").decode())
+            ligne = f"- [{tache.etat}] {tache.texte}".rstrip()
+            touchee = not dispo or base_lignes.get(tache.identifiant) != ligne
+            (bloquants if touchee else rapport).extend((rel,) + e for e in res)
+    for rel, identifiant, ancre, raison in bloquants:
+        print(_ascii(f"ECHEC {identifiant} : {ancre} - {raison}"))
+    if rapport:
+        print("Rapport (taches non touchees, a corriger par leur proprietaire) :")
+    for rel, identifiant, ancre, raison in rapport:
+        print(_ascii(f"  {rel} {identifiant} : {ancre} - {raison}"))
     print(f"Ancres de taches : {nb_v3} tache(s) v3 verifiee(s), {anc_v3} ancre(s) fichier::symbole ; "
-          f"{nb_v2} tache(s) v2, {anc_v2} ancre(s) derivee(s) (rapport seul) ; {len(echecs)} echec(s).")
-    return 1 if echecs else 0
+          f"{nb_v2} tache(s) v2, {anc_v2} ancre(s) derivee(s) (rapport seul) ; "
+          f"{len(bloquants)} echec(s) bloquant(s), {len(rapport)} en rapport.")
+    return 1 if bloquants else 0
 
 
 if __name__ == "__main__":
