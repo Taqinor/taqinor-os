@@ -18,7 +18,7 @@ from django.utils import timezone
 from authentication.models import Company
 from core.dates import aujourd_hui_local
 
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
 from apps.crm.selectors import devis_expirant_bientot
 from apps.ventes.models import Devis
 from apps.ventes.selectors import date_validite_effective
@@ -36,11 +36,14 @@ class DevisExpirantEffectifTests(TestCase):
             role_legacy='responsable')
         self.lead = Lead.objects.create(
             company=self.company, nom='Expirant', owner=self.user)
+        self.client_devis = Client.objects.create(
+            company=self.company, nom='Expirant')
         self.today = aujourd_hui_local()
 
     def _devis(self, reference, **champs):
         devis = Devis.objects.create(
             company=self.company, reference=reference, lead=self.lead,
+            client=self.client_devis,
             statut='envoye', taux_tva=Decimal('20.00'),
             remise_globale=Decimal('0'), created_by=self.user, **champs)
         return devis
