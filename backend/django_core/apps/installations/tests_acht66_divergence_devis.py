@@ -24,7 +24,8 @@ from core.events import devis_accepted
 from apps.crm.models import Lead
 from apps.installations.models import Installation
 from apps.stock.models import Produit
-from apps.ventes.models import Client, Devis, LigneDevis
+from apps.crm.models import Client
+from apps.ventes.models import Devis, LigneDevis
 
 User = get_user_model()
 BASE = '/api/django/installations/chantiers/'

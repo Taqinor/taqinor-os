@@ -16,10 +16,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.installations.models import (
-    CommissioningRecord, Installation, Intervention, KitOutillage,
-    KitOutillageItem, ToolReturn,
+    CommissioningRecord, Installation, Intervention, ToolReturn,
 )
-from apps.outillage.models import Outillage
+from apps.outillage.models import KitOutillage, KitOutillageItem, Outillage
 
 User = get_user_model()
 URL = '/api/django/outillage/outils'
