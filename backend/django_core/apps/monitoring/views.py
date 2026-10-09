@@ -430,12 +430,18 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     def email_om_report(self, request, pk=None):
         """FG289 — envoie le rapport O&M périodique par e-mail (PDF joint).
         Destinataire : body `recipient` sinon l'e-mail du client du système."""
-        from .report import email_om_report
+        from .report import EnvoiRapportImpossible, email_om_report
         config = self.get_object()
         period = request.data.get('period', 'monthly')
         recipient = request.data.get('recipient') or None
-        sent = email_om_report(
-            config.installation, period=period, recipient=recipient)
+        try:
+            sent = email_om_report(
+                config.installation, period=period, recipient=recipient)
+        except EnvoiRapportImpossible as exc:
+            # ASAV68 — l'e-mail n'est pas parti : jamais {sent: true}.
+            return Response(
+                {'detail': f'Envoi impossible : {exc}'},
+                status=status.HTTP_502_BAD_GATEWAY)
         return Response({'sent': sent})
 
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
