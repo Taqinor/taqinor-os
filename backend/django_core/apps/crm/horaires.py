@@ -165,6 +165,28 @@ def _ouverture(profil, canal):
     return _heure(profil, 'appel_heure_debut', DEFAUT_APPEL_DEBUT)
 
 
+#: ACRM42 — la PLAGE IFTAR (heures locales de Casablanca) pendant laquelle
+#: aucun rappel de visite ne part en période de Ramadan saisie : la SEULE
+#: définition (``crm.services`` la lit, ses anciennes constantes en
+#: dérivent).
+PLAGE_IFTAR_DEBUT = datetime.time(18, 0)
+PLAGE_IFTAR_FIN = datetime.time(21, 0)
+
+
+def dans_plage_iftar(instant):
+    """ACRM42 — ``instant`` (aware) tombe-t-il dans la plage iftar, à
+    l'heure de Casablanca ? (Ne dit rien de la période de Ramadan : voir
+    ``est_en_ramadan``.)"""
+    heure = instant.astimezone(CASABLANCA).time()
+    return PLAGE_IFTAR_DEBUT <= heure < PLAGE_IFTAR_FIN
+
+
+def debut_plage_iftar(jour):
+    """ACRM42 — l'instant (aware) où commence la plage iftar du ``jour``."""
+    return datetime.datetime.combine(jour, PLAGE_IFTAR_DEBUT,
+                                     tzinfo=CASABLANCA)
+
+
 def est_en_ramadan(d, company, profil=None):
     """`d` tombe-t-il dans la période de Ramadan SAISIE par la société ?
 

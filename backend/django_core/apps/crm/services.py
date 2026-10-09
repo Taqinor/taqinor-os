@@ -8900,14 +8900,17 @@ _appt_logger = _logging.getLogger(__name__)
 # How many minutes before a scheduled appointment to send the reminder.
 APPOINTMENT_REMINDER_MINUTES = 60
 
-# RAMADAN-AWARE PACING: when the per-company flag ``ramadan_pacing`` is enabled
-# (a simple boolean stored in CompanyProfile), reminders are suppressed during
-# the iftar-sensitive window (18h–21h Africa/Casablanca, local time). This avoids
-# interrupting families at meal time. The window is deliberately simple and
-# documented — no external calendar needed. The beat job reschedules to just
-# after the window end (21h) when the slot would land inside.
-RAMADAN_AVOID_START_H = 18
-RAMADAN_AVOID_END_H = 21
+# RAMADAN-AWARE PACING : pendant la période de Ramadan SAISIE par la société
+# (``horaires.est_en_ramadan``), aucun rappel ne part dans la plage iftar
+# (``horaires.PLAGE_IFTAR_DEBUT``–``PLAGE_IFTAR_FIN``, heure de Casablanca)
+# pour ne pas déranger les familles au ftour. ACRM42 — un RDV dont la fenêtre
+# de rappel tomberait DANS la plage est rappelé AVANT elle (dernière heure
+# avant la plage, ``send_due_appointment_reminders``) : il n'est jamais « reporté
+# après 21 h » (l'ancien commentaire le prétendait, rien ne le faisait — un RDV
+# de 19 h 30 n'était JAMAIS rappelé). Une seule notion de Ramadan : celle de
+# ``horaires`` ; les constantes ci-dessous en dérivent (compatibilité).
+RAMADAN_AVOID_START_H = 18   # = horaires.PLAGE_IFTAR_DEBUT.hour
+RAMADAN_AVOID_END_H = 21     # = horaires.PLAGE_IFTAR_FIN.hour
 RAMADAN_TZ = 'Africa/Casablanca'
 
 
@@ -8938,14 +8941,11 @@ def _ramadan_pacing_enabled(company) -> bool:
 
 
 def _is_ramadan_iftar_window(dt_utc) -> bool:
-    """True si le datetime UTC tombe dans la plage iftar-sensible (18h–21h Casablanca).
-
-    Vérifie que l'heure locale (Africa/Casablanca) est dans [18, 21).
-    """
+    """True si le datetime tombe dans la plage iftar (``horaires``, ACRM42 :
+    une seule définition)."""
     try:
-        from zoneinfo import ZoneInfo
-        local_dt = dt_utc.astimezone(ZoneInfo(RAMADAN_TZ))
-        return RAMADAN_AVOID_START_H <= local_dt.hour < RAMADAN_AVOID_END_H
+        from . import horaires
+        return horaires.dans_plage_iftar(dt_utc)
     except Exception:
         return False
 
@@ -9279,29 +9279,44 @@ def dispatch_appointment_reminder(appointment) -> bool:
         _appt_logger.warning(
             'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
 
-    # 2) In-app notification to the lead owner (if any).
+    # 2) Notification in-app — ACRM42 : au responsable du lead ET à son
+    # supérieur (``lead_notification_recipients`` : repli managers quand l'un
+    # manque). Un lead SANS responsable n'est plus un rappel perdu.
+    notifies = 0
     try:
         from apps.notifications.services import notify
-        owner = getattr(lead, 'owner', None)
-        if owner is not None:
-            import zoneinfo
-            local = appointment.scheduled_at.astimezone(
-                zoneinfo.ZoneInfo(RAMADAN_TZ))
-            date_str = local.strftime('%d/%m/%Y à %H:%M')
-            notify(
-                user=owner,
-                event_type='appointment_reminder',
-                title=f'Rappel visite — {lead.nom}',
-                body=(
-                    f'Rendez-vous prévu le {date_str} '
-                    f'avec {lead.nom} (RDV #{appointment.pk}).'
-                ),
-                link=f'/crm/leads/{lead.pk}',
-                company=appointment.company,
-            )
+        import zoneinfo
+        local = appointment.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local.strftime('%d/%m/%Y à %H:%M')
+        for destinataire in lead_notification_recipients(lead):
+            try:
+                notify(
+                    user=destinataire,
+                    event_type='appointment_reminder',
+                    title=f'Rappel visite — {lead.nom}',
+                    body=(
+                        f'Rendez-vous prévu le {date_str} '
+                        f'avec {lead.nom} (RDV #{appointment.pk}).'
+                    ),
+                    link=f'/crm/leads/{lead.pk}',
+                    company=appointment.company,
+                )
+                notifies += 1
+            except Exception as exc:  # noqa: BLE001
+                _appt_logger.warning(
+                    'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
     except Exception as exc:  # noqa: BLE001
         _appt_logger.warning(
             'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
+
+    if not notifies:
+        # ACRM42 — personne n'a été prévenu : le rappel n'est PAS marqué
+        # envoyé, le passage suivant du beat le retente.
+        _appt_logger.warning(
+            'QJ20: aucun destinataire pour le rappel du RDV #%d — retenté',
+            appointment.pk)
+        return False
 
     # Mark as sent (idempotency guard).
     appointment.reminder_sent = True
@@ -9326,15 +9341,45 @@ def send_due_appointment_reminders() -> int:
     from django.utils import timezone as tz
     from .models import Appointment
 
+    from . import horaires
+
     now = tz.now()
     window_end = now + timedelta(minutes=APPOINTMENT_REMINDER_MINUTES)
+    # ACRM42 — candidats élargis à la durée de la plage iftar : un RDV dont
+    # la fenêtre de rappel tombe DANS la plage est rappelé dans l'heure qui
+    # la PRÉCÈDE (sinon un RDV de 19 h 30 n'était jamais rappelé).
+    duree_plage = (datetime.datetime.combine(
+        datetime.date.min, horaires.PLAGE_IFTAR_FIN) - datetime.datetime.combine(
+        datetime.date.min, horaires.PLAGE_IFTAR_DEBUT))
+    horizon = window_end + duree_plage
 
-    due = Appointment.objects.filter(
+    candidats = Appointment.objects.filter(
         statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
         scheduled_at__gte=now,
-        scheduled_at__lte=window_end,
+        scheduled_at__lte=horizon,
         reminder_sent=False,
     ).select_related('lead', 'lead__owner', 'company')
+
+    pacing = {}
+    due = []
+    for appt in candidats:
+        if appt.scheduled_at <= window_end:
+            due.append(appt)
+            continue
+        if appt.company_id not in pacing:
+            pacing[appt.company_id] = _ramadan_pacing_enabled(appt.company)
+        if not pacing[appt.company_id]:
+            continue
+        rappel_normal = appt.scheduled_at - timedelta(
+            minutes=APPOINTMENT_REMINDER_MINUTES)
+        debut = horaires.debut_plage_iftar(
+            rappel_normal.astimezone(horaires.CASABLANCA).date())
+        # Rappel normal DANS la plage et nous sommes dans l'heure qui la
+        # précède : c'est le dernier passage avant la plage.
+        if (horaires.dans_plage_iftar(rappel_normal)
+                and debut - timedelta(minutes=APPOINTMENT_REMINDER_MINUTES)
+                <= now < debut):
+            due.append(appt)
 
     sent = 0
     for appt in due:
