@@ -1627,7 +1627,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         taux_tva = (devis.taux_tva if devis.taux_tva is not None
                     else Decimal(20))
     else:
-        taux_tva = devis.taux_tva or Decimal(20)
+        # Règles d'origine (devis envoyé) : un 0 % retombait sur 20 % —
+        # conservé tel quel, écrit sans le motif ``or`` interdit (AMOT73).
+        taux_tva = devis.taux_tva if devis.taux_tva else Decimal(20)
     # APRF3 (C-APRF-001) — chemin des TOTAUX de liste (``display_totals``) :
     # rien n'est lu hors préchargement — ni pièce jointe (affiche de toiture),
     # ni révision remplacée, ni lien de partage. Le mode DOCUMENT est
