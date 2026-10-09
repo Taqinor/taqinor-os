@@ -1101,11 +1101,13 @@ def _produit_frais_refactures(company):
     conflit."""
     from django.db import IntegrityError, transaction
 
-    from apps.stock.models import Produit
+    # ADEV56 — catalogue lu / écrit par `stock.selectors` / `stock.services`.
+    from apps.stock.selectors import produits_qs
+    from apps.stock.services import creer_produit
 
     def _lire():
-        return Produit.objects.filter(
-            company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+        return produits_qs(company).filter(
+            nom=_PRODUIT_FRAIS_REFACTURES_NOM,
             is_archived=False).order_by('pk').first()
 
     produit = _lire()
@@ -1113,8 +1115,8 @@ def _produit_frais_refactures(company):
         return produit
     try:
         with transaction.atomic():
-            return Produit.objects.create(
-                company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+            return creer_produit(
+                company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
                 prix_vente=Decimal('0'), quantite_stock=0, seuil_alerte=0)
     except IntegrityError:
         produit = _lire()
@@ -1261,9 +1263,9 @@ def _main_oeuvre_produit(company):
     """Produit catalogue (service, non stocké) porteur de la ligne
     main-d'œuvre SAV — get-or-create idempotent, un seul par société.
     Jamais décrémenté (aucun mouvement de stock ne le référence)."""
-    from apps.stock.models import Produit
-    produit, _created = Produit.objects.get_or_create(
-        company=company, sku='SAV-MO', defaults={
+    from apps.stock.services import get_or_create_produit  # ADEV56
+    produit, _created = get_or_create_produit(
+        company, sku='SAV-MO', defaults={
             'nom': "Main-d'œuvre SAV",
             'prix_vente': Decimal('0'),
             'quantite_stock': 0,

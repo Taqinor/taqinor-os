@@ -32,7 +32,7 @@ def client_credit_warning(request, client_id):
     l'encours total FG41) via ``ventes.selectors.etat_recouvrement_client``.
     Reste un AVERTISSEMENT (le blocage dur est XFAC28, jamais dupliqué ici) ;
     ``a_jour=True`` dès que l'encours échu revient à 0 (facture réglée)."""
-    from apps.crm.models import Client
+    from apps.crm.selectors import client_base_qs  # ADEV56
     from apps.crm.selectors import client_credit_warning as _warning
     from ..selectors import etat_recouvrement_client
     company = request.user.company
@@ -44,7 +44,7 @@ def client_credit_warning(request, client_id):
     from authentication.scoping import scope_client_queryset
     try:
         client = get_company_object(
-            Client, client_id, request.user,
+            client_base_qs(), client_id, request.user,
             extra_scope=scope_client_queryset)
     except Http404:
         return Response({'detail': 'Client introuvable.'},

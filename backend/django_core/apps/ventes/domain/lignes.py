@@ -1008,7 +1008,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     from decimal import Decimal, InvalidOperation
     from django.db.models import Q
     from ..models import LigneDevis
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
     if not lignes_in and not autoriser_vidage:
         raise ValueError(MSG_REMPLACEMENT_VIDE)
     # AGR217 — un 0 % sans base légale est refusé AVANT la suppression.
@@ -1073,7 +1073,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         # ré-enregistrement). La portée reste bornée : société de
         # l'utilisateur OU catalogue global — jamais celui d'un autre
         # tenant.
-        produit = Produit.objects.filter(
+        produit = produits_qs().filter(
             Q(company=company) | Q(company__isnull=True),
             id=produit_id).first()
         if produit is None:

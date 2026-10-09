@@ -8775,3 +8775,18 @@ from .services_wms import (  # noqa: E402,F401
     valeur_transfert,
     verifier_capacite_plan,
 )
+
+
+def creer_produit(company, **champs):
+    """ADEV56 (C-ADEV-027) — crée un ``Produit`` de la société (écriture
+    cross-app : ventes ne touche jamais ``apps.stock.models``)."""
+    from .models import Produit
+    return Produit.objects.create(company=company, **champs)
+
+
+def get_or_create_produit(company, *, defaults=None, **lookup):
+    """ADEV56 — ``get_or_create`` d'un ``Produit`` de la société (même
+    contrat que Django : ``(produit, cree)``)."""
+    from .models import Produit
+    return Produit.objects.get_or_create(
+        company=company, defaults=defaults or {}, **lookup)

@@ -987,8 +987,10 @@ def _advance_lead_on_expiry(lead, today):
     """
     from datetime import timedelta
     from apps.crm import stages
-    from apps.crm.models import LeadActivity
     from apps.crm.services import appliquer_stage_lead
+    # ADEV56 — le chatter du lead est lu/écrit par sa relation inverse
+    # (`lead.activites`), jamais par un import de `apps.crm.models`.
+    NOTE = 'note'  # LeadActivity.Kind.NOTE
 
     if lead.perdu:
         return False, False
@@ -1016,8 +1018,7 @@ def _advance_lead_on_expiry(lead, today):
     if lead.stage == stages.FOLLOW_UP:
         # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
         cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
-        recent_activity = LeadActivity.objects.filter(
-            lead=lead,
+        recent_activity = lead.activites.filter(
             created_at__date__gte=cutoff,
         ).exists()
         if recent_activity:
@@ -1029,9 +1030,8 @@ def _advance_lead_on_expiry(lead, today):
         # intouché) ; le statut ``expire`` du devis reste posé (règle #4).
         from apps.crm.selectors import lead_en_attente_ou_veille
         if lead_en_attente_ou_veille(lead.pk, today, company=lead.company):
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
-                kind=LeadActivity.Kind.NOTE,
+            lead.activites.create(
+                company=lead.company, user=None, kind=NOTE,
                 body=NOTE_EXPIRATION_EN_ATTENTE)
             return False, False
         ancien = lead.stage

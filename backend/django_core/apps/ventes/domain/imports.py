@@ -45,7 +45,9 @@ def _resoudre_client(company, ligne, external_system):
     """Client déjà migré (lot ``clients`` antérieur, dépendance NTMIG3) —
     external_id d'abord (le plus fiable, posé par le même projet de
     migration), sinon e-mail, sinon nom exact. ``None`` si rien ne matche."""
-    from apps.crm.models import Client
+    # ADEV56 — clients lus par `crm.selectors.client_base_qs`.
+    from apps.crm.selectors import client_base_qs
+    clients = client_base_qs(company)
 
     ext_id = ligne.get('client_external_id')
     if ext_id and external_system:
@@ -53,27 +55,26 @@ def _resoudre_client(company, ligne, external_system):
 
         from apps.dataimport.models import ExternalRef
 
-        ct = ContentType.objects.get_for_model(Client)
+        ct = ContentType.objects.get_for_model(clients.model)
         ref = ExternalRef.objects.filter(
             company=company, external_system=external_system,
             external_id=str(ext_id), content_type=ct).first()
         if ref is not None:
-            client = Client.objects.filter(
-                company=company, pk=ref.object_id).first()
+            client = clients.filter(pk=ref.object_id).first()
             if client is not None:
                 return client
 
     email = ligne.get('client_email')
     if email:
-        client = Client.objects.filter(
-            company=company, email__iexact=str(email).strip()).first()
+        client = clients.filter(
+            email__iexact=str(email).strip()).first()
         if client is not None:
             return client
 
     nom = ligne.get('client_nom')
     if nom:
-        client = Client.objects.filter(
-            company=company, nom__iexact=str(nom).strip()).first()
+        client = clients.filter(
+            nom__iexact=str(nom).strip()).first()
         if client is not None:
             return client
 
@@ -284,7 +285,7 @@ def ajouter_lignes_facture_import(company, external_system, rows, *,
     from django.contrib.contenttypes.models import ContentType
 
     from apps.dataimport.models import ExternalRef
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
     from apps.ventes.models import Facture, LigneFacture
 
     ct = ContentType.objects.get_for_model(Facture)
@@ -318,7 +319,7 @@ def ajouter_lignes_facture_import(company, external_system, rows, *,
         if not designation:
             erreurs.append({'ligne': i, 'raison': 'désignation manquante'})
             continue
-        produit = Produit.objects.filter(
+        produit = produits_qs().filter(
             company=company, nom__iexact=designation).first()
         if produit is None:
             erreurs.append({'ligne': i, 'raison': (
