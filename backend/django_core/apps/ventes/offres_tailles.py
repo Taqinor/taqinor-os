@@ -1094,12 +1094,12 @@ def _resoudre_substitutions(equipements, company=None):
     """
     if not equipements:
         return {}
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
 
     par_role = {}
     for role, produit_id in (equipements or {}).items():
         try:
-            requete = Produit.objects.filter(pk=int(produit_id))
+            requete = produits_qs().filter(pk=int(produit_id))
         except (TypeError, ValueError):
             continue
         if company is not None:

@@ -231,8 +231,11 @@ def _match_facture(ref, montant, company, libelle='', ice=''):
     client = find_client_by_ice_or_libelle(company, ice=ice, libelle=libelle)
 
     scoped = qs.filter(client=client) if client is not None else qs
+    # APRF11 — toutes les relations lues par `montant_du` (le rapprochement
+    # balaie TOUTES les factures de la société quand le client est inconnu).
+    from apps.facturation.selectors import factures_avec_montant_du
     candidats = [
-        f for f in scoped.prefetch_related('paiements', 'avoirs')
+        f for f in factures_avec_montant_du(scoped)
         if abs(f.montant_du - montant) <= TOLERANCE_CENTIME
     ]
     refs = [f.reference for f in candidats]

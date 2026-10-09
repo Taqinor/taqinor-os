@@ -86,7 +86,13 @@ from ..domain.encaissements import (  # noqa: E402,F401
 
 
 from authentication.scoping import scope_queryset  # noqa: E402
-from core.mixins import company_qs  # noqa: E402
+from core.mixins import company_qs  # noqa: E402,F401
+
+
+#: AFAC66 — refus nommé de la cinquième porte de facturation d'un devis.
+BC_DE_DEVIS_REFUSE = (
+    "Cette commande vient d'un devis : créez la facture depuis le bon de "
+    "commande — remise, options et sections du devis signé y sont reprises.")
 
 
 # CAD177 — bornes des colonnes des lignes d'avoir / de note de débit
@@ -179,7 +185,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # retombe sur SES lignes dès que ses montants ne sont pas figés.
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande', 'devis', 'updated_by',
-        'company',
+        'company', 'devis__bon_commande',
     ).prefetch_related(
         'lignes', 'paiements', 'paiements__affectations',
         'avoirs', 'avoirs__lignes',
@@ -264,6 +270,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     {'bon_commande': 'Bon de commande inconnu.'})
             if devis is not None and devis.company_id != company.id:
                 raise ValidationError({'devis': 'Devis inconnu.'})
+        # AFAC66 (C-AFAC-057) — la cinquième porte est FERMÉE : une facture
+        # liée au BC d'un devis ne naît QUE par `bons-commande/<id>/
+        # creer-facture/` (copie fidèle du devis signé, garde ATOT2).
+        bc_corps = serializer.validated_data.get('bon_commande')
+        if bc_corps is not None and bc_corps.devis_id:
+            raise ValidationError({
+                'bon_commande': BC_DE_DEVIS_REFUSE,
+                'code': 'bon_commande_de_devis'})
         # FG52 — devise : si le corps n'en fournit pas, appliquer la devise par
         # défaut de la société (CompanyProfile.devise_defaut), repli MAD.
         save_kwargs = dict(
@@ -361,6 +375,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # non financiers (conditions, notes, dates de livraison…) restent
         # modifiables.
         facture = self.get_object()
+        # AFAC66 (C-AFAC-057) — même porte fermée en modification : poser le
+        # BC d'un devis sur une facture existante est refusé.
+        bc_corps = serializer.validated_data.get('bon_commande')
+        if bc_corps is not None and bc_corps.devis_id \
+                and bc_corps.pk != facture.bon_commande_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                'bon_commande': BC_DE_DEVIS_REFUSE,
+                'code': 'bon_commande_de_devis'})
         argent_touche = (set(serializer.validated_data.keys())
                          & FACTURE_CHAMPS_ARGENT)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
@@ -558,6 +581,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # AFAC9 — LA porte unique (acompte CAD122 avant J+7).
+        from ..domain.encaissements import motif_non_encaissable
+        motif_refus = motif_non_encaissable(facture)
+        if motif_refus:
+            return Response({'detail': motif_refus},
+                            status=status.HTTP_400_BAD_REQUEST)
         motif = ((request.data or {}).get('motif') or '').strip()
         if not motif:
             return Response(
@@ -639,6 +668,20 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # AFAC32 (D-AFAC-C4) — jamais une note de débit ÉMISE sur une facture
+        # annulée : la ND active s'annule d'abord (par avoir de ND).
+        from ..domain.facturation_ops import notes_debit_actives
+        nd_actives = notes_debit_actives(facture)
+        if nd_actives:
+            return Response(
+                {'detail': (
+                    'Cette facture porte une note de débit active ('
+                    + ', '.join(nd.reference for nd in nd_actives)
+                    + ') : annulez-la d\'abord (avoir de note de débit).'
+                ),
+                 'code': 'note_debit_active'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         directive = request.data.get('acompte') or {}
         if not isinstance(directive, dict):
             return Response(
@@ -726,6 +769,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             "Impossible de transférer vers une facture "
                             "annulée."
                         )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # AFAC9 — la facture CIBLE passe LA porte unique
+                # d'encaissement (brouillon, soldée, acompte CAD122).
+                from ..domain.encaissements import motif_non_encaissable
+                motif_cible = motif_non_encaissable(cible)
+                if motif_cible and cible.statut != Facture.Statut.PAYEE:
+                    return Response(
+                        {'detail': f'Facture cible : {motif_cible}'},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 # AUD125 — CE QUE LA CIBLE PEUT ABSORBER. Le transfert
@@ -936,13 +988,42 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             from ..services import abandonner_solde_facture
-            montant = abandonner_solde_facture(
-                locked, motif=motif, user=request.user, auto=False,
-            )
+            from ..domain.encaissements import FactureNonEncaissable
+            try:
+                montant = abandonner_solde_facture(
+                    locked, motif=motif, user=request.user, auto=False,
+                )
+            except FactureNonEncaissable as exc:
+                return Response({'detail': exc.motif},
+                                status=status.HTTP_400_BAD_REQUEST)
             locked.refresh_from_db()
         return Response(
             {**FactureSerializer(locked).data, 'montant_abandonne': montant},
         )
+
+    @action(detail=True, methods=['post'], url_path='reprendre-abandon',
+            permission_classes=[PeutEncaisser])
+    def reprendre_abandon(self, request, pk=None):
+        """AFAC34 (D-AFAC-C6) — REPRISE MANUELLE d'un abandon de créance
+        (corps ``{motif, abandon?}`` ; sans ``abandon``, le plus récent actif).
+        L'abandon garde sa trace (``annule_le``) ; la facture revient au
+        recouvrement, un paiement tardif s'encaisse ensuite normalement."""
+        facture = self.get_object()
+        from ..domain.recouvrement import (
+            RepriseAbandonRefusee, reprendre_abandon_creance,
+        )
+        try:
+            abandon = reprendre_abandon_creance(
+                facture, user=request.user,
+                motif=(request.data or {}).get('motif'),
+                abandon_id=(request.data or {}).get('abandon'))
+        except RepriseAbandonRefusee as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        facture.refresh_from_db()
+        return Response({**FactureSerializer(facture).data,
+                         'abandon_repris': abandon.id,
+                         'montant_repris': str(abandon.montant)})
 
     @action(detail=True, methods=['post'], url_path='liberer-retenue',
             permission_classes=[IsResponsableOrAdmin])
@@ -1001,17 +1082,24 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def telecharger_pdf(self, request, pk=None):
         facture = self.get_object()
-        if not facture.fichier_pdf:
+        # AFAC41 (C-AFAC-042) — le téléchargement interne (et l'aperçu inline
+        # de la liste) sert le PDF GARANTI à jour par `cle_facture_pdf_a_jour`,
+        # exactement comme le lien public : après un paiement, le « Reste à
+        # payer » imprimé est le courant ; une facture jamais rendue se rend à
+        # la volée. Si le rafraîchissement échoue, le fichier stocké est servi
+        # tel quel (même repli que le lien public).
+        from ..utils.pdf import cle_facture_pdf_a_jour, download_pdf
+        try:
+            cle = cle_facture_pdf_a_jour(facture)
+        except Exception:  # noqa: BLE001
+            cle = facture.fichier_pdf
+        if not cle:
             return Response(
-                {'detail': (
-                    'PDF non disponible. '
-                    'Cliquez d\'abord sur « Générer PDF ».'
-                )},
+                {'detail': 'PDF indisponible pour le moment. Réessayez.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
-            from ..utils.pdf import download_pdf
-            pdf_bytes = download_pdf(facture.fichier_pdf)
+            pdf_bytes = download_pdf(cle)
         except Exception:
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
@@ -1270,6 +1358,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': ("Contre-passation refusée : cette facture a déjà "
                             "des paiements enregistrés.")},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AFAC32 (D-AFAC-C4) — la contre-passation ANNULE la facture : ses
+        # notes de débit actives s'annulent d'abord (par avoir de ND).
+        from ..domain.facturation_ops import notes_debit_actives
+        if mode == 'contre_passation' and notes_debit_actives(facture):
+            return Response(
+                {'detail': ("Contre-passation refusée : la facture porte une "
+                            "note de débit active — annulez-la d'abord."),
+                 'code': 'note_debit_active'},
+                status=status.HTTP_400_BAD_REQUEST)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
         lignes = None if mode == 'contre_passation' \
@@ -1400,6 +1497,34 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
+        # AFAC32 (C-AFAC-026, D-AFAC-C4) — note de débit PARTIELLE seulement :
+        # des `lignes` saisies, ou un `montant` HT + `taux_tva`. Plus jamais
+        # la copie silencieuse de toute la facture (le montant dû doublait).
+        montant_saisi = None
+        taux_saisi = None
+        if not clean_lignes:
+            brut = request.data.get('montant')
+            if brut in (None, ''):
+                return Response(
+                    {'detail': ('Saisissez les lignes ou le montant de la '
+                                'note de débit.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                montant_saisi = Decimal(str(brut))
+                taux_brut = request.data.get('taux_tva')
+                taux_saisi = (Decimal(str(taux_brut))
+                              if taux_brut not in (None, '')
+                              else Decimal(str(facture.taux_tva)))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'detail': 'Montant ou taux de TVA invalide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if montant_saisi <= 0 or taux_saisi < 0 or taux_saisi > 100:
+                return Response(
+                    {'detail': ('Le montant doit être positif et le taux de '
+                                'TVA compris entre 0 et 100 %.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+
         def _create(ref):
             note_debit = NoteDebit.objects.create(
                 company=company, reference=ref, facture=facture,
@@ -1419,21 +1544,19 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     LigneNoteDebit.objects.create(
                         note_debit=note_debit, **ligne)
             else:
-                f_lignes = list(facture.lignes.all())
-                if f_lignes:
-                    for ligne in f_lignes:
-                        LigneNoteDebit.objects.create(
-                            note_debit=note_debit, produit=ligne.produit,
-                            designation=ligne.designation,
-                            quantite=ligne.quantite,
-                            prix_unitaire=ligne.prix_unitaire,
-                            remise=ligne.remise, taux_tva=ligne.taux_tva)
-                else:
-                    note_debit.montant_ht = facture.total_ht
-                    note_debit.montant_tva = facture.total_tva
-                    note_debit.montant_ttc = facture.total_ttc
-                    note_debit.save(update_fields=[
-                        'montant_ht', 'montant_tva', 'montant_ttc'])
+                # AFAC32 — montant saisi (HT) au taux saisi : un seul panier,
+                # aucune remise globale de la facture (montant déjà net).
+                from core.money import quantize_mad
+                tva = quantize_mad(montant_saisi * taux_saisi / Decimal('100'))
+                note_debit.taux_tva = taux_saisi
+                note_debit.remise_globale = Decimal('0')
+                note_debit.montant_ht = quantize_mad(montant_saisi)
+                note_debit.montant_tva = tva
+                note_debit.montant_ttc = quantize_mad(montant_saisi) + tva
+                note_debit.save(update_fields=[
+                    'taux_tva', 'remise_globale', 'montant_ht',
+                    'montant_tva', 'montant_ttc'])
+                return note_debit
             # ATOT6 — même règle que l'avoir : paniers de la facture.
             from ..domain.facturation_ops import (
                 ventiler_document_depuis_facture,
@@ -1561,6 +1684,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         niveau = donnees.get('niveau')
         note = (donnees.get('note') or '').strip()
         lvl = payload.context.get('followup_level')
+        if niveau is None and lvl is None:
+            # AFAC46 — sans niveau choisi, LE prochain niveau de la cadence
+            # (le même que l'aperçu et le beat), jamais une relance hors
+            # séquence.
+            from ..domain.recouvrement import prochain_niveau
+            lvl, _tous = prochain_niveau(facture)
+            niveau = lvl.ordre if lvl is not None else None
         niveau_nom = lvl.nom if lvl is not None else ''
         RelanceLog.objects.create(
             company=facture.company, facture=facture,
@@ -1659,19 +1789,60 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # au grand livre, et sans consulter le blocage crédit du client.
         from ..domain.facturation_ops import EmissionRefusee, emettre_facture
         from ..domain.recouvrement import CreditHoldError
+        from ..models import FacturePenalite
+        from django.db import IntegrityError
+
+        def _deja_facturee(liaison):
+            return Response(
+                {'detail': (
+                    'Pénalités déjà facturées pour ce niveau : '
+                    f'{liaison.facture_penalite.reference}.')},
+                status=status.HTTP_409_CONFLICT)
+
         try:
             with transaction.atomic():
+                # AFAC50 (C-AFAC-040 a) — idempotent par (facture, niveau) :
+                # verrou sur la facture d'origine, puis liaison durable lue
+                # AVANT toute numérotation (un double clic ne consomme aucun
+                # numéro et n'émet rien).
+                Facture.objects.select_for_update().get(pk=facture.pk)
+                liaison = (FacturePenalite.objects.select_for_update()
+                           .select_related('facture_penalite')
+                           .filter(facture_origine=facture,
+                                   niveau=niveau['ordre']).first())
+                if liaison is not None and \
+                        liaison.facture_penalite.statut != \
+                        Facture.Statut.ANNULEE:
+                    return _deja_facturee(liaison)
                 facture_penalite = create_numbered(
                     Facture, facture.company, 'facture', _create)
                 emettre_facture(
                     facture_penalite, user=request.user,
                     source='penalites_retard')
+                if liaison is not None:
+                    # Facture de pénalités ANNULÉE : la liaison pointe la
+                    # nouvelle.
+                    liaison.facture_penalite = facture_penalite
+                    liaison.save(update_fields=['facture_penalite'])
+                else:
+                    FacturePenalite.objects.create(
+                        company=facture.company, facture_origine=facture,
+                        niveau=niveau['ordre'],
+                        facture_penalite=facture_penalite)
         except EmissionRefusee as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)
+        except IntegrityError:
+            # Course perdue contre un appel concurrent (contrainte d'unicité).
+            liaison = FacturePenalite.objects.select_related(
+                'facture_penalite').filter(
+                    facture_origine=facture, niveau=niveau['ordre']).first()
+            if liaison is None:
+                raise
+            return _deja_facturee(liaison)
         from .. import activity
         activity.log_facture_penalite_facturee(
             facture, request.user, facture_penalite, penalite)
@@ -1807,8 +1978,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'factures (liste d\'ids) requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        factures = list(
-            Facture.objects.filter(company=company, id__in=facture_ids))
+        # AFAC55 — portée du rôle (`get_queryset`) en plus de la société.
+        factures = list(self.get_queryset().filter(id__in=facture_ids))
         if len(factures) != len(set(facture_ids)):
             return Response(
                 {'detail': 'Une ou plusieurs factures sont introuvables '
@@ -1876,10 +2047,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'La liste `ids` est requise et doit être non vide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Borner aux factures de la société (scoping multi-tenant).
-        factures_qs = company_qs(
-            Facture.objects.select_related('client').all(), request.user
-        ).filter(id__in=ids)
+        # Borner aux factures de la société (scoping multi-tenant). AFAC55
+        # (C-AFAC-048) — ET à la portée du rôle (`get_queryset` : créées par
+        # soi / l'équipe) : un id invisible répond « Introuvable. ».
+        factures_qs = self.get_queryset().filter(id__in=ids)
         factures_by_id = {f.id: f for f in factures_qs}
 
         results = {}
@@ -1921,19 +2092,23 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             'reference': facture.reference}
 
                 elif action_name == 'relancer':
-                    if facture.statut not in (
-                        Facture.Statut.EMISE, Facture.Statut.EN_RETARD,
-                    ):
-                        results[fid_int] = {
-                            'ok': False,
-                            'detail': (
-                                f'Statut {facture.get_statut_display()} : '
-                                'relance uniquement sur facture émise ou en retard.'
-                            )}
+                    # AFAC46 — LE prédicat partagé (`facture_relancable`) et
+                    # LE prochain niveau de la cadence (jamais `niveau=NULL`).
+                    from ..recouvrement import (
+                        ensure_default_followup_levels, facture_relancable,
+                    )
+                    relancable, motif_refus = facture_relancable(facture)
+                    if not relancable:
+                        results[fid_int] = {'ok': False, 'detail': motif_refus}
                     else:
+                        from ..domain.recouvrement import prochain_niveau
                         from ..models import RelanceLog
+                        ensure_default_followup_levels(facture.company)
+                        lvl, _tous = prochain_niveau(facture)
                         RelanceLog.objects.create(
                             company=facture.company, facture=facture,
+                            niveau=lvl.ordre if lvl is not None else None,
+                            niveau_nom=lvl.nom if lvl is not None else '',
                             note='Relance en masse', created_by=request.user)
                         results[fid_int] = {
                             'ok': True,

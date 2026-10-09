@@ -578,6 +578,42 @@ class RetenueSubie(models.Model):
         return f'RAS {self.montant} MAD — {self.facture.reference}'
 
 
+class AbandonCreance(models.Model):
+    """AFAC34 (C-AFAC-030, D-AFAC-C6 option a) — un abandon de créance est un
+    ENREGISTREMENT daté, cumulable et réversible (miroir de ``RetenueSubie``),
+    plus un champ unique écrasé à chaque geste. ``Facture.abandon_montant``
+    reste la SOMME des abandons actifs (``annule_le`` vide), tenue à jour par
+    le service ``abandonner_solde_facture`` / ``reprendre_abandon_creance`` :
+    ``decomposition_du``/``montant_du`` la lisent sans requête de plus. La
+    reprise est MANUELLE, jamais automatique (D-AFAC-C6)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='abandons_creance')
+    facture = models.ForeignKey(
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: abandon sans objet si facture supprimée
+        related_name='abandons_creance')
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    motif = models.CharField(max_length=20, blank=True, default='')
+    auto = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='abandons_creance_crees')
+    date_abandon = models.DateTimeField(default=timezone.now)
+    annule_le = models.DateTimeField(null=True, blank=True)
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='abandons_creance_repris')
+    motif_reprise = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Abandon de créance'
+        verbose_name_plural = 'Abandons de créance'
+        ordering = ['date_abandon', 'id']
+
+    def __str__(self):
+        return f'Abandon {self.montant} MAD — {self.facture.reference}'
+
+
 class PromessePaiement(models.Model):
     """XFAC5 — engagement client tracé (« je paie le 15 ») qui SUSPEND les
     relances automatiques de la facture jusqu'à ``date_promise``. Le job beat
@@ -995,3 +1031,34 @@ class LigneLivraisonBC(models.Model):
 
     def __str__(self):
         return f'{self.livraison_id} / ligne {self.ligne_devis_id} = {self.quantite_livree}'
+
+
+class FacturePenalite(models.Model):
+    """AFAC50 (C-AFAC-040 a) — liaison DURABLE entre une facture d'origine et
+    LA facture de pénalités de retard émise pour un niveau de relance :
+    ``facturer-penalites`` est idempotent par (facture, niveau). Une facture
+    de pénalités ANNULÉE libère le niveau (la liaison est re-pointée sur la
+    nouvelle) ; un niveau supérieur ouvre une nouvelle liaison."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='factures_penalite')
+    facture_origine = models.ForeignKey(
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: liaison sans objet si facture d'origine supprimée
+        related_name='liaisons_penalite')
+    niveau = models.PositiveIntegerField()
+    facture_penalite = models.ForeignKey(
+        'facturation.Facture', on_delete=models.PROTECT,
+        related_name='liaisons_penalite_source')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Facture de pénalités'
+        verbose_name_plural = 'Factures de pénalités'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['facture_origine', 'niveau'],
+                name='uniq_facture_penalite_par_niveau'),
+        ]
+
+    def __str__(self):
+        return f'Pénalités {self.facture_origine_id} / niveau {self.niveau}'

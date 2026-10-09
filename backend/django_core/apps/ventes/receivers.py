@@ -119,6 +119,11 @@ def _materialize_paiement_on_payment_captured(sender, transaction, company, **kw
         locked = Facture.objects.select_for_update().get(pk=target.pk)
         if locked.statut == Facture.Statut.ANNULEE:
             return
+        # AFAC9 — LA porte unique d'encaissement (brouillon, soldée, acompte
+        # CAD122 avant J+7) : aucun Paiement n'est matérialisé.
+        from .domain.encaissements import motif_non_encaissable
+        if motif_non_encaissable(locked, timezone.localdate()):
+            return
         reste = locked.montant_du
         montant = transaction.montant
         if montant > reste:

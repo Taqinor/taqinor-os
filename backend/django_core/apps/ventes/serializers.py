@@ -1293,7 +1293,7 @@ class OffreTailleConfigSerializer(serializers.Serializer):
         un client. C'est exactement la discipline « jamais un produit sans
         prix » que l'auto-remplissage applique déjà côté composition.
         """
-        from apps.stock.models import Produit
+        from apps.stock.selectors import produits_qs  # ADEV56
         from .models import ROLES_AUTO_COMPOSITION
 
         company = self.context.get('company')
@@ -1305,7 +1305,7 @@ class OffreTailleConfigSerializer(serializers.Serializer):
             if role not in ROLES_AUTO_COMPOSITION:
                 erreurs[role] = 'Rôle de composition inconnu.'
                 continue
-            produit = Produit.objects.filter(
+            produit = produits_qs().filter(
                 pk=produit_id, company=company).first()
             if produit is None:
                 erreurs[role] = 'Produit introuvable dans votre catalogue.'

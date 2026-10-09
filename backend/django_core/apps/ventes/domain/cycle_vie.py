@@ -971,7 +971,8 @@ def _acceptance_deposit_block(devis, lignes=None):
     """QX33be — bloc texte « acompte + RIB » pour l'email de confirmation.
 
     Acompte = 1ʳᵉ tranche de l'échéancier (sur le TTC REMISÉ, chaîne QX1). RIB
-    depuis ``settings.COMPANY_RIB`` si configuré. Chaîne VIDE quand rien n'est
+    de la SOCIÉTÉ émettrice (AFAC59 : ``company_identity``) si renseigné.
+    Chaîne VIDE quand rien n'est
     configurable (pas de tranche, pas de RIB) → email inchangé. Best-effort."""
     from decimal import Decimal
     try:
@@ -983,8 +984,11 @@ def _acceptance_deposit_block(devis, lignes=None):
             return ''
         acompte = Decimal(str(tr['ttc']))
         montant_str = f'{acompte:,.2f}'.replace(',', ' ') + ' MAD'
-        from django.conf import settings
-        rib = (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+        # AFAC59 (C-AFAC-051) — RIB du profil de la société émettrice.
+        rib = ''
+        if getattr(devis, 'company', None) is not None:
+            from apps.parametres.selectors import company_identity
+            rib = (company_identity(devis.company).get('rib') or '').strip()
         lignes = [
             f"Pour démarrer votre installation, un acompte de {montant_str} "
             f"est à régler.",

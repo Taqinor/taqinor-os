@@ -548,13 +548,13 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None,
     « aucun produit disponible »). ``role=None`` (défaut) laisse la sélection
     strictement inchangée — aucun appelant non migré ne régresse.
     """
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
     from django.db.models import Q
 
     # ``select_related`` inconditionnel : le verrou de complétude ci-dessous lit
     # la fiche technique de CHAQUE candidat onduleur — sans lui, une requête par
     # produit. Pour un panneau la fiche est simplement ignorée.
-    qs = (Produit.objects
+    qs = (produits_qs()
           .filter(Q(company=company) | Q(company__isnull=True),
                   is_archived=False)
           .select_related('fiche_technique'))
@@ -601,13 +601,13 @@ def choisir_onduleur_permutation(company, predicate, *, kwc, phase=None,
     Rend ``None`` quand le vivier est vide (aucun modèle tarifé de la phase
     du client) : l'appelant garde l'onduleur d'origine et DIT le manque
     (jamais un onduleur de mauvaise phase posé en silence)."""
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
     from django.db.models import Q
 
     from apps.ventes.compatibilites import PHASE_MONO, PHASE_TRI
     from apps.ventes.domain.composition import _vivier_onduleurs_par_phase
 
-    qs = (Produit.objects
+    qs = (produits_qs()
           .filter(Q(company=company) | Q(company__isnull=True),
                   is_archived=False)
           .select_related('fiche_technique'))
@@ -875,7 +875,7 @@ def catalogue_de_la_societe(company):
     """
     from django.db.models import Q
 
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
 
     # PVOND — la fiche technique est préchargée : le garde batterie data-driven
     # y lit la tension nominale, et la composition ne doit pas payer une
@@ -887,7 +887,7 @@ def catalogue_de_la_societe(company):
     # requête PAR PRODUIT du catalogue. C'est LA source unique de la liste
     # composée : tous les appelants (dry-run, création, balayages de tailles,
     # réparation de kit) passent par ici.
-    return list(Produit.objects.filter(
+    return list(produits_qs().filter(
         Q(company=company) | Q(company__isnull=True),
         is_archived=False).select_related(
             'fiche_technique', 'categorie').order_by('id'))
