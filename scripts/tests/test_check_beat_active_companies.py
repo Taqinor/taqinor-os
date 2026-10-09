@@ -223,5 +223,22 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
         self.assertIn('clé morte', out)
 
 
+class BeatActiveCompaniesTests(BalayageGlobalNonScopeTests):
+    """AFAC101 — seul un QUERYSET borné par company/active_company_ids() borne le balayage."""
+
+    def test_create_company_ne_borne_pas_le_balayage(self):
+        code, out = self._lancer(
+            "def relance_reminders():\n    RelanceLog.objects.create(company=c)\n"
+            "    p = CompanyProfile.get(company=c)\n"
+            "    return Facture.objects.filter(statut='x')\n")
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled.py::relance_reminders', out)
+
+    def test_filtre_company_chaine_borne_le_balayage(self):
+        code, out = self._lancer(
+            "def f(c):\n    return Facture.objects.filter(statut='x').exclude(company=c)\n")
+        self.assertEqual(code, 0, out)
+
+
 if __name__ == '__main__':
     unittest.main()
