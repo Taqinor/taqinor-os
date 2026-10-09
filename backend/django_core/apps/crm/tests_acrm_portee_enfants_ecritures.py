@@ -32,6 +32,16 @@ INTROUVABLE = {'lead': ['Lead introuvable.']}
 INEXISTANT = 99999999
 
 
+def _sans_request_id(data):
+    """Corps d'erreur sans ``error.request_id`` (YAPIC3 : unique par
+    requête) — le reste de l'enveloppe doit être IDENTIQUE."""
+    corps = dict(data)
+    if isinstance(corps.get('error'), dict):
+        corps['error'] = {k: v for k, v in corps['error'].items()
+                          if k != 'request_id'}
+    return corps
+
+
 class PorteeEnfantsEcrituresTests(TestCase):
 
     def setUp(self):
@@ -72,8 +82,9 @@ class PorteeEnfantsEcrituresTests(TestCase):
         hors = envoyer(url, corps_pour(self.l1.pk), format='json')
         absent = envoyer(url, corps_pour(INEXISTANT), format='json')
         self.assertEqual(hors.status_code, 400, hors.content)
-        self.assertEqual(hors.data, absent.data)
-        self.assertEqual(dict(hors.data), INTROUVABLE)
+        self.assertEqual(_sans_request_id(hors.data),
+                         _sans_request_id(absent.data))
+        self.assertEqual(hors.data['lead'], INTROUVABLE['lead'])
         self.assertEqual(self._empreinte_l1(), avant)
 
     def test_rdv_post(self):
@@ -129,7 +140,8 @@ class PorteeEnfantsEcrituresTests(TestCase):
         hors = self.api.post(url, {'lead_id': self.l1.pk}, format='json')
         absent = self.api.post(url, {'lead_id': INEXISTANT}, format='json')
         self.assertEqual(hors.status_code, 400, hors.content)
-        self.assertEqual(hors.data, absent.data)
+        self.assertEqual(_sans_request_id(hors.data),
+                         _sans_request_id(absent.data))
         self.assertEqual(self._empreinte_l1(), avant)
         ok = self.api.post(url, {'lead_id': self.mien.pk}, format='json')
         self.assertEqual(ok.status_code, 200, ok.content)
