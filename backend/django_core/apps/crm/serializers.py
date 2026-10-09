@@ -45,7 +45,8 @@ from .scoring import compute_score, score_label, score_reasons
 #: de dédoublonnage.
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
                    'gps_lat', 'gps_lng', 'lien_maps',
-                   'contact_secondaire_telephone', 'phone_normalise')
+                   'contact_secondaire_telephone', 'phone_normalise',
+                   'whatsapp_normalise')  # ACRM32
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'

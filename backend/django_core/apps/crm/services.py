@@ -3893,7 +3893,7 @@ def _garde_cadence_contact(lead):
     doublons = [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
-            exclude_pk=lead.pk)
+            exclude_pk=lead.pk, whatsapp=lead.whatsapp)  # ACRM32
         if not autre.is_archived and not autre.perdu]
     # CAD128 — un homonyme SIGNÉ n'est pas un doublon vivant : c'est un CLIENT
     # qui revient, le meilleur lead du portefeuille. Il sort de la garde
@@ -4746,7 +4746,7 @@ def find_duplicate_leads(lead, *, queryset=None):
 
 
 def find_duplicates_by_contact(company, *, phone=None, email=None,
-                               exclude_pk=None, queryset=None):
+                               exclude_pk=None, queryset=None, whatsapp=None):
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
@@ -4762,12 +4762,18 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
     portée n'est jamais rendu (ni ses PII). ``None`` = la société entière,
     voulu pour les chemins SYSTÈME (webhooks, imports, WhatsApp entrant,
-    DSR) qui doivent rapprocher sans utilisateur."""
+    DSR) qui doivent rapprocher sans utilisateur.
+
+    ACRM32 — un numéro est cherché sur ``phone_normalise`` OU
+    ``whatsapp_normalise`` (un lead connu seulement par son WhatsApp est
+    retrouvé) ; ``whatsapp`` (optionnel) ajoute un second numéro à chercher
+    de la même façon."""
     from django.db.models import Q
 
-    phone = normalize_phone(phone)
+    numeros = {k for k in (normalize_phone(phone), normalize_phone(whatsapp))
+               if k}
     email = normalize_email(email)
-    if not phone and not email:
+    if not numeros and not email:
         return []
     base = queryset if queryset is not None else Lead.objects.all()
     qs = base.filter(company=company)
@@ -4775,8 +4781,9 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
         qs = qs.exclude(pk=exclude_pk)
 
     q = Q()
-    if phone:
-        q |= Q(phone_normalise=phone)
+    if numeros:
+        q |= (Q(phone_normalise__in=numeros)
+              | Q(whatsapp_normalise__in=numeros))
     if email:
         q |= Q(email_normalise=email)
     return list(qs.filter(q))
@@ -6123,7 +6130,8 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     if telephone:
         lead.telephone = telephone
         lead.whatsapp = telephone
-        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise'])
+        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise',
+                                 'whatsapp_normalise'])
     return lead
 
 
@@ -13409,7 +13417,7 @@ def homonymes_signes(lead):
     return [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
-            exclude_pk=lead.pk)
+            exclude_pk=lead.pk, whatsapp=lead.whatsapp)  # ACRM32 (jumeau)
         if not autre.is_archived and not autre.perdu
         and autre.stage == stages.SIGNED
     ]

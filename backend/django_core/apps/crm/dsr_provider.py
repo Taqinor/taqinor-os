@@ -259,7 +259,7 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     le.save(update_fields=[
         'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
         'appareil_id', 'custom_data', 'fbclid', 'gclid',
-        'email_normalise', 'phone_normalise'])
+        'email_normalise', 'phone_normalise', 'whatsapp_normalise'])
     # Les traces de traçage du lead perdent leurs identifiants (IP,
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.

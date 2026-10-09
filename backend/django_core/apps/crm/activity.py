@@ -258,6 +258,9 @@ CHAMPS_NON_SUIVIS = {
                         'calculée serveur, la tracer doublerait la ligne.'),
     'email_normalise': ("Forme normalisée DÉRIVÉE de l'e-mail (suivi) : "
                         'calculée serveur, la tracer doublerait la ligne.'),
+    'whatsapp_normalise': ('Forme normalisée DÉRIVÉE du WhatsApp (suivi, '
+                           'ACRM32) : calculée serveur, la tracer doublerait '
+                           'la ligne.'),
     'contact_preference_set_at': ('Horodatage technique de la pose de '
                                   '`contact_preference` (suivie).'),
     'mql_assigned_at': ("Marqueur d'idempotence de l'assignation MQL : "

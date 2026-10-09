@@ -229,4 +229,5 @@ class ChatterPiiMasqueTests(TestCase):
         # du second interlocuteur (coopérative, comité) est une PII.
         # ACRM5 (09/10/2026) : + `phone_normalise` — la clé normalisée du
         # numéro est le numéro lui-même.
-        self.assertEqual(len(LEAD_PII_FIELDS), 9)
+        # ACRM32 : + `whatsapp_normalise` (clé normalisée du WhatsApp).
+        self.assertEqual(len(LEAD_PII_FIELDS), 10)

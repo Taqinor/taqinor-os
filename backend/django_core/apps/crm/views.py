@@ -1255,7 +1255,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     #: quand leur source est dans le corps : les inclure systématiquement
     #: réécrirait la dédup depuis une copie périmée.
     COLONNES_DERIVEES = {'telephone': 'phone_normalise',
-                         'email': 'email_normalise'}
+                         'email': 'email_normalise',
+                         'whatsapp': 'whatsapp_normalise'}  # ACRM32
 
     @staticmethod
     def _champs_ecrivables(noms):
