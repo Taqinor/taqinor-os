@@ -6167,7 +6167,7 @@ def _norm_form_text(value):
 _META_TIMELINE_MOTS = (
     (('plus tot possible', 'ce mois', 'immediat', 'des que possible',
       'urgent'), Lead.ProjectTimeline.IMMEDIAT),
-    (('renseigne', 'plus tard', 'pas presse', 'aucune idee'),
+    (('renseigne', 'plus tard', 'pas presse', 'aucune idee', 'compare'),
      Lead.ProjectTimeline.PLUS_TARD),
     (('3 mois', 'trois mois'), Lead.ProjectTimeline.MOINS_3_MOIS),
     (('6 mois', 'six mois'), Lead.ProjectTimeline.MOINS_6_MOIS),
@@ -6211,6 +6211,11 @@ _META_CATEGORIES = (
 _META_MOTS_COMMERCIAL = (r'entreprise', r'societe', r'local')
 _META_MOTS_TRANCHE_OUVERTE = ('plus de', 'au dela', 'superieur', '>',
                               'more than', 'over')
+#: TQ-F6 (10/2026) — « moins de X » : le plancher d'une facture est 0, la
+#: réponse vaut donc la tranche FERMÉE 0–X (même convention de milieu que les
+#: autres tranches fermées) — jamais X comme montant.
+_META_MOTS_TRANCHE_OUVERTE_BASSE = ('moins de', 'inferieur', '<',
+                                    'less than', 'under')
 
 
 def _meta_mot_entier(texte, motifs):
@@ -6266,6 +6271,9 @@ def _meta_tranche_facture(valeur_normalisee, libelle):
         if any(mot in texte for mot in _META_MOTS_TRANCHE_OUVERTE):
             return None, {'min_mad': nums[0], 'max_mad': None,
                           'libelle': libelle, 'source': 'meta'}
+        if any(mot in texte for mot in _META_MOTS_TRANCHE_OUVERTE_BASSE):
+            return nums[0] // 2, {'min_mad': 0, 'max_mad': nums[0],
+                                  'libelle': libelle, 'source': 'meta'}
         return nums[0], None
     return None, None
 
@@ -6316,7 +6324,7 @@ def _parse_meta_form_extras(field_data):
         elif 'quand' in q or 'commencer' in q or 'delai' in q:
             if 'plus tot possible' in v or 'ce mois' in v or 'immediat' in v:
                 extras['priorite'] = Lead.Priorite.HAUTE
-            elif 'renseigne' in v:
+            elif 'renseigne' in v or 'compare' in v:
                 extras['priorite'] = Lead.Priorite.BASSE
             else:
                 extras['priorite'] = Lead.Priorite.NORMALE
@@ -6339,7 +6347,7 @@ def _parse_meta_form_extras(field_data):
             delai = _meta_project_timeline(v)
             if delai:
                 extras['project_timeline'] = delai
-        elif 'install' in q:
+        elif 'install' in q or 'logement' in q or 'type de bien' in q:
             # CIQ407 — industrie AVANT entreprise/société, mots entiers ; un
             # cas ambigu ne pose aucun type (il reste dans la note).
             segment = _meta_type_installation(v)
@@ -6348,6 +6356,21 @@ def _parse_meta_form_extras(field_data):
             categorie = _meta_categorie(v)
             if categorie and segment == Lead.TypeInstallation.COMMERCIAL:
                 extras['categorie_commerciale'] = categorie
+        elif 'contact' in q and ('prefer' in q or 'joindre' in q
+                                 or 'comment' in q):
+            # TQ-F6 (10/2026) — « Comment préférez-vous être contacté ? » →
+            # la préférence EXPLICITE du lead (QW3), remplissage seulement.
+            if 'whatsapp' in v:
+                extras['contact_preference'] = (
+                    Lead.ContactPreference.WHATSAPP_ONLY)
+            elif 'appel' in v or 'telephone' in v or 'phone' in v:
+                extras['contact_preference'] = Lead.ContactPreference.PHONE_OK
+        elif _meta_mot_entier(v, (r'proprietaire', r'locataire')):
+            # TQ-F6 — « Vous êtes : propriétaire / locataire » → ownership
+            # (champ site CAD150, éditable avec provenance).
+            extras['ownership'] = (
+                Lead.Ownership.PROPRIETAIRE if 'proprietaire' in v
+                else Lead.Ownership.LOCATAIRE)
         elif 'activite' in q or 'secteur' in q or 'etablissement' in q:
             # CIQ407 — question d'activité du formulaire modifié par Reda.
             categorie = _meta_categorie(v)
@@ -6499,6 +6522,17 @@ def _apply_meta_form_extras(lead, extras):
             lead, 'project_timeline', None):
         lead.project_timeline = extras['project_timeline']
         changed.append('project_timeline')
+    # TQ-F6 (10/2026) — statut d'occupation et préférence de contact lus sur
+    # le formulaire : remplissage seulement, jamais d'écrasement ; la
+    # préférence est horodatée (QX15 : le SLA rappel court depuis sa pose).
+    if extras.get('ownership') and not getattr(lead, 'ownership', None):
+        lead.ownership = extras['ownership']
+        changed.append('ownership')
+    if (extras.get('contact_preference')
+            and not getattr(lead, 'contact_preference', None)):
+        lead.contact_preference = extras['contact_preference']
+        lead.contact_preference_set_at = timezone.now()
+        changed.extend(['contact_preference', 'contact_preference_set_at'])
     if lead.telephone and not lead.whatsapp:
         # Un lead Meta arrive par mobile : le même numéro sert de lien wa.me
         # pour la première prise de contact de Meryem.
@@ -6521,12 +6555,14 @@ def _enrichir_meta_trace(lead, extras):
                   'societe', 'fonction_contact', 'source_eau',
                   'pompe_alim_actuelle', 'surface_irriguee_ha',
                   'depense_carburant_mad_mois', 'priorite', 'project_timeline',
-                  'whatsapp'):
+                  'whatsapp', 'ownership', 'contact_preference'):
         avant[champ] = getattr(lead, champ, None)
     changed = _apply_meta_form_extras(lead, extras)
     if changed:
         lead.save(update_fields=changed)
         for champ in changed:
+            if champ == 'contact_preference_set_at':
+                continue   # horodatage technique, pas une donnée du client
             LeadActivity.objects.create(
                 company=lead.company, lead=lead, user=None,
                 kind=LeadActivity.Kind.MODIFICATION, field=champ,
