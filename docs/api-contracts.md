@@ -269,7 +269,7 @@
 - frontend/src/api/installationsApi.js :: syncField -> /api/django/installations/sync
     applied:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/monitoringApi.js :: emailOmReport -> /api/django/monitoring/configs/<>/email-om-report
-    sent:inconnu
+    detail:texte, sent:inconnu
 - frontend/src/api/monitoringApi.js :: getClientPortal -> /api/django/monitoring/configs/client-portal
     client:nombre, co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:inconnu, detail:texte, economies_mad:inconnu, systems_count:inconnu, tarif_mad_par_kwh:inconnu, total_production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getCo2 -> /api/django/monitoring/configs/<>/co2
@@ -413,17 +413,13 @@
 - frontend/src/api/savApi.js :: actionsGroupeesTickets -> /api/django/sav/tickets/actions-groupees
     echecs:inconnu, ids:texte, nb_echecs:nombre, nb_traites:nombre, operation:texte, priorite:texte, statut:texte, technicien:texte, traites:inconnu
 - frontend/src/api/savApi.js :: creerDevisTicket -> /api/django/sav/tickets/<>/creer-devis
-    detail:texte, devis_id:inconnu, devis_reference:inconnu, lignes:inconnu
+    detail:inconnu, devis_id:inconnu, devis_reference:inconnu, lignes:inconnu
 - frontend/src/api/savApi.js :: creerLeadDepuisTicket -> /api/django/sav/tickets/<>/creer-lead
     created:inconnu, lead_id:inconnu
 - frontend/src/api/savApi.js :: creerProblemeDepuisRegroupement -> /api/django/sav/problemes/creer-depuis-regroupement
     id:inconnu, nb_tickets:nombre, reference:inconnu, titre:inconnu
 - frontend/src/api/savApi.js :: delierTicketProbleme -> /api/django/sav/problemes/<>/delier-ticket
     delie:booleen, nb_tickets:nombre, probleme:inconnu, ticket:inconnu
-- frontend/src/api/savApi.js :: facturerTicket -> /api/django/sav/tickets/<>/facturer
-    couverture:inconnu, facture_id:inconnu, facture_reference:inconnu
-- frontend/src/api/savApi.js :: genererFactureTicket -> /api/django/sav/tickets/<>/generer-facture
-    detail:texte, facture_id:inconnu, facture_reference:inconnu, sous_garantie:inconnu
 - frontend/src/api/savApi.js :: genererVisitesDues -> /api/django/sav/contrats-maintenance/generer-dus
     ok:booleen, tickets_generes:inconnu
 - frontend/src/api/savApi.js :: getEquipementPartageQr -> /api/django/sav/equipements/<>/partage-qr
@@ -1510,7 +1506,7 @@
 - frontend/src/api/savApi.js :: deleteCompatibilitePiece -> /api/django/sav/compatibilites-piece/<>  [CompatibilitePieceSerializer]
     champs: date_creation, id, note, piece, piece_nom, produit_equipement, produit_equipement_nom, remplace_par, remplace_par_nom
 - frontend/src/api/savApi.js :: deleteContrat -> /api/django/sav/contrats-maintenance/<>  [ContratMaintenanceSerializer]
-    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/savApi.js :: deleteEquipeMaintenance -> /api/django/sav/equipes-maintenance/<>  [EquipeMaintenanceSerializer]
     champs: actif, capacite_max_tickets_ouverts, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
@@ -1536,7 +1532,7 @@
 - frontend/src/api/savApi.js :: getCompatibilitesPiece -> /api/django/sav/compatibilites-piece  [CompatibilitePieceSerializer]
     champs: date_creation, id, note, piece, piece_nom, produit_equipement, produit_equipement_nom, remplace_par, remplace_par_nom
 - frontend/src/api/savApi.js :: getContrats -> /api/django/sav/contrats-maintenance  [ContratMaintenanceSerializer]
-    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/savApi.js :: getEquipesMaintenance -> /api/django/sav/equipes-maintenance  [EquipeMaintenanceSerializer]
     champs: actif, capacite_max_tickets_ouverts, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
@@ -1552,7 +1548,7 @@
     champs: actif, champs, date_creation, id, nom, type_ticket_applicable
     type_ticket_applicable ∈ {correctif, preventif, tous}
 - frontend/src/api/savApi.js :: saveContratOm -> /api/django/sav/contrats-maintenance/<>  [ContratMaintenanceSerializer]
-    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, facturation_due, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    champs: a_renouveler, actif, client, client_nom, date_creation, date_debut, date_expiration, date_renouvellement, delai_intervention_heures, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, en_periode_grace, equipements, equipements_detail, expire, facturation_active, id, installation, notes, origine, periodicite, pieces_couvertes_pct, prestations, prix, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
     periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
 - frontend/src/api/stockApi.js :: createAcompteFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
     champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note

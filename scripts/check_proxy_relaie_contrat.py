@@ -37,11 +37,7 @@ PROXYS = {
     "proposition-accept.ts": ("proposal_accept.json", "acceptation_entreprise.json"),
 }
 # (proxy, clé) -> pourquoi la clé obligatoire n'est pas (encore) relayée.
-DETTE_CONNUE = {
-    ("proposition-accept.ts", "empreinte_contenu"):
-        "ADEV48-ADEV53 : moitié page web de l'empreinte de contenu (@after ADEV2), "
-        "pas encore bâtie sur cette branche",
-}
+DETTE_CONNUE = {}
 _RE_ENTREPRISE = re.compile(r"`entreprise\.(\w+)`")
 
 

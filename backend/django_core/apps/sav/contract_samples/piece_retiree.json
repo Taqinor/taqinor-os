@@ -1,6 +1,7 @@
 {
   "endpoint": "POST /api/django/sav/tickets/<int:pk>/pieces-retirees/",
-  "forme_serveur": "complete",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Clés servies par ASAV9 (vague 10) ; la vue n'est pas lisible statiquement par check_api_shapes, donc la forme reste déclarée partielle tant qu'elle ne l'est pas.",
   "pourquoi": "ASAV1 (Groupe ASAV, audit sav L2 du 08/10/2026) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui l'@action `pieces_retirees` (apps/sav/views.py) trace un retrait (`services.retirer_piece`) et repond `PieceRetireeSerializer` : l'ancien equipement passe `remplace` mais AUCUN neuf n'entre au parc ni au registre du contrat (sonde SPARC-6). Corps : {produit, quantite?, numero_serie?, destination?, operation?} + `serie_neuve` OPTIONNEL (n° de serie de l'appareil neuf pose en remplacement). Reponse 201 = la piece retiree (forme `PieceRetireeSerializer` inchangee) + `equipement_neuf` = {id, numero_serie, statut, installation, client} de l'equipement cree, `null` sans `serie_neuve` (comportement ASAV8 inchange). Serie neuve deja au parc : 400 sous la cle `serie_neuve` (`exemple_400_serie_neuve`). Consommateurs : ASAV9 (back), ASAV10 (fiche ticket, champ « N° de série du neuf »). Aucun prix d'achat. Valeurs ILLUSTRATIVES.",
   "corps_post": {
     "produit": 1450,

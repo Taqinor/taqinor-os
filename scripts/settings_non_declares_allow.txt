@@ -13,7 +13,6 @@ backend/django_core/apps/ged/services.py::ESIGN_PROVIDER  # ADEP20 clé non déc
 backend/django_core/apps/ged/services.py::GED_OFFICE_URL  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::GED_PADES_CERT_PATH  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::GED_PADES_KEY_PATH  # ADEP20 clé non déclarée
-backend/django_core/apps/ged/services.py::PUBLIC_BASE_URL  # ADEP20 clé non déclarée
 backend/django_core/apps/identity/anomaly.py::GEOIP2_CITY_DB  # ADEP20 clé non déclarée
 backend/django_core/apps/identity/anomaly.py::GEOIP_PATH  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_MINUTES_OUVREES  # ADEP20 clé non déclarée
@@ -29,8 +28,6 @@ backend/django_core/apps/publicapi/webhook_health.py::WEBHOOK_AUTO_DISABLE_WINDO
 backend/django_core/apps/reporting/calendar.py::ICS_TOKEN_MAX_AGE_DAYS  # ADEP20 clé non déclarée
 backend/django_core/apps/reporting/report_pdf.py::MINIO_BUCKET_MEDIA  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/domain/cycle_vie.py::COMPANY_RIB  # ADEP20 clé non déclarée
-backend/django_core/apps/ventes/domain/cycle_vie.py::PUBLIC_BASE_URL  # ADEP20 clé non déclarée
-backend/django_core/apps/ventes/domain/encaissements.py::PUBLIC_BASE_URL  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/domain/recouvrement.py::DEVIS_NUDGE_DAYS  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/email_service.py::INBOUND_REPLY_EMAIL  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/exports.py::VENTES_COMPTA_ACCOUNT_CODES  # ADEP20 clé non déclarée
@@ -38,7 +35,6 @@ backend/django_core/apps/ventes/exports.py::VENTES_COMPTA_ACCOUNT_CODES_BY_COMPA
 backend/django_core/apps/ventes/exports.py::VENTES_EXPORT_ASYNC_ROW_THRESHOLD  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/public/paiement_views.py::COMPANY_RIB  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/public/paiement_views.py::PAYMENT_PROVIDER  # ADEP20 clé non déclarée
-backend/django_core/apps/ventes/utils/whatsapp.py::PUBLIC_BASE_URL  # ADEP20 clé non déclarée
 backend/django_core/authentication/password_policy.py::LOGIN_PLANCHER_ECHECS  # ADEP20 clé non déclarée
 backend/django_core/authentication/password_policy.py::LOGIN_PLANCHER_VERROU_MINUTES  # ADEP20 clé non déclarée
 backend/django_core/core/ai/services.py::AI_GUARD_MAX_CHARS  # ADEP20 clé non déclarée
