@@ -149,20 +149,17 @@ def _name_html(it, produits_base):
 
 
 def _pu_ht_affiche(it):
-    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut."""
-    valeur = it.get("pu_ht_remise")
-    if valeur is None:
-        return float(it.get("prix_unit_ht") or 0)
-    return float(valeur)
+    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut.
+    AMOT45 — LE helper unique ``montants.pu_ht_remise`` (survivant)."""
+    from ..montants import pu_ht_remise
+    return pu_ht_remise(it)
 
 
 def _total_ht_affiche(it):
-    """Total HT de la ligne à afficher : après remise globale, ou catalogue."""
-    valeur = it.get("total_ht_remise")
-    if valeur is None:
-        return float(it.get("prix_unit_ht") or 0) * float(
-            it.get("quantite") or 0)
-    return float(valeur)
+    """Total HT de la ligne à afficher : après remise globale, ou catalogue.
+    AMOT45 — LE helper unique ``montants.total_ht_remise`` (survivant)."""
+    from ..montants import total_ht_remise
+    return total_ht_remise(it)
 
 
 def _deux_prix(fmt, valeur_catalogue, valeur_remisee):
@@ -552,19 +549,32 @@ def build_pages(ctx) -> list:
     pourquoi_avec = (d.get("pourquoi_avec")
                      or "Pourquoi nous la recommandons : vos soirées et les "
                         "coupures passent sur batterie.")
+    # AMOT33 — la phrase « Pourquoi nous la recommandons » et la pastille
+    # suivent l'option RECOMMANDÉE par le serveur (``option_recommandee``) ;
+    # aucune recommandation ⇒ ni phrase ni pastille.
+    from ..figures import option_recommandee
+    _reco = option_recommandee(d)
+    pourquoi_sans = (d.get("pourquoi_sans")
+                     or "Pourquoi nous la recommandons : l'investissement le "
+                        "plus court à rembourser.")
     if deux_options:
+        _why_sans = (f'<div class="p2-dwhy">{pourquoi_sans}</div>'
+                     if _reco == "sans" else "")
+        _why_avec = (f'<div class="p2-dwhy">{pourquoi_avec}</div>'
+                     if _reco == "avec" else "")
         deltas_html = (
             '<div class="p2-deltas">'
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["navy"]}">'
             'Spécifique à l&rsquo;option 1 — Sans batterie</div>'
-            f'<div class="p2-dbody"><ul>{delta_sans_html}</ul></div></div>'
+            f'<div class="p2-dbody"><ul>{delta_sans_html}</ul>'
+            f'{_why_sans}</div></div>'
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["gold"]};'
             f'color:{C["navy"]}">'
             f'Spécifique à l&rsquo;option 2 — {libelle_avec}</div>'
             f'<div class="p2-dbody"><ul>{delta_avec_html}</ul>'
-            f'<div class="p2-dwhy">{pourquoi_avec}</div></div></div>'
+            f'{_why_avec}</div></div>'
             '</div>')
     else:
         deltas_html = ""
@@ -597,10 +607,12 @@ def build_pages(ctx) -> list:
     if deux_options:
         totals_html = (
             _totals_chain("Option 1 — Sans batterie", C["navy"],
-                          d["totaux_sans"], fmt_mad, C, option="sans",
+                          d["totaux_sans"], fmt_mad, C,
+                          recommended=(_reco == "sans"), option="sans",
                           L=L)
             + _totals_chain(f"Option 2 — {libelle_avec}", C["gold"],
-                            d["totaux_avec"], fmt_mad, C, recommended=True,
+                            d["totaux_avec"], fmt_mad, C,
+                            recommended=(_reco == "avec"),
                             option="avec", L=L))
         # L-2OPTPDF — dès qu'une ligne appariée entre dans le tableau, celui-ci
         # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
@@ -628,8 +640,8 @@ def build_pages(ctx) -> list:
     _remise_pct = float(d.get("discount_pct") or 0)
     note_remise = ""
     if _remise_pct > 0:
-        _pct_txt = (int(_remise_pct) if _remise_pct == int(_remise_pct)
-                    else _remise_pct)
+        from ..montants import pct_fr  # AMOT24 — le formateur UNIQUE
+        _pct_txt = pct_fr(_remise_pct)
         note_remise = (
             f' &middot; Remise de {_pct_txt} % appliquée sur chaque ligne '
             '— prix catalogue barrés, totaux après remise.')
@@ -716,7 +728,10 @@ def build_pages(ctx) -> list:
                        else "l'installation se rembourse")
     # QX5 — gain net 25 ans + libellé calés sur l'option réellement présente
     # (jamais « option avec batterie » sur un devis sans batterie).
-    if deux_options or avec_ok:
+    # AMOT33 — deux options : le gain net décrit l'option RECOMMANDÉE par le
+    # serveur (« sans » quand c'est elle) ; sinon l'option présente.
+    _ref_avec = ((_reco != "sans") if deux_options else bool(avec_ok))
+    if _ref_avec:
         _eco_ref, _tot_ref = d.get("eco_a_ann", 0), d.get("total_avec", 0)
         # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF).
         _lib_avec = str(d.get("libelle_avec") or "Avec batterie")
@@ -724,11 +739,12 @@ def build_pages(ctx) -> list:
         gain25_label = f"option {_lib_avec}" if deux_options else _lib_avec
     else:
         _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
-        gain25_label = "sans batterie"
+        gain25_label = ("option sans batterie" if deux_options
+                        else "sans batterie")
     # QRES58 — le gain net 25 ans sort du VRAI cashflow (dégradation 0,5 %/an
     # intégrée — ce que les hypothèses promettent) : plus jamais un eco×25 plat
     # qui surévaluait ~7 % ; repli Σ(0,995^t) ≈ 23,56 si le cumul manque.
-    _cf_ref = (d.get("cashflow_avec") if (deux_options or avec_ok)
+    _cf_ref = (d.get("cashflow_avec") if _ref_avec
                else d.get("cashflow_sans")) or []
     if _cf_ref:
         gain25 = max(0, round(_cf_ref[-1]))
@@ -738,7 +754,7 @@ def build_pages(ctx) -> list:
     # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — l'option de référence ne se
     # rembourse jamais : son « gain net » n'est pas « ≈ 0 MAD » (plancher),
     # c'est une perte — la carte le dit au lieu d'imprimer un zéro.
-    _gain_jamais = bool(_jamais_a if (deux_options or avec_ok) else _jamais_s)
+    _gain_jamais = bool(_jamais_a if _ref_avec else _jamais_s)
     _gain_v_html = ("Non rentabilisé" if _gain_jamais
                     else f"≈ {fmt(gain25)} <small>MAD</small>")
     # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net

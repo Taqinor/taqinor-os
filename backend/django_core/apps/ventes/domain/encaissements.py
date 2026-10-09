@@ -90,6 +90,9 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
             # lien de paiement ouvert, même sur un rejeu idempotent.
             _fermer_liens_facture_close(locked)
             return False
+        if locked.statut == Facture.Statut.BROUILLON:
+            # AFAC9 — un BROUILLON ne bascule jamais PAYÉE (non émis).
+            return False
         if not force:
             residuel = locked.montant_du if reste is None else Decimal(
                 str(reste))
@@ -172,6 +175,8 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
     court (``AcompteAvantDelaiLegal``, message nommant la date). Une commande
     signée à distance ou au bureau n'est pas concernée."""
     _verifier_delai_acompte_domicile(facture, date_paiement)
+    # AFAC9 — LA porte unique (émise / en retard seulement).
+    exiger_facture_encaissable(facture, date_paiement)
     from apps.ventes.models import Paiement
     paiement = Paiement.objects.create(
         company=facture.company,
@@ -261,6 +266,73 @@ class EncaissementRefuse(Exception):
         self.motif = motif
 
 
+# ── AFAC9 (C-AFAC-003/011/014) — LA porte unique d'encaissement ─────────────
+MOTIF_NON_EMISE = "Facture non émise : émettez-la avant d'encaisser."
+MOTIF_ANNULEE = 'Facture annulée : aucun encaissement possible.'
+MOTIF_SOLDEE = 'Facture soldée : plus rien à encaisser.'
+
+
+class FactureNonEncaissable(ValueError):
+    """AFAC9 — refus de la porte unique d'encaissement (motif FR, 400).
+
+    Sous-classe de ``ValueError`` : les chemins qui traduisent déjà
+    ``ValueError`` en 400 (encaissement groupé) le refusent sans code neuf."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def _jour_encaissement(date_paiement):
+    """Date du paiement en ``date`` (une chaîne ISO venue d'un corps de
+    requête est lue ; illisible ou absente ⇒ ``None`` = aujourd'hui)."""
+    import datetime as _dt
+    if isinstance(date_paiement, _dt.datetime):
+        return date_paiement.date()
+    if isinstance(date_paiement, _dt.date):
+        return date_paiement
+    if isinstance(date_paiement, str) and date_paiement.strip():
+        try:
+            return _dt.date.fromisoformat(date_paiement.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def motif_non_encaissable(facture, date_paiement=None):
+    """AFAC9 — pourquoi ``facture`` ne s'encaisse pas (phrase FR), ou ``None``.
+
+    Seule une facture ÉMISE ou EN RETARD s'encaisse (contrat
+    ``facturation/contract_samples/facture_encaissable.json``) ; un acompte
+    d'un bon signé au domicile ne s'encaisse pas avant le J+7 de la loi 31-08
+    (CAD122, D-AFAC-C7 : sur TOUT encaissement). Pure lecture : aucune requête
+    hors la résolution ``devis.bon_commande`` d'une facture d'ACOMPTE."""
+    from apps.ventes.models import AcompteAvantDelaiLegal, Facture
+
+    statut = facture.statut
+    if statut == Facture.Statut.BROUILLON:
+        return MOTIF_NON_EMISE
+    if statut == Facture.Statut.ANNULEE:
+        return MOTIF_ANNULEE
+    if statut == Facture.Statut.PAYEE:
+        return MOTIF_SOLDEE
+    try:
+        _verifier_delai_acompte_domicile(
+            facture, _jour_encaissement(date_paiement))
+    except AcompteAvantDelaiLegal as exc:
+        return str(exc)
+    return None
+
+
+def exiger_facture_encaissable(facture, date_paiement=None):
+    """AFAC9 — LA porte : lève ``FactureNonEncaissable`` (motif FR) si la
+    facture ne s'encaisse pas. Appelée par CHAQUE service qui crée un
+    ``Paiement`` ou un lien de paiement sur une facture."""
+    motif = motif_non_encaissable(facture, date_paiement)
+    if motif:
+        raise FactureNonEncaissable(motif)
+
+
 def encaisser_sur_facture(*, facture, donnees, user):
     """LE chemin de l'encaissement MANUEL d'une facture (montant + date + mode).
 
@@ -296,6 +368,10 @@ def encaisser_sur_facture(*, facture, donnees, user):
         if locked.statut == Facture.Statut.ANNULEE:
             raise EncaissementRefuse(
                 'Impossible d\'encaisser sur une facture annulée.')
+        # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122 J+7).
+        motif = motif_non_encaissable(locked, donnees.get('date_paiement'))
+        if motif:
+            raise EncaissementRefuse(motif)
         # Garde sur-paiement : refuser un encaissement qui dépasse le reste
         # à payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour
         # les arrondis ; un montant égal au reste passe (solde la facture).
@@ -435,6 +511,16 @@ def affecter_encaissement_groupe(
             .filter(id__in=[f.id for f in factures])
         )
         by_id = {f.id: f for f in locked}
+        # AFAC9 — LA porte unique, AVANT toute écriture : une facture listée
+        # non encaissable (brouillon, annulée, acompte CAD122) refuse tout le
+        # lot. Une facture déjà soldée n'absorbe rien (FIFO la sautait déjà).
+        for facture in locked:
+            if facture.statut == Facture.Statut.PAYEE:
+                continue
+            motif = motif_non_encaissable(facture, date_paiement)
+            if motif:
+                raise FactureNonEncaissable(
+                    f"Facture {facture.reference} : {motif}")
 
         if isinstance(repartition, dict) and repartition:
             # Répartition explicite fournie par l'appelant. AUD120 — on
@@ -668,6 +754,11 @@ def create_payment_link(*, facture, provider=None):
         raise LinkError('Facture annulée : aucun lien de paiement.')
     if facture.statut == Facture.Statut.PAYEE:
         raise LinkError('Facture déjà payée : aucun lien de paiement.')
+    # AFAC9 — LA porte unique : un brouillon ou un acompte CAD122 avant J+7
+    # n'obtient pas de lien.
+    motif = motif_non_encaissable(facture, timezone.localdate())
+    if motif:
+        raise LinkError(motif)
     if (facture.montant_du or Decimal('0')) <= Decimal('0'):
         raise LinkError('Cette facture est déjà soldée.')
     # AFAC24 (C-AFAC-019) — le lien RÉCLAME de l'argent : il ne porte que ce
@@ -787,6 +878,10 @@ def record_payment_from_link(*, link, payload=None):
                    .get(pk=locked_link.facture_id))
         if facture.statut == Facture.Statut.ANNULEE:
             return None, 'Facture annulée.'
+        # AFAC9 — LA porte unique (même refus que l'écran).
+        motif = motif_non_encaissable(facture, timezone.localdate())
+        if motif and facture.statut != Facture.Statut.PAYEE:
+            return None, motif
         # AFAC23 — rejeu d'une confirmation PARTIELLE (le lien reste ouvert) :
         # même référence fournisseur ⇒ le paiement existant, jamais un second.
         if provider_ref:
@@ -885,6 +980,7 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
     (réutilise le même seuil que ``enregistrer_paiement``)."""
     from decimal import Decimal
     from django.db import transaction
+    from django.utils import timezone
     from rest_framework.exceptions import ValidationError
     from ..models import AffectationPaiement, Facture, Paiement
 
@@ -911,6 +1007,16 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
         if locked_facture.statut == Facture.Statut.ANNULEE:
             raise ValidationError(
                 {'facture': "Impossible de ventiler sur une facture annulée."})
+        # AFAC9 (C-AFAC-014) — une avance REJETÉE (chèque impayé) n'a jamais
+        # été encaissée : elle ne se ventile pas.
+        if locked_paiement.statut == Paiement.Statut.REJETE:
+            raise ValidationError(
+                {'paiement': "Avance rejetée : elle ne peut pas être "
+                             "ventilée."})
+        # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122).
+        motif = motif_non_encaissable(locked_facture, timezone.localdate())
+        if motif:
+            raise ValidationError({'facture': motif})
 
         disponible = locked_paiement.montant_disponible
         if montant - disponible > Decimal('0.01'):
@@ -998,6 +1104,10 @@ def enregistrer_paiement_avec_retenue(
         if locked.statut == Facture.Statut.ANNULEE:
             raise ValidationError(
                 {'detail': "Impossible d'encaisser sur une facture annulée."})
+        # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122).
+        motif = motif_non_encaissable(locked, date_paiement)
+        if motif:
+            raise ValidationError({'detail': motif})
         reste = locked.montant_du
         if montant - reste > Decimal('0.01'):
             raise ValidationError({

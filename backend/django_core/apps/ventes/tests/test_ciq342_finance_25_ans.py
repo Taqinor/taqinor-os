@@ -86,7 +86,10 @@ class Ciq342SiteMT(SimpleTestCase):
         texte = _texte(_pages(d)[3])
         self.assertIn("Cumul net de l'investissement (HT)", texte)
         self.assertIn("hors cashflow", texte)
-        self.assertIn("Excédent racheté 0,21 / 0,18 DH HT", texte)
+        # Mention 82-21 SERVIE par ``economie_ci.revente_ci`` (contrat
+        # réaligné sur le service : MENTION_82_21 en tête des six).
+        self.assertIn("Tarif d'excédent ANRE (décision 04/26) : 18 cDH/kWh",
+                      texte)
         self.assertNotIn("n'est pas rémunéré", texte)
         # Pied de page sur la base servie (CIQ315) : HT.
         self.assertIn("Investissement HT (clé en main) : 1 458 333,33 MAD HT",

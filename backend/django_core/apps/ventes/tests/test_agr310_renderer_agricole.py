@@ -89,13 +89,14 @@ def data_complete(nb_lignes_extra=0, nb_options=1):
         'conception': {'mois_critique': 12},
         'champ': {'kwc': 7.7, 'nb_panneaux': 14},
         'ha_irrigables': {'valeur': None},
-        'provenance_pompage': {
+        # AMOT43 — la forme RÉELLE du producteur (``domain.pompage``).
+        'provenance_pompage': {'entrees': {
             'volume_m3_jour': {'origine': 'lead', 'detail': 'client',
                                'date': '2026-09-12'},
             'niveau_dynamique_m': {'origine': 'lead',
                                    'detail': 'mesure_visite',
                                    'date': '2026-09-15'},
-        },
+        }, '_empreinte': 'fixture'},
         'saisies_economie_pompage': {
             'energie_actuelle': {
                 'valeur': 'butane',

@@ -1,0 +1,28 @@
+{
+  "endpoint": "POST /api/django/ventes/paiements/<int:pk>/annuler-saisie/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Route pas encore servie : la tâche backend AFAC17 la produit (D-AFAC-C2, option a) et remet `forme_serveur: complete` ; l'écran AFAC18 l'appelle.",
+  "pourquoi": "AFAC4 (C-AFAC-013, D-AFAC-C2 option a) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Un paiement saisi par erreur (mauvais montant, mauvaise facture, rapprochement de relevé erroné) se corrige par un état « annulé (erreur de saisie) » DATÉ, avec motif obligatoire et auteur tracés — jamais par une suppression, jamais en le déclarant « rejeté » (un rejet bancaire est un autre fait). Le paiement annulé sort du payé ; le journal de caisse reste intact. Montants en texte décimal.",
+  "requete": {
+    "motif": "Montant saisi 5 000 au lieu de 500"
+  },
+  "exemple": {
+    "id": 412,
+    "facture": 118,
+    "montant": "5000.00",
+    "date_paiement": "2026-10-02",
+    "mode": "virement",
+    "statut": "annule_saisie",
+    "annule_le": "2026-10-08T10:14:00+01:00",
+    "annule_par_nom": "responsable.demo",
+    "motif_annulation": "Montant saisi 5 000 au lieu de 500"
+  },
+  "exemple_refus": {
+    "code": "paiement_remis_en_banque",
+    "detail": "Ce paiement est déjà porté par la remise REM-202610-0003 : retirez-le de la remise avant d'annuler la saisie."
+  },
+  "exemple_refus_motif": {
+    "code": "motif_requis",
+    "detail": "Motif obligatoire pour annuler une saisie de paiement."
+  }
+}

@@ -246,3 +246,59 @@ class NTI18N17EmbarquementTests(SimpleTestCase):
             self.assertIn(FX.NOM_FICHIER_XML, document.embfile_names())
         finally:
             document.close()
+
+
+class AMOT71ZerosEtCoherenceTests(SimpleTestCase):
+    """AMOT71 (C-AMOT-040/041) — les zéros légitimes passent ; une facture
+    dont les lignes ou le net à payer contredisent l'en-tête est refusée,
+    sauf remise / acompte DÉCLARÉS (BR-CO-10/13/16).
+
+    Test-du-test : remettre ``if not facture.get(c)`` ⇒
+    ``test_zeros_legitimes`` échoue (``total_tva`` Decimal 0 refusé)."""
+
+    @staticmethod
+    def _resume(facture):
+        texte = FX.construire_xml(facture).decode('utf-8')
+        return texte.split(
+            'SpecifiedTradeSettlementHeaderMonetarySummation')[1]
+
+    def test_zeros_legitimes(self):
+        from decimal import Decimal
+        for zero in (0, Decimal('0.00'), '0.00'):
+            with self.subTest(zero=repr(zero)):
+                facture = facture_exemple()
+                facture.update(total_tva=zero, total_ttc='1940.00')
+                facture['tva_par_taux'] = [{
+                    'taux': '0', 'base_ht': '1940.00', 'montant': '0.00',
+                    'categorie': 'E', 'motif_exoneration': 'Exonération'}]
+                self.assertIn('TaxTotalAmount', self._resume(facture))
+
+    def test_net_a_payer_zero(self):
+        from decimal import Decimal
+        facture = facture_exemple()
+        facture.update(net_a_payer=Decimal('0'), acompte='2328.00')
+        resume = self._resume(facture)
+        self.assertIn('>0.00</ram:DuePayableAmount>', resume)
+        self.assertIn('>2328.00</ram:TotalPrepaidAmount>', resume)
+
+    def test_lignes_sans_remise_declaree_refusees(self):
+        facture = facture_exemple()
+        facture.update(total_ht='1840.00', total_tva='368.00',
+                       total_ttc='2208.00')
+        facture['tva_par_taux'] = [
+            {'taux': '20', 'base_ht': '1840.00', 'montant': '368.00'}]
+        with self.assertRaises(FX.DonneesFacturxInvalides):
+            FX.construire_xml(facture)
+        facture['remise_ht'] = '100.00'
+        resume = self._resume(facture)
+        self.assertIn('>1940.00</ram:LineTotalAmount>', resume)
+        self.assertIn('>100.00</ram:AllowanceTotalAmount>', resume)
+        self.assertIn('>1840.00</ram:TaxBasisTotalAmount>', resume)
+
+    def test_net_sans_acompte_declare_refuse(self):
+        facture = facture_exemple()
+        facture['net_a_payer'] = '40.00'
+        with self.assertRaises(FX.DonneesFacturxInvalides):
+            FX.construire_xml(facture)
+        facture['acompte'] = '2288.00'
+        self.assertIn('>40.00</ram:DuePayableAmount>', self._resume(facture))

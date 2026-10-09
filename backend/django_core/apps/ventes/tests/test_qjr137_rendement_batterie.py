@@ -142,7 +142,7 @@ class MoteurHoraireTests(SimpleTestCase):
                     ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
                     batterie_kwh_utile=10.0)
         base.update(extra)
-        return EH.calculer_etude_horaire(**base)
+        return EH.calculer_etude_horaire(**{'tranches': None, 'charges_fixes_mad': None, **base})
 
     def test_le_rendement_publie_change_l_economie_avec_batterie(self):
         bas = self._etude(batterie_rendement=0.70)

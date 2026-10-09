@@ -764,6 +764,7 @@ class ExemplesFondateurTest(TestCase):
             kwc = recommandation['kwc']
             batterie = recommandation.get('batterie_kwh') or 0.0
             etude = calculer_etude_horaire(
+                tranches=None, charges_fixes_mad=None,
                 kwc=kwc, conso_kwh_mensuelles=conso, ville=VILLE,
                 occupation=cas.occupation,
                 equipements=composer_equipements(cas.equipements),

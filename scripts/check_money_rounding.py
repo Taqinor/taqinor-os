@@ -409,7 +409,7 @@ def _print_sites(sites):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Garde advisory sur les round() monetaires.")
+        description="Garde bloquante sur les round() monetaires.")
     parser.add_argument("--list", action="store_true", dest="list_mode",
                         help="imprime chaque site vu, avec sa cle")
     parser.add_argument("--regenerate", action="store_true",
@@ -466,7 +466,7 @@ def main(argv=None):
               "raison).")
         return 1
 
-    print("\ncheck_money_rounding: OK (advisory -- tous les sites sont dans "
+    print("\ncheck_money_rounding: OK (bloquant -- tous les sites sont dans "
           "la base).")
     return 0
 

@@ -29,6 +29,15 @@ def _plages_py(saisons):
             for b in saisons for p in b['postes']]
 
 
+class TestFonctionsMortesSupprimees(SimpleTestCase):
+    """AMOT47 — les quatre fonctions sans lecteur ont disparu du module."""
+
+    def test_absentes(self):
+        for nom in ('injection_annuelle', 'tarif_mt_moyen',
+                    'normaliser_repartition_mt', 'tarif_mt_disponible'):
+            self.assertFalse(hasattr(c, nom), nom)
+
+
 class TestModuleSansNet(SimpleTestCase):
     """CIQ201 — aucune déduction TURD/TURT (ANRE 02/25 art. 8) : le « net »
     et les frais d'accès disparaissent du module (garde de grep)."""
@@ -44,35 +53,6 @@ class TestModuleSansNet(SimpleTestCase):
         self.assertEqual(c.TSS_C_KWH, 6.81)
         self.assertEqual(c.TURD_C_KWH, 6.07)
         self.assertEqual(c.TURT_C_KWH, 6.85)
-
-
-class TestInjectionBornes(SimpleTestCase):
-    def test_surplus_mt_valorise_au_brut_018(self):
-        # prod 400000, autoconso 352000 → surplus 48000 (< plafond 80000)
-        kwh, dh = c.injection_annuelle(400000, 352000)
-        self.assertEqual(kwh, 48000)
-        self.assertEqual(dh, round(48000 * 0.18))   # 8640, aucun net
-
-    def test_capped_at_20pct(self):
-        # prod 100000, autoconso 0 → surplus 100000 BORNÉ à 20 % = 20000
-        kwh, dh = c.injection_annuelle(100000, 0)
-        self.assertEqual(kwh, 20000)
-        self.assertEqual(dh, 3600)          # 20000 × 0,18
-
-    def test_pointe(self):
-        self.assertEqual(c.injection_annuelle(100000, 0, pointe=True),
-                         (20000, 4200))     # 20000 × 0,21
-
-    def test_no_surplus(self):
-        self.assertEqual(c.injection_annuelle(100000, 100000), (0, 0))
-
-    def test_never_negative(self):
-        # autoconso > prod ne donne jamais un surplus négatif
-        self.assertEqual(c.injection_annuelle(100000, 150000), (0, 0))
-
-    def test_defensive_on_bad_input(self):
-        self.assertEqual(c.injection_annuelle(None, None), (0, 0))
-        self.assertEqual(c.injection_annuelle("x", "y"), (0, 0))
 
 
 class TestSourcedConstants(SimpleTestCase):
@@ -125,30 +105,42 @@ class TestRegimeReexporte(SimpleTestCase):
 class TestTarifMtSource(SimpleTestCase):
     """QXMT — barème ONEE « Tarif Général (MT) » (one.org.ma, 18/08/2026)."""
 
+    def setUp(self):
+        from apps.parametres import tarifs_officiels as t
+        mt = t.MT_GENERAL
+        self.tarif = {
+            'POINTE': mt['pointe']['valeur'],
+            'PLEINES': mt['pleines']['valeur'],
+            'CREUSES': mt['creuses']['valeur'],
+            'PRIME_PUISSANCE_DH_KVA_AN': mt['prime_fixe_kva_an']['valeur'],
+            'PLAGES_H': t.POSTES_MT,
+        }
+
     def test_postes_horaires_sources(self):
-        self.assertAlmostEqual(c.TARIF_MT_ONEE['POINTE'], 1.4157, places=4)
-        self.assertAlmostEqual(c.TARIF_MT_ONEE['PLEINES'], 1.0101, places=4)
-        self.assertAlmostEqual(c.TARIF_MT_ONEE['CREUSES'], 0.7398, places=4)
+        self.assertAlmostEqual(self.tarif['POINTE'], 1.4157, places=4)
+        self.assertAlmostEqual(self.tarif['PLEINES'], 1.0101, places=4)
+        self.assertAlmostEqual(self.tarif['CREUSES'], 0.7398, places=4)
 
     def test_ordre_des_postes(self):
         # Garde-fou métier : pointe > pleines > creuses, toujours.
-        self.assertGreater(c.TARIF_MT_ONEE['POINTE'], c.TARIF_MT_ONEE['PLEINES'])
-        self.assertGreater(c.TARIF_MT_ONEE['PLEINES'], c.TARIF_MT_ONEE['CREUSES'])
+        self.assertGreater(self.tarif['POINTE'], self.tarif['PLEINES'])
+        self.assertGreater(self.tarif['PLEINES'], self.tarif['CREUSES'])
 
     def test_prime_puissance_sourcee(self):
         self.assertAlmostEqual(
-            c.TARIF_MT_ONEE['PRIME_PUISSANCE_DH_KVA_AN'], 512.62, places=2)
+            self.tarif['PRIME_PUISSANCE_DH_KVA_AN'], 512.62, places=2)
 
     def test_tva_libelle_page_n_est_plus_une_cle(self):
         # CIQ202 : le libellé « TVA 18 % » de la page est périmé (taux légal
         # 2026 : 20 %) ; il n'est plus une clé du barème.
-        self.assertNotIn('TVA_INCLUSE_PCT', c.TARIF_MT_ONEE)
+        self.assertNotIn('TVA_INCLUSE_PCT', self.tarif)
+        self.assertFalse(hasattr(c, 'TARIF_MT_ONEE'))
         self.assertIn('taux légal 2026 : 20 %', c.MENTION_MT)
 
     def test_plages_horaires_sourcees(self):
         # CIQ202 : les plages sont PUBLIÉES (schéma one.org.ma/images/horr.jpg,
         # page bi-horaire, décision ANRE 04/26 art. 7) — plus jamais ``None``.
-        plages = _plages_py(c.TARIF_MT_ONEE['PLAGES_H'])
+        plages = _plages_py(self.tarif['PLAGES_H'])
         self.assertIn(('hiver', 'pointe', 17, 22), plages)
         self.assertIn(('ete', 'pointe', 18, 23), plages)
         self.assertEqual(c.poste_horaire(12, 18), 'pointe')
@@ -158,56 +150,12 @@ class TestTarifMtSource(SimpleTestCase):
         self.assertIn('one.org.ma', c.MENTION_MT)
         self.assertIn('03/10/2026', c.MENTION_MT)
 
-    def test_bareme_disponible(self):
-        self.assertTrue(c.tarif_mt_disponible())
-
-
-class TestTarifMtMoyen(SimpleTestCase):
-    def test_repartition_normalisee_a_100(self):
-        parts = c.normaliser_repartition_mt(
-            {'pointe': 10, 'pleines': 20, 'creuses': 20})
-        self.assertEqual(parts, {'pointe': 20.0, 'pleines': 40.0, 'creuses': 40.0})
-
-    def test_repartition_absente_rend_none(self):
-        # AUCUNE répartition par défaut n'est inventée (plages MT non publiées).
-        self.assertIsNone(c.normaliser_repartition_mt(None))
-        self.assertIsNone(c.normaliser_repartition_mt({}))
-        self.assertIsNone(c.normaliser_repartition_mt(
-            {'pointe': 0, 'pleines': 0, 'creuses': 0}))
-        self.assertIsNone(c.normaliser_repartition_mt(
-            {'pointe': 'x', 'pleines': None, 'creuses': -5}))
-
-    def test_moyenne_ponderee(self):
-        # 20 % pointe / 40 % pleines / 40 % creuses
-        # = 0,2×1,4157 + 0,4×1,0101 + 0,4×0,7398 = 0,98310
-        moyen = c.tarif_mt_moyen({'pointe': 10, 'pleines': 20, 'creuses': 20})
-        self.assertAlmostEqual(moyen, 0.98310, places=5)
-
-    def test_poste_unique(self):
-        self.assertAlmostEqual(
-            c.tarif_mt_moyen({'creuses': 100}), 0.7398, places=4)
-
-    def test_sans_repartition_pas_de_tarif_de_repli(self):
-        # Le point CENTRAL de la règle « zéro chiffre inventé » : pas de prix
-        # moyen par défaut, pas de retour silencieux au tarif BT.
-        self.assertIsNone(c.tarif_mt_moyen(None))
-        self.assertIsNone(c.tarif_mt_moyen({}))
-
 
 class TestTarifMtSansJumeauJs(SimpleTestCase):
     """CIQ228 — UNE source : parametres/tarifs_officiels ↔ constants_82_21.
     Le miroir JS (`TARIF_MT_ONEE`, `tarifMtMoyen`, `netTarif8221`,
     `INJECTION_82_21`) est SUPPRIMÉ de solar.js : la parité est remplacée par
     la preuve de son ABSENCE (la valeur vient d'`economie_ci`)."""
-
-    def test_constants_lit_la_fondation(self):
-        from apps.parametres import tarifs_officiels as t
-        self.assertEqual(c.TARIF_MT_ONEE['POINTE'], t.MT_GENERAL['pointe']['valeur'])
-        self.assertEqual(c.TARIF_MT_ONEE['PLEINES'], t.MT_GENERAL['pleines']['valeur'])
-        self.assertEqual(c.TARIF_MT_ONEE['CREUSES'], t.MT_GENERAL['creuses']['valeur'])
-        self.assertEqual(c.TARIF_MT_ONEE['PRIME_PUISSANCE_DH_KVA_AN'],
-                         t.MT_GENERAL['prime_fixe_kva_an']['valeur'])
-        self.assertIs(c.TARIF_MT_ONEE['PLAGES_H'], t.POSTES_MT)
 
     def test_solar_js_sans_symboles_de_valorisation_ci(self):
         with open(SOLAR_JS, encoding='utf-8') as fh:

@@ -52,8 +52,11 @@ def reset_relance_escalation(facture):
         facture.prochaine_relance = None
         facture.save(update_fields=['prochaine_relance'])
         changed = True
-    autos = facture.relances.filter(note=RELANCE_AUTO_NOTE)
-    n = autos.update(note=RELANCE_AUTO_NOTE_RESOLUE)
+    # AFAC46 — la neutralisation porte un booléen sur TOUTES les relances
+    # (manuelles comme automatiques), plus une réécriture de la note des
+    # seules automatiques : la cadence repart au niveau 1 si la facture rouvre.
+    n = facture.relances.filter(compte_dans_cadence=True).update(
+        compte_dans_cadence=False)
     if n:
         changed = True
     # XFAC5 — une facture soldée referme toute promesse de paiement encore
@@ -82,6 +85,68 @@ def _rouvrir_facture_apres_rejet(facture, user=None):
     rouvre pas (CIQ214) ; états terminaux préservés. Idempotent."""
     from .encaissements import recalculer_statut_paiement
     recalculer_statut_paiement(facture, user=user, source='rejet_paiement')
+    # AFAC46 — une facture ROUVERTE en retard reçoit sa prochaine relance par
+    # la MÊME règle que la bascule (échéance + délai du premier niveau).
+    facture.refresh_from_db()
+    amorcer_cadence(facture)
+
+
+# ── AFAC46 (C-AFAC-034 + C-AFAC-037) — UNE cadence de relance ───────────────
+def niveaux_cadence(company):
+    """Niveaux de relance de la société, UN seul tri (``ordre``,
+    ``delai_jours``) pour l'aperçu, la liste, les relances et le beat."""
+    from ..models import FollowupLevel
+    return list(FollowupLevel.objects.filter(company=company).order_by(
+        'ordre', 'delai_jours', 'id'))
+
+
+def prochain_niveau(facture, niveaux=None):
+    """LE prochain niveau de relance d'une facture : celui qui suit le plus
+    haut ``RelanceLog.niveau`` (ORDRE) EFFECTIF — tous canaux et auteurs,
+    ``compte_dans_cadence`` vrai —, le premier s'il n'y en a aucun.
+
+    Renvoie ``(niveau, deja_tous)`` : tous partis → ``(dernier, True)`` ;
+    aucun niveau configuré → ``(None, False)``. Lit ``facture.relances.all()``
+    (préchargé par la liste des impayés : aucune requête par ligne)."""
+    if niveaux is None:
+        niveaux = niveaux_cadence(facture.company)
+    if not niveaux:
+        return None, False
+    ordres = [r.niveau for r in facture.relances.all()
+              if r.niveau is not None and r.compte_dans_cadence]
+    if not ordres:
+        return niveaux[0], False
+    plus_haut = max(ordres)
+    suivant = next((n for n in niveaux if n.ordre > plus_haut), None)
+    if suivant is None:
+        return niveaux[-1], True
+    return suivant, False
+
+
+def amorcer_cadence(facture, *, echeance=None, niveaux=None, save=True):
+    """Amorce ``prochaine_relance`` d'une facture EN RETARD qui n'en a pas :
+    échéance (effective) + délai du PREMIER niveau. Une date déjà posée n'est
+    JAMAIS écrasée ; sans niveau configuré, rien n'est posé. Renvoie True si
+    une date a été posée."""
+    from datetime import timedelta
+    from ..models import Facture
+    if facture.prochaine_relance is not None \
+            or facture.statut != Facture.Statut.EN_RETARD:
+        return False
+    if niveaux is None:
+        niveaux = niveaux_cadence(facture.company)
+    if not niveaux:
+        return False
+    if echeance is None:
+        from ..scheduled import _echeance_effective, casablanca_today
+        echeance = _echeance_effective(facture, casablanca_today())
+    if echeance is None:
+        return False
+    facture.prochaine_relance = echeance + timedelta(
+        days=niveaux[0].delai_jours or 0)
+    if save:
+        facture.save(update_fields=['prochaine_relance'])
+    return True
 
 
 class PaiementRejectError(Exception):
@@ -164,15 +229,30 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     from decimal import Decimal
     from django.utils import timezone
     from ..models import Facture
+    if not auto and facture.statut != Facture.Statut.PAYEE:
+        # AFAC9 — LA porte unique : un brouillon, une facture annulée ou un
+        # acompte CAD122 avant J+7 ne s'abandonne pas (FactureNonEncaissable).
+        from .encaissements import exiger_facture_encaissable
+        exiger_facture_encaissable(facture)
     reste = facture.montant_du
     if reste <= 0:
         return Decimal('0')
-    facture.abandon_motif = motif
-    facture.abandon_montant = reste
-    facture.abandon_date = timezone.now()
-    facture.abandon_auto = bool(auto)
-    facture.abandon_par = user if (
+    # AFAC34 (D-AFAC-C6) — un ENREGISTREMENT de plus, jamais un écrasement :
+    # un second abandon (après rejet d'un chèque) CUMULE avec le premier.
+    from ..models import AbandonCreance
+    _assurer_abandons_enregistres(facture)
+    auteur = user if (
         user and getattr(user, 'is_authenticated', False)) else None
+    maintenant = timezone.now()
+    AbandonCreance.objects.create(
+        company=facture.company, facture=facture, montant=reste,
+        motif=motif or '', auto=bool(auto), created_by=auteur,
+        date_abandon=maintenant)
+    facture.abandon_motif = motif
+    facture.abandon_montant = _somme_abandons_actifs(facture)
+    facture.abandon_date = maintenant
+    facture.abandon_auto = bool(auto)
+    facture.abandon_par = auteur
     facture.save(update_fields=[
         'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
         'abandon_par',
@@ -188,6 +268,99 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
     activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
     return reste
+
+
+def _assurer_abandons_enregistres(facture):
+    """AFAC34 — une facture dont ``abandon_montant`` a été posé AVANT les
+    enregistrements (donnée héritée non migrée, écriture directe) reçoit
+    d'abord l'enregistrement qui le porte : la somme ne perd jamais l'ancien
+    abandon."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from ..models import AbandonCreance
+    ancien = facture.abandon_montant or Decimal('0')
+    if ancien > 0 and not AbandonCreance.objects.filter(
+            facture=facture).exists():
+        AbandonCreance.objects.create(
+            company=facture.company, facture=facture, montant=ancien,
+            motif=facture.abandon_motif or '',
+            auto=bool(facture.abandon_auto),
+            created_by_id=facture.abandon_par_id,
+            date_abandon=facture.abandon_date or timezone.now())
+
+
+def _somme_abandons_actifs(facture):
+    """AFAC34 — Σ des abandons ACTIFS (``annule_le`` vide) de la facture."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from ..models import AbandonCreance
+    total = AbandonCreance.objects.filter(
+        facture=facture, annule_le__isnull=True).aggregate(
+            s=Sum('montant'))['s']
+    return total or Decimal('0')
+
+
+class RepriseAbandonRefusee(Exception):
+    """AFAC34 — reprise d'abandon impossible (message FR, prêt 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def reprendre_abandon_creance(facture, *, user=None, motif='',
+                              abandon_id=None):
+    """AFAC34 (D-AFAC-C6 option a) — REPRISE MANUELLE d'un abandon de
+    créance (jamais automatique) : l'abandon visé (par défaut le plus récent
+    encore actif) reçoit ``annule_le``/``annule_par``/``motif_reprise`` ; la
+    somme des abandons actifs est recopiée dans ``abandon_montant`` ; le
+    statut de paiement est re-dérivé (ATOT8 : la facture repasse ÉMISE / EN
+    RETARD si un reste est dû) — un paiement tardif peut alors s'encaisser.
+    Renvoie l'abandon repris. Lève ``RepriseAbandonRefusee``."""
+    from django.db import transaction
+    from django.utils import timezone
+    from ..models import AbandonCreance, Facture
+    motif = (motif or '').strip()
+    if not motif:
+        raise RepriseAbandonRefusee(
+            'Motif obligatoire pour reprendre un abandon de créance.')
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut == Facture.Statut.ANNULEE:
+            raise RepriseAbandonRefusee(
+                'Facture annulée : aucun abandon à reprendre.')
+        _assurer_abandons_enregistres(locked)
+        actifs = AbandonCreance.objects.select_for_update().filter(
+            facture=locked, annule_le__isnull=True)
+        if abandon_id not in (None, ''):
+            abandon = actifs.filter(pk=abandon_id).first()
+        else:
+            abandon = actifs.order_by('-date_abandon', '-id').first()
+        if abandon is None:
+            raise RepriseAbandonRefusee(
+                'Aucun abandon de créance actif à reprendre.')
+        abandon.annule_le = timezone.now()
+        abandon.annule_par = user if (
+            user and getattr(user, 'is_authenticated', False)) else None
+        abandon.motif_reprise = motif
+        abandon.save(update_fields=['annule_le', 'annule_par',
+                                    'motif_reprise'])
+        locked.abandon_montant = _somme_abandons_actifs(locked)
+        locked.save(update_fields=['abandon_montant'])
+        from ..models import FactureActivity
+        FactureActivity.objects.create(
+            company=locked.company, facture=locked, user=abandon.annule_par,
+            kind=FactureActivity.Kind.MODIFICATION,
+            field='abandon', field_label='Abandon de créance',
+            old_value=str(abandon.montant), new_value='repris',
+            body=(f"Abandon de créance de {abandon.montant} MAD repris "
+                  f"— motif : {motif}."))
+        # ATOT8 — la facture « payée » par l'abandon revient au
+        # recouvrement (ÉMISE / EN RETARD) dès qu'un reste est dû.
+        from .encaissements import recalculer_statut_paiement
+        recalculer_statut_paiement(
+            locked, user=user, source='reprise_abandon')
+    return abandon
 
 
 def anomalies_emission_facture(facture):
@@ -511,10 +684,13 @@ def send_devis_followup_nudges():
 
     # Only look at envoye devis with a known send date.
     # QJR520 — une version remplacée (is_active=False) n'est jamais relancée.
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     candidates = Devis.objects.filter(
         statut=Devis.Statut.ENVOYE,
         is_active=True,
         date_envoi__isnull=False,
+        company_id__in=active_company_ids(),
     ).select_related('client', 'company', 'created_by').prefetch_related(
         'nudge_logs',
     )
@@ -703,9 +879,12 @@ def expire_stale_devis():
 
     # Candidats : devis envoyés uniquement (jamais accepte/refuse/expire).
     # QJR520 — une version remplacée n'expire pas (elle n'est plus en jeu).
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     candidates = Devis.objects.filter(
         statut=Devis.Statut.ENVOYE,
         is_active=True,
+        company_id__in=active_company_ids(),
     ).select_related('lead', 'lead__company')
 
     for devis in candidates:
@@ -716,8 +895,22 @@ def expire_stale_devis():
         # Flip to expired through the single status-change path: direct field
         # write + chatter log. Using the same field pattern as other beat jobs
         # (check_overdue_factures) — safe, reversible via git revert.
+        # ADEV47 (C-ADEV-013) — écriture CONDITIONNELLE : un devis accepté
+        # (ou refusé) entre la lecture et l'écriture reste dans SON statut ;
+        # chatter et événement ne partent que si la ligne a vraiment changé.
+        # La ligne est relue SOUS VERROU avec la condition `statut=ENVOYE`
+        # (équivalent d'un UPDATE conditionnel) puis sauvée normalement : les
+        # receveurs `pre_save`/`post_save` du devis (notifications, API
+        # publique) restent appelés comme avant.
+        from django.db import transaction
+        with transaction.atomic():
+            verrouille = Devis.objects.select_for_update().filter(
+                pk=devis.pk, statut=Devis.Statut.ENVOYE).first()
+            if verrouille is None:
+                continue
+            verrouille.statut = Devis.Statut.EXPIRE
+            verrouille.save(update_fields=['statut'])
         devis.statut = Devis.Statut.EXPIRE
-        devis.save(update_fields=['statut'])
 
         # Chatter entry via ventes.activity (exists for devis accepted/sent —
         # reuse the generic note pattern).
@@ -794,8 +987,10 @@ def _advance_lead_on_expiry(lead, today):
     """
     from datetime import timedelta
     from apps.crm import stages
-    from apps.crm.models import LeadActivity
     from apps.crm.services import appliquer_stage_lead
+    # ADEV56 — le chatter du lead est lu/écrit par sa relation inverse
+    # (`lead.activites`), jamais par un import de `apps.crm.models`.
+    NOTE = 'note'  # LeadActivity.Kind.NOTE
 
     if lead.perdu:
         return False, False
@@ -823,8 +1018,7 @@ def _advance_lead_on_expiry(lead, today):
     if lead.stage == stages.FOLLOW_UP:
         # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
         cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
-        recent_activity = LeadActivity.objects.filter(
-            lead=lead,
+        recent_activity = lead.activites.filter(
             created_at__date__gte=cutoff,
         ).exists()
         if recent_activity:
@@ -836,9 +1030,8 @@ def _advance_lead_on_expiry(lead, today):
         # intouché) ; le statut ``expire`` du devis reste posé (règle #4).
         from apps.crm.selectors import lead_en_attente_ou_veille
         if lead_en_attente_ou_veille(lead.pk, today, company=lead.company):
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
-                kind=LeadActivity.Kind.NOTE,
+            lead.activites.create(
+                company=lead.company, user=None, kind=NOTE,
                 body=NOTE_EXPIRATION_EN_ATTENTE)
             return False, False
         ancien = lead.stage

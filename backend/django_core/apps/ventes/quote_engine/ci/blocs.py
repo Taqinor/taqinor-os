@@ -370,12 +370,21 @@ def puces_conditions(d):
       gelées à l'envoi (``doc_texts``), la fonction unique que la page
       publique appelle déjà. Jamais ``cpq`` (parqué)."""
     cgv_ci = d.get("cgv_ci")
+    puces = []
     if isinstance(cgv_ci, list):
         puces = [_txt(p) for p in cgv_ci if _txt(p)]
-        if puces:
-            return puces
-    from ..generate_devis_premium import cgv_bullets_remplies
-    return [p for p in cgv_bullets_remplies(d) if _txt(p)]
+    if not puces:
+        from ..generate_devis_premium import cgv_bullets_remplies
+        puces = [p for p in cgv_bullets_remplies(d) if _txt(p)]
+    # AMOT36 — troncature DÉCLARÉE posée par ``commercial.equip.
+    # pdf_adaptatif`` quand le contrat de pages ne tient pas : les premières
+    # puces restent, la suite est renvoyée à la proposition en ligne.
+    garder = d.get("_cgv_max")
+    if isinstance(garder, int) and 0 <= garder < len(puces):
+        puces = puces[:garder] + [libelle(
+            d, "ci_cgv_suite",
+            "Suite des conditions : proposition en ligne")]
+    return puces
 
 
 def bloc_conditions(d, prefixe, couleur_titre, couleur_texte):
