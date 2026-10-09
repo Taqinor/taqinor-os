@@ -1,0 +1,285 @@
+{
+  "_doc": "AMET11 (C-AMET-025) — TABLE DE PARCOURS PA2 « Conception » (METHODE v3 §D.1), pilote : calepinage. Une étape = 1 déclencheur, 1 fonction d'entrée, 1 checkpoint, ≥ 1 règle aval, dérivés du code réel (services/, views/, receivers.py, écrans frontend/src/features/calepinage, contract_samples/). Trois lecteurs, une seule source : (1) la garde statique `apps/calepinage/tests/test_parcours_pa2.py` (résolution AST par `core/parcours.py`, sans base) ; (2) `scripts/check_parcours.py` (garde CI) et `scripts/rejouer_parcours.py` (rejeu live : walkthrough d'audit ET enregistrement d'acceptation) — AMET, à construire ; (3) le panneau d'écran par API (futur). Conventions : `apps/…` et `core/…` sont relatifs à backend/django_core, `frontend/…` à la racine du dépôt ; `ecran.action` = méthode + chemin sous /api/django/calepinage/ sauf mention ; `contrat` = les contract_samples de l'étape (charges utiles d'endpoint, autre geste). Modifier un geste du parcours sans cette table casse la garde ; la table sans le code aussi. Modèle : frontend/src/features/crm/relances/parcours_suivi.json.",
+  "id": "PA2",
+  "nom": "Conception",
+  "pilote": "calepinage",
+  "version": "1.0",
+  "maj": "2026-10-09",
+  "de": "/calepinage/nouveau",
+  "a": "/calepinage/:id/dossiers",
+  "hors_perimetre": "PA1, PA3-PA7 ; le sous-parcours 82-21 (table PA3, propriétaire devis).",
+  "taches": ["AMET11"],
+  "constats": ["C-AMET-025"],
+  "portes": [
+    {"ref": "apps/calepinage/views/bibliotheque.py::depuis_modele", "texte": "écran /calepinage/nouveau — LA porte de l'écran (ACAL183), avec ou sans modèle ni jeu de réglages ; lead, client ou devis"},
+    {"ref": "apps/calepinage/views/calepinages.py::CalepinageViewSet.create", "texte": "POST calepinages/ — même création (ouvrir_ou_creer_pour_lead / creer_pour_client, ACAL182)"},
+    {"ref": "apps/calepinage/views/depuis_lead.py::depuis_lead", "texte": "POST calepinages/depuis-lead/ — le calepinage du lead, le MÊME à chaque appel (CALX47)"},
+    {"ref": "apps/calepinage/views/cycle.py::dupliquer", "texte": "POST calepinages/:id/dupliquer/ — copie (variantes.dupliquer), unicité D-ACAL-12"},
+    {"ref": "apps/calepinage/views/projet_json.py::import_projet", "texte": "POST calepinages/import-projet/ — projet JSON exporté réimporté"},
+    {"ref": "apps/calepinage/receivers.py::reprise_du_trace_public", "texte": "lead_created d'un lead « mon toit » ⇒ calepinage pré-tracé (CAL110)"},
+    {"ref": "apps/calepinage/receivers.py::reprise_du_trace_au_renvoi", "texte": "lead_trace_toit_recu — tracé reçu au renvoi du webhook (ACAL189)"},
+    {"ref": "apps/calepinage/receivers.py::rattacher_conception_au_devis", "texte": "layout_finalise d'un devis sans calepinage ⇒ création (origine 'cree', ACAL38)"},
+    {"ref": "apps/ventes/domain/resynchronisation.py::ecrire_conception_du_devis", "texte": "atelier du devis /ventes/devis/:id/design ⇒ adopter_ou_creer_pour_devis (ACAL37)"}
+  ],
+  "etapes": [
+    {
+      "id": "PA2.1", "nom": "Créer le calepinage", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/CalepinageNouveau.jsx::creer"},
+      "ecran": {"route": "/calepinage/nouveau", "composant": "frontend/src/features/calepinage/CalepinageNouveau.jsx", "action": "POST calepinages/depuis-modele/"},
+      "fonction_entree": "apps/calepinage/services/creation.py::ouvrir_ou_creer_pour_lead",
+      "checkpoint": {"modifiable": true, "champs": ["titre", "responsable", "lead_id", "client"], "persistance": "apps/calepinage/models.py::Calepinage.lead_id"},
+      "regle_aval": [
+        {"type": "refus_409", "texte": "un lead qui a déjà un calepinage OUVERT ⇒ 409 calepinage_existant, rien n'est créé (D-ACAL-12)"},
+        {"type": "choix_explicite", "texte": "modèle et jeu de réglages appliqués seulement s'ils sont choisis (non choisis = non envoyés)"},
+        {"type": "reference", "texte": "client résolu depuis le lead ; société et auteur posés par le serveur, jamais lus du corps"}
+      ],
+      "provenance": {"marqueur": "jeuReglages", "ecrivains_auto": ["apps/calepinage/services/reprise_public.py::reprendre_trace_public"]},
+      "compensation": "Archiver (calepinages/:id/archiver/) — un calepinage ne se supprime jamais (ACAL120).",
+      "portes": ["apps/calepinage/services/creation.py::demarrer_depuis_modele", "apps/calepinage/services/creation.py::creer_pour_client", "apps/calepinage/services/creation.py::obtenir_ou_creer_pour_devis"],
+      "suite": "PA2.2",
+      "negatifs": ["sans lead ni client ⇒ 400 nommant le champ", "modèle d'une autre société ⇒ 404", "preset_id inconnu ⇒ 400 preset_id"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_detail.json", "apps/calepinage/contract_samples/calepinage_creation_conflit.json"],
+      "test_nomme": "apps/calepinage/tests/test_acal_creation_porte_unique.py::PorteUniqueTest.test_second_appel_renvoie_l_existant_409_ou_cree_false",
+      "taches": ["ACAL182", "ACAL183", "CALX351"], "constats": []
+    },
+    {
+      "id": "PA2.2", "nom": "Relevé terrain saisi", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/atelier/PanneauReleve.jsx::enregistrer"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/atelier/PanneauReleve.jsx", "action": "POST calepinages/:id/releve/"},
+      "fonction_entree": "apps/calepinage/services/releve.py::enregistrer_releve",
+      "checkpoint": {"modifiable": true, "champs": ["chaines", "azimut_boussole_deg", "precision_azimut_deg", "releve_le", "notes"], "persistance": "apps/calepinage/models.py::ReleveTerrain.chaines"},
+      "regle_aval": [
+        {"type": "non_propage", "texte": "le relevé ne touche ni statut ni document de conception"},
+        {"type": "choix_explicite", "texte": "appliquer une cote / un azimut au pan = geste explicite (releve/:rid/appliquer-cote/)"}
+      ],
+      "provenance": {"marqueur": "ReleveTerrain.provenance = saisie", "ecrivains_auto": []},
+      "compensation": "PATCH / DELETE calepinages/:id/releve/:rid/ (modifier_releve, supprimer_releve).",
+      "portes": [],
+      "suite": "PA2.4",
+      "negatifs": ["date manquante ou illisible ⇒ 400", "deux cotes manquantes dans une chaîne ⇒ refus nommé"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_releve.json"],
+      "test_nomme": "apps/calepinage/tests/test_releve_terrain.py::EnregistrementTest.test_aucun_statut_ni_layout_touche",
+      "taches": [], "constats": []
+    },
+    {
+      "id": "PA2.3", "nom": "Reprise du relevé de la visite technique", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/atelier/RepriseVisite.jsx::reprendre"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/atelier/RepriseVisite.jsx", "action": "POST calepinages/:id/releve-visite/"},
+      "fonction_entree": "apps/calepinage/services/reprise_visite.py::reprendre_visite",
+      "checkpoint": {"modifiable": true, "champs": ["mesures", "visite_id", "photos"], "persistance": "apps/calepinage/models.py::ReleveTerrain.mesures"},
+      "regle_aval": [
+        {"type": "reference", "texte": "la dernière visite VALIDÉE du lead (lue par apps.visites.selectors)"},
+        {"type": "preserve_manuel", "texte": "un relevé déjà repris n'est jamais retouché sans « remplacer »"}
+      ],
+      "provenance": {"marqueur": "ReleveTerrain.provenance = visite", "ecrivains_auto": ["apps/calepinage/services/reprise_visite.py::reprendre_visite"]},
+      "compensation": "« Mettre à jour depuis la visite » (remplacer=true, ACAL210) ; écart journalisé au chatter.",
+      "portes": [],
+      "suite": "PA2.4",
+      "negatifs": ["aucune visite validée ⇒ refus nommé (visite_id)", "calepinage sans lead ⇒ motif sans lead"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_releve_visite.json"],
+      "test_nomme": "apps/calepinage/tests/test_calx364_reprise_visite.py::ContratCommitteTest.test_apres_reprise",
+      "taches": ["CALX364", "ACAL210"], "constats": []
+    },
+    {
+      "id": "PA2.4", "nom": "Concevoir dans l'atelier (tracé, ombres, repère)", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/pages/ventes/ToitureDesign.jsx::enregistrerCalepinage"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/pages/ventes/ToitureDesign.jsx", "action": "POST calepinages/:id/layout/ (If-Match)"},
+      "fonction_entree": "apps/calepinage/services/layout.py::enregistrer_layout",
+      "checkpoint": {"modifiable": true, "champs": ["roof_layout"], "persistance": "apps/calepinage/models.py::Calepinage.roof_layout"},
+      "regle_aval": [
+        {"type": "refus_409", "texte": "If-Match obligatoire (428 sans jeton) ; document modifié ailleurs ⇒ 409 DocumentModifie ; devis lié figé ⇒ 409 VerrouilleRefuse"},
+        {"type": "non_propage", "texte": "le devis lié n'est pas réécrit (publication explicite, PA2.9) ; la simulation devient périmée : aucun chiffre servi"},
+        {"type": "fige", "texte": "une version n'est déposée que si la conception change (renvoi identique ⇒ inchange)"}
+      ],
+      "provenance": {"marqueur": "pinSource, zones[].pitchSource", "ecrivains_auto": [
+        "apps/calepinage/services/reprise_public.py::reprendre_trace_public",
+        "apps/calepinage/services/variantes.py::retenir_variante",
+        "apps/calepinage/services/repere.py::recentrer_sur_lead",
+        "apps/calepinage/services/versions.py::restaurer_version",
+        "apps/ventes/domain/resynchronisation.py::ecrire_conception_du_devis"
+      ]},
+      "compensation": "Restaurer une version (versions/:vid/restaurer/) ; GPS du lead corrigé après le tracé : recentrer-sur-lead ou garder-repere (ACAL191).",
+      "portes": ["apps/calepinage/services/layout.py::enregistrer_section", "apps/calepinage/services/repere.py::garder_repere"],
+      "suite": "PA2.5",
+      "negatifs": ["sans jeton If-Match ⇒ 428, rien n'est écrit", "contour nouvellement croisé ou nature de zone inconnue ⇒ 400 nommé", "GPS du lead corrigé après le tracé ⇒ dérive signalée (a_decider), jamais translatée à la lecture"],
+      "contrat": ["apps/calepinage/contract_samples/roof_layout_v2.schema.json", "apps/calepinage/contract_samples/calepinage_design_context.json", "apps/calepinage/contract_samples/calepinage_layout_section.json"],
+      "test_nomme": "apps/calepinage/tests/test_api_layout.py::ActionLayoutTest.test_post_nu_enregistre_et_historise",
+      "taches": ["ACAL316", "ACAL191", "ACAL352"], "constats": ["C-ACAL-044", "C-ACAL-003", "C-AMET-009"]
+    },
+    {
+      "id": "PA2.5", "nom": "Variantes : retenir la conception", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/VariantesCompare.jsx::retenir"},
+      "ecran": {"route": "/calepinage/:id/variantes", "composant": "frontend/src/features/calepinage/VariantesCompare.jsx", "action": "POST calepinages/:id/variantes/:vid/retenir/"},
+      "fonction_entree": "apps/calepinage/services/variantes.py::retenir_variante",
+      "checkpoint": {"modifiable": true, "champs": ["retenue"], "persistance": "apps/calepinage/models.py::CalepinageVariante.retenue"},
+      "regle_aval": [
+        {"type": "ecrase", "texte": "la conception courante devient celle de la variante (version « Variante « X » retenue ») ; jamais deux retenues"},
+        {"type": "refus_409", "texte": "devis lié figé ⇒ 409 avant toute écriture (ACAL43)"}
+      ],
+      "provenance": {"marqueur": "CalepinageVariante.retenue", "ecrivains_auto": []},
+      "compensation": "Retenir une autre variante, ou restaurer la version d'avant la retenue.",
+      "portes": ["apps/calepinage/services/variantes.py::creer_variante"],
+      "suite": "PA2.6",
+      "negatifs": ["feu vert bureau d'études actif sans visite validée ⇒ 400 (feu_vert)", "retenir deux fois la même variante ⇒ inchangé, aucune version"],
+      "contrat": ["apps/calepinage/contract_samples/variantes_comparer.json"],
+      "test_nomme": "apps/calepinage/tests/test_api_variantes.py::RetenirTest.test_bascule",
+      "taches": ["ACAL107", "CAL206"], "constats": []
+    },
+    {
+      "id": "PA2.6", "nom": "Simuler la production", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/production/PanneauProduction.jsx::lancer"},
+      "ecran": {"route": "/calepinage/:id/production", "composant": "frontend/src/features/calepinage/production/PanneauProduction.jsx", "action": "POST calepinages/:id/simuler/ (202 ⇒ moteur/resultat/:job/)"},
+      "fonction_entree": "apps/calepinage/services/simulation.py::simuler_calepinage",
+      "checkpoint": {"modifiable": false, "champs": ["resultat"], "persistance": "apps/calepinage/models.py::Calepinage.resultat"},
+      "regle_aval": [
+        {"type": "recalcul", "texte": "entrées changées ou forcer ⇒ nouveau calcul en tâche (202) ; empreinte inchangée ⇒ date du calcul existant (200)"},
+        {"type": "preserve_manuel", "texte": "les pertes saisies ne sont jamais réécrites par la simulation"},
+        {"type": "reference", "texte": "annonce calepinage_simule (webhook de l'API publique)"}
+      ],
+      "provenance": {"marqueur": "empreinte des entrées de simulation", "ecrivains_auto": ["apps/calepinage/services/simulation.py::recalculer_simulations_societe"]},
+      "compensation": "Relancer avec forcer=true ; corriger le réglage nommé par le refus.",
+      "portes": ["apps/calepinage/tasks.py::simuler_calepinage"],
+      "suite": "PA2.7",
+      "negatifs": ["sans mode météo, pan équipé ou épingle ⇒ 400 nommant le réglage", "variante étrangère ⇒ 404, même message qu'un id absent"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_simulation.json", "apps/calepinage/contract_samples/calepinage_resultat.json"],
+      "test_nomme": "apps/calepinage/tests/test_calx5_simulation.py::FraicheurTest.test_une_entree_inchangee_rend_la_date_du_calcul_existant",
+      "taches": ["CALX5", "ACAL112"], "constats": []
+    },
+    {
+      "id": "PA2.7", "nom": "Feu vert : approbation du bureau d'études", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/atelier/Approbation.jsx::decider"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/atelier/Approbation.jsx", "action": "POST calepinages/:id/approbation/"},
+      "fonction_entree": "apps/calepinage/services/approbation.py::decider",
+      "checkpoint": {"modifiable": true, "champs": ["decision", "motif"], "persistance": "apps/calepinage/models.py::Calepinage.approbation"},
+      "regle_aval": [
+        {"type": "fige", "texte": "l'accord porte l'empreinte imprimée : tout changement de conception le rend PÉRIMÉ (D-ACAL-11)"},
+        {"type": "reference", "texte": "la décision est notée au chatter ; generer-devis, sync-devis et pièces d'exécution la lisent (feu_vert.verifier_avant_publication)"}
+      ],
+      "provenance": {"marqueur": "approbation.empreinte_approuvee", "ecrivains_auto": []},
+      "compensation": "Nouvelle décision (accord, ou refus motivé) sur l'empreinte courante.",
+      "portes": ["apps/calepinage/services/feu_vert.py::verifier_avant_publication"],
+      "suite": "PA2.8",
+      "negatifs": ["porteur de calepinage_gerer sans droit d'approbation ⇒ 403", "refus sans motif ⇒ 400 nommant le motif", "auto-approbation refusée tant qu'un autre approbateur actif existe (ACAL303)"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_approbation.json"],
+      "test_nomme": "apps/calepinage/tests/test_calx347_approbation.py::ActionApprobationEnBase.test_relecteur_approuve_et_le_chatter_le_dit",
+      "taches": ["CALX347", "ACAL114", "ACAL116", "ACAL303"], "constats": []
+    },
+    {
+      "id": "PA2.8", "nom": "Générer le devis depuis la conception", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/BoutonDevis.jsx::generer"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/BoutonDevis.jsx", "action": "POST calepinages/:id/generer-devis/"},
+      "fonction_entree": "apps/calepinage/services/devis.py::generer_devis",
+      "checkpoint": {"modifiable": false, "champs": ["devis"], "persistance": "apps/calepinage/models.py::Calepinage.devis"},
+      "regle_aval": [
+        {"type": "reference", "texte": "le devis créé est lié au calepinage et porte la MÊME empreinte (layout_hash) ; un second clic rend le même brouillon"},
+        {"type": "choix_explicite", "texte": "verdict électrique bloquant ⇒ 422, sauf dérogation motivée consignée (ACAL170)"},
+        {"type": "refus_409", "texte": "calepinage déjà rattaché à un devis non réutilisable ⇒ 409 nommé"}
+      ],
+      "provenance": {"marqueur": "Devis.layout_hash", "ecrivains_auto": []},
+      "compensation": "Le brouillon se corrige côté devis ; la conception se republie par PA2.9.",
+      "portes": [],
+      "suite": "PA2.9",
+      "negatifs": ["sans conception ⇒ 400 nommant le champ", "lead agricole ⇒ 422 type_installation", "approbation exigée non à jour ⇒ 400 (feu vert, D-ACAL-24)"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_publication.json", "apps/calepinage/contract_samples/calepinage_publication_electrique.json"],
+      "test_nomme": "apps/calepinage/tests/test_api_generer_devis.py::GenererDevisTest.test_second_appel_rend_le_meme_devis",
+      "taches": ["CAL24", "ACAL170", "ACAL277"], "constats": []
+    },
+    {
+      "id": "PA2.9", "nom": "Publier la conception vers le devis (layout_finalise)", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/BoutonDevis.jsx::resynchroniser"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/BoutonDevis.jsx", "action": "POST calepinages/:id/sync-devis/"},
+      "fonction_entree": "apps/calepinage/services/devis.py::resynchroniser_devis",
+      "checkpoint": {"modifiable": false, "champs": ["Devis.roof_layout", "lignes du devis"], "persistance": "apps/ventes/models.py::Devis.roof_layout"},
+      "regle_aval": [
+        {"type": "recalcul", "texte": "quantités, batterie et onduleur recalculés sur la conception courante (ventes.resynchroniser_conception)"},
+        {"type": "preserve_manuel", "texte": "prix négociés, remises, sections et notes du devis préservés"},
+        {"type": "refus_409", "texte": "devis émis ⇒ 409 revision_possible : le geste est « Réviser (v2) »"},
+        {"type": "reference", "texte": "layout_finalise émis UNE fois (note chatter crm ; aucun miroir vers le calepinage, ACAL38)"}
+      ],
+      "provenance": {"marqueur": "Devis.layout_hash", "ecrivains_auto": ["apps/ventes/domain/resynchronisation.py::resynchroniser_conception"]},
+      "compensation": "Devis émis : « Réviser (v2) » puis republier (PA2.13).",
+      "portes": ["apps/ventes/domain/resynchronisation.py::emettre_layout_finalise"],
+      "suite": "PA2.10",
+      "negatifs": ["aucun devis lié ⇒ 400 nommant « Générer le devis »", "verdict électrique bloquant ⇒ 422 sans dérogation"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_du_devis.json"],
+      "test_nomme": "apps/calepinage/tests/test_acal_resync_annonce.py::ResyncAnnonceTest.test_resync_module_emet_layout_finalise_une_fois_sans_version",
+      "taches": ["CAL25", "ACAL34", "ACAL38", "ACAL98"], "constats": ["C-ACAL-107"]
+    },
+    {
+      "id": "PA2.10", "nom": "Livrables : sorties et dossier technique", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/documents/PanneauDocuments.jsx::telechargerSortie"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/documents/PanneauDocuments.jsx", "action": "GET calepinages/:id/sorties/ puis POST calepinages/:id/pack-technique/"},
+      "fonction_entree": "apps/calepinage/services/pack_technique.py::construire_pack",
+      "checkpoint": {"modifiable": false, "champs": [], "persistance": "apps/calepinage/services/pack_technique.py::deposer_et_fusionner"},
+      "regle_aval": [
+        {"type": "fige", "texte": "dépôt GED sous ancre stable : même empreinte = même document ; empreinte changée = nouvelle version, l'ancienne en historique (D-ADOC-2)"},
+        {"type": "reference", "texte": "pièces d'exécution derrière la porte unique views/sorties.py::porte_execution (ACAL116)"}
+      ],
+      "provenance": {"marqueur": "empreinte des entrées du pack", "ecrivains_auto": []},
+      "compensation": "Recomposer après correction de la conception : une nouvelle version du même document.",
+      "portes": ["apps/calepinage/views/sorties.py::inventaire_des_sorties", "apps/calepinage/views/sorties.py::porte_execution"],
+      "suite": "PA2.11",
+      "negatifs": ["pièce d'exécution sans approbation à jour ⇒ 400 nommé, rien n'est produit", "total de pages incohérent ⇒ refus nommé, une pièce vidée ne disparaît jamais sans bruit"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_sorties.json", "apps/calepinage/contract_samples/calepinage_documents.json"],
+      "test_nomme": "apps/calepinage/tests/test_cal181_pack.py::OrchestrationDuPackTest.test_la_societe_est_celle_du_serveur_et_le_rangement_est_dedie",
+      "taches": ["CAL181", "ACAL228", "ACAL236"], "constats": []
+    },
+    {
+      "id": "PA2.11", "nom": "Dossiers réglementaires", "proprietaire": "calepinage",
+      "declencheur": {"type": "clic", "source": "frontend/src/features/calepinage/DossiersReglementaires.jsx::generer"},
+      "ecran": {"route": "/calepinage/:id/dossiers", "composant": "frontend/src/features/calepinage/DossiersReglementaires.jsx", "action": "POST calepinages/:id/generer-dossier/"},
+      "fonction_entree": "apps/calepinage/services/reglementaire.py::construire_pack_dossier",
+      "checkpoint": {"modifiable": true, "champs": ["champs_saisis", "pieces_jointes"], "persistance": "apps/calepinage/models.py::DossierReglementaire.document_id"},
+      "regle_aval": [
+        {"type": "non_propage", "texte": "un changement de conception ne régénère pas le dossier : genere_sur_conception_perimee le signale (ACAL240)"},
+        {"type": "preserve_manuel", "texte": "les champs saisis (champs-dossier) et pièces jointes sont repris à chaque génération"}
+      ],
+      "provenance": {"marqueur": "DossierReglementaire.genere_empreinte", "ecrivains_auto": []},
+      "compensation": "Régénérer le dossier sur la conception courante.",
+      "portes": ["apps/calepinage/services/reglementaire.py::enregistrer_champs", "apps/calepinage/services/reglementaire.py::joindre_piece"],
+      "suite": "fin",
+      "negatifs": ["société sans gabarit déposé ⇒ 400 gabarit", "gabarit non PDF ⇒ refus nommé"],
+      "contrat": ["apps/calepinage/contract_samples/dossiers_reglementaires.json", "apps/calepinage/contract_samples/gabarits_dossier_reglementaire.json"],
+      "test_nomme": "apps/calepinage/tests/test_acal_dossier_reglementaire_generation.py::GenerationDossierTest.test_document_et_peremption_exposes",
+      "taches": ["CALX40", "CALX41", "ACAL240"], "constats": []
+    },
+    {
+      "id": "PA2.12", "nom": "Sous-parcours ACAL35 : conception adoptée par un devis", "proprietaire": "calepinage",
+      "declencheur": {"type": "evenement", "source": "core/events/devis.py::layout_finalise"},
+      "ecran": {"route": "/ventes/devis/:id/design", "composant": "frontend/src/pages/ventes/ToitureDesign.jsx", "action": "POST /api/django/ventes/devis/from-layout/ (émet layout_finalise)"},
+      "fonction_entree": "apps/calepinage/services/creation.py::adopter_ou_creer_pour_devis",
+      "checkpoint": {"modifiable": false, "champs": ["devis"], "persistance": "apps/calepinage/models.py::Calepinage.devis"},
+      "regle_aval": [
+        {"type": "preserve_manuel", "texte": "un calepinage déjà lié ou ADOPTÉ n'est jamais réécrit (roof_layout / layout_hash octet-identiques, D-ACAL-1)"},
+        {"type": "reference", "texte": "lien devis ↔ calepinage par liens.lier_devis : un calepinage par devis"}
+      ],
+      "provenance": {"marqueur": "origine existant | adopte | cree", "ecrivains_auto": ["apps/calepinage/receivers.py::rattacher_conception_au_devis"]},
+      "compensation": "Aucune réécriture à défaire ; plusieurs calepinages ouverts ⇒ création, nommés au journal applicatif.",
+      "portes": ["apps/calepinage/receivers.py::rattacher_conception_au_devis", "apps/ventes/domain/resynchronisation.py::ecrire_conception_du_devis"],
+      "suite": "PA2.4",
+      "negatifs": ["plusieurs calepinages ouverts sans devis sur le lead ⇒ création, aucun choix silencieux", "devis tenu par un calepinage archivé ⇒ 409 nommé", "échec du rattachement ⇒ journalisé, jamais propagé à l'enregistrement du devis"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_du_devis.json"],
+      "test_nomme": "apps/calepinage/tests/test_acal_adoption_devis.py::AdoptionDevisTest.test_adoption_ne_reecrit_pas_le_document",
+      "taches": ["ACAL35", "ACAL37", "ACAL38"], "constats": []
+    },
+    {
+      "id": "PA2.13", "nom": "Sous-parcours : devis révisé, calepinage re-lié à la V2", "proprietaire": "calepinage",
+      "declencheur": {"type": "evenement", "source": "core/events/devis.py::devis_revise"},
+      "ecran": {"route": "/calepinage/:id", "composant": "frontend/src/features/calepinage/BoutonDevis.jsx", "action": "« Réviser (v2) » : POST /api/django/ventes/devis/:id/reviser/ (émet devis_revise)"},
+      "fonction_entree": "apps/calepinage/receivers.py::relier_calepinage_au_devis_revise",
+      "checkpoint": {"modifiable": false, "champs": ["devis"], "persistance": "apps/calepinage/models.py::Calepinage.devis"},
+      "regle_aval": [
+        {"type": "fige", "texte": "une version FIGÉE « Version envoyée — <référence V1> » est déposée (preuve de l'envoi)"},
+        {"type": "reference", "texte": "le MÊME calepinage est re-lié à la V2 (variantes, pertes, versions restent) ; la V1 le retrouve par superseded_by (D-ACAL-3)"}
+      ],
+      "provenance": {"marqueur": "libellé « Version envoyée — <référence> »", "ecrivains_auto": []},
+      "compensation": "Restaurer la version figée « Version envoyée » si la V2 doit repartir de l'envoi.",
+      "portes": ["apps/calepinage/services/liens.py::lier_devis"],
+      "suite": "PA2.4",
+      "negatifs": ["calepinage non lié directement à la V1 ⇒ rien n'est écrit", "échec ⇒ journalisé, la révision reste actée"],
+      "contrat": ["apps/calepinage/contract_samples/calepinage_du_devis.json"],
+      "test_nomme": "apps/calepinage/tests/test_acal_reviser_relie.py::ReviserRelieTest.test_reviser_relie_calepinage_a_v2_avec_variantes",
+      "taches": ["ACAL92", "ACAL93"], "constats": []
+    }
+  ]
+}
