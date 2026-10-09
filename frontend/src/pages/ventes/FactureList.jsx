@@ -1169,7 +1169,10 @@ export default function FactureList() {
 
       {/* ── WIR103/ZFAC4 — Modale « Note de débit » (création + PDF) ── */}
       <NoteDebitDialog
-        facture={noteDebitTarget}
+        facture={noteDebitTarget
+          ? (factures.find(x => x.id === noteDebitTarget.id) ?? noteDebitTarget)
+          : null}
+        onChanged={() => dispatch(fetchFactures())}
         open={!!noteDebitTarget}
         onOpenChange={(o) => { if (!o) setNoteDebitTarget(null) }}
       />

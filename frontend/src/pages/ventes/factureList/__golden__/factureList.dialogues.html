@@ -8436,15 +8436,25 @@
 <div role="dialog" id="radix-_r_p7_" aria-describedby="radix-_r_p9_" aria-labelledby="radix-_r_p8_" data-state="open" class="fixed left-1/2 top-1/2 z-[var(--z-modal)] grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out rounded-xl border border-border bg-card p-5 text-card-foreground shadow-ui-lg focus:outline-none safe-top" tabindex="-1" style="pointer-events: auto;">
 <div class="flex flex-col gap-1 pe-6">
 <h2 id="radix-_r_p8_" class="font-display text-lg font-semibold leading-tight">Notes de débit — FAC-2026-07-0001</h2>
-<p id="radix-_r_p9_" class="text-sm text-muted-foreground">Une note de débit majore une facture déjà émise (pendant de l'avoir). Sans lignes personnalisées, elle reprend celles de la facture.</p>
+<p id="radix-_r_p9_" class="text-sm text-muted-foreground">Une note de débit majore une facture déjà émise (pendant de l'avoir). Saisissez le montant HT à majorer : une note de débit ne copie jamais toute la facture. Reste dû : <strong>5 000,00 MAD</strong>.</p>
 </div>
 <p class="text-sm text-muted-foreground">Aucune note de débit sur cette facture.</p>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="nd-motif">Motif</label>
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="nd-motif" placeholder="Ex. révision tarifaire, frais complémentaires…" type="text" value="">
 </div>
+<div class="grid grid-cols-2 gap-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="nd-montant">Montant HT (MAD)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="nd-montant" step="any" min="0" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="nd-tva">TVA (%)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="nd-tva" step="any" min="0" type="number" value="20">
+</div>
+</div>
 <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" disabled="">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus size-3.5" aria-hidden="true">
 <path d="M5 12h14">
 </path>

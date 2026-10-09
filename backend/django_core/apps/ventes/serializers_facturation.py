@@ -524,6 +524,9 @@ class NoteDebitSerializer(serializers.ModelSerializer):
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     client_nom = serializers.SerializerMethodField()
+    # AFAC33 — une ND s'annule par AVOIR (D-AFAC-C4) : son statut reste « émise »,
+    # l'écran lit ce booléen pour la montrer « Annulée » après rechargement.
+    annulee = serializers.SerializerMethodField()
 
     class Meta:
         from .models import NoteDebit
@@ -537,6 +540,10 @@ class NoteDebitSerializer(serializers.ModelSerializer):
     def get_client_nom(self, obj):
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+    def get_annulee(self, obj):
+        from .models import Avoir
+        return obj.avoirs_annulation.filter(statut=Avoir.Statut.EMISE).exists()
 
 
 class PromessePaiementSerializer(serializers.ModelSerializer):
