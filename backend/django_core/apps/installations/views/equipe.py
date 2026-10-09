@@ -11,6 +11,7 @@ from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
+from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
 from ..models import Equipe
 from ..serializers import EquipeSerializer
@@ -33,7 +34,7 @@ def _check_members_tenant(serializer, company):
         raise ValidationError({'chef': 'Chef inconnu.'})
 
 
-class EquipeViewSet(CompanyScopedModelViewSet):
+class EquipeViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """DC40 — équipes terrain (membres = utilisateurs). Lecture tout rôle,
     écriture responsable/admin. Société + `created_by` posés côté serveur ;
     membres/chef validés tenant. Filtrable par `actif`."""
@@ -53,6 +54,15 @@ class EquipeViewSet(CompanyScopedModelViewSet):
             val = str(actif).lower() in ('1', 'true', 'oui', 'yes')
             qs = qs.filter(actif=val)
         return qs
+
+    def destroy_guard_message(self, equipe):
+        # ACHT73 — `Intervention.equipe_ref` est SET_NULL : supprimer une
+        # équipe affectée effacerait l'équipe de ses interventions.
+        nb = equipe.interventions.count()
+        if nb:
+            return (f"Affectée à {nb} intervention{'s' if nb > 1 else ''} — "
+                    "désactivez l'équipe plutôt que de la supprimer.")
+        return None
 
     def perform_create(self, serializer):
         company = self.request.user.company

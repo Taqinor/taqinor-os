@@ -93,13 +93,20 @@ def refresh_allowed(refresh_raw, user=None):
         from authentication.models import UserSession
 
         token = RefreshToken(refresh_raw)
-        jti = token.get('jti')
+        # ASEC49 — le refresh tourne (nouveau ``jti``) : la session se retrouve
+        # par son claim STABLE ``sid`` (repli ``jti`` pour un jeton non tourné).
+        jti = token.get(SESSION_CLAIM) or token.get('jti')
         if not jti:
             return True
         session = UserSession.objects.filter(
-            jti=jti, revoked=False).select_related('company').first()
+            jti=jti).select_related('company').first()
         if session is None:
             return True
+        if session.revoked:
+            # Session révoquée (logout, appareil, éviction, mot de passe) : un
+            # refresh TOURNÉ après la révocation n'est pas dans la liste noire
+            # (seul le jeton d'origine l'est) — il est refusé ici.
+            return False
         company = session.company or getattr(user, 'company', None)
         profile = _policy(company)
         if profile is None:

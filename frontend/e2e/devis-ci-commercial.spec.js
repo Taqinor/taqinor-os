@@ -195,9 +195,12 @@ test('CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requ
 test('CIQ334 — signature entreprise : sans ICE refusée en nommant le champ, avec ICE acceptée et imprimée', async ({ request }) => {
   test.setTimeout(180_000)
   expect(etat.token, 'le test du lien doit précéder').toBeTruthy()
+  // ADEV51 — la signature renvoie l'empreinte du contenu LU (servie par /data/).
+  const lu = await lireJson(await request.get(`${API}/public/proposal/${etat.token}/data/`), 'lecture de la proposition')
   const corps = (entreprise) => ({
     nom: 'Karim E2E', option: '', consent_esign: true,
     signed_at_client: new Date().toISOString(), on_behalf_of: '', entreprise,
+    empreinte_contenu: lu.empreinte_contenu,
   })
   const sansIce = await request.post(`${API}/ventes/proposal/${etat.token}/accept/`,
     { data: corps({ ...ENTREPRISE, ice: '' }) })

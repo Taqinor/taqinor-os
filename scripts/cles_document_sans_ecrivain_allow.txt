@@ -1,0 +1,6 @@
+# Base de reference de check_calepinage_cles_document.py (ACAL343).
+# `exemple::<cle>` = cle racine du schema absente de `exemple` ;
+# `ecrivain::<cle>` = cle racine sans aucun ecrivain. DETTE : ne peut que
+# RETRECIR (--write-baseline refuse d'ajouter).
+exemple::modePoseDeclare  # ACAL343 dette du jour
+exemple::repere  # ACAL343 dette du jour

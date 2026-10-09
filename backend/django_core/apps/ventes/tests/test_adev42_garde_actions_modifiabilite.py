@@ -1,170 +1,194 @@
-"""ADEV42 (C-ADEV-040, critère C2) — garde de CLASSE « écriture d'un devis
-hors prédicat de modifiabilité ».
+"""ADEV42 (C-ADEV-040) — garde de CLASSE : toute ``@action`` d'ÉCRITURE
+(POST/PATCH/PUT/DELETE) de ``DevisViewSet`` et de ses mixins (dont
+``views/devis_calepinage.py``) passe par le prédicat de modifiabilité
+(``_refus_modifiabilite`` → 409) ou figure dans une exemption NOMMÉE et
+justifiée.
 
-Le test introspecte ``DevisViewSet.get_extra_actions()`` (mixins compris :
-``views/devis_calepinage.py``, ``devis_cycle.py``, ``devis_etudes.py``…) et,
-pour chaque ``@action`` d'ÉCRITURE (POST/PATCH/PUT/DELETE) :
+* les actions sont DÉCOUVERTES par introspection (``get_extra_actions()`` +
+  les écritures standard ``update``/``partial_update``/``destroy``) ;
+* une action d'écriture nouvelle, ni gardée ni exemptée, est NOMMÉE par
+  ``test_toute_action_ecriture_classee`` ;
+* chaque action gardée est APPELÉE pour de vrai sur un devis ACCEPTÉ et doit
+  répondre 409 (exécution, pas lecture du source) ; chaque refus historique
+  en 400 (contrats QJR588 / QJR557 / en-tête figé) est rejoué et doit
+  répondre 400 ; dans tous les cas le devis relu est identique.
 
-* exemptée par NOM dans ``EXEMPTIONS`` (justification obligatoire) → sautée ;
-* portée par une garde PROPRE documentée (``GARDES_PROPRES``) → APPELÉE sur
-  un devis ACCEPTÉ, statut attendu vérifié, devis relu inchangé ;
-* sinon → APPELÉE réellement sur un devis ACCEPTÉ : doit répondre 409
-  (``_refus_modifiabilite`` / ``_reponse_non_modifiable``) et ne rien écrire.
-
-Une action d'écriture nouvelle sans garde est donc NOMMÉE par l'échec
-(exécution, jamais lecture du source).
-
-Test-du-test : retirer la garde de ``conception_electrique`` ⇒
-``conception_electrique POST → 200`` est nommé et le test échoue.
+Test-du-test : retirer la garde de ``conception_electrique`` (POST) ⇒
+``test_toute_action_ecriture_gardee`` la nomme (200 au lieu de 409).
+Complémentaire de ``test_actions_devis_ont_appelant.py`` (autre classe).
 """
-import json
 from decimal import Decimal
-from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.forms.models import model_to_dict
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
-from apps.ventes.models import Devis, LigneDevis
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, DevisActivity, LigneDevis, LotDevis
+from apps.ventes import urls as _urls  # noqa: F401 — actions greffées
 from apps.ventes.views import DevisViewSet
 from authentication.models import Company
 
 User = get_user_model()
+BASE = '/api/django/ventes/devis/'
+ECRITURES = ('post', 'put', 'patch', 'delete')
 
-_ECRITURES = ('post', 'put', 'patch', 'delete')
-
-#: Actions d'écriture qui NE passent PAS par le prédicat de modifiabilité,
-#: par NOM d'action — chacune justifiée (jamais ignorée en silence).
-EXEMPTIONS = {
-    'composition': 'dry-run : compose le kit sans rien créer (U3)',
-    'auto': 'crée un NOUVEAU devis depuis un lead (detail=False)',
-    'atomic': 'crée un NOUVEAU devis + lignes (detail=False)',
-    'from_layout': 'crée un NOUVEAU brouillon depuis un layout '
-                   '(detail=False)',
-    'variante_config': 'réglage société des variantes (detail=False), '
-                       'aucun devis',
-    'revoquer_lien_public': 'sécurité : révoquer le lien public d\'un '
-                            'accepté reste permis (aucun chiffre écrit)',
-    'save_preset': 'LIT le devis pour créer un preset société',
-    'dupliquer': 'crée une COPIE ; la source n\'est pas écrite',
-    'dupliquer_variante': 'crée des variantes ; la source n\'est pas écrite',
-    'dupliquer_variante_gamme': 'crée une gamme sœur ; la source n\'est '
-                                'pas écrite',
-    'reviser': 'D-QJR5-2 : LE geste d\'un accepté (crée la V2)',
-    'renouveler': 'crée une nouvelle version d\'un devis expiré',
-    'accepter': 'geste de CYCLE DE VIE (gardes propres de accept_devis, '
-                'ADEV7/ADEV13)',
-    'refuser': 'geste de CYCLE DE VIE (gardes propres, ADEV7)',
-    'noter': 'note interne au chatter, permise à tout statut',
-    'approuver_remise': 'approbation admin de la remise (drapeau), '
-                        'aucune ligne ni chiffre réécrit',
-    'share_link': 'diffusion : frappe un lien de lecture',
-    'envoyer_email': 'diffusion (gardes de cycle ENVOYER propres)',
-    'whatsapp_preview': 'diffusion : aperçu du message, aucune écriture',
-    'whatsapp': 'diffusion (gardes de cycle propres)',
-    'pdf_partage': 'diffusion du PDF /proposal (règle #4 : rendu seul)',
-    'contacter_superieur': 'message interne au supérieur, aucun chiffre',
-    'convertir_en_bc': 'aval d\'un accepté (BC) — exige l\'acceptation',
-    'generer_facture': 'aval d\'un accepté (facture)',
-    'facturer_complet': 'aval d\'un accepté (facture)',
-    'proforma_pdf': 'rendu d\'une proforma, aucun chiffre du devis écrit',
-    'generer_pdf': 'rendu /proposal (règle #4 : le moteur rend seulement)',
+#: Actions GARDÉES par ``_refus_modifiabilite`` : (verbe, corps) rejoués sur
+#: un devis ACCEPTÉ → 409. Le corps suffit à franchir les contrôles de forme
+#: qui précèdent la garde.
+GARDEES_409 = {
+    'sync_layout': [('post', {'result': {'panels': 9, 'kwc': 4.95}})],
+    'conception_electrique': [('post', {})],
+    'simuler': [('post', {})],
+    'ajouter_boq_electrique': [('post', {})],
+    'layout': [('post', {'result': {'panels': 9}})],
+    'roof_image': [('post', {})],
+    'lots': [('post', {'nom_lot': 'Lot A'})],
+    'replace_lines': [('post', {'lignes': []})],
+    'etude_params': [('patch', {'note_interne': 'x'})],
+    'offres_tailles_config': [('patch', {})],
+    'offres_tailles_regenerer': [('post', {})],
+    'overrides': [('patch', {}), ('delete', {})],
+    'destroy': [('delete', {})],
 }
 
-#: Actions gardées par une garde PROPRE au contrat historique (pas un 409) :
-#: action → (corps, statut attendu sur un ACCEPTÉ). Exécutées réellement.
-GARDES_PROPRES = {
-    'reappliquer_lead': ({}, 400),        # _refus_derive_fige → devis_fige
-    'acquitter_derive': ({}, 400),        # _refus_derive_fige → devis_fige
-    # garde de statut de sync_devis_from_layout → 400 revision_possible
-    'offres_tailles_appliquer': ({'cle': 'recommande'}, 400),
+#: Refus HISTORIQUES en 400 (même prédicat, code conservé par contrat) :
+#: rejoués → 400, devis inchangé.
+REFUS_400 = {
+    'reappliquer_lead': [('post', {})],   # QJR588 400 devis_fige
+    'acquitter_derive': [('post', {})],   # QJR588 400 devis_fige
+    'offres_tailles_appliquer': [('post', {'cle': 'recommande'})],  # QJR557
+    'partial_update': [('patch', {'note': 'Retouche'})],  # 400 {statut}
+    'update': [('put', {'note': 'Retouche'})],  # 400 (validation / figé)
+}
+
+#: Écritures LÉGITIMES sur un devis accepté (elles ne modifient pas son
+#: contenu, ou sont le geste de cycle lui-même) — exemptions NOMMÉES.
+EXEMPTEES = {
+    'accepter': 'geste de cycle (garde geste_cycle_permis, ADEV7).',
+    'refuser': 'geste de cycle (garde geste_cycle_permis, ADEV7).',
+    'reviser': 'LE geste attendu sur un accepté : crée la V+1.',
+    'renouveler': 'crée un nouveau devis (renouvellement).',
+    'dupliquer': 'crée une copie brouillon indépendante.',
+    'dupliquer_variante': 'crée des copies brouillon (variantes).',
+    'dupliquer_variante_gamme': 'crée la sœur de gamme (brouillon).',
+    'save_preset': 'enregistre un modèle de la société.',
+    'noter': 'note au chatter, contenu du devis inchangé.',
+    'share_link': 'lien client (envoi), contenu inchangé.',
+    'envoyer_email': 'renvoi au client, contenu inchangé.',
+    'whatsapp': 'envoi WhatsApp, contenu inchangé.',
+    'whatsapp_preview': 'aperçu du message, aucune écriture du devis.',
+    'pdf_partage': 'rendu PDF partagé (règle #4 : le moteur rend).',
+    'revoquer_lien_public': 'révoque le lien client.',
+    'contacter_superieur': 'demande au supérieur (notification).',
+    'approuver_remise': 'approbation administrateur, contenu inchangé.',
+    'generer_pdf': 'rendu PDF (règle #4 : le moteur rend seulement).',
+    'proforma_pdf': 'rendu de la proforma.',
+    'convertir_en_bc': 'aval d’un accepté (BonCommande).',
+    'generer_facture': 'aval d’un accepté (facture).',
+    'facturer_complet': 'aval d’un accepté (factures).',
+    # detail=False — ne visent aucun devis existant.
+    'atomic': 'création d’un NOUVEAU devis (detail=False).',
+    'auto': 'création d’un NOUVEAU devis (detail=False).',
+    'composition': 'aperçu à blanc, aucune écriture (detail=False).',
+    'from_layout': 'création d’un NOUVEAU devis (detail=False).',
+    'variante_config': 'réglage de la société (detail=False).',
 }
 
 
-def _actions_ecriture():
-    """(nom, url_path, méthodes d'écriture, detail) de chaque @action."""
-    sortie = []
-    for act in DevisViewSet.get_extra_actions():
-        methodes = sorted(m for m in act.mapping if m in _ECRITURES)
-        if methodes:
-            sortie.append((act.__name__, act.url_path, methodes, act.detail))
-    return sortie
+def _ecritures_decouvertes():
+    """``{nom: url_path}`` des actions d'écriture du viewset (+ standard)."""
+    trouvees = {}
+    for action in DevisViewSet.get_extra_actions():
+        if any(m in ECRITURES for m in action.mapping):
+            trouvees[action.__name__] = action.url_path
+    for nom in ('update', 'partial_update', 'destroy'):
+        if hasattr(DevisViewSet, nom):
+            trouvees[nom] = None
+    return trouvees
 
 
 class GardeActionsModifiabiliteTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.company = Company.objects.create(nom='ADEV42', slug='adev42-co')
-        cls.user = User.objects.create_user(
-            username='adev42_admin', password='x', role_legacy='admin',
-            company=cls.company)
-        client = Client.objects.create(
-            company=cls.company, nom='Client ADEV42',
-            email='adev42@example.com')
-        cls.devis = Devis.objects.create(
-            company=cls.company, reference='DV-ADEV42-ACC', client=client,
-            created_by=cls.user, statut=Devis.Statut.ACCEPTE)
-        LigneDevis.objects.create(
-            devis=cls.devis, designation='Panneau 550 W', quantite=10,
-            prix_unitaire=Decimal('1200'))
 
     def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor ADEV42', slug='taqinor-adev42')
+        self.user = User.objects.create_user(
+            username='adev42-admin', password='x', company=self.company,
+            role_legacy='admin')
+        client = Client.objects.create(
+            company=self.company, nom='Client', prenom='ADEV42',
+            telephone='+212661542042')
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau ADEV42 710W', sku='ADEV42-PV',
+            prix_vente=Decimal('1000'), prix_achat=Decimal('700'),
+            quantite_stock=100)
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-ADEV42-0001', client=client,
+            created_by=self.user, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE,
+            roof_layout={'result': {'panels': 9, 'kwc': 4.95}},
+            electrical_design={'bom': [{'designation': 'Câble', 'q': 1}]})
+        LigneDevis.objects.create(
+            devis=self.devis, produit=produit, designation=produit.nom,
+            quantite=Decimal('9'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'))
         self.api = APIClient()
-        self.api.force_authenticate(self.user)
         self.api.raise_request_exception = False
+        self.api.force_authenticate(self.user)
 
-    def _empreinte(self):
-        d = Devis.objects.filter(pk=self.devis.pk).values().first()
-        lignes = sorted(
-            json.dumps(model_to_dict(lg), sort_keys=True, default=str)
-            for lg in LigneDevis.objects.filter(devis_id=self.devis.pk))
-        return json.dumps(d, sort_keys=True, default=str), lignes
+    def _instantane(self):
+        return {
+            'devis': Devis.objects.filter(pk=self.devis.pk).values().first(),
+            'lignes': list(LigneDevis.objects.filter(devis_id=self.devis.pk)
+                           .order_by('pk').values()),
+            'lots': LotDevis.objects.filter(devis_id=self.devis.pk).count(),
+            'activites': DevisActivity.objects.filter(
+                devis_id=self.devis.pk).count(),
+        }
 
     def _url(self, url_path):
-        return '/api/django/ventes/devis/%s/%s/' % (self.devis.pk, url_path)
+        if url_path is None:
+            return f'{BASE}{self.devis.pk}/'
+        return f'{BASE}{self.devis.pk}/{url_path}/'
+
+    def _jouer(self, table, attendu):
+        decouvertes = _ecritures_decouvertes()
+        ecarts = []
+        for nom, appels in table.items():
+            for verbe, corps in appels:
+                resp = getattr(self.api, verbe)(
+                    self._url(decouvertes[nom]), corps, format='json')
+                if resp.status_code != attendu:
+                    ecarts.append(
+                        f'{nom} {verbe.upper()} → {resp.status_code} '
+                        f'(attendu {attendu}) '
+                        f'{getattr(resp, "content", b"")[:160]!r}')
+        return ecarts
+
+    def test_toute_action_ecriture_classee(self):
+        decouvertes = _ecritures_decouvertes()
+        classees = set(GARDEES_409) | set(REFUS_400) | set(EXEMPTEES)
+        non_classees = sorted(set(decouvertes) - classees)
+        self.assertEqual(
+            non_classees, [],
+            'action d’écriture de DevisViewSet ni gardée par '
+            '_refus_modifiabilite (GARDEES_409) ni exemptée avec sa raison '
+            '(EXEMPTEES / REFUS_400)')
+        perimees = sorted(classees - set(decouvertes))
+        self.assertEqual(perimees, [],
+                         'entrée de la garde pour une action disparue')
 
     def test_toute_action_ecriture_gardee(self):
-        actions = _actions_ecriture()
-        noms = {a[0] for a in actions}
-        # La garde n'est pas vide : les actions gardées connues sont vues.
-        for attendue in ('conception_electrique', 'simuler', 'replace_lines',
-                         'etude_params', 'layout', 'sync_layout'):
-            self.assertIn(attendue, noms)
+        avant = self._instantane()
+        ecarts = self._jouer(GARDEES_409, 409)
+        self.assertEqual(ecarts, [], '\n'.join(ecarts))
+        # Aucun geste refusé n'a écrit (statut LU, jamais écrit — règle #4).
+        self.assertEqual(self._instantane(), avant)
 
-        avant = self._empreinte()
-        echecs = []
-        # Tâche Celery de simulation doublée : aucune exécution réelle si une
-        # garde manquait (l'échec est nommé, sans effet de bord).
-        with mock.patch('apps.ventes.tasks.task_simulate_bankable_study'):
-            for nom, url_path, methodes, detail in actions:
-                if nom in EXEMPTIONS:
-                    continue
-                if not detail:
-                    echecs.append('%s : action detail=False d\'écriture non '
-                                  'classée (EXEMPTIONS)' % nom)
-                    continue
-                corps, attendu = GARDES_PROPRES.get(nom, ({}, 409))
-                for methode in methodes:
-                    reponse = getattr(self.api, methode)(
-                        self._url(url_path), corps, format='json')
-                    if reponse.status_code != attendu:
-                        echecs.append('%s %s → %s (attendu %s)' % (
-                            nom, methode.upper(), reponse.status_code,
-                            attendu))
-        self.assertEqual(
-            echecs, [],
-            'action d\'écriture hors prédicat de modifiabilité sur un devis '
-            'ACCEPTÉ — la garder (_refus_modifiabilite) ou la déclarer '
-            '(nom + justification) dans EXEMPTIONS : %s' % echecs)
-        # Rien n'a été écrit sur l'accepté.
-        self.assertEqual(self._empreinte(), avant)
-
-    def test_exemptions_vivantes_et_justifiees(self):
-        noms = {a[0] for a in _actions_ecriture()}
-        for nom, justif in EXEMPTIONS.items():
-            self.assertTrue(justif and len(justif) > 10, nom)
-            self.assertIn(nom, noms, 'exemption morte : %s' % nom)
-        for nom in GARDES_PROPRES:
-            self.assertIn(nom, noms, 'garde propre morte : %s' % nom)
+    def test_refus_historiques_400(self):
+        avant = self._instantane()
+        ecarts = self._jouer(REFUS_400, 400)
+        self.assertEqual(ecarts, [], '\n'.join(ecarts))
+        self.assertEqual(self._instantane(), avant)

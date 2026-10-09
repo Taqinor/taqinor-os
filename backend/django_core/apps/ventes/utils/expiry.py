@@ -32,11 +32,19 @@ def date_expiration(devis):
 
 
 def is_expired(devis, today=None):
-    """Vrai si le devis est expiré à la volée (statut en attente + date passée)."""
+    """Vrai si le devis est expiré à la volée (statut en attente + date passée).
+
+    ADEV52 (C-ADEV-019) — UNE règle : l'offre vaut jusqu'à la FIN de son
+    dernier jour de validité, à l'heure du MAROC (``timezone.localdate()``,
+    ``TIME_ZONE = 'Africa/Casablanca'``) — jamais le jour du serveur (UTC dans
+    le conteneur) ni « 12:00 UTC » comme le calculait la page. La page lit
+    ce verdict (``offre_expiree``), l'acceptation client l'applique."""
     if devis.statut not in PENDING_STATUTS:
         return False
     exp = date_expiration(devis)
     if exp is None:
         return False
-    from datetime import date as _date
-    return (today or _date.today()) > exp
+    if today is None:
+        from django.utils import timezone
+        today = timezone.localdate()
+    return today > exp

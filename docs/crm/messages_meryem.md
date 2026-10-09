@@ -207,10 +207,11 @@ E-MAIL OBJET : Une installation réalisée par [Marque]
 E-MAIL : Bonjour {civilite} [Prénom], je vous présente une installation que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Une courte vidéo du chantier : [lien vidéo]. — [Conseiller], [Marque]
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
-FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
-DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties
+**APAR50 (08/10/2026)** : la phrase « ce qui est couvert… » et son lien vers la page garanties du site du fondateur sont RETIRÉS des textes par défaut (servis à toutes les sociétés) — la marque et le lien du fondateur ne partent plus chez le client d'une autre société.
+FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition].
+DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition].
 E-MAIL OBJET : Les garanties de votre proposition [référence]
-E-MAIL : Bonjour {civilite} [Prénom], les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : [lien de votre proposition]. Ce qui est couvert, et pour combien d'années : https://taqinor.ma/garanties — [Conseiller], [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : [lien de votre proposition]. — [Conseiller], [Marque]
 
 ### appel_suivi_j7 — J7, script de l'« Appel de suivi » (CAD98, 23/09/2026)
 Après la preuve (J4) et les garanties (J6) : on cherche ce qui freine encore la décision. ✎ À valider (voir J2).

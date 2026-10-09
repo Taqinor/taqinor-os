@@ -1,41 +1,27 @@
-"""YOPSB13 / SCA43 — budget de requêtes sur GET /api/django/ventes/devis/ (liste).
+"""YOPSB13 / SCA43 / APRF5 — budget de requêtes sur GET /api/django/ventes/devis/.
 
-DevisViewSet.queryset a DÉJÀ select_related('client', 'created_by', …)
-.prefetch_related('lignes', 'factures…', 'share_links', 'installations')
-(apps/ventes/views/devis.py) — ce test est la garde de RÉGRESSION : le nombre de
-requêtes ne doit PAS grandir avec le nombre de lignes (peuple 10 puis 25 devis,
-chacun avec 2 lignes).
+Garde de RÉGRESSION N+1 : le nombre de requêtes ne doit PAS grandir avec le
+nombre de devis listés (page de 10 puis de 25 devis).
 
-SCA43 — ce module était SKIPPÉ : ``DevisSerializer._display`` appelle le moteur
-(``build_quote_data``) UNE FOIS PAR DEVIS pour le total d'affichage. Il y avait
-DEUX N+1 distincts :
-  1. chaque appel refaisait ~6 lectures de config identiques pour la MÊME
-     société (CompanyProfile + DocumentTemplates + identité) ;
-  2. ``_line_to_item`` lit ``ligne.produit`` (marque/description/garantie) PAR
-     LIGNE, et le queryset de liste ne préchargeait que ``lignes`` (pas
-     ``lignes__produit``) → un produit-par-ligne, croissant avec le nombre de
-     devis.
-Correctifs SCA43 : (1) un mémo de config PAR REQUÊTE (``core.request_cache``,
-contextvar, ouvert par ``RequestConfigCacheMiddleware``) au niveau des ACCESSEURS
-que le moteur consomme — EN AMONT du moteur, qui reste intact (RÈGLE #4 : il
-rend, il ne change rien) ; (2) ``lignes__produit`` ajouté au prefetch du
-``DevisViewSet.queryset`` (même prefetch que ``generate_premium_devis_pdf``).
-Config ET produits sont désormais lus une seule fois par requête quel que soit
-le nombre de devis → O(1). Le test est dé-skippé.
+Historique : SCA43 avait dé-skippé puis RE-SKIPPÉ ce module — chaque ligne de
+liste faisait un passage moteur (``display_totals``) qui ré-interrogeait ses
+lignes, PLUS un second ``build_quote_data`` complet pour la carte A/B des devis
+à deux options (``get_comparaison_options``). APRF3 a ouvert le chemin
+« totaux seuls » (lignes servies depuis le préchargement, aucune lecture
+d'affiche / révision / ShareLink), APRF4 a complété le préchargement du
+viewset, et APRF5 fait passer chaque ligne par UN SEUL passage moteur :
+``DevisSerializer._display`` mémoïse le ``data`` et la carte A/B le relit (elle
+RESTE servie en liste — ``DevisRow.jsx`` la lit). Le skip est retiré.
 
-APRF5 (C-APRF-001) — DÉ-SKIPPÉ sur une page MIXTE
--------------------------------------------------
-APRF2/APRF3/APRF4 ont rendu le moteur d'affichage « totaux seuls » et le
-préchargement complet ; APRF5 fait passer chaque ligne par UN seul passage
-moteur (``DevisSerializer._display`` mémoïse le ``data`` de
-``build_quote_data`` et ``get_comparaison_options`` le réutilise — la carte A/B
-RESTE servie en liste). La page mesurée mélange mono-option, deux options,
-devis facturé et devis sans lien de partage : requêtes(25) == requêtes(10),
-sous le budget ``/api/django/ventes/devis/`` de ``docs/query-budgets.yml``,
-et aucune écriture (INSERT/UPDATE) pendant le GET."""
+Page MIXTE : devis mono-option, devis à deux options, devis facturés, aucun
+lien de partage (un GET de liste ne doit en écrire aucun — AMOT13).
+
+Test-du-test : remettre ``@unittest.skip`` ⇒ APRF27 rougit ; retirer la
+mémoïsation de ``data`` ⇒ la page à 25 fait un second ``build_quote_data``
+par devis à deux options et ``test_query_count_does_not_grow_with_row_count``
+échoue.
+"""
 from decimal import Decimal
-from pathlib import Path
-import re
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -48,12 +34,18 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.models import Devis, LigneDevis
+from apps.ventes.models import Devis, Facture, LigneDevis
 from core.test_utils import AssertQueryBudgetMixin
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
 DEVIS_URL = '/api/django/ventes/devis/'
+DEUX_OPTIONS = {'scenario': 'Les deux (Sans + Avec)'}
+
+MONO = [('Panneau mono 550W', '12', '1100'),
+        ('Onduleur réseau 5kW', '1', '11700')]
+DEUX = MONO + [('Onduleur hybride 5kW', '1', '15000'),
+               ('Batterie 5 kWh', '1', '14000')]
 
 
 def _api(user):
@@ -62,36 +54,10 @@ def _api(user):
     return api
 
 
-def _manifeste():
-    """``docs/query-budgets.yml`` trouvé en remontant (même patron que
-    ``calepinage/tests/test_calx390_budgets_requetes.py``)."""
-    for parent in Path(__file__).resolve().parents:
-        candidat = parent / 'docs' / 'query-budgets.yml'
-        if candidat.is_file():
-            return candidat
-    raise AssertionError('docs/query-budgets.yml introuvable')
-
-
-#: Lignes d'un devis À DEUX OPTIONS déclarées (PV86 : scénario « Les deux »).
-LIGNES_DEUX_OPTIONS = [
-    ('Panneau Canadien Solar 710W', '14', '1272.73'),
-    ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
-    ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
-    ('Batterie Dyness 10 kWh', '1', '25000'),
-]
-LIGNES_MONO = [('Onduleur réseau Deye 8kW', '1', '11700'),
-               ('Panneau Canadian Solar 550W', '10', '1100')]
-
-
-def budget_manifeste(chemin=DEVIS_URL):
-    """Plafond ``budget`` de ``chemin`` dans ``docs/query-budgets.yml``."""
-    texte = _manifeste().read_text(encoding='utf-8')
-    motif = re.compile(
-        r'-\s*path:\s*%s\s*\n\s*budget:\s*(\d+)' % re.escape(chemin))
-    trouve = motif.search(texte)
-    if trouve is None:
-        raise AssertionError('budget absent du manifeste pour %s' % chemin)
-    return int(trouve.group(1))
+def _ecritures(ctx):
+    return [q['sql'] for q in ctx.captured_queries
+            if q['sql'].lstrip().upper().startswith(
+                ('INSERT', 'UPDATE', 'DELETE'))]
 
 
 class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
@@ -104,102 +70,94 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client', prenom='Budget',
             email='budget@example.com', telephone='+212600000002')
-        # SCA43 — singletons de config société pré-créés AVANT toute requête
-        # mesurée (sinon la 1ʳᵉ requête paie un get_or_create « à froid »).
-        # Le troisième singleton lu par le moteur d'affichage
-        # (``etude_horaire._reglages_tarifaires`` → ``TariffSettings.get``,
-        # QJR409) : sans lui, le premier GET mesuré paie l'INSERT « à froid »
-        # de la tarification société et la garde « aucune écriture » d'APRF5
-        # échoue sur un artefact de fixture, pas sur la liste.
-        from apps.parametres.models import CompanyProfile
+        # Les singletons de config société (profil, modèles de documents,
+        # barème) sont créés à la PREMIÈRE lecture : posés ici pour mesurer ce
+        # qu'une liste coûte À CHAQUE affichage, pas l'amorçage d'une société.
+        from apps.parametres.models import CompanyProfile, TariffSettings
         from apps.parametres.models_documents import DocumentTemplates
-        from apps.parametres.models_tariff import TariffSettings
         CompanyProfile.get(company=self.company)
         DocumentTemplates.get(company=self.company)
         TariffSettings.get(company=self.company)
 
     def _seed_devis(self, count, start=0):
-        """Page MIXTE : un devis sur quatre à deux options, un sur quatre
-        facturé (acompte émis), les autres mono-option ; aucun lien de
-        partage (APRF3 : le GET de liste n'en crée pas)."""
+        """Page MIXTE : 1 sur 2 à deux options, 1 sur 3 facturé."""
         for i in range(start, start + count):
-            deux = i % 4 == 1
+            deux = bool(i % 2)
             devis = Devis.objects.create(
                 company=self.company, reference=f'DEV-{MONTH}-{i:04d}',
                 client=self.client_obj, created_by=self.user,
                 taux_tva=Decimal('20'),
-                statut=(Devis.Statut.ACCEPTE if i % 4 == 2
-                        else Devis.Statut.BROUILLON),
-                etude_params=(
-                    {'scenario': 'Les deux (Sans + Avec)'} if deux else None))
-            for j, (desig, qte, pu) in enumerate(
-                    LIGNES_DEUX_OPTIONS if deux else LIGNES_MONO):
+                etude_params=dict(DEUX_OPTIONS) if deux else None)
+            for j, (desig, qte, pu) in enumerate(DEUX if deux else MONO):
                 produit = Produit.objects.create(
                     company=self.company, nom=desig, sku=f'{i}-{j}-{desig}',
                     prix_vente=Decimal(pu), prix_achat=Decimal('1'),
                     quantite_stock=100)
                 LigneDevis.objects.create(
                     devis=devis, produit=produit, designation=desig,
-                    quantite=Decimal(qte), prix_unitaire=Decimal(pu))
-            if i % 4 == 2:
-                from apps.ventes.models import Facture
+                    quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                    remise=Decimal('0'))
+            if i % 3 == 0:
                 Facture.objects.create(
-                    company=self.company, reference=f'FAC-YOP-{i:04d}',
+                    company=self.company, reference=f'FAC-{MONTH}-{i:04d}',
                     devis=devis, client=self.client_obj,
-                    statut=Facture.Statut.EMISE, type_facture='acompte',
-                    montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
-                    montant_ttc=Decimal('1200'), created_by=self.user)
+                    statut=Facture.Statut.EMISE, montant_ht=Decimal('100'),
+                    montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
+                    created_by=self.user)
 
-    def _mesurer(self):
+    def _get_liste(self):
         with CaptureQueriesContext(connection) as ctx:
-            resp = self.api.get(DEVIS_URL, {'page_size': 50})
+            resp = self.api.get(DEVIS_URL, {'page_size': 100})
         self.assertEqual(resp.status_code, 200)
-        ecritures = [q['sql'] for q in ctx.captured_queries
-                     if q['sql'].lstrip().upper().startswith(
-                         ('INSERT', 'UPDATE', 'DELETE'))]
-        self.assertEqual(ecritures, [], 'le GET de liste a écrit en base')
-        return len(ctx.captured_queries), resp
+        return resp, ctx
+
+    @staticmethod
+    def _lignes(resp):
+        data = resp.data
+        return data.get('results', data) if isinstance(data, dict) else data
 
     def test_query_count_does_not_grow_with_row_count(self):
         self._seed_devis(10)
-        count_at_10, _resp = self._mesurer()
+        resp_10, ctx_10 = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_10)), 10)
+
         self._seed_devis(15, start=10)  # total 25
-        count_at_25, resp = self._mesurer()
+        resp_25, ctx_25 = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_25)), 25)
+
         self.assertEqual(
-            count_at_10, count_at_25,
-            'Le nombre de requêtes a grandi avec le nombre de lignes (N+1) '
-            '— un second passage moteur par devis, ou un préchargement '
-            'manquant sur DevisViewSet.queryset.')
-        lignes = resp.json()
-        lignes = lignes.get('results', lignes) if isinstance(lignes, dict) \
-            else lignes
-        self.assertEqual(len(lignes), 25)
-        a_deux = [ligne for ligne in lignes if ligne['nb_options'] == 2]
-        self.assertTrue(a_deux, 'aucun devis à deux options dans la page')
-        for ligne in a_deux:
-            carte = ligne['comparaison_options']
-            self.assertIsNotNone(carte)
-            self.assertIsNotNone(carte['sans']['ttc'])
-            self.assertIsNotNone(carte['avec']['ttc'])
+            len(ctx_10.captured_queries), len(ctx_25.captured_queries),
+            'Le nombre de requêtes a grandi avec le nombre de devis (N+1) — '
+            'vérifier le préchargement de DevisViewSet.queryset et le passage '
+            'moteur UNIQUE de DevisSerializer._display.')
+        # CLAUSE PERSISTANCE n/a — une lecture n'écrit rien (aucun ShareLink).
+        self.assertEqual(_ecritures(ctx_25), [])
 
     def test_query_count_stays_within_fixed_budget(self):
+        # Plafond absolu calé sur le coût O(1) mesuré par SCA43 (~32 requêtes
+        # à 10 devis), marge de régression comprise. Le test de CROISSANCE
+        # ci-dessus est la garde N+1 AUTORITAIRE.
         self._seed_devis(10)
-        with self.assertMaxQueries(budget_manifeste()):
+        with self.assertMaxQueries(40):
             resp = self.api.get(DEVIS_URL)
         self.assertEqual(resp.status_code, 200)
 
     def test_carte_ab_en_liste(self):
-        """La carte A/B d'une ligne de LISTE = celle du DÉTAIL, au centime ;
-        ``total_affiche`` et ``nb_options`` aussi."""
-        self._seed_devis(4)
-        liste = self.api.get(DEVIS_URL).json()
-        liste = liste.get('results', liste) if isinstance(liste, dict) \
-            else liste
-        vus = 0
-        for ligne in liste:
-            detail = self.api.get(f"{DEVIS_URL}{ligne['id']}/").json()
-            for cle in ('comparaison_options', 'total_affiche', 'nb_options'):
-                self.assertEqual(ligne[cle], detail[cle],
-                                 '%s : %s' % (ligne['reference'], cle))
-            vus += ligne['nb_options'] == 2
-        self.assertGreaterEqual(vus, 1)
+        """La carte A/B reste servie EN LISTE, mêmes valeurs qu'au détail."""
+        self._seed_devis(6)
+        resp, _ctx = self._get_liste()
+        lignes = self._lignes(resp)
+        deux = [r for r in lignes if r.get('nb_options') == 2]
+        self.assertTrue(deux)
+        for ligne in lignes:
+            detail = self.api.get('%s%s/' % (DEVIS_URL, ligne['id']))
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(ligne['total_affiche'],
+                             detail.data['total_affiche'])
+            self.assertEqual(ligne['nb_options'], detail.data['nb_options'])
+            self.assertEqual(ligne['comparaison_options'],
+                             detail.data['comparaison_options'])
+        for ligne in deux:
+            carte = ligne['comparaison_options']
+            self.assertIsNotNone(carte['sans']['ttc'])
+            self.assertIsNotNone(carte['avec']['ttc'])

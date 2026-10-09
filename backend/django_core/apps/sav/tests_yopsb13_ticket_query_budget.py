@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.sav.models import Equipement, Ticket
+from apps.sav.models import ContratMaintenance, Equipement, Ticket
 from apps.stock.models import Produit
 from core.test_utils import AssertQueryBudgetMixin
 
@@ -79,3 +79,38 @@ class TicketListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         with self.assertMaxQueries(20):
             resp = self.api.get(TICKETS_URL)
         self.assertEqual(resp.status_code, 200)
+
+    def test_query_count_flat_with_active_contract(self):
+        """APRF31 — client SOUS CONTRAT (registre + quota) : 10 puis 25
+        tickets coûtent le même nombre de requêtes, couverture identique."""
+        from django.utils import timezone
+
+        contrat = ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj, actif=True,
+            date_debut=timezone.localdate(), deplacements_inclus_an=100,
+            visites_incluses_an=100)
+        self._seed_tickets(10)
+        for eq in Equipement.objects.filter(company=self.company)[:5]:
+            contrat.equipements.add(eq)
+        with CaptureQueriesContext(connection) as ctx_10:
+            resp = self.api.get(TICKETS_URL)
+        self.assertEqual(resp.status_code, 200)
+        couvertures_10 = {
+            r['reference']: (r['equipement_couvert'], r['couverture_proposee'])
+            for r in (resp.data['results'] if isinstance(resp.data, dict)
+                      else resp.data)}
+
+        self._seed_tickets(15, start=10)  # total 25
+        with CaptureQueriesContext(connection) as ctx_25:
+            resp = self.api.get(TICKETS_URL)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            len(ctx_10.captured_queries), len(ctx_25.captured_queries),
+            'N+1 sur la couverture de contrat (registre / droits).')
+        rows = (resp.data['results'] if isinstance(resp.data, dict)
+                else resp.data)
+        for r in rows:
+            if r['reference'] in couvertures_10:
+                self.assertEqual(
+                    couvertures_10[r['reference']],
+                    (r['equipement_couvert'], r['couverture_proposee']))

@@ -139,9 +139,13 @@ class TestFG70WarrantyHandover(TestCase):
         self.assertEqual(inst.equipements.count(), 2)
 
     def test_existing_serial_equipement_not_duplicated(self):
-        """Un équipement déjà saisi (avec série) pour ce produit n'est pas doublé."""
+        """Un équipement déjà saisi (avec série) pour ce produit n'est pas doublé.
+
+        ACHT46 : l'état cible est « un équipement par unité de la ligne » (un
+        placeholder complète tant que les séries relevées < quantité) — la
+        ligne vaut donc ici 1 unité, couverte par la série déjà saisie."""
         inst = make_chantier_with_bom(
-            self.company, self.user, [(self.panneau, 8)])
+            self.company, self.user, [(self.panneau, 1)])
         # Saisie manuelle préalable d'un équipement avec n° de série.
         Equipement.objects.create(
             company=self.company, produit=self.panneau, installation=inst,

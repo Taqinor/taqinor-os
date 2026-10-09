@@ -104,5 +104,5 @@ def deposit_protection_message(
         "à la mise en service de votre installation. "
         "En cas d'annulation de notre fait, vous êtes remboursé(e) intégralement "
         "dans un délai de 7 jours ouvrés. "
-        "Pour toute question, contactez votre conseiller Taqinor."
+        "Pour toute question, contactez votre conseiller."
     )

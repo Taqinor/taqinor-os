@@ -637,4 +637,10 @@ class TestPayloadIdentiqueEtDrapeauApercuInterne(TestCase):
             f'/api/django/public/proposal/{self.link.token_interne}/data/').json()
         pub.pop('apercu_interne')
         interne.pop('apercu_interne')
+        # ADEV51 — l'empreinte du contenu signable n'est servie qu'au jeton
+        # PUBLIC (rien n'est signable en aperçu interne) : seconde et seule
+        # autre différence admise.
+        self.assertIn('empreinte_contenu', pub)
+        self.assertNotIn('empreinte_contenu', interne)
+        pub.pop('empreinte_contenu')
         self.assertEqual(pub, interne)

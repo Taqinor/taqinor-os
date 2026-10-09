@@ -181,6 +181,8 @@ class AUD519PariteProducteursSlaTest(TestCase):
     # ── No-op quand la société n'a pas activé le SLA ────────────────────────
 
     def test_sla_desactive_reste_none(self):
+        # ASAV57 (D-ASAV-5 Q2 a) — l'échéance est calculée même interrupteur
+        # OFF (il ne gouverne plus que les notifications).
         sla = SavSlaSettings.get(self.company)
         sla.sla_breach_enabled = False
         sla.save(update_fields=['sla_breach_enabled'])
@@ -189,4 +191,4 @@ class AUD519PariteProducteursSlaTest(TestCase):
             company=self.company, client=self.client_obj,
             installation=self.inst, description='Sans SLA',
             created_by=self.admin)
-        self.assertIsNone(ticket.sla_due_at)
+        self.assertIsNotNone(ticket.sla_due_at)

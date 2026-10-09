@@ -74,7 +74,9 @@ class TestTenantAPITestCaseDemo(TenantAPITestCase):
         self.client_obj = ClientFactory(company=self.company)
 
     def test_owner_can_read_their_own_client(self):
-        r = self.client_as().get(f'/api/django/crm/clients/{self.client_obj.id}/')
+        # ACRM3 — lire l'annuaire clients exige ``crm_voir`` (responsable).
+        r = self.client_as(role='responsable').get(
+            f'/api/django/crm/clients/{self.client_obj.id}/')
         self.assertEqual(r.status_code, 200)
 
     def test_other_company_cannot_read_it(self):

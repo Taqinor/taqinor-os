@@ -1680,10 +1680,9 @@ def secrets_rotation_due(request):
 
 
 def _client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', '')
+    # ASEC15 — LA primitive (saut de confiance), jamais le premier saut forgé.
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request)
 
 
 # YHARD6 — endpoint /metrics (format texte Prometheus). JAMAIS public : soit un

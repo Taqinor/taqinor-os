@@ -245,6 +245,72 @@ CalepinageViewSet.rapport_orphelin = rapport_orphelin
               cac.ENTETE_BASE + f"{cle}  rapport-orphelin  # dette historique de test\n")
         self.assertEqual(cac.main([]), 0)
 
+    def test_decaler_une_ligne_ne_change_pas_le_verdict(self):
+        # ACAL338 : copie de views/ avec une ligne vide en tete ; le verdict
+        # (dette couverte par fichier + url_path) ne change pas.
+        source = """
+from rest_framework.decorators import action
+from . import CalepinageViewSet
+
+@action(detail=False, url_path='rapport-orphelin')
+def rapport_orphelin(self, request):
+    pass
+
+CalepinageViewSet.rapport_orphelin = rapport_orphelin
+"""
+        chemin = self.depot.vue("sorties.py", source)
+        ligne = self.par_fonction("rapport_orphelin")[0]["ligne"]
+        cle = f"{chemin.relative_to(self.depot.racine).as_posix()}:{ligne}"
+        write(self.depot.baseline,
+              cac.ENTETE_BASE + f"{cle}  rapport-orphelin  # dette de test\n")
+        self.assertEqual(cac.main([]), 0)
+        self.depot.vue("sorties.py", chr(10) + source)
+        self.assertEqual(cac.main([]), 0)
+
+    def test_action_montee_par_rattacher_est_routee(self):
+        self.depot.vue("archivage.py", """
+from rest_framework.decorators import action
+from .calepinages import CalepinageViewSet
+
+
+def _attacher(viewset_classe):
+    viewset_classe.archiver = archiver
+
+
+@action(detail=True, methods=['post'], url_path='archiver')
+def archiver(self, request, pk=None):
+    pass
+
+
+_attacher(CalepinageViewSet)
+""")
+        self.depot.frontend("api/c.js", "post(`${base}archiver/`)")
+        self.assertEqual(self.par_fonction("archiver"), [])
+        self.depot.frontend("api/c.js", "const x = 1")
+        self.assertEqual(len(self.par_fonction("archiver")), 1)
+
+    def test_endpoint_d_inventaire_compte_comme_consomme(self):
+        self.depot.vue("documents.py", """
+from rest_framework.decorators import action
+from . import CalepinageViewSet
+
+@action(detail=True, url_path=r'rapport-x\\.pdf')
+def rapport_x(self, request, pk=None):
+    pass
+
+CalepinageViewSet.rapport_x = rapport_x
+""")
+        write(self.depot.django / "apps" / "calepinage" / "services"
+              / "documents" / "__init__.py", """
+_DEFINITIONS_DOCUMENTS = (
+    ('rapport_x', 'Rapport X', 'pdf', 'rapport-x.pdf/', 'serveur'),
+)
+""")
+        self.assertEqual(len(self.par_fonction("rapport_x")), 1)  # pas de .endpoint
+        self.depot.frontend("features/PanneauDocuments.jsx",
+                            "telecharger(entree.endpoint)")
+        self.assertEqual(self.par_fonction("rapport_x"), [])
+
     def test_surcharge_d_une_action_heritee_est_routee(self):
         # ACAL293 : CalepinageViewSet SURCHARGE ``chatter_noter`` d'un mixin
         # d'une autre app ; BackendRoutes attribue la route au module du

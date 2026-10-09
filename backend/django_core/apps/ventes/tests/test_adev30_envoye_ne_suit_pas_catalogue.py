@@ -94,3 +94,58 @@ class EnvoyeNeSuitPasCatalogueTests(q220._Base):
         self.pose.refresh_from_db()
         self.assertEqual(self._prix_pose(devis),
                          prix_forfait_ht(self.pose, 9))
+
+
+class BaremeGeleEnvoiTests(q220._Base):
+    """ADEV30 — sur un ENVOYÉ dont le nombre de panneaux change, le forfait
+    est recalculé avec le barème GELÉ à l'envoi (``mark_devis_sent``), jamais
+    avec le barème du jour. Test-du-test : retirer
+    ``figer_baremes_forfaits(devis)`` de ``mark_devis_sent`` ⇒
+    ``test_compte_change_bareme_fige`` échoue."""
+
+    def setUp(self):
+        super().setUp()
+        self.api = APIClient()
+        self.api.force_authenticate(user=self.user)
+
+    def _envoyer(self, devis):
+        from apps.ventes.domain.envoi import mark_devis_sent
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        return devis
+
+    def test_gel_pose_a_l_envoi(self):
+        from apps.ventes.domain.envoi import baremes_forfaits_geles
+        devis = self._envoyer(self._devis(9, pose_a=9))
+        # Le gel lit le barème EN BASE (DecimalField → '2000.00') : relire
+        # la fixture, créée en mémoire avec Decimal('2000').
+        self.pose.refresh_from_db()
+        self.assertEqual(
+            baremes_forfaits_geles(devis),
+            {str(self.pose.pk): {
+                'prix_fixe_ht': str(self.pose.prix_fixe_ht),
+                'prix_par_panneau_ht': str(self.pose.prix_par_panneau_ht)}})
+
+    def test_compte_change_bareme_fige(self):
+        from types import SimpleNamespace
+        devis = self._envoyer(self._devis(9, pose_a=9))
+        ancien = SimpleNamespace(
+            prix_fixe_ht=self.pose.prix_fixe_ht,
+            prix_par_panneau_ht=self.pose.prix_par_panneau_ht)
+        self.pose.prix_par_panneau_ht += Decimal('100')
+        self.pose.save(update_fields=['prix_par_panneau_ht'])
+        panneau = devis.lignes.get(designation=q220.PANNEAU)
+        resp = self.api.patch('%s%s/' % (URL, panneau.pk),
+                              {'quantite': '20'}, format='json')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        # CLAUSE PERSISTANCE — relu en base : barème GELÉ, pas celui du jour.
+        self.assertEqual(self._prix_pose(devis), prix_forfait_ht(ancien, 20))
+        self.assertNotEqual(self._prix_pose(devis),
+                            prix_forfait_ht(self.pose, 20))
+
+    def test_gel_jamais_imprime_comme_clause(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._envoyer(self._devis(9, pose_a=9))
+        data = build_quote_data(devis)
+        self.assertFalse(data.get('clauses_cgv'))

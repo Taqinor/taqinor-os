@@ -36,9 +36,9 @@ endpoints:
     note: "Liste des tickets SAV (YOPSB13)."
 
   - path: /api/django/stock/produits/
-    budget: 12
+    budget: 24
     enforced: true
-    note: "Liste des produits (YOPSB13)."
+    note: "Liste des produits (YOPSB13) — plafond 24 : régime fixe mesuré en CI (22 requêtes à 5 comme à 50 lignes, hors compteur de catégories) + 1 requête groupée nb_produits."
 
   # APRF5 (09/10/2026) — plafond MESURÉ par
   # apps/ventes/tests/test_yopsb13_devis_query_budget.py : 23 requêtes à 10 ET

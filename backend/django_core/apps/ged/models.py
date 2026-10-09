@@ -3325,6 +3325,11 @@ class RoutageDocumentaire(models.Model):
     tags_defaut = models.ManyToManyField(
         DocumentTag, blank=True, related_name='routages_documentaires')
     actif = models.BooleanField(default=True)
+    # ADOC75 — posé uniquement sur les routages semés par défaut (migration de
+    # données / création de société) : la migration inverse ne supprime que
+    # ceux-là, jamais un réglage d'utilisateur.
+    seme_par_defaut = models.BooleanField(
+        default=False, verbose_name='semé par défaut (ADOC75)')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_routages_documentaires_crees')

@@ -131,6 +131,41 @@ class Garde(unittest.TestCase):
         self.ecrire('backend/django_core/apps/rh/views.py', 'x = 1\n')
         self.assertIn("n'est plus une coquille", self.echecs()[0][2])
 
+    # --- règle f (ACAL337) : résidus de l'AO détaché dans le calepinage ---
+    CAL = 'backend/django_core/apps/calepinage/'
+
+    def test_regle_f_refuse_un_symbole_de_pont_ao_dans_calepinage(self):
+        self.ecrire(self.CAL + 'services/liens.py',
+                    'def lier_appel_offre(c):\n    return c.appel_offre\n')
+        self.ecrire(self.CAL + 'selectors.py',
+                    'from .x import calepinage_de_l_affaire\n')
+        raisons = ' '.join(e[2] for e in self.echecs())
+        self.assertIn('lier_appel_offre', raisons)
+        self.assertIn('calepinage_de_l_affaire', raisons)
+        self.assertIn("identifiant 'appel_offre'", raisons)
+        self.assertIn('services/liens.py', ' '.join(e[0] for e in self.echecs()))
+
+    def test_regle_f_tolere_la_colonne_et_publicapi(self):
+        # la colonne `appel_offre_id` n'est pas l'identifiant `appel_offre`
+        self.ecrire(self.CAL + 'models.py',
+                    'appel_offre_id = 1\nclass M:\n    appel_offre = 2\n')
+        self.assertEqual(len(self.echecs()), 1)
+        self.ecrire('scripts/ao_residus_allow.txt',
+                    '# liste blanche\n' + self.CAL + 'models.py  # colonne\n')
+        self.assertEqual(self.echecs(), [])
+
+    def test_regle_f_ignore_commentaires_et_docstrings(self):
+        self.ecrire(self.CAL + 'services/doc.py',
+                    '"""lier_appel_offre et appel_offre."""\n'
+                    '# calepinage_de_l_affaire appel_offre\n'
+                    "x = 'mettre_en_cache appel_offre'\n")
+        self.ecrire(self.CAL + 'tests/test_ao.py', 'lier_appel_offre = 1\n')
+        self.assertEqual(self.echecs(), [])
+
+    def test_regle_f_depot_reel_vert(self):
+        parked = cpa.charger_registre(cpa.RACINE)
+        self.assertEqual(cpa.regle_f(cpa.RACINE, parked.APPS_PARQUEES_SET), [])
+
 
 if __name__ == '__main__':
     unittest.main()

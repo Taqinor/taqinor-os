@@ -36,7 +36,8 @@ class CommandeCadreViewSet(CompanyScopedModelViewSet):
     `fournisseur` validé tenant. Filtrable par `statut`, `fournisseur`. Cycle de
     vie via `activer`/`cloturer`."""
     queryset = CommandeCadre.objects.select_related(
-        'fournisseur', 'created_by').prefetch_related('lignes').all()
+        'fournisseur', 'created_by').prefetch_related(
+        'lignes__produit').all()
     serializer_class = CommandeCadreSerializer
 
     def get_permissions(self):

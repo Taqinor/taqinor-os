@@ -18,7 +18,6 @@ le ré-export bit-identique — format ``DA-YYYYMM-NNNN`` inchangé). Les action
 d'approbation et leurs gardes restent STRICTEMENT inchangées (moteur propre,
 chemin ARC10 nommé) ; aucun PDF (document d'approbation interne).
 """
-from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -26,7 +25,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+)
 from core.documents import TransitionRefusee
 from core.numbering import create_with_reference
 from core.viewsets import CompanyScopedModelViewSet
@@ -126,7 +127,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     kit ; approbations inchangées."""
     queryset = DemandeAchat.objects.select_related(
         'chantier', 'programme', 'fournisseur_suggere',
-        'approuvee_par', 'created_by').prefetch_related('lignes').all()
+        'approuvee_par', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = DemandeAchatSerializer
 
     def get_permissions(self):
@@ -135,8 +136,14 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         # branché sur `self.action` : un `permission_classes=` posé sur le
         # décorateur `@action` serait écrasé par ce branchement, d'où la garde
         # DEDANS plutôt que sur `@action`).
-        if self.action == 'approuver_etape':
+        # ACHT54 — `approuver` (décision directe) relève du même code fin que
+        # `approuver-etape` ; `generer-bcf` CRÉE un BCF : `achats_commander`
+        # (patron ASTK17 du viewset BCF stock).
+        if self.action in ('approuver_etape', 'approuver'):
             return [IsResponsableOrAdmin(), PeutApprouverDemandeAchat()]
+        if self.action == 'generer_bcf':
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
@@ -415,10 +422,17 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 {'detail': 'Cette demande ne contient aucune ligne.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        bon = creer_bcf_depuis_lignes(
-            company=request.user.company, user=request.user,
-            fournisseur=fournisseur, lignes=lignes,
-            note=f'Généré depuis {da.reference}')
+        # ACHT11 — le chantier de la DA suit le BCF (réception réservée) ;
+        # une quantité/un prix invalide (ValueError du service stock) → 400.
+        try:
+            bon = creer_bcf_depuis_lignes(
+                company=request.user.company, user=request.user,
+                fournisseur=fournisseur, lignes=lignes,
+                note=f'Généré depuis {da.reference}',
+                chantier_origine=da.chantier)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         from .. import services
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus
         # (le lien BCF est posé dans la MÊME écriture atomique).
@@ -502,23 +516,24 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                     {'ligne': numero,
                      'erreur': 'Ni désignation ni SKU renseigné.'})
                 continue
-            try:
-                quantite = Decimal(quantite_brute or '0')
-                prix_estime = Decimal(prix_brut or '0')
-            except InvalidOperation:
-                erreurs.append(
-                    {'ligne': numero,
-                     'erreur': 'Quantité ou prix estimé invalide.'})
+            # ACHT11 — chaque ligne est validée par le serializer de ligne
+            # (survivant unique des bornes quantité/prix : NaN, Infinity,
+            # négatif, hors format → erreur nommée, jamais de 500).
+            ser = DemandeAchatLigneSerializer(data={
+                'demande': da.pk,
+                'produit': produit.pk if produit else None,
+                'designation': designation or None,
+                'quantite': quantite_brute or '0',
+                'prix_estime': prix_brut or '0',
+            })
+            if not ser.is_valid():
+                detail = '; '.join(
+                    str(m) for msgs in ser.errors.values()
+                    for m in (msgs if isinstance(msgs, (list, tuple))
+                              else [msgs]))
+                erreurs.append({'ligne': numero, 'erreur': detail})
                 continue
-            if quantite <= 0:
-                erreurs.append(
-                    {'ligne': numero, 'erreur': 'Quantité doit être > 0.'})
-                continue
-
-            ligne = DemandeAchatLigne.objects.create(
-                demande=da, produit=produit,
-                designation=designation or None,
-                quantite=quantite, prix_estime=prix_estime)
+            ligne = ser.save()
             creees.append(ligne.id)
 
         if creees:

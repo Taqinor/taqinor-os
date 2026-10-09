@@ -1,0 +1,96 @@
+/*
+ * Candidat A « Encre et papier » (YBW42) — jetons. SEUL fichier du candidat
+ * où une couleur est écrite. Contrastes CALCULÉS par
+ * tests/designCandidates.test.ts (règles YBW38 : texte >= 4,5:1, graphique et
+ * grand texte >= 3:1 ; #C8762B jamais en texte < 24 px sur clair ; jamais de
+ * blanc sur #C8762B — bouton = encre sur orange).
+ * Studio éditorial : papier, encre, un seul orange (la flèche du logo).
+ */
+:root[data-candidat='a'] {
+  --a-papier: #FAF7F2;
+  --a-blanc: #FFFFFF;
+  --a-encre: #1B1B1B;
+  --a-gris: #5E5A54;
+  --a-gris-bande: #B8B2A7;
+  --a-orange: #C8762B;
+  --a-orange-texte: #A6591A;
+  --a-trait: #E3DCD0;
+  --a-trait-fort: #CFC6B8;
+  --a-capture: #F1ECE3;
+
+  --fond: var(--a-papier);
+  --fond-surface: var(--a-blanc);
+  --fond-alt: var(--a-blanc);
+  --texte: var(--a-encre);
+  --texte-attenue: var(--a-gris);
+  --accent-texte: var(--a-orange-texte);
+  --accent-graphique: var(--a-orange);
+  --bouton-fond: var(--a-orange);
+  --bouton-texte: var(--a-encre);
+  --logo-ink: var(--a-encre);
+  --logo-arrow: var(--a-orange);
+  --trait: var(--a-trait);
+  --trait-fort: var(--a-trait-fort);
+  --focus: var(--a-encre);
+  --ombre: color-mix(in srgb, var(--a-encre) 22%, transparent);
+  --ruban-fond: var(--a-encre);
+  --ruban-texte: var(--a-papier);
+  --capture-fond: var(--a-capture);
+  --capture-trait: var(--a-trait-fort);
+  --capture-texte: var(--a-gris);
+  --capture-grille: color-mix(in srgb, var(--a-encre) 6%, transparent);
+  --bande-fond: var(--a-encre);
+  --bande-texte: var(--a-papier);
+  --bande-attenue: var(--a-gris-bande);
+  --bande-logo-ink: var(--a-papier);
+  /* Orange des graphiques posés sur la bande (flèche, filets) — YBW43 A-2. */
+  --bande-accent: var(--a-orange);
+
+  --police-titre: 'Outfit', 'Outfit repli', sans-serif;
+  --police-texte: 'Instrument Sans', 'Instrument Sans repli', sans-serif;
+  --poids-titre: 450;
+  --rayon-bouton: var(--rayon-plein);
+  --rayon-capture: var(--rayon-2);
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-candidat='a'] {
+    --a-fond-nuit: #161514;
+    --a-surface-nuit: #1F1E1C;
+    --a-papier-nuit: #F3EFE8;
+    --a-gris-nuit: #A8A29A;
+    --a-trait-nuit: #2E2C29;
+    --a-trait-fort-nuit: #4A4641;
+
+    --fond: var(--a-fond-nuit);
+    --fond-surface: var(--a-surface-nuit);
+    --fond-alt: var(--a-surface-nuit);
+    --texte: var(--a-papier-nuit);
+    --texte-attenue: var(--a-gris-nuit);
+    --accent-texte: var(--a-orange);
+    --accent-graphique: var(--a-orange);
+    --bouton-fond: var(--a-orange);
+    --bouton-texte: var(--a-encre);
+    --logo-ink: var(--a-papier-nuit);
+    --logo-arrow: var(--a-orange);
+    --trait: var(--a-trait-nuit);
+    --trait-fort: var(--a-trait-fort-nuit);
+    --focus: var(--a-papier-nuit);
+    --ombre: color-mix(in srgb, var(--a-encre) 70%, transparent);
+    --ruban-fond: var(--a-surface-nuit);
+    --ruban-texte: var(--a-papier-nuit);
+    --capture-fond: var(--a-surface-nuit);
+    --capture-trait: var(--a-trait-fort-nuit);
+    --capture-texte: var(--a-gris-nuit);
+    --capture-grille: color-mix(in srgb, var(--a-papier-nuit) 6%, transparent);
+    /* La bande finale s'inverse : une feuille de papier sur la nuit. */
+    --bande-fond: var(--a-papier-nuit);
+    --bande-texte: var(--a-encre);
+    --bande-attenue: var(--a-gris);
+    --bande-logo-ink: var(--a-encre);
+    /* Sur la feuille de papier : l'orange foncé (#C8762B n'y fait que 3,01:1) — YBW43 A-2. */
+    --bande-accent: var(--a-orange-texte);
+  }
+}

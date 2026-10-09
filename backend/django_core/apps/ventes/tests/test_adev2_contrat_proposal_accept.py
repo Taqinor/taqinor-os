@@ -90,10 +90,15 @@ class ContratProposalAcceptTests(SimpleTestCase):
             self.accept['exemple']['empreinte_contenu'])
         for cle in CLES_ADDITIVES:
             self.assertIn(cle, self.data['notes_adev2'])
-        # `exemple` (forme_serveur: complete) reste inchangé tant que la vue
-        # ne les émet pas.
+        # `exemple` (forme_serveur: complete) ne porte une de ces clés que
+        # lorsque la vue l'émet (moitié serveur ADEV49-ADEV52, PACT11).
+        vue = (ECHANTILLONS.parent / 'public_views.py').read_text(
+            encoding='utf-8')
         for cle in CLES_ADDITIVES:
-            self.assertNotIn(cle, self.data['exemple'])
+            if cle in self.data['exemple']:
+                with self.subTest(cle=cle):
+                    self.assertIn(f"payload['{cle}']", vue)
+                    self.assertEqual(self.data['exemple'][cle], fragment[cle])
 
     def test_copies_web_json_egales(self):
         if not WEB.is_dir():  # pragma: no cover — image backend sans apps/web

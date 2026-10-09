@@ -1,5 +1,6 @@
 import datetime
 
+from django.db.models import Q
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -33,12 +34,17 @@ def seed_kits_outillage(company):
             company=company, nom=nom, defaults={'ordre': i})
 
 
-class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
+class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
+                       viewsets.ModelViewSet):
     """Catalogue d'outillage durable (F1). Lecture tout rôle ; écriture
     responsable/admin. Filtrable par statut et emplacement, recherche par
     nom / asset tag / n° de série. JAMAIS de stock vendable."""
     queryset = Outillage.objects.select_related('emplacement').all()
     serializer_class = OutillageSerializer
+    # ACHT79 — l'outillage relève du module « installations » pour les droits :
+    # `IsResponsableOrAdmin` exige alors un code d'ÉCRITURE de ce module (un
+    # Admin RH, qui porte des codes d'écriture ailleurs, n'écrit plus ici).
+    permission_module = 'installations'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'asset_tag', 'numero_serie', 'categorie']
     ordering_fields = ['nom', 'statut', 'date_achat', 'date_creation']
@@ -49,6 +55,29 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in ['calibrer']:
             return [IsResponsableOrAdmin()]
         return [IsResponsableOrAdmin()]
+
+    def destroy_guard_message(self, outil):
+        """ACHT73 — un outil référencé par un retour d'outillage, un kit, une
+        préparation d'intervention ou une fiche de recette (instrument) ne se
+        supprime pas : l'historique disparaîtrait (CASCADE) ou perdrait son
+        instrument. Le statut « Perdu » / « En réparation » le retire du
+        parc sans rien effacer."""
+        from apps.installations.selectors import nb_fiches_recette_instrument
+        usages = []
+        for libelle, nb in (
+                ("retour(s) d'outillage", outil.tool_returns.count()),
+                ('kit(s)', outil.kit_items.count()),
+                ("préparation(s) d'intervention",
+                 outil.preparation_lignes.count()),
+                ('fiche(s) de recette (instrument)',
+                 nb_fiches_recette_instrument(outil.company, outil.pk))):
+            if nb:
+                usages.append(f'{nb} {libelle}')
+        if usages:
+            return ("Outil utilisé par " + ', '.join(usages)
+                    + " — marquez-le « Perdu » ou « En réparation » plutôt "
+                      "que de le supprimer.")
+        return None
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -62,10 +91,13 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         # FG80 — filtre « à calibrer » : intervalle > 0 ET date_prochaine <= aujourd'hui.
         a_calibrer = params.get('a_calibrer')
         if a_calibrer in ('1', 'true', 'True'):
+            # ACHT74 — MÊME règle que le badge `a_calibrer` : intervalle > 0 ET
+            # (jamais calibré OU échéance dépassée).
             today = datetime.date.today()
             qs = qs.filter(
-                intervalle_calibration_mois__gt=0,
-                date_prochaine_calibration__lte=today)
+                Q(date_prochaine_calibration__isnull=True)
+                | Q(date_prochaine_calibration__lte=today),
+                intervalle_calibration_mois__gt=0)
         return qs
 
     # ── FG80 — enregistrement d'une calibration ──────────────────────────────
@@ -84,34 +116,31 @@ class OutillageViewSet(TenantMixin, viewsets.ModelViewSet):
         except (ValueError, TypeError):
             return Response({'date_calibration': 'Date invalide (YYYY-MM-DD).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ACHT74 — une calibration ne se date ni dans le futur ni avant la
+        # précédente.
+        if date_cal > datetime.date.today():
+            return Response(
+                {'date_calibration': 'Date de calibration dans le futur.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if (outil.date_derniere_calibration is not None
+                and date_cal < outil.date_derniere_calibration):
+            return Response(
+                {'date_calibration': (
+                    'Date antérieure à la dernière calibration '
+                    f'({outil.date_derniere_calibration}).')},
+                status=status.HTTP_400_BAD_REQUEST)
         outil.date_derniere_calibration = date_cal
-        # Recalcul de la prochaine date.
-        if outil.intervalle_calibration_mois:
-            # Ajoute n mois (approximation : 30.44 jours / mois).
-            days = int(outil.intervalle_calibration_mois * 30.44)
-            outil.date_prochaine_calibration = (
-                date_cal + datetime.timedelta(days=days))
-        else:
-            outil.date_prochaine_calibration = None
+        # `Outillage.save()` dérive `date_prochaine_calibration` (vrais mois).
         outil.save(update_fields=[
             'date_derniere_calibration', 'date_prochaine_calibration'])
-        # Notification si l'outil sera de nouveau à calibrer dans moins d'un mois.
+        # ACHT75 — notification réelle (type d'événement déclaré, erreurs
+        # journalisées) si la prochaine échéance est à 30 jours ou moins ; le
+        # helper est partagé avec la tâche quotidienne (aucun doublon).
         if (outil.date_prochaine_calibration and
                 outil.date_prochaine_calibration
                 <= datetime.date.today() + datetime.timedelta(days=30)):
-            try:
-                from apps.notifications.services import notify
-                # Notifie l'utilisateur courant (responsable qui a enregistré).
-                notify(
-                    user=request.user,
-                    event_type='outillage_calibration_proche',
-                    title=f"Calibration proche : {outil.nom}",
-                    body=(f"Prochaine calibration le "
-                          f"{outil.date_prochaine_calibration}."),
-                    company=outil.company,
-                )
-            except Exception:
-                pass  # La notification est un bonus — ne fait jamais échouer la vue.
+            from .tasks import notifier_calibration_proche
+            notifier_calibration_proche(outil, [request.user])
         return Response(OutillageSerializer(outil).data)
 
 

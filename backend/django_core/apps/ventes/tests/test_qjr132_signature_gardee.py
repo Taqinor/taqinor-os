@@ -33,6 +33,7 @@ from apps.crm.models import Client
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.services import validate_otp_lecture
 from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
+from apps.ventes.public.signature_views import empreinte_contenu
 from authentication.models import Company
 
 
@@ -41,6 +42,11 @@ def _url_accept(token):
 
 
 CORPS_SIGNATURE = {'nom': 'M. Client', 'consent_esign': True}
+
+
+def _corps(devis):
+    """ADEV51 — le corps de signature renvoie l'empreinte du contenu lu."""
+    return dict(CORPS_SIGNATURE, empreinte_contenu=empreinte_contenu(devis))
 
 
 class _BaseSignature(TestCase):
@@ -85,7 +91,7 @@ class LeLienSansOtpDeLectureSigneCommeAvant(_BaseSignature):
     def test_la_signature_passe(self):
         devis = self._devis('DEV-QJR132-T1')
         link = self._lien(devis, otp_lecture=False)
-        resp = self.api.post(_url_accept(link.token), CORPS_SIGNATURE,
+        resp = self.api.post(_url_accept(link.token), _corps(devis),
                              format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
@@ -111,7 +117,7 @@ class LeLienAOtpDeLectureExigeLeCodePourSigner(_BaseSignature):
         devis = self._devis('DEV-QJR132-P2')
         link = self._lien(devis, otp_lecture=True)
         self._verifier_le_lien(link)
-        resp = self.api.post(_url_accept(link.token), CORPS_SIGNATURE,
+        resp = self.api.post(_url_accept(link.token), _corps(devis),
                              format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
