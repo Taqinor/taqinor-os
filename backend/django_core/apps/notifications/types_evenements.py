@@ -461,3 +461,7 @@ class EventType(models.TextChoices):
     # None et AUCUNE notification n'était jamais créée (même défaut qu'ACHT75).
     APPOINTMENT_REMINDER = (
         'appointment_reminder', 'Rappel de rendez-vous / visite réservée')
+    # APAR58 — alertes du moteur de publicité (adsengine) : émises via
+    # ``notify_many`` (fenêtre de notification, préférences, module) au lieu
+    # d'une écriture directe de ``Notification``.
+    ADSENGINE_ALERT = ('adsengine_alert', 'Alerte du moteur de publicité')

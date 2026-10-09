@@ -6,6 +6,7 @@
 // LeadForm/LeadCard.
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { Table } from '../reporting/Table'
 
 export default function WebsiteLeadPayloadsPage() {
@@ -13,12 +14,27 @@ export default function WebsiteLeadPayloadsPage() {
   const [showAll, setShowAll] = useState(false)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState(null)
+  // AACQ68 — « N sur M » quand la liste lue est plafonnée.
+  const [total, setTotal] = useState(null)
   const [replayingId, setReplayingId] = useState(null)
 
   const load = () => {
     setLoading(true)
-    crmApi.getWebsiteLeadPayloads(showAll ? { all: 1 } : {})
-      .then(r => setRows(r.data.results ?? r.data))
+    // AACQ68 — TOUTES les pages (jamais la seule page 1) ; les payloads en
+    // erreur sont listés en premier.
+    let count = null
+    fetchAllPages((page) => crmApi
+      .getWebsiteLeadPayloads({ ...(showAll ? { all: 1 } : {}), page })
+      .then((r) => {
+        if (page === 1 && typeof r.data?.count === 'number') count = r.data.count
+        return r.data
+      }), { concurrency: 3 })
+      .then((data) => {
+        const all = Array.isArray(data) ? data : (data?.results ?? [])
+        const enErreur = all.filter(p => p.error)
+        setRows([...enErreur, ...all.filter(p => !p.error)])
+        setTotal(count != null && count > all.length ? count : null)
+      })
       .catch(() => setMsg('Chargement impossible.'))
       .finally(() => setLoading(false))
   }
@@ -73,6 +89,11 @@ export default function WebsiteLeadPayloadsPage() {
       )}
 
       {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+      {total != null && (
+        <p className="text-sm text-muted-foreground" data-testid="payloads-truncation">
+          {rows.length} sur {total} payloads affichés.
+        </p>
+      )}
 
       <Table
         aria-label="Payloads leads site web"

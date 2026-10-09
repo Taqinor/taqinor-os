@@ -51,5 +51,26 @@ class ColdRecyclingReportTests(TestCase):
         cac_resi = next(
             c for c in result['cac_par_mode']
             if c['mode_installation'] == 'RESIDENTIEL')
-        self.assertEqual(cac_resi['cac_actuel'], '500.00')
+        self.assertIsNone(cac_resi['cac_actuel'])
+        self.assertEqual(cac_resi['cac_note'], 'non ventilable par mode')
+        self.assertEqual(result['cac_melange'], '500.00')
         self.assertEqual(len(result['reconversion_par_age_cold']), 4)
+
+    def test_cac_melange(self):
+        """AACQ11 — 1000 de dépense, 21 leads Meta neufs : UN coût mélangé
+        (47.62), aucun mode ne reçoit 100 % de la dépense."""
+        today = datetime.date.today()
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=self.ct,
+            object_id=self.camp.pk, date=today, spend=Decimal('1000.00'),
+            results=21)
+        for mode, n in (('RESIDENTIEL', 10), ('INDUSTRIEL', 5), ('', 6)):
+            for i in range(n):
+                Lead.objects.create(
+                    company=self.company, nom=f'M{mode}{i}',
+                    canal=Lead.Canal.META_ADS, type_installation=mode)
+        result = reporting.cold_recycling_report(self.company)
+        self.assertEqual(result['cac_melange'], '47.62')
+        for c in result['cac_par_mode']:
+            self.assertIsNone(c['cac_actuel'])
+        self.assertTrue(result['devise'])
