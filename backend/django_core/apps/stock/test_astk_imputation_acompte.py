@@ -143,3 +143,51 @@ class ImputationAcompteTests(TestCase):
             f'/api/django/stock/acomptes-fournisseur/{libre.id}/',
             {'montant': '600'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class AcompteApresFactureTests(ImputationAcompteTests):
+    """ERR-ASTK106-ACOMPTE-APRES-FACTURE-NON-IMPUTE — un acompte saisi APRÈS
+    une facture ouverte du BCF s'impute dès sa saisie (sinon le fournisseur
+    est payé deux fois). Hérite du décor d'``ImputationAcompteTests``."""
+
+    def test_acompte_apres_facture_impute_a_la_saisie(self):
+        facture = self._facturer(4)  # TTC 480, « à payer »
+        self.assertEqual(facture.solde_du, Decimal('480.00'))
+        resp = self.api.post(
+            '/api/django/stock/acomptes-fournisseur/',
+            {'bon_commande': self.bcf.id, 'montant': '200',
+             'date_versement': '2026-10-09'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        facture = FactureFournisseur.objects.get(pk=facture.pk)
+        self.assertEqual(facture.total_acomptes_imputes, Decimal('200.00'))
+        self.assertEqual(facture.solde_du, Decimal('280.00'))
+        self.assertEqual(
+            facture.statut, FactureFournisseur.Statut.PARTIELLEMENT_PAYEE)
+        acompte = AcompteFournisseur.objects.get(pk=resp.data['id'])
+        self.assertEqual(acompte.montant_consomme, Decimal('200.00'))
+        self.assertEqual(acompte.facture_imputee_id, facture.id)
+        self.assertEqual(acomptes_fournisseur_ouverts(self.company), [])
+
+    def test_excedent_reste_acompte_ouvert(self):
+        facture = self._facturer(4)  # TTC 480
+        resp = self.api.post(
+            '/api/django/stock/acomptes-fournisseur/',
+            {'bon_commande': self.bcf.id, 'montant': '600',
+             'date_versement': '2026-10-09'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        facture = FactureFournisseur.objects.get(pk=facture.pk)
+        self.assertEqual(facture.solde_du, Decimal('0.00'))
+        self.assertEqual(facture.statut, FactureFournisseur.Statut.PAYEE)
+        ouverts = acomptes_fournisseur_ouverts(self.company)
+        self.assertEqual(len(ouverts), 1)
+        self.assertEqual(
+            ouverts[0]['montant_non_consomme'], Decimal('120.00'))
+
+    def test_sans_facture_rien_n_est_impute(self):
+        resp = self.api.post(
+            '/api/django/stock/acomptes-fournisseur/',
+            {'bon_commande': self.bcf.id, 'montant': '200',
+             'date_versement': '2026-10-09'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        acompte = AcompteFournisseur.objects.get(pk=resp.data['id'])
+        self.assertEqual(acompte.montant_consomme or Decimal('0'), Decimal('0'))
