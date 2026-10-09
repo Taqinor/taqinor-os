@@ -294,13 +294,19 @@ RELANCE_TONES = {
 
 
 def _facture_resume(facture):
-    """Résumé chiffré d'une facture pour la lettre (aucun prix d'achat)."""
+    """Résumé chiffré d'une facture pour la lettre (aucun prix d'achat).
+
+    AMOT60 (C-AMOT-036) — le montant réclamé est l'EXIGIBLE
+    (``recouvrement.montant_exigible`` : reste dû − retenue de garantie non
+    libérée), le MÊME que l'e-mail de relance et le rappel planifié — jamais
+    ``montant_du`` brut (une mise en demeure pour une retenue non échue)."""
+    from apps.ventes.recouvrement import montant_exigible
     return {
         "reference": facture.reference,
         "date_emission": _fr_date(getattr(facture, "date_emission", None)),
         "date_echeance": _fr_date(getattr(facture, "date_echeance", None)),
         "total_ttc": facture.total_ttc,
-        "montant_du": facture.montant_du,
+        "montant_du": montant_exigible(facture),
         "jours_retard": facture.jours_retard,
     }
 
