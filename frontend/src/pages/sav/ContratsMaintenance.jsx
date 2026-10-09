@@ -46,6 +46,12 @@ const PERIODE_LABELS = Object.fromEntries(PERIODES.map((p) => [p.value, p.label]
 // L323 — nombre de visites par an, par périodicité (pour le revenu récurrent).
 const PERIODE_PAR_AN = { mensuel: 12, trimestriel: 4, semestriel: 2, annuel: 1 }
 
+// ASAV50 — lit TOUTES les pages d'une liste DRF (jamais la page 1 seule) ;
+// tolère une réponse non paginée (tableau brut).
+const lireTout = (appel, params = {}) =>
+  fetchAllPages((page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data))
+    .then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+
 const formatDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`)
@@ -332,8 +338,8 @@ export function Component() {
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return savApi.getContrats(dueOnly ? { due: 1 } : {})
-      .then((r) => setRows(r.data.results ?? r.data))
+    return lireTout(savApi.getContrats, dueOnly ? { due: 1 } : {})
+      .then((liste) => setRows(liste))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }
@@ -344,14 +350,14 @@ export function Component() {
     // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
     fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
-    installationsApi.getInstallations()
-      .then((r) => setInstallations(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(installationsApi.getInstallations)
+      .then((liste) => setInstallations(liste)).catch(() => {})
     // L327 — tickets préventifs pour compter les visites générées par contrat.
-    savApi.getTickets({ type: 'preventif', ouvert: 'tous' })
-      .then((r) => setPreventifs(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(savApi.getTickets, { type: 'preventif', ouvert: 'tous' })
+      .then((liste) => setPreventifs(liste)).catch(() => {})
     // WIR120 — parc d'équipements pour le registre de couverture du contrat.
-    savApi.getEquipements()
-      .then((r) => setEquipements(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(savApi.getEquipements)
+      .then((liste) => setEquipements(liste)).catch(() => {})
   }, [])
 
   // L327 — compte de tickets préventifs par client (et installation si fixée).
@@ -454,8 +460,8 @@ export function Component() {
       // L328 — confirmer le compte généré et recharger sans race.
       toast.success(`${data.tickets_generes} ticket(s) de maintenance généré(s).`)
       await load()
-      savApi.getTickets({ type: 'preventif', ouvert: 'tous' })
-        .then((r) => setPreventifs(r.data.results ?? r.data ?? [])).catch(() => {})
+      lireTout(savApi.getTickets, { type: 'preventif', ouvert: 'tous' })
+        .then((liste) => setPreventifs(liste)).catch(() => {})
     } catch { toast.error('Génération impossible.') }
   }
 
