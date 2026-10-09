@@ -10583,9 +10583,13 @@ def _decider_placements(company, maintenant, gabarits=None,
         base = base.filter(pk__in=leads_en_portee.values('pk'))
     candidats = list(base.order_by('pk'))
     total = len(candidats)
-    ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0}
+    # ACRM61/ACRM20 — ``rappel_manuel_a_venir`` : entier, jamais null.
+    ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0,
+               'rappel_manuel_a_venir': 0}
     if not candidats:
         return [], ignores, total
+    # ACRM20 — date LOCALE du jour (Africa/Casablanca) du moment de décision.
+    aujourdhui = timezone.localtime(maintenant).date()
 
     ids = [lead.pk for lead in candidats]
     # Le moteur TIENT déjà ces dossiers : une seconde cadence dessus, ce sont
@@ -10615,6 +10619,12 @@ def _decider_placements(company, maintenant, gabarits=None,
             # relance : demander « alors, ce devis ? » à quelqu'un qui a dit
             # oui est le pire message du portefeuille.
             ignores['devis_accepte_non_signe'] += 1
+            continue
+        if lead.relance_date is not None and lead.relance_date >= aujourdhui:
+            # ACRM20 — un rappel MANUEL à venir (posé par la commerciale) tient
+            # le lead hors dormance : jamais de Froid, d'étiquette ni de
+            # Réveil, et sa ``relance_date`` n'est jamais remplacée.
+            ignores['rappel_manuel_a_venir'] += 1
             continue
         devis = envoyes.get(lead.pk)
         # L'ANCRE : le dernier signe de vie du dossier, quelle qu'en soit la
