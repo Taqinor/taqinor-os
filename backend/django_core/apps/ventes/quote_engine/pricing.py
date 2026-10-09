@@ -1318,8 +1318,7 @@ CLE_SOLAIRE_MENSUELLE = tuple(_POIDS_GHI)
 #: Décision fondateur 08/10/2026 (« nouveaux rendus seulement ») — la clé
 #: LITTÉRALE d'avant AMOT27, gardée pour les seuls devis envoyés avant la
 #: correction (``Devis.regles_calcul = 1``) : le client relit ce qu'il a reçu.
-CLE_SOLAIRE_MENSUELLE_HISTORIQUE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                                    0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
+from .constants import CLE_SOLAIRE_MENSUELLE_HISTORIQUE  # noqa: E402,F401
 
 
 def repartir_mensuel(total, cle=CLE_SOLAIRE_MENSUELLE):
