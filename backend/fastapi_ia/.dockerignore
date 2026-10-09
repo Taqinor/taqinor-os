@@ -5,24 +5,27 @@
 # sans raison. Rien d'exclu ici n'est nécessaire à l'exécution : en production
 # le code est monté par-dessus /app.
 
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
 
-.venv/
-venv/
+**/.venv/
+**/venv/
 
-*.log
-.coverage
+**/*.log
+**/.coverage
+
+# Généré au démarrage / collectstatic, jamais versionné
+**/staticfiles/
 
 # Modèles téléchargés à l'exécution (cache HuggingFace) : jamais dans l'image
-.cache/
-models/
+**/.cache/
+**/models/
 
 # Secrets : ne doivent JAMAIS entrer dans une couche d'image
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
