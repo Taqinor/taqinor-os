@@ -28,6 +28,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -38,6 +39,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from . import selectors, services, visite_checklist as checklist
 from .models import VisiteMedia, VisiteTerrain
 from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
+from drf_spectacular.types import OpenApiTypes
+from rest_framework.parsers import JSONParser, MultiPartParser
 
 #: Types MIME acceptés pour une photo de visite. ``records.storage`` valide
 #: déjà les octets magiques et la taille (10 Mo) ; on restreint en plus aux
@@ -59,11 +62,36 @@ def _erreur(champ, message, code=status.HTTP_400_BAD_REQUEST):
 # moteur ``apps.offlinesync``. Deux copies seraient deux vérités.
 
 
+_LISTE_OBJETS = {'type': 'array', 'items': {'type': 'object'}}
+
+
+class MesuresSerializer(serializers.Serializer):
+    categorie = serializers.CharField()
+    valeurs = serializers.DictField()
+
+
+class CalageSerializer(serializers.Serializer):
+    texture_calage = serializers.CharField(allow_blank=True)
+
+
+class PhotoVisiteSerializer(serializers.Serializer):
+    fichier = serializers.FileField()
+    slot_code = serializers.CharField()
+    commentaire = serializers.CharField(required=False, allow_blank=True)
+    gps_lat = serializers.FloatField(required=False)
+    gps_lng = serializers.FloatField(required=False)
+
+
+class NotesVisiteSerializer(serializers.Serializer):
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
 class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     """Visites techniques terrain — CRUD + actions de terrain (VT2/VT3/VT9)."""
 
     queryset = VisiteTerrain.objects.select_related('lead', 'commercial').all()
     serializer_class = VisiteTerrainSerializer
+    parser_classes = [JSONParser]
     read_permission = 'visites_voir'
 
     #: ALEA24 — code d'écriture EXPLICITE pour CHAQUE action d'écriture du
@@ -144,11 +172,16 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(commercial=self.request.user)
         return qs
 
+    @extend_schema(
+        parameters=[OpenApiParameter('mine', OpenApiTypes.STR, required=False,
+                                     enum=['1', 'true', '0', 'false'])],
+        responses={200: _LISTE_OBJETS})
     def list(self, request, *args, **kwargs):
         lignes = [selectors.ligne_visite_terrain(visite)
                   for visite in self.filter_queryset(self.get_queryset())]
         return Response(lignes)
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     def retrieve(self, request, *args, **kwargs):
         return Response(selectors.contexte_visite_terrain(self.get_object()))
 
@@ -157,6 +190,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Création ─────────────────────────────────────────────────────────────
 
+    @extend_schema(request=VisiteTerrainSerializer,
+                   responses={201: OpenApiTypes.OBJECT})
     def create(self, request, *args, **kwargs):
         # Le sérialiseur ne fait que LIRE et BORNER le corps (lead/commercial
         # de la société, date au bon format) ; l'écriture est déléguée.
@@ -191,6 +226,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             {'erreurs': {'statut': visite.raison_lecture_seule}},
             status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(request=NotesVisiteSerializer, responses=OpenApiTypes.OBJECT)
     def update(self, request, *args, **kwargs):
         visite = self.get_object()
         refus = self._refus_si_gelee(visite)
@@ -228,7 +264,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Photos par slot ──────────────────────────────────────────────────────
 
-    @action(detail=True, methods=['post'], url_path='photos')
+    @extend_schema(
+        request={'multipart/form-data': PhotoVisiteSerializer},
+        responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=['post'], url_path='photos',
+            parser_classes=[MultiPartParser])
     def photos(self, request, pk=None):
         """Ajoute UNE photo dans un slot NOMMÉ de la checklist."""
         visite = self.get_object()
@@ -313,6 +353,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Mesures par catégorie ────────────────────────────────────────────────
 
+    @extend_schema(request=MesuresSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['patch'], url_path='mesures')
     def mesures(self, request, pk=None):
         """Enregistre les mesures d'UNE catégorie, champ par champ."""
@@ -347,6 +388,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             "progression sur le terrain.",
             status.HTTP_403_FORBIDDEN)
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='demarrer-route')
     def demarrer_route(self, request, pk=None):
         """Pointe le DEPART vers le site (horodatage serveur, idempotent)."""
@@ -360,6 +402,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             visite.save(update_fields=['en_route_le'])
         return self._agregat(visite)
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='arriver')
     def arriver(self, request, pk=None):
         """Pointe l'ARRIVEE sur le site (horodatage serveur, idempotent).
@@ -393,6 +436,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # la journée de son équipe, il ne qualifie pas un client qu'il n'a pas vu.
     # Gelée par VT3 comme toute autre écriture.
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='qualification')
     def qualification(self, request, pk=None):
         """Enregistre la qualification de fin de visite (vocabulaire fermé)."""
@@ -415,6 +459,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Transition « terminer » (gate de complétude SERVEUR) ─────────────────
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='terminer')
     def terminer(self, request, pk=None):
         visite = self.get_object()
@@ -451,6 +496,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── VT3 — Feu vert du bureau d'études ────────────────────────────────────
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         """Feu vert calepinage — réservé au code ``visites_valider``."""
@@ -463,6 +509,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         services.valider_visite(visite, request.user)
         return self._agregat(visite)
 
+    @extend_schema(request=VisiteRenvoiSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='renvoyer')
     def renvoyer(self, request, pk=None):
         """Renvoie la visite au commercial, avec ce qu'il doit refaire."""
@@ -487,6 +534,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── VT9 — Toit assemblé (panorama serveur) + VT11 calage ─────────────────
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'], url_path='assembler-photos')
     def assembler_photos(self, request, pk=None):
         """Lance l'assemblage des photos du toit (tâche Celery).
@@ -514,6 +562,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.refresh_from_db()
         return self._agregat(visite)
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='photo-toit')
     def photo_toit(self, request, pk=None):
         """Sert l'image assemblée par le proxy Django (jamais MinIO direct)."""
@@ -531,6 +580,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return _erreur('photo_toit', message, status.HTTP_404_NOT_FOUND)
         return HttpResponse(data, content_type='image/png')
 
+    @extend_schema(request=CalageSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['patch'], url_path='calage')
     def calage(self, request, pk=None):
         """VT11 — enregistre les 4 coins du drapage sur le contour du toit.
@@ -617,8 +667,10 @@ class MaJourneeView(APIView):
         visites = (VisiteTerrain.objects
                    .select_related('lead', 'commercial')
                    .filter(company=request.user.company))
-        tous = str(request.query_params.get('tous', '')).strip() in ('1',
-                                                                     'true')
+        brut = str(request.query_params.get('tous', '')).strip().lower()
+        if brut not in ('', '0', '1', 'true', 'false'):
+            raise ValidationError({'tous': 'Booléen attendu (true/false).'})
+        tous = brut in ('1', 'true')
         if not (tous and _user_has_or_legacy(request.user,
                                              'visites_valider')):
             visites = visites.filter(commercial=request.user)
