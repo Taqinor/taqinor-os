@@ -702,6 +702,13 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
                  if tot else _D(0))
         pct_s = 100 - pct_a - pct_m
     deux_cases = materiel <= 0
+    if tot <= 0:
+        # Total nul (devis sans ligne chiffrée) : tous les montants valent 0,
+        # donc « matériel = 0 » ne dit RIEN de la forme de l'échéancier — la
+        # forme (2 ou 3 cases) vient du nombre de tranches / de la part
+        # matériel déclarée, sinon un 30/60/10 s'imprimait 30/0/70.
+        deux_cases = (len(tranches_montant) == 2 if tranches_montant
+                      else pm <= 0)
     solde2 = tot - acompte
     pct_s2 = 100 - pct_a
     return {
