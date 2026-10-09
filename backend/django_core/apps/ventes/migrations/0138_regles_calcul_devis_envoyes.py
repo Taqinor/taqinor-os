@@ -24,7 +24,7 @@ def figer_devis_envoyes(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('ventes', '0135_merge_adev33_atot12'),
+        ('ventes', '0137_afac50_facture_penalite'),
     ]
 
     operations = [

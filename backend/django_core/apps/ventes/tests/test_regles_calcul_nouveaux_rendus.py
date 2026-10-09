@@ -1,6 +1,6 @@
 """Décision fondateur 08/10/2026 — « nouveaux rendus seulement ».
 
-Un devis déjà envoyé (``regles_calcul = 1`` posé par la migration 0136) reste
+Un devis déjà envoyé (``regles_calcul = 1`` posé par la migration 0138) reste
 rendu avec les règles d'origine ; un devis neuf naît aux règles corrigées.
 """
 import importlib
@@ -30,7 +30,7 @@ class ReglesCalculTests(SimpleTestCase):
 
     def test_migration_fige_les_envoyes(self):
         mod = importlib.import_module(
-            'apps.ventes.migrations.0136_regles_calcul_devis_envoyes')
+            'apps.ventes.migrations.0138_regles_calcul_devis_envoyes')
         self.assertTrue(callable(mod.figer_devis_envoyes))
 
     def test_commande_dryrun_sans_ecriture(self):
