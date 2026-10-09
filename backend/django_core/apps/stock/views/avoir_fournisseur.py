@@ -1,7 +1,11 @@
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    INT, P, S, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import AvoirFournisseur, FactureFournisseur
@@ -17,6 +21,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
 class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR9 — avoirs fournisseur (notes de crédit AP). Numérotation sans
     trou (préfixe AVF). `valider` passe brouillon → validé ; `imputer`
@@ -88,6 +93,7 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
             })
         instance.delete()
 
+    @extend_schema(request=None, responses=AvoirFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         avoir = self.get_object()
@@ -99,6 +105,7 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         avoir.save(update_fields=['statut'])
         return Response(self.get_serializer(avoir).data)
 
+    @extend_schema(request=corps('AvoirImputerCorps', facture=S.IntegerField(), montant=S.DecimalField(max_digits=14, decimal_places=2, required=False)), responses=AvoirFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='imputer')
     def imputer(self, request, pk=None):
         """Corps : ``{"facture": <id>, "montant"?: <decimal>}``. Sans

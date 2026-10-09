@@ -10,12 +10,16 @@ SOLMVP12 (20/09/2026) — la distinction PAR DÉPARTEMENT a été retirée (elle
 référençait le module RH, détaché de stock) : une seule enveloppe par
 société et par période.
 """
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin
+from ..openapi_helpers import (  # noqa: F401
+    BOOL, INT, NUM, OBJET, P, S, STR, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
@@ -70,6 +74,7 @@ class EngagementBudgetSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('annee', INT), P('mois', INT), P('actif', BOOL)]))
 class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     """NTP2P4 — enveloppe budgétaire d'achat de la société.
 
@@ -99,6 +104,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(actif=True)
         return qs
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'])
     def consommation(self, request, pk=None):
         """NTP2P4 — engagé vs réalisé vs restant pour cette enveloppe."""
@@ -109,6 +115,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
             many=True).data
         return Response(detail)
 
+    @extend_schema(parameters=[P('montant', NUM, False, 'Montant demandé (MAD)')], responses=corps('BudgetDisponibleReponse', controle_actif=S.BooleanField(), restant=S.FloatField(allow_null=True), depassement=S.FloatField(), suffisant=S.BooleanField(), montant_manquant=S.FloatField(), budget_id=S.IntegerField(allow_null=True), montant_alloue=S.CharField(allow_null=True), montant_demande=S.FloatField()))
     @action(detail=False, methods=['get'])
     def disponible(self, request):
         """NTP2P23 — simulateur : reste-t-il ``montant`` sur le budget de la
@@ -131,6 +138,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
         return Response(verdict)
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('budget', INT), P('statut', STR), P('demande', INT)]))
 class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTP2P4 — engagements budgétaires, LECTURE SEULE.
 

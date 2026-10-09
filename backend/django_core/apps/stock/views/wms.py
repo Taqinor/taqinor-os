@@ -1185,8 +1185,7 @@ def reslotting_suggestions_view(request):
     200: inline_serializer('StockEntrepotPertes', {
         'debut': serializers.CharField(allow_null=True),
         'fin': serializers.CharField(allow_null=True),
-        'total_valeur': serializers.DecimalField(
-            max_digits=14, decimal_places=2),
+        'total_valeur': serializers.FloatField(),
         'total_quantite': serializers.IntegerField(),
         'par_motif': serializers.ListField(child=serializers.DictField()),
     }),

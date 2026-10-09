@@ -1,9 +1,14 @@
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..openapi_helpers import (  # noqa: F401
+    S, corps,
+)
+from ..serializers import BonCommandeFournisseurSerializer  # noqa: E402
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 from apps.ventes.utils.references import create_with_reference
@@ -42,6 +47,7 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(request=corps('ModeleBcfGenererCorps', fournisseur=S.IntegerField(required=False)), responses={201: BonCommandeFournisseurSerializer})
     @action(detail=True, methods=['post'], url_path='generer')
     def generer(self, request, pk=None):
         """ZPUR3 — matérialise un BCF BROUILLON pré-rempli depuis les lignes

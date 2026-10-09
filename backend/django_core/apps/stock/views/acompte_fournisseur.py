@@ -1,7 +1,11 @@
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    INT, LISTE, P,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import AcompteFournisseur
 from ..serializers import AcompteFournisseurSerializer
@@ -16,6 +20,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT)]))
 class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR8 — acomptes/avances fournisseur sur BCF. Imputés automatiquement
     (idempotent) sur la première facture du BCF via
@@ -47,6 +52,7 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    @extend_schema(responses=LISTE)
     @action(detail=False, methods=['get'], url_path='ouverts')
     def ouverts(self, request):
         """XPUR8 (AUDV04/DRAFT165-113) — acomptes fournisseur PARTIELLEMENT/

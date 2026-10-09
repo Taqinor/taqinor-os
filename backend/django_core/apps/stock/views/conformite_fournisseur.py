@@ -1,7 +1,11 @@
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    INT, OBJET, P, STR,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
     DocumentConformiteFournisseur, AchatsParametres,
@@ -22,6 +26,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
 class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR1 — documents de conformité fournisseur (ARF/CNSS/RC/assurance).
 
@@ -79,6 +84,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         serializer.save()
         return Response(serializer.data)
 
+    @extend_schema(parameters=[P('periode', STR, False, 'AAAA-MM'), P('seuil_jours', INT)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='checklist-cloture')
     def checklist_cloture(self, request):
         """NTP2P30 — wizard de clôture de fin de mois achats : agrège en
