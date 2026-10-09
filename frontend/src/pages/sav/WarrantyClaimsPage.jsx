@@ -8,6 +8,8 @@ import {
   Plus, Pencil, Check, X, AlertTriangle, ShieldAlert,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
+import stockApi from '../../api/stockApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   TooltipProvider,
   Button,
@@ -66,7 +68,10 @@ export default function WarrantyClaimsPage() {
 
   const [form, setForm] = useState({
     equipement: '', description: '', rma_ref: '', date_signalement: '',
+    fournisseur: '',
   })
+  // ASAV36 — fournisseurs de la société, liste COMPLÈTE (toutes les pages).
+  const [fournisseurs, setFournisseurs] = useState([])
   const [formError, setFormError] = useState(null)
   const [edit, setEdit] = useState(null) // { id, statut, resolution, rma_ref }
 
@@ -86,6 +91,12 @@ export default function WarrantyClaimsPage() {
       .then((r) => setEquipements(r.data.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetchAllPages((page) => stockApi.getFournisseurs({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setFournisseurs(Array.isArray(res) ? res : (res?.results ?? [])))
+      .catch(() => {})
+  }, [])
+
   const visibleRows = useMemo(() => rows, [rows])
 
   const create = async () => {
@@ -100,9 +111,10 @@ export default function WarrantyClaimsPage() {
         description: form.description || '',
       }
       if (form.rma_ref) payload.rma_ref = form.rma_ref
+      if (form.fournisseur) payload.fournisseur_id_ext = Number(form.fournisseur)
       if (form.date_signalement) payload.date_signalement = form.date_signalement
       await savApi.saveWarrantyClaim(null, payload)
-      setForm({ equipement: '', description: '', rma_ref: '', date_signalement: '' })
+      setForm({ equipement: '', description: '', rma_ref: '', date_signalement: '', fournisseur: '' })
       toast.success('Réclamation garantie créée')
       load()
     } catch (e) {
@@ -138,7 +150,7 @@ export default function WarrantyClaimsPage() {
     },
     {
       id: 'fournisseur', header: 'Fournisseur', width: 150,
-      accessor: (r) => r.fournisseur_nom_cache || '—',
+      accessor: (r) => r.fournisseur_nom_cache || 'non renseigné',
     },
     {
       id: 'rma_ref', header: 'Réf. RMA', width: 130,
@@ -224,7 +236,7 @@ export default function WarrantyClaimsPage() {
         {/* ── Création ── */}
         <Card className="p-4">
           <Form onSubmit={(e) => { e.preventDefault(); create() }}
-                className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_1fr_1fr_auto]">
+                className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_2fr_1fr_1fr_auto]">
             <FormField label="Équipement">
               <Select value={form.equipement ? String(form.equipement) : '__none'}
                       onValueChange={(v) => setForm((f) => ({ ...f, equipement: v === '__none' ? '' : v }))}>
@@ -235,6 +247,18 @@ export default function WarrantyClaimsPage() {
                     <SelectItem key={e.id} value={String(e.id)}>
                       {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Fournisseur" hint="optionnel">
+              <Select value={form.fournisseur ? String(form.fournisseur) : '__none'}
+                      onValueChange={(v) => setForm((f) => ({ ...f, fournisseur: v === '__none' ? '' : v }))}>
+                <SelectTrigger aria-label="Fournisseur"><SelectValue placeholder="— Fournisseur —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Fournisseur —</SelectItem>
+                  {fournisseurs.map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
