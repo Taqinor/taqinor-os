@@ -4,7 +4,7 @@ from django.urls import path
 
 from .public_views import (
     InterventionLienClientPublicView, InterventionRapportPdfPublicView,
-    InterventionRapportPublicView,
+    InterventionRapportPhotoPublicView, InterventionRapportPublicView,
 )
 
 urlpatterns = [
@@ -19,4 +19,12 @@ urlpatterns = [
     path('intervention-rapport/<str:token>/pdf/',
          InterventionRapportPdfPublicView.as_view(),
          name='installations-public-intervention-rapport-pdf'),
+    # APDF38 / ACHT68 — photos de la page publique, servies par le jeton
+    # (`photo/` = URL du payload ; `photos/` = alias de l'énoncé ACHT68).
+    path('intervention-rapport/<str:token>/photo/<int:att_id>/',
+         InterventionRapportPhotoPublicView.as_view(),
+         name='installations-public-intervention-rapport-photo'),
+    path('intervention-rapport/<str:token>/photos/<int:att_id>/',
+         InterventionRapportPhotoPublicView.as_view(),
+         name='installations-public-intervention-rapport-photos'),
 ]

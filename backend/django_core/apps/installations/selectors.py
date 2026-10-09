@@ -2624,7 +2624,10 @@ def intervention_rapport_public_payload(interv):
         'date_realisee': (
             interv.date_realisee.isoformat() if interv.date_realisee else None),
         'equipe': intervention_pdf._equipe_payload(interv),
-        'photos': intervention_pdf._photos_payload(interv),
+        # APDF38 — URL tokenisées (route publique), plus le téléchargement
+        # authentifié de ``records``.
+        'photos': intervention_pdf._photos_payload(
+            interv, public_token=interv.lien_rapport_token),
         'serials': intervention_pdf._serials_payload(interv),
         'consommation': intervention_pdf._consommation_payload(interv),
         'reserves': intervention_pdf._reserves_payload(interv),

@@ -23,6 +23,16 @@ class PublicTokenThrottle(SimpleRateThrottle):
         return '30/min'
 
 
+class PublicPhotoThrottle(PublicTokenThrottle):
+    """APDF38 — les photos d'une page publique partent en rafale (une requête
+    par image) : plafond plus large que la page elle-même, même clé (IP, jeton)
+    mais compteur distinct."""
+    scope = 'installations_public_photo'
+
+    def get_rate(self):
+        return '300/min'
+
+
 class InterventionLienClientPublicView(APIView):
     """XFSM7 — page publique tokenisée « technicien en route » : statut
     courant, technicien (nom + avatar), fenêtre promise (XFSM5) et ETA
@@ -74,6 +84,40 @@ class InterventionRapportPublicView(APIView):
                 status=status.HTTP_404_NOT_FOUND)
         from .selectors import intervention_rapport_public_payload
         return Response(intervention_rapport_public_payload(interv))
+
+
+class InterventionRapportPhotoPublicView(APIView):
+    """APDF38 — une photo de la page publique du compte-rendu, servie par le
+    MÊME jeton : la pièce doit appartenir à l'intervention du jeton (photo de
+    créneau, image) — une pièce étrangère, un jeton inconnu ou un rapport
+    rouvert répondent 404 (jamais 403 : on ne confirme rien à un tiers)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [PublicPhotoThrottle]
+
+    def get(self, request, token, att_id):
+        interv = (
+            Intervention.objects
+            .filter(lien_rapport_token=token).first())
+        if interv is None or not _rapport_publiable(interv):
+            return Response(
+                {'detail': 'Lien invalide ou expiré.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from . import field_services
+        att = (field_services.intervention_photos(interv)
+               .filter(pk=att_id, mime__startswith='image/').first())
+        if att is None:
+            return Response(
+                {'detail': 'Lien invalide ou expiré.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from django.http import HttpResponse
+
+        from apps.records.storage import fetch_attachment
+        data, _err = fetch_attachment(att.file_key)
+        if not data:
+            return Response(
+                {'detail': 'Lien invalide ou expiré.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return HttpResponse(data, content_type=att.mime or 'image/jpeg')
 
 
 class InterventionRapportPdfPublicView(APIView):

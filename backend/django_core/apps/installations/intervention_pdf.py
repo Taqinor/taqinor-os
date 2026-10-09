@@ -15,14 +15,27 @@ def _equipe_payload(intervention):
     return [u.username for u in intervention.equipe.all()]
 
 
-def _photos_payload(intervention):
+def _photos_payload(intervention, *, public_token=None):
     """Photos groupées avant/pendant/après (URL de proxy Django, jamais l'objet
-    MinIO directement)."""
+    MinIO directement).
+
+    APDF38 — avec ``public_token`` (page publique du rapport), chaque photo est
+    servie par la route À JETON de CETTE intervention (``…/photo/<id>/``, sans
+    session) et la forme reste ``{libelle, url}`` ; sans jeton, URL du
+    téléchargement authentifié + ``id`` (lu par le rendu PDF interne)."""
     from . import field_services
     groups = {'avant': [], 'pendant': [], 'apres': []}
     by_slot = field_services.photos_by_slot(intervention)
     for slot in field_services.active_shotlist(intervention.company):
         for att in by_slot.get(slot.cle, []):
+            if public_token:
+                groups.setdefault(slot.phase, []).append({
+                    'libelle': slot.libelle,
+                    'url': (f'/api/django/public/installations/'
+                            f'intervention-rapport/{public_token}/'
+                            f'photo/{att.id}/'),
+                })
+                continue
             groups.setdefault(slot.phase, []).append({
                 'id': att.id,
                 'libelle': slot.libelle,
