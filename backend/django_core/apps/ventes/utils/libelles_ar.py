@@ -123,6 +123,69 @@ TEXTES_AR = {
     'Avoir': 'إشعار دائن',
     'Abandon de créance': 'التخلي عن الدين',
     'Arrondi espèces': 'تقريب الأداء نقدا',
+    # APDF31 (D-APDF-3 a) — avoir, note de débit, reçu, relance.
+    'AVOIR': 'إشعار دائن',
+    'NOTE DE DÉBIT': 'إشعار مدين',
+    'Note de crédit — sur facture': 'إشعار دائن — على الفاتورة',
+    'Majoration — sur facture': 'زيادة — على الفاتورة',
+    'Tél': 'الهاتف',
+    'Émetteur': 'المُصدر',
+    'Avoir au profit de': 'إشعار دائن لفائدة',
+    'Note de débit à charge de': 'إشعار مدين على عاتق',
+    "Date d'émission": 'تاريخ الإصدار',
+    "Facture d'origine": 'الفاتورة الأصلية',
+    'Statut': 'الحالة',
+    'Émis': 'صادر',
+    'Annulé': 'ملغى',
+    'Désignation': 'البيان',
+    'Qté': 'الكمية',
+    'P.U HT': 'سعر الوحدة (خ.ض)',
+    'Remise': 'الخصم',
+    'Total HT': 'المجموع (خ.ض)',
+    'Avoir sur facture': 'إشعار دائن على الفاتورة',
+    'Note de débit sur facture': 'إشعار مدين على الفاتورة',
+    'Motif': 'السبب',
+    'Sous-total HT crédité': 'المجموع الفرعي الدائن (خ.ض)',
+    'Sous-total HT': 'المجموع الفرعي (خ.ض)',
+    'Remise globale': 'الخصم الإجمالي',
+    'Arrondi commercial': 'التقريب التجاري',
+    'Base HT': 'الأساس (خ.ض)',
+    'TVA': 'الضريبة على القيمة المضافة',
+    'Total crédité TTC': 'المجموع الدائن شامل الضريبة',
+    'Total dû en supplément (TTC)': 'المبلغ الإضافي المستحق شامل الضريبة',
+    'Conditions de paiement': 'شروط الأداء',
+    'Signature & Cachet': 'التوقيع والختم',
+    'Avoir (note de crédit) lié à la facture': 'إشعار دائن مرتبط بالفاتورة',
+    'Note de débit liée à la facture': 'إشعار مدين مرتبط بالفاتورة',
+    'généré le': 'أُنشئ بتاريخ',
+    'générée le': 'أُنشئت بتاريخ',
+    'QUITTANCE': 'وصل أداء',
+    'Reçu de paiement n°': 'وصل الأداء رقم',
+    'Reçu de': 'تم التوصل من',
+    'Date du règlement': 'تاريخ الأداء',
+    'Mode': 'طريقة الأداء',
+    'Référence': 'المرجع',
+    'N° chèque': 'رقم الشيك',
+    'Banque tirée': 'البنك المسحوب عليه',
+    'Facture réglée': 'الفاتورة المؤداة',
+    'Montant affecté': 'المبلغ المخصص',
+    'Solde restant dû': 'الرصيد المتبقي المستحق',
+    'sur': 'على',
+    'Quittance générée automatiquement le': 'وصل مُنشأ تلقائيا بتاريخ',
+    'Objet': 'الموضوع',
+    'Relance': 'تذكير',
+    'facture': 'الفاتورة',
+    'Madame, Monsieur,': 'سيدتي، سيدي،',
+    'Sauf erreur de notre part, la facture ci-dessous reste en attente de règlement. Nous vous remercions de bien vouloir procéder à son paiement.': 'ما لم يكن هناك خطأ من جانبنا، فإن الفاتورة أدناه لا تزال في انتظار الأداء. نشكركم على التفضل بأدائها.',
+    'Facture': 'الفاتورة',
+    'Échéance': 'تاريخ الاستحقاق',
+    'en retard de': 'متأخرة بـ',
+    'jour(s)': 'يوم (أيام)',
+    'Montant restant dû': 'المبلغ المتبقي المستحق',
+    'Pénalité de retard indicative': 'غرامة التأخير الإرشادية',
+    'Nous restons à votre disposition pour toute information.': 'نبقى رهن إشارتكم لأي معلومة.',
+    'Cordialement,': 'مع خالص التحيات،',
+    'Courrier généré le': 'رسالة مُنشأة بتاريخ',
 }
 
 _SUFFIXE_AVANCE = ' (avance)'
@@ -140,6 +203,29 @@ def _texte_ar(texte):
     if texte.startswith(_PREFIXE_RETENUE):
         return 'اقتطاع من المنبع (' + texte[len(_PREFIXE_RETENUE):]
     return None
+
+
+#: APDF31 (D-APDF-3 a, tranché le 08/10/2026) — documents TRADUITS en
+#: arabe : facture, avoir, note de débit, reçu, lettre de relance. Les
+#: autres (bon de commande, pro-forma, relevé, bordereau) restent en
+#: français AVEC une mention de repli imprimée ; une langue sans
+#: dictionnaire (« en ») aussi — jamais un repli silencieux.
+MENTIONS_REPLI = {
+    'ar': ('Document disponible en français uniquement — '
+           'هذه الوثيقة متوفرة باللغة الفرنسية فقط.'),
+    'en': ('Document disponible en français uniquement — '
+           'This document is available in French only.'),
+}
+_MENTION_REPLI_DEFAUT = 'Document disponible en français uniquement.'
+
+
+def mention_repli(langue_demandee, langue_rendue):
+    """APDF31 — la mention imprimée quand le document n'est PAS rendu dans
+    la langue demandée (``''`` sinon)."""
+    demandee = (langue_demandee or 'fr').lower()
+    if demandee == (langue_rendue or 'fr').lower() or demandee == 'fr':
+        return ''
+    return MENTIONS_REPLI.get(demandee, _MENTION_REPLI_DEFAUT)
 
 
 def libelle(cle, langue='fr'):

@@ -415,6 +415,12 @@ def generate_facture_pdf(facture_id):
     # n'existe pas, prêt dès qu'il arrivera.
     from .libelles_ar import document_langue, libelle, arabic_font_face_css
     langue = document_langue(facture.client, company=facture.company)
+    # APDF31 — une langue sans dictionnaire (« en ») rend le FRANÇAIS avec
+    # une mention de repli imprimée (jamais silencieux).
+    from .libelles_ar import mention_repli
+    rendue = langue if langue in ('fr', 'ar') else 'fr'
+    context['mention_repli'] = mention_repli(langue, rendue)
+    langue = rendue
     context['langue_document'] = langue
     context['L'] = lambda cle: libelle(cle, langue)
     context['arabic_font_face_css'] = arabic_font_face_css() if langue == 'ar' else ''
@@ -684,6 +690,31 @@ def cle_facture_pdf_a_jour(facture) -> str:
     return generate_facture_pdf(facture.pk)
 
 
+def _contexte_langue(context, client, company, *, traduit):
+    """APDF31 (C-APDF-018, D-APDF-3 a) — pose ``langue_document``, ``L``,
+    ``arabic_font_face_css`` et ``mention_repli`` d'un document client.
+
+    ``traduit`` : le document a un dictionnaire arabe (facture, avoir, note
+    de débit, reçu, lettre de relance). Sinon (bon de commande, pro-forma)
+    ou pour une langue sans dictionnaire (« en ») : rendu FRANÇAIS et
+    mention de repli imprimée. Client français : contexte français,
+    ``mention_repli`` vide (rendu inchangé)."""
+    from .libelles_ar import (
+        arabic_font_face_css, document_langue, libelle, mention_repli,
+    )
+    try:
+        demandee = document_langue(client, company=company) or 'fr'
+    except Exception:  # noqa: BLE001 — jamais de crash PDF sur la langue
+        demandee = 'fr'
+    rendue = 'ar' if (traduit and demandee == 'ar') else 'fr'
+    context['langue_document'] = rendue
+    context['L'] = lambda cle: libelle(cle, rendue)
+    context['arabic_font_face_css'] = (
+        arabic_font_face_css() if rendue == 'ar' else '')
+    context['mention_repli'] = mention_repli(demandee, rendue)
+    return rendue
+
+
 def generate_avoir_pdf(avoir_id):
     """Generate, upload and persist PDF for an Avoir. Returns MinIO key.
 
@@ -699,6 +730,7 @@ def generate_avoir_pdf(avoir_id):
 
     context = _company_context(company=avoir.company)
     context['avoir'] = avoir
+    _contexte_langue(context, avoir.client, avoir.company, traduit=True)
 
     html = _render_html('avoir.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -734,6 +766,8 @@ def generate_note_debit_pdf(note_debit_id):
 
     context = _company_context(company=note_debit.company)
     context['note_debit'] = note_debit
+    _contexte_langue(context, note_debit.client, note_debit.company,
+                     traduit=True)
 
     html = _render_html('note_debit.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -804,6 +838,7 @@ def generate_bon_commande_pdf(bc_id):
         context['remise_montant'] = Decimal('0')
         context['remise_globale'] = Decimal('0')
 
+    _contexte_langue(context, bc.client, bc.company, traduit=False)
     html = _render_html('bon_commande.html', context)
     return _html_to_pdf(html)
 
@@ -830,6 +865,7 @@ def generate_lettre_relance_pdf(facture, niveau, message):
     context['facture'] = facture
     context['niveau'] = niveau
     context['message'] = rendre_message_relance(message, facture)
+    _contexte_langue(context, facture.client, facture.company, traduit=True)
     html = _render_html('lettre_relance.html', context)
     return _html_to_pdf(html)
 
@@ -879,6 +915,7 @@ def generate_proforma_pdf(devis, reference):
         context['date_validite'] = date_expiration(devis)
     except Exception:  # noqa: BLE001 — une date indéterminable n'imprime rien
         context['date_validite'] = None
+    _contexte_langue(context, devis.client, devis.company, traduit=False)
     html = _render_html('proforma.html', context)
     return _html_to_pdf(html)
 
@@ -948,6 +985,7 @@ def generate_recu_pdf(paiement):
     context['affectations'] = affectations
     context['solde_restant'] = solde_restant
     context['montant_lettres'] = montant_en_lettres(paiement.montant)
+    _contexte_langue(context, client, company, traduit=True)
 
     html = _render_html('recu.html', context)
     return _html_to_pdf(html)

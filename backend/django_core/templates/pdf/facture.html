@@ -146,6 +146,8 @@
 </head>
 <body>
 <div class="page">
+  {# APDF31 (D-APDF-3) — document non traduit dans la langue du client : la mention de repli est IMPRIMÉE, jamais silencieuse. #}
+  {% if mention_repli %}<div style="margin-bottom: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 10px; color: #475569;">{{ mention_repli }}</div>{% endif %}
 
   <!-- En-tête -->
   <div class="header">

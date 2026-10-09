@@ -1,6 +1,7 @@
+{# APDF31 (C-APDF-018, D-APDF-3 a) — _L : le texte FRANÇAIS sert de clé ; traduit en arabe par libelles_ar.libelle (TEXTES_AR) ; sans `L` dans le contexte, le texte français tel quel. #}{% macro _L(cle) %}{% if L is defined %}{{ L(cle) }}{% else %}{{ cle }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ langue_document or 'fr' }}"{% if langue_document == 'ar' %} dir="rtl"{% endif %}>
 <head>
   <meta charset="UTF-8" />
   <style>
@@ -68,24 +69,39 @@
         font-size: 8px; color: #64748b;
       }
     }
+    {% if langue_document == 'ar' %}
+    /* APDF31 — rendu arabe (même règles que la facture, AFAC57/APDF25 :
+       police système, montants en segment LTR). */
+    body { font-family: 'Noto Sans Arabic', 'Helvetica Neue', Arial, sans-serif; direction: rtl; }
+    thead th { text-align: right; }
+    .text-right { text-align: left; }
+    .company-info, .client-block { text-align: left; }
+    .totaux { margin-left: 0; margin-right: 0; }
+    .totaux-row span:last-child, td.text-right {
+      direction: ltr; unicode-bidi: embed; white-space: nowrap;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+    {% endif %}
   </style>
 </head>
 <body>
 <div class="page">
+  {# APDF31 (D-APDF-3) — document non traduit dans la langue du client : la mention de repli est IMPRIMÉE, jamais silencieuse. #}
+  {% if mention_repli %}<div style="margin-bottom: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 10px; color: #475569;">{{ mention_repli }}</div>{% endif %}
 
   <div class="header">
     <div class="header-left">
       {% if logo_uri %}
       <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
       {% endif %}
-      <div class="doc-title">NOTE DE DÉBIT</div>
+      <div class="doc-title">{{ _L("NOTE DE DÉBIT") }}</div>
       <div class="doc-ref">{{ note_debit.reference }}</div>
-      <div class="doc-link">Majoration — sur facture {{ note_debit.facture.reference }}</div>
+      <div class="doc-link">{{ _L("Majoration — sur facture") }} {{ note_debit.facture.reference }}</div>
     </div>
     <div class="company-info">
       <strong>{{ entreprise_nom }}</strong><br />
       {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
-      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_telephone %}{{ _L("Tél") }} : {{ entreprise_telephone }}<br />{% endif %}
       {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
       {% if entreprise_tva_intra %}TVA : {{ entreprise_tva_intra }}{% endif %}
     </div>
@@ -93,7 +109,7 @@
 
   <div class="parties">
     <div class="partie-block">
-      <div class="partie-label">Émetteur</div>
+      <div class="partie-label">{{ _L("Émetteur") }}</div>
       <div class="partie-nom">{{ entreprise_nom }}</div>
       <div class="partie-detail">
         {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
@@ -101,7 +117,7 @@
       </div>
     </div>
     <div class="partie-block">
-      <div class="partie-label">Note de débit à charge de</div>
+      <div class="partie-label">{{ _L("Note de débit à charge de") }}</div>
       {% if note_debit.client.type_client == 'entreprise' %}
       <div class="partie-nom">{{ note_debit.client.nom }}</div>
       {% else %}
@@ -126,16 +142,16 @@
 
   <div class="meta-row">
     <div class="meta-item">
-      <strong>Date d'émission</strong>
+      <strong>{{ _L("Date d'émission") }}</strong>
       <span>{{ note_debit.date_emission.strftime('%d/%m/%Y') }}</span>
     </div>
     <div class="meta-item">
-      <strong>Facture d'origine</strong>
+      <strong>{{ _L("Facture d'origine") }}</strong>
       <span>{{ note_debit.facture.reference }}</span>
     </div>
     <div class="meta-item">
-      <strong>Statut</strong>
-      <span>{{ note_debit.get_statut_display() }}</span>
+      <strong>{{ _L("Statut") }}</strong>
+      <span>{{ _L(note_debit.get_statut_display()) }}</span>
     </div>
   </div>
 
@@ -143,11 +159,11 @@
     <thead>
       <tr>
         <th>#</th>
-        <th>Désignation</th>
-        <th class="text-right">Qté</th>
-        <th class="text-right">P.U HT</th>
-        <th class="text-right">Remise</th>
-        <th class="text-right">Total HT</th>
+        <th>{{ _L("Désignation") }}</th>
+        <th class="text-right">{{ _L("Qté") }}</th>
+        <th class="text-right">{{ _L("P.U HT") }}</th>
+        <th class="text-right">{{ _L("Remise") }}</th>
+        <th class="text-right">{{ _L("Total HT") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -164,7 +180,7 @@
       {% if not note_debit.lignes.all() %}
       <tr>
         <td>1</td>
-        <td>Note de débit sur facture {{ note_debit.facture.reference }}</td>
+        <td>{{ _L("Note de débit sur facture") }} {{ note_debit.facture.reference }}</td>
         <td class="text-right">1</td>
         <td class="text-right">{{ "%.2f"|format(note_debit.total_ht) }} MAD</td>
         <td class="text-right">—</td>
@@ -175,7 +191,7 @@
   </table>
 
   {% if note_debit.motif %}
-  <div class="note-block"><strong>Motif :</strong> {{ note_debit.motif }}</div>
+  <div class="note-block"><strong>{{ _L("Motif") }} :</strong> {{ note_debit.motif }}</div>
   {% endif %}
 
   {# AUD107 — la chaîne HT brut → remise → HT net → TVA → TTC vient d'UNE
@@ -188,18 +204,18 @@
     {# ATOT11 — chaîne partagée (_chaine_totaux.html) : l'arrondi et le
        Total HT, absents de cette copie, sont désormais imprimés. #}
     {{ chaine_totaux(totaux, note_debit.remise_globale, {
-         'sous_total': 'Sous-total HT',
-         'remise_globale': 'Remise globale',
-         'arrondi': 'Arrondi commercial', 'total_ht': 'Total HT',
-         'tva': 'TVA', 'total_ttc': 'Total dû en supplément (TTC)',
-         'base_ht': 'Base HT',
+         'sous_total': _L('Sous-total HT'),
+         'remise_globale': _L('Remise globale'),
+         'arrondi': _L('Arrondi commercial'), 'total_ht': _L('Total HT'),
+         'tva': _L('TVA'), 'total_ttc': _L('Total dû en supplément (TTC)'),
+         'base_ht': _L('Base HT'),
        }) }}
   </div>
 
   {# AFAC56 — conditions de paiement de la facture d'origine. #}
   {% if note_debit.facture and note_debit.facture.conditions_paiement %}
   <div style="margin-top: 16px; font-size: 10.5px; line-height: 1.6; color: #475569;">
-    <strong style="display: block; margin-bottom: 4px; color: #1e293b;">Conditions de paiement</strong>
+    <strong style="display: block; margin-bottom: 4px; color: #1e293b;">{{ _L("Conditions de paiement") }}</strong>
     <div style="white-space: pre-line;">{{ note_debit.facture.conditions_paiement }}</div>
   </div>
   {% endif %}
@@ -207,7 +223,7 @@
   {% if signature_uri %}
   <div class="signature-section">
     <div class="signature-block">
-      <div class="signature-label">Signature & Cachet</div>
+      <div class="signature-label">{{ _L("Signature & Cachet") }}</div>
       <img class="signature-img" src="{{ signature_uri }}" alt="Signature" />
       <div class="signature-line">{{ entreprise_nom }}</div>
     </div>
@@ -225,7 +241,7 @@
       {% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}
       {% if entreprise_patente %} | Patente : {{ entreprise_patente }}{% endif %}
       {% if entreprise_cnss %} | CNSS : {{ entreprise_cnss }}{% endif %}
-      <br />Note de débit liée à la facture {{ note_debit.facture.reference }} — générée le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+      <br />{{ _L("Note de débit liée à la facture") }} {{ note_debit.facture.reference }} — {{ _L("générée le") }} {{ now.strftime('%d/%m/%Y à %H:%M') }}
     </div>
   </div>
 
