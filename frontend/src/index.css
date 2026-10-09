@@ -11423,6 +11423,286 @@ textarea.form-control {
   font-size: 0.875rem;
 }
 
+/* ── EDC2 — Table des lignes pleine largeur, rail replié par container query ── */
+/* Fondateur 09/10/2026 : « rends la fenêtre et la table larges, sans défilement
+   horizontal ». Le plafond LDPQ1 (`.ldp-edit .gen-embedded { max-width: 980px }`,
+   plus haut) n'est PAS édité : cette règle, plus spécifique, le neutralise
+   (contrat EDC — un bloc en fin de fichier par tâche, jamais une réécriture). */
+.ldp-body .ldp-edit .gen-embedded {
+  max-width: none;
+  margin: 0;
+}
+/* La racine du générateur est LE conteneur interrogé : un conteneur ne
+   s'interroge pas lui-même, le rail et le total condensé sont ses descendants.
+   Le seuil suit la largeur RÉELLE de l'écran du devis (panneau ou page), jamais
+   celle de la fenêtre. */
+.gen-root {
+  container-type: inline-size;
+  container-name: gen;
+}
+/* Rail replié par défaut ; il ne revient qu'au-dessus de 1 200 px de conteneur
+   (18 rem de rail + l'écart laissent ≥ 880 px à la table : aucun débordement). */
+.gen-root .gen-summary-rail { display: none; }
+@container gen (min-width: 1200px) {
+  .gen-root .gen-summary-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 18rem;
+    flex-shrink: 0;
+    position: sticky;
+    align-self: flex-start;
+    /* Collé SOUS la barre d'actions en tête (EDC4, `--gen-barre-h`), jamais
+       64 px sous un en-tête d'app qui n'existe pas dans le panneau ;
+       `--gen-colle-decalage` compense le padding du défileur (EDC4). */
+    top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px) + var(--gen-barre-h, 0px) + 0.75rem);
+  }
+  /* Le rail visible porte déjà le total : le total condensé du pied s'efface. */
+  .gen-root .gen-ttc-condense { display: none; }
+}
+
+/* ── EDC4 — Barre d'actions en tête, collante (embarqué ET pleine page) ── */
+/* Repli de `--gen-barre-h` tant que la mesure (ResizeObserver de
+   BarreActionsDevis.jsx, posée en ligne sur la racine) n'a pas tourné. */
+.gen-root { --gen-barre-h: 3.25rem; }
+/* Collée au haut du défileur réel ; `--gen-colle-decalage` (padding haut du
+   défileur, en négatif) la pose au VRAI bord haut — Chromium mesure `top`
+   depuis le bord intérieur du padding. Palier `--z-sticky` : les popovers Radix
+   (portés, `--z-popover`) passent toujours au-dessus. Coins hauts droits : une
+   fois collée, aucun contenu ne transparaît dans des coins arrondis. */
+.gen-barre-actions {
+  position: sticky;
+  top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px));
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  min-height: 3.25rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+/* Base flex FIXE et min-width nulle : l'apparition de la pastille ne change ni
+   le retour à la ligne ni la place des actions (aucun saut de mise en page). */
+.gen-barre-identite {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.gen-barre-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.gen-barre-saisie {
+  display: inline-flex;
+  min-width: 0;
+}
+.gen-barre-pastille {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.gen-barre-droite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem 1rem;
+  margin-left: auto;
+}
+.gen-barre-total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.gen-barre-total strong {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.gen-barre-boutons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+@container gen (max-width: 560px) {
+  .gen-barre-actions { padding: 0.4rem 0.6rem; gap: 0.35rem 0.75rem; }
+  .gen-barre-annuler { display: none; }
+}
+/* La barre de progression de défilement (VX136, premier enfant de la racine)
+   colle au MÊME haut que la barre d'actions et se peint sur son bord. */
+.gen-root > .scroll-progress-bar {
+  top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px));
+  z-index: calc(var(--z-sticky) + 1);
+}
+
+/* ── EDC3 — Barre de défilement horizontale collante + en-tête de table collant ── */
+/* Conteneur générique (BarreDefilementCollante.jsx) : défilable par défaut ;
+   quand la table déborde, SA barre native est masquée — la barre proxy collée
+   au bas de l'écran la remplace (une seule barre visible, jamais deux). */
+.bdc-wrap { overflow-x: auto; }
+.bdc-wrap[data-deborde="true"] { scrollbar-width: none; }
+.bdc-wrap[data-deborde="true"]::-webkit-scrollbar { display: none; }
+/* Barre proxy : `position: sticky; bottom` posée en ligne par le composant.
+   Piste VISIBLE même sous les barres « overlay » de macOS : le style
+   `::-webkit-scrollbar` force une barre classique — il est ignoré si
+   `scrollbar-width`/`scrollbar-color` ne valent pas `auto`, d'où les deux
+   `auto` explicites. Palier local (au-dessus des cellules `position:
+   relative` de la table), dérivé du barème. */
+.bdc-proxy {
+  z-index: calc(var(--z-base) + 3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  background: var(--card);
+}
+.bdc-proxy[hidden] { display: none; }
+.bdc-proxy::-webkit-scrollbar { height: 14px; }
+.bdc-proxy::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: 9999px;
+}
+.bdc-proxy::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  border: 3px solid var(--muted);
+  border-radius: 9999px;
+}
+@media (hover: hover) {
+  .bdc-proxy::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+}
+/* Haut de collage de l'en-tête de table : sous la barre d'actions (EDC4) et la
+   navigation de sections (EDC9), au vrai bord haut du défileur. */
+.gen-root {
+  --gen-colle-top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px) + var(--gen-barre-h, 0px) + var(--gen-nav-h, 0px));
+}
+/* Bureau seulement (≥ 769 px) : sous 768 px la table des lignes est empilée en
+   cartes (thead masqué) — aucune de ces règles ne la touche. */
+@media (min-width: 769px) {
+  /* « tient » : le conteneur n'est PLUS un défileur — sinon l'en-tête collerait
+     au conteneur (mesuré : −383 px après 400 px de défilement du panneau). */
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] { overflow: visible; }
+  /* `collapse` perd les bordures d'un en-tête collé (Mozilla 1727594, WebKit
+     271984) : bordures par cellule, déjà posées sur th/td. */
+  .lines-table.lines-table-separe {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .lines-thead-collant th {
+    position: sticky;
+    top: var(--gen-colle-top, 0px);
+    z-index: calc(var(--z-base) + 2);
+  }
+  /* Le conteneur ne rogne plus ses coins arrondis : les cellules d'angle les
+     portent elles-mêmes (fond de l'en-tête, survol de la dernière ligne). */
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table thead th:first-child { border-top-left-radius: 9px; }
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table thead th:last-child { border-top-right-radius: 9px; }
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table tbody tr:last-child td:first-child { border-bottom-left-radius: 9px; }
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table tbody tr:last-child td:last-child { border-bottom-right-radius: 9px; }
+}
+/* Mobile : comportement d'empilement INCHANGÉ — le conteneur des lignes reste
+   `overflow: visible` (règle mobile d'origine, ré-affirmée ici car `.bdc-wrap`
+   vient après elle) et aucune barre proxy pour la table des lignes. */
+@media (max-width: 768px) {
+  .lines-table-wrap.bdc-wrap { overflow: visible; }
+  .lines-table-wrap + .bdc-proxy { display: none; }
+}
+
+/* ── EDC9 — Navigation de sections collante + cartes d'étude repliables ── */
+/* Repli de `--gen-nav-h` tant que NavigationSections.jsx n'a pas mesuré la
+   rangée (ResizeObserver, posé en ligne sur la racine). */
+.gen-root { --gen-nav-h: 0px; }
+/* Rangée de puces collée SOUS la barre d'actions (EDC4), un cran sous elle
+   (l'ombre de la barre passe par-dessus), au-dessus du contenu qui défile. */
+.gen-nav-sections {
+  position: sticky;
+  top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px) + var(--gen-barre-h, 0px));
+  z-index: calc(var(--z-sticky) - 1);
+  margin-top: -0.5rem;
+  padding: 0.4rem 0;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.gen-nav-sections[hidden] { display: none; }
+/* Rangée défilable sans barre visible (≤ 8 puces) ; le dégradé de bord dit
+   « il y a plus à droite » quand elle déborde (même indice que LW33). */
+.gen-nav-liste {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+}
+.gen-nav-liste::-webkit-scrollbar { display: none; }
+.gen-nav-liste > li { flex: 0 0 auto; }
+.gen-nav-puce {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .gen-nav-puce:hover { color: var(--foreground); background: var(--muted); }
+}
+.gen-nav-puce:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* Section visible : l'accent Ventes (brass), jamais la seule couleur — le
+   poids passe aussi en gras. */
+.gen-nav-puce[aria-current="true"] {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-brass) 14%, var(--card));
+  border-color: color-mix(in oklch, var(--module-accent-brass) 45%, transparent);
+}
+/* Une carte atteinte par une puce s'arrête SOUS la barre et la rangée. */
+.gen-root [id^="gen-sec-"] { scroll-margin-top: calc(var(--gen-barre-h, 0px) + 3.5rem); }
+/* Téléphone : la rangée défile avec la page (la hauteur d'écran manque pour
+   empiler deux bandeaux collants au-dessus du clavier). */
+@media (max-width: 768px) {
+  .gen-nav-sections { position: static; margin-top: 0; }
+}
+/* Bouton « Replier / Déplier » des cartes d'étude : chevron qui pivote. */
+.gen-carte-repli-icone { transition: transform var(--motion-fast) var(--ease-standard); }
+.gen-carte-repli-icone[data-replie="true"] { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .gen-nav-puce,
+  .gen-carte-repli-icone { transition: none; }
+}
+
 /* ── EDC1 — Panneau d'Édition complète : défileur sans padding, pleine largeur ── */
 /* Contrat EDC (lane panneau) : le défileur `.ldp-edit` ne porte AUCUN padding
    (un padding décale de 16 px tout `top: 0` collant du générateur : Chromium

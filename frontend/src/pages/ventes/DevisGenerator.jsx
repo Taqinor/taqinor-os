@@ -82,6 +82,8 @@ import {
   ScrollProgress,
   // QJR540 — compteurs factures / BC / chantier du devis rouvert (ex-DevisForm).
   RelationCounters,
+  // EDC3 — barre horizontale collante des trois tableaux d'étude horaire.
+  BarreDefilementCollante,
 } from '../../ui'
 // QJR540 — blocs issus de l'ancien modal DevisForm (supprimé) : le calepinage qui
 // pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
@@ -203,6 +205,13 @@ import {
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
 // d'argent (totaux, remise, TVA, prix cible, marge interne).
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
+// EDC4 — barre d'actions collante EN TÊTE (le pied `gen-actions-sticky` reste).
+import BarreActionsDevis from './generator/BarreActionsDevis'
+// EDC5 — décision clavier du formulaire (module pur) : Entrée n'enregistre jamais.
+import { decisionTouche, champCorrespondant } from './generator/clavierDevis'
+// EDC9 — navigation de sections collante + cartes d'étude repliables (Édition complète).
+import NavigationSections from './generator/NavigationSections'
+import { useCartesRepliees } from './generator/cartesRepliees'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
 import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
@@ -416,6 +425,15 @@ function IndicationRegistre({ chemin, busy, onRegenerer }) {
  * @param {number}   editId      Éditer un brouillon existant (embarqué)
  * @param {function} onDone      Appelé avec l'id du devis créé/enregistré
  * @param {function} onCancel    Appelé sur Annuler
+ * @param {function} onVoirPdf   EDC4 (contrat EDC, optionnel) — « Voir le PDF »
+ *                               de la barre d'actions, en embarqué et sur un
+ *                               devis existant seulement : le panneau décide.
+ * @param {function} onDirtyChange EDC7 (contrat EDC, optionnel) — appelée avec
+ *                               `dirty` (booléen) à chaque changement.
+ * @param {function} onEnregistre  EDC7 (contrat EDC, optionnel) — succès de
+ *                               l'enregistrement d'un devis EXISTANT en
+ *                               embarqué : l'écran reste ouvert (sans elle,
+ *                               repli sur `onDone` comme avant).
  */
 export default function DevisGenerator({
   embedded = false,
@@ -425,6 +443,9 @@ export default function DevisGenerator({
   editId: editIdProp = null,
   onDone = null,
   onCancel = null,
+  onVoirPdf = null,
+  onDirtyChange = null,
+  onEnregistre = null,
 } = {}) {
   const navigate = useNavigate()
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
@@ -569,6 +590,12 @@ export default function DevisGenerator({
   // recommandée et nombre de panneaux portent déjà la surcharge (QJR572).
   // L'endpoint reste IsResponsableOrAdmin ; le registre est lu pour tous.
   const estAdmin = useIsAdmin()
+  // EDC9 — en Édition complète, « Aperçu de la Simulation » et « Surcharges
+  // (registre) » sont repliées PAR DÉFAUT (choix mémorisé par utilisateur) ;
+  // en création, rien n'est repliable.
+  const [cartesRepliees, basculerCarte] = useCartesRepliees()
+  const simulationRepliee = Boolean(editDevis) && cartesRepliees.simulation
+  const surchargesRepliees = Boolean(editDevis) && cartesRepliees.surcharges
   const [overridesBusy, setOverridesBusy] = useState(false)
   // Un refus 400 est affiché TEL QUEL (le message FR du serveur, jamais avalé
   // ni remplacé par une phrase générique) — les formes varient selon le refus
@@ -795,6 +822,9 @@ export default function DevisGenerator({
   // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
+  // EDC5 — une ligne ajoutée par Entrée (dernière ligne) reçoit le focus sur
+  // sa DÉSIGNATION (on continue de saisir), pas sur le sélecteur produit.
+  const focusDesignationApresAjout = useRef(false)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -1007,6 +1037,10 @@ export default function DevisGenerator({
     version: editId ? (editDevis?.updated_at ?? null) : undefined,
   })
   useDirtyGuard(dirty)
+  // EDC7 (contrat EDC) — le panneau suit l'état « non enregistré » de l'écran
+  // (sorties protégées EDC6, « Voir le PDF » EDC11) : appelée à chaque
+  // changement de `dirty`, jamais une valeur déduite côté panneau.
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
   // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
   // d'avant QJR581 sans version) il est purgé, avec une notice.
@@ -2541,7 +2575,13 @@ export default function DevisGenerator({
       ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
     if (row) {
       const picker = row.querySelector('button[type="button"]')
-      picker?.focus()
+      // EDC5 — ajout par Entrée : la désignation si elle est modifiable
+      // (rôle autorisé, QP2), sinon le sélecteur produit comme avant.
+      const designation = focusDesignationApresAjout.current
+        ? row.querySelector('td[data-label="Désignation"] input:not([disabled])')
+        : null
+      focusDesignationApresAjout.current = false
+      ;(designation || picker)?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
@@ -3622,11 +3662,54 @@ export default function DevisGenerator({
     }
   }
 
+  // EDC5 (fondateur 09/10/2026 — « revient d'un coup au devis ») — clavier
+  // du formulaire : la soumission IMPLICITE du navigateur (Entrée dans
+  // n'importe quel champ) enregistrait le devis et quittait l'éditeur. La
+  // décision est prise par le module pur `generator/clavierDevis.js` ; ici on
+  // l'applique. Ctrl/Cmd+S et Ctrl/Cmd+Entrée passent par `requestSubmit()` :
+  // même validation et même chemin qu'un clic sur « Enregistrer ».
+  const onKeyDownFormulaire = (e) => {
+    const decision = decisionTouche(e, e.currentTarget)
+    if (decision === 'ignorer') return
+    e.preventDefault()
+    if (decision === 'enregistrer') {
+      if (!saving) e.currentTarget.requestSubmit()
+      return
+    }
+    if (decision === 'ligne-suivante') {
+      champCorrespondant(e.target)?.focus()
+      return
+    }
+    if (decision === 'ajouter-ligne') {
+      focusDesignationApresAjout.current = true
+      addLine()
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // EDC7 — capturé AVANT l'écriture : `editDevis` décide édition vs création.
+    const enEdition = Boolean(editDevis)
     const res = await persisterDevis()
-    if (res) { clear(); marquerEnregistre(); finish(res.devisId, res.devisCree) }
+    if (!res) return
+    clear(); marquerEnregistre()
+    // EDC7 (contrat EDC, fondateur 09/10/2026 : « l'édition complète revient
+    // d'un coup au devis ») — un devis EXISTANT enregistré en Édition complète
+    // embarquée RESTE dans l'éditeur, avec tout son état : le jeton vient
+    // d'être ré-armé par `persisterDevis`, `marquerEnregistre()` remet `dirty`
+    // à faux, la version locale suit `updated_at` (un brouillon local écrit
+    // ensuite porte la BONNE version, QJR581) et l'historique des versions se
+    // relit. Sans `onEnregistre` : `onDone` comme avant ; la création appelle
+    // toujours `onDone` (le panneau bascule alors sur l'aperçu).
+    if (embedded && enEdition && onEnregistre) {
+      setEditDevis(d => (d && jetonRef.current ? { ...d, updated_at: jetonRef.current } : d))
+      setVersionHistorique(n => n + 1)
+      toast.success('Modifications enregistrées.')
+      onEnregistre(res.devisId)
+      return
+    }
+    finish(res.devisId, res.devisCree)
   }
 
   // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
@@ -3841,7 +3924,12 @@ export default function DevisGenerator({
   }
 
   return (
-    <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
+    // EDC2 — `gen-root` : LE conteneur interrogé (`container-type: inline-size`,
+    // index.css bloc EDC2). Le rail et le total condensé se montrent selon la
+    // largeur RÉELLE de l'écran du devis, jamais selon la fenêtre (dans le
+    // panneau de la fiche lead, la fenêtre ment : 1 920 px de fenêtre pour un
+    // générateur qui n'en reçoit que la moitié).
+    <div className={embedded ? 'gen-root gen-embedded' : 'gen-root page gen-page'}>
       {/* VX136 — formulaire-fleuve (2319+ l.) : barre de progression de
           scroll native, `scroll(nearest)` suit le conteneur qui défile
           réellement (`.layout-content` en page pleine, le Sheet englobant
@@ -3864,13 +3952,38 @@ export default function DevisGenerator({
         />
       )}
 
+      {/* EDC4 — barre d'actions COLLÉE en haut du défileur (panneau ou page),
+          HORS du <form> (les ancres `#gen-form` des e2e ne la voient pas) :
+          son Enregistrer est `form="gen-form"`, même chemin que le pied.
+          « Voir le PDF » : embarqué + devis existant + prop du panneau. */}
+      <BarreActionsDevis
+        reference={editDevis?.reference ?? null}
+        statut={editDevis?.statut ?? null}
+        chargement={Boolean(editId) && !editDevis}
+        enEdition={Boolean(editDevis)}
+        dirty={dirty}
+        totalTtc={kpiTotal}
+        saving={saving}
+        onAnnuler={cancel}
+        onVoirPdf={embedded && editDevis && onVoirPdf ? () => onVoirPdf() : null}
+      />
+
       {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
           un rail récapitulatif STICKY à droite. Sur mobile/tablette, layout
-          inchangé (le rail est masqué, les actions restent dans le formulaire). */}
+          inchangé (le rail est masqué, les actions restent dans le formulaire).
+          EDC2 — le rail se replie de lui-même sous 1 200 px de conteneur
+          (`display: none` n'occupe ni place ni `gap`) : le formulaire prend
+          alors toute la largeur. */}
       <div className="lg:flex lg:items-start lg:gap-6">
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
-          acceptée telle quelle (les steps ne servent qu'aux flèches). */}
-      <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+          acceptée telle quelle (les steps ne servent qu'aux flèches).
+          EDC5 — `onKeyDown` : Entrée n'enregistre JAMAIS (ligne suivante dans
+          la table) ; Ctrl/Cmd+S et Ctrl/Cmd+Entrée enregistrent. Aucune
+          validation à la frappe : la saisie numérique est inchangée. */}
+      <form id="gen-form" onSubmit={handleSubmit} noValidate onKeyDown={onKeyDownFormulaire} className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {/* EDC9 — puces des cartes RÉELLEMENT rendues (`gen-sec-*`), collées
+            sous la barre d'actions ; un clic défile jusqu'à la carte. */}
+        <NavigationSections />
         {editDevis?.statut === 'envoye' && (
           <div
             data-testid="devis-envoye-banner"
@@ -4056,7 +4169,7 @@ export default function DevisGenerator({
         </Card>
 
         {/* ── Informations du document ── */}
-        <Card>
+        <Card id="gen-sec-document" data-nav-libelle="Document">
           <GenCardHeader icon={ClipboardList} title="Informations du document" />
           <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="grid gap-1.5">
@@ -4149,7 +4262,7 @@ export default function DevisGenerator({
         </Card>
 
         {/* ── Lead / Client (lead prioritaire) ── */}
-        <Card>
+        <Card id="gen-sec-lead" data-nav-libelle="Lead & Client">
           <GenCardHeader icon={User} title="Lead & Client" />
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -4355,7 +4468,7 @@ export default function DevisGenerator({
         />
 
         {/* ── Paramètres techniques ── */}
-        <Card>
+        <Card id="gen-sec-technique" data-nav-libelle="Technique">
           <GenCardHeader icon={Zap} title="Paramètres Techniques" />
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -4614,15 +4727,26 @@ export default function DevisGenerator({
 
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}
         {modeInstallation !== 'agricole' && (
-        <Card>
-          <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation">
-            {/* Repliable sur téléphone uniquement (bouton caché sur bureau) */}
-            <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
-                    onClick={() => setPreviewCollapsed(v => !v)}>
-              {previewCollapsed ? 'Afficher' : 'Replier'}
-            </Button>
+        <Card id="gen-sec-simulation" data-nav-libelle="Simulation">
+          {/* EDC9 — repliable en Édition complète (repliée par défaut, jamais
+              masquée) : le contenu reste MONTÉ (`hidden`), ses ancres
+              `data-figure` restent lisibles (parité écran / PDF). */}
+          <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation"
+                         repliable={Boolean(editDevis)}
+                         replie={simulationRepliee}
+                         onBasculer={() => basculerCarte('simulation')}
+                         controle="gen-sec-simulation-contenu">
+            {/* Repliable sur téléphone uniquement (bouton caché sur bureau) ;
+                en Édition complète, le repli EDC9 le remplace. */}
+            {!editDevis && (
+              <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
+                      onClick={() => setPreviewCollapsed(v => !v)}>
+                {previewCollapsed ? 'Afficher' : 'Replier'}
+              </Button>
+            )}
           </GenCardHeader>
-          <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
+          <CardContent id="gen-sec-simulation-contenu" hidden={simulationRepliee}
+                       className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
             {/* CJ2b — ORDRE FONDATEUR (20/08) : « on ne voit ni l'économie
                 réelle calculée, ni les données PVGIS — cette donnée devrait
                 être comparée à la courbe de consommation ». Résidentiel
@@ -4654,7 +4778,9 @@ export default function DevisGenerator({
                   </ul>
                 )}
                 {etudeHoraireLignes.length > 0 && (
-                  <div style={{ overflowX: 'auto' }}>
+                  // EDC3 — barre horizontale collante (même composant que la
+                  // table des lignes) : à chaque hauteur du tableau, jamais au pied.
+                  <BarreDefilementCollante>
                     <table className="w-full border-collapse text-xs" data-testid="etude-horaire-dimensionnement">
                       <thead>
                         <tr className="border-b border-border text-left text-muted-foreground">
@@ -4748,7 +4874,8 @@ export default function DevisGenerator({
                               {stockageOuvert && paliersStockage.length > 0 && (
                                 <tr className="border-b border-border">
                                   <td colSpan={9} className="bg-muted/30 py-2 pr-3">
-                                    <div style={{ overflowX: 'auto' }}>
+                                    {/* EDC3 — barre horizontale collante. */}
+                                    <BarreDefilementCollante>
                                       <table className="w-full border-collapse text-xs"
                                              data-testid="etude-horaire-balayage-stockage">
                                         <thead>
@@ -4780,7 +4907,7 @@ export default function DevisGenerator({
                                           ))}
                                         </tbody>
                                       </table>
-                                    </div>
+                                    </BarreDefilementCollante>
                                   </td>
                                 </tr>
                               )}
@@ -4794,7 +4921,7 @@ export default function DevisGenerator({
                         {etudeHoraireDonnees.dimensionnement.motivation}
                       </p>
                     )}
-                  </div>
+                  </BarreDefilementCollante>
                 )}
                 {etudeHoraireDonnees?.etude?.saisons && (
                   <div className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="etude-horaire-saisons">
@@ -4869,7 +4996,8 @@ export default function DevisGenerator({
                     commercial voie chaque ajout compté. Omise en bloc si la clé
                     `estimation_conso` est absente du payload. */}
                 {etudeHoraireEstimationConso && (
-                  <div className="mt-3" style={{ overflowX: 'auto' }}>
+                  // EDC3 — barre horizontale collante (12 mois + poste).
+                  <BarreDefilementCollante className="mt-3">
                     <div className="mb-1 text-xs font-medium">Décomposition mensuelle de la consommation (kWh)</div>
                     <table className="w-full border-collapse text-xs" data-testid="etude-horaire-estimation-conso">
                       <thead>
@@ -4901,7 +5029,7 @@ export default function DevisGenerator({
                         </tr>
                       </tbody>
                     </table>
-                  </div>
+                  </BarreDefilementCollante>
                 )}
               </div>
             )}
@@ -5122,6 +5250,8 @@ export default function DevisGenerator({
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>
             possède la chaîne d'argent, DANS la même carte comme avant) ── */}
+        {/* EDC9 — ancre de navigation « Lignes » (jamais repliable). */}
+        <div id="gen-sec-lignes" data-nav-libelle="Lignes">
         <LigneTable
           lines={lines}
           produits={produits}
@@ -5180,6 +5310,7 @@ export default function DevisGenerator({
             kpiTotal={kpiTotal}
           />
         </LigneTable>
+        </div>
 
         {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
             APX16 — le panneau n'apparaissait QU'EN ÉDITION : on ne pouvait pas
@@ -5228,8 +5359,13 @@ export default function DevisGenerator({
             QJR574 — administrateurs seulement. */}
         {editDevis?.id && estAdmin && (
           <Card data-testid="overrides-panel">
-            <GenCardHeader icon={FileText} title="Surcharges (registre)" />
-            <CardContent className="pt-4 space-y-3">
+            {/* EDC9 — repliée par défaut (choix mémorisé), contenu monté. */}
+            <GenCardHeader icon={FileText} title="Surcharges (registre)"
+                           repliable replie={surchargesRepliees}
+                           onBasculer={() => basculerCarte('surcharges')}
+                           controle="gen-surcharges-contenu" />
+            <CardContent id="gen-surcharges-contenu" hidden={surchargesRepliees}
+                         className="pt-4 space-y-3">
               <div className="flex flex-wrap items-end gap-2">
                 <select
                   data-testid="overrides-chemin"
@@ -5319,17 +5455,20 @@ export default function DevisGenerator({
 
         {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
         {editDevis && (
-          <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                           mode={modeInstallation} effectifs={termesEffectifs}
-                           conditions={conditions} setCondition={setCondition}
-                           erreursConditions={erreursConditions(conditions)} clients={clients} />
+          // EDC9 — ancre de navigation « Échéancier » (jamais repliable).
+          <div id="gen-sec-echeancier" data-nav-libelle="Échéancier">
+            <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
+                             mode={modeInstallation} effectifs={termesEffectifs}
+                             conditions={conditions} setCondition={setCondition}
+                             erreursConditions={erreursConditions(conditions)} clients={clients} />
+          </div>
         )}
         {errors.conditions && (
           <p role="alert" className="text-xs text-destructive" data-testid="erreur-conditions">{errors.conditions}</p>
         )}
 
         {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}
-        <Card>
+        <Card id="gen-sec-texte" data-nav-libelle="Texte client">
           <GenCardHeader icon={StickyNote} title="Texte pour le client (imprimé sur le devis)" />
           <CardContent className="pt-4">
             <Textarea rows={3} value={note}
@@ -5356,12 +5495,17 @@ export default function DevisGenerator({
         )}
 
         {/* ── Création ── */}
-        <Card>
+        <Card id="gen-sec-enregistrer" data-nav-libelle="Enregistrer">
           <GenCardHeader icon={FileText}
                          title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">
-              {embedded
+              {/* EDC7 — en Édition complète embarquée, l'écran RESTE ouvert
+                  après l'enregistrement : le texte le dit. */}
+              {embedded && editDevis && onEnregistre
+                ? "Vérifiez puis enregistrez : l'écran reste ouvert après l'enregistrement."
+                  + (onVoirPdf ? ' « Voir le PDF », en haut, affiche le document.' : '')
+                : embedded
                 ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
                   + 'avec son PDF, sans quitter la fiche du lead.'
                 : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
@@ -5385,9 +5529,11 @@ export default function DevisGenerator({
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
               {/* VX138(d) — bandeau sticky au scroll (plus seulement mobile) :
                   TTC courant condensé, dérivé de `totals`/`kpiTotal` déjà en
-                  mémoire (même valeur que le rail latéral VX16) ; masqué en
-                  lg+ où le rail latéral l'affiche déjà. */}
-              <div className="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+                  mémoire (même valeur que le rail latéral VX16).
+                  EDC2 — masqué SEULEMENT quand le rail est visible
+                  (`gen-ttc-condense`, même container query que le rail) : le
+                  rail replié, le total reprend sa place ici. */}
+              <div className="gen-ttc-condense mr-auto flex items-baseline gap-1.5 text-sm">
                 <span className="text-muted-foreground">Total TTC</span>
                 <strong className="tabular-nums text-base font-semibold text-foreground">
                   {formatMoney(kpiTotal)}
@@ -5419,12 +5565,15 @@ export default function DevisGenerator({
         </Card>
       </form>
 
-      {/* VX16 — rail récapitulatif STICKY (lg+ uniquement, jamais sur mobile).
+      {/* VX16 — rail récapitulatif STICKY (jamais sur mobile).
           Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
           le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
-          sur le même formulaire (form="gen-form"). */}
-      <aside className="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3"
-             style={{ top: 'var(--header-h, 64px)' }}>
+          sur le même formulaire (form="gen-form").
+          EDC2 — plus AUCUNE classe `lg:` ni `top` en ligne : visibilité,
+          largeur (18 rem) et collage sont décidés par `@container gen`
+          (index.css, bloc EDC2) — replié sous 1 200 px de LARGEUR D'ÉCRAN DU
+          DEVIS, pour que la table des lignes garde toute la place. */}
+      <aside className="gen-summary-rail">
         {/* APX12 — le total du rail devient LE chiffre le plus soigné de
             l'app : il passe par `<Stat>` comme les KPI d'argent des deux
             autres surfaces (bandeau statuts DevisList, cockpit trésorerie
