@@ -1,7 +1,7 @@
 """AMOT46 (C-AMOT-059) — les textes du document sont tronqués sur le texte
 BRUT (au mot, « … ») puis ré-échappés : plus aucune entité HTML coupée dans
 l'annexe FDA (``agricole/pages._fiches_annexe``) ni par le une-page legacy
-(qui délègue au MÊME helper ``montants.tronquer_au_mot``).
+(qui délègue au MÊME helper ``textes.tronquer_au_mot``).
 
 Fonctions réelles, aucun mock. Test-du-test : remettre ``description[:220]``
 dans ``_fiches_annexe`` ⇒ ``test_annexe_fda_sans_entite_coupee`` échoue
@@ -14,7 +14,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes.quote_engine import generate_devis_premium as G
 from apps.ventes.quote_engine.agricole import pages
-from apps.ventes.quote_engine.montants import tronquer_au_mot
+from apps.ventes.quote_engine.textes import tronquer_au_mot
 
 _DESCRIPTION = _html.escape("x" * 214 + " l'eau pompée du forage")
 _ENTITE_COUPEE = re.compile(r"&#?\w{0,6}$")

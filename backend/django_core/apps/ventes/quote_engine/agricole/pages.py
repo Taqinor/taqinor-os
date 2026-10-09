@@ -24,7 +24,8 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes, lignes_remisees, tronquer_au_mot
+from ..montants import fmt_centimes, lignes_remisees
+from ..textes import tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
