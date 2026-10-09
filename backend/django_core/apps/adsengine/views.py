@@ -399,6 +399,88 @@ class GuardrailConfigViewSet(AdsengineViewSet):
     queryset = GuardrailConfig.objects.all()
     serializer_class = GuardrailConfigSerializer
 
+    def perform_create(self, serializer):
+        _assert_guardrail_fields_allowed(
+            self.request.user, None, serializer.validated_data)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        _assert_guardrail_fields_allowed(
+            self.request.user, serializer.instance, serializer.validated_data)
+        super().perform_update(serializer)
+
+
+# AACQ12 — champs de garde-fous à permission DISTINCTE de ``adsengine_manage``.
+# Les bascules ENG8 suppriment l'approbation humaine → ``adsengine_autonomy_
+# toggle`` (admin-seul) ; les plafonds bornent la dépense → ``adsengine_approve``.
+# Seul un CHANGEMENT de valeur est contrôlé : l'écran renvoie tout le formulaire,
+# un Commercial garde donc l'édition du reste (pacing, poids santé…).
+_GUARDRAIL_AUTONOMY_FIELDS = ('auto_rotate_creative', 'auto_rebalance_within_band')
+_GUARDRAIL_CEILING_FIELDS = (
+    'daily_budget_ceiling_mad', 'monthly_budget_ceiling_mad',
+    'weekly_change_pct_max')
+_MSG_RESERVE_AUTONOMIE = (
+    "Modification réservée à l'activation de l'autonomie "
+    "(permission « adsengine_autonomy_toggle »).")
+_MSG_RESERVE_APPROBATEUR = (
+    "Modification réservée à l'approbateur (permission « adsengine_approve »).")
+
+
+def _guardrail_changed(instance, validated_data, field):
+    if field not in validated_data:
+        return False
+    if instance is None:
+        default = GuardrailConfig._meta.get_field(field).get_default()
+        return validated_data[field] != default
+    return validated_data[field] != getattr(instance, field)
+
+
+def _assert_guardrail_fields_allowed(user, instance, validated_data):
+    """AACQ12 — 403 (``PermissionDenied``) si l'utilisateur CHANGE un champ
+    réservé sans la permission dédiée ; aucun effet sur les autres champs."""
+    from rest_framework.exceptions import PermissionDenied
+    # Bascule d'autonomie : seul l'ARMEMENT (→ True) est réservé ; la couper
+    # rétablit l'approbation humaine (geste de sécurité, ouvert à manage).
+    if any(_guardrail_changed(instance, validated_data, f)
+           and validated_data[f]
+           for f in _GUARDRAIL_AUTONOMY_FIELDS):
+        if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
+            raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
+    # AACQ14 — le garde-fou quatre yeux (dans les deux sens) relève de la
+    # même autorité que l'autonomie.
+    if _guardrail_changed(instance, validated_data, 'require_four_eyes'):
+        if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
+            raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
+    if any(_guardrail_changed(instance, validated_data, f)
+           for f in _GUARDRAIL_CEILING_FIELDS):
+        if not _user_has_or_legacy(user, 'adsengine_approve'):
+            raise PermissionDenied(_MSG_RESERVE_APPROBATEUR)
+
+
+def _rule_is_autonomous(mode, dry_run):
+    return mode == RulePolicy.Mode.AUTO and not dry_run
+
+
+def _assert_rule_autonomy_allowed(user, instance, validated_data):
+    """AACQ12 — une règle qui DEVIENT autonome (``mode='auto'`` hors
+    simulation) supprime l'approbation humaine → ``adsengine_autonomy_toggle``.
+    Proposition et simulation restent ouvertes à ``adsengine_manage``."""
+    from rest_framework.exceptions import PermissionDenied
+
+    def _default(field):
+        return RulePolicy._meta.get_field(field).get_default()
+
+    before = (_rule_is_autonomous(instance.mode, instance.dry_run)
+              if instance is not None else False)
+    mode = validated_data.get(
+        'mode', instance.mode if instance is not None else _default('mode'))
+    dry_run = validated_data.get(
+        'dry_run',
+        instance.dry_run if instance is not None else _default('dry_run'))
+    if _rule_is_autonomous(mode, dry_run) and not before:
+        if not _user_has_or_legacy(user, 'adsengine_autonomy_toggle'):
+            raise PermissionDenied(_MSG_RESERVE_AUTONOMIE)
+
 
 # PUB2 — Contexte MDE/coût par défaut de la file VoI. ``delta_plausible``/``p``/
 # ``cost`` ne sont PAS stockés sur le nœud (ils dépendent des volumes du test) :
@@ -714,6 +796,13 @@ class ImportChantierPhotoView(APIView):
             return Response(
                 {'detail': 'chantier_id et attachment_id requis.'}, status=400)
         from . import creative_factory as cf
+        # AACQ15 — puissance lue telle que l'écran l'envoie (chaîne, virgule) ;
+        # illisible → 400 sous le champ, jamais une 500.
+        try:
+            cf.parse_puissance_kwc(body.get('puissance_kwc'))
+        except ValueError:
+            return Response(
+                {'puissance_kwc': [cf.PUISSANCE_KWC_ILLISIBLE]}, status=400)
         result = cf.import_chantier_photo(
             company, chantier_id=chantier_id, attachment_id=attachment_id,
             client_id=client_id, puissance_kwc=body.get('puissance_kwc'),
@@ -1034,6 +1123,9 @@ class RulePolicyViewSet(AdsengineViewSet):
     serializer_class = RulePolicySerializer
 
     def perform_create(self, serializer):
+        # AACQ12 — une règle née autonome exige ``adsengine_autonomy_toggle``.
+        _assert_rule_autonomy_allowed(
+            self.request.user, None, serializer.validated_data)
         # ``company`` forcée par la base (TenantMixin) ; ``created_by`` posé ici.
         super().perform_create(serializer)
         if serializer.instance.created_by_id is None:
@@ -1046,6 +1138,8 @@ class RulePolicyViewSet(AdsengineViewSet):
         # le basculement dans le journal UNIFIÉ de l'ERP (``audit.recorder``,
         # ARC16 — même funnel que le reste de l'app, jamais un second système).
         old_enabled = serializer.instance.enabled
+        _assert_rule_autonomy_allowed(
+            self.request.user, serializer.instance, serializer.validated_data)
         super().perform_update(serializer)
         instance = serializer.instance
         if instance.enabled != old_enabled:
@@ -1711,6 +1805,11 @@ class EngineActionViewSet(AdsengineViewSet):
 
     queryset = EngineAction.objects.all()
     serializer_class = EngineActionSerializer
+    # AACQ1 — une action est FIGÉE dès sa proposition : aucun PUT/PATCH/DELETE
+    # (le contenu appliqué chez Meta = exactement le contenu approuvé ; le
+    # Journal d'actions n'est jamais réécrit ni amputé). Les gestes dédiés
+    # (approve/reject/apply/annuler/proposer) sont des POST.
+    http_method_names = ['get', 'post', 'head', 'options']
 
     _APPROVE_ACTIONS = ('approve', 'reject', 'apply')
 
@@ -1823,7 +1922,7 @@ class EngineActionViewSet(AdsengineViewSet):
         instance = self.get_object()
         try:
             inverse = propose_inverse_action(
-                instance, reason_fr=request.data.get('reason_fr'))
+                instance, proposed_by=request.user, reason_fr=request.data.get('reason_fr'))
         except ActionNotInvertible:
             logger.warning('PUB45: annulation refusée — action %s non '
                            'inversible', instance.pk, exc_info=True)
@@ -1864,7 +1963,7 @@ class ProposeCuratedActionView(APIView):
         params = {k: v for k, v in body.items() if k != 'reason_fr'}
         try:
             action = propose_manual_curated(
-                company, kind=kind, params=params, reason_fr=reason_fr)
+                company, proposed_by=request.user, kind=kind, params=params, reason_fr=reason_fr)
         except ValueError:
             logger.warning('PUB22: proposition curée refusée (kind=%s)', kind,
                            exc_info=True)
@@ -2631,34 +2730,36 @@ class GuardrailSingletonView(APIView):
         if err is not None:
             return err
         cfg, _ = GuardrailConfig.objects.get_or_create(company=company)
-        data = request.data if isinstance(request.data, dict) else {}
-        changed = []
+        data = request.data if hasattr(request.data, 'get') else {}
+        # AACQ13 — même validation que ``garde-fous/`` : on TRADUIT les alias
+        # puis on délègue à ``GuardrailConfigSerializer`` (bornes du modèle,
+        # booléens parsés — ``'false'`` → False). Plus aucun ``int(float())``
+        # artisanal (``'inf'`` / négatif / hors borne = 500 avant).
+        payload = {}
+        screen_name = {}
         for src, field in self._ALIASED_FIELDS.items():
             if src in data and data[src] not in (None, ''):
-                try:
-                    setattr(cfg, field, int(float(data[src])))
-                except (TypeError, ValueError):
-                    return Response(
-                        {'detail': f'Valeur invalide pour {src}.'}, status=400)
-                changed.append(field)
+                payload[field] = data[src]
+                screen_name[field] = src
         for field in self._DIRECT_FIELDS:
             if field not in data:
                 continue
             value = data[field]
-            if field in self._BOOL_FIELDS:
-                setattr(cfg, field, bool(value))
-                changed.append(field)
+            if field not in self._BOOL_FIELDS and value in (None, ''):
                 continue
-            if value in (None, ''):
-                continue
-            try:
-                setattr(cfg, field, int(float(value)))
-            except (TypeError, ValueError):
-                return Response(
-                    {'detail': f'Valeur invalide pour {field}.'}, status=400)
-            changed.append(field)
-        if changed:
-            cfg.save(update_fields=changed + ['updated_at'])
+            payload[field] = value
+        if payload:
+            serializer = GuardrailConfigSerializer(
+                cfg, data=payload, partial=True)
+            if not serializer.is_valid():
+                errors = {screen_name.get(k, k): v
+                          for k, v in serializer.errors.items()}
+                return Response(errors, status=400)
+            # AACQ12 — même contrôle de champs réservés que ``garde-fous/``.
+            _assert_guardrail_fields_allowed(
+                request.user, cfg, serializer.validated_data)
+            serializer.save()
+            cfg.refresh_from_db()
         return Response(self._payload(cfg))
 
 
@@ -3760,7 +3861,7 @@ class CommentHideView(APIView):
         hidden = request.data.get('hidden', True)
         try:
             action = propose_hide_comment(
-                company, comment=comment, hidden=bool(hidden))
+                company, proposed_by=request.user, comment=comment, hidden=bool(hidden))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -3783,7 +3884,7 @@ class CommentReplyView(APIView):
         from .services import propose_reply_comment
         try:
             action = propose_reply_comment(
-                company, comment=comment,
+                company, proposed_by=request.user, comment=comment,
                 message=request.data.get('message', ''))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -3806,7 +3907,8 @@ class CommentDeleteView(APIView):
             return Response({'detail': 'Commentaire introuvable.'}, status=404)
         from .services import propose_delete_comment
         try:
-            action = propose_delete_comment(company, comment=comment)
+            action = propose_delete_comment(
+                company, comment=comment, proposed_by=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -3829,7 +3931,7 @@ class CommentPrivateReplyView(APIView):
         from .services import propose_private_reply
         try:
             action = propose_private_reply(
-                company, comment=comment,
+                company, proposed_by=request.user, comment=comment,
                 message=request.data.get('message', ''))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -3924,7 +4026,7 @@ class InstagramPublishView(APIView):
         data = request.data if isinstance(request.data, dict) else {}
         try:
             action = propose_publish_ig(
-                company,
+                company, proposed_by=request.user,
                 media_type=data.get('media_type', ''),
                 image_url=data.get('image_url', '') or '',
                 video_url=data.get('video_url', '') or '',
@@ -3976,7 +4078,7 @@ class InstagramCommentHideView(APIView):
         hidden = request.data.get('hidden', True)
         try:
             action = propose_hide_ig_comment(
-                company, comment=comment, hidden=bool(hidden))
+                company, proposed_by=request.user, comment=comment, hidden=bool(hidden))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -3999,7 +4101,7 @@ class InstagramCommentReplyView(APIView):
         from .services import propose_reply_ig_comment
         try:
             action = propose_reply_ig_comment(
-                company, comment=comment,
+                company, proposed_by=request.user, comment=comment,
                 message=request.data.get('message', ''))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
@@ -4022,7 +4124,8 @@ class InstagramCommentDeleteView(APIView):
             return Response({'detail': 'Commentaire introuvable.'}, status=404)
         from .services import propose_delete_ig_comment
         try:
-            action = propose_delete_ig_comment(company, comment=comment)
+            action = propose_delete_ig_comment(
+                company, comment=comment, proposed_by=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
@@ -4051,7 +4154,7 @@ class InstagramMediaToggleCommentsView(APIView):
         enabled = request.data.get('enabled', True)
         try:
             action = propose_toggle_ig_comments(
-                company, media=media, enabled=bool(enabled))
+                company, proposed_by=request.user, media=media, enabled=bool(enabled))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)

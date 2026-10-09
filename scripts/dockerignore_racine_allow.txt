@@ -1,0 +1,18 @@
+# ADEP4 - base DECROISSANTE des motifs .dockerignore racine-seul (une ligne =
+# `fichier::motif`). Ne jamais AJOUTER : ancrer le motif (`**/motif`) ou l'ecrire
+# `/motif` si la racine est voulue. Les lignes backend/fastapi_ia/ sont retirees par ADEP41
+# (propriete analyse). Racine / frontend : chemins de contexte explicites, voulus.
+.dockerignore::.git
+.dockerignore::.github
+.dockerignore::.claude
+.dockerignore::.venv
+.dockerignore::*.md
+.dockerignore::docs
+.dockerignore::backend
+.dockerignore::.env
+.dockerignore::frontend/parked
+.dockerignore::backend/parked
+frontend/.dockerignore::node_modules
+frontend/.dockerignore::.git
+frontend/.dockerignore::dist
+frontend/.dockerignore::parked

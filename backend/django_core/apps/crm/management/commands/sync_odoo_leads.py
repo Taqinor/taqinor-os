@@ -119,6 +119,13 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"{prefix}{rapport.corbeille} lead(s) en corbeille ignoré(s) — "
                 "jamais restauré(s) automatiquement."))
+        if rapport.geles:
+            # AACQ33 — perdus / archivés / « ne plus contacter » : jamais
+            # avancés par l'alignement.
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}gelé(s) : {rapport.geles} — lead(s) perdu(s), "
+                "archivé(s) ou « ne plus contacter », étape laissée telle "
+                "quelle."))
         if rapport.inconnus:
             self.stdout.write(self.style.WARNING(
                 f"{prefix}{rapport.inconnus} lead(s) laissés intouchés : "

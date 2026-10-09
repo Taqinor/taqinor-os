@@ -70,6 +70,11 @@ def make_chantier_with_bom(company, user, lines):
             devis=devis, produit=produit, designation=produit.nom,
             quantite=Decimal(str(qte)), prix_unitaire=Decimal('100'))
     inst, _ = create_installation_from_devis(devis, user, company)
+    # ACHT2 — la réception (et la mise en service) suivent « Installé » : la
+    # machine d'états refuse un saut depuis « Signé ».
+    Installation.objects.filter(pk=inst.pk).update(
+        statut=Installation.Statut.INSTALLE)
+    inst.refresh_from_db()
     return inst
 
 

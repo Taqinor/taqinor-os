@@ -226,10 +226,16 @@ test('AGR624 — portail client : recette visible, relevé m³ saisi ; la fiche 
     `${API}/portail/comptes-portail/${compte.id}/provisionner-acces/`, { data: {} }), 'accès portail')
 
   // Un équipement SAV (la pompe) rattaché au chantier, pour porter les relevés.
+  // CAD177 — `search=OSP` matche aussi « ph-OSP-hate » dans la description
+  // des batteries LiFePO4 : `produits[0]` était une batterie (aucun relevé
+  // portail admis, nocturne 37792898726). On prend la pompe à courbe, comme
+  // le test d'acceptation plus haut.
   const produits = liste(await json(await request.get(
-    `${API}/stock/produits/?search=OSP&page_size=5`), 'pompe'))
+    `${API}/stock/produits/?search=OSP&page_size=100`), 'pompe'))
+  const pompe = produits.find((p) => p.courbe_pompe && Object.keys(p.courbe_pompe).length)
+  expect(pompe, 'aucune pompe à courbe au catalogue').toBeTruthy()
   const eq = await json(await request.post(`${API}/sav/equipements/`, {
-    data: { produit: produits[0].id, installation: etat.chantierId,
+    data: { produit: pompe.id, installation: etat.chantierId,
       numero_serie: `E2E-AGR624-${Date.now()}`, date_pose: new Date().toISOString().slice(0, 10) },
   }), 'équipement SAV')
   nettoyage.equipements.push(eq.id)

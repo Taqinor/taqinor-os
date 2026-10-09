@@ -37,9 +37,10 @@ def releve_dry_run(request):
     POST /ventes/paiements/import-releve/dry-run/
     Corps : fichier XLSX ou CSV (champ ``file``).
 
-    Renvoie le mapping colonnes, un aperçu des 10 premières lignes avec le
-    statut de chaque ligne (a_importer, non_trouve, deja_regle, surpaiement,
-    montant_invalide, ambigu, client_non_identifie), la FILE DE REVUE
+    Renvoie le mapping colonnes, TOUTES les lignes (AFAC6) avec le statut de
+    chaque ligne (a_importer, non_trouve, deja_regle, surpaiement,
+    montant_invalide, ambigu, client_non_identifie, doublon_import,
+    date_invalide — contrat facturation/releve_import_dry_run.json), la FILE DE REVUE
     (``revue``) et — AUD121 — le ``token`` à repasser au commit.
     """
     from ..paiement_import import dry_run
@@ -78,9 +79,13 @@ def releve_commit(request):
     company = request.user.company
     token = request.data.get('token')
     lignes = request.data.get('lignes')
+    # AFAC6 — `lignes` accepte des numéros de ligne ET des objets
+    # `{ligne, facture_reference}` (ligne ambiguë résolue) ; le service
+    # valide chaque élément (400 en français, aucune écriture).
     if lignes is not None and not isinstance(lignes, (list, tuple)):
         return Response(
-            {'detail': 'lignes doit être une liste de numéros de ligne.'},
+            {'detail': 'lignes doit être une liste de numéros de ligne ou '
+                       "d'objets {ligne, facture_reference}."},
             status=400)
     from rest_framework.exceptions import APIException
     try:

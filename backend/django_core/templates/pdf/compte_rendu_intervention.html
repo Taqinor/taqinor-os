@@ -42,6 +42,8 @@
     .signature-box { border: 1px solid #cbd5e1; border-radius: 6px; height: 90px; }
     .signature-name { margin-top: 6px; font-size: 11px; color: #555; }
     .accord { font-size: 11px; color: #475569; margin-top: 4px; font-style: italic; }
+    .signature-img { max-height: 84px; max-width: 100%; display: block; margin: 3px auto; }
+    .signature-date { font-size: 10px; color: #555; margin-top: 2px; }
     .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
   </style>
 </head>
@@ -186,9 +188,16 @@
     </div>
     <div class="signature-block">
       <div class="signature-label">Le client</div>
+      {% if signature %}
+      <div class="signature-box"><img class="signature-img" src="{{ signature.image }}" alt="Signature du client"></div>
+      <div class="accord">Bon pour accord</div>
+      <div class="signature-name">{{ signature.nom or client_nom }}</div>
+      {% if signature.date %}<div class="signature-date">Signé le {{ signature.date }}</div>{% endif %}
+      {% else %}
       <div class="signature-box"></div>
       <div class="accord">Bon pour accord</div>
       <div class="signature-name">{{ client_nom }}</div>
+      {% endif %}
     </div>
   </div>
 

@@ -146,6 +146,31 @@ class RafraichisseurTests(_Base):
                      if q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
         self.assertEqual(ecritures, [])
 
+    def test_cad177_production_figee_garde_ses_hypotheses_et_alertes(self):
+        # CAD177 (CIQ334/CIQ346, nocturne 37803204581) — un recalcul qui
+        # REPREND `production_figee` (empreinte changée, ex. provenance
+        # ré-horodatée) rendait l'étude SANS les hypothèses PVGIS ni les
+        # alertes du toit : ré-enregistrer un devis inchangé changeait son
+        # etude_ci. Toit déclaré hors orientation PVGIS + pose à confirmer.
+        devis = self._devis()
+        devis.etude_params = dict(
+            devis.etude_params, toit={'type_pose': 'bac_acier', 'pente_deg': 10,
+                                      'azimut_deg': 20})
+        devis.save(update_fields=['etude_params'])
+        rafraichir_etudes_du_devis(devis)
+        devis.refresh_from_db()
+        avant = devis.etude_params['etude_ci']
+        self.assertIn('source_production', {h['cle'] for h in avant['hypotheses']})
+        self.assertIn('orientation_non_prise_en_compte', {a['code'] for a in avant['alertes']})
+        appels_pvgis = self.production.call_count
+        etude_ci.rafraichir_etude_ci_devis(devis, force=True)
+        devis.refresh_from_db()
+        apres = devis.etude_params['etude_ci']
+        self.assertEqual(self.production.call_count, appels_pvgis,
+                         'la production figée est reprise, PVGIS non rappelé')
+        self.assertEqual(apres['hypotheses'], avant['hypotheses'])
+        self.assertEqual(apres['alertes'], avant['alertes'])
+
     def test_plus_aucun_panneau_derivees_retirees(self):
         devis = self._devis()
         rafraichir_etudes_du_devis(devis)

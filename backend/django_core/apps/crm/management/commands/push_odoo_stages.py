@@ -65,14 +65,19 @@ class Command(BaseCommand):
             raise CommandError(str(exc))
         self.stdout.write(f"{len(odoo_leads)} lead(s) lus dans Odoo.")
 
-        moves, coherents, non_rapproches = compute_push_moves(
-            company, odoo_leads)
+        resultat = compute_push_moves(company, odoo_leads)
+        moves, coherents, non_rapproches = resultat
         total = sum(len(ids) for ids in moves.values())
         for nom, ids in sorted(moves.items()):
             self.stdout.write(f"→ « {nom} » : {len(ids)} lead(s)")
         self.stdout.write(
             f"{coherents} cohérent(s), {non_rapproches} non rapproché(s), "
             f"{total} à déplacer.")
+        # AACQ32 — leads NON poussés, comptés comme à l'alignement.
+        self.stdout.write(
+            f"inconnus : {resultat.inconnus} (colonne Odoo vide ou hors "
+            f"table, intouchés) ; ambigus : {resultat.ambigus} (plusieurs "
+            f"fiches ERP au même email/téléphone, non poussés).")
 
         if not options.get('apply'):
             self.stdout.write(self.style.WARNING(

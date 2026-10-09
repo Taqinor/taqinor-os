@@ -30,6 +30,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxmlsec1-openssl \
     && rm -rf /var/lib/apt/lists/*
 
+# ADEP1 — client PostgreSQL 16 (pg_dump / pg_restore) pour `core.backup`
+# (beat `core-dump-database` 03:00 + restore_drill). Le client 15 de Debian
+# refuse un serveur 16 (`pgvector/pgvector:pg16`) : dépôt PGDG, comme
+# `.github/ci-image/Dockerfile`. La garde `scripts/check_binaires_image.py`
+# exige ce paquet tant que le code appelle ces binaires.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates gnupg \
+    && install -d /usr/share/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /app/
 # Modern setuptools so the http-ece sdist (transitive de pywebpush, N109) build.
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel

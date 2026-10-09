@@ -35,7 +35,7 @@ from __future__ import annotations
 import datetime
 import logging
 
-from . import rule_templates
+from . import guardrails, rule_templates
 from .rule_templates import CADENCE_CRITICAL, CADENCE_DAILY, CADENCE_WEEKLY
 
 logger = logging.getLogger(__name__)
@@ -388,8 +388,12 @@ def _eval_frequency_high(company, policy, template, *, now, config):
 def _eval_cpl_band(company, policy, template, *, now, config):
     """Bande CPL (ADSENG16) : coût par lead d'une campagne hors de sa bande
     trainante ±2× (détecteur pur ``anomaly.detect_cpl_band``). Sous le plancher
-    de leads → ``insufficient_data`` (ALERTE toujours). Une anomalie déclenchée
-    matérialise une ``AnomalyEvent``."""
+    de leads → ``insufficient_data`` (ALERTE toujours).
+
+    AACQ8 — évaluateur SANS effet de bord : la détection est RENDUE dans le
+    finding (clé ``detection``) ; seul ``evaluate_company`` l'enregistre en
+    ``AnomalyEvent`` (hors simulation, une fois par (règle, cible) et par
+    fenêtre de cooldown) — un backtest GET n'écrit jamais rien."""
     from django.contrib.contenttypes.models import ContentType
 
     from . import anomaly
@@ -410,30 +414,76 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
     _, campaigns = _scoped_mirrors(company, policy, 'campaign')
     for camp in campaigns:
+        # AACQ9 — CPL sur des LEADS seulement (objectif sans leads : N/A).
+        lead_field, not_cpl = _cpl_basis(camp)
+        if not_cpl:
+            findings.append({
+                'target_type': 'campaign', 'target_meta_id': camp.meta_id,
+                'target_object_id': camp.pk, 'fired': False,
+                'insufficient_data': True, 'blocked_fr': not_cpl,
+                'computed': {'metric': 'cpl'}, 'severity': template.get(
+                    'severity', 'info'), 'detection': None})
+            continue
         snaps = list(InsightSnapshot.objects.filter(
             company=company, content_type=ct, object_id=camp.pk,
             date__gte=start).order_by('date'))
-        daily_cpls = [s.cpl for s in snaps
-                      if s.cpl is not None and (s.results or 0) >= 1
+
+        def _day_cpl(s):
+            if lead_field == 'leads_count':
+                from .metrics import cout_par_lead
+                calc = cout_par_lead(s.spend or 0, s.leads_count or 0,
+                                     source='leads_meta')
+                return float(calc.valeur) if calc.valeur is not None else None
+            return s.cpl
+
+        daily_cpls = [_day_cpl(s) for s in snaps
+                      if _day_cpl(s) is not None
+                      and (getattr(s, lead_field) or 0) >= 1
                       and s.date < today]
-        n_leads = sum((s.results or 0) for s in snaps)
-        cpl_today = next((s.cpl for s in snaps if s.date == today), None)
+        n_leads = sum((getattr(s, lead_field) or 0) for s in snaps)
+        cpl_today = next((_day_cpl(s) for s in snaps if s.date == today), None)
         det = anomaly.detect_cpl_band(
             daily_cpls, cpl_today, n_leads,
             band_low_mult=low_mult, band_high_mult=high_mult,
             min_samples=min_samples,
             # PUB134 — devise RÉELLE du compte (jamais « MAD » en dur).
             currency=currency)
-        if det.fired:
-            anomaly.record_anomaly(
-                company, det, entity_type='campaign',
-                entity_meta_id=camp.meta_id, rule_policy=policy)
         findings.append({
             'target_type': 'campaign', 'target_meta_id': camp.meta_id,
             'target_object_id': camp.pk, 'fired': det.fired,
             'insufficient_data': det.insufficient_data,
-            'computed': det.computed, 'severity': det.severity})
+            'computed': det.computed, 'severity': det.severity,
+            'detection': det if det.fired else None})
     return findings
+
+
+# AACQ8 — fenêtre de dédup des anomalies quand la règle n'a pas de cooldown.
+ANOMALY_RECORD_DEFAULT_COOLDOWN_HOURS = 24
+
+
+def _record_finding_anomaly(company, policy, finding):
+    """AACQ8 — Enregistre l'``AnomalyEvent`` d'un finding (détection rendue
+    par l'évaluateur) au plus UNE fois par (règle, cible) et par fenêtre de
+    cooldown (``policy.cooldown_hours``, sinon 24 h). Appelé par
+    ``evaluate_company`` seulement, et jamais en simulation."""
+    from django.utils import timezone
+
+    from . import anomaly
+    from .models import AnomalyEvent
+
+    det = finding.get('detection')
+    if det is None or policy.dry_run:
+        return None
+    hours = policy.cooldown_hours or ANOMALY_RECORD_DEFAULT_COOLDOWN_HOURS
+    since = timezone.now() - datetime.timedelta(hours=hours)
+    target = finding.get('target_meta_id', '')
+    if AnomalyEvent.objects.filter(
+            company=company, rule_policy=policy, entity_meta_id=target,
+            created_at__gte=since).exists():
+        return None
+    return anomaly.record_anomaly(
+        company, det, entity_type=finding.get('target_type', ''),
+        entity_meta_id=target, rule_policy=policy)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -469,10 +519,18 @@ def _scoped_mirrors(company, policy, scope):
     if model is None:
         return None, []
     pattern = getattr(policy, 'name_pattern', '') or ''
+    # AACQ22 — une cible non ACTIVE (pause, archivée, supprimée…) n'est plus
+    # évaluée : aucune alerte ni proposition sur ce qui ne diffuse pas. Un
+    # statut vide (miroir pas encore synchronisé) reste évalué.
     mirrors = [
         m for m in model.objects.filter(company=company)
-        if _name_matches(pattern, m.name)]
+        if _name_matches(pattern, m.name) and _is_evaluable_status(m)]
     return model, mirrors
+
+
+def _is_evaluable_status(mirror):
+    status = (getattr(mirror, 'status', '') or '').strip().upper()
+    return status in ('', 'ACTIVE')
 
 
 def _sum_attr(snaps, attr):
@@ -502,17 +560,66 @@ def _sum_video(snaps, key):
     return total
 
 
-def _derived_metric(snaps, metric):
+# AACQ9 — le « coût par lead » des règles ne se calcule que sur des LEADS.
+# Objectif Meta → nom FR court pour la raison « non applicable ».
+_OBJECTIVE_FR = {
+    'OUTCOME_TRAFFIC': 'trafic', 'LINK_CLICKS': 'trafic',
+    'OUTCOME_ENGAGEMENT': 'messages', 'MESSAGES': 'messages',
+    'CONVERSATIONS': 'messages', 'OUTCOME_MESSAGES': 'messages',
+    'OUTCOME_AWARENESS': 'notoriété', 'BRAND_AWARENESS': 'notoriété',
+    'OUTCOME_SALES': 'ventes', 'CONVERSIONS': 'conversions',
+}
+CPL_SOURCE_LEADS_META = 'leads Meta'
+# AACQ26 — champ dénominateur → source de ``metrics.cout_par_lead``.
+_CPL_SOURCE_FOR_FIELD = {'leads_count': 'leads_meta',
+                         'results': 'resultats_meta'}
+
+
+def _mirror_objective(mirror):
+    """Objectif Meta de la campagne porteuse d'un miroir (campagne, ad set
+    ou ad) ; ``''`` si inconnu."""
+    obj = mirror
+    for parent in ('adset', 'campaign'):
+        if getattr(obj, 'objective', None) is not None:
+            break
+        obj = getattr(obj, parent, None) or obj
+    return (getattr(obj, 'objective', '') or '').strip().upper()
+
+
+def _cpl_basis(mirror):
+    """AACQ9 — ``(champ_dénominateur, raison_non_applicable)`` du CPL.
+
+    Objectif LEADS → ``leads_count`` (leads Meta) ; objectif CONNU sans leads
+    (trafic, messages, notoriété, ventes) → non applicable (jamais un coût par
+    clic comparé à un plafond de coût par lead) ; objectif absent (miroir pas
+    encore synchronisé) → ``results`` historique."""
+    from .metrics import result_metric_for_objective
+    objective = _mirror_objective(mirror)
+    if not objective:
+        return 'results', None
+    if result_metric_for_objective(objective)['metric'] == 'leads_count':
+        return 'leads_count', None
+    label = _OBJECTIVE_FR.get(
+        objective, result_metric_for_objective(objective)['label_fr'])
+    return None, f'objectif {label} : pas de coût par lead'
+
+
+def _derived_metric(snaps, metric, *, lead_field='results'):
     """Valeur d'une métrique DÉRIVÉE sur une fenêtre de snapshots.
 
     Renvoie ``(valeur|None, samples)`` : ``None`` quand le dénominateur est nul
     ou la donnée absente (le déclencheur retombe alors sur ``insufficient_data``
-    — jamais un faux 0). ``samples`` = nombre de snapshots de la fenêtre."""
+    — jamais un faux 0). ``samples`` = nombre de snapshots de la fenêtre.
+    AACQ9 — ``lead_field`` = dénominateur du CPL (``_cpl_basis``)."""
     n = len(snaps)
     if metric == 'cpl':
-        spend = _sum_attr(snaps, 'spend')
-        results = _sum_attr(snaps, 'results')
-        return ((spend / results) if results > 0 else None), n
+        # AACQ26 — même définition que tout « coût par lead » : la fonction
+        # unique ``metrics.cout_par_lead``, qui nomme sa source.
+        from .metrics import cout_par_lead
+        calc = cout_par_lead(
+            _sum_attr(snaps, 'spend'), _sum_attr(snaps, lead_field),
+            source=_CPL_SOURCE_FOR_FIELD.get(lead_field, 'resultats_meta'))
+        return (float(calc.valeur) if calc.valeur is not None else None), n
     if metric == 'cost_per_conversation':
         spend = _sum_attr(snaps, 'spend')
         conv = _sum_attr(snaps, 'conversations')
@@ -567,23 +674,39 @@ def _eval_metric_threshold(company, policy, template, *, now, config):
         return []
     ct = ContentType.objects.get_for_model(model)
 
+    # AACQ2 — seuil monétaire (``*_mad``) sur un compte non-MAD : non
+    # applicable, AUCUNE comparaison (porte unique ``guardrails``).
+    blocked = (guardrails.mad_threshold_blocked_reason(company)
+               if str(spec['threshold_param']).endswith('_mad') else None)
+
     findings = []
     for m in mirrors:
-        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
-        value, n = _derived_metric(snaps, metric)
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
+        lead_field, not_cpl = (_cpl_basis(m) if metric == 'cpl'
+                               else ('results', None))
+        blocked_here = blocked or not_cpl
+        if blocked_here:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': blocked_here,
+                             'computed': {'metric': metric}})
+            continue
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=window_days)
+        value, n = _derived_metric(snaps, metric, lead_field=lead_field)
         if n < min_samples or value is None:
             findings.append({**base, 'fired': False, 'insufficient_data': True,
                              'computed': {'metric': metric, 'value': value,
                                           'samples': n}})
             continue
         fired = value > threshold if operator == 'gt' else value < threshold
+        computed = {'metric': metric, 'value': round(value, 4),
+                    'threshold': threshold, 'operator': operator,
+                    'window_days': window_days, 'samples': n}
+        if lead_field == 'leads_count':
+            computed['source'] = CPL_SOURCE_LEADS_META
         findings.append({
             **base, 'fired': fired, 'insufficient_data': False,
-            'computed': {'metric': metric, 'value': round(value, 4),
-                         'threshold': threshold, 'operator': operator,
-                         'window_days': window_days, 'samples': n}})
+            'computed': computed})
     return findings
 
 
@@ -612,12 +735,21 @@ def _eval_window_regression(company, policy, template, *, now, config):
 
     findings = []
     for m in mirrors:
-        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
-        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
-        short_val, _ = _derived_metric(short_snaps, metric)
-        long_val, long_n = _derived_metric(long_snaps, metric)
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
+        lead_field, not_cpl = (_cpl_basis(m) if metric == 'cpl'
+                               else ('results', None))
+        if not_cpl:  # AACQ9 — objectif sans leads : CPL non applicable.
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': not_cpl,
+                             'computed': {'metric': metric}})
+            continue
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, metric,
+                                       lead_field=lead_field)
+        long_val, long_n = _derived_metric(long_snaps, metric,
+                                           lead_field=lead_field)
         if (long_n < min_samples or short_val is None or long_val is None
                 or long_val <= 0):
             findings.append({**base, 'fired': False, 'insufficient_data': True,
@@ -668,13 +800,21 @@ def _eval_winner_duplicate(company, policy, template, *, now, config):
 
     findings = []
     for m in mirrors:
-        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
-        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
-        short_val, _ = _derived_metric(short_snaps, 'cpl')
-        long_val, long_n = _derived_metric(long_snaps, 'cpl')
-        results = _sum_attr(long_snaps, 'results')
         base = {'target_type': scope, 'target_meta_id': m.meta_id,
                 'target_object_id': m.pk, 'severity': template['severity']}
+        lead_field, not_cpl = _cpl_basis(m)
+        if not_cpl:  # AACQ9 — objectif sans leads : CPL non applicable.
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': not_cpl,
+                             'computed': {'metric': 'cpl'}})
+            continue
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, 'cpl',
+                                       lead_field=lead_field)
+        long_val, long_n = _derived_metric(long_snaps, 'cpl',
+                                           lead_field=lead_field)
+        results = _sum_attr(long_snaps, lead_field)
         if (long_n < min_samples or short_val is None or long_val is None
                 or long_val <= 0):
             findings.append({**base, 'fired': False, 'insufficient_data': True,
@@ -895,8 +1035,68 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
 # (pacing, réconciliation) ou d'une donnée non encore stockée (impressions pour
 # zéro-delivery) ne sont PAS câblés ici et sont consignés ``evaluated: False``
 # (jamais un skip muet — c'est audité dans ``last_result``).
+def _eval_zero_delivery(company, policy, template, *, now, config):
+    """AACQ24 — « Zéro diffusion malgré dépense » (seul gabarit de cadence
+    CRITIQUE) : sur les snapshots de la fenêtre ``hours`` (48 h par défaut),
+    dépense > ``min_spend_mad`` ET 0 impression ⇒ déclenché (détecteur pur
+    ``anomaly.detect_zero_delivery``, niveau 1 seulement — le niveau 2 « clics
+    sans résultat » appartient au gabarit ``zero_results``). Aucune donnée →
+    ``insufficient_data``. Le seuil ``min_spend_mad`` passe par la porte de
+    devise AACQ2 (compte non-MAD : non applicable, aucun taux inventé)."""
+    import math
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import anomaly
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    hours = float(params.get('hours', 48) or 48)
+    min_spend = float(params.get('min_spend_mad', 0) or 0)
+    days = max(1, int(math.ceil(hours / 24.0)))
+    blocked = guardrails.mad_threshold_blocked_reason(company)
+    currency = account_currency(company)
+    model, mirrors = _scoped_mirrors(company, policy, 'campaign')
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        base = {'target_type': 'campaign', 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if blocked:
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'blocked_fr': blocked,
+                             'computed': {'metric': 'spend'}})
+            continue
+        snaps = _window_snaps(company, ct, m.pk, now=now, days=days)
+        if not snaps:
+            det = anomaly.detect_zero_delivery(
+                spend=None, impressions=None, clicks=None, leads=None,
+                hours_since_launch=0, min_spend_mad=min_spend,
+                currency=currency)
+        else:
+            det = anomaly.detect_zero_delivery(
+                spend=_sum_attr(snaps, 'spend'),
+                impressions=int(_sum_attr(snaps, 'impressions')),
+                clicks=int(_sum_attr(snaps, 'link_clicks')),
+                leads=int(_sum_attr(snaps, 'results')),
+                # Niveau 1 seulement : jamais le niveau 2 (> 24 h) ici.
+                hours_since_launch=0, min_spend_mad=min_spend,
+                currency=currency)
+        fired = bool(det.fired and det.kind == anomaly.KIND_ZERO_DELIVERY)
+        findings.append({
+            **base, 'fired': fired,
+            'insufficient_data': bool(det.insufficient_data),
+            'computed': {**(det.computed or {}), 'hours': hours,
+                         'min_spend': min_spend}})
+    return findings
+
+
 _EVALUATORS = {
     'frequency_high': _eval_frequency_high,
+    # AACQ24 — boucle CRITIQUE (6 h) : zéro diffusion malgré dépense.
+    'zero_delivery': _eval_zero_delivery,
     'cpl_band': _eval_cpl_band,
     # ADSDEEP40 — stop-loss (CPL campagne > plafond dur ⇒ pause proposée).
     'stop_loss_cpl': _eval_stop_loss,
@@ -913,6 +1113,11 @@ _EVALUATORS = {
     # proposition de DUPLICATION via le hint ``v2['action']='duplicate'``.
     'winner_duplicate': _eval_winner_duplicate,
 }
+
+
+def is_template_wired(template_key):
+    """AACQ24 — Vrai si le gabarit a un évaluateur (donc ARMABLE)."""
+    return template_key in _EVALUATORS
 
 
 # ── Reasons FR (une phrase par déclenchement) ─────────────────────────────────
@@ -959,19 +1164,54 @@ def _recently_acted(company, template_key, target_meta_id, *, since):
 
 
 # ── Émission d'alerte (ADSENG15 : basique ; ADSENG18 enrichit ce point) ───────
+def _resolve_finding_alert(company, template_key, finding):
+    """AACQ23 — Résout l'alerte gardée (gabarit WhatsApp mappé) d'une cible
+    dont la condition est redevenue fausse. Seul appelant de production de
+    ``alerts.resolve_alert``."""
+    from . import alerts as alerts_mod
+    wa_key = alerts_mod.wa_template_for_catalogue(template_key)
+    if not wa_key:
+        return None
+    return alerts_mod.resolve_alert(
+        company, template_key=wa_key,
+        target_type=finding.get('target_type', '') or '',
+        target_id=finding.get('target_meta_id', '') or '')
+
+
+_MIRROR_FOR_TARGET = {
+    'campaign': 'AdCampaignMirror', 'adset': 'AdSetMirror', 'ad': 'AdMirror'}
+
+
+def _target_display_name(company, finding):
+    """AACQ7 — Nom du miroir ciblé par un finding (campagne/ad set/ad),
+    company-scopé ; repli sur l'id Meta si le miroir est introuvable/sans nom."""
+    from . import models as ads_models
+    target_id = finding.get('target_meta_id', '') or ''
+    model_name = _MIRROR_FOR_TARGET.get(finding.get('target_type', ''))
+    if model_name is None:
+        return target_id
+    qs = getattr(ads_models, model_name).objects.filter(company=company)
+    pk = finding.get('target_object_id')
+    mirror = (qs.filter(pk=pk).first() if pk is not None
+              else qs.filter(meta_id=target_id).first())
+    return (getattr(mirror, 'name', '') or target_id) if mirror else target_id
+
+
 def _emit_alert(company, *, template_key, finding, message, action=None,
                 dry_run=False, insufficient=False):
     """Point d'émission d'alerte du moteur. En simulation, aucune alerte n'est
     émise (visible in-app via le journal d'actions uniquement — dd-guardian §A10).
 
     Un finding DÉCLENCHÉ sur un template mappé (ADSENG18) route vers
-    ``alerts.emit_guarded_alert`` (rendu WhatsApp FR + dédup/cooldown/escalade) ;
-    une branche insufficient_data ou un template non mappé retombe sur l'alerte
-    basique avec son message custom."""
+    ``alerts.emit_guarded_alert`` (rendu WhatsApp FR + dédup/cooldown/escalade).
+
+    AACQ22 — une branche insufficient_data ou un template non mappé passe AUSSI
+    par ``emit_guarded_alert`` (gabarit ``regle_moteur``, message custom) avec
+    la clé d'entité ``(règle, type de cible, id cible[, insuffisant])`` : une
+    condition persistante = UNE alerte ouverte mise à jour, jamais un doublon."""
     if dry_run:
         return None
     from . import alerts as alerts_mod
-    from . import guardrails
 
     wa_key = None
     if not insufficient:
@@ -979,18 +1219,29 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
     if wa_key:
         target_type = finding.get('target_type', '')
         target_id = finding.get('target_meta_id', '')
+        # AACQ7 — NOM lisible de la cible (jamais l'id Meta seul) + devise
+        # RÉELLE du compte : l'alerte et la proposition d'un même constat
+        # portent le même nom de chiffre et la même unité.
         context = alerts_mod.context_from_computed(
-            target_id, finding.get('computed', {}))
+            _target_display_name(company, finding),
+            finding.get('computed', {}),
+            currency=account_currency(company))
         return alerts_mod.emit_guarded_alert(
             company, template_key=wa_key, target_type=target_type,
             target_id=target_id, context=context, action=action,
             dry_run=dry_run)
-    return guardrails.emit_alert(
-        company, alert_type=guardrails.ALERT_ANOMALY, message=message,
-        action=action,
-        detail={'template_key': template_key,
-                'target_meta_id': finding.get('target_meta_id'),
-                'computed': finding.get('computed', {})})
+    target_type = finding.get('target_type', '') or ''
+    target_id = finding.get('target_meta_id', '') or ''
+    entity_key = f'{template_key}:{target_type}:{target_id}'
+    if insufficient:
+        entity_key += ':insuffisant'
+    return alerts_mod.emit_guarded_alert(
+        company, template_key='regle_moteur', target_type=target_type,
+        target_id=target_id, entity_key=entity_key,
+        context={'message': message, 'template_key': template_key,
+                 'target_meta_id': target_id,
+                 'computed': finding.get('computed', {})},
+        action=action, dry_run=dry_run)
 
 
 # ── ADSDEEP40 — Actions de règle v2 (montée de budget learning-safe / duplication)
@@ -1028,6 +1279,16 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run,
             company=company, meta_id=target_id).first()
         if adset is None or adset.budget is None:
             return None  # pas de base budget → alerte seule
+        if getattr(adset, 'budget_type', '') == adset.BUDGET_TYPE_LIFETIME:
+            # AACQ16 — un budget À VIE n'est pas un budget quotidien.
+            finding['blocked_fr'] = (
+                "Budget à vie : montée de budget quotidien non applicable.")
+            return None
+        # AACQ2 — budget du compte vs plafond MAD : non applicable hors MAD.
+        blocked = guardrails.mad_threshold_blocked_reason(company)
+        if blocked:
+            finding['blocked_fr'] = blocked
+            return None
         current_mad = float(adset.budget) / services.CENTIMES_PER_MAD
         if current_mad <= 0:
             return None
@@ -1340,6 +1601,16 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
         fired_any = False
         summaries = []
         for finding in findings:
+            # AACQ8 — seul le moteur (hors simulation, dédupliqué) écrit
+            # l'anomalie rendue par un évaluateur pur.
+            if finding.get('fired'):
+                _record_finding_anomaly(company, policy, finding)
+            elif (not finding.get('insufficient_data')
+                    and not policy.dry_run):
+                # AACQ23 — condition redevenue FAUSSE (données suffisantes) :
+                # l'alerte gardée ouverte est résolue ; une ré-occurrence
+                # repartira d'une alerte neuve (compteur et sévérité initiaux).
+                _resolve_finding_alert(company, policy.template_key, finding)
             # ADSDEEP43 — entrée de journal ENRICHIE : entité évaluée, verdict de
             # condition avec ses valeurs (``condition_fr``), et — si déclenchée —
             # le delta de l'action proposée (``action``).
@@ -1352,9 +1623,15 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
                 'condition_fr': _condition_fr(template, finding)}
             if finding.get('insufficient_data'):
                 # Branche insufficient_data : ALERTE toujours (piège Madgicx).
+                if finding.get('blocked_fr'):
+                    # AACQ2 — raison de blocage (devise) consignée au journal.
+                    entry['blocked_fr'] = finding['blocked_fr']
                 _emit_alert(
                     company, template_key=policy.template_key, finding=finding,
-                    message=(f"{template['label_fr']} : données insuffisantes "
+                    message=(f"{template['label_fr']} : "
+                             f"{finding['blocked_fr']}"
+                             if finding.get('blocked_fr') else
+                             f"{template['label_fr']} : données insuffisantes "
                              f"pour {finding.get('target_meta_id', '?')} — "
                              f"vérification impossible (jamais un skip muet)."),
                     dry_run=policy.dry_run, insufficient=True)

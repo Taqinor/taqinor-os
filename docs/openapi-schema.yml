@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4806, operations: 7588, components: 2215}
+counts: {paths: 4806, operations: 7582, components: 2214}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -157,10 +157,7 @@ operations:
 - get /api/django/adsengine/actions/ -> django_adsengine_actions_list
 - post /api/django/adsengine/actions/ -> django_adsengine_actions_create
 - post /api/django/adsengine/actions/proposer/{kind}/ -> django_adsengine_actions_proposer_create
-- delete /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_destroy
 - get /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_retrieve
-- patch /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_partial_update
-- put /api/django/adsengine/actions/{id}/ -> django_adsengine_actions_update
 - post /api/django/adsengine/actions/{id}/annuler/ -> django_adsengine_actions_annuler_create
 - post /api/django/adsengine/actions/{id}/apply/ -> django_adsengine_actions_apply_create
 - post /api/django/adsengine/actions/{id}/approve/ -> django_adsengine_actions_approve_create
@@ -3989,10 +3986,7 @@ operations:
 - get /api/v1/adsengine/actions/ -> v1_adsengine_actions_list
 - post /api/v1/adsengine/actions/ -> v1_adsengine_actions_create
 - post /api/v1/adsengine/actions/proposer/{kind}/ -> v1_adsengine_actions_proposer_create
-- delete /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_destroy
 - get /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_retrieve
-- patch /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_partial_update
-- put /api/v1/adsengine/actions/{id}/ -> v1_adsengine_actions_update
 - post /api/v1/adsengine/actions/{id}/annuler/ -> v1_adsengine_actions_annuler_create
 - post /api/v1/adsengine/actions/{id}/apply/ -> v1_adsengine_actions_apply_create
 - post /api/v1/adsengine/actions/{id}/approve/ -> v1_adsengine_actions_approve_create
@@ -9015,7 +9009,6 @@ components:
 - PatchedDossierRequest
 - PatchedEmailTemplateRequest
 - PatchedEmplacementStockRequest
-- PatchedEngineActionRequest
 - PatchedEntiteRequest
 - PatchedEquipeCommercialeRequest
 - PatchedEquipeMaintenanceRequest

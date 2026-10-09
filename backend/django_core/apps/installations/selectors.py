@@ -3302,3 +3302,95 @@ def blocage_annulation_acceptation(devis_id, company):
             return (f'du stock a déjà été sorti pour le chantier '
                     f'{inst.reference}.')
     return None
+
+
+def quantites_nomenclature_chantier(installation, plafond=False):
+    """ACHT8 (C-ACHT-007) — LA lecture unique des quantités de la nomenclature
+    gelée d'un chantier : ``{produit_id: quantité entière}``.
+
+    * source : ``Installation.bom`` (gelée à l'acceptation : option retenue
+      × N villas, ``services._freeze_bom``) — jamais les lignes courantes du
+      devis ; nomenclature vide et devis lié → repli sur le gel du devis ;
+    * arrondi par ligne : HALF_UP (``services.lignes_bom_entieres``, celui de
+      la réservation N14 et de la sortie de vente) ; ``plafond=True`` = arrondi
+      au plafond (ERR54 : commande prudente du besoin matériel du stock).
+    Lecture pure ; ``services._bom_quantities`` lui délègue. Lisible par une
+    autre app (stock) sans importer les services installations."""
+    from .services import _freeze_bom
+
+    bom = installation.bom or []
+    if not bom and getattr(installation, 'devis_id', None):
+        bom = _freeze_bom(installation.devis)
+    return _quantites_bom(bom, plafond=plafond)
+
+
+def quantites_nomenclature_devis(devis, plafond=False):
+    """ACHT23 — mêmes quantités que ``quantites_nomenclature_chantier`` mais
+    lues sur le GEL d'un devis (option retenue × N villas, options non
+    activées exclues — ``services._freeze_bom``), pour un geste qui part du
+    devis (« Assembler à la commande »)."""
+    from .services import _freeze_bom
+    return _quantites_bom(_freeze_bom(devis), plafond=plafond)
+
+
+def _quantites_bom(bom, plafond=False):
+    """Cœur commun : ``{produit_id: quantité entière}`` d'une nomenclature
+    gelée (HALF_UP par ligne, ou plafond ERR54)."""
+    import math
+    from decimal import Decimal, InvalidOperation
+    from .services import lignes_bom_entieres
+
+    besoins = {}
+    if plafond:
+        for ligne in bom:
+            if not isinstance(ligne, dict) or not ligne.get('produit_id'):
+                continue
+            try:
+                qte = math.ceil(Decimal(str(ligne.get('quantite') or 0)))
+            except (InvalidOperation, TypeError, ValueError):
+                continue
+            if qte <= 0:
+                continue
+            pid = ligne['produit_id']
+            besoins[pid] = besoins.get(pid, 0) + int(qte)
+        return besoins
+    for produit_id, _designation, qte in lignes_bom_entieres(bom):
+        if not produit_id:
+            continue
+        besoins[produit_id] = besoins.get(produit_id, 0) + qte
+    return besoins
+
+
+# ── ACHT27 (C-ACHT-025) — portée de visibilité (Feature F), source unique ──
+#: Champs propriétaires/assignés qui bornent la portée d'un rôle restreint.
+CHAMPS_PORTEE_INTERVENTION = ['technicien', 'created_by']
+CHAMPS_PORTEE_CHANTIER = ['technicien_responsable', 'created_by']
+
+
+def scoper_interventions(qs, user):
+    """Restreint ``qs`` (déjà borné à la société) aux interventions visibles
+    par ``user`` — lu par ``InterventionViewSet.get_queryset`` ET par la
+    synchro terrain (`field_sync`). Portée 'all' → inchangé."""
+    from core.scoping import scope_queryset
+    return scope_queryset(qs, user, CHAMPS_PORTEE_INTERVENTION)
+
+
+def scoper_chantiers(qs, user):
+    """Jumeau chantier de ``scoper_interventions`` (InstallationViewSet +
+    synchro terrain)."""
+    from core.scoping import scope_queryset
+    return scope_queryset(qs, user, CHAMPS_PORTEE_CHANTIER)
+
+
+def interventions_visibles(user):
+    """Interventions de la société de ``user`` visibles dans sa portée."""
+    from .models import Intervention
+    return scoper_interventions(
+        Intervention.objects.filter(company=user.company), user)
+
+
+def chantiers_visibles(user):
+    """Chantiers de la société de ``user`` visibles dans sa portée."""
+    from .models import Installation
+    return scoper_chantiers(
+        Installation.objects.filter(company=user.company), user)

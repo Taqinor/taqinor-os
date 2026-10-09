@@ -912,6 +912,13 @@ SPECTACULAR_SETTINGS = {
         # seul jeu de valeurs (« multiple names for the same choice set »).
         'StatutComposantPublicEnum':
             'apps.statuspage.models.ComponentStatus.Statut',
+        # Vague 6 (08/10/2026) — sav.ReponseType.nouveau_statut (ASAV13) reprend
+        # Ticket.Statut ; statuspage.ComponentStatusLog.nouveau_statut porte un
+        # autre jeu sous le MÊME nom de champ : sans ré-épinglage, le générateur
+        # émet « multiple names » + « non-optimally resolvable collision »
+        # (NouveauStatutB32Enum / StatutB32Enum). On garde le nom historique
+        # TicketStatutEnum. Nommage de schéma uniquement — aucun choix ne change.
+        'TicketStatutEnum': 'apps.sav.models.Ticket.Statut',
         # SOLMVP-sweep (2026-09-21) — `MouvementEntreeSortieEnum`
         # (compta.MouvementCaisse.Sens) est retiré : apps.compta est sorti du
         # MVP solaire (Groupe SOLMVP, en cours de mise en coquille par la lane
@@ -1148,6 +1155,8 @@ CELERY_TASK_ROUTES = {
     'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
     # NTSRV38 — violation SLA (FG81) rescannée au quart d'heure.
     'sav.scan_sla_breaches_quart_heure': {'queue': 'scheduled'},
+    # ASAV33 — auto-clôture SAV planifiée (beat `sav-auto-cloture`).
+    'sav.scan_auto_cloture_quotidien': {'queue': 'scheduled'},
     # WIR50 — commandes périodiques de sécurité/gouvernance (break-glass échu,
     # comptes dormants, escalade SLA workflow) planifiées au beat.
     'identity.revoke_expired_break_glass': {'queue': 'scheduled'},

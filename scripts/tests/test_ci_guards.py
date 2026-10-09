@@ -160,5 +160,158 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(echecs[0]["code"], 0)
 
 
+# ADEP12 - une garde de `backend-lint-fast` ne doit lire AUCUN fichier sous `frontend/` ni
+# `apps/web/` : ce job est gate sur `backend == true`, donc une PR frontend seule ne la
+# lancerait pas et une regression frontend qu'elle detecte passerait au vert.
+_SONDE = r"""
+import json, os, runpy, shlex, sys
+out, repo, cmd = sys.argv[1], sys.argv[2], sys.argv[3]
+vus = set()
+def hook(ev, args):
+    if ev in ('open', 'os.listdir', 'os.scandir') and args and isinstance(args[0], (str, bytes, os.PathLike)):
+        try:
+            vus.add(os.path.abspath(os.fsdecode(args[0])))
+        except Exception:
+            pass
+sys.addaudithook(hook)
+argv = shlex.split(cmd)[1:]
+sys.path.insert(0, os.path.join(repo, 'scripts'))
+try:
+    if argv[0] == '-m':
+        sys.argv = [argv[1]] + argv[2:]
+        runpy.run_module(argv[1], run_name='__main__', alter_sys=True)
+    else:
+        sys.argv = argv
+        runpy.run_path(argv[0], run_name='__main__')
+except SystemExit:
+    pass
+except BaseException:
+    pass
+finally:
+    with open(out, 'w', encoding='utf-8') as fh:
+        json.dump(sorted(vus), fh)
+"""
+
+
+def _fichiers_ouverts(commande, wd, tmpdir, idx):
+    import json
+    import subprocess
+    sonde = os.path.join(tmpdir, "sonde.py")
+    if not os.path.exists(sonde):
+        with open(sonde, "w", encoding="utf-8") as fh:
+            fh.write(_SONDE)
+    sortie = os.path.join(tmpdir, f"vus{idx}.json")
+    subprocess.run([sys.executable, sonde, sortie, REPO_ROOT, commande],
+                   cwd=os.path.join(REPO_ROOT, wd), capture_output=True, timeout=600)
+    with open(sortie, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _sous_surface_frontend(chemin):
+    rel = os.path.relpath(chemin, REPO_ROOT).replace(os.sep, "/")
+    return rel.startswith("frontend/") or rel.startswith("apps/web/") \
+        or rel in ("frontend", "apps/web")
+
+
+class GardeBackendNeLitPasLeFrontendTests(unittest.TestCase):
+    def test_garde_backend_lint_fast_ne_lit_pas_le_frontend(self):
+        import tempfile
+        from concurrent.futures import ThreadPoolExecutor
+        import shlex
+        candidates = []
+        for nom, commande, wd in ci_guards.GARDES["backend-lint-fast"]:
+            mots = shlex.split(commande)
+            if mots[0] != "python" or mots[1] in ("-m",) and mots[2] == "compileall":
+                continue
+            candidates.append((nom, commande, wd))
+        self.assertGreaterEqual(len(candidates), 20)
+        fautives = []
+        with tempfile.TemporaryDirectory() as tmp:
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                futs = [(nom, commande, pool.submit(_fichiers_ouverts, commande, wd, tmp, i))
+                        for i, (nom, commande, wd) in enumerate(candidates)]
+                for nom, commande, fut in futs:
+                    lus = [c for c in fut.result() if _sous_surface_frontend(c)]
+                    if lus:
+                        fautives.append(f"{commande} lit {os.path.relpath(lus[0], REPO_ROOT)}")
+        self.assertEqual(fautives, [],
+                         "gardes de `backend-lint-fast` qui lisent le frontend — a deplacer "
+                         "dans GARDES['stage-names'] : " + "; ".join(fautives))
+
+
+# ADEP21 - test inverse : tout `scripts/tests/test_*.py` et tout `scripts/check_*.py` est
+# cite par GARDES (ou une etape des workflows) ou par la liste d'exclusion nommee et datee.
+class ToutEstBrancheTests(unittest.TestCase):
+    EXCLUSIONS = os.path.join(REPO_ROOT, "scripts", "ci_guards_non_branches.txt")
+
+    @classmethod
+    def _textes_cites(cls):
+        morceaux = [c for rows in ci_guards.GARDES.values() for _n, c, _w in rows]
+        wf = os.path.join(REPO_ROOT, ".github", "workflows")
+        for nom in sorted(os.listdir(wf)):
+            with open(os.path.join(wf, nom), encoding="utf-8") as fh:
+                # lignes de commentaire exclues : une mention n'est pas une execution
+                morceaux.extend(ligne for ligne in fh if not ligne.lstrip().startswith("#"))
+        return "\n".join(morceaux)
+
+    @classmethod
+    def _exclusions(cls):
+        sortie = {}
+        if not os.path.isfile(cls.EXCLUSIONS):
+            return sortie
+        with open(cls.EXCLUSIONS, encoding="utf-8") as fh:
+            for ligne in fh:
+                ligne = ligne.strip()
+                if not ligne or ligne.startswith("#"):
+                    continue
+                champs = [c.strip() for c in ligne.split("|")]
+                sortie[champs[0]] = champs
+        return sortie
+
+    @classmethod
+    def _fichiers(cls):
+        sortie = []
+        for nom in sorted(os.listdir(os.path.join(REPO_ROOT, "scripts", "tests"))):
+            if nom.startswith("test_") and nom.endswith(".py"):
+                sortie.append((f"tests/{nom}", nom[:-3]))
+        for nom in sorted(os.listdir(os.path.join(REPO_ROOT, "scripts"))):
+            if nom.startswith("check_") and nom.endswith(".py"):
+                sortie.append((nom, nom))
+        return sortie
+
+    def test_tout_test_et_garde_est_branche(self):
+        texte = self._textes_cites()
+        exclusions = self._exclusions()
+        orphelins = [rel for rel, cle in self._fichiers()
+                     if cle not in texte and rel not in exclusions]
+        self.assertEqual(
+            orphelins, [],
+            "scripts jamais executes en CI - ajoutez une entree a ci_guards.GARDES, ou une "
+            "ligne `fichier | motif | date` a scripts/ci_guards_non_branches.txt : "
+            + ", ".join(orphelins))
+
+    def test_exclusions_datees_et_vivantes(self):
+        texte = self._textes_cites()
+        existants = {rel: cle for rel, cle in self._fichiers()}
+        for rel, champs in self._exclusions().items():
+            with self.subTest(exclusion=rel):
+                self.assertEqual(len(champs), 3, f"{rel} : format `fichier | motif | date`")
+                self.assertRegex(champs[2], r"^\d{4}-\d{2}-\d{2}$")
+                self.assertIn(rel, existants, f"{rel} n'existe plus - retirez la ligne")
+                self.assertNotIn(existants[rel], texte,
+                                 f"{rel} est desormais branche - retirez la ligne (cliquet)")
+
+
+class RegistresDeriveTests(unittest.TestCase):
+    """ADEP22 - les deux registres generes sont gardes en `--check` (derive seulement ; les
+    violations restent consultatives, YDATA22 / AUD831 inchanges)."""
+
+    def test_registres_derive_branches(self):
+        commandes = [c for rows in ci_guards.GARDES.values() for _n, c, _w in rows]
+        for script in ("check_db_invariants.py", "check_money_monodevise.py"):
+            with self.subTest(script=script):
+                self.assertIn(f"python scripts/{script} --check", commandes)
+
+
 if __name__ == "__main__":
     unittest.main()

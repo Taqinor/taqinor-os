@@ -201,6 +201,8 @@ class AuditTrackingTests(TestCase):
         env = {
             'ODOO_URL': 'https://x.odoo.com', 'ODOO_DB': 'x',
             'ODOO_USERNAME': 'x', 'ODOO_API_KEY': 'x',
+            # AACQ25 — connecteur rattaché à CETTE société (ASEC40).
+            'ODOO_COMPANY_ID': str(self.company.pk),
         }
         os.environ.update(env)
         try:
@@ -216,6 +218,8 @@ class AuditTrackingTests(TestCase):
         env = {
             'WHATSAPP_CLOUD_VERIFY_TOKEN': 'vt',
             'WHATSAPP_CLOUD_APP_SECRET': 'sec',
+            # AACQ25 — le webhook exige aussi la société propriétaire.
+            'WHATSAPP_CLOUD_COMPANY_ID': str(self.company.pk),
         }
         os.environ.update(env)
         try:

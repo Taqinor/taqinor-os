@@ -5,6 +5,7 @@ Pure stdlib (unittest), no Django/DB needed. Run with:
 """
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -972,6 +973,189 @@ class MarqueurGateEnTeteDeLabelTests(unittest.TestCase):
             "tâche elle-même se marque [GATED si dev-dep à ajouter] puis "
             "continue. (@lane: frontend/shell) (ROUTINE)")
         self.assertEqual(gates, {"VX901": "buildable"})
+
+
+class PorteeTests(unittest.TestCase):
+    """PORTÉE (``--only`` / ``--group``, 09/10/2026) — testée sur le CAS RÉEL EDC.
+
+    Le groupe EDC de docs/plans/PLAN_AUDIT_TRANSVERSE.md (11 tâches d'écran
+    pur sur l'éditeur de devis, SANS moitié backend) était refusé EN BLOC par
+    PACT11 : AFAC17 / AFAC19 / APRF23 / APRF24 (backend ventes) vivent dans le
+    même fichier, donc comptaient comme « le même run » — alors que la session
+    ne drainait que le groupe EDC. La portée restreint l'ensemble AVANT les
+    portes ; sans option, rien ne change (le refus d'origine reste le témoin).
+    """
+
+    AFAC17 = ("- [ ] AFAC17 — gestes de correction d'un paiement. "
+              "Files: `backend/django_core/apps/ventes/views/paiement.py`, "
+              "`backend/django_core/apps/ventes/selectors.py`. (SCHEMA) "
+              "(@lane: afac/encaissement)")
+    APRF23 = ("- [ ] APRF23 — sélecteur `devis_envoyes_expirant`. "
+              "Files: `backend/django_core/apps/crm/selectors.py`, "
+              "`backend/django_core/apps/ventes/selectors.py`. (ROUTINE) "
+              "(@lane: aprf-crm/selecteurs)")
+    EDC2 = ("- [ ] EDC2 — bouton « Dupliquer la ligne » dans l'éditeur. "
+            "Files: `frontend/src/pages/ventes/DevisGenerator.jsx`. (ROUTINE) "
+            "(@lane: edc/editeur)")
+    EDC3 = ("- [ ] EDC3 — raccourcis clavier de l'éditeur. "
+            "Files: `frontend/src/features/ventes/EditeurLignes.jsx`. "
+            "(ROUTINE) (@lane: edc/editeur) (@after: EDC2)")
+    PLAN = (
+        "## BUILD QUEUE\n\n"
+        "## Groupe AFAC — audit facturation du 2026-10-08\n### AFAC — M2\n"
+        + AFAC17 + "\n"
+        "## Groupe APRF — audit performance du 2026-10-08\n### APRF — M2\n"
+        + APRF23 + "\n"
+        "## Groupe EDC — éditeur de devis (écran pur, 09/10/2026)\n"
+        "### EDC — M2\n"
+        + EDC2 + "\n" + EDC3 + "\n"
+    )
+
+    def setUp(self):
+        self.plan = Path(tempfile.mkdtemp()) / "PLAN_AUDIT_TRANSVERSE.md"
+        self.plan.write_text(self.PLAN, encoding="utf-8")
+        self.addCleanup(lambda: self.plan.unlink(missing_ok=True))
+        # Pas de BUILD_ORDER.yml : SCA3 est un no-op, le test ne parle que
+        # de la portée et de PACT11.
+        self.sans_build_order = str(Path(tempfile.mktemp(suffix=".yml")))
+
+    def _main(self, *options) -> tuple[int, str, str]:
+        sortie, journal = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(journal):
+            code = pl.main([str(self.plan), "--build-order",
+                            self.sans_build_order, *options])
+        return code, sortie.getvalue(), journal.getvalue()
+
+    def _json(self, *options) -> dict:
+        code, sortie, _ = self._main("--json", *options)
+        self.assertEqual(code, 0)
+        return json.loads(sortie)
+
+    # --- le témoin : sans option, le refus d'origine est inchangé ---------
+    def test_sans_portee_le_groupe_EDC_est_refuse_par_PACT11_comme_avant(self):
+        plan = self._json()
+        self.assertEqual(sorted(t["id"] for t in plan["pairing_blocked"]),
+                         ["EDC2", "EDC3"])
+        self.assertNotIn("scope", plan)
+        motif = " ".join(plan["pairing_blocked"][0]["pairing_block_reasons"])
+        self.assertIn("AFAC17", motif)
+        self.assertIn("apps/ventes/urls.py ou selectors.py", motif)
+
+    def test_sans_portee_le_rendu_n_a_pas_de_ligne_Portee(self):
+        _, sortie, journal = self._main()
+        self.assertNotIn("Portée", sortie)
+        self.assertNotIn("Portée", journal)
+        self.assertIn("(PACT11)", sortie)
+
+    def test_restreindre_portee_sans_selecteur_rend_la_liste_intacte(self):
+        tasks = pl.parse_tasks(self.plan)
+        retenues, libelle = pl.restreindre_portee(tasks)
+        self.assertIs(retenues, tasks)
+        self.assertIsNone(libelle)
+        retenues, libelle = pl.restreindre_portee(tasks, only=[], group=[""])
+        self.assertIs(retenues, tasks)
+        self.assertIsNone(libelle)
+
+    # --- la portée : le backend hors portée n'est plus « le même run » ----
+    def test_only_prefixe_EDC_aucun_refus_PACT11(self):
+        plan = self._json("--only", "EDC")
+        self.assertEqual(plan["pairing_blocked"], [])
+        self.assertEqual(plan["counts"]["pairing_blocked"], 0)
+        self.assertEqual(plan["lanes"], {"edc/editeur": ["EDC2", "EDC3"]})
+        self.assertEqual(plan["scope"], {
+            "selectors": "--only EDC", "retained": 2, "total": 4, "excluded": 2,
+        })
+
+    def test_only_identifiants_exacts(self):
+        plan = self._json("--only", "EDC2,EDC3")
+        self.assertEqual(plan["pairing_blocked"], [])
+        self.assertEqual(plan["lanes"], {"edc/editeur": ["EDC2", "EDC3"]})
+        plan = self._json("--only", "EDC3")
+        self.assertEqual(plan["lanes"], {"edc/editeur": ["EDC3"]})
+        self.assertEqual(plan["scope"]["retained"], 1)
+
+    def test_only_repetable_est_une_union_et_ignore_la_casse(self):
+        # Les deux sont RETENUES (union) ; APRF23 étant le backend ventes et
+        # dans la portée, EDC2 reste appariée contre elle — c'est PACT11 qui
+        # parle ensuite, pas la portée.
+        plan = self._json("--only", "edc2", "--only", "aprf23")
+        self.assertEqual(plan["scope"]["retained"], 2)
+        self.assertEqual(plan["lanes"], {"aprf-crm/selecteurs": ["APRF23"]})
+        self.assertEqual([t["id"] for t in plan["pairing_blocked"]], ["EDC2"])
+
+    def test_group_sous_chaine_du_titre_de_groupe_ou_du_lot(self):
+        # Titre `##` (« Groupe EDC — … ») ET titre `###` (« EDC — M2 »),
+        # casse ignorée : les deux niveaux de la chaîne sont consultés.
+        for titre in ("Groupe EDC", "groupe edc", "EDC — M2", "écran pur"):
+            plan = self._json("--group", titre)
+            self.assertEqual(plan["pairing_blocked"], [], titre)
+            self.assertEqual(plan["lanes"], {"edc/editeur": ["EDC2", "EDC3"]},
+                             titre)
+        self.assertEqual(plan["scope"]["selectors"], "--group 'écran pur'")
+
+    def test_la_portee_est_affichee_en_tete_du_rendu(self):
+        code, sortie, journal = self._main("--only", "EDC")
+        self.assertEqual(code, 0)
+        lignes = sortie.splitlines()
+        self.assertTrue(lignes[0].startswith("# Lane plan for "))
+        self.assertEqual(
+            lignes[1],
+            "Portée : --only EDC — 2 tâche(s) ouverte(s) retenue(s) sur 4 "
+            "(2 hors portée, invisibles aux portes SCA3 / PACT11 / @after externe)",
+        )
+        self.assertNotIn("## Refusé — moitié frontend", sortie)
+        self.assertNotIn("REFUSÉ", journal)
+
+    def test_une_tache_EN_portee_reste_refusee_pour_les_memes_motifs(self):
+        # La portée n'affaiblit pas PACT11 : si la moitié backend est DANS la
+        # portée, le refus est identique à l'appel sans option.
+        plan = self._json("--only", "EDC,AFAC17")
+        self.assertEqual(sorted(t["id"] for t in plan["pairing_blocked"]),
+                         ["EDC2", "EDC3"])
+        motif = " ".join(plan["pairing_blocked"][0]["pairing_block_reasons"])
+        self.assertIn("AFAC17", motif)
+        self.assertNotIn("APRF23", motif)       # hors portée : n'apparie rien
+
+    def test_force_wave_garde_sa_semantique_avec_la_portee(self):
+        plan = self._json("--only", "EDC,AFAC17", "--force-wave")
+        self.assertEqual(plan["pairing_blocked"], [])
+        self.assertEqual(sorted(sum(plan["lanes"].values(), [])),
+                         ["AFAC17", "EDC2", "EDC3"])
+
+    def test_portee_vide_avertit_sur_stderr_et_rend_un_plan_vide(self):
+        code, sortie, journal = self._main("--only", "EDK")
+        self.assertEqual(code, 0)
+        self.assertIn("Portée vide", journal)
+        self.assertIn("--only EDK", journal)
+        self.assertIn("0 buildable task(s)", sortie)
+
+    def test_SCA3_n_evalue_que_la_portee(self):
+        # Le même BUILD_ORDER.yml refuse ARC3 et NTPLT1 sans portée ; avec
+        # `--only ARC1`, ils ne sont plus dans le run : aucun refus émis.
+        plan_path = Path(tempfile.mkdtemp()) / "PLAN.md"
+        plan_path.write_text(SIMPLE_PLAN_FIXTURE, encoding="utf-8")
+        self.addCleanup(lambda: plan_path.unlink(missing_ok=True))
+        bo = Path(tempfile.mkdtemp()) / "BUILD_ORDER.yml"
+        bo.write_text(MINI_YAML_FIXTURE, encoding="utf-8")
+        self.addCleanup(lambda: bo.unlink(missing_ok=True))
+        sortie, journal = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(journal):
+            code = pl.main([str(plan_path), "--build-order", str(bo),
+                            "--json", "--only", "ARC1"])
+        self.assertEqual(code, 0)
+        plan = json.loads(sortie.getvalue())
+        self.assertEqual(plan["wave_blocked"], [])
+        self.assertEqual(plan["lanes"], {"backend/core": ["ARC1"]})
+        self.assertNotIn("REFUSÉ (ordre de vague)", journal.getvalue())
+
+    def test_titres_par_tache_donne_la_chaine_des_titres(self):
+        titres = pl.titres_par_tache(self.plan)
+        self.assertEqual(
+            titres["EDC2"],
+            ("Groupe EDC — éditeur de devis (écran pur, 09/10/2026)",
+             "EDC — M2"),
+        )
+        self.assertEqual(titres["AFAC17"][1], "AFAC — M2")
 
 
 if __name__ == "__main__":

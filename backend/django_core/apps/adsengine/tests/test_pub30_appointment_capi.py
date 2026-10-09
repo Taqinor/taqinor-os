@@ -162,11 +162,14 @@ class AppointmentSignalTriggerTests(TestCase):
                 statut=Appointment.Statut.PLANIFIE)
             self.assertEqual(calls, [])  # PLANIFIE → pas d'émission.
             appt.statut = Appointment.Statut.EFFECTUE
-            appt.save()
+            # AACQ19 — l'émission part APRÈS le commit (callbacks exécutés).
+            with self.captureOnCommitCallbacks(execute=True):
+                appt.save()
             self.assertEqual(calls, [(self.lead.pk, appt.pk)])
             # Re-save SANS changement de statut → aucune ré-émission.
             appt.notes = 'Compte-rendu'
-            appt.save()
+            with self.captureOnCommitCallbacks(execute=True):
+                appt.save()
             self.assertEqual(calls, [(self.lead.pk, appt.pk)])
 
     def test_transition_to_other_statut_never_fires(self):
