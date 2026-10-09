@@ -421,7 +421,20 @@ def render_energy_report_pdf(installation, params):
     CompanyProfile (multi-tenant) ; le client vient du chantier. Aucun prix
     d'achat n'est lu — strictement client-facing.
     """
+    from apps.parametres.selectors import tariff_for
     from apps.ventes.utils.pdf import _company_context, _html_to_pdf
+
+    # APDF39 — sans surcharge explicite, le rendement et le tarif sont ceux de
+    # Paramètres (``tariff_for``, repères du devis de la MÊME société) ; les
+    # constantes DEFAULT_* ne servent plus que de repli de ``compute_energy_
+    # estimate`` appelé hors rapport.
+    reperes = tariff_for(installation.company)
+    rendement = params.get('rendement_kwh_par_kwc_an')
+    if rendement is None:
+        rendement = reperes.get('productible_kwh_kwc')
+    tarif = params.get('tarif_mad_par_kwh')
+    if tarif is None:
+        tarif = reperes.get('onee_tarif_kwh')
 
     est = compute_energy_estimate(
         installation.puissance_installee_kwc,
@@ -429,8 +442,8 @@ def render_energy_report_pdf(installation, params):
         date_debut=params.get('date_debut'),
         date_fin=params.get('date_fin'),
         production_annuelle_kwh=params.get('production_annuelle_kwh'),
-        rendement_kwh_par_kwc_an=params.get('rendement_kwh_par_kwc_an'),
-        tarif_mad_par_kwh=params.get('tarif_mad_par_kwh'),
+        rendement_kwh_par_kwc_an=rendement,
+        tarif_mad_par_kwh=tarif,
         co2_kg_par_kwh=params.get('co2_kg_par_kwh'),
     )
 
