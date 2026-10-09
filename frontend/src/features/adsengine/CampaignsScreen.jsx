@@ -170,11 +170,17 @@ export default function CampaignsScreen() {
   const syncNow = async () => {
     setSyncing(true); setMsg('')
     try {
-      await adsengineApi.campaigns.syncNow()
-      setMsg('Synchronisation lancée.')
+      const res = await adsengineApi.campaigns.syncNow()
+      // AACQ70 — le résultat RÉEL du serveur : « lancée » seulement si
+      // `synced` est vrai, sinon le détail serveur (connexion inactive…).
+      if (res?.data?.synced) {
+        setMsg('Synchronisation lancée.')
+      } else {
+        setMsg(res?.data?.detail || 'Synchronisation non effectuée.')
+      }
       load()
-    } catch {
-      setMsg('Synchronisation impossible.')
+    } catch (e) {
+      setMsg(e?.response?.data?.detail || 'Synchronisation impossible.')
     } finally {
       setSyncing(false)
     }
@@ -185,8 +191,12 @@ export default function CampaignsScreen() {
   const fullBackfill = async () => {
     setBackfilling(true); setMsg('')
     try {
-      await adsengineApi.campaigns.fullBackfill()
-      setMsg("Récupération de tout l'historique lancée…")
+      const res = await adsengineApi.campaigns.fullBackfill()
+      // AACQ70 — le 202 dit ce qui est planifié (détail serveur).
+      const detail = res?.data?.detail
+      setMsg(detail
+        ? `Récupération de tout l'historique lancée… ${detail}`
+        : "Récupération de tout l'historique lancée…")
     } catch {
       setMsg("Récupération de tout l'historique impossible.")
     } finally {

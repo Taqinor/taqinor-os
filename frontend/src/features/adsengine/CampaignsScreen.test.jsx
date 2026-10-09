@@ -60,7 +60,7 @@ beforeEach(() => {
         budget_quotidien_mad: 40, depense_mad: 320, nb_leads: 5, ads: [] },
     ],
   } })
-  mocks.syncNow.mockResolvedValue({ data: {} })
+  mocks.syncNow.mockResolvedValue({ data: { synced: true } })
   mocks.fullBackfill.mockResolvedValue({ data: {} })
   mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.ranking.mockResolvedValue({ data: [
@@ -115,6 +115,25 @@ describe('CampaignsScreen (ENG24)', () => {
     await waitFor(() => expect(mocks.syncNow).toHaveBeenCalled())
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
     expect(await screen.findByTestId('ae-camp-msg')).toHaveTextContent('Synchronisation lancée')
+  })
+
+  it('AACQ70 — synced:false affiche le détail serveur, jamais « lancée »', async () => {
+    mocks.syncNow.mockResolvedValue({ data: {
+      synced: false, detail: 'Connexion Meta non active — synchronisation impossible.' } })
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByTestId('ae-camp-sync'))
+    const msg = await screen.findByTestId('ae-camp-msg')
+    expect(msg).toHaveTextContent('Connexion Meta non active')
+    expect(msg).not.toHaveTextContent('Synchronisation lancée')
+  })
+
+  it('AACQ70 — un 502 affiche le détail renvoyé', async () => {
+    mocks.syncNow.mockRejectedValue({ response: { status: 502, data: { detail: 'Meta injoignable' } } })
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByTestId('ae-camp-sync'))
+    expect(await screen.findByTestId('ae-camp-msg')).toHaveTextContent('Meta injoignable')
   })
 
   // ── FIXPUB3 — Récupérer tout l'historique ────────────────────────────────
