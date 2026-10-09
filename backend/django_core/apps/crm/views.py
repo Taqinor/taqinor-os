@@ -3995,20 +3995,27 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 # ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
 
-class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
     liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
     une action (mapping en erreur OU sans lead rattaché). ``?all=1`` renvoie
     la liste complète (comportement admin). LECTURE SEULE — la seule écriture
     possible est l'action ``replay``, qui rejoue EXACTEMENT le même mapping
     que le webhook (jamais une seconde implémentation)."""
+    # ACRM52 — détail/rejeu désormais adressables hors filtre « à traiter » :
+    # bornés à la portée du lead rattaché (sans lead : visible, comme avant).
+    portee_leads = ('lead',)
+    portee_clients = ()
     queryset = WebsiteLeadPayload.objects.select_related('lead').all()
     serializer_class = WebsiteLeadPayloadSerializer
     permission_classes = [IsResponsableOrAdmin]
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.request.query_params.get('all'):
+        # AACQ30 — le filtre « à traiter » ne vaut que pour la LISTE : un
+        # payload déjà rattaché reste adressable en détail et rejouable
+        # (« Déjà rattaché au lead #… », jamais 404 ni second lead).
+        if self.action != 'list' or self.request.query_params.get('all'):
             return qs
         # Défaut : ce qui mérite une action — erreur de mapping OU jamais
         # rattaché à un lead (payload traité mais orphelin, ex. ping
