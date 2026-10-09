@@ -124,6 +124,14 @@ def enregistrer_controle_reception(*, reception, user, resultat,
 
     attendues = echantillon_attendu_reception(reception)
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou : un contrôle saisi pendant
+        # qu'une autre requête confirme la réception est refusé.
+        reception = ReceptionFournisseur.objects.select_for_update().get(
+            pk=reception.pk)
+        if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
+            raise ValueError(
+                'Cette réception est déjà confirmée : son contrôle qualité ne '
+                'peut plus être modifié.')
         controle = controle_de_reception(reception)
         if controle is None:
             controle = ControleReception(

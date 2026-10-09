@@ -814,6 +814,7 @@ def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
     Refuse une unité non scellée : on n'expédie jamais un colis dont le contenu
     peut encore changer.
     """
+    from django.db import transaction
     from .models_wms import ExpeditionTransporteur, UniteLogistique
 
     if unite is None or unite.company_id != getattr(company, 'id', None):
@@ -823,10 +824,16 @@ def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
             "Scellez l'unité logistique avant de l'expédier.")
     if provider_code not in dict(ExpeditionTransporteur.Provider.choices):
         raise ValueError('Transporteur inconnu.')
-    return ExpeditionTransporteur.objects.create(
-        company=company, unite_logistique=unite,
-        transporteur_provider=provider_code, transporteur=transporteur,
-        destination=destination or '', cout_reel=cout_reel)
+    with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49).
+        unite = UniteLogistique.objects.select_for_update().get(pk=unite.pk)
+        if unite.statut == UniteLogistique.Statut.EN_PREPARATION:
+            raise ValueError(
+                "Scellez l'unité logistique avant de l'expédier.")
+        return ExpeditionTransporteur.objects.create(
+            company=company, unite_logistique=unite,
+            transporteur_provider=provider_code, transporteur=transporteur,
+            destination=destination or '', cout_reel=cout_reel)
 
 
 def reference_sortie_expedition(expedition):
@@ -973,16 +980,7 @@ def generer_etiquette_expedition(*, expedition, user=None):
 
     if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
         raise ValueError('Cette expédition est annulée.')
-    if expedition.etiquette_pdf_key and expedition.numero_suivi:
-        decrementer_stock_expedition(expedition=expedition, user=user)
-        return expedition
 
-    provider = provider_pour_societe(
-        expedition.company, expedition.transporteur_provider)
-    numero_suivi, pdf_bytes = provider.creer_expedition(
-        expedition.unite_logistique)
-    cle = (_stocker_etiquette(expedition.company, expedition, pdf_bytes)
-           if pdf_bytes else expedition.etiquette_pdf_key)
     # Le rollback annule la base, PAS l'objet en mémoire : sans restauration,
     # un rappel sur ce même objet croirait l'étiquette posée et sortirait par
     # la branche « déjà étiquetée » sans jamais enregistrer le statut.
@@ -991,6 +989,25 @@ def generer_etiquette_expedition(*, expedition, user=None):
     avant = {champ: getattr(expedition, champ) for champ in champs}
     try:
         with transaction.atomic():
+            # ERR-ASTK53 — statut et étiquette relus SOUS verrou (patron
+            # ASTK49) : deux « Générer l'étiquette » concurrents ne
+            # demandent jamais deux envois au transporteur.
+            ExpeditionTransporteur.objects.select_for_update().get(
+                pk=expedition.pk)
+            expedition.refresh_from_db(fields=list(champs))
+            if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
+                raise ValueError('Cette expédition est annulée.')
+            if expedition.etiquette_pdf_key and expedition.numero_suivi:
+                decrementer_stock_expedition(expedition=expedition, user=user)
+                return expedition
+
+            provider = provider_pour_societe(
+                expedition.company, expedition.transporteur_provider)
+            numero_suivi, pdf_bytes = provider.creer_expedition(
+                expedition.unite_logistique)
+            cle = (_stocker_etiquette(expedition.company, expedition,
+                                      pdf_bytes)
+                   if pdf_bytes else expedition.etiquette_pdf_key)
             expedition.numero_suivi = numero_suivi or ''
             expedition.etiquette_pdf_key = cle
             expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
@@ -1128,9 +1145,18 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
                 'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
     else:
         seuil_lignes = None
-    vague.mode_liberation = mode
-    vague.seuil_lignes = seuil_lignes
-    vague.save(update_fields=['mode_liberation', 'seuil_lignes'])
+    from django.db import transaction
+    with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou : une vague lancée entre la
+        # lecture et l'écriture n'est jamais reconfigurée.
+        verrou = VaguePicking.objects.select_for_update().get(pk=vague.pk)
+        if verrou.statut != VaguePicking.Statut.BROUILLON:
+            raise ValueError(
+                'Seule une vague en brouillon peut changer de mode de '
+                'libération.')
+        vague.mode_liberation = mode
+        vague.seuil_lignes = seuil_lignes
+        vague.save(update_fields=['mode_liberation', 'seuil_lignes'])
     return vague
 
 
@@ -2044,6 +2070,12 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
 
     mouvements = []
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49) : une unité
+        # expédiée entre la lecture et l'écriture ne se déplace plus.
+        verrou = type(unite).objects.select_for_update().get(pk=unite.pk)
+        if verrou.statut == verrou.Statut.EXPEDIE:
+            raise ValueError(
+                'Une unité expédiée ne se déplace plus en entrepôt.')
         for u in unites:
             bin_source = u.bin_actuel
             for ligne in u.lignes.select_related('produit').all():
@@ -2328,6 +2360,14 @@ def receptionner_retour_client(*, retour, user=None):
         raise ValueError(
             'Seul un retour demandé ou en transit peut être réceptionné.')
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49) : deux
+        # réceptions concurrentes ne réintègrent jamais deux fois le stock.
+        verrou = RetourClient.objects.select_for_update().get(pk=retour.pk)
+        if verrou.statut not in (RetourClient.Statut.DEMANDE,
+                                 RetourClient.Statut.EN_TRANSIT):
+            raise ValueError(
+                'Seul un retour demandé ou en transit peut être '
+                'réceptionné.')
         for ligne in retour.lignes.select_related('retour').all():
             _reintegrer_ligne_retour(ligne, user=user)
         retour.statut = RetourClient.Statut.RECEPTIONNE
@@ -2361,6 +2401,12 @@ def inspecter_retour_client(*, retour, lignes=None, user=None):
         retour.company_id,
         [e.get('bin') for e in list(lignes or []) if 'bin' in e])
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49).
+        verrou = RetourClient.objects.select_for_update().get(pk=retour.pk)
+        if verrou.statut not in (RetourClient.Statut.RECEPTIONNE,
+                                 RetourClient.Statut.INSPECTE):
+            raise ValueError(
+                "Le retour doit être réceptionné avant d'être inspecté.")
         for entree in list(lignes or []):
             ligne = par_id.get(_entier_ou_none(entree.get('ligne')))
             if ligne is None:
