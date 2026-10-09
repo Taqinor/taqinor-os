@@ -121,17 +121,26 @@ if (-not $DryRun) {
 Say 'RAPPEL : un seul run de tests backend a la fois (verrou single-writer de scripts/test-backend.ps1, test_erp_db partage).'
 
 # ---- 3. Stack, migrations, rebuild du front -----------------------------------
+# INFRA PARTAGEE (db, redis, redis_cache, minio) : demarree si absente, JAMAIS recreee.
+# Mesure 10/10/2026 : un `up -d --build` global lance depuis un worktree a recree le
+# conteneur db (empreinte de config differente) - Postgres tue, 10+ min de recuperation,
+# le run de tests d'une autre session casse. L'APPLICATIF (code du depot courant) est
+# recree avec --no-deps, sans jamais toucher l'infra.
+$Infra = @('db', 'redis', 'redis_cache', 'minio')
+$Appli = @('django_core', 'celery_worker', 'celery_worker_interactive', 'celery_beat', 'fastapi_ia', 'frontend', 'nginx')
+$code = Invoke-Shown ('infra partagee, jamais recreee : ' + ($Infra -join ', ')) { docker compose up -d --no-recreate @Infra }
+if ($code -ne 0) { Fail 'docker compose up -d --no-recreate (infra).' }
 if ($Build) {
-    $code = Invoke-Shown 'docker compose up -d --build (premier build : plusieurs minutes)' { docker compose up -d --build }
+    $code = Invoke-Shown 'docker compose up -d --build --no-deps (applicatif ; premier build : plusieurs minutes)' { docker compose up -d --build --no-deps @Appli }
 } else {
-    $code = Invoke-Shown 'docker compose up -d' { docker compose up -d }
+    $code = Invoke-Shown 'docker compose up -d --no-deps (applicatif)' { docker compose up -d --no-deps @Appli }
 }
-if ($code -ne 0) { Fail 'docker compose up.' }
+if ($code -ne 0) { Fail 'docker compose up (applicatif).' }
 $code = Invoke-Shown 'migrations' { docker compose exec -T django_core python manage.py migrate --noinput }
 if ($code -ne 0) { Fail 'manage.py migrate.' }
 if (-not $Build) {
-    $code = Invoke-Shown 'rebuild du front (le build Vite est fige dans l''image)' { docker compose up -d --build frontend }
-    if ($code -ne 0) { Fail 'docker compose up -d --build frontend.' }
+    $code = Invoke-Shown 'rebuild du front (le build Vite est fige dans l''image)' { docker compose up -d --build --no-deps frontend }
+    if ($code -ne 0) { Fail 'docker compose up -d --build --no-deps frontend.' }
 }
 
 # ---- 4. Societes demo (jamais de forcage) ------------------------------------------
