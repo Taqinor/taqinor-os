@@ -486,7 +486,7 @@ describe('PanneauDocuments — contrat documents v2 (ACAL223)', () => {
 
     expect(await screen.findByTestId('cal-doc-post-signalements'))
       .toHaveTextContent('Recette IEC 62446-1')
-    expect(calepinageApi.calepinages.declencherDocument).toHaveBeenCalledWith(doc.endpoint, undefined)
+    expect(calepinageApi.calepinages.declencherDocument).toHaveBeenCalledWith(doc.endpoint)
     expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
     expect(screen.getByTestId('cal-doc-post-lien-ged')).toHaveAttribute('href', '/ged')
   })

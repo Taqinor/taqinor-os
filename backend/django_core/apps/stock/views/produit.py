@@ -282,7 +282,7 @@ def _texte_references(comptes):
         for (singulier, pluriel), n in sorted(comptes.items()))
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('categorie', STR, False, 'Id(s) de catégorie, séparés par virgule'), P('show_archived', STR, False, 'true pour inclure les produits archivés', ['true', 'false'])]))
+@extend_schema_view(list=extend_schema(parameters=[P('categorie', STR, False, 'Id(s) de catégorie, séparés par virgule'), P('show_archived', STR, False, 'true pour inclure les produits archivés', ['true', 'false']), P('entite', INT, False, 'Filtre optionnel par entité juridique (NTADM2)')]))
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)

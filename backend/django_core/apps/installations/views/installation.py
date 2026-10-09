@@ -988,7 +988,18 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         data['nb_lignes'] = nb
         return Response(data, status=status.HTTP_201_CREATED)
 
-    @oa.extend_schema(responses=oa.PDF)
+    @oa.extend_schema(
+        parameters=[
+            oa.qf('nb_mois', desc='Durée de la période, en mois.'),
+            oa.qd('date_debut', desc='Début de période (AAAA-MM-JJ).'),
+            oa.qd('date_fin', desc='Fin de période (AAAA-MM-JJ).'),
+            oa.qf('production_annuelle_kwh',
+                  desc='Production annuelle saisie (kWh).'),
+            oa.qf('rendement', desc='Rendement spécifique (kWh/kWc/an).'),
+            oa.qf('tarif', desc='Tarif (MAD/kWh).'),
+            oa.qf('co2', desc='Facteur CO2 (kg/kWh).'),
+        ],
+        responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='rapport-energie',
             permission_classes=[IsAnyRole])
     def rapport_energie(self, request, pk=None):

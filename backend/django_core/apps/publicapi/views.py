@@ -5,7 +5,10 @@ Montées sous /api/django/publicapi/. Authentifiées par la session/JWT normaux
 société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête.
 """
 from django.db.models import Q
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -214,6 +217,10 @@ class ApiUsagePlanView(APIView):
 @extend_schema(
     summary=(
         "NTAPI39 — tableau de bord de monitoring des intégrations de la société."),
+    parameters=[OpenApiParameter(
+        name='jours', type=OpenApiTypes.INT, location=OpenApiParameter.QUERY,
+        required=False,
+        description="Fenêtre d'analyse en jours (défaut et maximum bornés).")],
     responses=inline_serializer('PublicApiMonitoring', {
         'fenetre_jours': drf_serializers.IntegerField(),
         'depuis': drf_serializers.CharField(),

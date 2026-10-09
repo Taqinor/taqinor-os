@@ -124,6 +124,23 @@ class DispatchN1Tests(TestCase):
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
         self.assertEqual(rows[0]['reserves_ouvertes'], 1)
 
+    def test_filtre_date_prevue_jour_exact(self):
+        self._creer_interventions(2)
+        autre = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention=Intervention.Type.POSE,
+            statut=Intervention.Statut.PRETE,
+            technicien=self.user, date_prevue='2000-01-01')
+        r = self.api.get(f'{BASE}/?date_prevue={self.jour}')
+        self.assertEqual(r.status_code, 200)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        ids = {row['id'] for row in rows}
+        self.assertEqual(len(ids), 2)
+        self.assertNotIn(autre.id, ids)
+        # Valeur invalide : ignorée, jamais un 500.
+        r = self.api.get(f'{BASE}/?date_prevue=2026-13-45')
+        self.assertEqual(r.status_code, 200)
+
     def test_pas_de_carte_photos_sans_creneau_obligatoire(self):
         """Sans créneau OBLIGATOIRE, il n'y a rien à comparer : la requête
         `Attachment` par intervention devient inutile — et disparaît."""

@@ -160,6 +160,39 @@ class InventoryTests(unittest.TestCase):
     def test_inventory_is_deterministic(self):
         self.assertEqual(self._inventory(), self._inventory())
 
+    def test_parametres_de_requete_declares_par_operation(self):
+        """ENF — la section `query_params:` (lue par check_frontend_query_params)
+        porte les `in: query` du chemin ET de l'operation, $ref resolues, et
+        aucune ligne pour une operation sans parametre."""
+        doc = {
+            "openapi": "3.0.3",
+            "info": {"title": "T", "version": "1.0.0"},
+            "paths": {
+                "/a/": {
+                    "parameters": [{"in": "query", "name": "entite"}],
+                    "get": {"operationId": "a_list", "parameters": [
+                        {"in": "query", "name": "search"},
+                        {"in": "path", "name": "id"},
+                        {"$ref": "#/components/parameters/Page"}]},
+                },
+                "/b/": {"post": {"operationId": "b_create"}},
+            },
+            "components": {"schemas": {}, "securitySchemes": {},
+                           "parameters": {"Page": {"in": "query", "name": "page"}}},
+        }
+        text = self._inventory(doc)
+        self.assertEqual(cos.query_lines(text), {"  get /a/: entite page search"})
+        # les deux lecteurs historiques n'y voient ni operation ni composant
+        self.assertEqual(len(cos._operation_lines(text)), 2)
+        self.assertEqual(cos._component_lines(text), set())
+
+    def test_derive_des_seuls_parametres_est_detectee(self):
+        avant = "operations:\n- get /a/ -> a\nquery_params:\n  get /a/: page\ncomponents:\n"
+        apres = "operations:\n- get /a/ -> a\nquery_params:\n  get /a/: page q\ncomponents:\n"
+        derive = cos.derive_instantane(avant, apres)
+        self.assertEqual(derive["parametres_manquants"], ["  get /a/: page q"])
+        self.assertEqual(derive["parametres_en_trop"], ["  get /a/: page"])
+
     def test_le_miroir_v1_reconstitue_produit_les_memes_lignes(self):
         """WOW-CI3 — l'inventaire ne distingue pas un miroir reconstitue d'un
         miroir genere : c'est bien tout le contrat qui reste certifie."""

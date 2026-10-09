@@ -228,6 +228,9 @@ _TourneeLigne = inline_serializer('TourneeVisiteDue', {
         OpenApiParameter(
             'a_renouveler', OpenApiTypes.STR, required=False,
             description="'1' ou 'true' : seulement les contrats à renouveler."),
+        OpenApiParameter(
+            'client', OpenApiTypes.INT, required=False,
+            description="Identifiant du client : seulement ses contrats."),
     ]),
 )
 class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
@@ -267,6 +270,9 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        client = self.request.query_params.get('client')
+        if client and client.isdigit():
+            qs = qs.filter(client_id=int(client))
         if self.request.query_params.get('due') in ('1', 'true'):
             ids = [c.id for c in qs if c.is_due()]
             qs = qs.filter(id__in=ids)

@@ -847,6 +847,9 @@ _INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
     parameters=[
         OpenApiParameter('module', OpenApiTypes.STR, required=True),
         OpenApiParameter('code', OpenApiTypes.STR, required=True),
+        OpenApiParameter(
+            'export', OpenApiTypes.STR, required=False,
+            description="'xlsx' : télécharge la répartition en .xlsx."),
     ],
     responses={200: _INSIGHTS_CF_GROUP_BY_REPONSE})
 @api_view(['GET'])

@@ -485,7 +485,13 @@ def object_as_of(request, content_type, object_id):
 # même palier IsAdminRole).
 @extend_schema(
     parameters=[OpenApiParameter('from', OpenApiTypes.STR, required=False),
-                OpenApiParameter('to', OpenApiTypes.STR, required=False)],
+                OpenApiParameter('to', OpenApiTypes.STR, required=False),
+                OpenApiParameter(
+                    'user', OpenApiTypes.INT, required=False, many=True,
+                    description="Identifiant(s) d'utilisateur à retenir."),
+                OpenApiParameter(
+                    'search', OpenApiTypes.STR, required=False,
+                    description='Recherche texte (cible, détail, acteur).')],
     responses={(200, 'text/csv'): OpenApiTypes.STR})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
@@ -508,6 +514,18 @@ def security_events_export(request):
     since = parse_datetime(request.query_params.get('from', '') or '')
     until = parse_datetime(request.query_params.get('to', '') or '')
     qs = _security_events(company, since=since, until=until)
+    # Mêmes filtres user/search que l'onglet « Sécurité » (company déjà fixée).
+    users = (request.query_params.getlist('user')
+             or request.query_params.getlist('user[]'))
+    if users:
+        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+    search = (request.query_params.get('search') or '').strip()
+    if search:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(object_repr__icontains=search)
+            | Q(detail__icontains=search)
+            | Q(actor_username__icontains=search))
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = (

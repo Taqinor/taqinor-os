@@ -208,7 +208,10 @@ class FactureLicenceExportCsvView(APIView):
     permission_classes = [IsSuperuserConsole]
 
     @extend_schema(
-        parameters=[OpenApiParameter('company', OpenApiTypes.INT, required=False)],
+        parameters=[
+            OpenApiParameter('company', OpenApiTypes.INT, required=False),
+            OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        ],
         responses={(200, 'text/csv'): OpenApiTypes.STR})
     def get(self, request):
         qs = FactureLicence.objects.select_related('company').order_by(
@@ -216,6 +219,9 @@ class FactureLicenceExportCsvView(APIView):
         tenant = request.query_params.get('company')
         if tenant:
             qs = qs.filter(company_id=tenant)
+        statut = request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
 
         reponse = HttpResponse(content_type='text/csv; charset=utf-8')
         reponse['Content-Disposition'] = (

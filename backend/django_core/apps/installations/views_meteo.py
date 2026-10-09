@@ -15,7 +15,10 @@ import math
 from datetime import date
 
 from django.core.cache import cache
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -63,7 +66,12 @@ def _message(forecast):
 
 
 # Forme DÉCLARÉE (pas devinée) — cf. `check_openapi_schema`.
-@extend_schema(responses=inline_serializer('MeteoTerrainReponse', {
+@extend_schema(parameters=[
+    OpenApiParameter('lat', OpenApiTypes.FLOAT, required=False,
+                     description='Latitude du point (degrés décimaux).'),
+    OpenApiParameter('lon', OpenApiTypes.FLOAT, required=False,
+                     description='Longitude du point (degrés décimaux).'),
+], responses=inline_serializer('MeteoTerrainReponse', {
     'disponible': drf_serializers.BooleanField(),
     'message': drf_serializers.CharField(required=False),
     'precipitation_mm': drf_serializers.FloatField(required=False),

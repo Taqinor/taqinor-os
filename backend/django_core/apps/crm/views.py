@@ -5653,7 +5653,14 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     # YAPIC6 — sans cette annotation le schéma documente un OBJET unique alors
     # que l'action renvoie une LISTE (drf-spectacular déduit le détail depuis
     # le serializer). Annotation de schéma uniquement : aucun effet runtime.
-    @extend_schema(responses=ObjectifAttainmentSerializer(many=True))
+    @extend_schema(
+        parameters=[
+            sd.param('metric'), sd.param('year', OpenApiTypes.INT),
+            sd.param('period_type'),
+            sd.param('owner', description='Identifiant ou « null ».'),
+        ],
+        responses=ObjectifAttainmentSerializer(many=True),
+    )
     @action(detail=False, methods=['get'], url_path='attainment',
             permission_classes=[IsAnyRole])
     def attainment_list(self, request):
