@@ -89,6 +89,27 @@ Strictement additif : sans lignes ``Files:``, ou sans tâche backend
 correspondante dans le même run, la porte est un no-op exact. ``--force-wave``
 l'outrepasse (même échappatoire fondateur que SCA3, consignée sur stderr).
 
+« Le même run » = l'ensemble de tâches que CE planificateur reçoit. Par défaut
+c'est tout le fichier plan ; une session qui ne draine qu'un GROUPE d'un gros
+fichier pooled doit le dire avec la PORTÉE (09/10/2026 : le groupe EDC de
+``docs/plans/PLAN_AUDIT_TRANSVERSE.md``, 11 tâches d'écran pur sans moitié
+backend, était refusé en bloc parce qu'AFAC17/AFAC19/APRF23/APRF24 — backend
+ventes, dans le même fichier mais hors de la session — comptaient comme « le
+même run ») :
+
+* ``--only EDC`` (préfixe d'identifiant) ou ``--only EDC2,EDC3`` (identifiants
+  exacts) — plusieurs valeurs séparées par des virgules, option répétable ;
+* ``--group "Groupe EDC"`` — sous-chaîne (insensible à la casse) du titre de
+  section (``##``/``###``) de la tâche, option répétable.
+
+La portée est l'UNION des sélecteurs donnés. Elle restreint l'ensemble AVANT
+toute porte : SCA3 (ordre de vague), PACT11 et le ``@after`` externe (OWN)
+n'évaluent que les tâches retenues — une tâche backend hors portée n'est pas
+« dans le même run », donc n'apparie rien. L'en-tête du plan affiche la
+portée ; le JSON porte une clé ``scope``. Sans option, sortie BYTE-IDENTIQUE.
+La portée ne touche pas ``--force-wave`` (fondateur seul) : une tâche EN
+portée reste refusée pour exactement les mêmes motifs qu'avant.
+
 OWN — registre de propriété (docs/ownership.yml, 02/10/2026)
 -------------------------------------------------------------
 La disjonction des lanes lit le registre de propriété : ses surfaces
@@ -1120,6 +1141,86 @@ def parse_tasks(path: Path) -> list[dict]:
     return tasks
 
 
+def _tokens_portee(valeurs) -> list[str]:
+    """Aplati des valeurs d'option répétable/virgulées en jetons non vides."""
+    out: list[str] = []
+    for v in valeurs or ():
+        for jeton in str(v).split(","):
+            jeton = jeton.strip()
+            if jeton:
+                out.append(jeton)
+    return out
+
+
+def titres_par_tache(path: Path) -> dict[str, tuple[str, ...]]:
+    """ID → chaîne des titres (``##`` puis ``###``) au-dessus de chaque tâche.
+
+    Table annexe pour ``--group`` : ``parse_tasks`` ne garde que le titre le
+    plus proche (``section``), or un groupe se nomme au niveau ``##``
+    (« Groupe EDC — … ») et ses lots au niveau ``###`` (« EDC — M2 »). Les
+    dictionnaires de tâches ne reçoivent AUCUNE clé nouvelle (ils sortent tels
+    quels dans ``--json`` : la sortie sans option reste byte-identique).
+    """
+    h2 = h3 = ""
+    out: dict[str, tuple[str, ...]] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if raw.startswith("## ") or raw.startswith("# "):
+            h2, h3 = raw, ""
+            continue
+        if raw.startswith("### "):
+            h3 = raw
+            continue
+        m = _TASK_LIST_RE.match(raw) or _TASK_HEADER_RE.match(raw)
+        if m:
+            out.setdefault(
+                m.group("id"),
+                tuple(h.lstrip("# ").strip() for h in (h2, h3) if h),
+            )
+    return out
+
+
+def restreindre_portee(
+    tasks: list[dict], only=None, group=None, titres: dict | None = None,
+) -> tuple[list[dict], str | None]:
+    """Portée (09/10/2026) — restreint ``tasks`` AVANT toute porte.
+
+    ``only`` : identifiants exacts (``EDC2``) ou préfixes d'identifiant
+    (``EDC`` retient tout ``EDC*`` via ``_task_prefix``), casse ignorée.
+    ``group`` : sous-chaînes (casse ignorée) d'un titre au-dessus de la tâche
+    — son ``section`` (titre le plus proche) ou, via ``titres``
+    (``titres_par_tache``), n'importe quel titre de sa chaîne ``##``/``###``.
+    Une tâche est retenue si elle satisfait N'IMPORTE QUEL sélecteur (union).
+
+    Renvoie ``(tâches retenues, libellé de portée)``. Sans sélecteur,
+    renvoie ``(tasks, None)`` — la liste d'origine, intacte : c'est ce qui
+    garantit la sortie byte-identique de l'appel sans option.
+    """
+    jetons_only = _tokens_portee(only)
+    jetons_group = _tokens_portee(group)
+    if not jetons_only and not jetons_group:
+        return tasks, None
+    ids = {j.casefold() for j in jetons_only}
+    groupes = [g.casefold() for g in jetons_group]
+    titres = titres or {}
+
+    def _dans_un_groupe(t: dict) -> bool:
+        chaine = (t.get("section") or "",) + tuple(titres.get(t["id"], ()))
+        return any(g in titre.casefold() for g in groupes for titre in chaine)
+
+    retenues = [
+        t for t in tasks
+        if t["id"].casefold() in ids
+        or (t.get("prefix") or "").casefold() in ids
+        or _dans_un_groupe(t)
+    ]
+    morceaux = []
+    if jetons_only:
+        morceaux.append("--only " + ",".join(jetons_only))
+    for g in jetons_group:
+        morceaux.append(f"--group {g!r}")
+    return retenues, " ".join(morceaux)
+
+
 def apply_build_order_gate(
     tasks: list[dict],
     build_order: dict | None,
@@ -1651,6 +1752,16 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
     c = plan["counts"]
     out = [
         f"# Lane plan for {source}  (max-lanes={max_lanes})",
+    ]
+    if plan.get("scope"):
+        # Portée explicite : affichée en tête, jamais présente sans option.
+        out.append(
+            f"Portée : {plan['scope']['selectors']} — "
+            f"{plan['scope']['retained']} tâche(s) ouverte(s) retenue(s) sur "
+            f"{plan['scope']['total']} ({plan['scope']['excluded']} hors "
+            f"portée, invisibles aux portes SCA3 / PACT11 / @after externe)"
+        )
+    out += [
         "",
         f"{c['buildable']} buildable task(s) across {c['lanes']} independent lane(s) "
         f"-> {c['waves']} wave(s), up to {c['max_parallel']} in parallel.",
@@ -1816,6 +1927,20 @@ def main(argv: list[str] | None = None) -> int:
         help="founder escape hatch (SCA3): bypass BUILD_ORDER.yml wave "
         "gating entirely for this run. Every use is logged to stderr.",
     )
+    parser.add_argument(
+        "--only", action="append", default=None, metavar="ID|PREFIX[,...]",
+        help="PORTÉE : ne planifier que ces tâches — identifiants exacts "
+        "(EDC2,EDC3) ou préfixes d'identifiant (EDC = tout EDC*). Répétable. "
+        "La restriction s'applique AVANT les portes SCA3 / PACT11 / @after "
+        "externe : une tâche hors portée n'est pas « dans le même run ». "
+        "Sans l'option, sortie byte-identique.",
+    )
+    parser.add_argument(
+        "--group", action="append", default=None, metavar="TITRE",
+        help="PORTÉE : ne planifier que les tâches dont le titre de section "
+        "(##/###) contient cette sous-chaîne (insensible à la casse), p. ex. "
+        "'Groupe EDC'. Répétable ; union avec --only.",
+    )
     args = parser.parse_args(argv)
 
     plan_args = args.plan if isinstance(args.plan, list) else [args.plan]
@@ -1836,6 +1961,24 @@ def main(argv: list[str] | None = None) -> int:
     tasks = []
     for pth in paths:
         tasks.extend(parse_tasks(pth))
+
+    # PORTÉE — restreint l'ensemble AVANT toute porte (SCA3, PACT11, @after
+    # externe évaluent le sous-ensemble). Sans option : liste intacte.
+    total_avant_portee = len(tasks)
+    titres: dict = {}
+    if args.group:
+        for pth in paths:
+            titres.update(titres_par_tache(pth))
+    tasks, portee = restreindre_portee(
+        tasks, only=args.only, group=args.group, titres=titres,
+    )
+    if portee is not None and not tasks:
+        print(
+            f"Portée vide : aucune tâche ouverte ne correspond à {portee} "
+            f"dans {', '.join(str(p) for p in paths)} (faute de frappe dans "
+            f"l'identifiant / le titre, ou groupe déjà drainé).",
+            file=sys.stderr,
+        )
 
     build_order_path = Path(args.build_order)
     if not build_order_path.is_absolute():
@@ -1890,6 +2033,13 @@ def main(argv: list[str] | None = None) -> int:
         n_workers=args.workers, wave_size=args.wave_size,
         pairing_blocked=pairing_blocked, after_blocked=after_blocked,
     )
+    if portee is not None:
+        plan["scope"] = {
+            "selectors": portee,
+            "retained": len(tasks),
+            "total": total_avant_portee,
+            "excluded": total_avant_portee - len(tasks),
+        }
     source = ", ".join(
         p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else str(p)
         for p in paths

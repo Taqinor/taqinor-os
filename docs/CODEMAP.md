@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 3fc4cf7f794647e5795600b6315b0ab5e7ea87fc791517d123585a9f01917ba3
-Plan fingerprint: 39fab5bceb153b6f1ceb39d85bb72b26f6df94388ee4bb045063d81af25d4c65
+Plan fingerprint: b17bde110bc7e3a5191e3014adf02edf95c201e1295ff1f96c083d5b73eeef36
 
 
 
@@ -1731,7 +1731,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (120)**
+**Open — to build (144)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1816,6 +1816,30 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
+- `ENF1` — Harnais api-fuzz
+- `ENF2` — Plateforme API (causes C2-C6)
+- `ENF3` — Schéma OpenAPI exact — installations
+- `ENF4` — Schéma OpenAPI exact — stock + achats
+- `ENF5` — Schéma OpenAPI exact — ventes + facturation
+- `ENF6` — Schéma OpenAPI exact — crm + portail
+- `ENF7` — Schéma OpenAPI exact — ged + records
+- `ENF8` — Schéma OpenAPI exact — core + parametres + notifications
+- `ENF9` — Schéma OpenAPI exact — sav + calepinage + outillage
+- `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
+- `ENF11` — api-fuzz bloquant
+- `ENF12` — Plus aucun masque dans les workflows
+- `ENF13` — Gardes toujours vertes rendues bloquantes
+- `ENF14` — Exceptions permanentes signées
+- `ENF15` — Dettes moyennes à zéro
+- `ENF16` — Dette on_delete (573) à zéro
+- `ENF17` — Dette fk_scoping (332) à zéro
+- `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
+- `ENF19` — Duplicats (1 181) à zéro
+- `ENF20` — import-linter : `ignore_imports` (52) à zéro
+- `ENF21` — flake8 E501 bloquant
+- `ENF22` — `# noqa` (2 435) et `eslint-disable` (432) à zéro
+- `ENF23` — Tests sautés (178) à zéro
+- `ENF24` — Seuil de couverture
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
