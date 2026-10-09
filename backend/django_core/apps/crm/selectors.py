@@ -230,6 +230,21 @@ def est_lead_signe(lead):
             and not getattr(lead, 'is_archived', False))
 
 
+def cles_numeros_lead(lead):
+    """ACRM33 — Clés téléphone NORMALISÉES (QW10) d'un lead : son
+    ``telephone`` ET son ``whatsapp`` (vides ignorés). Helper unique partagé
+    par ``find_lead_id_by_phone`` et ``signed_lead_phone_keys`` — un lead
+    joignable seulement sur WhatsApp est reconnu partout pareil."""
+    from . import services as crm_services
+    keys = set()
+    for numero in (getattr(lead, 'telephone', None),
+                   getattr(lead, 'whatsapp', None)):
+        key = crm_services.normalize_phone(numero)
+        if key:
+            keys.add(key)
+    return keys
+
+
 def find_lead_id_by_phone(company, phone):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
@@ -250,8 +265,7 @@ def find_lead_id_by_phone(company, phone):
                  .filter(company=company, is_archived=False)
                  .only('id', 'telephone', 'whatsapp')
                  .order_by('-id')):
-        if (crm_services.normalize_phone(lead.telephone) == key
-                or crm_services.normalize_phone(lead.whatsapp) == key):
+        if key in cles_numeros_lead(lead):  # ACRM33 — helper unique
             return lead.id
     return None
 
@@ -266,16 +280,15 @@ def signed_lead_phone_keys(company):
     côté adsengine, et le stade SIGNÉ vient de ``STAGES.py`` (jamais codé en
     dur, règle #2). Lecture seule, scopée société ; ignore les numéros vides.
     Renvoie un ``set`` de clés non vides."""
-    from . import services as crm_services
     from .models import Lead
 
     keys = set()
-    for tel in (Lead.objects
-                .filter(lead_signe_q(), company=company)
-                .values_list('telephone', flat=True)):
-        key = crm_services.normalize_phone(tel)
-        if key:
-            keys.add(key)
+    # ACRM33 — telephone ET whatsapp (helper partagé avec
+    # ``find_lead_id_by_phone``).
+    for lead in (Lead.objects
+                 .filter(lead_signe_q(), company=company)
+                 .only('id', 'telephone', 'whatsapp')):
+        keys |= cles_numeros_lead(lead)
     return keys
 
 
