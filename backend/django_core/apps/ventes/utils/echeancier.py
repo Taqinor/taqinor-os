@@ -262,12 +262,45 @@ def date_prevue_tranche(entree, index=0):
             f"doit être une date au format AAAA-MM-JJ (reçu « {brut} »).")
 
 
-def valider_echeancier(entries) -> list:
+#: AGNR12 — tolérance (points de %) de la somme d'un échéancier tout en %.
+TOLERANCE_SOMME_PCT = 0.01
+
+
+def controler_somme_echeancier(entries, tranches):
+    """AGNR12 (C-AGNR-008) — un échéancier TOUT EN POURCENTAGES doit faire
+    100 % (à :data:`TOLERANCE_SOMME_PCT` près) et ne porter AUCUNE tranche
+    vide : 70 / 60 / 10 donnait un solde de −12 780 MAD et un PDF imprimant
+    70 / 60 / 10 % pour des montants 70 / 20 / 10 %. Lève
+    :class:`EcheancierInvalide` (message FR qui donne le total trouvé)."""
+    for i, entree in enumerate(entries or []):
+        if not isinstance(entree, dict) or 'pct_or_montant' not in entree:
+            continue
+        brut = entree.get('pct_or_montant')
+        if brut is None or (isinstance(brut, str) and not brut.strip()):
+            raise EcheancierInvalide(
+                f"Tranche n°{i + 1} : la tranche est vide — saisissez un "
+                "pourcentage ou un montant.")
+    if tranches and all(t.get('unite') == UNITE_PCT for t in tranches):
+        total = sum(float(t.get('valeur') or 0) for t in tranches)
+        if abs(total - 100.0) > TOLERANCE_SOMME_PCT:
+            total_txt = (f"{total:g}" if total == int(total)
+                         else f"{total:.2f}").replace('.', ',')
+            raise EcheancierInvalide(
+                f"Total des tranches : {total_txt} % — il doit faire 100 %.")
+
+
+def valider_echeancier(entries, *, controler_somme=True) -> list:
     """Valide un échéancier saisi et renvoie ses tranches normalisées.
 
     Point d'entrée du sérialiseur (``EcheancierValidationMixin``) : une entrée
     refusée devient un 400 en français. ``None`` / vide = « pas d'échéancier
     personnalisé » (comportement par défaut), jamais une erreur.
+
+    AGNR12 — ``controler_somme`` (défaut) refuse un échéancier tout en % dont
+    la somme ≠ 100 % ou qui porte une tranche vide. La LECTURE d'un
+    échéancier déjà stocké (:func:`tranches_normalisees`) passe
+    ``controler_somme=False`` : une donnée d'hier hors règle reste lisible,
+    aucune migration.
     """
     if entries is None or entries == '' or entries == []:
         return []
@@ -275,7 +308,10 @@ def valider_echeancier(entries) -> list:
         raise EcheancierInvalide(
             "L'échéancier doit être une liste de tranches "
             "[{libelle, type, pct_or_montant}].")
-    return [normaliser_tranche(e, i) for i, e in enumerate(entries)]
+    tranches = [normaliser_tranche(e, i) for i, e in enumerate(entries)]
+    if controler_somme:
+        controler_somme_echeancier(entries, tranches)
+    return tranches
 
 
 def _q(amount) -> Decimal:
@@ -297,7 +333,9 @@ def tranches_normalisees(devis) -> list:
     custom = getattr(devis, 'echeancier', None)
     if custom:
         try:
-            tranches = valider_echeancier(custom)
+            # AGNR12 — lecture TOLÉRANTE : un échéancier stocké hors règle
+            # de somme reste lisible (aucune migration).
+            tranches = valider_echeancier(custom, controler_somme=False)
         except EcheancierInvalide:
             tranches = []  # échéancier inexploitable → repli sur le défaut
         if tranches:
