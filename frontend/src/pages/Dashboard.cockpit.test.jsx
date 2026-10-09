@@ -94,9 +94,10 @@ describe('tickets SAV — signaux terrain (VX27)', () => {
   it('ticketsUrgents = haute/urgente ouverts non annulés', () => {
     expect(ticketsUrgents(tickets).map((t) => t.id)).toEqual([1, 2])
   })
-  it('ticketsSlaEnRetard = niveau SLA « late »', () => {
-    // #1 urgente ouverte depuis 3 j (seuil urgente = 2 j) → late.
-    const r = ticketsSlaEnRetard(tickets, NOW).map((t) => t.id)
+  it('ticketsSlaEnRetard = tickets que le serveur déclare sla_breach (ASAV47)', () => {
+    // #1 : le serveur dit sla_breach=true → compté.
+    const avecSla = tickets.map((t) => (t.id === 1 ? { ...t, sla_breach: true } : t))
+    const r = ticketsSlaEnRetard(avecSla, NOW).map((t) => t.id)
     expect(r).toContain(1)
     // #3 clôturé, #5 annulé → jamais late.
     expect(r).not.toContain(3)
