@@ -1,0 +1,43 @@
+# Dette d'acceptation GELÉE du groupe AFAC (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: AFAC
+amorce: 9812e275c
+ids:
+  - AFAC5
+  - AFAC6
+  - AFAC8
+  - AFAC9
+  - AFAC11
+  - AFAC15
+  - AFAC16
+  - AFAC22
+  - AFAC23
+  - AFAC24
+  - AFAC25
+  - AFAC27
+  - AFAC28
+  - AFAC29
+  - AFAC30
+  - AFAC31
+  - AFAC32
+  - AFAC34
+  - AFAC40
+  - AFAC41
+  - AFAC42
+  - AFAC43
+  - AFAC45
+  - AFAC46
+  - AFAC47
+  - AFAC49
+  - AFAC50
+  - AFAC51
+  - AFAC52
+  - AFAC53
+  - AFAC54
+  - AFAC55
+  - AFAC56
+  - AFAC59
+  - AFAC60
+  - AFAC66

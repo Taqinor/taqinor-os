@@ -1,0 +1,57 @@
+# Dette d'acceptation GELÉE du groupe AMOT (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: AMOT
+amorce: 9812e275c
+ids:
+  - AMOT8
+  - AMOT9
+  - AMOT10
+  - AMOT11
+  - AMOT12
+  - AMOT13
+  - AMOT14
+  - AMOT15
+  - AMOT16
+  - AMOT17
+  - AMOT18
+  - AMOT19
+  - AMOT20
+  - AMOT21
+  - AMOT22
+  - AMOT23
+  - AMOT24
+  - AMOT25
+  - AMOT26
+  - AMOT27
+  - AMOT28
+  - AMOT29
+  - AMOT30
+  - AMOT31
+  - AMOT32
+  - AMOT33
+  - AMOT34
+  - AMOT35
+  - AMOT36
+  - AMOT37
+  - AMOT38
+  - AMOT39
+  - AMOT40
+  - AMOT41
+  - AMOT42
+  - AMOT43
+  - AMOT44
+  - AMOT45
+  - AMOT46
+  - AMOT49
+  - AMOT50
+  - AMOT59
+  - AMOT60
+  - AMOT61
+  - AMOT62
+  - AMOT66
+  - AMOT67
+  - AMOT68
+  - AMOT69
+  - AMOT70

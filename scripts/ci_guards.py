@@ -276,7 +276,12 @@ GARDES = {
         ('Check services appelés (aucun service livré sans appelant)',
          'python scripts/check_services_appeles.py',
          '.'),
-        # ANCRE-A2-acceptation : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Check acceptation : taches cochees a preuve executable couvertes ou en dette (AMET88)',
+         'python scripts/check_acceptation.py',
+         '.'),
+        ('Tests de la garde d acceptation (AMET88)',
+         'python -m unittest scripts.tests.test_check_acceptation -v',
+         '.'),
         ('Test the orphan-service checker itself (CALX57)',
          'python -m unittest scripts.tests.test_check_services_appeles -v',
          '.'),
