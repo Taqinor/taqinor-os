@@ -354,7 +354,12 @@ GARDES = {
         ('Check CODEMAP structural fingerprint',
          'python scripts/codemap_fingerprint.py --check',
          '.'),
-        # ANCRE-A4b-dossier : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Check dossier d audit v3 : 6 regles du gabarit (AMET92)',
+         'python scripts/check_audit_dossier.py',
+         '.'),
+        ('Tests du lint de dossier (AMET92)',
+         'python -m unittest scripts.tests.test_check_audit_dossier -v',
+         '.'),
         ('Check for unsafe migration DDL patterns (YOPSB4)',
          'python scripts/check_safe_migrations.py',
          '.'),
