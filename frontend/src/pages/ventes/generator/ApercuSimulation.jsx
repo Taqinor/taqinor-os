@@ -10,7 +10,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { BarChart3 } from 'lucide-react'
-import { Button, Card, CardContent } from '../../../ui'
+import { Button, Card, CardContent, BarreDefilementCollante } from '../../../ui'
 import { formatNumber, formatMAD } from '../../../lib/format'
 import {
   balayageStockageAffichable, LIBELLES_MOIS,
@@ -29,17 +29,30 @@ export default function ApercuSimulation({
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
   facturesSaisies, chartData,
+  // EDC9 — repli en Édition complète (état tenu par l'écran, choix mémorisé).
+  editDevis = null, simulationRepliee = false, basculerCarte = () => {},
 }) {
   return (
-    <Card>
-      <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation">
-        {/* Repliable sur téléphone uniquement (bouton caché sur bureau) */}
-        <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
-                onClick={() => setPreviewCollapsed(v => !v)}>
-          {previewCollapsed ? 'Afficher' : 'Replier'}
-        </Button>
+    <Card id="gen-sec-simulation" data-nav-libelle="Simulation">
+      {/* EDC9 — repliable en Édition complète (repliée par défaut, jamais
+          masquée) : le contenu reste MONTÉ (`hidden`), ses ancres
+          `data-figure` restent lisibles (parité écran / PDF). */}
+      <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation"
+                     repliable={Boolean(editDevis)}
+                     replie={simulationRepliee}
+                     onBasculer={() => basculerCarte('simulation')}
+                     controle="gen-sec-simulation-contenu">
+        {/* Repliable sur téléphone uniquement (bouton caché sur bureau) ;
+            en Édition complète, le repli EDC9 le remplace. */}
+        {!editDevis && (
+          <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
+                  onClick={() => setPreviewCollapsed(v => !v)}>
+            {previewCollapsed ? 'Afficher' : 'Replier'}
+          </Button>
+        )}
       </GenCardHeader>
-      <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
+      <CardContent id="gen-sec-simulation-contenu" hidden={simulationRepliee}
+                   className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
         {/* CJ2b — ORDRE FONDATEUR (20/08) : « on ne voit ni l'économie
             réelle calculée, ni les données PVGIS — cette donnée devrait
             être comparée à la courbe de consommation ». Résidentiel
@@ -71,7 +84,9 @@ export default function ApercuSimulation({
               </ul>
             )}
             {etudeHoraireLignes.length > 0 && (
-              <div style={{ overflowX: 'auto' }}>
+              // EDC3 — barre horizontale collante (même composant que la
+              // table des lignes) : à chaque hauteur du tableau, jamais au pied.
+              <BarreDefilementCollante>
                 <table className="w-full border-collapse text-xs" data-testid="etude-horaire-dimensionnement">
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
@@ -165,7 +180,8 @@ export default function ApercuSimulation({
                           {stockageOuvert && paliersStockage.length > 0 && (
                             <tr className="border-b border-border">
                               <td colSpan={9} className="bg-muted/30 py-2 pr-3">
-                                <div style={{ overflowX: 'auto' }}>
+                                {/* EDC3 — barre horizontale collante. */}
+                                <BarreDefilementCollante>
                                   <table className="w-full border-collapse text-xs"
                                          data-testid="etude-horaire-balayage-stockage">
                                     <thead>
@@ -197,7 +213,7 @@ export default function ApercuSimulation({
                                       ))}
                                     </tbody>
                                   </table>
-                                </div>
+                                </BarreDefilementCollante>
                               </td>
                             </tr>
                           )}
@@ -211,7 +227,7 @@ export default function ApercuSimulation({
                     {etudeHoraireDonnees.dimensionnement.motivation}
                   </p>
                 )}
-              </div>
+              </BarreDefilementCollante>
             )}
             {etudeHoraireDonnees?.etude?.saisons && (
               <div className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="etude-horaire-saisons">
@@ -286,7 +302,8 @@ export default function ApercuSimulation({
                 commercial voie chaque ajout compté. Omise en bloc si la clé
                 `estimation_conso` est absente du payload. */}
             {etudeHoraireEstimationConso && (
-              <div className="mt-3" style={{ overflowX: 'auto' }}>
+              // EDC3 — barre horizontale collante (12 mois + poste).
+              <BarreDefilementCollante className="mt-3">
                 <div className="mb-1 text-xs font-medium">Décomposition mensuelle de la consommation (kWh)</div>
                 <table className="w-full border-collapse text-xs" data-testid="etude-horaire-estimation-conso">
                   <thead>
@@ -318,7 +335,7 @@ export default function ApercuSimulation({
                     </tr>
                   </tbody>
                 </table>
-              </div>
+              </BarreDefilementCollante>
             )}
           </div>
         )}

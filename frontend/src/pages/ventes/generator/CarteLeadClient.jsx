@@ -16,7 +16,7 @@ export default function CarteLeadClient({
   return (
     <>
       {/* ── Lead / Client (lead prioritaire) ── */}
-      <Card>
+      <Card id="gen-sec-lead" data-nav-libelle="Lead & Client">
         <GenCardHeader icon={User} title="Lead & Client" />
         <CardContent className="pt-4">
           <div className="grid gap-4 sm:grid-cols-2">

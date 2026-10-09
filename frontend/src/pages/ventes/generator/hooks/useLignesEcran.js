@@ -19,9 +19,10 @@ export function useLignesEcran(ctx) {
     setProduits, clientId, lines, setLines, setSavingOrdreLignes, setTauxTva, setDiscountPct,
     linesTableRef, pendingFocusKey, setPendingFocusKey, setMultiMode, villaGroups, setVillaGroups,
     appliquerMarcheEcran,
-    // EDC5 — une ligne ajoutée par Entrée reçoit le focus sur sa désignation.
-    focusDesignationApresAjout = null,
   } = ctx
+  // EDC5 — une ligne ajoutée par Entrée (dernière ligne) reçoit le focus sur
+  // sa DÉSIGNATION (on continue de saisir), pas sur le sélecteur produit.
+  const focusDesignationApresAjout = useRef(false)
 
   // ── Lignes ──
   // VX188 — callback stabilisé (identité stable via useCallback, clé de ligne
@@ -214,6 +215,11 @@ export function useLignesEcran(ctx) {
     }
   }
 
+  // EDC5 — Entrée sur la dernière ligne : nouvelle ligne, focus désignation.
+  const ajouterLigneParEntree = () => {
+    focusDesignationApresAjout.current = true
+    addLine()
+  }
   const addLine = () => setLines(ls => {
     const line = emptyLine()
     setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
@@ -284,10 +290,10 @@ export function useLignesEcran(ctx) {
       const picker = row.querySelector('button[type="button"]')
       // EDC5 — ajout par Entrée : la désignation si elle est modifiable
       // (rôle autorisé, QP2), sinon le sélecteur produit comme avant.
-      const designation = focusDesignationApresAjout?.current
+      const designation = focusDesignationApresAjout.current
         ? row.querySelector('td[data-label="Désignation"] input:not([disabled])')
         : null
-      if (focusDesignationApresAjout) focusDesignationApresAjout.current = false
+      focusDesignationApresAjout.current = false
       ;(designation || picker)?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
@@ -418,5 +424,6 @@ export function useLignesEcran(ctx) {
     renameAsNewProduct, addLine, addStructureLine, removeLine, moveLineUp, moveLineDown,
     handleSaveOrdreLignes, onProduitCreated, onMultiModeChange, setLineGroupe, addVillaGroup,
     renameVillaGroup, removeVillaGroup, recomposerLignes, avecQuantitesFigees, handlePresetApplied,
+    ajouterLigneParEntree,
   }
 }

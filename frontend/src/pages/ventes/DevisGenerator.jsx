@@ -607,9 +607,6 @@ export default function DevisGenerator({
   // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
-  // EDC5 — une ligne ajoutée par Entrée (dernière ligne) reçoit le focus sur
-  // sa DÉSIGNATION (on continue de saisir), pas sur le sélecteur produit.
-  const focusDesignationApresAjout = useRef(false)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -1400,11 +1397,12 @@ export default function DevisGenerator({
     renameAsNewProduct, addLine, addStructureLine, removeLine, moveLineUp, moveLineDown,
     handleSaveOrdreLignes, onProduitCreated, onMultiModeChange, setLineGroupe, addVillaGroup,
     renameVillaGroup, removeVillaGroup, recomposerLignes, avecQuantitesFigees, handlePresetApplied,
+    ajouterLigneParEntree,
   } = useLignesEcran({
     confirm, canRenameLine, renameDialog, setRenameDialog, setRenameBusy, setRenameError, produits,
     setProduits, clientId, lines, setLines, setSavingOrdreLignes, setTauxTva, setDiscountPct,
     linesTableRef, pendingFocusKey, setPendingFocusKey, setMultiMode, villaGroups, setVillaGroups,
-    appliquerMarcheEcran, focusDesignationApresAjout,
+    appliquerMarcheEcran,
   })
 
   // AGR130 — le dimensionnement pompage vit CÔTÉ SERVEUR (aperçu AGR127,
@@ -1604,10 +1602,7 @@ export default function DevisGenerator({
       champCorrespondant(e.target)?.focus()
       return
     }
-    if (decision === 'ajouter-ligne') {
-      focusDesignationApresAjout.current = true
-      addLine()
-    }
+    if (decision === 'ajouter-ligne') ajouterLigneParEntree()
   }
 
   // Réinitialiser : recharge la page, comme le bouton du simulateur
@@ -1723,7 +1718,10 @@ export default function DevisGenerator({
   }
 
   return (
-    <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
+    // EDC2 — `gen-root` : LE conteneur interrogé (`container-type: inline-size`,
+    // index.css bloc EDC2). Le rail et le total condensé se montrent selon la
+    // largeur RÉELLE de l'écran du devis, jamais selon la fenêtre.
+    <div className={embedded ? 'gen-root gen-embedded' : 'gen-root page gen-page'}>
       {/* VX136 — formulaire-fleuve (2319+ l.) : barre de progression de
           scroll native, `scroll(nearest)` suit le conteneur qui défile
           réellement (`.layout-content` en page pleine, le Sheet englobant
@@ -1746,13 +1744,38 @@ export default function DevisGenerator({
         />
       )}
 
+      {/* EDC4 — barre d'actions COLLÉE en haut du défileur (panneau ou page),
+          HORS du <form> (les ancres `#gen-form` des e2e ne la voient pas) :
+          son Enregistrer est `form="gen-form"`, même chemin que le pied.
+          « Voir le PDF » : embarqué + devis existant + prop du panneau. */}
+      <BarreActionsDevis
+        reference={editDevis?.reference ?? null}
+        statut={editDevis?.statut ?? null}
+        chargement={Boolean(editId) && !editDevis}
+        enEdition={Boolean(editDevis)}
+        dirty={dirty}
+        totalTtc={kpiTotal}
+        saving={saving}
+        onAnnuler={annuler}
+        onVoirPdf={embedded && editDevis && onVoirPdf ? () => onVoirPdf() : null}
+      />
+
       {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
           un rail récapitulatif STICKY à droite. Sur mobile/tablette, layout
-          inchangé (le rail est masqué, les actions restent dans le formulaire). */}
+          inchangé (le rail est masqué, les actions restent dans le formulaire).
+          EDC2 — le rail se replie de lui-même sous 1 200 px de conteneur
+          (`display: none` n'occupe ni place ni `gap`) : le formulaire prend
+          alors toute la largeur. */}
       <div className="lg:flex lg:items-start lg:gap-6">
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
-          acceptée telle quelle (les steps ne servent qu'aux flèches). */}
-      <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+          acceptée telle quelle (les steps ne servent qu'aux flèches).
+          EDC5 — `onKeyDown` : Entrée n'enregistre JAMAIS (ligne suivante dans
+          la table) ; Ctrl/Cmd+S et Ctrl/Cmd+Entrée enregistrent. Aucune
+          validation à la frappe : la saisie numérique est inchangée. */}
+      <form id="gen-form" onSubmit={handleSubmit} noValidate onKeyDown={onKeyDownFormulaire} className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {/* EDC9 — puces des cartes RÉELLEMENT rendues (`gen-sec-*`), collées
+            sous la barre d'actions ; un clic défile jusqu'à la carte. */}
+        <NavigationSections />
         <BandeauxEdition
           editDevis={editDevis} conflitVerrou={conflitVerrou} setConflitVerrou={setConflitVerrou}
           clear={clear} setRechargeEdit={setRechargeEdit} forcerSansJetonRef={forcerSansJetonRef}
@@ -1800,7 +1823,7 @@ export default function DevisGenerator({
         </Card>
 
         {/* ── Informations du document ── */}
-        <Card>
+        <Card id="gen-sec-document" data-nav-libelle="Document">
           <GenCardHeader icon={ClipboardList} title="Informations du document" />
           <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="grid gap-1.5">
@@ -2020,6 +2043,8 @@ export default function DevisGenerator({
           apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec}
           capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
           chartData={chartData}
+          editDevis={editDevis} simulationRepliee={simulationRepliee}
+          basculerCarte={basculerCarte}
         />
         )}
 
@@ -2041,6 +2066,8 @@ export default function DevisGenerator({
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>
             possède la chaîne d'argent, DANS la même carte comme avant) ── */}
+        {/* EDC9 — ancre de navigation « Lignes » (jamais repliable). */}
+        <div id="gen-sec-lignes" data-nav-libelle="Lignes">
         <LigneTable
           lines={lines}
           produits={produits}
@@ -2100,6 +2127,7 @@ export default function DevisGenerator({
             kpiTotal={kpiTotal}
           />
         </LigneTable>
+        </div>
 
         {/* SPL49 — modèles, historique et blocs de l'Édition complète (déplacés tels quels). */}
         <BlocsEditionComplete
@@ -2115,7 +2143,9 @@ export default function DevisGenerator({
                            ovValeur={ovValeur} setOvValeur={setOvValeur}
                            overridesBusy={overridesBusy} poserOverride={poserOverride}
                            overridesErreur={overridesErreur} overridesReg={overridesReg}
-                           regenererOverride={regenererOverride} />
+                           regenererOverride={regenererOverride}
+                           surchargesRepliees={surchargesRepliees}
+                           basculerCarte={basculerCarte} />
 
         {/* AGNR31 — une ligne produit saisie (prix tapé, ou ajoutée à la
             main) à quantité 0 ou vide ne partira pas : annoncé AVANT l'envoi,
@@ -2135,21 +2165,25 @@ export default function DevisGenerator({
         {/* SPL49 — échéancier, notes client, avertissements et carte Création (déplacés tels quels). */}
         <CarteCreation
           embedded={embedded} clients={clients} saving={saving} errors={errors} warnings={warnings}
-          cancel={cancel} editDevis={editDevis} superieurBusy={superieurBusy}
+          cancel={annuler} editDevis={editDevis} superieurBusy={superieurBusy}
           superieurMsg={superieurMsg} contacterSuperieur={contacterSuperieur} note={note}
           setNote={setNote} echeancierSaisie={echeancierSaisie} termesEffectifs={termesEffectifs}
           conditions={conditions} setCondition={setCondition}
           setEcheancierSaisie={setEcheancierSaisie} modeInstallation={modeInstallation}
           apercuPompage={apercuPompage} kpiTotal={kpiTotal} handleReset={handleReset}
+          onEnregistre={onEnregistre} onVoirPdf={onVoirPdf}
         />
       </form>
 
-      {/* VX16 — rail récapitulatif STICKY (lg+ uniquement, jamais sur mobile).
+      {/* VX16 — rail récapitulatif STICKY (jamais sur mobile).
           Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
           le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
-          sur le même formulaire (form="gen-form"). */}
-      <aside className="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3"
-             style={{ top: 'var(--header-h, 64px)' }}>
+          sur le même formulaire (form="gen-form").
+          EDC2 — plus AUCUNE classe `lg:` ni `top` en ligne : visibilité,
+          largeur (18 rem) et collage sont décidés par `@container gen`
+          (index.css, bloc EDC2) — replié sous 1 200 px de LARGEUR D'ÉCRAN DU
+          DEVIS, pour que la table des lignes garde toute la place. */}
+      <aside className="gen-summary-rail">
         {/* APX12 — le total du rail devient LE chiffre le plus soigné de
             l'app : il passe par `<Stat>` comme les KPI d'argent des deux
             autres surfaces (bandeau statuts DevisList, cockpit trésorerie
@@ -2212,7 +2246,7 @@ export default function DevisGenerator({
                 {saving ? 'Enregistrement...'
                   : (editDevis ? <><Sun /> Enregistrer</> : <><Sun /> Créer le devis</>)}
               </Button>
-              <Button type="button" variant="ghost" onClick={cancel}>Annuler</Button>
+              <Button type="button" variant="ghost" onClick={annuler}>Annuler</Button>
             </div>
           </CardContent>
         </Card>

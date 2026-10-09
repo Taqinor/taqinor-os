@@ -14,22 +14,27 @@ export default function CarteCreation({
   embedded, clients, saving, errors, warnings, cancel, editDevis, superieurBusy, superieurMsg,
   contacterSuperieur, note, setNote, echeancierSaisie, termesEffectifs, conditions, setCondition,
   setEcheancierSaisie, modeInstallation, apercuPompage, kpiTotal, handleReset,
+  // EDC7/EDC4 (contrat EDC) — l'écran reste ouvert après l'enregistrement.
+  onEnregistre = null, onVoirPdf = null,
 }) {
   return (
     <>
       {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
       {editDevis && (
-        <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                         mode={modeInstallation} effectifs={termesEffectifs}
-                         conditions={conditions} setCondition={setCondition}
-                         erreursConditions={erreursConditions(conditions)} clients={clients} />
+        // EDC9 — ancre de navigation « Échéancier » (jamais repliable).
+        <div id="gen-sec-echeancier" data-nav-libelle="Échéancier">
+          <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
+                           mode={modeInstallation} effectifs={termesEffectifs}
+                           conditions={conditions} setCondition={setCondition}
+                           erreursConditions={erreursConditions(conditions)} clients={clients} />
+        </div>
       )}
       {errors.conditions && (
         <p role="alert" className="text-xs text-destructive" data-testid="erreur-conditions">{errors.conditions}</p>
       )}
 
       {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}
-      <Card>
+      <Card id="gen-sec-texte" data-nav-libelle="Texte client">
         <GenCardHeader icon={StickyNote} title="Texte pour le client (imprimé sur le devis)" />
         <CardContent className="pt-4">
           <Textarea rows={3} value={note}
@@ -56,12 +61,17 @@ export default function CarteCreation({
       )}
 
       {/* ── Création ── */}
-      <Card>
+      <Card id="gen-sec-enregistrer" data-nav-libelle="Enregistrement">
         <GenCardHeader icon={FileText}
                        title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
         <CardContent className="pt-4">
           <p className="text-sm text-muted-foreground">
-            {embedded
+            {/* EDC7 — en Édition complète embarquée, l'écran RESTE ouvert
+                après l'enregistrement : le texte le dit. */}
+            {embedded && editDevis && onEnregistre
+              ? "Vérifiez puis enregistrez : l'écran reste ouvert après l'enregistrement."
+                + (onVoirPdf ? ' « Voir le PDF », en haut, affiche le document.' : '')
+              : embedded
               ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
                 + 'avec son PDF, sans quitter la fiche du lead.'
               : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
@@ -85,9 +95,11 @@ export default function CarteCreation({
           <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
             {/* VX138(d) — bandeau sticky au scroll (plus seulement mobile) :
                 TTC courant condensé, dérivé de `totals`/`kpiTotal` déjà en
-                mémoire (même valeur que le rail latéral VX16) ; masqué en
-                lg+ où le rail latéral l'affiche déjà. */}
-            <div className="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+                mémoire (même valeur que le rail latéral VX16).
+                EDC2 — masqué SEULEMENT quand le rail est visible
+                (`gen-ttc-condense`, même container query que le rail) : le
+                rail replié, le total reprend sa place ici. */}
+            <div className="gen-ttc-condense mr-auto flex items-baseline gap-1.5 text-sm">
               <span className="text-muted-foreground">Total TTC</span>
               <strong className="tabular-nums text-base font-semibold text-foreground">
                 {formatMoney(kpiTotal)}

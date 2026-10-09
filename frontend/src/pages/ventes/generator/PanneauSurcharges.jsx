@@ -9,6 +9,8 @@ import { CHEMINS_AUTORISES, cheminNonLu } from '../../../features/ventes/quote/o
 export default function PanneauSurcharges({
   editDevis, estAdmin, ovChemin, setOvChemin, ovValeur, setOvValeur, overridesBusy,
   poserOverride, overridesErreur, overridesReg, regenererOverride,
+  // EDC9 — repliée par défaut en Édition complète (choix mémorisé).
+  surchargesRepliees = false, basculerCarte = () => {},
 }) {
   return (
     <>
@@ -19,8 +21,13 @@ export default function PanneauSurcharges({
           QJR574 — administrateurs seulement. */}
       {editDevis?.id && estAdmin && (
         <Card data-testid="overrides-panel">
-          <GenCardHeader icon={FileText} title="Surcharges (registre)" />
-          <CardContent className="pt-4 space-y-3">
+          {/* EDC9 — repliée par défaut (choix mémorisé), contenu monté. */}
+          <GenCardHeader icon={FileText} title="Surcharges (registre)"
+                         repliable replie={surchargesRepliees}
+                         onBasculer={() => basculerCarte('surcharges')}
+                         controle="gen-surcharges-contenu" />
+          <CardContent id="gen-surcharges-contenu" hidden={surchargesRepliees}
+                       className="pt-4 space-y-3">
             <div className="flex flex-wrap items-end gap-2">
               <select
                 data-testid="overrides-chemin"
