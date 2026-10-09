@@ -7,8 +7,12 @@ ASEC15 elle rendait l'avant-dernier saut (``len - 1 - N``), donc une valeur
 choisie par l'appelant ; et les lecteurs « sécurité » (allowlist NTSEC11,
 ``UserSession.ip``, ``/metrics``) lisaient même le PREMIER saut.
 
+Vit dans ``apps.identity`` (et non ``core.tests``) : il exerce le middleware
+et les modèles d'``identity`` — ``core`` ne doit importer aucune app
+(contrat import-linter « core foundation app imports downward only »).
+
 Run :
-    python manage.py test core.tests.test_asec15_ip_primitive -v2
+    python manage.py test apps.identity.tests.test_asec15_ip_primitive -v2
 """
 from unittest import mock
 
