@@ -5270,6 +5270,7 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     pdf_bytes = None
     _reference = getattr(devis, "reference", devis_id)
     _servi_par = None
+    _refus_contrat_pages = False
     for _marche, _renderer, _sert in registre_renderers():
         if pdf_bytes is not None:
             break
@@ -5281,11 +5282,24 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
         except _renderer.Unsupported as _hors_perimetre:
             _journaliser_repli(_marche, _hors_perimetre, _reference)
             pdf_bytes = None
+            # AMOT36 — contrat de pages C&I intenable (densité + troncature
+            # déclarée épuisées) : jamais le legacy à 5 pages.
+            if "nomenclature trop longue" in str(_hors_perimetre):
+                _refus_contrat_pages = True
         except Exception:
             _journaliser_repli(
                 _marche, "erreur inattendue du renderer", _reference,
                 trace=True)
             pdf_bytes = None
+    if (pdf_bytes is None and _refus_contrat_pages
+            and _servi_par in ("commercial", "industriel")):
+        # AMOT36 (C-AMOT-046) — un devis C&I n'est JAMAIS servi par le moteur
+        # legacy (5 pages, pied « Page 3/3 » faux) : le refus est NOMMÉ
+        # (journalisé ci-dessus) et le rendu échoue explicitement.
+        raise ValueError(
+            f"Devis {_reference} : le document {_servi_par} ne tient pas dans "
+            "son contrat de pages même après troncature déclarée — rendu "
+            "refusé (aucun repli legacy pour un devis C&I).")
     if pdf_bytes is None:
         if _servi_par is None:
             # QJR235 — LE REPLI SILENCIEUX N'EXISTE PLUS. Un marché qu'AUCUNE

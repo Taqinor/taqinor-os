@@ -87,19 +87,43 @@ def deborde(page):
     return False
 
 
+def _tient(html, doc):
+    """AMOT36 — le document a EXACTEMENT ses pages et AUCUNE page ne coupe
+    un texte sous le haut de la bande de pied (toutes les pages, pas
+    seulement la page équipements)."""
+    attendu = html.count('<div class="page">')
+    return (len(doc.pages) == attendu
+            and not any(deborde(page) for page in doc.pages))
+
+
 def pdf_adaptatif(d, build_html, rendre, index_page=1):
     """Les octets PDF au PREMIER palier de densité qui tient, ou ``None``
     quand même le dernier déborde (le renderer lève alors ``Unsupported``).
     ``rendre(html)`` : le document WeasyPrint rendu par le RENDERER — aucun
-    import WeasyPrint ici (ARC11)."""
+    import WeasyPrint ici (ARC11).
+
+    AMOT36 (C-AMOT-046) — la mesure porte sur TOUTES les pages
+    (``index_page`` n'est plus lu ; gardé pour la signature). Au-delà du
+    dernier palier, la liste VARIABLE des conditions (``cgv_ci`` / puces
+    société) est TRONQUÉE avec un renvoi déclaré (« suite des conditions :
+    proposition en ligne », ``ci.blocs.puces_conditions``) avant tout
+    refus — jamais une bande légale, une signature ou un financement coupés."""
     for palier in range(len(PALIERS_DENSITE)):
         donnees = d if palier == 0 else dict(d, _palier_equip=palier)
         html = build_html(donnees)
         doc = rendre(html)
         # Une page qui déborde peut aussi POUSSER une page de plus : le
         # document ne tient que s'il a exactement ses pages et rien de coupé.
-        attendu = html.count('<div class="page">')
-        if len(doc.pages) == attendu and not deborde(doc.pages[index_page]):
+        if _tient(html, doc):
+            return doc.write_pdf()
+    from ..ci.blocs import puces_conditions
+    dernier = len(PALIERS_DENSITE) - 1
+    n = len(puces_conditions(d))
+    for garder in range(n - 1, -1, -1):
+        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder)
+        html = build_html(donnees)
+        doc = rendre(html)
+        if _tient(html, doc):
             return doc.write_pdf()
     return None
 
