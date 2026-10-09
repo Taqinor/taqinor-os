@@ -169,7 +169,10 @@ export default function CatalogueAchatPicker({
                     </span>
                   )}
                   <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">
-                    {`${formatMAD(p.prix_achat_dernier ?? 0, { withSymbol: false })} DH`}
+                    {/* ASTK12 : clé retirée côté serveur sans `prix_achat_voir` → « — », jamais un faux « 0,00 DH ». */}
+                    {p.prix_achat_dernier != null
+                      ? `${formatMAD(p.prix_achat_dernier, { withSymbol: false })} DH`
+                      : '—'}
                   </span>
                 </button>
               )
