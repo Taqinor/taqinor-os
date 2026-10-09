@@ -59,18 +59,20 @@ class ErreursMetierTests(TestCase):
                         return_value=(b'abc', None)):
             return services.archiver_legalement(doc, user=self.admin)
 
-    def test_doublon_armoire_400(self):
+    def test_doublon_armoire_409(self):
+        # ENF7 — le doublon (société, nom) est refusé par la garde d'unicité
+        # plateforme (409 `unique_conflict`), plus par un 400 maison.
         resp = self.api.post(f'{BASE}cabinets/', {'nom': 'X'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
-        self.assertIn('existe déjà', str(resp.data['nom']))
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(resp.data['error']['code'], 'unique_conflict')
         self.assertEqual(Cabinet.objects.filter(nom='X').count(), 1)
 
-    def test_doublon_tampon_400(self):
+    def test_doublon_tampon_409(self):
         TamponSociete.objects.create(company=self.co, libelle='Y')
         resp = self.api.post(f'{BASE}tampons-societe/', {'libelle': 'Y'},
                              format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
-        self.assertIn('existe déjà', str(resp.data['libelle']))
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(resp.data['error']['code'], 'unique_conflict')
         self.assertEqual(TamponSociete.objects.filter(libelle='Y').count(), 1)
 
     def test_assigner_archive_403(self):
