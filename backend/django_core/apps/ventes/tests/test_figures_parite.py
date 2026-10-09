@@ -41,6 +41,7 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_figures_parite -v 2
 """
+import copy
 import importlib
 import itertools
 import json
@@ -136,9 +137,22 @@ AGRICOLE_ETUDE = {
 _ETUDE_CI = json.loads(
     (Path(__file__).resolve().parents[1] / 'contract_samples'
      / 'etude_ci_preview.json').read_text(encoding='utf-8'))
-ETUDE_CI_BT = {'etude_ci': _ETUDE_CI['exemple'],
+#: AMOT62 — production et taux ne sont servis que d'une étude qui décrit le
+#: kWc SERVI (garde 2 %) : l'étude greffée est posée au kWc des lignes
+#: ``FULL_LINES`` (14 × 710 W = 9,94 kWc).
+KWC_FULL_LINES = 9.94
+
+
+def _etude_au_kwc(etude, kwc):
+    etude = copy.deepcopy(etude)
+    etude['taille'] = dict(etude.get('taille') or {}, retenue_kwc=kwc)
+    return etude
+
+
+ETUDE_CI_BT = {'etude_ci': _etude_au_kwc(_ETUDE_CI['exemple'], KWC_FULL_LINES),
                'tarif_declare': {'contrat': 'bt_patente'}}
-ETUDE_CI_MT = {'etude_ci': _ETUDE_CI['exemple_industriel_mt']}
+ETUDE_CI_MT = {'etude_ci': _etude_au_kwc(_ETUDE_CI['exemple_industriel_mt'],
+                                         KWC_FULL_LINES)}
 
 FORMATS = {
     'full': {'pdf_mode': 'full'},
@@ -554,7 +568,9 @@ def _corpus():
         render as i_render, renderer as i_renderer, sample_data as i_sample)
     from apps.ventes.quote_engine.residential import sample_data
 
-    from ._moteur_fixtures import html_legacy, html_onepage, html_residentiel
+    from ._moteur_fixtures import (
+        etude_ci_au_kwc_servi, html_legacy, html_onepage, html_residentiel,
+    )
 
     base = sample_data.build('deux')
     ts = dict(base['totaux_sans'])
@@ -581,8 +597,10 @@ def _corpus():
         # CIQ129 — les taux C&I viennent du seul moteur (``etude_ci`` servi
         # par ``synthese_ci``) : plus aucune clé d'étude écran ne les marque.
         'industriel_etude_ci': i_render.build_html(i_renderer._augment(
-            dict(i_sample.build(), mode_installation='industriel',
-                 etude={**i_sample.build()['etude'], **ETUDE_CI_MT}))),
+            etude_ci_au_kwc_servi(dict(
+                i_sample.build(), mode_installation='industriel',
+                etude={**i_sample.build()['etude'],
+                       'etude_ci': copy.deepcopy(ETUDE_CI_MT['etude_ci'])})))),
         'commercial_full': c_render.build_html(
             c_renderer._augment(c_sample.build())),
     }
