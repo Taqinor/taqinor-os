@@ -203,6 +203,19 @@ def _p90_bancable(d):
     la dispersion du moteur, aucune nouvelle), ou None. Permise sur le PDF,
     jamais dans la charge utile publique (``_sans_internes_bancables``)."""
     bank = (d.get("etude") or {}).get("bankable")
+    # AMOT35 — une P90 n'est imprimée que si la simulation décrit le champ
+    # VENDU et reste cohérente avec la production imprimée (LA règle
+    # partagée avec le legacy, ``bankable.bankable_imprimable``) ; sinon
+    # omise, motif dit en interne.
+    from ..bankable import bankable_imprimable
+    if bank:
+        ok, motif = bankable_imprimable(
+            bank, d.get("ind_kwc") or d.get("puissance_kwc"),
+            d.get("ind_prod"))
+        if not ok:
+            if motif and motif not in (d.get("avertissements_internes") or []):
+                d.setdefault("avertissements_internes", []).append(motif)
+            return None
     pr = bank.get("pr") if isinstance(bank, dict) else None
     return _num((pr or {}).get("p90_kwh")) if isinstance(pr, dict) else None
 

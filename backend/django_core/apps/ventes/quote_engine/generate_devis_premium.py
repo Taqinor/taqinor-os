@@ -2956,7 +2956,8 @@ def _bankable_pct(valeur):
 #: VENDUE. Même esprit que ``pricing._HORAIRE_TOLERANCE_KWC`` : 2 % absorbe les
 #: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
 #: panneau de plus pèse déjà bien davantage).
-TOLERANCE_KWC_SIMULATION = 0.02
+# AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
+from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402
 
 
 def _bankable_decrit_ce_champ(bank):
@@ -2968,28 +2969,11 @@ def _bankable_decrit_ce_champ(bank):
     zones absentes ou illisibles — rend ``False`` et le bloc est OMIS (jamais
     un productible de repli).
     """
-    if not isinstance(bank, dict):
+    # AMOT35 — LA règle partagée (``bankable.decrit_le_champ``).
+    from .bankable import decrit_le_champ
+    if PUISSANCE_INCONNUE:
         return False
-    try:
-        kwc_devis = float(KWC or 0)
-    except (TypeError, ValueError):
-        return False
-    if kwc_devis <= 0 or PUISSANCE_INCONNUE:
-        return False
-    zones = bank.get("zones")
-    if not isinstance(zones, (list, tuple)) or not zones:
-        return False
-    total = 0.0
-    for zone in zones:
-        if not isinstance(zone, dict):
-            return False
-        try:
-            total += float(zone.get("kwc"))
-        except (TypeError, ValueError):
-            return False
-    if total <= 0:
-        return False
-    return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
+    return decrit_le_champ(bank, KWC)
 
 
 #: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
@@ -2997,7 +2981,7 @@ def _bankable_decrit_ce_champ(bank):
 #: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
 #: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
 #: l'entier de la carte, jamais les ~10 % que produisait le double derate.
-TOLERANCE_PRODUCTION_PAGE = 0.01
+from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401
 
 
 def _bankable_concorde_avec_la_page(bank):
@@ -3033,20 +3017,9 @@ def _bankable_concorde_avec_la_page(bank):
     etude_page = globals().get("ETUDE")
     prod_page = (etude_page.get("production_annuelle")
                  if isinstance(etude_page, dict) else None)
-    if prod_page in (None, ""):
-        return True
-    pr = bank.get("pr") if isinstance(bank, dict) else None
-    p50 = pr.get("p50_kwh") if isinstance(pr, dict) else None
-    if p50 in (None, ""):
-        return True
-    try:
-        prod_page = float(prod_page)
-        p50 = float(p50)
-    except (TypeError, ValueError):
-        return False
-    if prod_page <= 0:
-        return False
-    return abs(p50 - prod_page) <= prod_page * TOLERANCE_PRODUCTION_PAGE
+    # AMOT35 — LA règle partagée (``bankable.concorde_avec_la_production``).
+    from .bankable import concorde_avec_la_production
+    return concorde_avec_la_production(bank, prod_page)
 
 
 def _bankable_block_html(bank):
@@ -3077,6 +3050,8 @@ def _bankable_block_html(bank):
     """
     if not isinstance(bank, dict) or not bank:
         return ""
+    # AMOT35 — ``bankable.bankable_imprimable`` (via les deux lecteurs du
+    # module, qui gardent les globaux de rendu KWC / ETUDE hors de la règle).
     if not _bankable_decrit_ce_champ(bank):
         return ""
     if not _bankable_concorde_avec_la_page(bank):
