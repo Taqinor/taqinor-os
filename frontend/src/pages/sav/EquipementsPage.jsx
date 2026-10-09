@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { ROUTE } from '../../lib/search/entityRoutes'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
@@ -128,6 +129,8 @@ function CollapsibleSection({ icon: Icon, title, children }) {
 
 export function EquipementDetail({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
+  // ASAV61 — mise au rebut / réactivation : responsable/admin (serveur).
+  const peutRebuter = useIsAdminOrResponsable()
   const initial = useMemo(() => ({
     numero_serie: equipement.numero_serie ?? '',
     date_pose: equipement.date_pose ?? '',
@@ -279,9 +282,11 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
               <strong>Équipement mis au rebut.</strong>
               {current.motif_rebut ? ` Motif : ${current.motif_rebut}` : ''}
             </span>
-            <Button size="sm" variant="outline" loading={rebutBusy} onClick={reactiverRebut}>
-              Réactiver
-            </Button>
+            {peutRebuter && (
+              <Button size="sm" variant="outline" loading={rebutBusy} onClick={reactiverRebut}>
+                Réactiver
+              </Button>
+            )}
           </div>
         )}
 
@@ -422,7 +427,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
           </p>
 
           <FormActions sticky={false}>
-            {!current.mis_au_rebut && (
+            {peutRebuter && !current.mis_au_rebut && (
               <Button type="button" variant="destructive" className="mr-auto"
                       onClick={() => setRebutOpen(true)}>
                 <Trash2 /> Mettre au rebut

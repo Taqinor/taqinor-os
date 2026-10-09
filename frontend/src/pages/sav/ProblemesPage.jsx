@@ -13,6 +13,7 @@
 // à moitié rattaché.
 import { useEffect, useState } from 'react'
 import savApi from '../../api/savApi'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 const STATUT_LABELS = {
   identifie: 'Identifié',
@@ -39,6 +40,11 @@ const liste = (reponse) => {
 }
 
 export default function ProblemesPage() {
+  // ASAV61 — l'écriture d'un problème exige `sav_probleme_gerer` (comptes
+  // hérités sans rôle fin : repli responsable/admin, comme le serveur).
+  const permProbleme = useHasPermission('sav_probleme_gerer')
+  const respOuAdmin = useIsAdminOrResponsable()
+  const peutGerer = permProbleme || respOuAdmin
   const [problemes, setProblemes] = useState([])
   const [groupes, setGroupes] = useState([])
   const [chargement, setChargement] = useState(true)
@@ -308,9 +314,11 @@ export default function ProblemesPage() {
                   <span className="text-sm">
                     {groupe.titre_suggere} — {groupe.nb_tickets} tickets
                   </span>
-                  <button type="button" onClick={() => ouvrirAssistant(groupe)}>
-                    Créer le problème
-                  </button>
+                  {peutGerer && (
+                    <button type="button" onClick={() => ouvrirAssistant(groupe)}>
+                      Créer le problème
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -336,14 +344,17 @@ export default function ProblemesPage() {
                 {ticketsLies.map((t) => (
                   <li key={t.id} className="flex items-center gap-2 text-sm">
                     <span>{t.reference}{t.client ? ` — ${t.client}` : ''}</span>
-                    <button type="button" disabled={occupe}
-                            onClick={() => delierTicket(t.id)}>
-                      Délier {t.reference}
-                    </button>
+                    {peutGerer && (
+                      <button type="button" disabled={occupe}
+                              onClick={() => delierTicket(t.id)}>
+                        Délier {t.reference}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
+            {peutGerer && (
             <div className="flex items-center gap-2">
               <input type="number" placeholder="N° du ticket à lier" aria-label="N° du ticket à lier"
                      value={ticketALier} onChange={(e) => setTicketALier(e.target.value)} />
@@ -351,8 +362,10 @@ export default function ProblemesPage() {
                 Lier un ticket
               </button>
             </div>
+            )}
           </div>
 
+          {peutGerer && (
           <div className="flex flex-col gap-2">
             <label className="flex flex-col gap-1 text-sm">
               Statut du problème
@@ -373,8 +386,12 @@ export default function ProblemesPage() {
               <button type="button" onClick={() => setSelection(null)}>Fermer</button>
             </div>
           </div>
+          )}
+          {!peutGerer && (
+            <button type="button" className="self-start" onClick={() => setSelection(null)}>Fermer</button>
+          )}
 
-          {ticketsLies.length === 0 && (
+          {peutGerer && ticketsLies.length === 0 && (
             confirmSuppr ? (
               <div className="flex items-center gap-2 text-sm">
                 <span>Supprimer définitivement {selection.reference} ?</span>

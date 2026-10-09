@@ -32,6 +32,14 @@ const PROBLEME = {
   impact: 24,
 }
 
+// ASAV61 — les gestes d'écriture dépendent du rôle ; ces tests historiques
+// exercent les gestes eux-mêmes (rôle responsable simulé, sans store d'auth).
+vi.mock('../../hooks/useHasPermission', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useIsAdminOrResponsable: () => true,
+  useHasPermission: () => true,
+}))
+
 vi.mock('../../api/savApi', () => ({
   default: {
     getProblemes: vi.fn(() => Promise.resolve({ data: { results: [] } })),

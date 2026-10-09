@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 // ASAV49 — alarme créée à l'écran escaladable : équipement choisi à la
 // création (recherche serveur), escalade avec ticket existant ou ouverture
@@ -51,12 +53,17 @@ vi.mock('../../api/axios', () => ({
 
 import SavAlarmesPage from './SavAlarmesPage'
 
+const rendre = () => render(
+  <Provider store={configureStore({ reducer: { auth: (s = { role: 'responsable', permissions: [] }) => s } })}>
+    <SavAlarmesPage />
+  </Provider>)
+
 afterEach(() => { cleanup(); serveur.alarmes.length = 0; serveur.posts.length = 0; serveur.escalades.length = 0 })
 
 describe('SavAlarmesPage — ASAV49 alarme escaladable', () => {
   it('alarme avec équipement : créer → acquitter → escalader', async () => {
     const user = userEvent.setup()
-    render(<SavAlarmesPage />)
+    rendre()
     await user.click(await screen.findByRole('button', { name: /Créer une alarme/ }))
     await user.type(screen.getByPlaceholderText('ex. E07'), 'E07', { delay: null })
     await user.click(screen.getByRole('combobox', { name: "Équipement de l'alarme" }))
@@ -76,7 +83,7 @@ describe('SavAlarmesPage — ASAV49 alarme escaladable', () => {
     const user = userEvent.setup()
     serveur.alarmes.push({ id: 1, code: 'F12', gravite: 'warning', statut: 'active',
       equipement: null, date_detection: '2026-10-09T10:00:00Z' })
-    render(<SavAlarmesPage />)
+    rendre()
     const bouton = await screen.findByRole('button', { name: /Escalader/ })
     expect(bouton).toBeDisabled()
     expect(screen.getByText(/Aucun équipement rattaché/)).toBeInTheDocument()

@@ -6,6 +6,14 @@ import { MemoryRouter } from 'react-router-dom'
    savApi mocké. Le panneau fiabilité (autre lane de tests) est mocké ici en
    composant vide pour isoler le test du rebut. */
 
+// ASAV61 — les gestes d'écriture dépendent du rôle ; ces tests historiques
+// exercent les gestes eux-mêmes (rôle responsable simulé, sans store d'auth).
+vi.mock('../../hooks/useHasPermission', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useIsAdminOrResponsable: () => true,
+  useHasPermission: () => true,
+}))
+
 vi.mock('../../api/savApi', () => ({
   default: {
     getTickets: vi.fn(() => Promise.resolve({ data: [] })),

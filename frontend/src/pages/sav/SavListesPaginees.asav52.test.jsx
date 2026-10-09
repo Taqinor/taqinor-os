@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -40,7 +42,10 @@ afterEach(() => {
   for (const k of Object.keys(surcharges)) delete surcharges[k]
 })
 
-const enveloppe = (ui) => render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+const enveloppe = (ui) => render(
+  <Provider store={configureStore({ reducer: { auth: (s = { role: 'responsable', permissions: [] }) => s } })}>
+    <MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>
+  </Provider>)
 
 describe('ASAV52 — listes SAV lues en entier', () => {
   it('Alarmes : « 56 alarmes » et la dernière alarme est visible', async () => {

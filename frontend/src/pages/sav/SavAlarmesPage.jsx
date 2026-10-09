@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Plus, ShieldAlert } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import {
@@ -54,6 +55,9 @@ const lireTout = (appel, params = {}) => fetchAllPages(
 ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
 export default function SavAlarmesPage() {
+  // ASAV61 — Créer / Acquitter / Escalader sont réservés responsable/admin
+  // côté serveur : le palier normal lit la liste sans bouton qui finirait en 403.
+  const peutEcrire = useIsAdminOrResponsable()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [statutFiltre, setStatutFiltre] = useState('')
@@ -159,13 +163,15 @@ export default function SavAlarmesPage() {
                 <SelectItem value="resolue">Résolue</SelectItem>
               </SelectContent>
             </Select>
-            <Button type="button" size="sm" onClick={() => setCreerOuvert((o) => !o)}>
-              <Plus /> Créer une alarme
-            </Button>
+            {peutEcrire && (
+              <Button type="button" size="sm" onClick={() => setCreerOuvert((o) => !o)}>
+                <Plus /> Créer une alarme
+              </Button>
+            )}
           </div>
         </header>
 
-        {creerOuvert && (
+        {peutEcrire && creerOuvert && (
           <Card className="flex flex-col gap-3 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm text-foreground">
@@ -239,12 +245,12 @@ export default function SavAlarmesPage() {
                     {a.libelle && <span className="text-sm text-muted-foreground">— {a.libelle}</span>}
                   </div>
                   <div className="flex items-center gap-2">
-                    {a.statut === 'active' && (
+                    {peutEcrire && a.statut === 'active' && (
                       <Button size="sm" variant="outline" loading={busyId === a.id} onClick={() => acquitter(a)}>
                         Acquitter
                       </Button>
                     )}
-                    {(a.statut === 'active' || a.statut === 'acquittee') && (
+                    {peutEcrire && (a.statut === 'active' || a.statut === 'acquittee') && (
                       <>
                         <Combobox className="w-56" aria-label={`Ticket à relier (${a.code})`}
                                   value={ticketLie[a.id] || null}
@@ -264,7 +270,7 @@ export default function SavAlarmesPage() {
                     )}
                   </div>
                 </div>
-                {(a.statut === 'active' || a.statut === 'acquittee')
+                {peutEcrire && (a.statut === 'active' || a.statut === 'acquittee')
                   && !aEquipement(a) && !ticketLie[a.id] && (
                   <p className="mt-1 text-xs text-warning">
                     Aucun équipement rattaché : choisissez un ticket existant à relier pour escalader.

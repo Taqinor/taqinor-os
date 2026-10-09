@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Check, X, BookOpen, Search } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   TooltipProvider, Card, Button, Input, Textarea, EmptyState, Skeleton,
@@ -18,6 +19,9 @@ const lireTout = (appel, params = {}) => fetchAllPages(
 ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
 export default function KbArticlesPage() {
+  // ASAV61 — création / édition réservées responsable/admin (serveur) : le
+  // palier normal lit les articles, sans bouton qui renverrait 403.
+  const peutEcrire = useIsAdminOrResponsable()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -82,6 +86,7 @@ export default function KbArticlesPage() {
                  onChange={(e) => setSearch(e.target.value)} className="w-64" />
         </header>
 
+        {peutEcrire && (
         <Card className="flex flex-col gap-2 p-4">
           <Input placeholder="Titre" value={form.titre}
                  onChange={(e) => setForm((f) => ({ ...f, titre: e.target.value }))} />
@@ -98,6 +103,7 @@ export default function KbArticlesPage() {
             <Plus /> Ajouter
           </Button>
         </Card>
+        )}
 
         {loading ? (
           <Card className="space-y-2 p-4">
@@ -137,7 +143,9 @@ export default function KbArticlesPage() {
                         </p>
                       )}
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => startEdit(a)}><Pencil /></Button>
+                    {peutEcrire && (
+                      <Button size="sm" variant="ghost" onClick={() => startEdit(a)}><Pencil /></Button>
+                    )}
                   </div>
                 )}
               </li>
