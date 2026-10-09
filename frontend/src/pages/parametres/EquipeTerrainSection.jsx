@@ -10,6 +10,7 @@
 // archive sans supprimer. La liste des utilisateurs assignables est passée par
 // le parent (déjà chargée pour l'onglet).
 import { useEffect, useState } from 'react'
+import { useConfirmDialog } from '../../ui/confirm'
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import {
   Card, CardContent, Input, Label, Badge, IconButton, Button, Spinner,
@@ -18,6 +19,7 @@ import { SectionTitle, Field } from './peComponents'
 import installationsApi from '../../api/installationsApi'
 
 export default function EquipeTerrainSection({ assignables = [] }) {
+  const { confirmDelete } = useConfirmDialog()
   const [equipes, setEquipes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -82,7 +84,7 @@ export default function EquipeTerrainSection({ assignables = [] }) {
   }
 
   const delEquipe = async (equipe) => {
-    if (!window.confirm(`Supprimer l'équipe terrain « ${equipe.nom} » ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer l'équipe terrain « ${equipe.nom} » ?`, description: 'Cette action est définitive.' }))) return
     await installationsApi.deleteEquipeTerrain(equipe.id).catch(() => {})
     load()
   }

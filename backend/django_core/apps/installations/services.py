@@ -1171,8 +1171,9 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     ``solder_reservations_vente``) + la consommation terrain F11 validée
     (lignes ``stock_applique``), arrondie à l'entier comme la nomenclature
     (HALF_UP). Lue par tout écrivain de réservation (``seed_reservations`` —
-    V2, réactivation, ``reserver-stock`` — et ``reserver_stock_depuis_bc``)
-    pour ne réserver que l'écart."""
+    V2, réactivation, ``reserver-stock`` — ``reserver_stock_depuis_bc`` et,
+    ERR-ASTK121, ``reserver_stock_recu_pour_chantier``) pour ne réserver que
+    l'écart."""
     from decimal import ROUND_HALF_UP
     from django.db.models import Sum
     from .models import ConsommationLigne
@@ -1592,7 +1593,8 @@ def reserver_stock_recu_pour_chantier(*, reception):
     porte un ``chantier_origine`` (distinct de la destination de livraison
     XPUR23), crée/complète les ``StockReservation`` actives du chantier pour
     les produits/quantités REÇUS sur cette réception (ASTK121 : complète
-    seulement — ``max(existante, reçu plafonné)``, jamais une réduction).
+    seulement — ``max(existante, reçu plafonné)``, jamais une réduction ;
+    ERR-ASTK121 : reçu net du déjà sorti, plafonné à besoin − déjà sorti).
 
     Plafonné à la quantité COMMANDÉE sur la ligne de BCF (posée par
     ``draft_bcf_for_shortfall`` = le manque au moment du brouillon — jamais de
@@ -1633,11 +1635,24 @@ def reserver_stock_recu_pour_chantier(*, reception):
     if not plafonds:
         return 0
 
+    # ERR-ASTK121 — le reçu cumulé inclut ce qui est DÉJÀ SORTI pour ce
+    # chantier (vente partielle soldée, F11) : sans le retrancher, une
+    # réception après une sortie partielle re-réservait le sorti et
+    # « Installé » le sortait une seconde fois. On ne réserve que
+    # ``reçu − déjà sorti``, plafonné à ``besoin − déjà sorti`` quand le
+    # produit figure à la nomenclature (même règle que `_poser_reservation_ecart`).
+    besoins = _bom_quantities(installation)
+
     count = 0
     for produit_id, plafond in plafonds.items():
         if plafond <= 0:
             continue
-        qte_a_reserver = min(recu_cumule_par_produit.get(produit_id, 0), plafond)
+        deja_sorti = quantite_deja_sortie_chantier(installation, produit_id)
+        qte_a_reserver = min(
+            recu_cumule_par_produit.get(produit_id, 0), plafond) - deja_sorti
+        if produit_id in besoins:
+            qte_a_reserver = min(
+                qte_a_reserver, int(besoins[produit_id]) - deja_sorti)
         if qte_a_reserver <= 0:
             continue
         resa, created = StockReservation.objects.get_or_create(

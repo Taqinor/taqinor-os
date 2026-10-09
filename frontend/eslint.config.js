@@ -81,4 +81,17 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // APAR64 — garde de classe (critère C13) : aucun dialogue natif
+  // (window.confirm/alert/prompt) dans les écrans Paramètres / Approbations ;
+  // utiliser le dialogue maison `ui/confirm`. Périmètre volontairement limité.
+  {
+    files: [
+      'src/pages/parametres/**/*.{js,jsx}',
+      'src/features/parametres/**/*.{js,jsx}',
+      'src/pages/approbations/**/*.{js,jsx}',
+    ],
+    rules: {
+      'no-alert': 'error',
+    },
+  },
 ])

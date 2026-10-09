@@ -57,6 +57,19 @@ describe('ASTK221 — ConsignationsPage', () => {
     expect(screen.getByText(/Facturée/)).toBeInTheDocument()
   })
 
+  it('ERR-ASTK221 — la liste relue sert facture_id/facture_reference (contrat) et le lien survit', async () => {
+    const declListe = LISTE.results[0].declarations[0]
+    expect(Object.keys(declListe)).toEqual(expect.arrayContaining(['facture_id', 'facture_reference']))
+    etat = { ...LISTE, results: [{
+      ...LISTE.results[0],
+      declarations: [{ ...declListe, statut: 'facturee', facture_id: DECL_FACTUREE.facture_id,
+        facture_reference: DECL_FACTUREE.facture_reference }],
+    }] }
+    monter()
+    const lien = await screen.findByRole('link', { name: /FAC-2026-10-0042/ })
+    expect(lien).toHaveAttribute('href', '/ventes/factures?id=311')
+  })
+
   it('affiche le restant du dépôt relu du serveur', async () => {
     monter()
     expect(await screen.findByText(/restant 16/i)).toBeInTheDocument()
