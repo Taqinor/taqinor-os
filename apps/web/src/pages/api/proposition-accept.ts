@@ -106,12 +106,17 @@ export const POST: APIRoute = async ({ request }) => {
   // fait 6 chiffres) — jamais une chaîne arbitraire envoyée sans raison.
   const otpRaw = typeof body.otp_code === 'string' ? body.otp_code.trim() : '';
   const otp_code = otpRaw.length > 0 && otpRaw.length <= 16 ? otpRaw : '';
+  // ADEV51 — empreinte du contenu LU, relayée telle quelle (hexadécimal borné) :
+  // sans elle, le serveur refuse la signature (409 `empreinte_perimee`).
+  const empRaw = typeof body.empreinte_contenu === 'string' ? body.empreinte_contenu.trim() : '';
+  const empreinte_contenu = /^[0-9a-f]{16,128}$/i.test(empRaw) ? empRaw : '';
 
   const upstreamBody = buildAcceptBodyRich(form, twoOptions, {
     signature_data_url,
     consent_esign,
     signed_at_client,
     otp_code,
+    empreinte_contenu,
   });
 
   const url = acceptEndpoint(resolveApiBase(), token);

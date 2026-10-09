@@ -153,10 +153,13 @@ class LeMoteurEnPanneNImposePlusUneOption(_BaseOptions):
         devis = self._deux_options('DEV-QJR133-A4')
         link = ShareLink.objects.create(
             company=self.company, devis=devis, token=str(uuid.uuid4()))
+        from apps.ventes.public.signature_views import empreinte_contenu
         with _moteur_en_panne():
             resp = self.api.post(
                 f'/api/django/public/proposal/{link.token}/accept/',
-                {'nom': 'M. Client', 'consent_esign': True}, format='json')
+                {'nom': 'M. Client', 'consent_esign': True,
+                 'empreinte_contenu': empreinte_contenu(devis)},
+                format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('deux options', resp.data.get('detail', ''))
         self._assert_pas_accepte(devis)

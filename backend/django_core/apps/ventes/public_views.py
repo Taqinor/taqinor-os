@@ -980,6 +980,144 @@ def _vider_economies_residentielles(data):
     return data
 
 
+#: ADEV49 (C-ADEV-016) — LA table unique « case du dialogue d'envoi → clés de
+#: la charge publique ». Une case décochée retire ses clés À TOUTE PROFONDEUR
+#: (``quote`` compris) : une clé de BASE du contrat ``proposal_data.json``
+#: reste à ``null`` à la racine (bloc ``additif_vs_null``), toute autre
+#: occurrence part. Toute clé d'économies servie (``eco_*``, ``roi_*``,
+#: ``facture*``, ``savings_*``, ``hypotheses``, ``cashflow_*``,
+#: ``net_gain_*``) DOIT être classée ici — test_adev49 l'exige.
+CLES_PAR_SECTION = {
+    'economies': (
+        'eco_s_ann', 'eco_a_ann', 'eco_a_cumul', 'eco_s_ann_multi',
+        'eco_a_ann_multi', 'eco_s_monthly', 'eco_a_monthly', 'eco_sans',
+        'eco_avec', 'roi_s', 'roi_a', 'roi_s_jamais', 'roi_a_jamais',
+        'cashflow_sans', 'cashflow_avec', 'cashflow_assumptions',
+        'net_gain_sans', 'net_gain_avec', 'savings_method', 'savings_model',
+        'savings_model_sans', 'savings_model_avec', 'savings_estimated',
+        'savings_estimated_sans', 'savings_estimated_avec', 'hypotheses',
+        'facture_sans_solaire', 'facture_avec_solaire_s',
+        'facture_avec_solaire_a', 'facture_sans', 'facture_avec_s',
+        'facture_avec_a', 'facture_avec', 'facture_avec_solaire',
+        'facture_actuelle', 'facture_hiver', 'facture_ete',
+        'facture_hiver_ete', 'facture_avant_mad', 'facture_apres_sans_mad',
+        'facture_apres_avec_mad', 'facture_annuelle_sans_solaire',
+        'facture_annuelle_avec_solaire_opt1',
+        'facture_annuelle_avec_solaire_opt2', 'factures_mensuelles',
+        'factures_mensuelles_reelles', 'factures_mensuelles_estimation',
+        'factures_avant_monthly', 'factures_approximatif', 'factures_note',
+        'factures_note_methode', 'factures_reelles', 'factures_source',
+        'pct_cut', 'annual_before', 'annual_after', 'coverage_pct',
+        'coverage_estimated', 'economies_cumul_25_ans',
+        'economies_mensuelles', 'economies_periodes', 'profils_comparatifs',
+        'offres_tailles',
+        # AMOT67 (C-AMOT-050) — l'argent C&I : économie an 1, flux, TRI, VAN,
+        # LCOE, sensibilités (le bloc ``economie_ci`` lui-même ne quitte plus
+        # jamais ``quote`` : la page lit ``synthese_ci``).
+        'economie_ci', 'economie_annee1', 'flux_ht', 'flux_ttc', 'jalons',
+        'jalons_ttc', 'tri_pct', 'tri_horizon_ans', 'retour_ans',
+        'retour_actualise_ans', 'van_mad', 'van_motif', 'lcoe_mad_kwh',
+        'lcoe_actualise', 'sensibilites',
+    ),
+}
+
+
+def _retirer_cles(noeud, cles):
+    """ADEV49 — retire ``cles`` à toute profondeur de ``noeud`` (en place)."""
+    if isinstance(noeud, dict):
+        for cle in [c for c in noeud if c in cles]:
+            noeud.pop(cle, None)
+        for valeur in noeud.values():
+            _retirer_cles(valeur, cles)
+    elif isinstance(noeud, list):
+        for valeur in noeud:
+            _retirer_cles(valeur, cles)
+
+
+def _filtrer_sections_publiques(payload, link, cles_base):
+    """ADEV49 (C-ADEV-016) — applique :data:`CLES_PAR_SECTION` à la charge
+    publique : pour chaque case décochée, ses clés de BASE valent ``null`` à
+    la racine, et plus AUCUNE autre occurrence n'est servie (``quote`` et
+    tout bloc imbriqué compris). Mute ``payload`` en place — ses blocs sont
+    d'abord COPIÉS en profondeur : certains partagent des dicts avec
+    ``devis.etude_params``, qui ne doit jamais être muté."""
+    decochees = [s for s in CLES_PAR_SECTION if not _section_servie(link, s)]
+    if not decochees:
+        return payload
+    import copy
+    for cle in list(payload):
+        payload[cle] = copy.deepcopy(payload[cle])
+    for section in decochees:
+        cles = frozenset(CLES_PAR_SECTION[section])
+        for cle in cles & set(payload):
+            if cle in cles_base:
+                payload[cle] = None
+            else:
+                payload.pop(cle, None)
+        for cle, valeur in payload.items():
+            _retirer_cles(valeur, cles)
+    return payload
+
+
+def _retirer_industriel_seul(payload):
+    """AMOT67 (D-CIQ-10) — retire de la charge d'un devis COMMERCIAL, à toute
+    profondeur, les clés « industriel seul » de ``synthese_ci``
+    (``CLES_INDUSTRIEL_SEUL`` : VAN, LCOE, sensibilités…). Blocs copiés en
+    profondeur d'abord (jamais ``devis.etude_params`` muté)."""
+    import copy
+
+    from .quote_engine.ci.synthese import CLES_INDUSTRIEL_SEUL
+    for cle in list(payload):
+        if cle in CLES_INDUSTRIEL_SEUL:
+            payload.pop(cle, None)
+        else:
+            payload[cle] = copy.deepcopy(payload[cle])
+            _retirer_cles(payload[cle], CLES_INDUSTRIEL_SEUL)
+    return payload
+
+
+#: ADEV50 — par option publique : (clé de la série cumulée du moteur, clé de
+#: l'économie annuelle, clé de l'investissement de cette série).
+_OPTIONS_CUMUL_25_ANS = (
+    ('sans_batterie', 'cashflow_sans', 'eco_s_ann', 'total_sans'),
+    ('avec_batterie', 'cashflow_avec', 'eco_a_ann', 'total_avec'),
+)
+
+
+def _economies_cumul_25_ans_publique(data):
+    """ADEV50 (C-ADEV-017) — le cumul BRUT des économies sur 25 ans de CHAQUE
+    option, lu sur LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``
+    du moteur, ``pricing.compute_cashflow_payback`` : dégradation, escalade,
+    rendement batterie, provision onduleur) : cumul final + investissement de
+    cette série = somme des 25 flux annuels. Aucun calcul de flux ici — une
+    LECTURE de ``data`` (règle #4 : le moteur rend, la vue publie).
+
+    Appelée APRÈS les retraits de la vue (ancrage Z2, agricole/C&I, option
+    non vendable, mono-option) : une option dont l'économie annuelle ou les
+    totaux ne sont plus publiés ne porte pas de cumul. Rend ``None`` quand
+    aucune option n'a de flux (clé ADDITIVE absente, jamais ``null``)."""
+    out = {}
+    for option, cle_flux, cle_eco, cle_total in _OPTIONS_CUMUL_25_ANS:
+        flux = data.get(cle_flux)
+        if not isinstance(flux, list) or not flux:
+            continue
+        if data.get(cle_eco) is None:
+            continue
+        totaux = data.get('totaux_sans' if option == 'sans_batterie'
+                          else 'totaux_avec')
+        if not totaux:
+            continue
+        try:
+            dernier = float(flux[-1])
+            investissement = float(data.get(cle_total) or 0)
+        except (TypeError, ValueError):
+            continue
+        if investissement <= 0:
+            continue
+        out[option] = round(dernier + investissement)
+    return out or None
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -1384,6 +1522,13 @@ def proposal_data(request, token):
             # comme intertitres/notes. Absent quand le devis n'a aucune section.
             'lignes_structure': data.get('lignes_structure'),
         }
+        # ADEV49 — les clés de BASE (littéral ci-dessus) : à une case décochée
+        # elles restent à ``null`` (contrat), les autres partent.
+        _cles_base = frozenset(payload)
+        # AMOT67 (C-AMOT-050) — le bloc moteur ``economie_ci`` ne quitte plus
+        # ``quote`` : la page lit ``synthese_ci`` (même fonction que le PDF),
+        # qui suit la case « économies » et le segment (D-CIQ-10).
+        payload['quote'].pop('economie_ci', None)
         # PV77 — titre de l'étude bancable (P50 + économies 25 ans). La clé
         # n'est AJOUTÉE que lorsque le devis porte une simulation : sans elle,
         # la charge utile publique est exactement celle d'aujourd'hui.
@@ -1391,6 +1536,13 @@ def proposal_data(request, token):
         # exactement comme sur un devis sans simulation.
         if bankable is not None and _section_servie(link, 'bankable'):
             payload['bankable'] = bankable
+        # ADEV50 (C-ADEV-017) — le cumul 25 ans de CHAQUE option, servi : la
+        # page l'affiche tel quel (plus de « économie × 25 » en JS). Même
+        # section que les économies ; additive (absente sans flux).
+        _cumul_25 = (_economies_cumul_25_ans_publique(data)
+                     if _section_servie(link, 'economies') else None)
+        if _cumul_25 is not None:
+            payload['economies_cumul_25_ans'] = _cumul_25
         # AGR308 — synthèse agricole (additive). Son bloc ``economies`` obéit à
         # la case « Synthèse d'économies » du lien, comme la synthèse
         # résidentielle (L-SECT) : décochée, l'argent ne part pas.
@@ -1647,8 +1799,37 @@ def proposal_data(request, token):
         _conditions = _conditions_publiques(data, devis)
         if _conditions is not None:
             payload['conditions'] = _conditions
+        # ADEV51 (C-ADEV-018) — l'empreinte du contenu SIGNABLE au moment de
+        # la lecture : la page la renvoie à ``/accept/``, qui refuse (409
+        # ``empreinte_perimee``) si le devis a été corrigé entre-temps.
+        # Additive : absente quand rien n'est signable (aperçu interne,
+        # brouillon, remplacé, accepté…).
+        from .public.signature_views import (
+            empreinte_contenu, signable_au_jeton)
+        if not link.via_interne and signable_au_jeton(devis):
+            payload['empreinte_contenu'] = empreinte_contenu(devis)
+        # ADEV52 (C-ADEV-019) — LA règle d'expiration, servie : la page ne
+        # calcule plus rien (« 12:00 UTC du dernier jour » supprimé). Deux clés
+        # additives, absentes quand aucune validité n'est déterminable.
+        from .utils.expiry import date_expiration, is_expired
+        _expiration = date_expiration(devis)
+        if _expiration is not None:
+            payload['date_expiration'] = _expiration.isoformat()
+            payload['offre_expiree'] = bool(is_expired(devis))
         payload['paiement_moyens'] = list(PAIEMENT_MOYENS_PUBLICS)
         payload['confirmation_email'] = _confirmation_email_publique(devis)
+        # ADEV49 (C-ADEV-016) — case « PDF » décochée : ``/proposal`` répond
+        # 404 ; la page le sait et ne rend aucun lien « Télécharger ».
+        payload['pdf_disponible'] = bool(_section_servie(link, 'pdf'))
+        # ADEV49 — LA table ``CLES_PAR_SECTION`` appliquée en dernier, à toute
+        # profondeur (``quote`` compris) : ce que le client reçoit = ce que le
+        # commercial a coché (en place ; copie profonde des blocs d'abord).
+        _filtrer_sections_publiques(payload, link, _cles_base)
+        # AMOT67 (D-CIQ-10) — un devis COMMERCIAL ne publie ni VAN, ni LCOE,
+        # ni sensibilités, à AUCUN niveau : la liste est celle de
+        # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.
+        if _mode_public(data) == 'commercial':
+            _retirer_industriel_seul(payload)
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est

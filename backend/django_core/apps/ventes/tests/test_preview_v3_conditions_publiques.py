@@ -197,10 +197,14 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
     def test_acompte_est_le_meme_chiffre_avant_et_apres_signature(self):
         """La page et l'écran de succès lisent LE MÊME helper — donc jamais
         deux acomptes pour un seul devis."""
-        avant = self._payload()['acompte']
+        payload = self._payload()
+        avant = payload['acompte']
+        # ADEV51 — le corps renvoie l'empreinte SERVIE à la lecture.
         resp = self.api.post(
             f'/api/django/public/proposal/{self.link.token}/accept/',
-            {'nom': 'Client PV3', 'consent_esign': True}, format='json')
+            {'nom': 'Client PV3', 'consent_esign': True,
+             'empreinte_contenu': payload['empreinte_contenu']},
+            format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         apres = resp.data['paiement']
         self.assertEqual(avant['ttc'], apres['acompte_ttc'])

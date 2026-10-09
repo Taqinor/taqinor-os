@@ -89,7 +89,7 @@ describe('proposition/[...token].astro — bandeau + désactivation aperçu inte
 
   it('SignConfig porte apercuInterne, transmis depuis le frontmatter serveur', () => {
     expect(src).toMatch(/interface SignConfig \{[\s\S]*?apercuInterne\?:\s*boolean;/);
-    const signConfigBlock = src.slice(src.indexOf('const signConfig = ok'), src.indexOf('const signConfig = ok') + 800);
+    const signConfigBlock = src.slice(src.indexOf('const signConfig = ok'), src.indexOf('const signConfig = ok') + 1200);
     expect(signConfigBlock).toContain('apercuInterne,');
     expect(signConfigBlock).toContain(': null;');
   });

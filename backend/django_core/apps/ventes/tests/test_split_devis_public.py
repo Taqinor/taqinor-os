@@ -182,12 +182,24 @@ _CLES_PK = {'devis', 'company', 'client', 'produit', 'lead', 'facture',
 _CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le')
 
 
+#: Clés ADDITIVES de ``proposal_data`` servies APRÈS la capture du golden
+#: (ADEV49-ADEV52, contrat ADEV2) : exclues du digest, prouvées par leurs
+#: propres tests (``test_adev49``…``test_adev52``). ``empreinte_contenu``
+#: hache des clés primaires (produit, client) : il varierait d'un run à
+#: l'autre de toute façon.
+_CLES_POSTERIEURES_AU_GOLDEN = frozenset({
+    'economies_cumul_25_ans', 'empreinte_contenu', 'offre_expiree',
+    'date_expiration', 'pdf_disponible',
+})
+
+
 def _figer(obj):
     """Fige ce qui varie d'un run à l'autre (dates ISO, clés primaires)."""
     if isinstance(obj, dict):
         return {k: ('<id>' if (str(k).endswith('_id') or str(k) in _CLES_PK)
                     and isinstance(v, int) and not isinstance(v, bool)
-                    else _figer(v)) for k, v in obj.items()}
+                    else _figer(v)) for k, v in obj.items()
+                if k not in _CLES_POSTERIEURES_AU_GOLDEN}
     if isinstance(obj, list):
         return [_figer(v) for v in obj]
     if isinstance(obj, str):

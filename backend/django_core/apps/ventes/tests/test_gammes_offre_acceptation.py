@@ -40,6 +40,7 @@ Lancer :
 from rest_framework.test import APIClient
 
 from apps.ventes.models import Devis, ShareLink
+from apps.ventes.public.signature_views import empreinte_contenu
 from apps.ventes.tests._gammes_offre_common import GammeBase, url_accept
 
 
@@ -56,6 +57,7 @@ class TestAcceptationGamme(GammeBase):
         resp = APIClient().post(url_accept(lien_soeur.token), {
             'nom': 'Salma Alaoui',
             'consent_esign': True,
+            'empreinte_contenu': empreinte_contenu(soeur),
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         soeur.refresh_from_db()
