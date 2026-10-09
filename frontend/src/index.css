@@ -11422,3 +11422,41 @@ textarea.form-control {
   color: var(--muted-foreground);
   font-size: 0.875rem;
 }
+
+/* ── EDC2 — Table des lignes pleine largeur, rail replié par container query ── */
+/* Fondateur 09/10/2026 : « rends la fenêtre et la table larges, sans défilement
+   horizontal ». Le plafond LDPQ1 (`.ldp-edit .gen-embedded { max-width: 980px }`,
+   plus haut) n'est PAS édité : cette règle, plus spécifique, le neutralise
+   (contrat EDC — un bloc en fin de fichier par tâche, jamais une réécriture). */
+.ldp-body .ldp-edit .gen-embedded {
+  max-width: none;
+  margin: 0;
+}
+/* La racine du générateur est LE conteneur interrogé : un conteneur ne
+   s'interroge pas lui-même, le rail et le total condensé sont ses descendants.
+   Le seuil suit la largeur RÉELLE de l'écran du devis (panneau ou page), jamais
+   celle de la fenêtre. */
+.gen-root {
+  container-type: inline-size;
+  container-name: gen;
+}
+/* Rail replié par défaut ; il ne revient qu'au-dessus de 1 200 px de conteneur
+   (18 rem de rail + l'écart laissent ≥ 880 px à la table : aucun débordement). */
+.gen-root .gen-summary-rail { display: none; }
+@container gen (min-width: 1200px) {
+  .gen-root .gen-summary-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 18rem;
+    flex-shrink: 0;
+    position: sticky;
+    align-self: flex-start;
+    /* Collé SOUS la barre d'actions en tête (EDC4, `--gen-barre-h`), jamais
+       64 px sous un en-tête d'app qui n'existe pas dans le panneau ;
+       `--gen-colle-decalage` compense le padding du défileur (EDC4). */
+    top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px) + var(--gen-barre-h, 0px) + 0.75rem);
+  }
+  /* Le rail visible porte déjà le total : le total condensé du pied s'efface. */
+  .gen-root .gen-ttc-condense { display: none; }
+}

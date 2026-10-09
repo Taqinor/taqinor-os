@@ -182,21 +182,26 @@ export default function LigneTable({
         <div className="lines-table-wrap">
           <table className="lines-table" ref={linesTableRef}>
             <thead>
+              {/* EDC2 — largeurs FIXES sur les colonnes numériques et les
+                  colonnes d'action ; Désignation et Produit (min-width
+                  conservés) absorbent tout le reste. `table-layout` reste
+                  `auto` (jamais `fixed`, qui ignore min-width) : mesuré, plus
+                  aucun défilement horizontal dès ~734 px de conteneur. */}
               <tr>
                 <th style={{ minWidth: 160 }}>Désignation</th>
                 <th style={{ minWidth: 170 }}>Produit (stock)</th>
                 {multiMode === 'villas' && <th style={{ minWidth: 130 }}>Villa</th>}
-                <th className="col-num">Qté</th>
-                <th className="col-num">Prix Unit. TTC</th>
-                <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
-                <th className="col-num">Total TTC</th>
+                <th className="col-num" style={{ width: 96 }}>Qté</th>
+                <th className="col-num" style={{ width: 128 }}>Prix Unit. TTC</th>
+                <th className="col-num" style={{ width: 72 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
+                <th className="col-num" style={{ width: 128 }}>Total TTC</th>
                 {/* XSAL5 — case « option » : la ligne est un add-on proposé
                     hors total (activable par le client sur la proposition). */}
                 <th style={{ width: 56 }} title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
                 {/* PVORD — monter/descendre : ordre par défaut = ordre du
                     simulateur (autoFillLines), réordonnable ici. */}
-                <th className="col-ordre" title="Réordonner la ligne">Ordre</th>
-                <th className="col-del"></th>
+                <th className="col-ordre" style={{ width: 72 }} title="Réordonner la ligne">Ordre</th>
+                <th className="col-del" style={{ width: 40 }}></th>
               </tr>
             </thead>
             <tbody>

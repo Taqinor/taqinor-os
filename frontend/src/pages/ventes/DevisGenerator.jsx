@@ -3841,7 +3841,12 @@ export default function DevisGenerator({
   }
 
   return (
-    <div className={embedded ? 'gen-embedded' : 'page gen-page'}>
+    // EDC2 — `gen-root` : LE conteneur interrogé (`container-type: inline-size`,
+    // index.css bloc EDC2). Le rail et le total condensé se montrent selon la
+    // largeur RÉELLE de l'écran du devis, jamais selon la fenêtre (dans le
+    // panneau de la fiche lead, la fenêtre ment : 1 920 px de fenêtre pour un
+    // générateur qui n'en reçoit que la moitié).
+    <div className={embedded ? 'gen-root gen-embedded' : 'gen-root page gen-page'}>
       {/* VX136 — formulaire-fleuve (2319+ l.) : barre de progression de
           scroll native, `scroll(nearest)` suit le conteneur qui défile
           réellement (`.layout-content` en page pleine, le Sheet englobant
@@ -3866,7 +3871,10 @@ export default function DevisGenerator({
 
       {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
           un rail récapitulatif STICKY à droite. Sur mobile/tablette, layout
-          inchangé (le rail est masqué, les actions restent dans le formulaire). */}
+          inchangé (le rail est masqué, les actions restent dans le formulaire).
+          EDC2 — le rail se replie de lui-même sous 1 200 px de conteneur
+          (`display: none` n'occupe ni place ni `gap`) : le formulaire prend
+          alors toute la largeur. */}
       <div className="lg:flex lg:items-start lg:gap-6">
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
@@ -5385,9 +5393,11 @@ export default function DevisGenerator({
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
               {/* VX138(d) — bandeau sticky au scroll (plus seulement mobile) :
                   TTC courant condensé, dérivé de `totals`/`kpiTotal` déjà en
-                  mémoire (même valeur que le rail latéral VX16) ; masqué en
-                  lg+ où le rail latéral l'affiche déjà. */}
-              <div className="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+                  mémoire (même valeur que le rail latéral VX16).
+                  EDC2 — masqué SEULEMENT quand le rail est visible
+                  (`gen-ttc-condense`, même container query que le rail) : le
+                  rail replié, le total reprend sa place ici. */}
+              <div className="gen-ttc-condense mr-auto flex items-baseline gap-1.5 text-sm">
                 <span className="text-muted-foreground">Total TTC</span>
                 <strong className="tabular-nums text-base font-semibold text-foreground">
                   {formatMoney(kpiTotal)}
@@ -5419,12 +5429,15 @@ export default function DevisGenerator({
         </Card>
       </form>
 
-      {/* VX16 — rail récapitulatif STICKY (lg+ uniquement, jamais sur mobile).
+      {/* VX16 — rail récapitulatif STICKY (jamais sur mobile).
           Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
           le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
-          sur le même formulaire (form="gen-form"). */}
-      <aside className="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3"
-             style={{ top: 'var(--header-h, 64px)' }}>
+          sur le même formulaire (form="gen-form").
+          EDC2 — plus AUCUNE classe `lg:` ni `top` en ligne : visibilité,
+          largeur (18 rem) et collage sont décidés par `@container gen`
+          (index.css, bloc EDC2) — replié sous 1 200 px de LARGEUR D'ÉCRAN DU
+          DEVIS, pour que la table des lignes garde toute la place. */}
+      <aside className="gen-summary-rail">
         {/* APX12 — le total du rail devient LE chiffre le plus soigné de
             l'app : il passe par `<Stat>` comme les KPI d'argent des deux
             autres surfaces (bandeau statuts DevisList, cockpit trésorerie
