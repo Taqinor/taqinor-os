@@ -22,6 +22,7 @@ import json
 import logging
 import re
 from collections import Counter
+from pathlib import Path
 
 from django.db import transaction
 from django.utils import timezone
@@ -70,6 +71,8 @@ def _hebergeurs_boutiques():
     donnees = json.loads(chemin.read_text(encoding='utf-8'))
     return frozenset(
         str(d).lower() for d in donnees.get('hebergeurs_boutiques', []))
+
+
 _RE_HOTE = re.compile(
     r'(?<![\w.@/-])(?:https?://)?(?:[\w.+-]+@)?'
     r'((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24})'
