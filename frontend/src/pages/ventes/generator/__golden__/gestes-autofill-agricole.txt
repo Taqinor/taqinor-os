@@ -2,6 +2,18 @@
 Générateur de Devis Solaire
 Nouveau devis · tout est en TTC
 Retour aux devis
+Nouveau devis
+Modifications non enregistrées
+Total TTC
+0 MAD
+Annuler
+Créer
+Document
+Lead &amp; Client
+Technique
+Lignes
+Texte client
+Enregistrement
 Brouillon enregistré à 09:00
 Marché / Mode d'installation
 🏠 Résidentiel

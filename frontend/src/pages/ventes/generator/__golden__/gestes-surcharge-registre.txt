@@ -2,6 +2,20 @@
 Générateur de Devis Solaire
 Édition — DEV-202610-036
 Retour aux devis
+DEV-202610-036
+Brouillon
+Total TTC
+21 300 MAD
+Annuler
+Enregistrer
+Document
+Lead &amp; Client
+Technique
+Simulation
+Lignes
+Échéancier
+Texte client
+Enregistrement
 Marché / Mode d'installation
 🏠 Résidentiel
 🏭 Industriel
@@ -83,7 +97,7 @@ Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non 
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
-Replier
+Déplier
 Calcul du moteur horaire en cours…
 Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
 Production annuelle
@@ -154,6 +168,7 @@ PDF · PNG · JPEG · WEBP — max 10,0 Mo · PDF/PNG/JPEG/WebP — 10 Mo max
 PDF/PNG/JPEG/WebP — 10 Mo max
 Aucune pièce jointe.
 Surcharges (registre)
+Déplier
 taille.nb_panneaux
 taille.panel_watt
 taille.kwc

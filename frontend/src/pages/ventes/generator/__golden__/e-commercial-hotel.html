@@ -1,4 +1,4 @@
-<div class="page gen-page">
+<div class="gen-root page gen-page" style="--gen-nav-h: 0px;">
 <div aria-hidden="true" class="scroll-progress-bar">
 </div>
 <header class="mb-6 app-accent-rail" style="--module-accent: var(--module-accent-brass);">
@@ -30,8 +30,76 @@
 </div>
 </div>
 </header>
+<div class="gen-barre-actions" role="toolbar" aria-label="Actions du devis" data-testid="gen-barre-actions">
+<div class="gen-barre-identite">
+<span class="gen-barre-ref" title="DEV-202610-033">DEV-202610-033</span>
+<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium leading-none border-transparent bg-muted text-muted-foreground">
+<span aria-hidden="true" class="size-1.5 rounded-full bg-muted-foreground">
+</span>Brouillon</span>
+<span class="gen-barre-saisie" role="status" aria-live="polite">
+</span>
+</div>
+<div class="gen-barre-droite">
+<p class="gen-barre-total">
+<span>Total TTC</span>
+<strong data-testid="gen-barre-total">115 200 MAD</strong>
+</p>
+<div class="gen-barre-boutons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 gen-barre-annuler" type="button">Annuler</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="submit" form="gen-form">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
+<circle cx="12" cy="12" r="4">
+</circle>
+<path d="M12 2v2">
+</path>
+<path d="M12 20v2">
+</path>
+<path d="m4.93 4.93 1.41 1.41">
+</path>
+<path d="m17.66 17.66 1.41 1.41">
+</path>
+<path d="M2 12h2">
+</path>
+<path d="M20 12h2">
+</path>
+<path d="m6.34 17.66-1.41 1.41">
+</path>
+<path d="m19.07 4.93-1.41 1.41">
+</path>
+</svg> Enregistrer</button>
+</div>
+</div>
+</div>
 <div class="lg:flex lg:items-start lg:gap-6">
 <form id="gen-form" novalidate="" class="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+<nav class="gen-nav-sections" aria-label="Sections du devis">
+<ul class="gen-nav-liste">
+<li>
+<button type="button" class="gen-nav-puce">Document</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Lead &amp; Client</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Technique</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Simulation</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Lignes</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Échéancier</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Texte client</button>
+</li>
+<li>
+<button type="button" class="gen-nav-puce">Enregistrement</button>
+</li>
+</ul>
+</nav>
 <div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target size-4 text-primary" aria-hidden="true">
@@ -53,7 +121,7 @@
 </div>
 </div>
 </div>
-<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" id="gen-sec-document" data-nav-libelle="Document">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list size-4 text-primary" aria-hidden="true">
 <rect width="8" height="4" x="8" y="2" rx="1" ry="1">
@@ -136,7 +204,7 @@
 </div>
 </div>
 </div>
-<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" id="gen-sec-lead" data-nav-libelle="Lead &amp; Client">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user size-4 text-primary" aria-hidden="true">
 <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2">
@@ -501,7 +569,7 @@
 </div>
 </details>
 </div>
-<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" id="gen-sec-technique" data-nav-libelle="Technique">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-4 text-primary" aria-hidden="true">
 <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
@@ -556,8 +624,8 @@
 </div>
 </div>
 </div>
-<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
-<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" id="gen-sec-simulation" data-nav-libelle="Simulation">
+<div class="flex flex-wrap items-center gap-2 border-border px-4 py-3 sm:px-5 border-b-0">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-column size-4 text-primary" aria-hidden="true">
 <path d="M3 3v16a2 2 0 0 0 2 2h16">
 </path>
@@ -570,13 +638,18 @@
 </svg>
 <span class="font-display text-base font-semibold tracking-tight">Aperçu de la Simulation</span>
 <div class="ml-auto flex items-center gap-2">
-<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 gen-preview-toggle" type="button">Replier</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 gen-carte-repli" type="button" aria-expanded="false" aria-controls="gen-sec-simulation-contenu" aria-label="Déplier « Aperçu de la Simulation »">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down gen-carte-repli-icone" aria-hidden="true" data-replie="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>Déplier</button>
 </div>
 </div>
-<div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4">
+<div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4" id="gen-sec-simulation-contenu" hidden="">
 <p class="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">Économies C&amp;I : voir la carte « Économies » (moteur serveur).</p>
 </div>
 </div>
+<div id="gen-sec-lignes" data-nav-libelle="Lignes">
 <div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-cart size-4 text-primary" aria-hidden="true">
@@ -616,19 +689,19 @@
 </details>
 <label class="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
 <input type="checkbox">Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)</label>
-<div class="lines-table-wrap">
-<table class="lines-table">
-<thead>
+<div class="bdc-wrap lines-table-wrap" data-deborde="false">
+<table class="lines-table lines-table-separe">
+<thead class="lines-thead-collant">
 <tr>
 <th style="min-width: 160px;">Désignation</th>
 <th style="min-width: 170px;">Produit (stock)</th>
-<th class="col-num">Qté</th>
-<th class="col-num">Prix Unit. TTC</th>
-<th class="col-num" style="width: 64px;" title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
-<th class="col-num">Total TTC</th>
+<th class="col-num" style="width: 96px;">Qté</th>
+<th class="col-num" style="width: 128px;">Prix Unit. TTC</th>
+<th class="col-num" style="width: 72px;" title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
+<th class="col-num" style="width: 128px;">Total TTC</th>
 <th style="width: 56px;" title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
-<th class="col-ordre" title="Réordonner la ligne">Ordre</th>
-<th class="col-del">
+<th class="col-ordre" style="width: 72px;" title="Réordonner la ligne">Ordre</th>
+<th class="col-del" style="width: 40px;">
 </th>
 </tr>
 </thead>
@@ -750,6 +823,10 @@
 </tbody>
 </table>
 </div>
+<div class="bdc-proxy" aria-hidden="true" tabindex="-1" hidden="" style="position: sticky;">
+<div class="bdc-proxy-piste" style="width: 0px; height: 1px;">
+</div>
+</div>
 <div class="gen-totals-row gen-tier-1">
 <div class="gen-total-item">
 <span class="gen-total-label">Total SANS batterie ⭐</span>
@@ -779,6 +856,7 @@
 <div class="gen-total-item">
 <span class="gen-total-label text-success">Marge indicative (interne)</span>
 <span class="gen-total-value text-success">34 560 MAD (30 %)</span>
+</div>
 </div>
 </div>
 </div>
@@ -879,6 +957,7 @@
 </div>
 </div>
 </div>
+<div id="gen-sec-echeancier" data-nav-libelle="Échéancier">
 <div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" data-testid="carte-echeancier">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-clock size-4 text-primary" aria-hidden="true">
@@ -953,7 +1032,8 @@
 </fieldset>
 </div>
 </div>
-<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" id="gen-sec-texte" data-nav-libelle="Texte client">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticky-note size-4 text-primary" aria-hidden="true">
 <path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z">
@@ -968,7 +1048,7 @@
 </textarea>
 </div>
 </div>
-<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" id="gen-sec-enregistrer" data-nav-libelle="Enregistrement">
 <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text size-4 text-primary" aria-hidden="true">
 <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z">
@@ -987,7 +1067,7 @@
 <div class="p-4 sm:p-5 sm:pt-0 pt-4">
 <p class="text-sm text-muted-foreground">Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).</p>
 <div class="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
-<div class="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+<div class="gen-ttc-condense mr-auto flex items-baseline gap-1.5 text-sm">
 <span class="text-muted-foreground">Total TTC</span>
 <strong class="tabular-nums text-base font-semibold text-foreground">115 200 MAD</strong>
 </div>
@@ -1025,7 +1105,7 @@
 </div>
 </div>
 </form>
-<aside class="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3" style="top: var(--header-h, 64px);">
+<aside class="gen-summary-rail">
 <div class="rounded-xl border text-card-foreground shadow-card p-4 sm:p-5 border-primary/40 bg-primary/[0.06]" data-testid="gen-rail-total">
 <div class="flex items-start justify-between gap-3">
 <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total sans batterie · TTC</span>
