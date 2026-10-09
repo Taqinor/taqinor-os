@@ -14,3 +14,5 @@ TEXTE décimal (« 15000.00 »), jamais en nombre flottant.
 | `paiement_public.json` | `GET /api/django/public/pay/<token>/` — page client « Payer » | AFAC20 (producteur AFAC21/AFAC24, écran AFAC26) |
 | `note_debit_creation.json` | `POST /api/django/ventes/factures/<pk>/creer-note-debit/` — création partielle | AFAC20 (producteur AFAC32, écran AFAC33) |
 | `facture_annulation.json` | `POST /api/django/ventes/factures/<pk>/annuler/` — directive `acompte` et refus `directive_acompte_requise` | AFAC1 (producteur AFAC12, écran AFAC13) |
+| `paiement_annuler_saisie.json` | `POST /api/django/ventes/paiements/<pk>/annuler-saisie/` — état `annule_saisie` daté, motif, auteur | AFAC4 (producteur AFAC17, écran AFAC18) |
+| `paiement_reaffecter.json` | `POST /api/django/ventes/paiements/<pk>/reaffecter/` — réaffectation vers une facture du même client | AFAC4 (producteur AFAC17, écran AFAC18) |
