@@ -336,6 +336,17 @@ def etude_horaire_preview(request):
         return Response(
             {'detail': 'Corps de requête invalide : un objet JSON est attendu.'},
             status=400)
+    # ENF1b — `equipements` est un OBJET (`{"piscine": true, …}`) : une
+    # chaîne (corps multipart « {} », texte libre) faisait planter
+    # `composer_equipements` (`'str' object has no attribute 'get'`, 500 au
+    # fuzz du 09/10). Corps inexploitable → 400, comme ci-dessus.
+    equipements_bruts = corps.get('equipements')
+    if equipements_bruts not in (None, '') \
+            and not isinstance(equipements_bruts, dict):
+        return Response(
+            {'detail': 'Corps de requête invalide : « equipements » doit '
+                       'être un objet JSON (ex. {"piscine": true}).'},
+            status=400)
 
     company = getattr(request.user, 'company', None)
     avertissements = []

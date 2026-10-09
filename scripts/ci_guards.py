@@ -58,6 +58,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
+        ('Tests des crochets api-fuzz : le fuzzeur ne se verrouille jamais dehors (ENF1b)',
+         'python -m unittest scripts.tests.test_fuzz_hooks -v',
+         '.'),
         ('Tests nginx : no-store sur l API seulement, en-tetes de securite herites (ADEP5)',
          'python -m unittest scripts.tests.test_nginx_cache_control -v',
          '.'),
