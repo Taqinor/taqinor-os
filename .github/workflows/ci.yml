@@ -880,7 +880,7 @@ jobs:
       # avec 2048 verrous par transaction, ce qui règle la classe entière.
       # `redis` reste un service : rien à y configurer.
       redis:
-        image: redis:7.4-alpine
+        image: mirror.gcr.io/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -1103,7 +1103,7 @@ jobs:
       REDIS_PORT: '6379'
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: mirror.gcr.io/pgvector/pgvector:pg16
         env:
           POSTGRES_DB: erp_db
           POSTGRES_USER: erp_user
@@ -1116,7 +1116,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7.4-alpine
+        image: mirror.gcr.io/library/redis:7.4-alpine
         ports:
           - 6379:6379
     steps:
@@ -1570,7 +1570,7 @@ jobs:
       # avec 2048 verrous par transaction, ce qui règle la classe entière.
       # `redis` reste un service : rien à y configurer.
       redis:
-        image: redis:7.4-alpine
+        image: mirror.gcr.io/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
