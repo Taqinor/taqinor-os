@@ -77,7 +77,7 @@ class TenantModel(TimestampedModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='%(app_label)s_%(class)s_set',
         verbose_name='Société',
     )
@@ -249,11 +249,11 @@ class DeletionRecord(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='deletion_records', verbose_name='Société')
 
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE, related_name='+',
+        ContentType, on_delete=models.CASCADE, related_name='+',  # on_delete: trace de corbeille rattachée à un type — disparaît seulement avec la suppression du modèle
         verbose_name='Type de document')
     object_id = models.PositiveIntegerField('Identifiant du document')
     target = GenericForeignKey('content_type', 'object_id')
@@ -326,7 +326,7 @@ class AnomalyFlag(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='anomaly_flags', verbose_name='Société')
 
     category = models.CharField(
@@ -407,7 +407,7 @@ class WorkflowDefinition(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='core_workflow_definitions', verbose_name='Société')
 
     code = models.CharField(
@@ -481,7 +481,7 @@ class WorkflowStepDefinition(TimestampedModel):
     ]
 
     definition = models.ForeignKey(
-        WorkflowDefinition, on_delete=models.CASCADE,
+        WorkflowDefinition, on_delete=models.CASCADE,  # on_delete: WorkflowStepDefinition est le détail de WorkflowDefinition — n'existe pas sans lui
         related_name='steps', verbose_name='Définition')
 
     ordre = models.PositiveIntegerField('Ordre', default=0)
@@ -585,7 +585,7 @@ class WorkflowInstance(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='core_workflow_instances', verbose_name='Société')
     definition = models.ForeignKey(
         WorkflowDefinition, on_delete=models.PROTECT,
@@ -604,7 +604,7 @@ class WorkflowInstance(TimestampedModel):
 
     # Cible générique — AUCUN import métier (contenttypes = fondation).
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE,
+        ContentType, on_delete=models.CASCADE,  # on_delete: référence générique par type — disparaît avec son ContentType (jamais supprimé hors retrait du modèle)
         related_name='+', verbose_name='Type de cible')
     object_id = models.PositiveIntegerField('Identifiant de la cible')
     target = GenericForeignKey('content_type', 'object_id')
@@ -662,10 +662,10 @@ class WorkflowStepInstance(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='core_workflow_step_instances', verbose_name='Société')
     instance = models.ForeignKey(
-        WorkflowInstance, on_delete=models.CASCADE,
+        WorkflowInstance, on_delete=models.CASCADE,  # on_delete: WorkflowStepInstance est le détail de WorkflowInstance — n'existe pas sans lui
         related_name='step_instances', verbose_name='Instance')
     step_def = models.ForeignKey(
         WorkflowStepDefinition, on_delete=models.PROTECT,
@@ -1359,7 +1359,7 @@ class IntegrationConfig(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='integration_configs', verbose_name='Société')
 
     integration_type = models.CharField(
@@ -1448,12 +1448,12 @@ class EsignRequest(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='esign_requests', verbose_name='Société')
 
     # Cible générique — AUCUN import métier (contenttypes = fondation).
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE, null=True, blank=True,
+        ContentType, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name='Type de document')
     object_id = models.PositiveIntegerField(
         'Identifiant du document', null=True, blank=True)
@@ -1515,7 +1515,7 @@ class CalendarSyncMapping(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='calendar_sync_mappings', verbose_name='Société')
 
     provider = models.CharField('Fournisseur', max_length=60)
@@ -1588,10 +1588,10 @@ class Dashboard(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='dashboards', verbose_name='Société')
     owner = models.ForeignKey(
-        'authentication.CustomUser', on_delete=models.CASCADE,
+        'authentication.CustomUser', on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (Dashboard) — sans objet sans lui
         null=True, blank=True, related_name='dashboards',
         verbose_name='Propriétaire',
         help_text='Vide = dashboard de société (non personnel).')
@@ -1665,12 +1665,12 @@ class PaymentTransaction(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='payment_transactions', verbose_name='Société')
 
     # Cible générique — AUCUN import métier (contenttypes = fondation).
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE, null=True, blank=True,
+        ContentType, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name='Type de document')
     object_id = models.PositiveIntegerField(
         'Identifiant du document', null=True, blank=True)
@@ -1736,10 +1736,10 @@ class SavedQuery(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='saved_queries', verbose_name='Société')
     owner = models.ForeignKey(
-        'authentication.CustomUser', on_delete=models.CASCADE,
+        'authentication.CustomUser', on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (SavedQuery) — sans objet sans lui
         null=True, blank=True, related_name='saved_queries',
         verbose_name='Propriétaire',
         help_text='Vide = requête de société (non personnelle).')
@@ -1827,7 +1827,7 @@ class ScheduledExport(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='scheduled_exports', verbose_name='Société')
 
     titre = models.CharField('Titre', max_length=160)
@@ -1903,7 +1903,7 @@ class ModuleToggle(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='module_toggles', verbose_name='Société')
 
     module = models.CharField(
@@ -1967,7 +1967,7 @@ class TenantTheme(TimestampedModel):
     """
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='tenant_theme', verbose_name='Société')
 
     logo_url = models.CharField(
@@ -2031,7 +2031,7 @@ class BrandedTemplate(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='branded_templates', verbose_name='Société')
 
     kind = models.CharField('Type', max_length=12, choices=KIND_CHOICES)
@@ -2088,7 +2088,7 @@ class ConsentRecord(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='consent_records', verbose_name='Société')
 
     subject_identifier = models.CharField(
@@ -2171,7 +2171,7 @@ class DataSubjectRequest(TimestampedModel):
     DELAI_LEGAL_JOURS = 30
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='dsr_requests', verbose_name='Société')
 
     subject_identifier = models.CharField(
@@ -2254,7 +2254,7 @@ class RegistreTraitement(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='registres_traitement', verbose_name='Société')
 
     # Clé stable (seed idempotent) — ex. « leads_clients », « rh_paie ».
@@ -2369,7 +2369,7 @@ class BackupRun(TimestampedModel):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='backup_runs', verbose_name='Société',
         null=True, blank=True,
         help_text="Nulle UNIQUEMENT pour les kinds système "
@@ -2469,7 +2469,7 @@ class ApiUsagePlan(TimestampedModel):
         ENTREPRISE = 'entreprise', 'Entreprise'
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='api_usage_plan', verbose_name='Société')
 
     code = models.CharField(
@@ -2523,10 +2523,10 @@ class ApiUsageRecord(TimestampedModel):
     """
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='api_usage_records', verbose_name='Société')
     api_key = models.ForeignKey(
-        'publicapi.ApiKey', on_delete=models.CASCADE,
+        'publicapi.ApiKey', on_delete=models.CASCADE,  # on_delete: compteur d'usage d'une clé API — clés révoquées plutôt que supprimées, usage sans objet sans la clé
         related_name='usage_records', verbose_name='Clé API')
 
     jour = models.DateField('Jour', help_text="Jour d'agrégation (UTC).")

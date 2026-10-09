@@ -209,7 +209,7 @@ class CustomUser(AbstractUser):
     avatar_key = models.CharField(max_length=500, blank=True, default='')
     company = models.ForeignKey(
         Company,
-        on_delete=models.SET_NULL,
+        on_delete=models.SET_NULL,  # on_delete: assigné informatif — l'enregistrement survit à la suppression de l'utilisateur
         null=True,
         blank=True,
         related_name='users',
