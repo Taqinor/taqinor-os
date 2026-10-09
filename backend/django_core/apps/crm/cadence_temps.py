@@ -33,7 +33,8 @@ from . import horaires
 # ── CAD-B ── CAD22 ──────────────────────────────────────────────────────────
 
 def echeance_jamais_echue(echeance, *, company, dimanche=False,
-                          canal='appel', maintenant=None):
+                          canal='appel', maintenant=None, samedi=False,
+                          heure_cible=None):
     """CAD22 — l'échéance d'une touche qui NAÎT, jamais dans le passé.
 
     Les touches naissent dans l'ordre du PROTOCOLE, et leur échéance calculée
@@ -53,6 +54,11 @@ def echeance_jamais_echue(echeance, *, company, dimanche=False,
 
     Rend l'échéance inchangée quand elle est future (cas normal), ou `None`
     tel quel.
+
+    ACRM36 (C-ACRM-031) — `samedi` (`samedi_ok` du barreau, CAD43) et
+    `heure_cible` sont TRANSMIS au recalage : une touche née échue d'un
+    barreau ouvert le samedi tombe le samedi, comme l'aperçu MRY30 l'annonce
+    (`calculer_echeances_cadence`), au lieu du lundi.
     """
     if echeance is None:
         return echeance
@@ -61,7 +67,9 @@ def echeance_jamais_echue(echeance, *, company, dimanche=False,
         return echeance
     if dimanche:
         return horaires.prochain_dimanche(maintenant)
-    return horaires.prochain_creneau_appel(maintenant, company, canal=canal)
+    return horaires.prochain_creneau_appel(
+        maintenant, company, canal=canal, samedi=samedi,
+        heure_cible=heure_cible)
 
 
 def nee_en_retard(etape):

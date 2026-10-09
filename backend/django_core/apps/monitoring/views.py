@@ -42,6 +42,9 @@ from .serializers import (
     ProductionWarrantySerializer,
 )
 from .analytics import om_metrics, soiling_assessment
+from .query_params import (
+    date_iso, decimal_param, entier_borne, identifiant,
+)
 from .services import (
     evaluate_underperformance, production_warranty_status,
     sync_system, warranty_curve_overlay,
@@ -153,7 +156,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        inst = self.request.query_params.get('installation')
+        inst = identifiant(self.request, 'installation')
         if inst:
             qs = qs.filter(installation_id=inst)
         return qs
@@ -228,6 +231,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
                       if index is not None else ''),
                 created_by=request.user))
         ProductionReading.objects.bulk_create(a_creer)
+        if a_creer:
+            # ASAV66 — l'import ré-évalue la sous-performance (comme la
+            # saisie manuelle), au lieu de laisser le drapeau périmé.
+            evaluate_underperformance(installation, user=request.user)
         return Response({
             'crees': len(a_creer),
             'doublons': doublons,
@@ -247,7 +254,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         Le ratio_pct < (100 - seuil) indique une sous-performance.
         """
         config = self.get_object()
-        months = min(int(request.query_params.get('months', 12)), 60)
+        months = entier_borne(request, 'months', 12, mini=1, maxi=60)
         since = timezone.localdate() - timedelta(days=months * 31)
 
         # Agrégation mensuelle.
@@ -261,22 +268,32 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
               .annotate(actual_kwh=Sum('energy_kwh'))
               .order_by('month'))
 
-        # Production attendue mensuelle (kWh/mois ≈ annual / 12).
+        # ASAV63 — production attendue de chaque mois sur ses jours
+        # réellement couverts (annuel × jours / 365) : le premier et le
+        # dernier mois partiels sont normalisés (même règle que les PR
+        # mensuels de l'analytique O&M).
+        from .analytics import jours_couverts_mois
+        from .services import debut_couverture
+
+        today = timezone.localdate()
         expected_annual = config.expected_annual_kwh
-        expected_monthly = (
-            float(expected_annual) / 12 if expected_annual else None)
+        debut_eff = debut_couverture(config.installation, since)
 
         rows = []
         for row in qs:
             actual = float(row['actual_kwh'])
             ratio_pct = None
-            if expected_monthly and expected_monthly > 0:
-                ratio_pct = round(actual / expected_monthly * 100, 1)
+            expected_month = None
+            couverts = jours_couverts_mois(row['month'], debut_eff, today)
+            if expected_annual and couverts > 0:
+                expected_month = float(expected_annual) * couverts / 365
+            if expected_month and expected_month > 0:
+                ratio_pct = round(actual / expected_month * 100, 1)
             rows.append({
                 'month': row['month'].strftime('%Y-%m'),
                 'actual_kwh': round(actual, 2),
                 'expected_kwh': (
-                    round(expected_monthly, 2) if expected_monthly else None),
+                    round(expected_month, 2) if expected_month else None),
                 'ratio_pct': ratio_pct,
             })
 
@@ -313,7 +330,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         company = request.user.company
         if company is None:
             return Response({'systems': [], 'systems_active': 0})
-        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
         return Response(fleet_overview(company, window_days=window))
 
     @action(detail=False, methods=['get'], url_path='benchmark',
@@ -325,7 +343,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         company = request.user.company
         if company is None:
             return Response({'systems_ranked': 0, 'systems': []})
-        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
         return Response(benchmark_parc(company, window_days=window))
 
     @action(detail=True, methods=['get'], url_path='om-metrics',
@@ -335,7 +354,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         dégradation) depuis `ProductionReading`. Fenêtre : ?window_days=365
         (défaut, jusqu'à 1825 jours). 100 % lecture."""
         config = self.get_object()
-        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
         return Response(om_metrics(config.installation, window_days=window))
 
     @action(detail=False, methods=['get'], url_path='client-portal',
@@ -345,7 +365,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         (production / économies / CO₂). ?client=ID requis."""
         from .selectors import client_environmental_dashboard
         company = request.user.company
-        client_id = request.query_params.get('client')
+        client_id = identifiant(request, 'client')
         if company is None or not client_id:
             return Response(
                 {'detail': 'client requis.'},
@@ -359,8 +379,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         ou bornée par ?since=YYYY-MM-DD&until=YYYY-MM-DD)."""
         from .selectors import co2_for_installation
         config = self.get_object()
-        since = request.query_params.get('since') or None
-        until = request.query_params.get('until') or None
+        since = date_iso(request, 'since')
+        until = date_iso(request, 'until')
         return Response(co2_for_installation(
             config.installation, since=since, until=until))
 
@@ -372,8 +392,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         company = request.user.company
         if company is None:
             return Response({'systems': [], 'total_co2_kg': 0})
-        since = request.query_params.get('since') or None
-        until = request.query_params.get('until') or None
+        since = date_iso(request, 'since')
+        until = date_iso(request, 'until')
         return Response(co2_fleet(company, since=since, until=until))
 
     @action(detail=True, methods=['get'], url_path='soiling',
@@ -382,7 +402,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         """FG283 — perte estimée par salissure (chute de PR entre nettoyages)
         + recommandation de nettoyage. ?window_days=365 (défaut)."""
         config = self.get_object()
-        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        window = entier_borne(
+            request, 'window_days', 365, mini=1, maxi=1825)
         return Response(
             soiling_assessment(config.installation, window_days=window))
 
@@ -409,12 +430,18 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     def email_om_report(self, request, pk=None):
         """FG289 — envoie le rapport O&M périodique par e-mail (PDF joint).
         Destinataire : body `recipient` sinon l'e-mail du client du système."""
-        from .report import email_om_report
+        from .report import EnvoiRapportImpossible, email_om_report
         config = self.get_object()
         period = request.data.get('period', 'monthly')
         recipient = request.data.get('recipient') or None
-        sent = email_om_report(
-            config.installation, period=period, recipient=recipient)
+        try:
+            sent = email_om_report(
+                config.installation, period=period, recipient=recipient)
+        except EnvoiRapportImpossible as exc:
+            # ASAV68 — l'e-mail n'est pas parti : jamais {sent: true}.
+            return Response(
+                {'detail': f'Envoi impossible : {exc}'},
+                status=status.HTTP_502_BAD_GATEWAY)
         return Response({'sent': sent})
 
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
@@ -436,8 +463,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Garantie de production non validée (Paramètres).'},
                 status=status.HTTP_409_CONFLICT)
-        annee = request.query_params.get('annee')
-        annee = int(annee) if annee else None
+        annee = entier_borne(request, 'annee', None, mini=1900, maxi=2200)
         data = build_warranty_report_data(config.installation, year=annee)
         if not data.get('has_warranty'):
             return Response(
@@ -461,8 +487,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         dans le PDF, jamais une erreur."""
         from .report_carbon import render_carbon_report_pdf_site
         config = self.get_object()
-        since = request.query_params.get('since') or None
-        until = request.query_params.get('until') or None
+        since = date_iso(request, 'since')
+        until = date_iso(request, 'until')
         pdf = render_carbon_report_pdf_site(
             config.installation, since=since, until=until)
         resp = HttpResponse(pdf, content_type='application/pdf')
@@ -479,12 +505,15 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         message propre dans le PDF, jamais une erreur."""
         from .report_carbon import render_carbon_report_pdf_client
         company = request.user.company
-        client_id = request.query_params.get('client')
+        client_id = identifiant(request, 'client')
         if company is None or not client_id:
             return Response(
                 {'detail': 'client requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        pdf = render_carbon_report_pdf_client(company, client_id)
+        # ASAV67 — la période demandée est appliquée (plus ignorée).
+        pdf = render_carbon_report_pdf_client(
+            company, client_id, since=date_iso(request, 'since'),
+            until=date_iso(request, 'until'))
         resp = HttpResponse(pdf, content_type='application/pdf')
         resp['Content-Disposition'] = (
             f'attachment; filename="attestation-carbone-client-{client_id}.pdf"')
@@ -505,7 +534,7 @@ class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        inst = self.request.query_params.get('installation')
+        inst = identifiant(self.request, 'installation')
         if inst:
             qs = qs.filter(installation_id=inst)
         return qs
@@ -529,7 +558,7 @@ class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        inst = self.request.query_params.get('installation')
+        inst = identifiant(self.request, 'installation')
         if inst:
             qs = qs.filter(installation_id=inst)
         return qs
@@ -560,7 +589,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        inst = self.request.query_params.get('installation')
+        inst = identifiant(self.request, 'installation')
         if inst:
             qs = qs.filter(installation_id=inst)
         return qs
@@ -571,9 +600,9 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         """Écart production réelle vs productible garanti dégradé d'une année
         (?year=YYYY, défaut année courante) + compensation due."""
         warranty = self.get_object()
-        year = request.query_params.get('year')
+        year = entier_borne(request, 'year', None, mini=1900, maxi=2200)
         result = production_warranty_status(
-            warranty.installation, year=int(year) if year else None)
+            warranty.installation, year=year)
         return Response(result)
 
     @action(detail=True, methods=['get'], url_path='curve',
@@ -583,11 +612,10 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         dégradation par année → dérive anormale → recours fabricant.
         ?years=N pour borner ; ?drift_threshold_pct=X pour le seuil."""
         warranty = self.get_object()
-        years = request.query_params.get('years')
-        threshold = request.query_params.get('drift_threshold_pct')
+        years = entier_borne(request, 'years', None, mini=1, maxi=100)
+        threshold = decimal_param(request, 'drift_threshold_pct')
         result = warranty_curve_overlay(
-            warranty.installation,
-            years=int(years) if years else None,
+            warranty.installation, years=years,
             drift_threshold_pct=threshold)
         return Response(result)
 

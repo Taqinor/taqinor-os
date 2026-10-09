@@ -24,8 +24,8 @@ from testkit.time import frozen
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.services import (
-    BASE_LEGALE_OPPOSITION, CONSENT_SOURCE_OPPOSITION_FICHE,
-    CONSENT_SOURCE_OPPOSITION_TOUCHE)
+    BASE_LEGALE_OPPOSITION, CONSENT_PURPOSE_PROSPECTION,
+    CONSENT_SOURCE_OPPOSITION_FICHE, CONSENT_SOURCE_OPPOSITION_TOUCHE)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -55,8 +55,11 @@ class _Base(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
 
     def _oppositions(self):
+        # ACRM59 — une opposition s'écrit désormais pour CHAQUE finalité de
+        # contact : la ligne de la PROSPECTION est celle que CAD91 vérifie.
         return list(ConsentRecord.objects.filter(
             company=self.company, subject_identifier=TELEPHONE,
+            purpose=CONSENT_PURPOSE_PROSPECTION,
             granted=False, source__contains=BASE_LEGALE_OPPOSITION))
 
 

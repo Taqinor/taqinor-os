@@ -732,7 +732,6 @@ owners:
       - backend/.gitignore
       - backend/README.md
       - backend/caddy/**
-      - backend/celery_worker/**
       - backend/db/**
       - backend/django_core/.coveragerc
       - backend/django_core/.dockerignore
@@ -751,7 +750,6 @@ owners:
       - docker-compose*.yml
       - frontend/.dockerignore
       - frontend/.gitignore
-      - frontend/Dockerfile.dev
       - frontend/Dockerfile.prod
       - frontend/README.md
       - frontend/eslint.config.js

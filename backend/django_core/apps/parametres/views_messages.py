@@ -30,11 +30,13 @@ from .models import (
 # ``ventes.utils.whatsapp.build_devis_whatsapp`` — était refusé sur les devis.
 _VARIABLES_RENDU = {
     'devis_unique': ['{civilite}', '{nom}', '{reference}', '{lien}',
-                     '{lien_rdv}'],
-    'devis_multi_entete': ['{civilite}', '{nom}', '{n}', '{lien_rdv}'],
+                     '{lien_rdv}', '{marque}'],
+    'devis_multi_entete': ['{civilite}', '{nom}', '{n}', '{lien_rdv}',
+                           '{marque}'],
     'devis_multi_ligne': ['{reference}', '{lien}', '{lien_rdv}'],
-    'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    # APAR50 — {marque} : raison sociale de la société émettrice.
+    'facture': ['{civilite}', '{nom}', '{reference}', '{lien}', '{marque}'],
+    'relance': ['{civilite}', '{nom}', '{reference}', '{lien}', '{marque}'],
     # XSAV4 — notifications client aux transitions du ticket SAV.
     'ticket_recu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],

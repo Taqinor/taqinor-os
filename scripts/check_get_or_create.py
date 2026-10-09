@@ -18,7 +18,12 @@ passes; a NEW site not yet recorded fails CI (forces the reviewer to look
 at whether the target model needs a constraint before merging).
 
 Usage:
-    python scripts/check_get_or_create.py
+    python scripts/check_get_or_create.py          # lecture seule (CI)
+    python scripts/check_get_or_create.py --write  # regenere le registre
+
+ADEP29 : le controle est en LECTURE SEULE (deux lancements successifs sur un
+appel nouveau rendent tous deux 1) ; le registre ne change que par ``--write``
+et ses cles sont de CONTENU (``fichier::fonction::Modele``), pas de ligne.
 """
 from __future__ import annotations
 
@@ -71,6 +76,30 @@ def _call_target_repr(node):
         return "?"
 
 
+def _modele(receiver: str) -> str:
+    """Le modele vise : ``Devis.objects`` -> ``Devis`` ; ``self.queryset`` reste
+    tel quel (la cle est de CONTENU, jamais un numero de ligne)."""
+    return receiver.split(".objects", 1)[0] or receiver
+
+
+class _Visiteur(ast.NodeVisitor):
+    def __init__(self):
+        self.pile = []
+        self.appels = []  # (noeud, fonction qualifiee)
+
+    def _porte(self, node):
+        self.pile.append(node.name)
+        self.generic_visit(node)
+        self.pile.pop()
+
+    visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _porte
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Attribute) and node.func.attr in CALL_NAMES:
+            self.appels.append((node, ".".join(self.pile) or "<module>"))
+        self.generic_visit(node)
+
+
 def check_file(path: Path):
     source = path.read_text(encoding="utf-8")
     try:
@@ -78,17 +107,14 @@ def check_file(path: Path):
     except SyntaxError:
         return []
 
+    visiteur = _Visiteur()
+    visiteur.visit(tree)
     rows = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not isinstance(node.func, ast.Attribute):
-            continue
-        if node.func.attr not in CALL_NAMES:
-            continue
+    for node, fonction in visiteur.appels:
         receiver = _call_target_repr(node)
         keys = _lookup_keys(node)
-        rows.append((_rel(path), node.lineno, node.func.attr, receiver, keys))
+        cle = f"{_rel(path)}::{fonction}::{_modele(receiver)}"
+        rows.append((cle, node.lineno, node.func.attr, receiver, keys))
     return rows
 
 
@@ -115,16 +141,23 @@ def _write_audit_doc(rows):
         "company-scopée sur le modèle cible pour être course-safe. Advisory : "
         "ce sweep ne corrige rien (correctifs = ERROR_PLAN).",
         "",
-        "| Fichier:ligne | Appel | Récepteur | Clés de lookup |",
+        "Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : "
+        "une insertion en amont ne fait plus remonter les voisins comme "
+        "nouveaux). Régénéré par `python scripts/check_get_or_create.py --write`.",
+        "",
+        "| Clé | Appel | Récepteur | Clés de lookup |",
         "|---|---|---|---|",
     ]
-    for rel, lineno, call, receiver, keys in sorted(rows):
+    for cle, lineno, call, receiver, keys in sorted(rows):
         lines.append(
-            f"| `{rel}:{lineno}` | {call} | {receiver} | {', '.join(keys)} |")
+            f"| `{cle}` | {call} | {receiver} | {', '.join(keys)} |")
     AUDIT_DOC.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main(argv):
+    """Lecture SEULE par defaut (ADEP29) : comparaison au registre, jamais
+    d'ecriture. ``--write`` regenere ``docs/get-or-create-audit.md``."""
+    ecrire = "--write" in argv
     baseline = _load_baseline()
 
     all_rows = []
@@ -133,21 +166,23 @@ def main(argv):
 
     print(f"check_get_or_create: {len(all_rows)} get_or_create/"
           "update_or_create call(s) found.")
-    for rel, lineno, call, receiver, keys in all_rows:
-        print(f"  {rel}:{lineno}  {receiver}.{call}({', '.join(keys)})")
+    for cle, lineno, call, receiver, keys in all_rows:
+        print(f"  {cle}:{lineno}  {receiver}.{call}({', '.join(keys)})")
 
     findings = []
-    for rel, lineno, call, receiver, keys in all_rows:
-        key = f"{rel}:{lineno}"
-        if key not in baseline:
+    for cle, lineno, call, receiver, keys in all_rows:
+        if cle not in baseline:
             findings.append(
-                f"{key}: NEW {call}({', '.join(keys)}) on {receiver} — "
-                "review whether the target model has a matching "
-                "UniqueConstraint, then commit the regenerated "
+                f"{cle} (ligne {lineno}): NEW {call}({', '.join(keys)}) on "
+                f"{receiver} — review whether the target model has a matching "
+                "UniqueConstraint, then regenerate with "
+                "`python scripts/check_get_or_create.py --write` and commit "
                 "docs/get-or-create-audit.md.")
 
-    _write_audit_doc(all_rows)
-    print(f"\ncheck_get_or_create: wrote {_rel(AUDIT_DOC)}")
+    if ecrire:
+        _write_audit_doc(all_rows)
+        print(f"\ncheck_get_or_create: wrote {_rel(AUDIT_DOC)}")
+        return 0
 
     if findings:
         print("\ncheck_get_or_create: violation(s) found:")

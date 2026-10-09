@@ -232,6 +232,90 @@ def _juger(etape, today, absences, proprietaire, ouvres):
     return None
 
 
+# ── ALEA32 — LA définition publique de « en retard » ────────────────────────
+#
+# Une seule règle pour le badge ``overdue``, le drapeau ``touche_en_retard``,
+# le scope ``overdue``, la chaîne commerciale, le digest de 08:30 et le
+# cockpit : une étape OUVERTE est en retard dès qu'au moins UN jour COMPTÉ
+# (``_jours_comptes`` : jour ouvré de la société, hors absence déclarée du
+# responsable et hors fermeture de la société) sépare son échéance
+# d'aujourd'hui. Une touche due le vendredi n'est donc pas en retard le
+# dimanche ; elle l'est le lundi.
+
+#: Taille d'une fenêtre de recherche du dernier jour compté (``seuil_retard``)
+#: et nombre maximal de fenêtres lues (≈ un an) — une société sans aucun jour
+#: ouvré sur un an n'a, par construction, rien « en retard ».
+_SEUIL_FENETRE_JOURS = 31
+_SEUIL_FENETRES_MAX = 12
+
+
+def seuil_retard(company, aujourd_hui):
+    """ALEA32 — le seuil des FILTRES SQL : une étape ``a_faire`` est en
+    retard ssi ``due_date < seuil_retard(company, aujourd_hui)``.
+
+    Le seuil est le dernier JOUR COMPTÉ du calendrier de la société (jour
+    ouvré, hors fermeture de toute la société) au plus tard ``aujourd_hui`` :
+    pour toute échéance ``d``, ``_jours_comptes(d, aujourd_hui, None, …) >= 1``
+    ⇔ ``d < seuil``. Les absences PERSONNELLES ne peuvent pas entrer dans un
+    filtre qui ne connaît pas le responsable : ``etape_en_retard`` les lit,
+    étape par étape. Deux ou trois requêtes, jamais une par jour."""
+    from apps.notifications.calendar_utils import jours_ouvres_entre
+
+    from . import cadence_absence
+
+    fin = aujourd_hui
+    for _ in range(_SEUIL_FENETRES_MAX):
+        debut = fin - datetime.timedelta(days=_SEUIL_FENETRE_JOURS - 1)
+        ouvres = jours_ouvres_entre(company, debut, fin)
+        fermetures = cadence_absence.couverture(
+            company, debut, fin, utilisateurs=())
+        jour = fin
+        while jour >= debut:
+            if jour in ouvres and not fermetures.couvre(None, jour):
+                return jour
+            jour -= datetime.timedelta(days=1)
+        fin = debut - datetime.timedelta(days=1)
+    return datetime.date.min
+
+
+def etape_en_retard(etape, maintenant=None, *, memo=None, aujourd_hui=None):
+    """ALEA32 — vrai ssi l'étape est OUVERTE (``a_faire``) et qu'au moins un
+    jour COMPTÉ (``_jours_comptes`` : jour ouvré de la société, hors absence
+    déclarée du responsable du lead et hors fermeture) sépare son échéance
+    d'aujourd'hui (jour Africa/Casablanca de ``maintenant``, ou
+    ``aujourd_hui`` quand l'appelant a déjà fixé le jour).
+
+    ``memo`` (un ``dict`` facultatif, ex. le contexte d'un sérialiseur de
+    liste) garde le calendrier et les absences déjà lus : une liste de N
+    étapes ne relit pas N fois les mêmes jours ouvrés."""
+    from core.dates import aujourd_hui_local
+
+    from apps.notifications.calendar_utils import jours_ouvres_entre
+
+    from . import cadence_absence
+    from .models import RelanceEtape
+
+    if etape.statut != RelanceEtape.Statut.A_FAIRE or etape.due_date is None:
+        return False
+    today = (aujourd_hui if aujourd_hui is not None
+             else aujourd_hui_local(maintenant))
+    if etape.due_date >= today:
+        return False
+    memo = {} if memo is None else memo
+    cle = ('alea32', etape.company_id, today)
+    lu = memo.get(cle)
+    debut = etape.due_date + datetime.timedelta(days=1)
+    if lu is None or lu[0] > debut:
+        borne = debut if lu is None else min(debut, lu[0])
+        lu = (borne,
+              jours_ouvres_entre(etape.company_id, borne, today),
+              cadence_absence.couverture(etape.company_id, borne, today))
+        memo[cle] = lu
+    _, ouvres, absences = lu
+    return _jours_comptes(etape.due_date, today, etape.lead.owner_id,
+                          ouvres, absences) >= 1
+
+
 def _compteurs():
     return {'du': 0, A_TEMPS: 0, EN_RETARD: 0, SAUTEES: 0, OUVERT: 0}
 

@@ -68,6 +68,32 @@ class Outillage(models.Model):
     def __str__(self):
         return self.nom
 
+    def calculer_prochaine_calibration(self):
+        """ACHT74 — prochaine calibration = dernière + N VRAIS mois
+        calendaires (``relativedelta``, jamais 30,44 j/mois). ``None`` sans
+        intervalle ; sans date de dernière calibration (jamais calibré) la
+        valeur stockée est conservée telle quelle (reprise des données)."""
+        if not self.intervalle_calibration_mois:
+            return None
+        if self.date_derniere_calibration is None:
+            return self.date_prochaine_calibration
+        from dateutil.relativedelta import relativedelta
+        return self.date_derniere_calibration + relativedelta(
+            months=self.intervalle_calibration_mois)
+
+    def save(self, *args, **kwargs):
+        # ACHT74 — dérivée À CHAQUE écriture (création, PATCH, calibrer) : le
+        # badge, le filtre `a_calibrer` et l'avertissement de recette lisent
+        # tous la même date.
+        self.date_prochaine_calibration = self.calculer_prochaine_calibration()
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and {
+                'date_derniere_calibration',
+                'intervalle_calibration_mois'} & set(update_fields):
+            kwargs['update_fields'] = list(
+                set(update_fields) | {'date_prochaine_calibration'})
+        super().save(*args, **kwargs)
+
 
 class KitOutillage(models.Model):
     """Modèle NOMMÉ et réutilisable de kit d'outillage (F2), éditable dans

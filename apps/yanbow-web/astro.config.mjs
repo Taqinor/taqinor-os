@@ -56,6 +56,27 @@ const sondeBonjour = () => ({
 });
 
 /**
+ * Tour design (YBW42) : les trois accueils candidats sur des routes PRIVÉES
+ * `/_design/a|b|c/` (FR) et `/_design/a|b|c/en/` (EN) — noindex, nofollow,
+ * hors registre `pages.ts` (donc hors sitemap), liées nulle part. Les fichiers
+ * `src/pages/_design/*.astro` ne sont pas routés par Astro (préfixe `_`) : on
+ * les injecte tant qu'ils existent ; YBW44 les supprime → l'injection disparaît.
+ */
+const candidatsDesign = () => ({
+  name: 'yanbow:candidats-design',
+  hooks: {
+    /** @param {{ injectRoute: (r: { pattern: string; entrypoint: string; prerender?: boolean }) => void }} p */
+    'astro:config:setup': ({ injectRoute }) => {
+      for (const c of ['a', 'b', 'c']) {
+        if (existsSync(new URL(`./src/pages/_design/${c}.astro`, import.meta.url))) {
+          injectRoute({ pattern: `/_design/${c}/[...langue]`, entrypoint: `./src/pages/_design/${c}.astro`, prerender: true });
+        }
+      }
+    },
+  },
+});
+
+/**
  * Langues actives (YBW13) : tant que `en` n'est pas dans LOCALES_ACTIVES
  * (src/i18n/config.ts), aucune route `/en/*` n'est publiée — le dossier
  * construit `dist/client/en/` est retiré après le build.
@@ -138,5 +159,5 @@ export default defineConfig({
     // Aucun script en ligne : la CSP est `script-src 'self'` (worker/headers.mjs).
     build: { assetsInlineLimit: 0 },
   },
-  integrations: [sondeBonjour(), localesActives(), routesJuridiques(), workersDevRedirect()],
+  integrations: [sondeBonjour(), candidatsDesign(), localesActives(), routesJuridiques(), workersDevRedirect()],
 });

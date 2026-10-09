@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { cssPolices, FAMILLES, fichierLicence, fichierPolice } from '../scripts/build-fonts.mjs';
 import { metriques } from '../scripts/font-metrics.mjs';
 import { ecartsTypoFr, INTERDITS, NBSP, POLICES_PRECHARGEES, typoFr } from '../src/lib/typo';
+import { candidatDeUrl, FICHES } from '../src/styles/candidates/candidats';
 import { DIST_CLIENT, pagesRendues } from './builtHtml';
 
 const POLICES = fileURLToPath(new URL('../public/fonts/', import.meta.url));
@@ -70,7 +71,9 @@ describe('YBW39 — HTML et CSS RENDUS', () => {
   for (const p of pagesRendues()) {
     it(`${p.url} : préchargement des 2 polices critiques, aucun CDN`, () => {
       const pre = [...p.document.querySelectorAll('link[rel="preload"][as="font"]')];
-      expect(pre.map((l) => l.getAttribute('href'))).toEqual([...POLICES_PRECHARGEES]);
+      // Les candidats PRIVÉS du tour design (YBW42) préchargent LEURS 2 polices critiques.
+      const candidat = candidatDeUrl(p.url);
+      expect(pre.map((l) => l.getAttribute('href'))).toEqual([...(candidat ? FICHES[candidat].polices : POLICES_PRECHARGEES)]);
       for (const l of pre) {
         expect(l.getAttribute('type')).toBe('font/woff2');
         expect(l.hasAttribute('crossorigin')).toBe(true);

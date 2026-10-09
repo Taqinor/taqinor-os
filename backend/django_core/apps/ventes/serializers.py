@@ -510,7 +510,15 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
     def _display(self, obj):
         if not hasattr(obj, '_display_totals_cache'):
             from .quote_engine.builder import display_totals
-            obj._display_totals_cache = display_totals(obj)
+            # APRF5 — UN seul passage moteur par ligne : le ``data`` est
+            # mémoïsé pour la carte A/B (``get_comparaison_options``), et une
+            # page de LISTE (``self.parent``) sert ses lignes depuis le
+            # préchargement du viewset (APRF3/APRF4).
+            donnees = {}
+            obj._display_totals_cache = display_totals(
+                obj, lignes_prechargees=self.parent is not None,
+                donnees=donnees)
+            obj._display_data_cache = donnees or None
         return obj._display_totals_cache
 
     def get_total_affiche(self, obj):
@@ -695,8 +703,12 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
         if d.get('nb_options', 1) != 2:
             return None
         try:
-            from .quote_engine.builder import build_quote_data
-            data = build_quote_data(obj, {'pdf_mode': 'onepage'})
+            # APRF5 — le ``data`` du passage moteur de ``_display`` (mêmes
+            # totaux au centime) ; un second passage seulement s'il manque.
+            data = getattr(obj, '_display_data_cache', None)
+            if not data:
+                from .quote_engine.builder import build_quote_data
+                data = build_quote_data(obj, {'pdf_mode': 'onepage'})
             # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas : la comparaison montre
             # les totaux ×N, ceux du total affiché et facturé.
             multi = data.get('totaux_multi') or {}
@@ -856,6 +868,11 @@ class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
         is_auth = bool(user is not None and getattr(user, 'is_authenticated', False))
         if not is_auth:
             data.pop('marge_snapshot', None)
+        # APRF6 (C-APRF-003) — la conception électrique (~55 % des octets
+        # d'une ligne) n'est lue par AUCUN écran de liste : absente de la
+        # représentation LISTE, servie identique au détail.
+        if self.parent is not None:
+            data.pop('electrical_design', None)
         return data
 
     class Meta:

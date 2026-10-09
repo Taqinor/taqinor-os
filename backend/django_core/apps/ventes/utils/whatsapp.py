@@ -30,6 +30,21 @@ def render_message_template(text, ctx):
     return out.strip()
 
 
+def marque_societe(company):
+    """APAR50 — nom de marque AFFICHÉ de la société émettrice : raison sociale
+    du profil (``CompanyProfile.nom``), sinon ``Company.nom`` — jamais un nom de
+    marque codé en dur (même source que ``crm.services._nom_affiche_marque``)."""
+    if company is None:
+        return ''
+    nom = ''
+    try:
+        from apps.parametres.selectors import company_identity
+        nom = (company_identity(company).get('nom') or '').strip()
+    except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais
+        nom = ''
+    return nom or (getattr(company, 'nom', '') or '').strip()
+
+
 def public_document_url(request, token):
     """URL absolue publique vers le PDF (déduite de la requête, ou réglage)."""
     from django.conf import settings
@@ -96,7 +111,7 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
         message = render_message_template(tpl, {
             'civilite': '', 'nom': nom,
             'reference': links[0]['reference'], 'lien': links[0]['url'],
-            'lien_rdv': lien_rdv})
+            'lien_rdv': lien_rdv, 'marque': marque_societe(company)})
     else:
         entete = MessageTemplate.get_corps(
             company, 'devis_multi_entete', langue)
@@ -106,7 +121,7 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
                     if ('{lien_rdv}' in entete or '{lien_rdv}' in ligne) else '')
         head = render_message_template(entete, {
             'civilite': '', 'nom': nom, 'n': len(devis_list),
-            'lien_rdv': lien_rdv})
+            'lien_rdv': lien_rdv, 'marque': marque_societe(company)})
         body = '\n'.join(
             render_message_template(ligne, {
                 'reference': ln['reference'], 'lien': ln['url'],
@@ -155,7 +170,8 @@ def build_single_devis_whatsapp(request, devis, langue='fr'):
     tpl = MessageTemplate.get_corps(company, 'devis_unique', langue)
     message = render_message_template(tpl, {
         'civilite': '', 'nom': nom,
-        'reference': devis.reference, 'lien': url})
+        'reference': devis.reference, 'lien': url,
+        'marque': marque_societe(company)})
     return message, {'token': link.token, 'url': url}
 
 
@@ -195,5 +211,6 @@ def _build_facture_whatsapp_message(facture, modele, langue, url_builder):
     nom = facture.client.nom if facture.client_id else ''
     message = render_message_template(tpl, {
         'civilite': '', 'nom': nom,
-        'reference': facture.reference, 'lien': url})
+        'reference': facture.reference, 'lien': url,
+        'marque': marque_societe(company)})
     return message, {'token': link.token, 'url': url}

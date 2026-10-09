@@ -90,11 +90,13 @@ class GardesTroisPortesTests(TestCase):
                         format='json')
 
     def _public(self, devis):
+        from apps.ventes.public.signature_views import empreinte_contenu
         lien = ShareLink.for_devis(devis)
         return APIClient().post(
             f'/api/django/public/proposal/{lien.token}/accept/',
             {'nom': 'Client', 'option': 'sans_batterie',
-             'consent_esign': True}, format='json')
+             'consent_esign': True,
+             'empreinte_contenu': empreinte_contenu(devis)}, format='json')
 
     def _portail(self, devis):
         api = APIClient()

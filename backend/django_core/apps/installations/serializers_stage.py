@@ -9,6 +9,25 @@ from rest_framework import serializers
 from .models import StageModele
 
 
+def valider_unicite_societe(serializer, champ, valeur, message, **portee):
+    """ACHT76 — unicité PAR SOCIÉTÉ d'un champ de référentiel (clé, type, nom)
+    avant l'écriture : 400 en français sous le champ au lieu d'un 500
+    (``IntegrityError`` — la société, posée côté serveur, n'est pas parmi les
+    champs du sérialiseur, donc DRF ne génère aucun ``UniqueTogetherValidator``).
+    Un PATCH qui garde sa propre valeur reste accepté (instance exclue)."""
+    request = serializer.context.get('request')
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is None:
+        return valeur
+    qs = serializer.Meta.model.objects.filter(
+        company=company, **{champ: valeur}, **portee)
+    if serializer.instance is not None:
+        qs = qs.exclude(pk=serializer.instance.pk)
+    if qs.exists():
+        raise serializers.ValidationError(message)
+    return valeur
+
+
 class StageModeleSerializer(serializers.ModelSerializer):
     statut_legacy_display = serializers.CharField(
         source='get_statut_legacy_display', read_only=True, default=None)
@@ -36,4 +55,5 @@ class StageModeleSerializer(serializers.ModelSerializer):
         if self.instance and self.instance.protege and value != self.instance.cle:
             raise serializers.ValidationError(
                 "La clé d'une étape système ne peut pas être modifiée.")
-        return value
+        return valider_unicite_societe(
+            self, 'cle', value, "Cette clé d'étape existe déjà.")

@@ -449,3 +449,15 @@ class EventType(models.TextChoices):
     # core.dossiers.notifier_echeances_depassees). Notifie le propriétaire.
     DOSSIER_ECHEANCE_DEPASSEE = (
         'dossier_echeance_depassee', 'Dossier en retard (échéance dépassée)')
+    # ACHT75 — l'échéance de calibration d'un outil (FG80) est à 30 jours ou
+    # moins : `calibrer` et la tâche quotidienne `outillage.calibrations_a_
+    # echeance` notifient. Avant, le type n'existait pas (notify() renvoyait
+    # None, exception avalée) et aucune notification n'était jamais créée.
+    OUTILLAGE_CALIBRATION_PROCHE = (
+        'outillage_calibration_proche', "Calibration d'outil proche")
+    # ACRM41/ACRM42 — rappel d'une visite planifiée (QJ20) et visite réservée
+    # par le prospect via le lien public. `crm.services` émettait déjà
+    # 'appointment_reminder' mais le type n'existait pas : notify() renvoyait
+    # None et AUCUNE notification n'était jamais créée (même défaut qu'ACHT75).
+    APPOINTMENT_REMINDER = (
+        'appointment_reminder', 'Rappel de rendez-vous / visite réservée')

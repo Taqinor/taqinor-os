@@ -494,7 +494,14 @@ jobs:
           pip install -r requirements.txt
       - name: Run FastAPI test suite (NL→SQL security / JWT / OCR / margin guard)
         working-directory: backend/fastapi_ia
-        run: python -m unittest discover -s tests -v
+        # ADEP14 : un test sauté (import cassé, dépendance absente) ou un nombre
+        # de tests sous le plancher mesuré (218, ne fait que monter) rougit le
+        # job — `OK (skipped=8)` laissait la garde de marge prix_achat « passer »
+        # sans avoir tourné. Le verificateur recopie la sortie telle quelle.
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -v 2>&1 \
+            | python ../../scripts/verifier_sortie_unittest.py --plancher 218
 
   # ---------------------------------------------------------------------------
   # QAH6 (28/09/2026) — FUZZING PROPERTY-BASED DU SCHEMA OPENAPI (Schemathesis).

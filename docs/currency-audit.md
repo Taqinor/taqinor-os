@@ -45,11 +45,11 @@ with no rate column at all — mono-MAD in practice.
 | crm | Client | `apps/crm/models.py:233` | tva_recuperable |
 | crm | Lead | `apps/crm/models.py:520` | carburant_prix_declare_le, carburant_prix_unitaire_mad, montant_estime, tva_recuperable |
 | crm | GesteRelanceAppareil | `apps/crm/models.py:2628` | total |
-| crm | PointContact | `apps/crm/models.py:3168` | cout |
-| crm | CommissionPartenaire | `apps/crm/models.py:3804` | base_ht, montant |
-| crm | ForecastEntry | `apps/crm/models.py:3956` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models.py:4017` | montant_total |
-| crm | DealEnregistre | `apps/crm/models.py:4532` | montant_commission_du, montant_commission_estime |
+| crm | PointContact | `apps/crm/models.py:3196` | cout |
+| crm | CommissionPartenaire | `apps/crm/models.py:3832` | base_ht, montant |
+| crm | ForecastEntry | `apps/crm/models.py:3984` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models.py:4045` | montant_total |
+| crm | DealEnregistre | `apps/crm/models.py:4560` | montant_commission_du, montant_commission_estime |
 | dataimport | ImportJob | `apps/dataimport/models.py:76` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:716` | prix_unitaire, remise, taux_tva |
 | facturation | Paiement | `apps/facturation/models.py:782` | escompte_montant, montant |
@@ -67,14 +67,14 @@ with no rate column at all — mono-MAD in practice.
 | installations | Livraison | `apps/installations/models_livraison.py:19` | cout_transport |
 | installations | OrdreSousTraitance | `apps/installations/models_ordre_soustraitance.py:66` | montant, montant_realise |
 | installations | RFQOffre | `apps/installations/models_rfq.py:81` | montant_ht |
-| monitoring | AbonnementMonitoring | `apps/monitoring/models.py:407` | montant |
+| monitoring | AbonnementMonitoring | `apps/monitoring/models.py:418` | montant |
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:74` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:541` | total |
 | sav | Ticket | `apps/sav/models.py:645` | cout |
-| sav | WarrantyClaim | `apps/sav/models.py:1357` | cout_recupere |
-| sav | ContratMaintenance | `apps/sav/models.py:1473` | prix |
-| sav | PrestationContrat | `apps/sav/models.py:1776` | prix_ht |
+| sav | WarrantyClaim | `apps/sav/models.py:1399` | cout_recupere |
+| sav | ContratMaintenance | `apps/sav/models.py:1515` | prix |
+| sav | PrestationContrat | `apps/sav/models.py:1845` | prix_ht |
 | statuspage | UptimeDayBucket | `apps/statuspage/models.py:160` | echantillons_total |
 | stock | AchatsParametres | `apps/stock/models.py:419` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:568` | tolerance_prix_absolu_mad, tolerance_prix_pct |
@@ -114,7 +114,7 @@ with no rate column at all — mono-MAD in practice.
 | App | Model | File | Money fields | Has exchange rate? |
 | --- | --- | --- | --- | --- |
 | achats | FactureFournisseur | `apps/achats/models.py:476` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
-| crm | ConcurrentPerte | `apps/crm/models.py:3086` | concurrent_prix | no |
+| crm | ConcurrentPerte | `apps/crm/models.py:3114` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:27` | abandon_montant, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:14` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
 | ventes | Devis | `apps/ventes/models.py:16` | acompte_montant, acompte_pct, penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |

@@ -71,6 +71,9 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     from django.utils import timezone
 
     from .models import Devis
+    # ADEV45 — import local (cycle évité, cf. en-tête) : une V1 remplacée par
+    # sa révision n'entre dans AUCUN panier.
+    from .selectors import devis_en_jeu
 
     today = today or timezone.localdate()
     now = timezone.now()
@@ -89,8 +92,8 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
 
     # ── Refusés sans motif (QX26) ──
     refuses_sans_motif.extend(
-        Devis.objects
-        .filter(company=company, statut=Devis.Statut.REFUSE)
+        devis_en_jeu(Devis.objects
+                     .filter(company=company, statut=Devis.Statut.REFUSE))
         .exclude(motif_refus__gt='')
         .order_by('id')
         .values_list('id', flat=True)
@@ -98,8 +101,9 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
 
     # ── Devis ENVOYÉS : un seul panier par devis, priorité au signal le plus
     # fort (engagement mesuré > échéance qui approche > simple cadence).
-    envoyes = (Devis.objects
-               .filter(company=company, statut=Devis.Statut.ENVOYE)
+    envoyes = (devis_en_jeu(Devis.objects
+                            .filter(company=company,
+                                    statut=Devis.Statut.ENVOYE))
                .select_related('client')
                .prefetch_related('share_links')
                .order_by('id'))

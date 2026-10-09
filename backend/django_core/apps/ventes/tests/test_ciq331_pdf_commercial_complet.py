@@ -19,6 +19,8 @@ from apps.ventes.quote_engine.ci.synthese import (
 from apps.ventes.quote_engine.commercial import render, renderer, sample_data
 from apps.ventes.quote_engine.figures import extract_figures
 
+from ._moteur_fixtures import etude_ci_au_kwc_servi
+
 _CONTRATS = Path(__file__).resolve().parents[1] / "contract_samples"
 
 
@@ -57,7 +59,7 @@ def _data(categorie="hotel", *, argent=True, lignes=None, tension=None,
         modele = data["all_items"][0]
         data["all_items"] = [dict(modele, designation=f"Article {i}")
                              for i in range(lignes)]
-    return data
+    return etude_ci_au_kwc_servi(data)
 
 
 def _html(data):

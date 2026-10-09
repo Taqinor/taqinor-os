@@ -333,7 +333,9 @@ class CommissioningRecord(models.Model):
         if not self.instrument_id:
             return None
         from apps.outillage.models import Outillage
-        return Outillage.objects.filter(pk=self.instrument_id).first()
+        # ACHT44 — jamais l'outil d'une autre société (donnée héritée).
+        return Outillage.objects.filter(
+            pk=self.instrument_id, company_id=self.company_id).first()
 
     @property
     def instrument_etalonnage_expire(self):
