@@ -120,6 +120,17 @@ class AcceptationTests(unittest.TestCase):
         code, sortie = self.lancer()
         self.assertEqual(code, 0, sortie)
 
+    def test_tag_cite_entre_backticks_ne_compte_pas(self):
+        # AMET89 : une tache qui PARLE du tag (`(@acceptation)`) n'est pas une acceptation.
+        self.depot.plan("- [x] ATST1 — **plan_lanes : tag `(@acceptation)` reconnu** : Given x "
+                        "When y Then z. Preuve en direct : n/a — planner. Files: `s.py`\n",
+                        "- [x] ATST2 — **Acceptation du groupe** : Given x When y Then z. "
+                        "Preuve en direct : n/a. Files: `s.py` (@acceptation)\n")
+        code, sortie = self.lancer()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("ATST2", sortie)
+        self.assertNotIn("ATST1 (", sortie)
+
     def test_groupe_accepte_seulement_si_tout_couvert_sans_dette(self):
         # AMET91 lit `--groupe G` : 0 = accepte (tout couvert, dette vide), 1 sinon.
         self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"))

@@ -85,7 +85,10 @@ _PREUVE = re.compile(r"Preuve en direct\s*:\s*(?P<v>.*?)"
                      r"(?=Hors p[ée]rim[èe]tre\s*:|\(gen\b|\bFiles?\s*:|$)", re.I)
 _SANS_PREUVE = re.compile(r"\s*(?:n/a|API seulement)", re.I)
 _ETAPE = re.compile(r"\bPA?\d")
-_TAG = re.compile(r"\(@acceptation\)|^\S+\s+—\s+\**\s*Acceptation live")
+# Tag NU seulement (un `(@acceptation)` cité entre backticks dans une tâche qui en PARLE ne
+# compte pas) : lecteur unique `plan_lanes._AT_ACCEPTATION_RE` (AMET89).
+_TAG = re.compile(plan_lanes._AT_ACCEPTATION_RE.pattern
+                  + r"|^\S+\s+—\s+\**\s*Acceptation live", re.I)
 _GROUPE = re.compile(r"[A-Z]+")
 _NOM = re.compile(r"(?P<date>\d{4}-\d{2}-\d{2})-(?P<sha>[0-9a-f]{9})\.md")
 _NOM_GROUPE = re.compile(r"[A-Z][A-Z0-9]*")
