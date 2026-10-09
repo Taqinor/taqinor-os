@@ -488,7 +488,9 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
                     'etape': dec.numero_etape}
 
         try:
-            config = veille_acces.exiger_utilisable(dec.company)
+            # AACQ36 — le mode rejeu (fixtures, réseau coupé) n'exige que la
+            # société autorisée ; sinon l'accès d'aujourd'hui, inchangé.
+            config = veille_acces.exiger_utilisable_ou_rejeu(dec.company)
         except veille_acces.AccesRefuse as exc:
             _erreur(dec, None, exc.message_fr, now)
             _clore(dec, 'echec', now)

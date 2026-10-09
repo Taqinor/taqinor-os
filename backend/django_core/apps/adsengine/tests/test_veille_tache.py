@@ -305,3 +305,95 @@ class AucunBeatTests(SimpleTestCase):
         import apps.adsengine.tasks  # noqa: F401 — enregistre la tâche
         self.assertIn('adsengine.veille_etape', app.tasks)
         self.assertIn('adsengine.veille_etape', settings.CELERY_TASK_ROUTES)
+
+
+def _interdit(*a, **k):
+    raise AssertionError('connexion réseau ouverte en mode rejeu')
+
+
+class RejeuDecouverteTests(BaseTache):
+    """AACQ36 — mode rejeu (fixtures posées, réseau coupé) atteignable depuis
+    ``executer_etape`` : seule la société autorisée est exigée, 0 socket."""
+
+    def setUp(self):
+        super().setUp()
+        import pathlib
+        import tempfile
+        self.dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dossier.cleanup)
+        (pathlib.Path(self.dossier.name) / 'robe_FR_1.json').write_text(
+            json.dumps({'data': [
+                {'id': 'r1', 'page_id': 'p1', 'page_name': 'Boutique A'},
+                {'id': 'r2', 'page_id': 'p2', 'page_name': 'Boutique B'}],
+                'paging': {}}), encoding='utf-8')
+
+    def _rejeu(self, **extra):
+        return override_settings(
+            META_AD_LIBRARY_FIXTURES_DIR=self.dossier.name,
+            META_AD_LIBRARY_ENABLED=False, META_AD_LIBRARY_ACCESS_TOKEN='',
+            **extra)
+
+    def _derouler(self, dec):
+        import socket
+        with mock.patch.object(socket.socket, 'connect', _interdit), \
+                mock.patch('httpx.Client.send', side_effect=_interdit):
+            for _ in range(10):
+                dec.refresh_from_db()
+                res = vd.executer_etape(dec.pk, etape=dec.numero_etape,
+                                        now=self.now)
+                if res['action'] == 'fin':
+                    break
+        dec.refresh_from_db()
+        return dec
+
+    def test_rejeu_sans_jeton_ingere_les_fixtures_sans_reseau(self):
+        from apps.adsengine.models import VeillePubVue
+        with self._rejeu():
+            dec = self._derouler(self.creer())
+        self.assertEqual(dec.statut, 'termine')
+        self.assertEqual(
+            set(VeillePubVue.objects.filter(company=self.company)
+                .values_list('ad_archive_id', flat=True)), {'r1', 'r2'})
+        # Persistance : relire la découverte → même statut.
+        self.assertEqual(VeilleDecouverte.objects.get(pk=dec.pk).statut,
+                         'termine')
+
+    def test_rejeu_societe_non_autorisee_refusee(self):
+        dec = self.creer()
+        with self._rejeu(VEILLE_SOCIETES_AUTORISEES=[]):
+            dec = self._derouler(dec)
+        self.assertEqual(dec.statut, 'echec')
+        self.assertEqual(
+            dec.erreurs[-1]['message_fr'],
+            veille_acces.MESSAGES_FR[veille_acces.NON_AUTORISE])
+
+    def test_matrice_acces_sans_rejeu_inchangee(self):
+        attendus = {('', False): veille_acces.NON_CONFIGURE,
+                    ('', True): veille_acces.NON_CONFIGURE,
+                    (JETON, False): veille_acces.DESACTIVE,
+                    (JETON, True): veille_acces.PRET}
+        for (jeton, actif), etat_attendu in attendus.items():
+            with self.subTest(jeton=bool(jeton), actif=actif), \
+                    override_settings(META_AD_LIBRARY_FIXTURES_DIR='',
+                                      META_AD_LIBRARY_ENABLED=actif,
+                                      META_AD_LIBRARY_ACCESS_TOKEN=jeton):
+                self.assertEqual(veille_acces.etat(self.company)['etat'],
+                                 etat_attendu)
+                if etat_attendu == veille_acces.PRET:
+                    self.assertIsNotNone(
+                        veille_acces.exiger_utilisable_ou_rejeu(self.company))
+                else:
+                    with self.assertRaises(veille_acces.AccesRefuse) as ctx:
+                        veille_acces.exiger_utilisable_ou_rejeu(self.company)
+                    self.assertEqual(ctx.exception.etat, etat_attendu)
+        # Fixtures posées MAIS interrupteur vrai : pas de rejeu, jeton exigé.
+        with override_settings(META_AD_LIBRARY_FIXTURES_DIR=self.dossier.name,
+                               META_AD_LIBRARY_ENABLED=True,
+                               META_AD_LIBRARY_ACCESS_TOKEN=''):
+            with self.assertRaises(veille_acces.AccesRefuse) as ctx:
+                veille_acces.exiger_utilisable_ou_rejeu(self.company)
+            self.assertEqual(ctx.exception.etat, veille_acces.NON_CONFIGURE)
+        # Rejeu actif : ``etat()`` inchangé (aucun état nouveau).
+        with self._rejeu():
+            self.assertEqual(veille_acces.etat(self.company)['etat'],
+                             veille_acces.NON_CONFIGURE)
