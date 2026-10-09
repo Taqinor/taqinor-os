@@ -309,7 +309,11 @@ export default function ApprovalsScreen() {
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
     try {
-      await adsengineApi.actions.reject(id, { reason: rejectReason })
+      // AACQ64 — le serveur lit `commentaire` (EngineActionViewSet.reject →
+      // `error` de l'action, relu au Journal) : on y envoie le LIBELLÉ du motif.
+      const motif = REJECTION_REASONS.find(r => r.value === rejectReason)
+      await adsengineApi.actions.reject(
+        id, { commentaire: motif ? motif.label : rejectReason })
       setRejectingId(null)
       removeApplied([id])
     } catch {

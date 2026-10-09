@@ -186,8 +186,26 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(reason.tagName).toBe('SELECT')
     fireEvent.change(reason, { target: { value: 'creatif_non_conforme' } })
     fireEvent.click(screen.getByTestId('ae-reject-confirm-12'))
-    await waitFor(() => expect(mocks.reject).toHaveBeenCalledWith(12, { reason: 'creatif_non_conforme' }))
+    // AACQ64 — corps du contrat (`corps_reject`) : le LIBELLÉ sous `commentaire`.
+    await waitFor(() => expect(mocks.reject).toHaveBeenCalledWith(
+      12, { commentaire: 'Créatif non conforme (règle de marque)' }))
     await waitFor(() => expect(screen.queryByTestId('ae-reject-12')).toBeNull())
+  })
+
+  it('AACQ64 — le rejet envoie le libellé du motif sous commentaire', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-reject-11'))
+    const reason = await screen.findByTestId('ae-reject-reason-11')
+    fireEvent.change(reason, { target: { value: 'hors_budget' } })
+    fireEvent.click(screen.getByTestId('ae-reject-confirm-11'))
+    await waitFor(() => expect(mocks.reject).toHaveBeenCalledTimes(1))
+    const [id, corps] = mocks.reject.mock.calls[0]
+    expect(id).toBe(11)
+    expect(corps).toEqual({ commentaire: 'Hors budget' })
+    // Même forme que le corps du contrat serveur (engine_action.json).
+    expect(Object.keys(corps)).toEqual(Object.keys(ENGINE_ACTION.corps_reject))
+    expect(corps).not.toHaveProperty('reason')
   })
 
   it('batch PARTIEL : n\'approuve que les cases cochées', async () => {
