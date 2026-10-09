@@ -1,3 +1,5 @@
+from drf_spectacular.utils import extend_schema_view
+from ..openapi_params import ENTITE, qstr
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction  # noqa: F401
@@ -158,6 +160,8 @@ class IsSuperuserOnly(BasePermission):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[ENTITE]))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
@@ -896,6 +900,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             ).data
         )
 
+    @extend_schema(parameters=[qstr('mode')])
     @action(detail=True, methods=['get'], url_path='arrondi-caisse',
             permission_classes=[IsAnyRole])
     def arrondi_caisse(self, request, pk=None):

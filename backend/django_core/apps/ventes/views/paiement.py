@@ -1,3 +1,5 @@
+from drf_spectacular.utils import extend_schema_view
+from ..openapi_params import qstr
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
@@ -68,6 +70,8 @@ def _refus_si_rejete(paiement):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qstr('remisable', desc='1/true : seulement les paiements remisables en banque.')]))
 class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     """Lecture seule des paiements (l'enregistrement passe par la facture) —
     XFAC1 ajoute deux actions d'écriture pour les AVANCES non affectées

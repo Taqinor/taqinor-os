@@ -7,6 +7,8 @@ rafraichir_etudes_du_devis``, ``from ..serializers import OverridesSerializer``
 …) restent dans les corps : les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi.
 """
+from drf_spectacular.utils import extend_schema
+from ..openapi_params import qstr
 import logging
 from django.db import transaction
 from rest_framework import status
@@ -130,6 +132,7 @@ class DevisEtudesActionsMixin:
             'lignes': lignes,
         }
 
+    @extend_schema(parameters=[qstr('chemin', desc='DELETE : chemin à régénérer.')])
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path='overrides',
             permission_classes=[IsResponsableOrAdmin])

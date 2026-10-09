@@ -8,6 +8,7 @@ du viewset (``core/action_permission_scan``). Les imports function-locaux
 des corps restent dans les corps (les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi).
 """
+from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -409,6 +410,7 @@ class DevisCycleActionsMixin:
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(parameters=[qint('a'), qint('b')])
     @action(detail=True, methods=['get'],
             url_path='historique-configuration',
             permission_classes=[IsResponsableOrAdmin])

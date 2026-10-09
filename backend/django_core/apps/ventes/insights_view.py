@@ -12,6 +12,8 @@ Buckets renvoyés :
   - au_dela : tout ce qui dépasse les buckets ci-dessus
   - sans_echeance : factures actives sans date_echeance fixée
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import PERIODE, qstr
 from decimal import Decimal
 from datetime import timedelta
 import calendar
@@ -38,6 +40,7 @@ def _start_of_next_month(d):
     return d.replace(month=d.month + 1, day=1)
 
 
+@extend_schema(parameters=[qstr('mode', enum=['comportement'])])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def cash_flow_forecast(request):
@@ -200,6 +203,7 @@ def cash_flow_forecast(request):
     })
 
 
+@extend_schema(parameters=[qstr('debut'), qstr('fin'), qstr('export', enum=['csv'])] + PERIODE)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analyse_facturation_view(request):

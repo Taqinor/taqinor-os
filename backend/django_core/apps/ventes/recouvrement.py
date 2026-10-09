@@ -2,6 +2,8 @@
 âgée, relevé de compte client. VUE / CONSIGNE / IMPRESSION uniquement — aucun
 envoi (email/SMS/courrier). L'envoi reste pour une session future.
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import qstr
 import re
 from decimal import Decimal
 
@@ -413,6 +415,7 @@ def _facture_due_rows(user):
     return [f for f in qs if facture_relancable(f)[0]]
 
 
+@extend_schema(parameters=[qstr('mes_relances', desc='1/true : seulement mes relances.')])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def relances_list(request):

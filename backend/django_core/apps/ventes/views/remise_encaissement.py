@@ -10,6 +10,8 @@ Endpoints :
 Le technicien déclare sa collecte du jour (des Paiement déjà encaissés,
 espèces/chèque) ; le responsable la clôture avec un bordereau PDF. L'écart
 (déclaré vs somme des lignes) est calculé et exposé, jamais masqué."""
+from drf_spectacular.utils import extend_schema_view, extend_schema
+from ..openapi_params import qint
 from django.db import transaction
 from django.utils import timezone
 from django.http import HttpResponse
@@ -39,6 +41,8 @@ def paiements_remisables(qs):
         lignes_remise_encaissement__isnull=True)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('technicien')]))
 class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique. get_queryset /
     # perform_create / get_permissions SURCHARGENT la base (scoping direct sur

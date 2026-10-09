@@ -6,6 +6,8 @@ Celery (queue `interactive`) au lieu d'occuper un slot gunicorn pendant toute
 leur construction. Sous le seuil, le chemin synchrone reste STRICTEMENT
 inchangé (mêmes octets, UI inchangée). Le CSV reste toujours synchrone.
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import PERIODE, qstr
 import uuid
 
 from rest_framework.decorators import api_view, permission_classes
@@ -61,6 +63,7 @@ def _maybe_async_export(request, layout, debut, fin):
     )
 
 
+@extend_schema(parameters=list(PERIODE))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def journal_ventes(request):
@@ -79,6 +82,7 @@ def journal_ventes(request):
     return export_journal_ventes(user.company, debut, fin)
 
 
+@extend_schema(parameters=[qstr('fmt'), qstr('layout')] + PERIODE)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_comptable(request):

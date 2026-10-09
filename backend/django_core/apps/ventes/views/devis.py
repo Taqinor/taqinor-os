@@ -1,3 +1,5 @@
+from drf_spectacular.utils import extend_schema_view
+from ..openapi_params import ENTITE, qint, qstr
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
@@ -52,6 +54,8 @@ from authentication.scoping import visible_user_ids  # noqa: E402
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('lead'), qstr('concevable', enum=['1', 'true']), qstr('statut'), ENTITE]))
 class DevisViewSet(DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
                    DevisEtudesActionsMixin,
