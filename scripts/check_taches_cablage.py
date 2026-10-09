@@ -55,12 +55,16 @@ FORME 4 « composant-redefini » — AVERTISSEMENT SEUL, NON BLOQUANTE.
     gaspillage : au lieu de ne pas brancher ce qui existe, on le reecrit.
     Elle N'ECHOUE PAS — voir « HONNETETE SUR LA FORME 4 ».
 
-FORME 5 « clauses-absentes » — BLOQUANTE (ACAL344, C-ACAL-146).
+FORME 5 « clauses-absentes » — BLOQUANTE (ACAL344, C-ACAL-146 ; v3 : AMET,
+    2026-10-09).
     Une tache OUVERTE d'un fichier ``docs/plans/PLAN_AUDIT_*.md`` doit porter
-    chacun des 13 libelles de la tache d'audit (docs/audits/METHODE.md §C.2,
-    unique definition : la constante ``CLAUSES_AUDIT`` ci-dessous). Le libelle
-    est cherche insensible a la casse et aux accents ; son CONTENU n'est pas
-    juge (« n/a — raison » est une clause presente).
+    chacun des libelles de la tache d'audit (docs/audits/METHODE.md §C.2,
+    unique definition : ``CLAUSES_AUDIT_V2`` / ``CLAUSES_AUDIT_V3`` ci-dessous).
+    Le format est decide par l'identifiant : gele dans
+    ``scripts/taches_audit_v2.txt`` = v2 (13 libelles, contenu non juge) ;
+    sinon v3 (14 libelles, et DEUX regles de contenu : jamais un ``n/a`` nu,
+    toujours un tag ``(@model: …)``). Le libelle est cherche insensible a la
+    casse et aux accents.
 
 MESURES DU 03/08/2026 sur ``origin/main`` (@70dbc196)
 ------------------------------------------------------
@@ -250,10 +254,19 @@ PLAN_FILES_EXPLICITES = (
 PLAN_GLOB = ("docs/plans", "PLAN_*.md")
 
 # FORME 5 — les fichiers de plan d'audit (docs/audits/METHODE.md §C.2) et les
-# 13 libelles qu'y porte CHAQUE tache ouverte. UNIQUE definition : METHODE.md
+# libelles qu'y porte CHAQUE tache ouverte. UNIQUE definition : METHODE.md
 # la cite sans la recopier.
+#
+# DEUX FORMATS (bascule v3 du 2026-10-09, D-FORMAT-V3) :
+#   - v2 (13 libelles) : les taches ouvertes AU MOMENT de la bascule, gelees
+#     par identifiant dans `scripts/taches_audit_v2.txt` — valides pour le
+#     build, jamais reecrites (append-only). Cette liste ne peut que RETRECIR.
+#   - v3 (14 libelles) : toute autre tache ouverte d'un PLAN_AUDIT_*.md. En v3,
+#     un `n/a` nu (sans ` — raison`) et l'absence du tag `(@model: …)` sont
+#     aussi des manquements (mesure 2026-10-09 : 4 565 `n/a` sur 1 609 taches,
+#     et le texte genere fait basculer le classifieur de plan_lanes).
 _PLAN_AUDIT = re.compile(r"^docs/plans/PLAN_AUDIT_[^/]*\.md$")
-CLAUSES_AUDIT = (
+CLAUSES_AUDIT_V2 = (
     "Constat",
     "Given",
     "Test rouge d'abord",
@@ -268,6 +281,28 @@ CLAUSES_AUDIT = (
     "Hors périmètre",
     "Files",
 )
+CLAUSES_AUDIT_V3 = (
+    "Constat",
+    "Given",
+    "Persistance",
+    "Emplacement",
+    "Code net",
+    "Appelants",
+    "Assertions existantes",
+    "Jumeaux",
+    "Listes figées",
+    "Contrat partagé",
+    "Test rouge d'abord",
+    "Preuve en direct",
+    "Hors périmètre",
+    "Files",
+)
+CLAUSES_AUDIT = CLAUSES_AUDIT_V2  # alias historique (tests, METHODE v2)
+CLAUSES_PAR_VERSION = {"v2": CLAUSES_AUDIT_V2, "v3": CLAUSES_AUDIT_V3}
+V2_IDS_RELATIF = Path("scripts") / "taches_audit_v2.txt"
+# Manquements propres a la v3 (pseudo-libelles dans la liste des manques).
+MANQUE_NA_NU = "n/a nu (toujours « n/a — raison »)"
+MANQUE_MODEL = "(@model: haiku|sonnet|opus) obligatoire"
 
 # Les quatre formes gardees. La FORME 2 est deliberement non bloquante.
 FORME_ECRAN = "ecran-sans-cablage"
@@ -388,14 +423,45 @@ def _motif_clause(libelle: str):
                       + r"(?![\w-])")
 
 
-_MOTIFS_CLAUSES_AUDIT = tuple((libelle, _motif_clause(libelle))
-                              for libelle in CLAUSES_AUDIT)
+_MOTIFS_CLAUSES = {
+    version: tuple((libelle, _motif_clause(libelle)) for libelle in libelles)
+    for version, libelles in CLAUSES_PAR_VERSION.items()
+}
+_MOTIFS_CLAUSES_AUDIT = _MOTIFS_CLAUSES["v2"]  # alias historique
+
+# v3 : `n/a` nu = « n/a » suivi d'autre chose qu'un tiret de raison.
+_NA = re.compile(r"\bn/a\b\s*(\S?)")
+_MODEL_TAG = re.compile(r"@model\s*:\s*(?:haiku|sonnet|opus)\b")
 
 
-def clauses_manquantes(texte_normalise: str) -> list:
-    """Les libelles de CLAUSES_AUDIT absents d'un texte deja normalise."""
-    return [libelle for libelle, motif in _MOTIFS_CLAUSES_AUDIT
-            if not motif.search(texte_normalise)]
+def clauses_manquantes(texte_normalise: str, version: str = "v2") -> list:
+    """Les libelles du format `version` absents d'un texte deja normalise,
+    puis (v3 seulement) les deux manquements de contenu."""
+    manques = [libelle for libelle, motif in _MOTIFS_CLAUSES[version]
+               if not motif.search(texte_normalise)]
+    if version == "v3":
+        if any(m.group(1) not in ("—", "-", "–") for m in _NA.finditer(texte_normalise)):
+            manques.append(MANQUE_NA_NU)
+        if not _MODEL_TAG.search(texte_normalise):
+            manques.append(MANQUE_MODEL)
+    return manques
+
+
+def charger_ids_v2(path: Path | None = None) -> set:
+    """Identifiants des taches gelees au format v2 (resolu A L'APPEL : les
+    tests reassignent ROOT)."""
+    path = path or (ROOT / V2_IDS_RELATIF)
+    if not path.is_file():
+        return set()
+    return {
+        ligne.strip()
+        for ligne in path.read_text(encoding="utf-8").splitlines()
+        if ligne.strip() and not ligne.strip().startswith("#")
+    }
+
+
+def version_de(identifiant: str, ids_v2: set) -> str:
+    return "v2" if identifiant in ids_v2 else "v3"
 
 
 # --- FORME 1 : clause d'atteignabilite -------------------------------------
@@ -829,14 +895,17 @@ def analyse(fichiers=None, avec_doublons=True):
         "f2_candidates": 0, "f2_exposantes": 0, "f2_fautives": 0,
         "f3_candidates": 0, "f3_conformes": 0, "f3_fautives": 0,
         "f4_fichiers": 0, "f4_proprietaires": 0, "f4_doublons": 0,
-        "f5_candidates": 0, "f5_fautives": 0,
+        "f5_candidates": 0, "f5_fautives": 0, "f5_v2": 0, "f5_v3": 0,
     }
+    ids_v2 = charger_ids_v2()
 
     for tache in taches:
-        # ------ FORME 5 : tache d'audit sans ses 13 clauses (§C.2) ------
+        # ------ FORME 5 : tache d'audit sans ses clauses (§C.2, v2 ou v3) ------
         if _PLAN_AUDIT.match(tache.fichier):
             stats["f5_candidates"] += 1
-            manques = clauses_manquantes(tache.normalise)
+            version = version_de(tache.identifiant, ids_v2)
+            stats[f"f5_{version}"] += 1
+            manques = clauses_manquantes(tache.normalise, version)
             if manques:
                 stats["f5_fautives"] += 1
                 constats.append(Constat(FORME_CLAUSES, tache.identifiant,
@@ -1068,8 +1137,9 @@ def main(argv=None) -> int:
         print(f"  backend ET frontend nommes            : {stats['f3_candidates']}")
         print(f"     exigeant un contrat partage        : {stats['f3_conformes']}")
         print(f"     n'exigeant aucun contrat           : {stats['f3_fautives']}")
-        print("\nFORME 5 — tache d'audit sans ses 13 clauses (BLOQUANTE)")
-        print(f"  taches ouvertes de PLAN_AUDIT_*.md    : {stats['f5_candidates']}")
+        print("\nFORME 5 — tache d'audit sans ses clauses (BLOQUANTE)")
+        print(f"  taches ouvertes de PLAN_AUDIT_*.md    : {stats['f5_candidates']}"
+              f"  (v2 gelees {stats['f5_v2']}, v3 {stats['f5_v3']})")
         print(f"     omettant au moins un libelle       : {stats['f5_fautives']}")
         print("\nFORME 4 — composant redefini (AVERTISSEMENT SEUL)")
         print(f"  fichiers .jsx non-test analyses       : {stats['f4_fichiers']}")
@@ -1110,7 +1180,24 @@ def main(argv=None) -> int:
     signatures = {c.signature for c in bloquants}
     base = charger_base()
 
+    # Liste gelee des taches v2 : elle ne peut que retrecir (une tache cochee
+    # ou retiree en sort ; `--write-baseline` la reecrit sans ces ids). Un id
+    # absent de la liste est juge en v3 : aucune croissance n'est possible.
+    chemin_v2 = ROOT / V2_IDS_RELATIF
+    ids_v2 = charger_ids_v2(chemin_v2)
+    ouverts_audit = {t.identifiant for t in lire_taches()
+                     if not t.close and _PLAN_AUDIT.match(t.fichier)}
+    v2_perimes = sorted(ids_v2 - ouverts_audit)
+
     if args.write_baseline:
+        if v2_perimes and chemin_v2.is_file():
+            contenu = chemin_v2.read_text(encoding="utf-8").splitlines()
+            garde = [l for l in contenu if l.strip().startswith("#")
+                     or (l.strip() and l.strip() not in v2_perimes)]
+            chemin_v2.write_text("\n".join(garde) + "\n", encoding="utf-8")
+            print(f"Liste v2 reecrite : {V2_IDS_RELATIF} "
+                  f"({len(ids_v2) - len(v2_perimes)} id(s), "
+                  f"{len(v2_perimes)} retire(s)).")
         ajouts = signatures - base
         amorce = not BASELINE_PATH.is_file()
         if ajouts and not (args.autoriser_croissance or amorce):
@@ -1171,6 +1258,10 @@ def main(argv=None) -> int:
     if corriges:
         print("Ces dettes corrigees peuvent quitter la base : "
               "python scripts/check_taches_cablage.py --write-baseline")
+    print(f"   FORME 5 : {stats['f5_v2']} tache(s) v2 gelee(s), "
+          f"{stats['f5_v3']} tache(s) v3"
+          + (f" ; {len(v2_perimes)} id(s) v2 plus ouvert(s) a retirer "
+             f"(--write-baseline)" if v2_perimes else "") + ".")
     return 0
 
 
