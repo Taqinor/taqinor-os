@@ -4914,7 +4914,6 @@ class VeilleAnnonceurViewSet(AdsengineViewSet):
         """Export CSV (``;`` + BOM UTF-8) des MÊMES lignes que la liste
         filtrée — outil de la mise en service, jamais remis pendant le
         pilote (D-VEIL-7)."""
-        import csv
         import io
 
         from django.http import HttpResponse
@@ -4927,7 +4926,8 @@ class VeilleAnnonceurViewSet(AdsengineViewSet):
             lignes, many=True,
             context={'request': request, 'aveugle': self._aveugle()}).data
         tampon = io.StringIO()
-        ecrivain = csv.writer(tampon, delimiter=';')
+        from apps.records.xlsx import EcrivainCsvNeutralise
+        ecrivain = EcrivainCsvNeutralise(tampon, delimiter=';')
         colonnes = ['id', 'page_id', 'page_name', 'pays_vus', 'mots_cles',
                     'nb_pubs_vues', 'extraits', 'domaines',
                     'lien_bibliotheque', 'classe', 'doublon_de', 'verdict',

@@ -37,6 +37,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
+from psycopg2 import sql
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
@@ -402,9 +403,11 @@ def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
     with _live.cursor() as cur:
         for table, col in RESTORE_DRILL_TENANT_TABLES:
             try:
-                cur.execute(
-                    f'SELECT {col}, COUNT(*) FROM {table} '
-                    f'WHERE {col} IS NOT NULL GROUP BY {col}')
+                cur.execute(sql.SQL(
+                    'SELECT {col}, COUNT(*) FROM {table} '
+                    'WHERE {col} IS NOT NULL GROUP BY {col}').format(
+                        col=sql.Identifier(col),
+                        table=sql.Identifier(table)))
                 for company_id, n in cur.fetchall():
                     totals[company_id] = totals.get(company_id, 0) + n
             except Exception:  # noqa: BLE001 — table absente → ignorée
@@ -437,9 +440,11 @@ def _tenant_counts_in_restored(cur, company_ids):
         return counts
     for table, col in RESTORE_DRILL_TENANT_TABLES:
         try:
-            cur.execute(
-                f'SELECT {col}, COUNT(*) FROM {table} '
-                f'WHERE {col} = ANY(%s) GROUP BY {col}', (list(company_ids),))
+            cur.execute(sql.SQL(
+                'SELECT {col}, COUNT(*) FROM {table} '
+                'WHERE {col} = ANY(%s) GROUP BY {col}').format(
+                    col=sql.Identifier(col), table=sql.Identifier(table)),
+                (list(company_ids),))
             for company_id, n in cur.fetchall():
                 counts[company_id] = counts.get(company_id, 0) + n
         except Exception:  # noqa: BLE001 — dégrade proprement
@@ -573,7 +578,9 @@ def restore_drill(run: BackupRun) -> BackupRun:
                 try:
                     with conn.cursor() as cur:
                         for table in RESTORE_DRILL_TABLES:
-                            cur.execute(f'SELECT COUNT(*) FROM {table}')
+                            cur.execute(sql.SQL(
+                                'SELECT COUNT(*) FROM {}').format(
+                                    sql.Identifier(table)))
                             comptages[table] = cur.fetchone()[0]
                         # NTPLT62 — comptages PAR SOCIÉTÉ (top 5 par volume).
                         top_live = _top_tenants_live()

@@ -1,10 +1,18 @@
-name: loadtest smoke (k6, non-blocking)
+name: loadtest smoke (k6)
 
 # YTEST14 — a SHORT (~5 min) k6 smoke against the critical read path, gated
 # by PERCENTILE thresholds (p95/p99 — see loadtests/common.js), never the
-# average. Non-blocking at first (continue-on-error) until stability is
-# proven; the long soak / spike scenarios stay manual/scheduled, never a
+# average. The long soak / spike scenarios stay manual/scheduled, never a
 # per-commit gate. docs/testing.md documents "percentile, pas moyenne".
+#
+# ENF12 (règle fondateur 09/10/2026, docs/claude-memory/enforce-all-checks.md) :
+# job BLOQUANT — plus de `continue-on-error`, plus de `|| true`. Seuils (ceux
+# de loadtests/common.js, documentés YTEST14) : p95 < 800 ms, p99 < 1500 ms,
+# taux d'échec < 0,5 % — k6 sort en code 99 s'ils sont franchis. Mesure : les
+# passes masquées ne prouvaient RIEN — aucun compte `loadtest` n'existait et
+# /token/ ne renvoie plus le jeton dans le corps, donc 0 requête métier
+# mesurée. Désormais : compte de charge créé (scripts/load/creer_compte_charge.py),
+# jeton relayé du cookie, et setup() échoue franchement sans connexion.
 on:
   workflow_dispatch: {}
   schedule:
@@ -13,7 +21,6 @@ on:
 jobs:
   k6-smoke:
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -37,6 +44,8 @@ jobs:
       DB_PASSWORD: ci_password
       DB_HOST: localhost
       DB_PORT: '5432'
+      LOAD_USERNAME: loadtest
+      LOAD_PASSWORD: loadtest-password-not-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,6 +58,7 @@ jobs:
         working-directory: backend/django_core
         run: |
           python manage.py migrate --noinput
+          python ../../scripts/load/creer_compte_charge.py
           nohup python manage.py runserver 0.0.0.0:8000 > server.log 2>&1 &
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/api/django/token/ -o /dev/null -w '%{http_code}' | grep -qE '^[24]'; then
@@ -62,4 +72,6 @@ jobs:
           sudo mv k6-v0.52.0-linux-amd64/k6 /usr/local/bin/k6
       - name: Run k6 smoke (critical read path — short duration)
         run: |
-          k6 run -e BASE_URL=http://localhost:8000 loadtests/browse.js || true
+          k6 run -e BASE_URL=http://localhost:8000 \
+            -e LOGIN_USER="$LOAD_USERNAME" -e LOGIN_PASSWORD="$LOAD_PASSWORD" \
+            loadtests/browse.js

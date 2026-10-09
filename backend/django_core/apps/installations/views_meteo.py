@@ -11,6 +11,7 @@ intégrée dans ce dépôt (``apps.installations.weather``, XFSM21/PUB79) : aucu
 nouvelle dépendance externe n'est introduite ici, on ajoute seulement le cache
 serveur d'une heure par (latitude, longitude, jour) demandé par NTMOB21.
 """
+import math
 from datetime import date
 
 from django.core.cache import cache
@@ -30,6 +31,17 @@ CACHE_TTL_S = 3600
 # Arrondi des coordonnées pour la clé de cache : ~1 km, largement suffisant
 # pour une alerte « pluie sur le chantier » et évite une clé par mètre parcouru.
 COORD_PRECISION = 2
+
+
+def _float_fini(valeur):
+    """ENF12 (semgrep nan-injection) — ``float`` FINI ou ``ValueError``.
+
+    ``float('nan')`` / ``float('inf')`` passaient tels quels (clé de cache,
+    appel d'API externe, comparaisons toujours fausses)."""
+    nombre = float(valeur)
+    if not math.isfinite(nombre):
+        raise ValueError('valeur non finie')
+    return nombre
 
 
 def _cle_cache(lat, lon, jour):
@@ -66,8 +78,8 @@ def meteo_terrain(request):
     ``disponible: false`` (+ ``message`` de repli) si les coordonnées sont
     absentes/invalides ou si l'API externe ne répond pas."""
     try:
-        lat = float(request.query_params.get('lat'))
-        lon = float(request.query_params.get('lon'))
+        lat = _float_fini(request.query_params.get('lat'))
+        lon = _float_fini(request.query_params.get('lon'))
     except (TypeError, ValueError):
         return Response({
             'disponible': False,

@@ -2000,7 +2000,7 @@ class ChangePasswordView(APIView):
         from django.utils import timezone
         user = request.user
         current = request.data.get('current_password', '')
-        new = request.data.get('new_password', '')
+        new = request.data.get('new_password')
         if not user.check_password(current):
             return Response(
                 {'detail': 'Mot de passe actuel incorrect.'},

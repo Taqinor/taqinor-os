@@ -1,4 +1,3 @@
-import csv
 import json
 from datetime import timedelta
 
@@ -341,7 +340,8 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = (
                 'attachment; filename="revue-acces.csv"')
-            writer = csv.writer(response)
+            from apps.records.xlsx import EcrivainCsvNeutralise
+            writer = EcrivainCsvNeutralise(response)
             writer.writerow([
                 'username', 'email', 'nom_complet', 'role', 'actif',
                 'derniere_connexion', 'jours_depuis_connexion', 'dormant',

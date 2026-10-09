@@ -162,9 +162,13 @@ def drop_partitions_before(table: str, keep_months: int, now=None,
     if apply_:
         with connection.cursor() as cur:
             for part in eligible:
-                cur.execute(
-                    f'ALTER TABLE "{table}" DETACH PARTITION "{part}";')
-                cur.execute(f'DROP TABLE IF EXISTS "{part}";')
+                # ENF12 (semgrep no-formatted-raw-sql) : identifiants
+                # composés par psycopg2.sql (guillemets + échappement).
+                from psycopg2 import sql
+                cur.execute(sql.SQL('ALTER TABLE {} DETACH PARTITION {};').format(
+                    sql.Identifier(table), sql.Identifier(part)))
+                cur.execute(sql.SQL('DROP TABLE IF EXISTS {};').format(
+                    sql.Identifier(part)))
     return len(eligible)
 
 

@@ -9,6 +9,7 @@ Deux axes :
 Tests company-scoped : la copie d'attribution est toujours scopée au devis
 et à son lead (multi-tenant par construction — FK Devis→Lead→Company).
 """
+import uuid
 from decimal import Decimal
 from unittest import mock
 
@@ -59,7 +60,7 @@ class PersistAttributionTests(TestCase):
             company=self.company,
             client=self.client_obj,
             lead=lead,
-            reference=f'DEV-QJ9-{Devis.objects.count() + 1}',
+            reference=f'DEV-QJ9-{uuid.uuid4().hex[:8]}',
             etude_params=etude_params,
         )
 

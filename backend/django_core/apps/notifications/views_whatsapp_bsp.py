@@ -54,6 +54,7 @@ import os
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
+from django.utils.html import escape
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
@@ -169,7 +170,9 @@ class WhatsAppBspWebhookView(View):
                                    verify_token.encode("utf-8")):
             return HttpResponse("Verify token incorrect.", status=403)
         # Renvoie le challenge en texte brut (Meta l'exige).
-        return HttpResponse(challenge, content_type="text/plain", status=200)
+        # ENF12 (semgrep reflected-data-httpresponse) : challenge échappé
+        # (Meta envoie un jeton alphanumérique, inchangé par escape).
+        return HttpResponse(escape(challenge), content_type="text/plain", status=200)
 
     # ---- POST : reception des callbacks de statut ----
 

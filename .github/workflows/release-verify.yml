@@ -197,6 +197,9 @@ jobs:
         # trois sont dans `requirements-dev.txt`, deja bakes dans l'image CI
         # (`prebuilt-image: true` ci-dessus). Seul `coverage` reste a
         # installer (aucun des deux requirements ne le porte).
+        # ENF24 — `coverage report` est BLOQUANT : `fail_under = 88` dans
+        # backend/django_core/.coveragerc (mesuré 88,4 / 88,5 % les 07 et
+        # 08/10/2026 ; relevé par paliers d'un point, voir le commentaire là-bas).
         run: |
           pip install coverage
           coverage run manage.py test apps authentication core -v 2 --keepdb
@@ -222,9 +225,11 @@ jobs:
       - name: Frontend unit tests (node:test — auto-discovered)
         working-directory: frontend
         run: node --test "src/**/*.test.mjs"
-      - name: Frontend component + a11y tests (Vitest)
+      # ENF24 — même suite, avec couverture : seuils BLOQUANTS dans
+      # frontend/vitest.config.js (`coverage.thresholds`, mesurés le 09/10/2026).
+      - name: Frontend component + a11y tests (Vitest) + seuils de couverture
         working-directory: frontend
-        run: npm run test:unit
+        run: npm run test:coverage
 
   # ── Matrice e2e COMPLÈTE + régression visuelle (bootstrap, non bloquante) ──
   # CAD177 — conteneurisée dans l'image CI `ci-e2e` (comme ci.yml, job
@@ -372,14 +377,29 @@ jobs:
           cd ../../frontend
           # Toutes les specs SAUF les captures visuelles (qui ont leur propre étape).
           npx playwright test --grep-invert @visual
-      - name: Visual regression (bootstrap baselines — non bloquant)
-        # Au 1er run il n'y a pas de baseline → --update-snapshots les génère ;
-        # elles sont uploadées ci-dessous pour que le fondateur les relise et les
-        # commit (alors la comparaison devient un vrai garde-fou). continue-on-error
-        # car ce palier ne garde pas `main`.
-        continue-on-error: true
+      - name: Visual regression (baselines COMMITÉES — bloquant)
+        # ENF12 (règle fondateur 09/10/2026) : plus de `--update-snapshots` ni de
+        # `continue-on-error` — la comparaison se fait contre les baselines
+        # COMMITÉES sous frontend/e2e/**-snapshots/. Mesure du 09/10/2026 :
+        # AUCUNE baseline n'est committée (la passe régénérait les images à
+        # chaque nuit, donc ne comparait jamais rien). Tant qu'elles manquent,
+        # ce job ÉCHOUE avec un message clair ; Playwright écrit les captures
+        # manquantes (mode par défaut « missing », qui fait échouer le test),
+        # uploadées dans l'artefact `visual-baselines` : les relire puis les
+        # committer sous frontend/e2e/ rend la garde verte.
+        if: ${{ !cancelled() }}
         working-directory: frontend
-        run: npx playwright test --grep @visual --update-snapshots
+        run: |
+          n=$(git ls-files 'e2e/*-snapshots/*' | wc -l)
+          set +e
+          npx playwright test --grep @visual
+          rc=$?
+          set -e
+          if [ "$n" -eq 0 ]; then
+            echo "::error::Régression visuelle : aucune baseline committée sous frontend/e2e/**-snapshots/ — relire l'artefact visual-baselines de cette passe puis committer les images."
+            exit 1
+          fi
+          exit "$rc"
       - name: Upload gunicorn logs (CAD177 - diagnostic des blocages monkey)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -427,24 +447,33 @@ jobs:
       - name: Build marketing site (astro build)
         working-directory: apps/web
         run: npm run build
-      - name: Lighthouse (perf/SEO/a11y — non bloquant)
-        continue-on-error: true
+      # ENF12 (règle fondateur 09/10/2026) : plus de `continue-on-error` ni de
+      # `|| true`. Trois passes, budgets sur la MÉDIANE de chaque catégorie
+      # (scripts/check_lighthouse.py — valeurs mesurées et leur source dans
+      # son en-tête : perf 0,40 / a11y 0,90 / bonnes pratiques 0,75 / SEO 0,95).
+      - name: Lighthouse (perf/SEO/a11y/bonnes pratiques — budgets bloquants)
         working-directory: apps/web
         run: |
           npm run preview -- --port 4321 &
+          pret=0
           for i in $(seq 1 20); do
-            if curl -sf http://localhost:4321/ >/dev/null; then echo "preview prêt"; break; fi
+            if curl -sf http://localhost:4321/ >/dev/null; then echo "preview prêt"; pret=1; break; fi
             sleep 2
           done
-          npx lighthouse http://localhost:4321/ \
-            --quiet --chrome-flags="--headless --no-sandbox" \
-            --output=html --output-path=./lighthouse-report.html || true
+          if [ "$pret" -ne 1 ]; then echo "::error::preview apps/web indisponible"; exit 1; fi
+          for n in 1 2 3; do
+            npx lighthouse http://localhost:4321/ \
+              --quiet --chrome-flags="--headless --no-sandbox" \
+              --output=json --output=html --output-path="./lighthouse-$n"
+          done
+          python3 ../../scripts/check_lighthouse.py lighthouse-1.report.json \
+            lighthouse-2.report.json lighthouse-3.report.json
       - name: Upload Lighthouse report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report
-          path: apps/web/lighthouse-report.html
+          path: apps/web/lighthouse-*.report.*
           retention-days: 14
           if-no-files-found: ignore
 

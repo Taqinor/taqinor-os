@@ -226,13 +226,13 @@ def analyse_facturation_view(request):
     rows = analyse_facturation(user.company, debut, fin)
 
     if (request.query_params.get('export') or '').lower() == 'csv':
-        import csv
         import io
 
         from django.http import HttpResponse
 
         buf = io.StringIO()
-        writer = csv.writer(buf)
+        from apps.records.xlsx import EcrivainCsvNeutralise
+        writer = EcrivainCsvNeutralise(buf)
         writer.writerow([
             'Mois', 'Client', 'Statut', 'Nb factures',
             'Total HT', 'Total TVA', 'Total TTC',

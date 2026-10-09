@@ -11,6 +11,8 @@ Deux endpoints de calcul (lecture seule, tout rôle) exposent le service :
 * ``productible`` : productible PVGIS au point GPS exact (repli manuel
   hors-ligne — fonctionne sans réseau).
 """
+import math
+
 from django.db.models import F
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -59,6 +61,17 @@ def _settings(request):
     return TariffSettings.get(
         company=request.user.company if request.user.company_id else None
     )
+
+
+def _float_fini(valeur):
+    """ENF12 (semgrep nan-injection) — ``float`` FINI ou ``ValueError``.
+
+    ``float('nan')`` / ``float('inf')`` passaient tels quels (clé de cache,
+    appel d'API externe, comparaisons toujours fausses)."""
+    nombre = float(valeur)
+    if not math.isfinite(nombre):
+        raise ValueError('valeur non finie')
+    return nombre
 
 
 @api_view(['GET'])
@@ -162,7 +175,7 @@ def get_productible(request):
     tilt = request.query_params.get('tilt', None)
     azimuth = request.query_params.get('azimuth', None)
     try:
-        peak = float(peak)
+        peak = _float_fini(peak)
     except (TypeError, ValueError):
         peak = 1.0
     result = pvgis_client.fetch_productible(
