@@ -280,6 +280,71 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     setPhase('preview')
   }
 
+  // EDC6 — SORTIES PROTÉGÉES de l'édition. Échap, clic sur le voile et ✕
+  // fermaient tout le panneau SANS prévenir : une frappe de trop et le devis
+  // en cours était perdu. Maintenant, avec des modifications non enregistrées,
+  // chaque geste passe par « Quitter sans enregistrer ? » (Rester / Quitter) ;
+  // sans modification, il sort directement. La destination dépend du GESTE,
+  // pas de l'état : Échap et le voile « reviennent » (aperçu si le devis
+  // existe, sinon fermeture), ✕ ferme le panneau.
+  const sortirDeLEdition = async (destination) => {
+    const quitter = () => {
+      setDirty(false)
+      if (destination === 'retour' && devisId) setPhase('preview')
+      else onClose()
+    }
+    if (!dirty) {
+      quitter()
+      return
+    }
+    const ok = await demanderConfirmation({
+      title: 'Quitter sans enregistrer ?',
+      description: "Les modifications de ce devis n'ont pas été enregistrées : "
+        + 'elles seront perdues si vous quittez.',
+      confirmLabel: 'Quitter',
+      cancelLabel: 'Rester',
+    })
+    if (ok) quitter()
+  }
+
+  // Rappels de Radix DismissableLayer (préventables). Phase `edit` SEULEMENT :
+  // `preview`/`creating`/`error`/`remise-input` gardent la fermeture Radix
+  // d'origine (Échap / clic sur le voile ferment le panneau).
+  const onEscapeKeyDown = (e) => {
+    if (phase !== 'edit') return
+    // Déjà pris : Radix empile les couches, donc Échap dans un popover ouvert
+    // (ProduitPicker) ne remonte pas jusqu'ici ; ce garde couvre le reste (un
+    // écouteur en amont qui a déjà fait preventDefault()).
+    if (e.defaultPrevented) return
+    e.preventDefault()
+    sortirDeLEdition('retour')
+  }
+  const onInteractOutside = (e) => {
+    if (phase !== 'edit') return
+    // Geste déjà pris : le Dialog modal annule lui-même le clic droit ET la
+    // prise de focus hors du panneau (ex. la boîte de confirmation qui
+    // s'ouvre) AVANT de nous appeler — sans ce garde, la confirmation
+    // rappellerait la confirmation.
+    if (e.defaultPrevented) return
+    // En édition, JAMAIS de fermeture directe par Radix.
+    e.preventDefault()
+    // Un toast (« Modifications enregistrées. ») vit hors du panneau : cliquer
+    // dessus pour le fermer ne doit pas renvoyer l'ouvrier à l'aperçu.
+    if (e.target?.closest?.('[data-sonner-toaster], [data-sonner-toast]')) return
+    sortirDeLEdition('retour')
+  }
+  // Fermeture demandée par Radix par une autre voie : en édition, elle passe
+  // aussi par la garde (filet de sécurité, ces voies sont déjà interceptées).
+  const onOpenChange = (ouvert) => {
+    if (ouvert) return
+    if (phase === 'edit') sortirDeLEdition('fermer')
+    else onClose()
+  }
+  const onCloseClick = () => {
+    if (phase === 'edit') sortirDeLEdition('fermer')
+    else onClose()
+  }
+
   // Téléchargement : MÊME source que l'aperçu (/proposal), récupérée en blob
   // via axios (cookie httpOnly) — aperçu et téléchargement concordent.
   const handleDownload = async () => {
@@ -328,8 +393,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // Sheet side="right" : le panneau glisse depuis son bord réel au lieu de
     // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
     // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+    <Sheet open onOpenChange={onOpenChange}>
       <SheetContent side="right" showClose={false}
+                    onEscapeKeyDown={onEscapeKeyDown}
+                    onInteractOutside={onInteractOutside}
                     className={`${phase === 'edit' ? LARGEUR_EDITION : LARGEUR_STANDARD} gap-0 p-0 sm:max-w-none`}>
         <div className="ldp-header">
           <h3 className="ldp-title">
@@ -344,7 +411,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                           data-testid="ldp-statut" />
             )}
           </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+          <button type="button" className="modal-close" onClick={onCloseClick}>✕</button>
         </div>
 
         <div className="ldp-body">
