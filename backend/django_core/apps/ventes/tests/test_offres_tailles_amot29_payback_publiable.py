@@ -24,24 +24,24 @@ class PaybackPubliableTests(SimpleTestCase):
         attendu = compute_cashflow_payback(
             90000, 6500, inverter_replace_cost=15000)['payback_years']
         res = payback_publiable(90000, 6500, cout_onduleur_ttc=15000)
-        self.assertEqual(res['payback_annees'], round(attendu, 2))
+        self.assertEqual(res['payback_years'], round(attendu, 2))
         self.assertFalse(res['jamais_rembourse'])
-        self.assertNotAlmostEqual(res['payback_annees'], 90000 / 6500,
+        self.assertNotAlmostEqual(res['payback_years'], 90000 / 6500,
                                   delta=0.5)
 
     def test_jamais_rembourse_publie_comme_tel(self):
         res = payback_publiable(120000, 4000)
         self.assertTrue(res['jamais_rembourse'])
-        self.assertIsNone(res['payback_annees'])
+        self.assertIsNone(res['payback_years'])
 
     def test_non_chiffrable(self):
         for prix, eco in ((0, 100), (100, 0), (None, None)):
-            self.assertIsNone(payback_publiable(prix, eco)['payback_annees'])
+            self.assertIsNone(payback_publiable(prix, eco)['payback_years'])
 
     def test_carte_eco_max_definition_pdf(self):
         publie = ot._payback_publie(90000.0, 6500.0, cout_onduleur_ttc=15000)
         self.assertEqual(publie, payback_publiable(
-            90000, 6500, cout_onduleur_ttc=15000)['payback_annees'])
+            90000, 6500, cout_onduleur_ttc=15000)['payback_years'])
         self.assertNotEqual(publie, round(90000 / 6500, 2))
         self.assertIsNone(ot._payback_publie(120000.0, 4000.0))
 
@@ -55,7 +55,7 @@ class PaybackPubliableTests(SimpleTestCase):
             etude_params={}, reference='DEV-AMOT29'))
         carte = ot._carte_du_devis(contexte, data, 'sans')
         self.assertEqual(carte['payback_annees'], payback_publiable(
-            90000, 6500)['payback_annees'])
+            90000, 6500)['payback_years'])
         self.assertNotEqual(carte['payback_annees'], round(90000 / 6500, 2))
 
     def test_echelle_paliers(self):

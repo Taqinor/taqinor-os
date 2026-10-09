@@ -49,7 +49,7 @@ class PrixPalierRemiseTests(TestCase):
             dimensionnement, self.devis)['paliers'][0]
         self.assertEqual(palier['cout_ttc'], 44300.0)
         self.assertEqual(palier['payback_annees'], payback_publiable(
-            44300.0, 7936.0, stockage=True)['payback_annees'])
+            44300.0, 7936.0, stockage=True)['payback_years'])
 
     def test_sans_devis_passe_directe(self):
         dimensionnement = {'recommandation_avec': {'balayage_stockage': [{

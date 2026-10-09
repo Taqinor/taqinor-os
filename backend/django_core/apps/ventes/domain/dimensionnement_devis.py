@@ -1048,7 +1048,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
         return payback_publiable(
             cout, economie, stockage=True,
             cout_onduleur_ttc=(round(onduleur, 2) if onduleur > 0
-                               else None))['payback_annees']
+                               else None))['payback_years']
     except Exception:  # noqa: BLE001 — un payback indisponible s'omet
         return None
 

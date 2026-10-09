@@ -218,7 +218,7 @@ def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
         return payback_publiable(
             cout, economie, stockage=stockage, part_batterie=part_batterie,
             cout_onduleur_ttc=cout_onduleur_ttc,
-            battery_roundtrip=battery_roundtrip)['payback_annees']
+            battery_roundtrip=battery_roundtrip)['payback_years']
     except Exception:  # noqa: BLE001 — un payback indisponible s'omet
         logger.warning('payback publiable indisponible', exc_info=True)
         return None

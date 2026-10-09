@@ -979,26 +979,29 @@ def payback_publiable(investissement, economie_annee1, *, stockage=False,
     stockée), avec « jamais remboursé » dit comme tel. Le ratio simple
     ``coût ÷ économie`` ne sert plus qu'au TRI interne des tailles.
 
-    Rend ``{'payback_annees': float | None, 'jamais_rembourse': bool}`` :
-    ``payback_annees`` vaut ``None`` quand il n'est pas chiffrable (prix ou
+    Rend ``{'payback_years': float | None, 'jamais_rembourse': bool}`` :
+    ``payback_years`` vaut ``None`` quand il n'est pas chiffrable (prix ou
     économie absents) OU quand le cumul ne croise jamais zéro
     (``jamais_rembourse`` vrai) — jamais la sentinelle « 25 ans » publiée.
+    La clé reprend le vocabulaire de :func:`compute_cashflow_payback`
+    (``payback_years``) : le nom ``payback_annees`` reste aux blocs qui
+    PUBLIENT le chiffre (cartes, paliers) — garde QJR48.
     """
     try:
         inv = float(investissement or 0)
         eco = float(economie_annee1 or 0)
     except (TypeError, ValueError):
-        return {"payback_annees": None, "jamais_rembourse": False}
+        return {"payback_years": None, "jamais_rembourse": False}
     if inv <= 0 or eco <= 0:
-        return {"payback_annees": None, "jamais_rembourse": False}
+        return {"payback_years": None, "jamais_rembourse": False}
     kwargs = {"battery": bool(stockage), "battery_share": part_batterie,
               "inverter_replace_cost": cout_onduleur_ttc}
     if battery_roundtrip:
         kwargs["battery_roundtrip"] = float(battery_roundtrip)
     cf = compute_cashflow_payback(inv, eco, **kwargs)
     if cf.get("jamais_rembourse"):
-        return {"payback_annees": None, "jamais_rembourse": True}
-    return {"payback_annees": round(float(cf["payback_years"]), 2),
+        return {"payback_years": None, "jamais_rembourse": True}
+    return {"payback_years": round(float(cf["payback_years"]), 2),
             "jamais_rembourse": False}
 
 
