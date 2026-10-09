@@ -86,7 +86,8 @@ class TestLitterauxEtapeJs(unittest.TestCase):
 
     def test_plafond_fige_kanban(self):
         allow = cs.load_js_allow()
-        self.assertEqual(allow["frontend/src/pages/crm/leads/views/KanbanView.jsx"], 6)
+        # ADEP46 : KanbanView/LeadCard lisent les constantes -> plus dans la dette.
+        self.assertNotIn("frontend/src/pages/crm/leads/views/KanbanView.jsx", allow)
         for rel in allow:
             self.assertTrue((ROOT / rel).exists(), rel)
         self.assertEqual(len(cs.js_literal_failures({"a.jsx": 1}, {})), 1)
