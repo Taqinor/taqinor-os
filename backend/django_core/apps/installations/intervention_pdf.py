@@ -40,14 +40,27 @@ def _equipe_payload(intervention):
     return [n for n in noms if n]
 
 
-def _photos_payload(intervention, *, public_token=None):
+def _public_url(path, request=None):
+    """AFAC94 — lien client ABSOLU : ``request.build_absolute_uri`` quand la
+    requête est connue (schéma relayé par ``SECURE_PROXY_SSL_HEADER``), sinon
+    ``settings.PUBLIC_BASE_URL`` (même repli que ``ventes`` : sans réglage, le
+    chemin reste relatif au domaine qui sert la page)."""
+    if request is not None:
+        return request.build_absolute_uri(path)
+    from django.conf import settings
+    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+    return base.rstrip('/') + path if base else path
+
+
+def _photos_payload(intervention, *, public_token=None, request=None):
     """Photos groupées avant/pendant/après (URL de proxy Django, jamais l'objet
     MinIO directement).
 
     APDF38 — avec ``public_token`` (page publique du rapport), chaque photo est
     servie par la route À JETON de CETTE intervention (``…/photo/<id>/``, sans
     session) et la forme reste ``{libelle, url}`` ; sans jeton, URL du
-    téléchargement authentifié + ``id`` (lu par le rendu PDF interne)."""
+    téléchargement authentifié + ``id`` (lu par le rendu PDF interne).
+    AFAC94 — l'URL publique est absolue (``_public_url`` + ``request``)."""
     from . import field_services
     groups = {'avant': [], 'pendant': [], 'apres': []}
     by_slot = field_services.photos_by_slot(intervention)
@@ -56,9 +69,10 @@ def _photos_payload(intervention, *, public_token=None):
             if public_token:
                 groups.setdefault(slot.phase, []).append({
                     'libelle': slot.libelle,
-                    'url': (f'/api/django/public/installations/'
-                            f'intervention-rapport/{public_token}/'
-                            f'photo/{att.id}/'),
+                    'url': _public_url(
+                        f'/api/django/public/installations/'
+                        f'intervention-rapport/{public_token}/'
+                        f'photo/{att.id}/', request),
                 })
                 continue
             groups.setdefault(slot.phase, []).append({

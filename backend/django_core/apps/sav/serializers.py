@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.utils import timezone
 
@@ -464,6 +465,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     def get_sous_garantie_effectif(self, obj):
         return obj.sous_garantie_calcule
 
+    @extend_schema_field(serializers.BooleanField())
     def get_je_suis_abonne(self, obj):
         """ASAV39 — vrai si l'utilisateur de la requête est suiveur. La
         liste précharge ``_suivis_de_moi`` (une requête pour toute la page) ;
@@ -477,6 +479,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             return False
         return obj.followers.filter(user=user).exists()
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_statuts_suivants(self, obj):
         from . import machine_etats
         return machine_etats.statuts_suivants(obj)

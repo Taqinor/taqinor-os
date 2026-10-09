@@ -2750,7 +2750,7 @@ class MotifPerte(models.Model):
         return self.nom
 
 
-class MotifPerteStandardPropose(models.Model):
+class MotifPerteStandardPropose(TenantModel):
     """ACRM25 (C-ACRM-018) — la MÉMOIRE des motifs de perte STANDARD déjà
     proposés à une société.
 
@@ -2759,13 +2759,15 @@ class MotifPerteStandardPropose(models.Model):
     trop élevé ») ou supprimé revenait aussitôt. Un motif standard n'est
     désormais proposé qu'UNE fois par société — renommé ou supprimé ensuite,
     il ne ressuscite jamais ; un motif standard AJOUTÉ plus tard au référentiel
-    (AGR521, CIQ514…) est, lui, toujours proposé une fois."""
+    (AGR521, CIQ514…) est, lui, toujours proposé une fois.
+
+    SCA4 — hérite de ``core.models.TenantModel`` (company + created_at/updated_at) ;
+    ``company`` redéclaré pour garder ``related_name='+'``."""
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: mémoire de référentiel 100 % fille du tenant
         related_name='+')
     nom = models.CharField(max_length=150)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Motif de perte standard proposé'
