@@ -10,20 +10,8 @@ import { dirname, join } from 'node:path'
    transmises au commit, bilan par ligne. Les réponses simulées sont LUES dans
    les contrats serveur (jamais une forme recopiée). */
 
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getPaiements: vi.fn(() => Promise.resolve({ data: [] })),
-    importReleveDryRun: vi.fn(),
-    importReleveCommit: vi.fn(),
-    rejeterPaiement: vi.fn(),
-  },
-}))
-vi.mock('../../hooks/useHasPermission', () => ({
-  useHasPermission: () => false,
-  useHasRole: () => false,
-  useIsAdmin: () => false,
-  useIsAdminOrResponsable: () => false,
-}))
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksVentesEcrans.js')).ventesApiPaiements())
+vi.mock('../../hooks/useHasPermission', async () => ({ ...(await import('../../test/mocksVentesEcrans.js')).permissionsRefusees() }))
 
 import ventesApi from '../../api/ventesApi'
 import PaiementsPage from './PaiementsPage'

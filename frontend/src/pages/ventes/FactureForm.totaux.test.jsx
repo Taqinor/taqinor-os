@@ -18,15 +18,8 @@ vi.mock('../../api/axios', () => ({
     post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(),
   },
 }))
-const apis = vi.hoisted(() => ({
-  ventes: {
-    getBonsCommande: vi.fn(() => Promise.resolve({ data: { count: 0, next: null, results: [] } })),
-    getFacture: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-  stock: { getProduits: vi.fn(() => Promise.resolve({ data: { results: [], next: null } })) },
-}))
-vi.mock('../../api/ventesApi', () => ({ default: apis.ventes }))
-vi.mock('../../api/stockApi', () => ({ default: apis.stock }))
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksVentesEcrans.js')).ventesApiFormFacture())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksVentesEcrans.js')).stockApiVide())
 
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import authReducer from '../../features/auth/store/authSlice'

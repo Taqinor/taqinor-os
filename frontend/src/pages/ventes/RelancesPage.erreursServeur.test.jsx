@@ -25,16 +25,8 @@ vi.mock('../../api/ventesApi', () => ({
     relancerFacture: vi.fn(),
   },
 }))
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
-}))
-vi.mock('../../ui/confirm', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-  useConfirmDialog: () => ({
-    confirm: () => Promise.resolve(true),
-    confirmDelete: () => Promise.resolve(true),
-  }),
-}))
+vi.mock('../../api/axios', async () => (await import('../../test/mocksVentesEcrans.js')).axiosNu())
+vi.mock('../../ui/confirm', async () => (await import('../../test/mocksVentesEcrans.js')).confirmAccepte())
 
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
