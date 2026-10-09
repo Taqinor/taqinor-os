@@ -24,7 +24,7 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, toNumber } from '../../lib/format'
 import { frenchError } from '../../lib/frenchError'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
@@ -187,7 +187,20 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   }, {})
   const totalTVA = Object.entries(tvaParTaux)
     .reduce((sum, [taux, ht]) => sum + ht * (parseFloat(taux) / 100), 0)
-  const totalTTC = totalHT + totalTVA
+
+  // AFAC68 — le chiffre DÉFINITIF est celui du serveur (FactureSerializer) tant que
+  // la facture n'a pas été modifiée ; dès qu'on touche une ligne, le bloc devient une
+  // ESTIMATION dont le TTC est toujours = HT affiché + TVA affichée (jamais un TTC JS
+  // arrondi autrement sous le libellé « Total TTC »).
+  const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
+  const totauxServeur = isEdit && !dirty && facture?.montant_ttc != null
+  const aff = totauxServeur
+    ? {
+        ht: toNumber(facture.montant_ht), tva: toNumber(facture.montant_tva),
+        ttc: toNumber(facture.montant_ttc),
+      }
+    : { ht: r2(totalHT), tva: r2(totalTVA), ttc: r2(r2(totalHT) + r2(totalTVA)) }
+  const arrondiDevis = totauxServeur ? r2(aff.ttc - aff.ht - aff.tva) : 0
   const tauxDistincts = Object.keys(tvaParTaux).filter(t => Number(t) > 0)
 
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
@@ -674,6 +687,11 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
           {/* ── Totaux ── */}
           <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            {!totauxServeur && (
+              <p data-testid="totaux-estimation" className="m-0 mb-1 text-xs font-medium text-warning">
+                Estimation — le total définitif est calculé à l&apos;enregistrement
+              </p>
+            )}
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Sous-total HT</span>
               <span className="tabular-nums">{formatMAD(subtotalHT, { withSymbol: false })} DH</span>
@@ -686,9 +704,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             )}
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Total HT</span>
-              <strong className="tabular-nums">{formatMAD(totalHT, { withSymbol: false })} DH</strong>
+              <strong className="tabular-nums">{formatMAD(aff.ht, { withSymbol: false })} DH</strong>
             </div>
-            {tauxDistincts.length > 1 ? (
+            {tauxDistincts.length > 1 && !totauxServeur ? (
               <>
                 {tauxDistincts
                   .sort((a, b) => Number(a) - Number(b))
@@ -704,18 +722,24 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   ))}
                 <div className="flex justify-between py-0.5">
                   <span className="text-muted-foreground">TVA totale</span>
-                  <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
+                  <span className="tabular-nums">{formatMAD(aff.tva, { withSymbol: false })} DH</span>
                 </div>
               </>
             ) : (
               <div className="flex justify-between py-0.5">
-                <span className="text-muted-foreground">TVA ({tva}%)</span>
-                <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
+                <span className="text-muted-foreground">{totauxServeur ? 'TVA' : `TVA (${tva}%)`}</span>
+                <span className="tabular-nums">{formatMAD(aff.tva, { withSymbol: false })} DH</span>
+              </div>
+            )}
+            {arrondiDevis !== 0 && (
+              <div className="flex justify-between py-0.5">
+                <span className="text-muted-foreground">Arrondi du devis</span>
+                <span className="tabular-nums">{formatMAD(arrondiDevis, { withSymbol: false })} DH</span>
               </div>
             )}
             <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
-              <span className="font-semibold">Total TTC</span>
-              <strong className="tabular-nums text-primary">{formatMAD(totalTTC, { withSymbol: false })} DH</strong>
+              <span className="font-semibold">{totauxServeur ? 'Total TTC' : 'Total TTC (estimation)'}</span>
+              <strong className="tabular-nums text-primary">{formatMAD(aff.ttc, { withSymbol: false })} DH</strong>
             </div>
           </div>
 
