@@ -801,24 +801,13 @@ def _echelle_paliers_batterie(devis):
     if not cibles:
         return []
 
-    etude_kwargs = {
-        'conso_kwh_mensuelles': conso, 'ville': entrees['ville'],
-        'lat': entrees['lat'], 'lon': entrees['lon'],
-        'occupation': entrees['occupation'],
-        'equipements': entrees['equipements'],
-        # QJR45 — MÊME jour de référence que le tableau rangé sur le devis
-        # (il vient du MÊME ``EntreesMoteur``) : l'échelle ne peut pas
-        # désigner un palier « retenu » calculé sur un autre Ramadan.
-        'jour_reference': entrees['jour_reference'],
-        # QJR46 (R4-B2.23) — LE CINQUIÈME APPELANT. Cette échelle omettait le
-        # barème : ses économies PAR BARREAU étaient calculées sur la grille
-        # nationale alors qu'elles atteignent la charge utile PUBLIQUE
-        # (``public_views``) à côté d'un tableau calculé, lui, sur la
-        # surcharge de la société. Le barème vient maintenant du MÊME
-        # ``EntreesMoteur`` que le tableau.
-        'tranches': entrees['tranches'],
-        'charges_fixes_mad': entrees['charges_fixes_mad'],
-    }
+    # AMOT30 — LE constructeur unique (``etude_horaire.kwargs_moteur_horaire``)
+    # depuis le MÊME ``EntreesMoteur`` que le tableau : jour de référence
+    # (QJR45) et barème société (QJR46) compris ; seule la consommation est
+    # celle résolue ci-dessus.
+    from apps.ventes.etude_horaire import kwargs_moteur_horaire
+    etude_kwargs = dict(kwargs_moteur_horaire(entrees),
+                        conso_kwh_mensuelles=conso)
 
     sondes = {}
 

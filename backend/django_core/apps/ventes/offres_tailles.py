@@ -207,7 +207,7 @@ def _payback(cout, economie):
 
 
 def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
-                    cout_onduleur_ttc=None):
+                    cout_onduleur_ttc=None, battery_roundtrip=None):
     """AMOT29 — le payback PUBLIÉ d'une carte : ``pricing.payback_publiable``
     (cashflow 25 ans, la définition du PDF), ``None`` s'il n'est pas
     chiffrable ou si l'option n'est jamais remboursée sur l'horizon."""
@@ -217,7 +217,8 @@ def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
         from .quote_engine.pricing import payback_publiable
         return payback_publiable(
             cout, economie, stockage=stockage, part_batterie=part_batterie,
-            cout_onduleur_ttc=cout_onduleur_ttc)['payback_annees']
+            cout_onduleur_ttc=cout_onduleur_ttc,
+            battery_roundtrip=battery_roundtrip)['payback_annees']
     except Exception:  # noqa: BLE001 — un payback indisponible s'omet
         logger.warning('payback publiable indisponible', exc_info=True)
         return None
@@ -454,7 +455,7 @@ def _cumul_servi(data, variante, prix_ttc):
 
 
 def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
-                  cout_onduleur_ttc, sortie=None):
+                  cout_onduleur_ttc, sortie=None, battery_roundtrip=None):
     """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
 
     ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
@@ -479,10 +480,12 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
         return None
     try:
         from .quote_engine.pricing import compute_cashflow_payback
+        _rt = ({'battery_roundtrip': float(battery_roundtrip)}
+               if battery_roundtrip else {})
         resultat = compute_cashflow_payback(
             float(prix_ttc), float(economie_annuelle),
             battery=bool(stockage), battery_share=part_batterie,
-            inverter_replace_cost=cout_onduleur_ttc)
+            inverter_replace_cost=cout_onduleur_ttc, **_rt)
     except Exception:  # noqa: BLE001 — un cumul indisponible s'omet
         logger.warning('cumul 25 ans indisponible', exc_info=True)
         return None
@@ -634,14 +637,11 @@ class _Contexte:
 
     @property
     def etude_kwargs(self):
-        return {
-            'conso_kwh_mensuelles': self.entrees['conso_kwh_mensuelles'],
-            'ville': self.entrees['ville'],
-            'lat': self.entrees['lat'],
-            'lon': self.entrees['lon'],
-            'occupation': self.entrees['occupation'],
-            'equipements': self.entrees['equipements'],
-        }
+        # AMOT30 — LE constructeur unique : barème société, charges fixes et
+        # jour de référence compris (la carte Éco était chiffrée au barème
+        # NATIONAL pendant que le devis l'était à celui de la société).
+        from apps.ventes.etude_horaire import kwargs_moteur_horaire
+        return kwargs_moteur_horaire(self.entrees)
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.
@@ -874,10 +874,23 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
         except Exception:  # noqa: BLE001 — sans bornes lues, le moteur
             # retombe sur son régime établi : jamais une borne inventée.
             bornes = {}
+        # AMOT30 — le RENDEMENT de la fiche des batteries composées, comme le
+        # devis (``rendement_batterie_du_devis``) : jamais l'hypothèse muette
+        # quand la fiche le prouve.
+        try:
+            from apps.ventes.horaire.batterie_lignes import (
+                rendement_batterie_des_lignes)
+            _rdt = rendement_batterie_des_lignes(
+                lignes_avec, roles=getattr(lignes_avec, 'roles', None))
+            bornes['batterie_rendement'] = _rdt['rendement']
+            bornes['batterie_rendement_source'] = _rdt['source']
+        except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur
+            pass
 
     try:
         etude = calculer_etude_horaire(
             kwc=kwc, batterie_kwh_utile=capacite,
+            source_conso=contexte.entrees.get('source_conso'),
             **bornes, **contexte.etude_kwargs)
     except Exception:  # noqa: BLE001
         logger.warning('étude horaire indisponible à %s panneaux',
@@ -923,6 +936,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             'cout_onduleur_ttc': _cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
                 contexte.facteur_remise),
+            # AMOT30 — le rendement aller-retour que le moteur horaire a
+            # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.
+            'battery_roundtrip': (etude or {}).get('rendement_batterie'),
         }
         paye = _payback_publie(prix, economie, **_cf_args)
         if paye is not None:

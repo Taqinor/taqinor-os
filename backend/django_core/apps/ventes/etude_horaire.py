@@ -1093,6 +1093,34 @@ def _finaliser(bloc):
     return sortie
 
 
+def kwargs_moteur_horaire(entrees):
+    """AMOT30 (C-AMOT-031) — LE constructeur UNIQUE des arguments communs du
+    moteur horaire (``calculer_etude_horaire`` / ``balayer_stockage_horaire``)
+    depuis des entrées (``domain.entrees.EntreesMoteur`` ou mapping de mêmes
+    clés) : consommation, localisation, occupation, équipements, BARÈME de la
+    société (``tranches``), CHARGES FIXES et JOUR DE RÉFÉRENCE. Les cartes de
+    taille, le tableau de dimensionnement et l'échelle de paliers appellent
+    le moteur avec ces MÊMES arguments que le devis — à kWc égal, même
+    économie. (``source_conso`` n'en fait pas partie : seul
+    ``calculer_etude_horaire`` la prend, l'appelant la passe à part.)
+    """
+    lire = getattr(entrees, 'get', None)
+    if lire is None:
+        def lire(cle, defaut=None):
+            return getattr(entrees, cle, defaut)
+    return {
+        'conso_kwh_mensuelles': lire('conso_kwh_mensuelles'),
+        'ville': lire('ville'),
+        'lat': lire('lat'),
+        'lon': lire('lon'),
+        'occupation': lire('occupation'),
+        'equipements': lire('equipements'),
+        'tranches': lire('tranches'),
+        'charges_fixes_mad': lire('charges_fixes_mad'),
+        'jour_reference': lire('jour_reference'),
+    }
+
+
 def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            ville=None, lat=None, lon=None,
                            occupation=None, equipements=None,
@@ -1102,11 +1130,17 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            batterie_puissance_charge_kw=None,
                            batterie_rendement=None,
                            batterie_rendement_source=None,
-                           tranches=None, charges_fixes_mad=None,
+                           tranches, charges_fixes_mad,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
                            source_conso=None, detail_conso=None,
                            jour_reference=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
+
+    AMOT30 (C-AMOT-031) — ``tranches`` et ``charges_fixes_mad`` sont
+    OBLIGATOIRES (``None`` explicite = grille nationale) : un appelant qui les
+    oublie lève ``TypeError`` au lieu de chiffrer en silence au barème
+    national pendant que le devis l'est au barème de la société. Les
+    appelants construisent leurs arguments par :func:`kwargs_moteur_horaire`.
 
     Paramètres
     ----------

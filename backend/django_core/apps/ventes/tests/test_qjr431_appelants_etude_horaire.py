@@ -118,6 +118,7 @@ class AtteignabiliteViaCalculerEtudeHoraireTest(SimpleTestCase):
                                       jour_reference=jour_reference):
                         try:
                             etude = EH.calculer_etude_horaire(
+                                tranches=None, charges_fixes_mad=None,
                                 kwc=6.0, conso_kwh_mensuelles=CONSO,
                                 ville=VILLE, occupation=occupation,
                                 equipements=equipements,
