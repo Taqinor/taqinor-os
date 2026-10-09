@@ -371,7 +371,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     equipement: current.equipement ?? '',
     technicien_responsable: current.technicien_responsable ?? '',
     date_resolution: current.date_resolution ?? '',
-    cout: current.cout ?? '',
     // WIR233 — distinct de `description` (motif signalé) et du chatter
     // (notes) : instructions D'INTERVENTION, éditables.
     instructions: current.instructions ?? '',
@@ -584,7 +583,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         sous_garantie: fields.sous_garantie,
         equipement: fields.equipement === '' ? null : fields.equipement,
         technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
-        cout: nullable(fields.cout),
         // WIR233 — `instructions` (TextField blank=True) : jamais nullifiée,
         // une chaîne vide est une valeur normale (comme `description` avant
         // `nullable()`).
@@ -1089,10 +1087,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input type="date" value={fields.date_resolution ?? ''}
                      onChange={(e) => set('date_resolution', e.target.value)} />
             </FormField>
-            <FormField label="Coût (interne)">
-              <Input type="number" step="any" value={fields.cout ?? ''}
-                     onChange={(e) => set('cout', e.target.value)} />
-            </FormField>
+            {/* ASAV41 — `cout` est en lecture seule côté serveur (ASEC34) :
+                affiché, jamais saisi ; réservé responsable/admin. */}
+            {peutTaguer && current.cout != null && current.cout !== '' && (
+              <p className="text-sm text-muted-foreground" data-testid="cout-interne">
+                Coût interne : {Number(current.cout).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+              </p>
+            )}
             {saveError && (
               <div role="alert" className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
