@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -10,7 +10,7 @@ import { logoutUser } from '../../features/auth/store/authSlice'
 // ODX7 — `moduleConfigs` sert aussi à lire par clé les sections legacy
 // (stock/crm/ventes/installations/sav/reporting), déplacées de ce fichier vers
 // leur propre `module.config.jsx` (cf. `navFor` ci-dessous).
-import { moduleNavSections, moduleConfigs } from '../../router/moduleRoutes'
+import { moduleConfigs } from '../../router/moduleRoutes'
 // N93 — libellés de la coquille traduits (nav + sections). FR = repli.
 import { useT } from '../../i18n'
 // VX86 — compteur partagé des approbations en attente (badge nav discret).
@@ -21,21 +21,15 @@ import { useOnboardingSteps } from '../../features/onboarding/onboardingHelpers'
 // VX58 — préchargement au survol/focus des destinations chaudes (même source
 // d'imports dynamiques que le routeur ; no-op sous Data Saver/2G).
 import { prefetchRoute } from '../../router/prefetchMap'
-// ODX6 — gating par module actif/désactivé (source unique = /auth/me/).
-// WIR171 — `estAutoriseEntree` est la SOURCE UNIQUE du gating palier ×
-// permission (miroir de `HasPermissionOrLegacy` quand l'entrée le déclare).
-import { filterNavSections, selectModulesDesactives, estAutoriseEntree } from '../../router/moduleGating'
-// ODY4 — l'app active dérivée de la route + le kill-switch de bascule (ODY30).
+// ODY4 — l'app active dérivée de la route.
 import {
-  useActiveApp, APPS_SHELL_ENABLED, HOME_MENU_PATH, ORPHAN_NAV_ITEMS,
+  useActiveApp, HOME_MENU_PATH, ORPHAN_NAV_ITEMS,
 } from '../../lib/apps/ActiveAppContext'
 // VX157 — pastille d'impact du parc (production + CO₂ évité cumulés),
 // chargée PARESSEUSEMENT : le composant fait son propre appel API et rend
 // null tant que rien n'est disponible, donc aucun coût/flash pour les écrans
 // qui n'ont jamais de données de parc.
 const ImpactPastille = lazy(() => import('./ImpactPastille'))
-// VX10 — bande d'apps épinglées personnelles, sous le badge de rôle.
-const PinnedApps = lazy(() => import('./PinnedApps'))
 
 // FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
 // le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
@@ -72,10 +66,6 @@ const I = {
   user_single:  mk(UserIcon, ICON_SM),
   apps:         mk(LayoutGrid),
 }
-
-// Référence STABLE (jamais un `[]` littéral recréé à chaque rendu, qui
-// invaliderait les `useMemo` en aval — même patron que BottomTabBar.jsx).
-const EMPTY_PERMISSIONS = []
 
 const ROLE_META = {
   admin:       { label: 'Administrateur', icon: I.key },
@@ -122,36 +112,14 @@ export const NAV_SECTIONS = [
 // normal) : `.filter(Boolean)` neutralise ce cas sans jamais rendre un `null`.
 ].filter(Boolean)
 
-// VX189(b) — UX1 — Les modules « coquille » s'insèrent JUSTE APRÈS les six
-// sections legacy ci-dessus. `NAV_SECTIONS` et `moduleNavSections` (import,
-// lui-même figé au chargement du module — `import.meta.glob(..., { eager:
-// true })`) sont TOUS DEUX statiques : cette fusion ne dépend d'aucun
-// props/state et n'a donc besoin d'AUCUNE mémoïsation React. Seul le FILTRAGE
-// par modules désactivés (plus bas, `useMemo`) est réellement réactif.
-// ODX7 — les 6 clés legacy sont lues explicitement par `navFor()` dans
-// `NAV_SECTIONS` : leur `nav` apparaît AUSSI dans `moduleNavSections` (le
-// registre générique, qui collecte `.nav` sur TOUTES les configs). Sans ce
-// filtre, ces 6 sections seraient rendues deux fois.
-// Exportée : BottomTabBar.jsx (VX12, tiroir mobile « Plus ») reconstruit le
-// même merge NAV_SECTIONS + moduleNavSections et a besoin du même filtre pour
-// éviter la même duplication côté mobile.
-// eslint-disable-next-line react-refresh/only-export-components
-export const LEGACY_NAV_KEYS = new Set(['stock', 'crm', 'ventes', 'installations', 'sav', 'reporting'])
-const coquilleNavSections = moduleNavSections.filter((s) => !LEGACY_NAV_KEYS.has(s.key))
-
-const ALL_NAV_SECTIONS = [...NAV_SECTIONS, ...coquilleNavSections]
-
 export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const dispatch    = useDispatch()
   const navigate    = useNavigate()
   const role        = useSelector((s) => s.auth.role) || 'normal'
-  const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
-  // ODX6 — clés de modules désactivés pour la société ([] par défaut).
-  const modulesOff  = useSelector(selectModulesDesactives)
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
   const t           = useT()
-  // ODY4 — l'app active (null hors app ⇒ coquille neutre, ou flag ODY30 OFF).
+  // ODY4 — l'app active (null hors app ⇒ coquille neutre).
   const activeApp   = useActiveApp()
   // VX86 — badge numérique sur l'item « Approbations » : masqué à 0/erreur/
   // chargement (jamais un « 0 » affiché avant que le compteur réel arrive).
@@ -169,14 +137,6 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   // `fallback` en 3e argument : cf. `resolveValue`/`I18nProvider`).
   const tr = (key, fallback) => (key ? t(key, undefined, fallback) : fallback)
 
-  // VX189(b) — ODX6 — masque les sections des modules désactivés (liste vide
-  // ⇒ no-op). Chemin LEGACY uniquement (flag ODY30 OFF) : en mode Apps, la nav
-  // est celle de l'app active.
-  const legacySections = useMemo(
-    () => filterNavSections(ALL_NAV_SECTIONS, modulesOff),
-    [modulesOff],
-  )
-
   const handleLogout = async () => {
     await dispatch(logoutUser())
     navigate('/login')
@@ -187,49 +147,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
     onboardingAllDone, onboardingDone, onboardingTotal,
   }
 
-  // ── Chemin LEGACY (ODY30 OFF) — pile de navigation GLOBALE ────────────────
-  // SMOKE D'URGENCE uniquement : rendu strictement identique à celui d'avant la
-  // bascule ODY4, à ceci près que plus aucune section n'y est codée en dur
-  // (donc plus de doublon). Non couvert par les tests unitaires (assumé et
-  // documenté par ODY30) ; son retrait est queued en ODY33.
-  if (!APPS_SHELL_ENABLED) {
-    return (
-      <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
-        <SidebarBrand collapsed={collapsed} companyName={companyName} onToggle={onToggle} />
-        {!collapsed && <SidebarRoleBadge roleMeta={roleMeta} />}
-        <Suspense fallback={null}>
-          <PinnedApps collapsed={collapsed} />
-        </Suspense>
-        <nav className="sidebar-nav">
-          {legacySections.map((section, si) => {
-            const items = section.items.filter(
-              (it) => estAutoriseEntree(it, role, permissions))
-            if (items.length === 0) return null
-            const accentStyle = section.accent
-              ? { '--module-accent': `var(--module-accent-${section.accent})` }
-              : undefined
-            return (
-              <div key={si} className="sidebar-section" style={accentStyle}>
-                {section.label && !collapsed && (
-                  <div className="sidebar-section-label">{tr(section.labelKey, section.label)}</div>
-                )}
-                <SidebarNavItems
-                  items={items} collapsed={collapsed} onNavigate={onNavigate}
-                  tr={tr} badges={badges}
-                />
-              </div>
-            )
-          })}
-        </nav>
-        <Suspense fallback={null}>
-          <ImpactPastille collapsed={collapsed} />
-        </Suspense>
-        <SidebarLogout collapsed={collapsed} onLogout={handleLogout} />
-      </aside>
-    )
-  }
-
-  // ── Mode APPS (défaut) — la coquille EST celle de l'app active ────────────
+  // ── La coquille EST celle de l'app active ────────────
   // ODY4 : en immersion, la sidebar ne rend QUE les items de l'app courante.
   // Aucune destination d'une AUTRE app n'existe dans ce DOM — ni pile globale,
   // ni bande d'apps épinglées : la seule affordance inter-apps est le pied
@@ -358,10 +276,8 @@ function SidebarLogout({ collapsed, onLogout }) {
   )
 }
 
-// Rendu d'une liste d'items de nav — mutualisé entre le mode Apps (items de
-// l'app active) et le chemin legacy (sections globales) : un SEUL rendu de
-// lien, donc aucune divergence de comportement (prefetch VX58, ancres
-// coachmarks FG16, aria-current I135, badges VX86/VX247) entre les deux modes.
+// Rendu d'une liste d'items de nav (items de l'app active) : prefetch VX58,
+// ancres coachmarks FG16, aria-current I135, badges VX86/VX247.
 function SidebarNavItems({ items, collapsed, onNavigate, tr, badges }) {
   return items.map((item) => {
     const label = tr(item.k, item.label)
