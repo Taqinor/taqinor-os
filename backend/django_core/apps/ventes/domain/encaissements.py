@@ -833,14 +833,14 @@ def qr_svg_for_facture_pdf(facture):
         ).order_by('-created_at').first())
     # AFAC21 — le QR d'un lien actif porte la page CLIENT absolue
     # ``/payer/<token>`` (la même URL que l'e-mail et l'écran) ; sans base
-    # absolue connue, repli sur le lien de partage du document (chemin
-    # d'hier, inchangé) plutôt qu'un QR de paiement cassé.
+    # absolue connue, repli sur le lien de partage du document ABSOLU ; sans base
+    # du tout, pas de QR (un chemin relatif serait un QR cassé).
     url = (url_page_paiement(active_link.token)
            if active_link is not None else '')
     if not url:
         share = ShareLink.for_facture(facture)
-        path = f'/api/django/public/document/{share.token}/'
-        url = _public_url(path) or path
+        url = _public_url(  # AFAC94
+            f'/api/django/public/document/{share.token}/')  # jamais relatif : jamais un chemin relatif dans un QR client
 
     if not url:
         return None
