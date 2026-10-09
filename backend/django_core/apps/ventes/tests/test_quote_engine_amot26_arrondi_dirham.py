@@ -43,5 +43,7 @@ class ArrondiDirhamTests(SimpleTestCase):
         html = extra_docs.build_lettre_relance_html(
             {'entreprise_nom': 'Société test'},
             {'nom': 'Alaoui', 'prenom': 'Karim'}, resume, 3)
-        self.assertIn('1 234,50 MAD', html)
+        # Espaces du formateur unique ``fmt_centimes`` (QJR613) : fine
+        # insécable en milliers, insécable avant « MAD ».
+        self.assertIn(f'1{_NNBSP}234,50 MAD', html)
         self.assertNotIn(f'1{_NNBSP}234 MAD', html)
