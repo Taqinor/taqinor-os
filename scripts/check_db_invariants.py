@@ -1,29 +1,31 @@
-"""YDATA19 — advisory sweep: DB defence-in-depth for money/quantity invariants.
+"""YDATA19 / ENF13 — DB defence-in-depth for money/quantity invariants (BLOCKING).
 
 Business invariants (``remise`` in [0, 100], ``montant >= 0``, ``ttc >= ht``,
 quantities ``>= 0``) often live ONLY in a Python ``clean()``/``save()`` — which
 ``bulk_create``/``bulk_update``/``QuerySet.update``/raw SQL all bypass. A
 ``CheckConstraint`` in ``Meta.constraints`` is the DB-level backstop.
 
-This ADVISORY, DB-free AST tool scans the money/quantity models
+This DB-free AST tool scans the money/quantity models
 (``Devis``, ``LigneDevis``, ``BonCommande``, ``Facture``, ``LigneFacture``,
 ``Avoir``, ``LigneAvoir``, ``MouvementStock``, ``Paiement``,
 ``LigneEcriture``) and, per model, lists the numeric invariants it can find in
 ``clean()``/``save()`` that have NO matching ``CheckConstraint`` — plus the
 canonical money/quantity invariants that are absent from BOTH layers. It writes
-``docs/db-invariants-gap.md`` (the gap register, to be closed later by targeted
-additive ``AddConstraint`` migrations — NOT here). The default mode (no flag)
-never fails the build.
+``docs/db-invariants-gap.md`` (the gap register). ENF13 (founder rule
+09/10/2026) made the tool BLOCKING: EVERY mode except a bare ``--write`` exits 1
+as soon as one canonical invariant has no ``CheckConstraint``, a Python-only
+(``clean()``/``save()``) invariant has no DB backstop, or a registered model
+class cannot be found in a live (non-parked) app. Gaps are closed by additive
+``AddConstraint`` migrations in the owning app.
 
 AUD831 — ``--check`` (pattern of ``codemap_fingerprint.py --check``) DOES fail
 the build: it regenerates the doc in memory and compares it to the CHECKED-IN
 ``docs/db-invariants-gap.md``, so a model edit that changes the gap without a
-matching ``--write`` + commit is caught instead of silently going stale. Not
-wired into any CI job yet by this change — to be câblé preferably alongside
-AUD188 (which already owns this registry's TARGET_MODELS scope).
+matching ``--write`` + commit is caught instead of silently going stale. Wired
+in ``scripts/ci_guards.py`` (stage ``backend-lint-fast``).
 
 Usage:
-    python scripts/check_db_invariants.py            # print the gap report
+    python scripts/check_db_invariants.py            # print the gap report (exit 1 on any gap)
     python scripts/check_db_invariants.py --write     # (re)generate the doc
     python scripts/check_db_invariants.py --check     # fail if the committed
                                                        # doc is stale (AUD831)
@@ -171,6 +173,40 @@ def checkconstraint_fields(classdef):
     return fields
 
 
+def _app_parquee(app):
+    """Vrai si l'app est parquée (MVP solaire) : ses modèles ne sont plus dans
+    l'état Django, leurs contraintes déjà posées en base restent en place."""
+    models_py = APPS_DIR / app / "models.py"
+    if not models_py.is_file():
+        return False
+    return "PARQUÉE" in models_py.read_text(encoding="utf-8")[:400]
+
+
+#: Sentinelles de ``cc_fields`` pour un modèle absent du code scanné.
+_PARQUE = frozenset({"<parqué>"})
+_INTROUVABLE = frozenset({"<introuvable>"})
+
+
+def find_gaps(rows):
+    """ENF13 — constats BLOQUANTS (liste de messages, vide = vert)."""
+    out = []
+    for model, app, py_fields, cc_fields, canonical in rows:
+        if cc_fields is _PARQUE:
+            continue
+        if cc_fields is _INTROUVABLE:
+            out.append(f"{app}.{model} : classe introuvable dans une app "
+                       "non parquée — registre périmé (TARGET_MODELS).")
+            continue
+        for inv in canonical:
+            if inv.split()[0] not in cc_fields:
+                out.append(f"{app}.{model} : invariant canonique sans "
+                           f"CheckConstraint — {inv}")
+        for f in sorted(py_fields - cc_fields):
+            out.append(f"{app}.{model} : invariant Python-seul (clean/save) "
+                       f"sans CheckConstraint — {f}")
+    return out
+
+
 def scan():
     """Return a list of (model, app, python_fields, cc_fields, canonical)."""
     out = []
@@ -181,6 +217,7 @@ def scan():
         app_dir = APPS_DIR / app
         paths = [app_dir / "models.py"] + sorted(app_dir.glob("models_*.py"))
         py_fields, cc_fields = set(), set()
+        trouve = False
         for path in paths:
             if not path.is_file():
                 continue
@@ -190,9 +227,12 @@ def scan():
                 continue
             cls = _find_class(tree, model)
             if cls is not None:
+                trouve = True
                 py_fields = python_invariants(cls)
                 cc_fields = checkconstraint_fields(cls)
                 break
+        if not trouve:
+            cc_fields = _PARQUE if _app_parquee(app) else _INTROUVABLE
         out.append((model, app, py_fields, cc_fields, canonical))
     return out
 
@@ -201,11 +241,11 @@ def render_doc(rows):
     lines = [
         "# DB-invariant gap register (YDATA19)",
         "",
-        "Advisory register of money/quantity invariants that are NOT enforced by",
-        "a database `CheckConstraint` — generated by",
+        "Register of money/quantity invariants and their database `CheckConstraint`",
+        "backstop (BLOCKING since ENF13: any gap fails CI) — generated by",
         "`python scripts/check_db_invariants.py --write`. Each gap is a candidate",
-        "for a later, targeted, additive `AddConstraint` migration (not created",
-        "here). `bulk_create`/`bulk_update`/`QuerySet.update`/raw SQL bypass any",
+        "an additive `AddConstraint` migration in the owning app.",
+        "`bulk_create`/`bulk_update`/`QuerySet.update`/raw SQL bypass any",
         "Python `clean()`/`save()` guard, so the DB constraint is the real",
         "backstop.",
         "",
@@ -213,6 +253,13 @@ def render_doc(rows):
         "| --- | --- | --- | --- | --- |",
     ]
     for model, app, py_fields, cc_fields, canonical in rows:
+        if cc_fields is _PARQUE:
+            lines.append(f"| `{model}` | {app} | — | — | (app parquée — "
+                         "contraintes déjà posées en base, hors périmètre) |")
+            continue
+        if cc_fields is _INTROUVABLE:
+            lines.append(f"| `{model}` | {app} | — | — | CLASSE INTROUVABLE |")
+            continue
         py = ", ".join(sorted(py_fields)) or "—"
         cc = ", ".join(sorted(cc_fields)) or "—"
         # Canonical invariants whose primary field is not covered by a CC.
@@ -241,10 +288,13 @@ def render_doc(rows):
 def main(argv):
     rows = scan()
     doc = render_doc(rows)
+    gaps = find_gaps(rows)
+    for g in gaps:
+        print(f"ECHEC check_db_invariants : {g}", file=sys.stderr)
     if "--write" in argv:
         GAP_DOC.write_text(doc, encoding="utf-8")
         print(f"check_db_invariants: wrote {_rel(GAP_DOC)}")
-        return 0
+        return 1 if gaps else 0
     if "--check" in argv:
         # AUD831 — the ONE mode that fails the build (codemap_fingerprint.py
         # --check pattern): the committed doc must match a fresh regenerate.
@@ -259,13 +309,14 @@ def main(argv):
                   "lancez 'python scripts/check_db_invariants.py --write' "
                   "et committez le résultat.", file=sys.stderr)
             return 1
-        print(f"check_db_invariants: {_rel(GAP_DOC)} OK (à jour).")
+        if gaps:
+            return 1
+        print(f"check_db_invariants: {_rel(GAP_DOC)} OK (à jour, 0 écart).")
         return 0
     print(doc)
-    print("check_db_invariants: advisory — no build failure. "
-          "Run with --write to refresh docs/db-invariants-gap.md, or "
-          "--check to fail if it is stale.")
-    return 0
+    print("check_db_invariants: "
+          + (f"{len(gaps)} écart(s) — BLOQUANT." if gaps else "0 écart."))
+    return 1 if gaps else 0
 
 
 def _rel(path: Path) -> str:

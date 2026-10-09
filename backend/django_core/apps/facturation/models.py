@@ -936,6 +936,17 @@ class Paiement(models.Model):
                 condition=~models.Q(numero_recu=''),
                 name='uniq_paiement_numero_recu_par_societe',
             ),
+            # ENF13 — backstop DB des deux champs monétaires positifs par
+            # nature (``montant`` reste volontairement signé, voir ci-dessous).
+            # NULL toléré (champs optionnels).
+            models.CheckConstraint(
+                check=(models.Q(frais_rejet__isnull=True)
+                       | models.Q(frais_rejet__gte=0)),
+                name='paiement_frais_rejet_non_negatif'),
+            models.CheckConstraint(
+                check=(models.Q(escompte_montant__isnull=True)
+                       | models.Q(escompte_montant__gte=0)),
+                name='paiement_escompte_montant_non_negatif'),
             # AUD188 — PAS DE CONTRAINTE DE SIGNE SUR ``montant``, et c'est
             # DÉLIBÉRÉ (retirée par 0006). La première écriture d'AUD188
             # posait ``montant >= 0`` en partant de « un remboursement est un

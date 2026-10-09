@@ -15,7 +15,9 @@ def _arbre(tmp, contenu, allow=''):
     (r / 'svc').mkdir()
     (r / 'svc' / '.dockerignore').write_text(contenu, encoding='utf-8')
     (r / 'scripts').mkdir()
-    (r / cd.ALLOW).write_text(allow, encoding='utf-8')
+    lignes = ''.join(f'    - "{e}"\n' for e in allow.splitlines() if e)
+    (r / cd.ALLOW).write_text('dockerignore_racine:\n  entrees:\n' + lignes,
+                              encoding='utf-8')
     return r
 
 

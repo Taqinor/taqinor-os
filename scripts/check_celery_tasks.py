@@ -1,4 +1,4 @@
-"""YDATA14 — CI guard (advisory v1): Celery tasks with external effects
+"""YDATA14 — CI guard (bloquant): Celery tasks with external effects
 should take PKs, never model instances, as parameters.
 
 DB-free, AST-only (mirrors ``scripts/check_on_delete.py``). Scans EVERY
