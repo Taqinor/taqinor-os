@@ -5,10 +5,17 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Check, X, BookOpen, Search } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   TooltipProvider, Card, Button, Input, Textarea, EmptyState, Skeleton,
   Badge, toast,
 } from '../../ui'
+
+// ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
+// pour le total.
+const lireTout = (appel, params = {}) => fetchAllPages(
+  (page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
 export default function KbArticlesPage() {
   const [rows, setRows] = useState([])
@@ -20,8 +27,8 @@ export default function KbArticlesPage() {
 
   const load = () => {
     setLoading(true)
-    savApi.getKbArticles(search ? { search } : {})
-      .then((r) => setRows(r.data.results ?? r.data ?? []))
+    lireTout(savApi.getKbArticles, search ? { search } : {})
+      .then(setRows)
       .catch(() => {})
       .finally(() => setLoading(false))
   }

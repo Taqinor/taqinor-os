@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Plus, ShieldAlert } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import {
   TooltipProvider, Card, StatusPill, Button, Input, Textarea, Select,
@@ -25,6 +26,10 @@ const CREER_ALARME_DEFAULTS = {
   code: '', gravite: 'warning', libelle: '', description: '', equipement: '',
 }
 
+// Résultats d'une RECHERCHE serveur (liste déroulante) : la première page de
+// résultats pertinents suffit, ce n'est pas un total affiché.
+const lignesDe = (r) => (Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
+
 const aEquipement = (a) => !!(a.equipement || a.equipement_serie || a.equipement_produit)
 
 // ASAV49 — message du serveur (`detail`, `ticket`, `error`) plutôt qu'un repli
@@ -41,6 +46,12 @@ function messageServeur(e, repli) {
 }
 
 const fmtDateTime = (iso) => formatDateTime(iso)
+
+// ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
+// pour le total.
+const lireTout = (appel, params = {}) => fetchAllPages(
+  (page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
 export default function SavAlarmesPage() {
   const [rows, setRows] = useState([])
@@ -62,14 +73,14 @@ export default function SavAlarmesPage() {
   // Recherche SERVEUR (jamais la page 1 d'un parc de centaines d'appareils).
   const chercherEquipements = useCallback(async (q) => {
     const r = await savApi.getEquipements({ search: q || undefined })
-    return (r.data?.results ?? r.data ?? []).map((e) => ({
+    return lignesDe(r).map((e) => ({
       value: String(e.id),
       label: `${e.produit_nom ?? 'Produit'} — ${e.numero_serie ?? 'sans n° série'}`,
     }))
   }, [])
   const chercherTickets = useCallback(async (q) => {
     const r = await savApi.getTickets({ search: q || undefined, ouvert: 'tous' })
-    return (r.data?.results ?? r.data ?? []).map((t) => ({
+    return lignesDe(r).map((t) => ({
       value: String(t.id),
       label: t.reference ?? `Ticket ${t.id}`,
       description: t.description || undefined,
@@ -78,8 +89,8 @@ export default function SavAlarmesPage() {
 
   const load = () => {
     setLoading(true)
-    savApi.getAlarmes(statutFiltre ? { statut: statutFiltre } : {})
-      .then((r) => setRows(r.data.results ?? r.data ?? []))
+    lireTout(savApi.getAlarmes, statutFiltre ? { statut: statutFiltre } : {})
+      .then(setRows)
       .catch(() => {})
       .finally(() => setLoading(false))
   }

@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Check, X } from 'lucide-react'
 import savApi from '../../api/savApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import {
   TooltipProvider, Card, Tabs, TabsList, TabsTrigger, TabsContent,
@@ -13,6 +14,12 @@ import {
   SelectItem, EmptyState, Skeleton, Switch, toast,
 } from '../../ui'
 import SimpleRefListEditor from './SimpleRefListEditor'
+
+// ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
+// pour le total.
+const lireTout = (appel, params = {}) => fetchAllPages(
+  (page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
 // ── Réponses types (macros) — titre + corps + statut optionnel ──
 const STATUT_OPTIONS = [
@@ -29,7 +36,7 @@ function ReponsesTypeSection() {
   const [form, setForm] = useState({ titre: '', corps: '', nouveau_statut: '' })
   const [edit, setEdit] = useState(null)
 
-  const load = () => savApi.getReponsesType().then((r) => setRows(r.data.results ?? r.data ?? []))
+  const load = () => lireTout(savApi.getReponsesType).then(setRows)
     .catch(() => {}).finally(() => setLoading(false))
 
   const charger = () => { setLoading(true); return load() }
@@ -154,15 +161,15 @@ function CategoriesEquipementSection() {
   const [busy, setBusy] = useState(false)
   const [edits, setEdits] = useState({})
 
-  const load = () => savApi.getCategoriesEquipement()
-    .then((r) => setRows(r.data.results ?? r.data ?? []))
+  const load = () => lireTout(savApi.getCategoriesEquipement)
+    .then(setRows)
     .catch(() => {})
     .finally(() => setLoading(false))
 
   useEffect(() => {
     load()
-    savApi.getEquipesMaintenance()
-      .then((r) => setEquipes(r.data.results ?? r.data ?? []))
+    lireTout(savApi.getEquipesMaintenance)
+      .then(setEquipes)
       .catch(() => {})
   }, [])
 
@@ -275,15 +282,15 @@ function CompatibilitesPieceSection() {
   const [form, setForm] = useState({ produit_equipement: '', piece: '', note: '' })
   const [busy, setBusy] = useState(false)
 
-  const load = () => savApi.getCompatibilitesPiece()
-    .then((r) => setRows(r.data.results ?? r.data ?? []))
+  const load = () => lireTout(savApi.getCompatibilitesPiece)
+    .then(setRows)
     .catch(() => {})
     .finally(() => setLoading(false))
 
   useEffect(() => {
     load()
-    api.get('/stock/produits/')
-      .then((r) => setProduits(r.data.results ?? r.data ?? []))
+    lireTout((params) => api.get('/stock/produits/', { params }))
+      .then(setProduits)
       .catch(() => {})
   }, [])
 
@@ -615,8 +622,8 @@ function WorksheetModelesSection() {
   const [typeApplicable, setTypeApplicable] = useState('tous')
   const [busyId, setBusyId] = useState(null)
 
-  const load = () => savApi.getWorksheetModeles()
-    .then((r) => setRows(r.data.results ?? r.data ?? []))
+  const load = () => lireTout(savApi.getWorksheetModeles)
+    .then(setRows)
     .catch(() => {}).finally(() => setLoading(false))
   const charger = () => { setLoading(true); return load() }
   useEffect(() => { load() }, [])

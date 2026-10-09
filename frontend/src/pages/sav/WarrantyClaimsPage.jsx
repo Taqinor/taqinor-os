@@ -53,6 +53,12 @@ const formatDateFR = (iso) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
+// ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
+// pour le total.
+const lireTout = (appel, params = {}) => fetchAllPages(
+  (page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+
 export function WarrantyClaimStatutPill({ claim }) {
   const tone = STATUT_TONES[claim?.statut] ?? 'neutral'
   const label = STATUT_LABELS[claim?.statut] ?? claim?.statut ?? '—'
@@ -78,8 +84,8 @@ export default function WarrantyClaimsPage() {
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return savApi.getWarrantyClaims(statutFiltre ? { statut: statutFiltre } : {})
-      .then((r) => setRows(r.data.results ?? r.data ?? []))
+    return lireTout(savApi.getWarrantyClaims, statutFiltre ? { statut: statutFiltre } : {})
+      .then(setRows)
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }
@@ -87,14 +93,12 @@ export default function WarrantyClaimsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load() }, [statutFiltre])
   useEffect(() => {
-    savApi.getEquipements()
-      .then((r) => setEquipements(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(savApi.getEquipements)
+      .then(setEquipements).catch(() => {})
   }, [])
 
   useEffect(() => {
-    fetchAllPages((page) => stockApi.getFournisseurs({ page, page_size: 200 }).then((r) => r.data))
-      .then((res) => setFournisseurs(Array.isArray(res) ? res : (res?.results ?? [])))
-      .catch(() => {})
+    lireTout(stockApi.getFournisseurs).then(setFournisseurs).catch(() => {})
   }, [])
 
   const visibleRows = useMemo(() => rows, [rows])

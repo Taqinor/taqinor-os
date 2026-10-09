@@ -593,9 +593,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     // Liste des techniciens — best effort (réservé admin) ; sinon dropdown vide.
     api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     // ASAV54 — référentiels cause / remède (tolère les mocks partiels).
-    const liste = (rep) => (Array.isArray(rep?.data) ? rep.data : (rep?.data?.results ?? []))
-    savApi.getCausesDefaillance?.()?.then((r) => setCauses(liste(r))).catch?.(() => {})
-    savApi.getRemedesDefaillance?.()?.then((r) => setRemedes(liste(r))).catch?.(() => {})
+    if (savApi.getCausesDefaillance) {
+      lireTout(savApi.getCausesDefaillance).then(setCauses).catch(() => {})
+    }
+    if (savApi.getRemedesDefaillance) {
+      lireTout(savApi.getRemedesDefaillance).then(setRemedes).catch(() => {})
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
