@@ -111,7 +111,8 @@ class PdfFactureArLibellesTests(TestCase):
                     'periode_service', 'votre_commande',
                     'conditions_paiement', 'facture_generee_le'):
             with self.subTest(cle=cle):
-                self.assertIn(LIBELLES['fr'][cle], texte)
+                # le gabarit met certains libellés en capitales (CSS) : comparaison insensible à la casse
+                self.assertIn(LIBELLES['fr'][cle].lower(), texte.lower())
         self.assertIn('Émise', texte)
         self.assertIn('Virement', texte)
 

@@ -134,7 +134,7 @@ class AnnulationArgentTests(TestCase):
         r = self.api.post(f'{BASE}/devis/{devis.id}/facturer-complet/',
                           {'paiements': []}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
-        facture = Facture.objects.get(pk=r.data['id'])
+        facture = Facture.objects.get(pk=r.data['facture_id'])
         self.assertEqual(Decimal(str(facture.total_ttc)),
                          Decimal('120000.00'))
         statut = facture.statut

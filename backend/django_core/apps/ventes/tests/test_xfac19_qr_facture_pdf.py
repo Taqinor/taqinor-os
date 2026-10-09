@@ -68,6 +68,8 @@ def make_facture(user, client_obj, produit):
     return facture
 
 
+# AFAC94 — un lien client est toujours ABSOLU : base publique requise.
+@override_settings(PUBLIC_BASE_URL='https://erp.example.ma')
 class XFAC19QrServiceTests(TestCase):
     def setUp(self):
         self.company = make_company()
@@ -89,6 +91,12 @@ class XFAC19QrServiceTests(TestCase):
         self.assertTrue(PaymentLink.objects.filter(
             facture=self.facture).exists() is False)
         self.assertIsNotNone(share)
+
+    @override_settings(PUBLIC_BASE_URL='')
+    def test_sans_base_publique_pas_de_qr_relatif(self):
+        # AFAC94 — sans base publique connue, jamais un QR vers un chemin relatif.
+        from apps.ventes.services import qr_svg_for_facture_pdf
+        self.assertIsNone(qr_svg_for_facture_pdf(self.facture))
 
     def test_active_payment_link_takes_priority(self):
         from apps.ventes.services import create_payment_link, \
@@ -128,6 +136,7 @@ class XFAC19QrServiceTests(TestCase):
         self.assertIn('/document/', called_url)
 
 
+@override_settings(PUBLIC_BASE_URL='https://erp.example.ma')
 class XFAC19PdfPipelineTests(TestCase):
     """Le PDF facture legacy embarque le QR sans casser le rendu existant."""
 
