@@ -302,7 +302,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         ],
         responses=inline_serializer('TourneeReponse', {
             'count': drf_serializers.IntegerField(),
-            'results': _TourneeLigne(many=True),
+            'results': type(_TourneeLigne)(many=True),
         }))
     @action(detail=False, methods=['get'], url_path='tournee',
             permission_classes=[IsAnyRole])
@@ -417,7 +417,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         return Response(rentabilite_contrat(contrat))
 
     @extend_schema(responses=inline_serializer('RentabiliteContratsReponse', {
-        'results': _RentabiliteContrat(many=True)}))
+        'results': type(_RentabiliteContrat)(many=True)}))
     @action(detail=False, methods=['get'], url_path='rentabilite',
             permission_classes=[IsResponsableOrAdmin])
     def rentabilite_liste(self, request):
