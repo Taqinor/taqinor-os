@@ -257,3 +257,48 @@ class FkWmsTests(TestCase):
         self.assertObjetInexistant(r, 'vague')
         self.ul_a.refresh_from_db()
         self.assertIsNone(self.ul_a.vague_id)
+
+    # --- vague de picking : sources des besoins (ERR-ASTK6) ---------------
+    def _vague(self, **source):
+        besoin = {'produit_id': self.pa.id, 'quantite': 1}
+        besoin.update(source)
+        return self.api.post(f'{BASE}/vagues-picking/', {
+            'besoins': [besoin]}, format='json')
+
+    def test_vague_chantier_etranger_comme_absent(self):
+        from apps.stock.models_wms import VaguePicking
+        avant = VaguePicking.objects.filter(company=self.a).count()
+        etranger = self._vague(installation_id=self.chantier_b.id)
+        absent = self._vague(installation_id=99999999)
+        self.assertEqual(etranger.status_code, 400, etranger.content)
+        self.assertEqual(absent.status_code, 400, absent.content)
+        self.assertEqual(etranger.data, absent.data)
+        self.assertEqual(
+            VaguePicking.objects.filter(company=self.a).count(), avant)
+
+    def test_vague_bcf_etranger_comme_absent(self):
+        from apps.stock.models import BonCommandeFournisseur, Fournisseur
+        from apps.stock.models_wms import VaguePicking
+        fournisseur_b = Fournisseur.objects.create(
+            company=self.b, nom='Fournisseur B')
+        bcf_b = BonCommandeFournisseur.objects.create(
+            company=self.b, reference='BCF-ASTK6-B',
+            fournisseur=fournisseur_b)
+        avant = VaguePicking.objects.filter(company=self.a).count()
+        etranger = self._vague(bon_commande_id=bcf_b.id)
+        absent = self._vague(bon_commande_id=99999999)
+        self.assertEqual(etranger.status_code, 400, etranger.content)
+        self.assertEqual(absent.status_code, 400, absent.content)
+        self.assertEqual(etranger.data, absent.data)
+        self.assertEqual(
+            VaguePicking.objects.filter(company=self.a).count(), avant)
+
+    def test_vague_source_propre_acceptee(self):
+        from apps.installations.models import Installation
+        from apps.stock.models_wms import LignePicking
+        chantier_a = Installation.objects.create(
+            company=self.a, reference='INST-ASTK6-A')
+        r = self._vague(installation_id=chantier_a.id)
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertTrue(LignePicking.objects.filter(
+            vague_id=r.data['id'], installation=chantier_a).exists())

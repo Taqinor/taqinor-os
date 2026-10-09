@@ -118,6 +118,18 @@ describe('CatalogueTable (J142)', () => {
     expect(onInlineSave).not.toHaveBeenCalled()
   })
 
+  it('ERR-ASTK209 — une saisie décimale (7.5) dans la cellule Stock est refusée, aucun ajustement', () => {
+    const onAjusterStock = vi.fn().mockResolvedValue({})
+    renderTable({ onInlineSave: vi.fn(), onAjusterStock })
+    const stockCell = screen.getAllByTitle('Double-cliquez pour modifier').find((b) => b.textContent.includes('12'))
+    fireEvent.doubleClick(stockCell)
+    const input = document.querySelector('input')
+    fireEvent.change(input, { target: { value: '7.5' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onAjusterStock).not.toHaveBeenCalled()
+    expect(screen.getByText('Entier requis')).toBeInTheDocument()
+  })
+
   it('affiche un etat vide quand le catalogue filtre est vide', () => {
     renderTable({ produits: [] })
     expect(screen.getAllByText(/Aucun produit|Aucun resultat/i).length).toBeGreaterThan(0)

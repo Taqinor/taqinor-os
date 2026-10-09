@@ -47,11 +47,14 @@ class IncidentQualiteFournisseurSerializer(CompanyScopedRelationsMixin,
             'id', 'fournisseur', 'fournisseur_nom',
             'bon_commande_fournisseur', 'produit', 'retour', 'type_incident',
             'gravite', 'quantite_affectee', 'description', 'date_incident',
-            'resolu', 'date_resolution', 'cout_impact_mad', 'declare_par',
-            'est_bloquant', 'created_at',
+            'resolu', 'date_resolution', 'resolu_par', 'cout_impact_mad',
+            'declare_par', 'est_bloquant', 'created_at',
         ]
         # `company` n'est JAMAIS acceptée du corps : le viewset la force.
-        read_only_fields = ['declare_par', 'est_bloquant', 'created_at']
+        # ERR-ASTK226 — `resolu_par` / `date_resolution` posés par le
+        # serveur à la bascule `resolu` (valeurs du client ignorées).
+        read_only_fields = ['declare_par', 'est_bloquant', 'created_at',
+                            'resolu_par', 'date_resolution']
 
 
 class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
@@ -94,7 +97,33 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
         # `company` forcée par TenantMixin ; `declare_par` posé serveur.
         super().perform_create(serializer)
         serializer.instance.declare_par = self.request.user
-        serializer.instance.save(update_fields=['declare_par'])
+        champs = ['declare_par'] + _poser_resolution(
+            serializer.instance, False, self.request.user)
+        serializer.instance.save(update_fields=champs)
+
+    def perform_update(self, serializer):
+        etait_resolu = serializer.instance.resolu
+        super().perform_update(serializer)
+        champs = _poser_resolution(
+            serializer.instance, etait_resolu, self.request.user)
+        if champs:
+            serializer.instance.save(update_fields=champs)
+
+
+def _poser_resolution(incident, etait_resolu, user):
+    """ERR-ASTK226 — à la bascule `resolu` false → true : auteur = utilisateur
+    connecté, date = date SERVEUR ; true → false : les deux sont effacés.
+    Renvoie les champs modifiés (liste vide si aucune bascule)."""
+    from django.utils import timezone
+    if incident.resolu and not etait_resolu:
+        incident.resolu_par = user
+        incident.date_resolution = timezone.localdate()
+        return ['resolu_par', 'date_resolution']
+    if not incident.resolu and etait_resolu:
+        incident.resolu_par = None
+        incident.date_resolution = None
+        return ['resolu_par', 'date_resolution']
+    return []
 
 
 OTIF_SHAPE = {

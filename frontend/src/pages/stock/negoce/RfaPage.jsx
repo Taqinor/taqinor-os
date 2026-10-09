@@ -158,7 +158,9 @@ export default function RfaPage() {
                         Générer l&apos;avoir
                       </Button>
                     )}
-                    {avoir && <span role="status" className="text-success">Avoir {avoir.reference} généré.</span>}
+                    {(avoir?.reference ?? a.avoir_reference) && (
+                      <span role="status" className="text-success">Avoir {avoir?.reference ?? a.avoir_reference} généré.</span>
+                    )}
                   </div>
                   {calcul && (
                     <p className="mt-2 text-[var(--muted-foreground)]">
