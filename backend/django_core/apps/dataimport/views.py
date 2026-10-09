@@ -25,6 +25,7 @@ from . import services
 from .models import ImportJob
 from .holidays_import import exporter_feries_csv, importer_feries_csv
 from .translations_i18n import exporter_traductions_csv, importer_traductions_csv
+from rest_framework import serializers as drf_serializers
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +116,20 @@ def _read(request):
     return f, target, None
 
 
+_VIEWS_DRY_RUN_REPONSE = inline_serializer('ViewsDryRunReponse', {
+    'target': drf_serializers.JSONField(allow_null=True),
+    'colonnes': drf_serializers.JSONField(allow_null=True),
+    'mapping': drf_serializers.JSONField(allow_null=True),
+    'non_mappees': drf_serializers.JSONField(allow_null=True),
+    'apercu': drf_serializers.JSONField(allow_null=True),
+    'total_lignes': drf_serializers.JSONField(allow_null=True),
+    'mode': drf_serializers.JSONField(required=False, allow_null=True),
+    'ecraser': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 @extend_schema(request=_corps_import('ImportDryRunRequete'),
-               responses=OpenApiTypes.ANY)
+               responses=_VIEWS_DRY_RUN_REPONSE)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
@@ -156,9 +169,25 @@ def dry_run(request):
     return Response(result)
 
 
+_VIEWS_COMMIT_REPONSE = inline_serializer('ViewsCommitReponse', {
+    'ok': drf_serializers.JSONField(allow_null=True),
+    'target': drf_serializers.JSONField(allow_null=True),
+    'mode': drf_serializers.JSONField(allow_null=True),
+    'ecraser': drf_serializers.JSONField(allow_null=True),
+    'created': drf_serializers.JSONField(allow_null=True),
+    'updated': drf_serializers.JSONField(allow_null=True),
+    'skipped': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'job_id': drf_serializers.JSONField(allow_null=True),
+    'statut': drf_serializers.JSONField(allow_null=True),
+    'ecrasements': drf_serializers.JSONField(allow_null=True),
+    'refuses': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     request=_corps_import('ImportCommitRequete', avec_rollback=True),
-    responses=OpenApiTypes.ANY)
+    responses=_VIEWS_COMMIT_REPONSE)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])

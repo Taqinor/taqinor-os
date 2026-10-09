@@ -29,7 +29,14 @@ from .serializers import (
 )
 
 
-@extend_schema(responses=OpenApiTypes.OBJECT)
+_VIEWS_HEALTH_SCORE_VIEW_REPONSE = inline_serializer('ViewsHealthScoreViewReponse', {
+    'score': drf_serializers.JSONField(allow_null=True),
+    'sous_scores': drf_serializers.JSONField(allow_null=True),
+    'recommandations': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(responses=_VIEWS_HEALTH_SCORE_VIEW_REPONSE)
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def health_score_view(request):
@@ -159,6 +166,20 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
             pass
 
 
+_VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE = inline_serializer('ViewsConfigPackageViewSetPrevisualiserReponse', {
+    'roles_custom': drf_serializers.JSONField(required=False, allow_null=True),
+    'custom_fields': drf_serializers.JSONField(required=False, allow_null=True),
+    'message_templates': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
+_VIEWS_CONFIG_PACKAGE_VIEW_SET_APPLIQUER_REPONSE = inline_serializer('ViewsConfigPackageViewSetAppliquerReponse', {
+    'roles_custom': drf_serializers.JSONField(required=False, allow_null=True),
+    'custom_fields': drf_serializers.JSONField(required=False, allow_null=True),
+    'message_templates': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
     """NTADM13/14/15 — export/diff/application de packages de configuration."""
 
@@ -188,7 +209,7 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(ConfigPackageSerializer(package).data, status=201)
 
     @extend_schema(request=ContenuConfigSerializer,
-                   responses=OpenApiTypes.OBJECT)
+                   responses=_VIEWS_CONFIG_PACKAGE_VIEW_SET_PREVISUALISER_REPONSE)
     @action(detail=False, methods=['post'])
     def previsualiser(self, request):
         contenu = request.data.get('contenu')
@@ -207,7 +228,7 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(diff)
 
     @extend_schema(request=ContenuConfigSerializer,
-                   responses=OpenApiTypes.OBJECT)
+                   responses=_VIEWS_CONFIG_PACKAGE_VIEW_SET_APPLIQUER_REPONSE)
     @action(detail=False, methods=['post'])
     def appliquer(self, request):
         # NTADM39 — resserrement fin, cf. commentaire de SandboxEnvironmentViewSet.creer.
@@ -282,7 +303,17 @@ class AdminOpsSettingsView(APIView):
         return Response(AdminOpsSettingsSerializer(reglage).data)
 
 
-@extend_schema(responses=OpenApiTypes.OBJECT)
+_VIEWS_DIAGNOSTIC_VIEW_REPONSE = inline_serializer('ViewsDiagnosticViewReponse', {
+    'derniere_migration': drf_serializers.JSONField(allow_null=True),
+    'nb_utilisateurs': drf_serializers.JSONField(allow_null=True),
+    'derniere_connexion': drf_serializers.JSONField(allow_null=True),
+    'sandbox_actifs': drf_serializers.JSONField(allow_null=True),
+    'config_packages_exportes': drf_serializers.JSONField(allow_null=True),
+    'dernieres_erreurs_audit': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(responses=_VIEWS_DIAGNOSTIC_VIEW_REPONSE)
 @api_view(['GET'])
 @permission_classes([IsTaqinorSupportOuAdministrateur])
 def diagnostic_view(request):

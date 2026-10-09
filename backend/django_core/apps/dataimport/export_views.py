@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
 
+from .schema_fields import champ_choix
 from .exporters import (
     DEFAULT_FORMAT, FORMATS, backup_filename, build_backup_zip,
     export_bytes, filename_for,
@@ -81,9 +82,8 @@ def export_objects_list(request):
 
 @extend_schema(
     request=inline_serializer('ExportObjetRequete', {
-        'object': serializers.ChoiceField(choices=list(REGISTRY)),
-        'format': serializers.ChoiceField(
-            choices=list(FORMATS), required=False)}),
+        'object': champ_choix(REGISTRY),
+        'format': champ_choix(FORMATS, required=False)}),
     responses=_FICHIERS_EXPORT)
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
@@ -110,10 +110,8 @@ def export_object(request):
 @extend_schema(
     request=inline_serializer('SauvegardeRequete', {
         'objects': serializers.ListField(
-            child=serializers.ChoiceField(choices=list(REGISTRY)),
-            required=False),
-        'format': serializers.ChoiceField(
-            choices=list(FORMATS), required=False)}),
+            child=champ_choix(REGISTRY), required=False),
+        'format': champ_choix(FORMATS, required=False)}),
     responses={(200, 'application/zip'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAdminRole])

@@ -54,6 +54,7 @@ from .services import (
     evaluate_underperformance, production_warranty_status,
     sync_system, warranty_curve_overlay,
 )
+from rest_framework import serializers as drf_serializers
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -155,6 +156,86 @@ def _lire_csv_releves(texte):
         lignes.append((numero, (jour, periode, energie.quantize(
             Decimal('0.01')), index)))
     return lignes, erreurs
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_FLEET_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetFleetReponse', {
+    'systems': drf_serializers.JSONField(allow_null=True),
+    'systems_active': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_FLEET_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetCo2FleetReponse', {
+    'systems': drf_serializers.JSONField(allow_null=True),
+    'total_co2_kg': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetBenchmarkReponse', {
+    'systems_ranked': drf_serializers.JSONField(allow_null=True),
+    'systems': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_SOILING_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetSoilingReponse', {
+    'installation': drf_serializers.JSONField(allow_null=True),
+    'current_pr_pct': drf_serializers.JSONField(allow_null=True),
+    'baseline_pr_pct': drf_serializers.JSONField(allow_null=True),
+    'estimated_soiling_loss_pct': drf_serializers.JSONField(allow_null=True),
+    'last_cleaning_date': drf_serializers.JSONField(allow_null=True),
+    'days_since_cleaning': drf_serializers.JSONField(allow_null=True),
+    'recommend_cleaning': drf_serializers.JSONField(allow_null=True),
+    'reasons': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_REPORT_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetOmReportReponse', {
+    'installation': drf_serializers.JSONField(allow_null=True),
+    'reference': drf_serializers.JSONField(allow_null=True),
+    'period': drf_serializers.JSONField(allow_null=True),
+    'period_days': drf_serializers.JSONField(allow_null=True),
+    'period_kwh': drf_serializers.JSONField(allow_null=True),
+    'pr_pct': drf_serializers.JSONField(allow_null=True),
+    'availability_pct': drf_serializers.JSONField(allow_null=True),
+    'degradation_pct_per_year': drf_serializers.JSONField(allow_null=True),
+    'soiling_suspected': drf_serializers.JSONField(allow_null=True),
+    'open_alarms': drf_serializers.JSONField(allow_null=True),
+    'recommendations': drf_serializers.JSONField(allow_null=True),
+    'date_edition': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetCo2Reponse', {
+    'installation': drf_serializers.JSONField(allow_null=True),
+    'production_kwh': drf_serializers.JSONField(allow_null=True),
+    'co2_kg': drf_serializers.JSONField(allow_null=True),
+    'co2_tonnes': drf_serializers.JSONField(allow_null=True),
+    'co2_kg_par_kwh': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetClientPortalReponse', {
+    'client': drf_serializers.JSONField(allow_null=True),
+    'systems_count': drf_serializers.JSONField(allow_null=True),
+    'total_production_kwh': drf_serializers.JSONField(allow_null=True),
+    'economies_mad': drf_serializers.JSONField(allow_null=True),
+    'co2_kg': drf_serializers.JSONField(allow_null=True),
+    'co2_tonnes': drf_serializers.JSONField(allow_null=True),
+    'tarif_mad_par_kwh': drf_serializers.JSONField(allow_null=True),
+    'co2_kg_par_kwh': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetOmMetricsReponse', {
+    'installation': drf_serializers.JSONField(allow_null=True),
+    'window_days': drf_serializers.JSONField(allow_null=True),
+    'production_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+    'expected_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+    'pr_pct': drf_serializers.JSONField(required=False, allow_null=True),
+    'availability_pct': drf_serializers.JSONField(required=False, allow_null=True),
+    'degradation_pct_per_year': drf_serializers.JSONField(required=False, allow_null=True),
+    'soiling_suspected': drf_serializers.JSONField(required=False, allow_null=True),
+    'monthly_pr': drf_serializers.JSONField(required=False, allow_null=True),
+})
 
 
 @extend_schema_view(list=extend_schema(
@@ -384,7 +465,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'data': rows,
         })
 
-    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_FLEET_REPONSE)
     @action(detail=False, methods=['get'], url_path='fleet',
             permission_classes=[IsAnyRole])
     def fleet(self, request):
@@ -399,7 +480,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(fleet_overview(company, window_days=window))
 
-    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE)
     @action(detail=False, methods=['get'], url_path='benchmark',
             permission_classes=[IsAnyRole])
     def benchmark(self, request):
@@ -413,7 +494,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(benchmark_parc(company, window_days=window))
 
-    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE)
     @action(detail=True, methods=['get'], url_path='om-metrics',
             permission_classes=[IsAnyRole])
     def om_metrics(self, request, pk=None):
@@ -425,7 +506,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(om_metrics(config.installation, window_days=window))
 
-    @extend_schema(parameters=[_CLIENT_REQ], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_CLIENT_REQ], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE)
     @action(detail=False, methods=['get'], url_path='client-portal',
             permission_classes=[IsAnyRole])
     def client_portal(self, request):
@@ -440,7 +521,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(client_environmental_dashboard(company, client_id))
 
-    @extend_schema(parameters=[_SINCE, _UNTIL], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_SINCE, _UNTIL], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_REPONSE)
     @action(detail=True, methods=['get'], url_path='co2',
             permission_classes=[IsAnyRole])
     def co2(self, request, pk=None):
@@ -453,7 +534,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(co2_for_installation(
             config.installation, since=since, until=until))
 
-    @extend_schema(parameters=[_SINCE, _UNTIL], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_SINCE, _UNTIL], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_FLEET_REPONSE)
     @action(detail=False, methods=['get'], url_path='co2-fleet',
             permission_classes=[IsAnyRole])
     def co2_fleet(self, request):
@@ -466,7 +547,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         until = date_iso(request, 'until')
         return Response(co2_fleet(company, since=since, until=until))
 
-    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
+    @extend_schema(parameters=[_WINDOW], responses=_VIEWS_MONITORING_CONFIG_VIEW_SET_SOILING_REPONSE)
     @action(detail=True, methods=['get'], url_path='soiling',
             permission_classes=[IsAnyRole])
     def soiling(self, request, pk=None):
@@ -483,7 +564,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             OpenApiParameter('period', OpenApiTypes.STR, required=False),
             OpenApiParameter('format', OpenApiTypes.STR, required=False),
         ],
-        responses={(200, 'application/json'): OpenApiTypes.OBJECT,
+        responses={(200, 'application/json'): _VIEWS_MONITORING_CONFIG_VIEW_SET_OM_REPORT_REPONSE,
                    (200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='om-report',
             permission_classes=[IsAnyRole])
@@ -670,6 +751,27 @@ class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
         evaluate_underperformance(installation, user=self.request.user)
 
 
+_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_STATUS_REPONSE = inline_serializer('ViewsProductionWarrantyViewSetStatusReponse', {
+    'has_warranty': drf_serializers.JSONField(allow_null=True),
+    'year': drf_serializers.JSONField(required=False, allow_null=True),
+    'year_in_progress': drf_serializers.JSONField(required=False, allow_null=True),
+    'guaranteed_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+    'actual_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+    'shortfall_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+    'within_tolerance': drf_serializers.JSONField(required=False, allow_null=True),
+    'compensation_mad': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
+_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_CURVE_REPONSE = inline_serializer('ViewsProductionWarrantyViewSetCurveReponse', {
+    'has_warranty': drf_serializers.JSONField(allow_null=True),
+    'installation': drf_serializers.JSONField(required=False, allow_null=True),
+    'threshold_pct': drf_serializers.JSONField(required=False, allow_null=True),
+    'manufacturer_recourse': drf_serializers.JSONField(required=False, allow_null=True),
+    'points': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 @extend_schema_view(list=extend_schema(
     parameters=_FILTRE_INSTALLATION))
 class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -694,7 +796,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter('year', OpenApiTypes.INT, required=False)],
-        responses=OpenApiTypes.OBJECT)
+        responses=_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_STATUS_REPONSE)
     @action(detail=True, methods=['get'], url_path='status',
             permission_classes=[IsAnyRole])
     def status(self, request, pk=None):
@@ -712,7 +814,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
             OpenApiParameter('drift_threshold_pct', OpenApiTypes.NUMBER,
                              required=False),
         ],
-        responses=OpenApiTypes.OBJECT)
+        responses=_VIEWS_PRODUCTION_WARRANTY_VIEW_SET_CURVE_REPONSE)
     @action(detail=True, methods=['get'], url_path='curve',
             permission_classes=[IsAnyRole])
     def curve(self, request, pk=None):

@@ -15,6 +15,7 @@ from . import import_service, selectors, services
 from .models import Entite
 from .permissions import IsAdministrateur
 from .serializers import EntiteSerializer
+from rest_framework import serializers as drf_serializers
 
 # Jetons acceptés comme booléen "vrai" dans un corps de requête (form-data ou
 # JSON) : parse STRICTE — seul un jeton explicite active le mode, jamais une
@@ -25,6 +26,26 @@ _JETONS_VRAI = ('1', 'true', 'True', 'oui', 'Oui', True)
 
 def _est_vrai(valeur):
     return valeur in _JETONS_VRAI
+
+
+_VIEWS_ENTITE_VIEW_SET_GROUPE_REPONSE = inline_serializer('ViewsEntiteViewSetGroupeReponse', {
+    'disponible': drf_serializers.JSONField(allow_null=True),
+    'entites': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'effectif_note': drf_serializers.JSONField(allow_null=True),
+})
+
+
+_VIEWS_ENTITE_VIEW_SET_IMPORTER_REPONSE = inline_serializer('ViewsEntiteViewSetImporterReponse', {
+    'total': drf_serializers.JSONField(allow_null=True),
+    'valides': drf_serializers.JSONField(required=False, allow_null=True),
+    'erreurs': drf_serializers.JSONField(required=False, allow_null=True),
+    'conflits': drf_serializers.JSONField(required=False, allow_null=True),
+    'created': drf_serializers.JSONField(required=False, allow_null=True),
+    'updated': drf_serializers.JSONField(required=False, allow_null=True),
+    'ecrasements': drf_serializers.JSONField(required=False, allow_null=True),
+    'refuses': drf_serializers.JSONField(required=False, allow_null=True),
+})
 
 
 class EntiteViewSet(CompanyScopedModelViewSet):
@@ -169,7 +190,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         return Response(selectors.entites_accessibles(
             request.user, request.user.company))
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @extend_schema(responses=_VIEWS_ENTITE_VIEW_SET_GROUPE_REPONSE)
     @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
     def groupe(self, request):
         """NTADM25 — vue consolidée « Groupe », LECTURE SEULE (Administrateur).
@@ -210,7 +231,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
             'commit': serializers.BooleanField(required=False),
             'ecraser': serializers.BooleanField(required=False),
         })},
-        responses=OpenApiTypes.OBJECT)
+        responses=_VIEWS_ENTITE_VIEW_SET_IMPORTER_REPONSE)
     @action(detail=False, methods=['post'], permission_classes=[IsAdministrateur],
             parser_classes=[MultiPartParser])
     def importer(self, request):

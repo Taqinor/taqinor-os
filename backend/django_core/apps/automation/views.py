@@ -648,7 +648,18 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
 # FG3 — Bibliothèque de modèles d'automatisation (presets sans-code).
 # GET uniquement ; lecture tout rôle ; pas de modification.
 
-@extend_schema(responses=OpenApiTypes.OBJECT)
+_VIEWS_AUTOMATION_TEMPLATES_REPONSE = inline_serializer('ViewsAutomationTemplatesReponse', {
+    'id': drf_serializers.JSONField(allow_null=True),
+    'nom': drf_serializers.JSONField(allow_null=True),
+    'description': drf_serializers.JSONField(required=False, allow_null=True),
+    'trigger_type': drf_serializers.JSONField(required=False, allow_null=True),
+    'trigger_config': drf_serializers.JSONField(required=False, allow_null=True),
+    'action_type': drf_serializers.JSONField(required=False, allow_null=True),
+    'action_config': drf_serializers.JSONField(required=False, allow_null=True),
+}, many=True)
+
+
+@extend_schema(responses=_VIEWS_AUTOMATION_TEMPLATES_REPONSE)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def automation_templates(request):

@@ -18,6 +18,8 @@ from apps.crm.exports import build_xlsx_response
 from apps.crm import stages as stage_mod
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -106,6 +108,17 @@ def _compare_kpi(current, previous):
     return {'current': c, 'previous': p, 'delta_pct': delta}
 
 
+_REPORTS_SALES_REPORT_REPONSE = inline_serializer('ReportsSalesReportReponse', {
+    'funnel': drf_serializers.JSONField(allow_null=True),
+    'total_leads': drf_serializers.JSONField(allow_null=True),
+    'par_responsable': drf_serializers.JSONField(allow_null=True),
+    'par_canal': drf_serializers.JSONField(allow_null=True),
+    'perdus_par_motif': drf_serializers.JSONField(allow_null=True),
+    'devis_par_statut': drf_serializers.JSONField(allow_null=True),
+    'comparison': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('compare', OpenApiTypes.STR, required=False),
@@ -113,7 +126,7 @@ def _compare_kpi(current, previous):
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _REPORTS_SALES_REPORT_REPONSE,
                (200, 'application/pdf'): OpenApiTypes.BINARY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
@@ -241,13 +254,21 @@ def sales_report(request):
     })
 
 
+_REPORTS_STOCK_REPORT_REPONSE = inline_serializer('ReportsStockReportReponse', {
+    'valorisation_vente': drf_serializers.JSONField(allow_null=True),
+    'valorisation_achat': drf_serializers.JSONField(required=False, allow_null=True),
+    'par_categorie': drf_serializers.JSONField(allow_null=True),
+    'bas_stock': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _REPORTS_STOCK_REPORT_REPONSE,
                (200, 'application/pdf'): OpenApiTypes.BINARY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
@@ -346,13 +367,24 @@ def stock_report(request):
     })
 
 
+_REPORTS_SERVICE_REPORT_REPONSE = inline_serializer('ReportsServiceReportReponse', {
+    'chantiers_par_statut': drf_serializers.JSONField(allow_null=True),
+    'interventions_par_technicien': drf_serializers.JSONField(allow_null=True),
+    'tickets_par_statut': drf_serializers.JSONField(allow_null=True),
+    'tickets_ouverts': drf_serializers.JSONField(allow_null=True),
+    'tickets_resolus': drf_serializers.JSONField(allow_null=True),
+    'garanties_expirantes_90j': drf_serializers.JSONField(allow_null=True),
+    'resolution_a_distance': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _REPORTS_SERVICE_REPORT_REPONSE,
                (200, 'application/pdf'): OpenApiTypes.BINARY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
@@ -455,11 +487,18 @@ def service_report(request):
 
 # ── ARC40 — KPI fédérés pilotés par le registre plateforme ───────────────────
 
+_REPORTS_KPI_FEDERES_REPONSE = inline_serializer('ReportsKpiFederesReponse', {
+    'count': drf_serializers.JSONField(allow_null=True),
+    'tuiles': drf_serializers.JSONField(required=False, allow_null=True),
+    'badges': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('vue', OpenApiTypes.STR, required=False),
     ],
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _REPORTS_KPI_FEDERES_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def kpi_federes(request):

@@ -18,13 +18,13 @@ from .serializers import (
     AccessReviewCampaignSerializer, AccessReviewItemSerializer,
     SodRuleSerializer,
 )
+from .schema_fields import champ_choix
 from .services import attester as _attester, generate_items
 
 
 class AttesterSerializer(serializers.Serializer):
     item = serializers.IntegerField()
-    decision = serializers.ChoiceField(
-        choices=[c.value for c in AccessReviewItem.Decision])
+    decision = champ_choix(c.value for c in AccessReviewItem.Decision)
     commentaire = serializers.CharField(required=False, allow_blank=True)
 
 

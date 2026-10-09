@@ -442,6 +442,14 @@ class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
         }, status=201 if cree else 200)
 
 
+_VIEWS_CUSTOM_RECORD_VIEW_SET_VUE_LISTE_REPONSE = inline_serializer('ViewsCustomRecordViewSetVueListeReponse', {
+    'count': drf_serializers.JSONField(allow_null=True),
+    'next': drf_serializers.JSONField(allow_null=True),
+    'previous': drf_serializers.JSONField(allow_null=True),
+    'results': drf_serializers.JSONField(allow_null=True),
+})
+
+
 class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     """Enregistrements d'un objet personnalisé — CRUD dynamique scopé par
     ``object_code`` (segment d'URL), jamais par le corps. Un rôle sans la
@@ -492,7 +500,7 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_object_permission('gerer')
         instance.delete()
 
-    @extend_schema(responses=OpenApiTypes.ANY)
+    @extend_schema(responses=_VIEWS_CUSTOM_RECORD_VIEW_SET_VUE_LISTE_REPONSE)
     def vue_liste(self, request, *args, **kwargs):
         """NTEXT2 — schéma de liste auto-générée (colonnes ``visible_liste``)
         + les données paginées de l'objet. Multi-tenant strict : la société

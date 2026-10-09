@@ -27,6 +27,7 @@ from .serializers import (
     NetworkPolicySerializer,
     TrustedDeviceSerializer,
 )
+from rest_framework import serializers as drf_serializers
 
 
 class PolitiqueReseauExistante(APIException):
@@ -345,12 +346,27 @@ class BreakGlassView(APIView):
                         status=201)
 
 
+_VIEWS_SECURITY_POSTURE_VIEW_GET_REPONSE = inline_serializer('ViewsSecurityPostureViewGetReponse', {
+    'mfa_pct': drf_serializers.JSONField(required=False, allow_null=True),
+    'sso_configured': drf_serializers.JSONField(required=False, allow_null=True),
+    'active_sessions': drf_serializers.JSONField(required=False, allow_null=True),
+    'dormant_accounts': drf_serializers.JSONField(required=False, allow_null=True),
+    'sod_open_violations': drf_serializers.JSONField(required=False, allow_null=True),
+    'overdue_review_campaigns': drf_serializers.JSONField(required=False, allow_null=True),
+    'expired_secrets': drf_serializers.JSONField(required=False, allow_null=True),
+    'ip_allowlist_active': drf_serializers.JSONField(required=False, allow_null=True),
+    'score': drf_serializers.JSONField(required=False, allow_null=True),
+    'soc2_iso27001_ready': drf_serializers.JSONField(required=False, allow_null=True),
+    'items_faibles': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 class SecurityPostureView(APIView):
     """NTSEC27 — posture de sécurité consolidée de la société (Directeur only)."""
 
     permission_classes = [IsAdminRole]
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @extend_schema(responses=_VIEWS_SECURITY_POSTURE_VIEW_GET_REPONSE)
     def get(self, request):
         from .posture import security_posture
         return Response(security_posture(request.user.company))

@@ -22,7 +22,6 @@ from .serializers import (
     WebhookDeliverySerializer, ApiUsagePlanSerializer, scope_catalogue,
 )
 from . import delivery as delivery_service
-from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser
 
 
@@ -65,6 +64,43 @@ class DocsView(APIView):
     def get(self, request):
         from .docs import public_api_reference
         return Response(public_api_reference())
+
+
+class ApiKeyCreeSerializer(ApiKeySerializer):
+    """Clé créée : le secret en clair n'est servi QUE dans cette réponse."""
+    key = drf_serializers.CharField()
+
+    class Meta(ApiKeySerializer.Meta):
+        fields = list(ApiKeySerializer.Meta.fields) + ['key']
+        read_only_fields = fields
+
+
+class ApiKeyRotationSerializer(ApiKeyCreeSerializer):
+    ancienne_cle = ApiKeySerializer()
+
+    class Meta(ApiKeyCreeSerializer.Meta):
+        fields = list(ApiKeyCreeSerializer.Meta.fields) + ['ancienne_cle']
+        read_only_fields = fields
+
+
+class WebhookSecretSerializer(WebhookSerializer):
+    """Webhook créé / secret régénéré : le secret n'est servi qu'ici."""
+    secret = drf_serializers.CharField()
+
+    class Meta(WebhookSerializer.Meta):
+        fields = list(WebhookSerializer.Meta.fields) + ['secret']
+        read_only_fields = fields
+
+
+class ServiceAccountCreeSerializer(drf_serializers.ModelSerializer):
+    token = drf_serializers.CharField()
+
+    class Meta:
+        from .models import ServiceAccount as _SA
+        model = _SA
+        fields = ['id', 'nom', 'scopes', 'prefix', 'actif', 'expire_le',
+                  'last_used_at', 'created_at', 'token']
+        read_only_fields = fields
 
 
 class OcrToCrmSerializer(drf_serializers.Serializer):
@@ -283,7 +319,7 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
             Q(company=company) | Q(company_id__in=bacs_a_sable))
 
     @extend_schema(request=ApiKeyCreateSerializer,
-                   responses={201: OpenApiTypes.OBJECT})
+                   responses={201: ApiKeyCreeSerializer})
     def create(self, request, *args, **kwargs):
         in_ser = ApiKeyCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
@@ -319,7 +355,7 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         return Response(ApiKeySerializer(instance).data)
 
     @extend_schema(request=RotationCleSerializer,
-                   responses={201: OpenApiTypes.OBJECT})
+                   responses={201: ApiKeyRotationSerializer})
     @action(detail=True, methods=['post'],
             permission_classes=[IsAdminOrResponsableTier])
     def rotate(self, request, pk=None):
@@ -356,7 +392,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         )
 
     @extend_schema(request=WebhookSerializer,
-                   responses={201: OpenApiTypes.OBJECT})
+                   responses={201: WebhookSecretSerializer})
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -368,7 +404,7 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         return _no_store(
             Response(data, status=status.HTTP_201_CREATED, headers=headers))
 
-    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=None, responses=WebhookSecretSerializer)
     @action(detail=True, methods=['post'])
     def rotate_secret(self, request, pk=None):
         """Régénère le secret du webhook ; renvoie le nouveau une seule fois."""
@@ -494,7 +530,7 @@ class ServiceAccountViewSet(viewsets.ModelViewSet):
         return qs.none()
 
     @extend_schema(request=ServiceAccountCreerSerializer,
-                   responses={201: OpenApiTypes.OBJECT})
+                   responses={201: ServiceAccountCreeSerializer})
     def create(self, request, *args, **kwargs):
         from .models import ServiceAccount
         entree = ServiceAccountCreerSerializer(data=request.data)

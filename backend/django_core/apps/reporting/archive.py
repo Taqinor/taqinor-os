@@ -23,6 +23,8 @@ from apps.installations.models import Installation
 from apps.records.xlsx import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 # Libellés FR des types de document (miroir de archiveDocs.js côté front).
 TYPE_LABELS = {
@@ -141,11 +143,18 @@ def _chantier_post_sale_docs(installation):
     ]
 
 
+_ARCHIVE_ARCHIVE_CLIENT_REPONSE = inline_serializer('ArchiveArchiveClientReponse', {
+    'client': drf_serializers.JSONField(allow_null=True),
+    'count': drf_serializers.JSONField(allow_null=True),
+    'documents': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _ARCHIVE_ARCHIVE_CLIENT_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
@@ -179,11 +188,18 @@ def archive_client(request, pk):
     })
 
 
+_ARCHIVE_ARCHIVE_CHANTIER_REPONSE = inline_serializer('ArchiveArchiveChantierReponse', {
+    'chantier': drf_serializers.JSONField(allow_null=True),
+    'count': drf_serializers.JSONField(allow_null=True),
+    'documents': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _ARCHIVE_ARCHIVE_CHANTIER_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])

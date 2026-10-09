@@ -25,6 +25,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -48,6 +50,20 @@ def _avg(values):
     return round(sum(vals) / len(vals), 1)
 
 
+_REPORTS_FIELD_FIELD_SERVICE_REPORT_REPONSE = inline_serializer('ReportsFieldFieldServiceReportReponse', {
+    'total_interventions': drf_serializers.JSONField(allow_null=True),
+    'par_type': drf_serializers.JSONField(allow_null=True),
+    'par_statut': drf_serializers.JSONField(allow_null=True),
+    'total_tickets': drf_serializers.JSONField(allow_null=True),
+    'first_time_fix': drf_serializers.JSONField(allow_null=True),
+    'mttr_jours_moyen': drf_serializers.JSONField(allow_null=True),
+    'ponctualite': drf_serializers.JSONField(allow_null=True),
+    'recidive': drf_serializers.JSONField(allow_null=True),
+    'temps_trajet_vs_site': drf_serializers.JSONField(allow_null=True),
+    'par_technicien': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
@@ -56,7 +72,7 @@ def _avg(values):
         OpenApiParameter('equipe', OpenApiTypes.INT, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _REPORTS_FIELD_FIELD_SERVICE_REPORT_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])

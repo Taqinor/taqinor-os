@@ -40,6 +40,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
 
+from .schema_fields import champ_choix
+from drf_spectacular.utils import inline_serializer
+
 
 def _co(user):
     if user.company_id:
@@ -293,6 +296,12 @@ def _trier_items(items, trier):
     return items
 
 
+_APPROBATIONS_APPROBATIONS_EN_ATTENTE_REPONSE = inline_serializer('ApprobationsApprobationsEnAttenteReponse', {
+    'items': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('source', OpenApiTypes.STR, required=False),
@@ -300,7 +309,7 @@ def _trier_items(items, trier):
         OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
         OpenApiParameter('trier', OpenApiTypes.STR, required=False),
     ],
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _APPROBATIONS_APPROBATIONS_EN_ATTENTE_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def approbations_en_attente(request):
@@ -439,7 +448,7 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
 class DeciderApprobationSerializer(drf_serializers.Serializer):
     source = drf_serializers.ChoiceField(choices=sorted(_SOURCE_LOADERS))
     id = drf_serializers.IntegerField()
-    decision = drf_serializers.ChoiceField(choices=['approuver', 'refuser'])
+    decision = champ_choix(['approuver', 'refuser'])
     motif = drf_serializers.CharField(required=False, allow_blank=True)
 
 
@@ -450,7 +459,7 @@ class _ItemDecisionSerializer(drf_serializers.Serializer):
 
 class DeciderEnMasseSerializer(drf_serializers.Serializer):
     items = _ItemDecisionSerializer(many=True)
-    decision = drf_serializers.ChoiceField(choices=['approuver', 'refuser'])
+    decision = champ_choix(['approuver', 'refuser'])
     motif = drf_serializers.CharField(required=False, allow_blank=True)
 
 
@@ -458,9 +467,14 @@ class DeciderPushSerializer(drf_serializers.Serializer):
     token = drf_serializers.CharField()
 
 
+_APPROBATIONS_DECIDER_APPROBATION_REPONSE = inline_serializer('ApprobationsDeciderApprobationReponse', {
+    'detail': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 @extend_schema(
     request=DeciderApprobationSerializer,
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _APPROBATIONS_DECIDER_APPROBATION_REPONSE})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_approbation(request):
@@ -553,9 +567,14 @@ def _approuver_en_masse_workflow(company, user, workflow_items, motif):
     return resultats
 
 
+_APPROBATIONS_DECIDER_EN_MASSE_REPONSE = inline_serializer('ApprobationsDeciderEnMasseReponse', {
+    'resultats': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     request=DeciderEnMasseSerializer,
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _APPROBATIONS_DECIDER_EN_MASSE_REPONSE})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_en_masse(request):
@@ -644,9 +663,14 @@ class DecisionPushThrottle(SimpleRateThrottle):
         }
 
 
+_APPROBATIONS_DECIDER_APPROBATION_VIA_PUSH_REPONSE = inline_serializer('ApprobationsDeciderApprobationViaPushReponse', {
+    'detail': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 @extend_schema(
     request=DeciderPushSerializer,
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _APPROBATIONS_DECIDER_APPROBATION_VIA_PUSH_REPONSE})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([DecisionPushThrottle])

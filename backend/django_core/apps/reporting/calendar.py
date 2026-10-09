@@ -26,6 +26,7 @@ from core.throttling import IdentIpPartageeMixin
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework import serializers as drf_serializers
 
 
 class PeutReplanifierCalendrier(BasePermission):
@@ -117,6 +118,13 @@ def _user_label(u):
     return full or getattr(u, 'username', '') or ''
 
 
+_CALENDAR_CALENDAR_EVENTS_REPONSE = inline_serializer('CalendarCalendarEventsReponse', {
+    'from': drf_serializers.JSONField(allow_null=True),
+    'to': drf_serializers.JSONField(allow_null=True),
+    'events': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
@@ -124,7 +132,7 @@ def _user_label(u):
         OpenApiParameter('assignee', OpenApiTypes.STR, required=False),
         OpenApiParameter('types', OpenApiTypes.STR, required=False),
     ],
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _CALENDAR_CALENDAR_EVENTS_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def calendar_events(request):
@@ -272,9 +280,15 @@ class CalendarRescheduleSerializer(serializers.Serializer):
     date = serializers.DateField()
 
 
+_CALENDAR_CALENDAR_RESCHEDULE_REPONSE = inline_serializer('CalendarCalendarRescheduleReponse', {
+    'ok': drf_serializers.JSONField(allow_null=True),
+    'date': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     request=CalendarRescheduleSerializer,
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _CALENDAR_CALENDAR_RESCHEDULE_REPONSE})
 @api_view(['POST'])
 @permission_classes([PeutReplanifierCalendrier])
 def calendar_reschedule(request):
@@ -532,12 +546,17 @@ def build_ics(user, events, *, calname=None):
     return body
 
 
+_ERREUR_ICS = inline_serializer('ErreurCalendrierIcs', {
+    'detail': serializers.CharField(required=False),
+})
+
+
 @extend_schema(
     parameters=[OpenApiParameter('token', OpenApiTypes.STR, required=True)],
     responses={(200, 'text/calendar'): OpenApiTypes.STR,
-               (403, 'application/json'): OpenApiTypes.ANY,
+               (403, 'application/json'): _ERREUR_ICS,
                (404, 'text/plain'): OpenApiTypes.STR,
-               (429, 'application/json'): OpenApiTypes.ANY})
+               (429, 'application/json'): _ERREUR_ICS})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

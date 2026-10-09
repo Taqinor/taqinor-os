@@ -33,6 +33,8 @@ from apps.reporting.pipeline import (
 )
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -58,12 +60,24 @@ def _username(user):
 
 # ── QJ18 — Tableau de bord commercial ────────────────────────────────────────
 
+_COMMERCIAL_COMMERCIAL_DASHBOARD_REPONSE = inline_serializer('CommercialCommercialDashboardReponse', {
+    'funnel': drf_serializers.JSONField(allow_null=True),
+    'win_rate_pct': drf_serializers.JSONField(allow_null=True),
+    'time_in_stage': drf_serializers.JSONField(allow_null=True),
+    'sales_velocity': drf_serializers.JSONField(allow_null=True),
+    'leaderboard': drf_serializers.JSONField(allow_null=True),
+    'time_to_first_touch': drf_serializers.JSONField(allow_null=True),
+    'total_leads': drf_serializers.JSONField(allow_null=True),
+    'total_signes': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
     ],
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _COMMERCIAL_COMMERCIAL_DASHBOARD_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def commercial_dashboard(request):
@@ -251,12 +265,20 @@ def _time_to_first_touch(co, leads, start, end, LeadActivity):
 
 # ── QJ19 — Win/loss par source et motifs de perte ────────────────────────────
 
+_COMMERCIAL_WIN_LOSS_BY_SOURCE_REPONSE = inline_serializer('CommercialWinLossBySourceReponse', {
+    'by_canal': drf_serializers.JSONField(allow_null=True),
+    'by_source_technique': drf_serializers.JSONField(allow_null=True),
+    'top_loss_reasons': drf_serializers.JSONField(allow_null=True),
+    'summary': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
     ],
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _COMMERCIAL_WIN_LOSS_BY_SOURCE_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def win_loss_by_source(request):

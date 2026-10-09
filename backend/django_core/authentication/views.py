@@ -262,10 +262,16 @@ def _blacklist_refresh_jti(jti):
 
 
 # ── Login ──────────────────────────────────────────────────────
+_ERREUR_AUTH = inline_serializer('ErreurAuthentification', {
+    'detail': drf_serializers.CharField(required=False),
+    'code': drf_serializers.CharField(required=False),
+})
+
+
 @extend_schema_view(post=extend_schema(
     responses={
         200: CustomTokenObtainPairSerializer,
-        401: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT,
+        401: _ERREUR_AUTH, 403: _ERREUR_AUTH,
     }))
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -462,7 +468,7 @@ class CookieTokenRefreshView(APIView):
     @extend_schema(request=None, responses={
         200: inline_serializer('TokenRafraichi', {
             'detail': drf_serializers.CharField()}),
-        401: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT,
+        401: _ERREUR_AUTH, 403: _ERREUR_AUTH,
     })
     def post(self, request):
         refresh_raw = request.COOKIES.get('refresh_token')
@@ -590,7 +596,7 @@ def _rafraichir(refresh_raw):
             'access': drf_serializers.CharField(),
             'refresh': drf_serializers.CharField(required=False),
         }),
-        401: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT,
+        401: _ERREUR_AUTH, 403: _ERREUR_AUTH,
     }))
 class BodyTokenRefreshView(TokenRefreshView):
     """ASEC49 — route historique ``/api/django/token/refresh/`` (refresh dans

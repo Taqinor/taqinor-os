@@ -29,6 +29,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 # Types de points exposés par la carte. Le front affiche un filtre par type.
 TYPE_LEAD = 'lead'
@@ -57,12 +59,18 @@ def _point(coord):
     return float(coord) if coord is not None else None
 
 
+_GEO_GEO_POINTS_REPONSE = inline_serializer('GeoGeoPointsReponse', {
+    'points': drf_serializers.JSONField(allow_null=True),
+    'counts': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('types', OpenApiTypes.STR, required=False),
         OpenApiParameter('statuts', OpenApiTypes.STR, required=False),
     ],
-    responses={200: OpenApiTypes.ANY})
+    responses={200: _GEO_GEO_POINTS_REPONSE})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def geo_points(request):

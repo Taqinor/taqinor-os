@@ -20,6 +20,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _qdate(value):
@@ -120,6 +122,12 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
     }
 
 
+_TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE = inline_serializer('TechnicienScorecardTechnicienScorecardReponse', {
+    'scorecard': drf_serializers.JSONField(allow_null=True),
+    'moyenne_equipe': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[
         OpenApiParameter('technicien', OpenApiTypes.INT, required=True),
@@ -127,7 +135,7 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
         OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
-    responses={(200, 'application/json'): OpenApiTypes.ANY,
+    responses={(200, 'application/json'): _TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])

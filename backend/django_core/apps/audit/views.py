@@ -30,6 +30,7 @@ from .selectors import reconstruct_as_of
 from .serializers import AuditLogSerializer
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_view
+from rest_framework import serializers as drf_serializers
 
 CASABLANCA = ZoneInfo('Africa/Casablanca')
 
@@ -143,12 +144,21 @@ def _period_bounds(period, anchor):
     return start, end, 'hour', keys
 
 
+_VIEWS_STATS_REPONSE = inline_serializer('ViewsStatsReponse', {
+    'period': drf_serializers.JSONField(allow_null=True),
+    'date': drf_serializers.JSONField(allow_null=True),
+    'granularity': drf_serializers.JSONField(allow_null=True),
+    'total': drf_serializers.JSONField(allow_null=True),
+    'buckets': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=FILTRES_AUDIT + [
         OpenApiParameter('period', OpenApiTypes.STR, required=False),
         OpenApiParameter('date', OpenApiTypes.STR, required=False),
     ],
-    responses=OpenApiTypes.ANY)
+    responses=_VIEWS_STATS_REPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def stats(request):
@@ -218,7 +228,14 @@ def _apply_filters_no_range(qs, params):
     return qs
 
 
-@extend_schema(responses=OpenApiTypes.ANY)
+_VIEWS_META_REPONSE = inline_serializer('ViewsMetaReponse', {
+    'users': drf_serializers.JSONField(allow_null=True),
+    'actions': drf_serializers.JSONField(allow_null=True),
+    'modules': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(responses=_VIEWS_META_REPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def meta(request):
@@ -415,9 +432,18 @@ def object_history(request, content_type, object_id):
 # ``objets/<app_label>.<model>/<id>/as-of/?date=`` (content type désigné par
 # ``app_label.model`` dans l'URL, ex. ``crm.client``). Company-scopée : sans
 # société sur l'utilisateur (ni superuser), renvoie 404 plutôt qu'une fuite.
+_VIEWS_OBJECT_AS_OF_REPONSE = inline_serializer('ViewsObjectAsOfReponse', {
+    'content_type': drf_serializers.JSONField(allow_null=True),
+    'object_id': drf_serializers.JSONField(allow_null=True),
+    'as_of': drf_serializers.JSONField(allow_null=True),
+    'fields': drf_serializers.JSONField(allow_null=True),
+    'covered_changes': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema(
     parameters=[OpenApiParameter('date', OpenApiTypes.STR, required=False)],
-    responses=OpenApiTypes.ANY)
+    responses=_VIEWS_OBJECT_AS_OF_REPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def object_as_of(request, content_type, object_id):

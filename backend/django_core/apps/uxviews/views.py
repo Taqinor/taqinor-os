@@ -71,6 +71,12 @@ def _identifiant_metier(instance):
     return None, None
 
 
+_VIEWS_SAVED_VIEW_VIEW_SET_IMPORTER_REPONSE = inline_serializer('ViewsSavedViewViewSetImporterReponse', {
+    'created': drf_serializers.JSONField(allow_null=True),
+    'erreurs': drf_serializers.JSONField(allow_null=True),
+})
+
+
 @extend_schema_view(list=extend_schema(parameters=[
     OpenApiParameter('ecran', OpenApiTypes.STR, required=False)]))
 class SavedViewViewSet(CompanyScopedModelViewSet):
@@ -377,7 +383,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request={'multipart/form-data': inline_serializer('SavedViewImportRequete', {
             'fichier': drf_serializers.FileField()})},
-        responses=OpenApiTypes.ANY)
+        responses=_VIEWS_SAVED_VIEW_VIEW_SET_IMPORTER_REPONSE)
     @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
     def importer(self, request):
         """NTUX34 — import CSV/XLSX de `SavedView` entre environnements (ex.
@@ -444,6 +450,12 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             created.append(SavedViewSerializer(view).data)
 
         return Response({'created': created, 'erreurs': erreurs})
+
+
+_VIEWS_FAVORI_UTILISATEUR_VIEW_SET_IMPORTER_REPONSE = inline_serializer('ViewsFavoriUtilisateurViewSetImporterReponse', {
+    'importes': drf_serializers.JSONField(allow_null=True),
+    'non_resolues': drf_serializers.JSONField(allow_null=True),
+})
 
 
 class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
@@ -513,7 +525,7 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request=inline_serializer('FavoriReordonnerRequete', {
             'ordre': drf_serializers.IntegerField()}),
-        responses=OpenApiTypes.ANY)
+        responses=FavoriUtilisateurSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='reordonner',
             permission_classes=[IsAnyRole])
     def reordonner(self, request, pk=None):
@@ -571,7 +583,7 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request={'multipart/form-data': inline_serializer('FavoriImportRequete', {
             'fichier': drf_serializers.FileField()})},
-        responses=OpenApiTypes.ANY)
+        responses=_VIEWS_FAVORI_UTILISATEUR_VIEW_SET_IMPORTER_REPONSE)
     @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
     def importer(self, request):
         """NTUX35 — import CSV/XLSX des favoris d'un utilisateur qui change de
