@@ -120,6 +120,22 @@ class AcceptationTests(unittest.TestCase):
         code, sortie = self.lancer()
         self.assertEqual(code, 0, sortie)
 
+    def test_groupe_accepte_seulement_si_tout_couvert_sans_dette(self):
+        # AMET91 lit `--groupe G` : 0 = accepte (tout couvert, dette vide), 1 sinon.
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"))
+        self.depot.enregistrement(couvre=("ATST1",))
+        code, sortie = self.lancer("--groupe", "ATST")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("1 non couverte(s)", sortie)
+        self.depot.dette("ATST", "ATST2")
+        code, sortie = self.lancer("--groupe", "atst")
+        self.assertEqual(code, 1, sortie)  # en dette = pas encore accepte
+        self.depot.enregistrement(couvre=("ATST1", "ATST2"),
+                                  etapes=[etape(), etape("P1.2", ("ATST2",))])
+        self.depot.dette("ATST")
+        code, sortie = self.lancer("--groupe", "ATST")
+        self.assertEqual(code, 0, sortie)
+
     def test_preuves_qui_ne_comptent_pas_et_tags_qui_comptent(self):
         self.depot.plan(ligne("x", "ATST1", "n/a — garde CI (PA4.3 ailleurs)"),
                         ligne("x", "ATST2", "API seulement — le rejeu PA4.3 est porté ailleurs"),

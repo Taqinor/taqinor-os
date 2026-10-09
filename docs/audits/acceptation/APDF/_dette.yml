@@ -3,7 +3,7 @@
 # PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: APDF
-amorce: 9812e275c
+amorce: 4b5636118
 ids:
   - APDF2
   - APDF6
@@ -15,9 +15,13 @@ ids:
   - APDF21
   - APDF22
   - APDF23
+  - APDF25
+  - APDF26
   - APDF27
+  - APDF28
   - APDF29
   - APDF30
+  - APDF31
   - APDF32
   - APDF33
   - APDF34

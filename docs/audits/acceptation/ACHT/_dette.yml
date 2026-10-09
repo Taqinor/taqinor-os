@@ -3,7 +3,7 @@
 # PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ACHT
-amorce: 9812e275c
+amorce: 4b5636118
 ids:
   - ACHT1
   - ACHT2
@@ -73,5 +73,6 @@ ids:
   - ACHT74
   - ACHT75
   - ACHT76
+  - ACHT77
   - ACHT78
   - ACHT79

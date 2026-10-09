@@ -3,7 +3,7 @@
 # PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ADEP
-amorce: 9812e275c
+amorce: 4b5636118
 ids:
   - ADEP1
   - ADEP2
@@ -36,8 +36,11 @@ ids:
   - ADEP29
   - ADEP30
   - ADEP31
+  - ADEP32
   - ADEP33
   - ADEP34
+  - ADEP35
+  - ADEP36
   - ADEP40
   - ADEP41
   - ADEP42

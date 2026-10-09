@@ -3,7 +3,7 @@
 # PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: ACRM
-amorce: 9812e275c
+amorce: 4b5636118
 ids:
   - ACRM3
   - ACRM4
@@ -46,6 +46,7 @@ ids:
   - ACRM41
   - ACRM42
   - ACRM43
+  - ACRM44
   - ACRM45
   - ACRM46
   - ACRM47
