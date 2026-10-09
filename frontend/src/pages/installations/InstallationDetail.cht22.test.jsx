@@ -178,9 +178,9 @@ describe('InstallationDetail — AGR604 hors réseau', () => {
       .toEqual(installationsApi.updateInstallation.mock.calls[0])
   })
 
-  it('raccordement non renseigné reste null dans le PATCH', async () => {
+  it('raccordement non renseigné et non touché n’est pas renvoyé (ACHT57)', async () => {
     const user = userEvent.setup()
     await enregistrerSansToucher(user, { id: 903, reference: 'CH-903', statut: 'signe', annule: false })
-    expect(installationsApi.updateInstallation.mock.calls[0][1].raccordement_reseau).toBeNull()
+    expect(installationsApi.updateInstallation.mock.calls[0][1]).not.toHaveProperty('raccordement_reseau')
   })
 })

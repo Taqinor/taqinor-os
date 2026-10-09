@@ -52,7 +52,7 @@ import { readCache } from '../../features/offlinesync/readCache'
 import DonneesHorsLigneBanner from '../../features/offlinesync/DonneesHorsLigneBanner'
 import OnboardingTerrain from '../../features/offlinesync/OnboardingTerrain'
 import {
-  interventionStatusLabel, INTERVENTION_TYPES,
+  interventionStatusLabel, INTERVENTION_TYPES, raisonRefusStatut,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
   // EZ6 — rang dans la machine à états (miroir de Intervention.STATUT_ORDER).
   interventionStatusRank,
@@ -274,7 +274,8 @@ export default function MaJourneePage() {
     if (!cible) return
     const ancien = apres.statut
     try {
-      await installationsApi.updateIntervention(apres.id, { statut: cible })
+      await installationsApi.updateIntervention(
+        apres.id, { statut: cible }, { suppressErrorToast: true })
       setIndiceStatut(null)
       load()
       toastWithUndo({
@@ -288,11 +289,9 @@ export default function MaJourneePage() {
       })
     } catch (err) {
       // NO-OP silencieux : le statut reste ce qu'il est, l'horodatage est gardé.
-      const data = err?.response?.data
+      // ACHT61 — la raison est lue dans sa forme réelle (liste sous « statut »).
       setIndiceStatut(
-        data?.transition_block_reason
-        ?? data?.detail
-        ?? (typeof data?.statut === 'string' ? data.statut : null)
+        raisonRefusStatut(err)
         ?? `Statut « ${interventionStatusLabel(cible)} » non appliqué automatiquement.`)
     }
   }, [load])
@@ -579,19 +578,19 @@ function InterventionFlowSheet({
     if (!interv || statut === interv.statut) return
     setBusy(true)
     try {
-      await installationsApi.updateIntervention(interv.id, { statut })
+      await installationsApi.updateIntervention(
+        interv.id, { statut }, { suppressErrorToast: true })
       toast.success('Statut mis à jour.')
       onIndiceStatut?.(null)
       // EZ6 — le changement MANUEL ne repasse pas par le dérivateur (aucun
       // horodatage nouveau) : `onChanged(interv)` recharge, c'est tout.
       onChanged?.(interv)
     } catch (err) {
-      const data = err?.response?.data
-      toast.error(
-        data?.transition_block_reason
-        ?? data?.detail
-        ?? (typeof data?.statut === 'string' ? data.statut : null)
-        ?? 'Changement de statut impossible.')
+      // ACHT61 — même raison que l'indice automatique, UN seul toast (le pont
+      // axios est coupé par `suppressErrorToast`).
+      const raison = raisonRefusStatut(err) ?? 'Changement de statut impossible.'
+      onIndiceStatut?.(raison)
+      toast.error(raison)
     } finally { setBusy(false) }
   }
   if (!interv) return null
