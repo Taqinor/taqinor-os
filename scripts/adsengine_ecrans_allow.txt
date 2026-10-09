@@ -1,0 +1,74 @@
+# AACQ77 - passif GELE de scripts/check_adsengine_ecrans.py (constat C-AACQ-073,
+# critere C13) : sites des ecrans adsengine / WebsiteLeadPayloadsPage releves le
+# 2026-10-09 sur le depot reel. Cle de CONTENU (jamais un numero de ligne) :
+#   fichier::R1::fonction            liste lue sur la page 1
+#   fichier::R2::<corps du catch>    echec de chargement remplace par une valeur vide
+# Un site liste ici est CONSTATE, pas approuve : le corriger puis retirer sa
+# ligne. REGLE ABSOLUE : cette liste ne peut que DECROITRE ; une entree devenue
+# conforme sans etre retiree fait echouer la garde.
+frontend/src/features/adsengine/ActionsLogScreen.jsx::R1::ActionsLogScreen
+frontend/src/features/adsengine/ActionsLogScreen.jsx::R2::() => setPreviousCount(null)
+frontend/src/features/adsengine/AdsCockpitScreen.jsx::R1::AdsCockpitScreen
+frontend/src/features/adsengine/AdsCockpitScreen.jsx::R2::() => setPreviousTotal(null)
+frontend/src/features/adsengine/AdsCockpitScreen.jsx::R2::() => { if (alive) setPoint(null) }
+frontend/src/features/adsengine/AlertCenter.jsx::R1::AlertCenter
+frontend/src/features/adsengine/BacklogScreen.jsx::R2::() => setCampagnes([])
+frontend/src/features/adsengine/BacklogScreen.jsx::R2::() => setItemsSansLot([])
+frontend/src/features/adsengine/BrandKitScreen.jsx::R1::BrandKitScreen
+frontend/src/features/adsengine/CampaignsScreen.jsx::R1::toggleBreakdown
+frontend/src/features/adsengine/CampaignsScreen.jsx::R2::() => setHierarchy({ ...c, adsets: [] })
+frontend/src/features/adsengine/CampaignsScreen.jsx::R2::() => setPreviousTotal(null)
+frontend/src/features/adsengine/CampaignsScreen.jsx::R2::() => setRanking([])
+frontend/src/features/adsengine/CampaignsScreen.jsx::R2::() => setRealLeads({})
+frontend/src/features/adsengine/CommandPalette.jsx::R2::() => { adsCache = []; setAds([]) }
+frontend/src/features/adsengine/CommandPalette.jsx::R2::() => { campaignsCache = []; setCampaigns([]) }
+frontend/src/features/adsengine/CommentsInboxScreen.jsx::R1::CommentsInboxScreen
+frontend/src/features/adsengine/ConnectionScreen.jsx::R1::ConnectionScreen
+frontend/src/features/adsengine/ConnectionScreen.jsx::R2::() => setAutonomy(EMPTY_AUTONOMY)
+frontend/src/features/adsengine/ConnectionScreen.jsx::R2::() => setHealth([])
+frontend/src/features/adsengine/ConnectionScreen.jsx::R2::() => setPolicy(EMPTY_POLICY)
+frontend/src/features/adsengine/ConnectionScreen.jsx::R2::() => setStatus(null)
+frontend/src/features/adsengine/ConsentScreen.jsx::R1::ConsentScreen
+frontend/src/features/adsengine/CreativeLibraryScreen.jsx::R1::CreativeLibraryScreen
+frontend/src/features/adsengine/CreativeLibraryScreen.jsx::R2::() => setAssets([])
+frontend/src/features/adsengine/DashboardScreen.jsx::R1::openDrill
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setCohorts([])
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setLeads([])
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setPacing(normalizePacing(null))
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setRecon([])
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setSignals(normalizeSignals(null))
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setSyncStatus(null)
+frontend/src/features/adsengine/DashboardScreen.jsx::R2::() => setV2(null)
+frontend/src/features/adsengine/EngagementAudiencePicker.jsx::R2::() => setEstimate(null)
+frontend/src/features/adsengine/EngagementAudiencePicker.jsx::R2::() => setPresets([])
+frontend/src/features/adsengine/ExperimentsScreen.jsx::R2::() => setCurrent(null)
+frontend/src/features/adsengine/ExperimentsScreen.jsx::R2::() => setList([])
+frontend/src/features/adsengine/ExperimentsScreen.jsx::R2::() => { // En erreur on ne sait RIEN de la troncature : ne rien affirmer. if (!cancelled)
+frontend/src/features/adsengine/ExperimentsScreen.jsx::R2::() => { setAllDecisions([]) setAllDecisionsPage({ truncated: false, total: 0, recues: 0 })
+frontend/src/features/adsengine/ExperimentsScreen.jsx::R2::() => { setLog([]); setArms([]) setArmsPage({ truncated: false, total: 0, recues: 0 }) }
+frontend/src/features/adsengine/FactTableScreen.jsx::R1::FactTableScreen
+frontend/src/features/adsengine/FactTableScreen.jsx::R2::() => []
+frontend/src/features/adsengine/FlightPlanScreen.jsx::R2::() => setArms([])
+frontend/src/features/adsengine/FlightPlanScreen.jsx::R2::() => setPreflight({ pret: false, portes: [], manquantes: [] })
+frontend/src/features/adsengine/FlightPlanScreen.jsx::R2::() => setTemplates([])
+frontend/src/features/adsengine/InstagramScreen.jsx::R1::InstagramScreen
+frontend/src/features/adsengine/InstagramScreen.jsx::R2::() => []
+frontend/src/features/adsengine/InstagramScreen.jsx::R2::() => null
+frontend/src/features/adsengine/ManualActionComposer.jsx::R1::ManualActionComposer
+frontend/src/features/adsengine/ManualActionComposer.jsx::R2::() => setTemplates([])
+frontend/src/features/adsengine/RulesScreen.jsx::R1::RulesScreen
+frontend/src/features/adsengine/RulesScreen.jsx::R2::() => setDetectors([])
+frontend/src/features/adsengine/RulesScreen.jsx::R2::() => setHistory([])
+frontend/src/features/adsengine/RulesScreen.jsx::R2::() => setJournal([])
+frontend/src/features/adsengine/RulesScreen.jsx::R2::() => setPolicies([])
+frontend/src/features/adsengine/RulesScreen.jsx::R2::() => setTemplates([])
+frontend/src/features/adsengine/SimulationScreen.jsx::R1::SimulationScreen
+frontend/src/features/adsengine/SimulationScreen.jsx::R2::() => setReport(null)
+frontend/src/features/adsengine/SyncStatusBanner.jsx::R2::() => setStatus(null)
+frontend/src/features/adsengine/TodayNavIcon.jsx::R2::() => { if (alive) setCount(null) }
+frontend/src/features/adsengine/TreeScreen.jsx::R1::openTest
+frontend/src/features/adsengine/VeilleDecouverte.jsx::R1::VeilleDecouverte
+frontend/src/features/adsengine/VeilleScreen.jsx::R1::SaisieManuelle
+frontend/src/features/adsengine/VeilleScreen.jsx::R2::() => []
+frontend/src/features/adsengine/VeilleScreen.jsx::R2::() => null
+frontend/src/features/adsengine/VeilleScreen.jsx::R2::() => setCouverture(null)

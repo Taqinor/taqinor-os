@@ -178,8 +178,12 @@ export default function LeadWorkspace({
   const mode = lead ? 'edit' : 'create'
   const currentUserId = useSelector((s) => s.auth?.user?.id)
 
-  const { errors, setErrors, setFromResponse } = useServerFieldErrors()
-  const draft = useLeadDraft(lead, { mode, currentUserId, onSaved, onFieldErrors: setFromResponse })
+  const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
+  // ALEA18 — un autosave réussi efface l'erreur périmée des champs écrits.
+  const onFieldsSaved = useCallback((keys) => { keys.forEach(clearField) }, [clearField])
+  const draft = useLeadDraft(lead, {
+    mode, currentUserId, onSaved, onFieldErrors: setFromResponse, onFieldsSaved,
+  })
   const {
     state, field, setField, saveState, leaveGuard, changeStage, loadFresh,
   } = draft

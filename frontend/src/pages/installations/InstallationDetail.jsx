@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -30,6 +30,7 @@ import {
   INTERVENTION_TYPES,
   adjacentStatuses,
   canMoveStatus,
+  canonicalStatus,
   nextBestAction,
   REGIME_8221_LABELS,
   RACCORDEMENT_RESEAU_LABELS,
@@ -242,6 +243,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     notes: F('notes'),
   }
   const [fields, setFields] = useState(initialFields)
+  // ACHT57 — resynchronise le formulaire sur `current` après chaque
+  // rafraîchissement (avancée du stepper, dates posées par le serveur) : un
+  // champ NON touché suit la nouvelle valeur serveur, un champ édité par
+  // l'utilisateur garde sa saisie. Le diff envoyé à « Mettre à jour » se
+  // calcule contre `initialFields`, donc un champ périmé n'est jamais renvoyé.
+  const initialKey = JSON.stringify(initialFields)
+  const baseRef = useRef(initialKey)
+  useEffect(() => {
+    if (baseRef.current === initialKey) return
+    const ancien = JSON.parse(baseRef.current)
+    baseRef.current = initialKey
+    setFields(f => Object.fromEntries(Object.keys(initialFields).map(
+      k => [k, JSON.stringify(f[k]) === JSON.stringify(ancien[k]) ? initialFields[k] : f[k]])))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey])
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const dirty = JSON.stringify(fields) !== JSON.stringify(initialFields)
   useDirtyGuard(dirty)
@@ -259,6 +275,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // un passage de statut (CIQ621/CIQ630) ; envoyé tel quel au prochain
   // enregistrement.
   const [motifDerogation, setMotifDerogation] = useState('')
+  // ACHT60 — dérogations lues par le serveur : acompte non reçu avant
+  // « Planifié » (`motif_override_acompte`) et réouverture d'un chantier
+  // clôturé (`motif_reouverture`, Directeur).
+  const [motifAcompte, setMotifAcompte] = useState('')
+  const [motifReouverture, setMotifReouverture] = useState('')
   // CIQ637 — réception définitive : refus serveur (liste des réserves).
   const [receptionBusy, setReceptionBusy] = useState(false)
   const [receptionRefus, setReceptionRefus] = useState(null)
@@ -522,11 +543,20 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     setStatutBlockedReasons(null)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
+      // ACHT57 — SEUL le diff des champs modifiés depuis l'ouverture part au
+      // serveur (un formulaire périmé ne recule plus un statut, un chantier
+      // clôturé n'est plus rejeté sur ses champs gelés).
       const data = Object.fromEntries(
-        Object.entries(fields).map(([k, v]) => [k, nullable(v)]))
+        Object.entries(fields)
+          .filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(initialFields[k]))
+          .map(([k, v]) => [k, nullable(v)]))
       if (motifDerogation.trim()) data.motif_derogation_8221 = motifDerogation.trim()
+      if (motifAcompte.trim()) data.motif_override_acompte = motifAcompte.trim()
+      if (motifReouverture.trim()) data.motif_reouverture = motifReouverture.trim()
       await dispatch(updateInstallation({ id, data })).unwrap()
       setMotifDerogation('')
+      setMotifAcompte('')
+      setMotifReouverture('')
       onSaved?.()
     } catch (err) {
       // CHT22 — une transition de statut refusée par les gates CH2 renvoie
@@ -681,6 +711,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [previewBlob, setPreviewBlob] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewServerError, setPreviewServerError] = useState(false)
+  // ADOC73 — motif d'un refus serveur (409 {detail}) affiché au lieu d'un
+  // aperçu vide ; la réponse d'erreur d'un appel `blob` est elle-même un Blob.
+  const [previewErrorDetail, setPreviewErrorDetail] = useState('')
   const [previewNetworkFailed, setPreviewNetworkFailed] = useState(false)
   const [previewRenderFailed, setPreviewRenderFailed] = useState(false)
   const [previewReloadKey, setPreviewReloadKey] = useState(0)
@@ -718,6 +751,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewLoading(true)
     setPreviewServerError(false)
+    setPreviewErrorDetail('')
     setPreviewNetworkFailed(false)
     setPreviewRenderFailed(false)
     setPreviewBlob(null)
@@ -726,8 +760,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         if (cancelled) return
         setPreviewBlob(pdfBlob(res.data))
       })
-      .catch((err) => {
+      .catch(async (err) => {
+        const d = err?.response?.data
+        const brut = d && typeof d.text === 'function'
+          ? await d.text().then(JSON.parse).catch(() => null)
+          : d
+        const detail = typeof brut?.detail === 'string' ? brut.detail : ''
         if (cancelled) return
+        setPreviewErrorDetail(detail)
         if (classifyFetchError(err) === 'server') setPreviewServerError(true)
         else setPreviewNetworkFailed(true)
       })
@@ -783,8 +823,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   })
 
   // Ouvre l'aperçu d'un document après-vente standard (PV, bon de livraison…).
-  const openDocument = (kind, filename, title) =>
-    openPreview(title, filename, () => documentsApi[kind](current.id))
+  // ADOC73 — `type` (attestation : 'installation' | 'fin_travaux') est transmis
+  // tel quel au serveur ; les autres documents l'ignorent.
+  const openDocument = (kind, filename, title, type) =>
+    openPreview(title, filename, () => documentsApi[kind](current.id, type))
 
   // Fiche de remise / garantie après-vente PREMIUM (langage visuel du devis).
   const openFicheRemise = () =>
@@ -1088,6 +1130,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <FormField label="Statut" htmlFor="ch-statut">
                   <Select
                     value={fields.statut ?? ''}
+                    disabled={!!current.annule}
                     onValueChange={(v) => {
                       // Garde de transition côté client : on n'accepte qu'un pas
                       // (avant/arrière) depuis le statut STOCKÉ du chantier, ou la
@@ -1114,7 +1157,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     </SelectContent>
                   </Select>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Le statut n&apos;avance ou ne recule que d&apos;une étape à la fois.
+                    {current.annule
+                      ? 'Chantier annulé — réactivez-le pour changer son statut.'
+                      : 'Le statut n’avance ou ne recule que d’une étape à la fois.'}
                   </p>
                 </FormField>
                 <FormField label="Adresse du site" htmlFor="ch-adr" className="sm:col-span-2">
@@ -1135,6 +1180,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </FormField>
                 <FormField label="Puissance installée (kWc)" htmlFor="ch-kwc">
                   <Input id="ch-kwc" type="number" step="any" value={fields.puissance_installee_kwc ?? ''}
+                         disabled={!!current.cloture_verrouillee}
                          onChange={(e) => set('puissance_installee_kwc', e.target.value)} />
                 </FormField>
                 <FormField label="Jours-homme estimés" htmlFor="ch-je">
@@ -1192,6 +1238,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     <Input id="ch-derogation" value={motifDerogation}
                            onChange={(e) => setMotifDerogation(e.target.value)} />
                   </label>
+                  {statutBlockedReasons.some((r) => /acompte/i.test(r)) && (
+                    <label className="mt-1 flex flex-col gap-1 text-foreground" htmlFor="ch-motif-acompte">
+                      Motif (acompte non reçu)
+                      <Input id="ch-motif-acompte" value={motifAcompte}
+                             onChange={(e) => setMotifAcompte(e.target.value)} />
+                    </label>
+                  )}
+                  {(canonicalStatus(current.statut) === 'cloture'
+                    || statutBlockedReasons.some((r) => /r[ée]ouverture/i.test(r))) && (
+                    <label className="mt-1 flex flex-col gap-1 text-foreground" htmlFor="ch-motif-reouverture">
+                      Motif de réouverture (Directeur)
+                      <Input id="ch-motif-reouverture" value={motifReouverture}
+                             onChange={(e) => setMotifReouverture(e.target.value)} />
+                    </label>
+                  )}
                 </div>
               ) : saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -1358,7 +1419,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                                  series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
                                  onChanged={() => { refreshInstallation(); loadEquipements() }} />
             </Section>
-            {/* ── Mise en service ── */}
+            {/* ── Mise en service ── (ACHT3 : masquée sur un chantier annulé) */}
+            {!current.annule && (
             <Section icon={Zap} title="Mise en service">
               {current.date_mise_en_service && (
                 <Hint>Mise en service enregistrée le {formatDate(current.date_mise_en_service)}.</Hint>
@@ -1381,9 +1443,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Textarea id="mes-notes" rows={2} value={mes.mes_pv_notes ?? ''}
                           onChange={(e) => setMes(s => ({ ...s, mes_pv_notes: e.target.value }))} />
               </FormField>
-              <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
-                Enregistrer la mise en service
-              </Button>
+              {/* ACHT3 — le serveur refuse la mise en service avant « Installé » :
+                  le geste n'est offert que lorsqu'il est actionnable. */}
+              {canMoveStatus(current.statut, 'receptionne') ? (
+                <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
+                  Enregistrer la mise en service
+                </Button>
+              ) : (
+                <Hint>Enregistrement de la mise en service disponible à partir d’Installé.</Hint>
+              )}
               {current.type_installation === 'industriel' && (
                 <div className="flex flex-col gap-1" data-testid="reception-definitive">
                   {current.date_reception_definitive ? (
@@ -1403,6 +1471,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </div>
               )}
             </Section>
+            )}
             </TabsContent>
 
             <TabsContent value="materiel" className="flex flex-col gap-4">
@@ -1792,9 +1861,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 {!pvReady && (
                   <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
                 )}
-                <Button size="sm" variant="outline"
-                        onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`, 'Attestation')}>
-                  Attestation
+                {/* ADOC73 — deux attestations distinctes, soumises à pvReady comme
+                    PV/BL/dossier ; le type part au serveur. */}
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('attestation', `attestation-installation-${current.reference}.pdf`, 'Attestation d’installation', 'installation')}>
+                  Attestation d’installation
+                </Button>
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('attestation', `attestation-fin-travaux-${current.reference}.pdf`, 'Attestation de fin de travaux', 'fin_travaux')}>
+                  Attestation de fin de travaux
                 </Button>
                 <Button size="sm" variant="outline"
                         onClick={() => navigate(`/reporting/archive/chantier/${current.id}`)}>
@@ -1842,7 +1917,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               Annuler le chantier
             </Button>
           )}
-          {!current.annule && canMoveStatus(current.statut, 'receptionne') && (
+          {!current.annule && canonicalStatus(current.statut) === 'installe'
+            && canMoveStatus(current.statut, 'receptionne') && (
             <Button variant="success" loading={receptBusy} onClick={marquerReceptionne}>
               Marquer réceptionné
             </Button>
@@ -1948,7 +2024,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       className="ldp-fallback"
                       icon={TriangleAlert}
                       title="Aperçu indisponible"
-                      description="Le serveur n'a pas pu générer ce document. Réessayez."
+                      description={previewErrorDetail || "Le serveur n'a pas pu générer ce document. Réessayez."}
                       action={(
                         <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
                           <RotateCw /> Réessayer
