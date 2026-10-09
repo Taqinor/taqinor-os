@@ -8,7 +8,9 @@ versions de document sont numérotées + déduppées via `services`.
 from django.db import models
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import filters, mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
     authentication_classes, action, api_view, parser_classes, permission_classes, throttle_classes,
@@ -35,9 +37,12 @@ from core.viewsets import CompanyScopedModelViewSet
 # `records` est une app de fondation : son registre de cibles autorisées
 # (ALLOWED_TARGETS) et son validateur `resolve_target` sont réutilisés tels quels
 # pour la liaison polymorphe GED6 — on n'invente pas un schéma de FK générique.
-from apps.records.serializers import resolve_target
+from apps.records.openapi import (
+    CibleQuerySerializer, ParsersParActionMixin,
+)
+from apps.records.serializers import CibleIntrouvable, resolve_target
 
-from . import selectors, services
+from . import openapi as oa, selectors, services
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
@@ -173,6 +178,7 @@ class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
     """Cabinets (armoires racines) d'une société."""
     queryset = Cabinet.objects.all()
     serializer_class = CabinetSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description']
     ordering_fields = ['nom', 'created_at']
@@ -193,11 +199,13 @@ class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
+@extend_schema_view(list=extend_schema(parameters=oa.Q_FOLDERS))
 class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
     """Dossiers arborescents (chemin matérialisé). Filtrable par cabinet et
     parent ; expose le sous-arbre via l'action `descendants`."""
     queryset = Folder.objects.select_related('cabinet', 'parent').all()
     serializer_class = FolderSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom']
     ordering_fields = ['nom', 'created_at']
@@ -246,6 +254,7 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             return refus
         return super().destroy(request, *args, **kwargs)
 
+    @extend_schema(responses=oa.liste(FolderSerializer()))
     @action(detail=True, methods=['get'], url_path='descendants')
     def descendants(self, request, pk=None):
         """Sous-arbre strict du dossier (via le chemin matérialisé)."""
@@ -254,6 +263,7 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         data = FolderSerializer(qs, many=True, context={'request': request}).data
         return Response(data)
 
+    @extend_schema(request=oa.PARENT_CORPS, responses=FolderSerializer)
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """Déplace ce dossier sous un nouveau parent (déplacement scopé société).
@@ -281,6 +291,9 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         data = FolderSerializer(folder, context={'request': request}).data
         return Response(data)
 
+    @extend_schema(
+        parameters=[oa.Q_FORMAT_CSV],
+        responses={200: oa.LIGNES, (200, 'text/csv'): OpenApiTypes.STR})
     @action(detail=True, methods=['get'], url_path='permissions-effectives',
             renderer_classes=[JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer])
     def permissions_effectives(self, request, pk=None):
@@ -297,6 +310,7 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             return _permissions_effectives_csv(lignes, f'dossier-{folder.pk}')
         return Response({'lignes': lignes})
 
+    @extend_schema(request=None, responses=oa.FAVORI_REPONSE)
     @action(detail=True, methods=['post'], url_path='favori')
     def favori(self, request, pk=None):
         """ZGED7 — Bascule (toggle) ce dossier en favori pour l'appelant.
@@ -327,6 +341,7 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Coffre.objects.select_related(
         'proprietaire', 'client', 'created_by').all()
     serializer_class = CoffreSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description']
     ordering_fields = ['nom', 'created_at']
@@ -358,6 +373,7 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
+    @extend_schema(responses=oa.liste(DocumentSerializer()))
     @action(detail=True, methods=['get'], url_path='documents')
     def documents(self, request, pk=None):
         """Documents rattachés à ce coffre (l'accès au coffre est déjà filtré
@@ -369,6 +385,7 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
 
+@extend_schema_view(list=extend_schema(parameters=oa.Q_DOCUMENTS))
 class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     """Documents logiques (conteneurs versionnés) d'une société.
 
@@ -378,6 +395,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Document.objects.select_related(
         'folder', 'coffre', 'created_by').all()
     serializer_class = DocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     # ZGED15 — la référence lisible est cherchable/triable au même titre que
     # le nom.
@@ -505,6 +523,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(contact_id=contact)
         return qs
 
+    @extend_schema(
+        request=oa.TAG_CORPS,
+        responses={200: DocumentSerializer, 201: DocumentSerializer})
     @action(detail=True, methods=['post'], url_path='tagger')
     def tagger(self, request, pk=None):
         """GED9 — Applique un tag de la taxonomie à ce document (idempotent).
@@ -527,6 +548,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
+    @extend_schema(request=oa.TAG_CORPS, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='detagger')
     def detagger(self, request, pk=None):
         """GED9 — Retire un tag de ce document. Body : `{"tag": <id>}`."""
@@ -537,6 +559,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
+    @extend_schema(request=oa.ASSIGNER_CORPS, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='assigner')
     def assigner(self, request, pk=None):
         """ZGED5 — Réassigne propriétaire et/ou contact métier (panneau
@@ -593,6 +616,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=oa.FAVORI_REPONSE)
     @action(detail=True, methods=['post'], url_path='favori')
     def favori(self, request, pk=None):
         """ZGED7 — Bascule (toggle) ce document en favori pour l'appelant.
@@ -655,6 +679,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except (ArchivageLegalError, LegalHoldError) as exc:
             raise PermissionDenied(str(exc))
 
+    @extend_schema(
+        request={'multipart/form-data': oa.TELEVERSER_CORPS},
+        responses={201: DocumentSerializer})
     @action(detail=False, methods=['post'], url_path='televerser',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def televerser(self, request):
@@ -747,6 +774,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.SCAN_LOT_CORPS},
+        responses={201: oa.SCAN_REPONSE})
     @action(detail=False, methods=['post'], url_path='scan-lot',
             parser_classes=[MultiPartParser, FormParser])
     def scan_lot(self, request):
@@ -807,6 +837,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 else status.HTTP_400_BAD_REQUEST)
         return Response({'documents': ser.data, 'erreurs': erreurs}, status=http)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.PHOTOS_CORPS},
+        responses={201: DocumentSerializer})
     @action(detail=False, methods=['post'], url_path='assembler-photos',
             parser_classes=[MultiPartParser, FormParser])
     def assembler_photos(self, request):
@@ -862,6 +895,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.LOT_SEPARE_CORPS},
+        responses={201: oa.LOT_SEPARE_REPONSE})
     @action(detail=False, methods=['post'], url_path='deposer-lot-scans-separe',
             parser_classes=[MultiPartParser, FormParser])
     def deposer_lot_scans_separe_action(self, request):
@@ -919,6 +955,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'barcode_lib_disponible': services.barcode_lib_disponible(),
         }, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.IMPORT_MASSE_CORPS},
+        responses={201: oa.IMPORT_REPONSE})
     @action(detail=False, methods=['post'], url_path='import-masse',
             parser_classes=[MultiPartParser, FormParser])
     def import_masse(self, request):
@@ -985,6 +1024,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             {'crees': result['crees'], 'documents': ser.data,
              'erreurs': result['erreurs']}, status=http)
 
+    @extend_schema(
+        request=oa.APRES_VENTE_CORPS,
+        responses={200: DocumentSerializer, 201: DocumentSerializer})
     @action(detail=False, methods=['post'], url_path='classer-apres-vente')
     def classer_apres_vente(self, request):
         """GED29 — Classe un PDF APRÈS-VENTE (SAV) déjà généré dans la GED.
@@ -1037,6 +1079,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
+    @extend_schema(parameters=[oa.Q_Q], responses=oa.SEMANTIQUE_REPONSE)
     @action(detail=False, methods=['get'], url_path='semantique')
     def semantique(self, request):
         """GED12 — Recherche sémantique (pgvector), KEY-GATED no-op.
@@ -1054,6 +1097,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'results': data,
         })
 
+    @extend_schema(parameters=[oa.Q_Q],
+                   responses=DocumentSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='recherche')
     def recherche(self, request):
         """GED11 — Recherche plein-texte Postgres (SearchVector + GIN).
@@ -1073,6 +1118,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             qs, many=True, context={'request': request}).data
         return Response(data)
 
+    @extend_schema(
+        parameters=[oa.Q_Q, oa.P('k', oa.ID, description='Nombre de fragments.')],
+        responses=oa.DOCQA_REPONSE)
     @action(detail=False, methods=['get'], url_path='docqa')
     def docqa(self, request):
         """FG352 — Récupération RAG / DocQA : top-k fragments pour une
@@ -1111,6 +1159,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'results': results,
         })
 
+    @extend_schema(request=oa.OCR_CORPS, responses=oa.OCR_REPONSE)
     @action(detail=True, methods=['post'], url_path='ocr-piece')
     def ocr_piece(self, request, pk=None):
         """GED33/XGED13 — OCR ce document (pièce : CIN/facture/BL) → métadonnées
@@ -1157,6 +1206,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'ocr_enabled': services.ocr_enabled(),
         })
 
+    @extend_schema(request=None, responses=oa.CLASSER_REPONSE)
     @action(detail=True, methods=['post'], url_path='classer')
     def classer(self, request, pk=None):
         """GED34 — Classe automatiquement ce document (IA gated → heuristique).
@@ -1182,6 +1232,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'ia_enabled': services.classification_enabled(),
         })
 
+    @extend_schema(request=oa.DOSSIER_CIBLE_CORPS, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """Déplace ce document dans un autre dossier (déplacement scopé société).
@@ -1219,6 +1270,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = DocumentSerializer(document, context={'request': request}).data
         return Response(data)
 
+    @extend_schema(responses=oa.liste(DocumentVersionSerializer()))
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
         """GED15 — Historique complet des versions d'un document (scopé société).
@@ -1238,6 +1290,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             qs, many=True, context={'request': request}).data
         return Response(data)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.FICHIER_CORPS},
+        responses={201: DocumentVersionSerializer})
     @action(detail=True, methods=['post'], url_path='nouvelle-version',
             parser_classes=[MultiPartParser, FormParser])
     def nouvelle_version(self, request, pk=None):
@@ -1296,6 +1351,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentVersionSerializer(version, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.VERSION_CORPS,
+                   responses={201: DocumentVersionSerializer})
     @action(detail=True, methods=['post'], url_path='restaurer')
     def restaurer(self, request, pk=None):
         """GED15 — Restaure le document à une version antérieure (non destructif).
@@ -1363,6 +1420,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         corbeille) renvoie None (→ 404, jamais de fuite cross-société)."""
         return selectors.documents_corbeille(request.user).filter(pk=pk).first()
 
+    @extend_schema(responses=DocumentSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='corbeille')
     def corbeille(self, request):
         """GED26 — Liste les documents EN CORBEILLE (soft-supprimés) de la société.
@@ -1381,6 +1439,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         ser = DocumentSerializer(qs, many=True, context={'request': request})
         return Response(ser.data)
 
+    @extend_schema(responses=JournalAccesSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='journal-acces')
     def journal_acces(self, request, pk=None):
         """GED35 — Journal d'accès EN LECTURE de ce document (audit).
@@ -1400,6 +1459,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         ser = JournalAccesSerializer(qs, many=True, context={'request': request})
         return Response(ser.data)
 
+    @extend_schema(request=None, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='mettre-en-corbeille')
     def mettre_en_corbeille(self, request, pk=None):
         """GED26 — Met ce document dans la CORBEILLE (soft-delete réversible).
@@ -1419,6 +1479,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='restaurer-corbeille')
     def restaurer_corbeille(self, request, pk=None):
         """GED26 — Restaure ce document DEPUIS la corbeille (annule le soft-delete).
@@ -1445,6 +1506,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 
+    @extend_schema(request=None, responses={204: None})
     @action(detail=True, methods=['post'], url_path='purger')
     def purger(self, request, pk=None):
         """GED26 — Supprime DÉFINITIVEMENT ce document depuis la corbeille (réel).
@@ -1471,6 +1533,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(request=None, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='check-out')
     def check_out(self, request, pk=None):
         """GED16 — Extrait un document (pose le verrou de check-out).
@@ -1493,6 +1556,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='check-in')
     def check_in(self, request, pk=None):
         """GED16 — Libère le verrou d'un document (check-in).
@@ -1516,6 +1580,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @extend_schema(request=oa.MOTIF_CORPS, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='verrouiller')
     def verrouiller(self, request, pk=None):
         """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
@@ -1537,6 +1602,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='deverrouiller')
     def deverrouiller(self, request, pk=None):
         """ZGED9 — Lève le verrou d'AVERTISSEMENT. Le poseur OU un
@@ -1556,6 +1622,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=oa.OFFICE_REPONSE)
     @action(detail=True, methods=['post'], url_path='office-ouvrir')
     def office_ouvrir(self, request, pk=None):
         """XGED30 — Ouvre ce document Office dans l'éditeur embarqué (slot
@@ -1581,6 +1648,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(data)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.FICHIER_CORPS},
+        responses={201: DocumentVersionSerializer})
     @action(detail=True, methods=['post'], url_path='office-sauvegarder',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def office_sauvegarder(self, request, pk=None):
@@ -1614,6 +1684,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             version, context={'request': request}).data
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.CYCLE_VIE_CORPS, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='cycle-vie')
     def cycle_vie(self, request, pk=None):
         """GED17 — Fait avancer le document dans son cycle de vie documentaire.
@@ -1646,6 +1717,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @extend_schema(request=oa.REVUE_CORPS,
+                   responses={201: DemandeApprobationSerializer})
     @action(detail=True, methods=['post'], url_path='demander-revue')
     def demander_revue(self, request, pk=None):
         """GED18 — Lance une demande d'approbation/revue sur ce document.
@@ -1697,6 +1770,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 demande, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=oa.liste(DemandeApprobationSerializer()))
     @action(detail=True, methods=['get'], url_path='demandes')
     def demandes(self, request, pk=None):
         """GED18 — Demandes d'approbation/revue de ce document (récentes d'abord).
@@ -1710,6 +1784,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             qs, many=True, context={'request': request}).data
         return Response(data)
 
+    @extend_schema(request=oa.ARCHIVER_CORPS,
+                   responses={201: ArchivageLegalSerializer})
     @action(detail=True, methods=['post'], url_path='archiver-legalement')
     def archiver_legalement(self, request, pk=None):
         """GED23 — Archive ce document à VALEUR PROBANTE (write-once / object-lock).
@@ -1753,6 +1829,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.MOTIF_CORPS,
+                   responses={201: LegalHoldSerializer})
     @action(detail=True, methods=['post'], url_path='placer-legal-hold')
     def placer_legal_hold(self, request, pk=None):
         """GED24 — Place une RÉTENTION LÉGALE (legal hold) sur ce document.
@@ -1776,6 +1854,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             LegalHoldSerializer(hold, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=oa.LEVES_REPONSE)
     @action(detail=True, methods=['post'], url_path='lever-legal-hold')
     def lever_legal_hold(self, request, pk=None):
         """GED24 — Lève la/les rétention(s) légale(s) active(s) de ce document.
@@ -1794,6 +1873,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         return Response({'leves': leves}, status=status.HTTP_200_OK)
 
+    @extend_schema(request=oa.CAVIARDER_CORPS,
+                   responses={201: DocumentSerializer})
     @action(detail=True, methods=['post'], url_path='caviarder')
     def caviarder(self, request, pk=None):
         """XGED24 — Caviarde des zones du document sur une COPIE publiée
@@ -1825,6 +1906,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = DocumentSerializer(new_doc, context={'request': request}).data
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.SCINDER_CORPS,
+                   responses={201: oa.liste(DocumentSerializer())})
     @action(detail=True, methods=['post'], url_path='scinder')
     def scinder(self, request, pk=None):
         """XGED10 — Scinde ce document en segments (chaque segment = un nouveau
@@ -1855,6 +1938,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             created, many=True, context={'request': request}).data
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.FUSIONNER_CORPS,
+                   responses={201: DocumentSerializer})
     @action(detail=False, methods=['post'], url_path='fusionner')
     def fusionner(self, request):
         """XGED10 — Fusionne plusieurs documents PDF (ordonnés) en un seul.
@@ -1930,6 +2015,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(resultat, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        parameters=[oa.P('v1', oa.ID, required=True,
+                         description='Première version.'),
+                    oa.P('v2', oa.ID, required=True,
+                         description='Seconde version.')],
+        responses=oa.COMPARER_REPONSE)
     @action(detail=True, methods=['get'], url_path='comparer')
     def comparer(self, request, pk=None):
         """XGED17 — Compare deux versions d'un document.
@@ -1959,6 +2050,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return Response(selectors.comparer_versions(v1, v2))
 
+    @extend_schema(
+        request=oa.OPERATIONS_LOT_CORPS,
+        responses={200: oa.OPERATIONS_LOT_REPONSE,
+                   (200, 'application/zip'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'], url_path='operations-lot')
     def operations_lot(self, request):
         """XGED14 — Opération par LOT sur une multi-sélection de documents.
@@ -1990,6 +2085,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             documents, operation=operation, params=params, user=request.user)
         return Response({'resultats': resultats, 'erreurs': erreurs})
 
+    @extend_schema(request=oa.PLANIFIER_CORPS,
+                   responses={201: PlanificationDocumentSerializer})
     @action(detail=True, methods=['post'], url_path='planifier')
     def planifier(self, request, pk=None):
         """XGED15 — Planifie une activité sur ce document (« relancer le J+7 »).
@@ -2021,6 +2118,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 planif, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=oa.liste(oa.TIMELINE_LIGNE))
     @action(detail=True, methods=['get'], url_path='timeline')
     def timeline(self, request, pk=None):
         """XGED15 — Timeline du document : mêle le journal auto
@@ -2031,6 +2129,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = selectors.timeline_document(document)
         return Response(data)
 
+    @extend_schema(
+        parameters=[oa.Q_FORMAT_CSV],
+        responses={200: oa.LIGNES, (200, 'text/csv'): OpenApiTypes.STR})
     @action(detail=True, methods=['get'], url_path='permissions-effectives',
             renderer_classes=[JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer])
     def permissions_effectives(self, request, pk=None):
@@ -2050,6 +2151,26 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'lignes': lignes})
 
 
+def _parametre_date(request, nom):
+    """ENF7 — date ISO d'un paramètre de requête : ``(date|None, erreur)``.
+    Absent ou vide : ``(None, None)`` ; mal formé ou impossible : 400 nommé
+    (jamais une 500)."""
+    from django.utils.dateparse import parse_date
+
+    brut = request.query_params.get(nom) or ''
+    if not brut:
+        return None, None
+    try:
+        valeur = parse_date(brut)
+    except ValueError:
+        valeur = None
+    if valeur is None:
+        return None, Response(
+            {nom: 'Date invalide (format attendu : AAAA-MM-JJ).'},
+            status=status.HTTP_400_BAD_REQUEST)
+    return valeur, None
+
+
 def _lire_version(version):
     """ASEC37 — octets d'une version, sauf si sa clé de stockage désigne une
     AUTRE société que celle de la version : alors ``(None, message)`` — aucun
@@ -2064,7 +2185,15 @@ def _lire_version(version):
     return fetch_attachment(version.file_key)
 
 
-class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
+@extend_schema_view(
+    list=extend_schema(parameters=[oa.Q_DOCUMENT]),
+    create=extend_schema(
+        request={'multipart/form-data': oa.VERSION_CREATION_CORPS},
+        responses={200: DocumentVersionSerializer,
+                   201: DocumentVersionSerializer}),
+)
+class DocumentVersionViewSet(ParsersParActionMixin, TenantMixin,
+                             viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
     côté serveur via `services.add_version` ; `checksum` permet la dédup.
 
@@ -2074,8 +2203,11 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = DocumentVersion.objects.select_related(
         'document', 'uploaded_by').all()
     serializer_class = DocumentVersionSerializer
-    # ASEC37 — la version arrive comme FICHIER (multipart `file`).
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    # ASEC37 — la version arrive comme FICHIER (multipart `file`) ; D2 : tout
+    # le reste de la vue est JSON.
+    parser_classes = [JSONParser]
+    parsers_par_action = {
+        'create': [MultiPartParser, FormParser, JSONParser]}
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['version', 'created_at']
 
@@ -2226,6 +2358,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             raise PermissionDenied(str(exc))
         serializer.instance = instance
 
+    @extend_schema(responses=oa.PAGES_REPONSE)
     @action(detail=True, methods=['get'], url_path='pages')
     def pages(self, request, pk=None):
         """ADOC11 — Nombre de pages d'une version PDF (`{"pages": N}`), pour
@@ -2248,6 +2381,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             doc.close()
         return Response({'pages': nombre})
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='apercu')
     def apercu(self, request, pk=None):
         """GED14 — Proxy même-origine pour l'aperçu inline multi-format.
@@ -2309,6 +2443,12 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         return resp
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[oa.Q_DOCUMENT, CibleQuerySerializer]),
+    create=extend_schema(
+        request=oa.LIEN_CORPS,
+        responses={200: DocumentLienSerializer, 201: DocumentLienSerializer}),
+)
 class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED6 — Liens polymorphes Document ↔ objet métier (records.ALLOWED_TARGETS).
 
@@ -2325,6 +2465,7 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = DocumentLien.objects.select_related(
         'document', 'content_type', 'created_by').all()
     serializer_class = DocumentLienSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -2356,6 +2497,9 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
+        except CibleIntrouvable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -2385,6 +2529,7 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(DocumentLienSerializer(lien).data, status=code)
 
 
+@extend_schema_view(list=extend_schema(parameters=oa.Q_TAGS))
 class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED9 — Taxonomie de tags documentaires (hiérarchique, scopée société).
 
@@ -2394,6 +2539,7 @@ class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
     ce tag (option `?descendants=1` pour inclure les sous-tags)."""
     queryset = DocumentTag.objects.select_related('parent').all()
     serializer_class = DocumentTagSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'slug', 'description']
     ordering_fields = ['nom', 'created_at']
@@ -2415,6 +2561,8 @@ class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(parameters=oa.Q_TAG_DOCS,
+                   responses=oa.liste(DocumentSerializer()))
     @action(detail=True, methods=['get'], url_path='documents')
     def documents(self, request, pk=None):
         """Documents portant ce tag (ACL coffre appliquée). `?descendants=1`
@@ -2430,6 +2578,8 @@ class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    oa.Q_DOCUMENT, oa.P('tag', oa.ID, description='Tag.')]))
 class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED9 — Affectations tag↔document (M2M explicite, scopé société).
 
@@ -2439,6 +2589,7 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = DocumentTagAssignment.objects.select_related(
         'document', 'tag', 'created_by').all()
     serializer_class = DocumentTagAssignmentSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -2471,6 +2622,7 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
             instance.document, instance.tag_id, user=self.request.user)
 
 
+@extend_schema_view(list=extend_schema(parameters=oa.Q_APPROBATIONS))
 class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """GED18 — Workflow d'approbation / revue documentaire (scopé société).
 
@@ -2488,6 +2640,7 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     queryset = DemandeApprobation.objects.select_related(
         'document', 'demandeur', 'approbateur').all()
     serializer_class = DemandeApprobationSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'decision_le', 'statut']
 
@@ -2511,6 +2664,8 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(statut=APPROBATION_EN_ATTENTE)
         return qs
 
+    @extend_schema(request=oa.COMMENTAIRE_CORPS,
+                   responses=DemandeApprobationSerializer)
     @action(detail=True, methods=['post'], url_path='approuver')
     def approuver(self, request, pk=None):
         """GED18 — Approuve cette demande et avance le document (revue→approuvé).
@@ -2537,6 +2692,8 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             DemandeApprobationSerializer(
                 dem, context={'request': request}).data)
 
+    @extend_schema(request=oa.COMMENTAIRE_CORPS,
+                   responses=DemandeApprobationSerializer)
     @action(detail=True, methods=['post'], url_path='rejeter')
     def rejeter(self, request, pk=None):
         """GED18 — Rejette cette demande et renvoie le document en correction.
@@ -2562,6 +2719,7 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
                 dem, context={'request': request}).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_ACTIF]))
 class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED20 — CRUD de gestion des partages publics tokenisés (scopé société).
 
@@ -2578,6 +2736,7 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = PartageGed.objects.select_related(
         'document', 'created_by', 'company').all()
     serializer_class = PartageGedSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'expires_at', 'telechargements']
 
@@ -2609,6 +2768,7 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company,
             created_by=self.request.user)
 
+    @extend_schema(request=None, responses=PartageGedSerializer)
     @action(detail=True, methods=['post'], url_path='revoquer')
     def revoquer(self, request, pk=None):
         """GED20 — Révoque ce partage (kill-switch : actif=False).
@@ -2623,6 +2783,7 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
             PartageGedSerializer(partage, context={'request': request}).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_ACTIF]))
 class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED22 — CRUD des politiques de rétention (scopé société).
 
@@ -2638,6 +2799,7 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = PolitiqueRetention.objects.select_related(
         'company', 'cabinet', 'folder', 'created_by').all()
     serializer_class = PolitiqueRetentionSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description', 'type_document']
     ordering_fields = ['nom', 'duree_conservation_jours', 'created_at']
@@ -2667,6 +2829,7 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company,
             created_by=self.request.user)
 
+    @extend_schema(responses=oa.liste(oa.ECHU_LIGNE))
     @action(detail=False, methods=['get'], url_path='echus')
     def echus(self, request):
         """GED22 — Liste les documents ÉCHUS au regard de leur politique.
@@ -2691,6 +2854,11 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[oa.Q_DOCUMENT]),
+    create=extend_schema(request=oa.ARCHIVAGE_CORPS,
+                         responses={201: ArchivageLegalSerializer}),
+)
 class ArchivageLegalViewSet(TenantMixin,
                             mixins.ListModelMixin,
                             mixins.RetrieveModelMixin,
@@ -2710,6 +2878,7 @@ class ArchivageLegalViewSet(TenantMixin,
     queryset = ArchivageLegal.objects.select_related(
         'document', 'version', 'archive_par').all()
     serializer_class = ArchivageLegalSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['archive_le', 'id']
 
@@ -2774,6 +2943,7 @@ class ArchivageLegalViewSet(TenantMixin,
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='dossier-preuve')
     def dossier_preuve(self, request, pk=None):
         """XGED6 — Exporte le DOSSIER DE PREUVE JSON d'un archivage légal :
@@ -2784,6 +2954,7 @@ class ArchivageLegalViewSet(TenantMixin,
             services.dossier_preuve_archivage(archivage),
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=oa.INTEGRITE_REPONSE)
     @action(detail=False, methods=['post'], url_path='verifier-integrite')
     def verifier_integrite(self, request):
         """XGED6 — Déclenche un contrôle d'intégrité IMMÉDIAT (hors sweep
@@ -2792,6 +2963,11 @@ class ArchivageLegalViewSet(TenantMixin,
         return Response(synthese, status=status.HTTP_200_OK)
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_ACTIF]),
+    create=extend_schema(request=oa.LEGAL_HOLD_CORPS,
+                         responses={201: LegalHoldSerializer}),
+)
 class LegalHoldViewSet(TenantMixin,
                        mixins.ListModelMixin,
                        mixins.RetrieveModelMixin,
@@ -2814,6 +2990,7 @@ class LegalHoldViewSet(TenantMixin,
     queryset = LegalHold.objects.select_related(
         'document', 'place_par', 'leve_par').all()
     serializer_class = LegalHoldSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_pose', 'id']
 
@@ -2869,6 +3046,7 @@ class LegalHoldViewSet(TenantMixin,
             LegalHoldSerializer(hold, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=oa.LEVES_REPONSE)
     @action(detail=True, methods=['post'], url_path='lever')
     def lever(self, request, pk=None):
         """GED24 — Lève ce hold (et tout autre hold actif du même document).
@@ -2886,6 +3064,7 @@ class LegalHoldViewSet(TenantMixin,
         return Response({'leves': leves}, status=status.HTTP_200_OK)
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_ACTIF]))
 class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint, scopé société).
 
@@ -2904,6 +3083,7 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = ModeleDocument.objects.select_related(
         'company', 'created_by').all()
     serializer_class = ModeleDocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description', 'categorie']
     ordering_fields = ['nom', 'created_at']
@@ -2941,6 +3121,10 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 "Le champ « contexte » doit être un objet de données de fusion.")
         return contexte
 
+    @extend_schema(
+        request=oa.CONTEXTE_CORPS,
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                   503: oa.SERVICE_INDISPO})
     @action(detail=True, methods=['post'], url_path='rendre')
     def rendre(self, request, pk=None):
         """GED27 — Fusionne ce modèle avec un `contexte` et renvoie le PDF.
@@ -2967,6 +3151,10 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
+    @extend_schema(
+        request=oa.CONTEXTE_CORPS,
+        responses={200: oa.GENERER_REPONSE, 201: oa.GENERER_REPONSE,
+                   503: oa.SERVICE_INDISPO})
     @action(detail=True, methods=['post'], url_path='generer')
     def generer(self, request, pk=None):
         """GED27 + GED28 — Fusionne, rend le PDF et le DÉPOSE/CLASSE en GED.
@@ -3003,6 +3191,11 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[oa.Q_DOCUMENT, oa.Q_STATUT]),
+    create=extend_schema(request=oa.SIGNATURE_CORPS,
+                         responses={201: DemandeSignatureDocumentSerializer}),
+)
 class DemandeSignatureDocumentViewSet(TenantMixin,
                                       mixins.ListModelMixin,
                                       mixins.RetrieveModelMixin,
@@ -3028,6 +3221,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
     queryset = DemandeSignatureDocument.objects.select_related(
         'document', 'created_by').all()
     serializer_class = DemandeSignatureDocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_demande', 'id']
 
@@ -3097,6 +3291,8 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.MARQUER_SIGNE_CORPS,
+                   responses=DemandeSignatureDocumentSerializer)
     @action(detail=True, methods=['post'], url_path='marquer-signe')
     def marquer_signe(self, request, pk=None):
         """GED30 — Enregistre la COMPLÉTION d'une signature (webhook/manuel).
@@ -3114,6 +3310,8 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=oa.PROLONGER_CORPS,
+                   responses=DemandeSignatureDocumentSerializer)
     @action(detail=True, methods=['post'], url_path='prolonger')
     def prolonger(self, request, pk=None):
         """ZGED14 — Prolonge l'échéance d'une demande `en_attente` (versant
@@ -3143,6 +3341,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             DemandeSignatureDocumentSerializer(
                 demande, context={'request': request}).data)
 
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='pdf-signe')
     def pdf_signe(self, request, pk=None):
         """XGED3/PACT185 — Télécharge le PDF final AVEC les champs de
@@ -3172,6 +3371,8 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
+    @extend_schema(request=oa.CREER_MULTI_CORPS,
+                   responses={201: DemandeSignatureDocumentSerializer})
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):
         """XGED2 — Crée une demande de signature MULTI-destinataires.
@@ -3224,6 +3425,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=DemandeSignatureDocumentSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
@@ -3241,6 +3443,11 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @extend_schema(
+        parameters=[oa.P('emetteur', oa.ID, description='Émetteur.'),
+                    oa.P('date_debut', oa.DATE, description='Envoi depuis.'),
+                    oa.P('date_fin', oa.DATE, description="Envoi jusqu'à.")],
+        responses=oa.TABLEAU_BORD)
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):
         """ZGED3 — Tableau de bord des demandes de signature (kanban par
@@ -3253,14 +3460,20 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         expiration, dernier événement ; drill-down = l'id de la demande
         (`GET demandes-signature/<id>/`). Filtrable par émetteur/période.
         Gestion/admin uniquement (403 sinon)."""
-        from django.utils.dateparse import parse_date
-
         emetteur = request.query_params.get('emetteur')
+        if emetteur and not emetteur.isdigit():
+            return Response({'emetteur': 'Identifiant invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        date_debut, erreur = _parametre_date(request, 'date_debut')
+        if erreur is not None:
+            return erreur
+        date_fin, erreur = _parametre_date(request, 'date_fin')
+        if erreur is not None:
+            return erreur
         data = selectors.tableau_bord_signatures(
             request.user.company,
             emetteur=int(emetteur) if emetteur else None,
-            date_debut=parse_date(request.query_params.get('date_debut') or ''),
-            date_fin=parse_date(request.query_params.get('date_fin') or ''))
+            date_debut=date_debut, date_fin=date_fin)
         return Response(data)
 
 
@@ -3272,6 +3485,7 @@ class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
     tout rôle authentifié. Écriture : responsable/admin."""
     queryset = RoleSignataire.objects.select_related('created_by').all()
     serializer_class = RoleSignataireSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['nom', 'created_at']
 
@@ -3288,6 +3502,8 @@ class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    oa.P('demande', oa.ID, description='Demande de signature.')]))
 class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
                                mixins.RetrieveModelMixin,
                                viewsets.GenericViewSet):
@@ -3297,6 +3513,7 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
     queryset = SignataireDemande.objects.select_related(
         'demande', 'role_signataire').all()
     serializer_class = SignataireDemandeSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'id']
     permission_classes = [IsAnyRole]
@@ -3311,6 +3528,9 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
         return qs
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    oa.P('demande', oa.ID, description='Demande de signature.'),
+    oa.P('modele', oa.ID, description='Modèle de document.')]))
 class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED3 — Zones de champs positionnées (placement de modèle de signature).
 
@@ -3321,6 +3541,7 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
     propre payload — jamais par cette route authentifiée."""
     queryset = ChampSignature.objects.select_related('demande', 'modele').all()
     serializer_class = ChampSignatureSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['page', 'y', 'x', 'id']
 
@@ -3365,6 +3586,8 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         instance.delete()
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    oa.P('actif', description='Filtre sur le drapeau actif.')]))
 class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
     """ZGED4 — Catalogue de types de champs de signature personnalisés.
 
@@ -3374,6 +3597,7 @@ class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
     jamais recréés par cette API."""
     queryset = TypeChampSignature.objects.select_related('created_by').all()
     serializer_class = TypeChampSignatureSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['libelle', 'code', 'created_at']
 
@@ -3401,6 +3625,7 @@ class RoutageDocumentaireViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = RoutageDocumentaire.objects.select_related(
         'cabinet_cible', 'created_by').prefetch_related('tags_defaut').all()
     serializer_class = RoutageDocumentaireSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['source', 'created_at']
 
@@ -3426,6 +3651,7 @@ class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
     réservée au créateur OU à un gestionnaire/admin."""
     queryset = VueGedEnregistree.objects.select_related('utilisateur').all()
     serializer_class = VueGedEnregistreeSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['nom', 'created_at']
     permission_classes = [IsAnyRole]
@@ -3462,6 +3688,7 @@ class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
         instance.delete()
 
 
+@extend_schema_view(list=extend_schema(parameters=oa.Q_JOURNAL))
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
                           mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """GED35 — Journal d'audit d'accès aux documents (LECTURE SEULE).
@@ -3474,6 +3701,7 @@ class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
     queryset = JournalAcces.objects.select_related(
         'document', 'utilisateur').all()
     serializer_class = JournalAccesSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'type_acces']
 
@@ -3504,6 +3732,7 @@ class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
     `restant` via l'action `etat` (toujours disponible, même sans entrée)."""
     queryset = QuotaStockage.objects.select_related('company').all()
     serializer_class = QuotaStockageSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'etat':
@@ -3527,6 +3756,7 @@ class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
             return
         serializer.save(company=company)
 
+    @extend_schema(responses=oa.QUOTA_ETAT)
     @action(detail=False, methods=['get'], url_path='etat')
     def etat(self, request):
         """GED36 — État du stockage de la société : usage / quota / restant.
@@ -3547,6 +3777,7 @@ class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
         })
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_FOLDER]))
 class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED7 — Gestion (côté propriétaire) des liens de dépôt public.
 
@@ -3555,6 +3786,7 @@ class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
     viewset. Lecture : tout rôle. Création/révocation : responsable/admin."""
     queryset = DepotPublic.objects.select_related('folder', 'created_by').all()
     serializer_class = DepotPublicSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'expires_at']
 
@@ -3584,6 +3816,7 @@ class DepotPublicViewSet(TenantMixin, viewsets.ModelViewSet):
             serializer.instance.actif = data['actif']
             serializer.instance.save(update_fields=['actif', 'updated_at'])
 
+    @extend_schema(request=None, responses=DepotPublicSerializer)
     @action(detail=True, methods=['post'], url_path='revoquer')
     def revoquer(self, request, pk=None):
         """XGED7 — Révoque ce lien de dépôt (kill-switch). Écriture :
@@ -3599,6 +3832,7 @@ class ExigenceDossierViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED8 — Modèle de checklist de pièces requises (par société)."""
     queryset = ExigenceDossier.objects.select_related('cabinet', 'folder').all()
     serializer_class = ExigenceDossierSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['libelle', 'description']
     ordering_fields = ['libelle', 'created_at']
@@ -3616,11 +3850,13 @@ class ExigenceDossierViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_FOLDER, oa.Q_STATUT]))
 class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED8 — Demandes de pièces (placeholder + relances jusqu'au dépôt)."""
     queryset = DemandeDocument.objects.select_related(
         'folder', 'exigence', 'utilisateur', 'document').all()
     serializer_class = DemandeDocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'echeance']
 
@@ -3659,6 +3895,7 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             echeance=serializer.validated_data.get('echeance'))
         serializer.instance = instance
 
+    @extend_schema(request=None, responses=DemandeDocumentSerializer)
     @action(detail=True, methods=['post'], url_path='relancer')
     def relancer(self, request, pk=None):
         """XGED8 — Relance manuelle immédiate de cette demande."""
@@ -3668,6 +3905,10 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DemandeDocumentSerializer(demande, context={'request': request}).data)
 
+    @extend_schema(
+        parameters=[oa.P('folder', oa.ID, required=True,
+                         description='Dossier.')],
+        responses=oa.liste(oa.CHECKLIST_LIGNE))
     @action(detail=False, methods=['get'], url_path='checklist')
     def checklist(self, request):
         """XGED8 — Checklist requis/présent/manquant d'un dossier.
@@ -3695,6 +3936,9 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    oa.P('en_attente', enum=oa.FLAG_VRAI,
+         description='``1`` : en attente de validation seulement.')]))
 class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
                                    mixins.RetrieveModelMixin,
                                    viewsets.GenericViewSet):
@@ -3705,6 +3949,7 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
     queryset = ValidationOcrDocument.objects.select_related(
         'document', 'valide_par').all()
     serializer_class = ValidationOcrDocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'score_confiance']
 
@@ -3725,6 +3970,8 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
             qs = qs.filter(valide=False)
         return qs
 
+    @extend_schema(request=oa.VALIDER_OCR_CORPS,
+                   responses=ValidationOcrDocumentSerializer)
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         """XGED13 — Valide (avec corrections) cette extraction en attente.
@@ -3749,11 +3996,14 @@ class ValidationOcrDocumentViewSet(TenantMixin, mixins.ListModelMixin,
                 resultat, context={'request': request}).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    oa.P('version', oa.ID, description='Version annotée.')]))
 class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED16 — Annotations/tampons sur l'image d'une version (couche séparée
     — le fichier original n'est jamais modifié)."""
     queryset = AnnotationDocument.objects.select_related('version', 'auteur').all()
     serializer_class = AnnotationDocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['page', 'created_at']
 
@@ -3777,11 +4027,16 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, auteur=self.request.user)
 
+    @extend_schema(responses=oa.TAMPON)
     @action(detail=False, methods=['get'], url_path='tampons')
     def tampons(self, request):
         """XGED16 — Tampons disponibles pour la société (système + propres)."""
         return Response(services.tampons_disponibles(request.user.company))
 
+    @extend_schema(
+        parameters=[oa.P('version', oa.ID, required=True,
+                         description='Version à exporter.')],
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], url_path='export-annote')
     def export_annote(self, request):
         """XGED16 — Exporte un PDF annoté APLATI (nouveau fichier séparé).
@@ -3789,6 +4044,9 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         `GET …/annotations/export-annote/?version=<id>`. Sans PyMuPDF : 400
         explicite."""
         version_id = request.query_params.get('version')
+        if not version_id:
+            return Response({'version': 'La version est requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         # ADOC3 — version d'un document VISIBLE de l'appelant, sinon 404.
         version = DocumentVersion.objects.filter(
             company=request.user.company, pk=version_id,
@@ -3820,6 +4078,7 @@ class TamponSocieteViewSet(CompanyScopedModelViewSet):
     existant `POST annotations/` (`type_annotation='tampon'`)."""
     queryset = TamponSociete.objects.all()
     serializer_class = TamponSocieteSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['libelle', 'created_at']
 
@@ -3835,10 +4094,12 @@ class TamponSocieteViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_FOLDER]))
 class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED19 — Règles d'action automatique à l'upload dans un dossier."""
     queryset = RegleDossier.objects.select_related('folder', 'created_by').all()
     serializer_class = RegleDossierSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'created_at']
 
@@ -3864,6 +4125,7 @@ class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    @extend_schema(responses=oa.liste(ExecutionRegleDossierSerializer()))
     @action(detail=True, methods=['get'], url_path='executions')
     def executions(self, request, pk=None):
         """PACT132 — Dernières exécutions de cette règle (journal, lecture
@@ -3880,6 +4142,7 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED20 — Routage conditionnel des approbations par métadonnées."""
     queryset = RegleApprobationGed.objects.select_related('created_by').all()
     serializer_class = RegleApprobationGedSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['priorite', 'created_at']
 
@@ -3902,6 +4165,7 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema_view(list=extend_schema(parameters=oa.Q_ACLS))
 class AclGedViewSet(CompanyScopedModelViewSet):
     """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
 
@@ -3918,6 +4182,7 @@ class AclGedViewSet(CompanyScopedModelViewSet):
     queryset = AclGed.objects.select_related(
         'folder', 'document', 'utilisateur', 'role', 'created_by').all()
     serializer_class = AclGedSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at']
 
@@ -3997,6 +4262,7 @@ class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = RegleAclMetadonnee.objects.select_related(
         'role', 'created_by').all()
     serializer_class = RegleAclMetadonneeSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['priorite', 'created_at']
 
@@ -4020,6 +4286,11 @@ class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[oa.Q_STATUT]),
+    create=extend_schema(request=oa.DISPOSITION_CORPS,
+                         responses={201: DemandeDispositionSerializer}),
+)
 class DemandeDispositionViewSet(TenantMixin,
                                 mixins.ListModelMixin,
                                 mixins.RetrieveModelMixin,
@@ -4034,6 +4305,7 @@ class DemandeDispositionViewSet(TenantMixin,
     queryset = DemandeDisposition.objects.select_related(
         'demandeur', 'approbateur').prefetch_related('certificats').all()
     serializer_class = DemandeDispositionSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'statut']
 
@@ -4086,6 +4358,8 @@ class DemandeDispositionViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=oa.COMMENTAIRE_CORPS,
+                   responses=DemandeDispositionSerializer)
     @action(detail=True, methods=['post'], url_path='approuver')
     def approuver(self, request, pk=None):
         """XGED23 — Approuve cette demande (ne détruit pas encore).
@@ -4107,6 +4381,8 @@ class DemandeDispositionViewSet(TenantMixin,
             DemandeDispositionSerializer(
                 demande, context={'request': request}).data)
 
+    @extend_schema(request=oa.COMMENTAIRE_CORPS,
+                   responses=DemandeDispositionSerializer)
     @action(detail=True, methods=['post'], url_path='rejeter')
     def rejeter(self, request, pk=None):
         """XGED23 — Rejette cette demande : CONSERVE tous les documents du lot.
@@ -4128,6 +4404,7 @@ class DemandeDispositionViewSet(TenantMixin,
             DemandeDispositionSerializer(
                 demande, context={'request': request}).data)
 
+    @extend_schema(request=None, responses=DemandeDispositionSerializer)
     @action(detail=True, methods=['post'], url_path='executer')
     def executer(self, request, pk=None):
         """XGED23 — Exécute une demande APPROUVÉE : détruit (ou archive) le
@@ -4159,6 +4436,7 @@ class LotEnvoiViewSet(TenantMixin,
     responsable/admin."""
     queryset = LotEnvoi.objects.select_related('modele', 'created_by').all()
     serializer_class = LotEnvoiSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at']
 
@@ -4170,6 +4448,10 @@ class LotEnvoiViewSet(TenantMixin,
     def get_queryset(self):
         return super().get_queryset().filter(company=self.request.user.company)
 
+    @extend_schema(
+        request={'multipart/form-data': oa.ENVOI_MASSE_CORPS,
+                 'application/json': oa.ENVOI_MASSE_CORPS},
+        responses={201: LotEnvoiSerializer})
     @action(detail=False, methods=['post'], url_path='envoi-masse',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def envoi_masse(self, request):
@@ -4234,6 +4516,7 @@ class LotEnvoiViewSet(TenantMixin,
             LotEnvoiSerializer(lot, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=LotEnvoiSerializer)
     @action(detail=True, methods=['post'], url_path='rafraichir-compteurs')
     def rafraichir_compteurs(self, request, pk=None):
         """XGED27 (AUDV12/DRAFT165-70) — recalcule ``nb_vus``/``nb_signes``/
@@ -4246,11 +4529,13 @@ class LotEnvoiViewSet(TenantMixin,
             LotEnvoiSerializer(lot, context={'request': request}).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_DOCUMENT]))
 class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED15 — Activités planifiées sur un document."""
     queryset = PlanificationDocument.objects.select_related(
         'document', 'assigne_a', 'created_by').all()
     serializer_class = PlanificationDocumentSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['echeance', 'created_at']
 
@@ -4274,6 +4559,8 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema(parameters=[oa.P('limit', oa.ID, description='Au plus 50.')],
+               responses=oa.RECENTS)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def mes_recents(request):
@@ -4297,6 +4584,7 @@ def mes_recents(request):
     })
 
 
+@extend_schema(responses=oa.FAVORIS)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def mes_favoris(request):
@@ -4324,6 +4612,10 @@ def mes_favoris(request):
     return Response({'dossiers': dossiers, 'documents': documents})
 
 
+@extend_schema(
+    parameters=[oa.P('date_debut', oa.DATE, description='Début de période.'),
+                oa.P('date_fin', oa.DATE, description='Fin de période.')],
+    responses=oa.ANALYTIQUE)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analytique_ged(request):
@@ -4335,10 +4627,12 @@ def analytique_ged(request):
     détail des clés) sur des données RÉELLES de la société courante, période
     filtrable, divide-by-zero gardé (aucune donnée → moyennes `None`, jamais
     une 500)."""
-    from django.utils.dateparse import parse_date
-
-    date_debut = parse_date(request.query_params.get('date_debut') or '')
-    date_fin = parse_date(request.query_params.get('date_fin') or '')
+    date_debut, erreur = _parametre_date(request, 'date_debut')
+    if erreur is not None:
+        return erreur
+    date_fin, erreur = _parametre_date(request, 'date_fin')
+    if erreur is not None:
+        return erreur
     company = request.user.company
     return Response({
         'approbations': selectors.analytique_approbations(
@@ -4421,10 +4715,19 @@ def _partage_echec_mdp(partage):
                 minutes=PARTAGE_GEL_MINUTES))
 
 
+@extend_schema(
+    request=oa.PUBLIC_PARTAGE_CORPS,
+    parameters=[OpenApiParameter(
+        'X-Partage-Password', OpenApiTypes.STR,
+        location=OpenApiParameter.HEADER, required=False,
+        description='Mot de passe du partage (jamais en query string).')],
+    responses={(200, '*/*'): OpenApiTypes.BINARY, 403: oa.PUBLIC_ERREUR,
+               410: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicPartageRateThrottle])
+@parser_classes([JSONParser])
 def public_partage(request, token):
     """GED20 — Sert le document d'un partage tokenisé (PUBLIC, sans login).
 
@@ -4554,6 +4857,12 @@ class PublicDepotRateThrottle(SimpleRateThrottle):
         return self.cache_format % {'scope': self.scope, 'ident': ident}
 
 
+@extend_schema(methods=['GET'], responses={
+    200: oa.PUBLIC_DEPOT_INFO, 403: oa.PUBLIC_ERREUR, 410: oa.PUBLIC_ERREUR})
+@extend_schema(methods=['POST'],
+               request={'multipart/form-data': oa.PUBLIC_DEPOT_CORPS},
+               responses={201: oa.PUBLIC_DEPOT_OK, 403: oa.PUBLIC_ERREUR,
+                          410: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -4718,10 +5027,15 @@ def _signature_publique_payload(demande):
     }
 
 
+@extend_schema(methods=['GET'], responses={
+    200: oa.PUBLIC_SIGNATURE, 410: oa.PUBLIC_ERREUR})
+@extend_schema(methods=['POST'], request=oa.PUBLIC_SIGNATURE_CORPS,
+               responses={200: oa.PUBLIC_SIGNATURE, 410: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
+@parser_classes([JSONParser])
 def public_signature(request, token):
     """XGED1 — Cérémonie de signature PUBLIQUE (sans login), loi 53-05.
 
@@ -4916,10 +5230,16 @@ def _signataire_publique_payload(signataire):
     }
 
 
+@extend_schema(methods=['GET'], responses={
+    200: oa.PUBLIC_SIGNATAIRE, 410: oa.PUBLIC_ERREUR})
+@extend_schema(methods=['POST'], request=oa.PUBLIC_SIGNATAIRE_CORPS,
+               responses={200: OpenApiTypes.OBJECT, 403: oa.PUBLIC_ERREUR,
+                          410: oa.PUBLIC_ERREUR})
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])
+@parser_classes([JSONParser])
 def public_signataire(request, token):
     """XGED2 — Cérémonie de signature PUBLIQUE d'UN destinataire du circuit
     multi-signataires (`SignataireDemande.token`), distincte du jeton de la
@@ -5090,7 +5410,7 @@ def _demande_lisible_par_jeton(demande):
         and not demande.is_expired
 
 
-@extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -5113,7 +5433,7 @@ def public_signature_document(request, token):
     return _servir_document_a_signer(request, demande)
 
 
-@extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY})
+@extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
