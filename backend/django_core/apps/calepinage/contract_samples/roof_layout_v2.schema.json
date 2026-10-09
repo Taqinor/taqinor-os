@@ -2049,6 +2049,9 @@
         "centre": {
           "$ref": "#/$defs/couple"
         },
+        "bout": {
+          "$ref": "#/$defs/couple"
+        },
         "rayonM": {
           "type": "number",
           "exclusiveMinimum": 0
