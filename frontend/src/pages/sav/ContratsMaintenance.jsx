@@ -241,7 +241,7 @@ export function Component() {
   // WIR120 — valeurs par défaut des champs « Avancé » (tous optionnels ;
   // vides = comportement historique inchangé côté serveur).
   const ADVANCED_DEFAULTS = {
-    facturation_active: false, sla_response_days: '', sla_resolution_days: '',
+    sla_response_days: '', sla_resolution_days: '',
     visites_incluses_an: '', deplacements_inclus_an: '', pieces_couvertes_pct: '',
     equipements: [],
   }
@@ -396,9 +396,8 @@ export function Component() {
       if (form.prix !== '') payload.prix = form.prix
       if (form.installation) payload.installation = form.installation
       if (form.duree_mois !== '') payload.duree_mois = form.duree_mois
-      // WIR120 — champs « Avancé » : facturation récurrente, overrides SLA,
+      // WIR120 — champs « Avancé » : overrides SLA (D-ASAV-3 : plus de facturation récurrente),
       // registre d'équipements couverts, quotas visites/déplacements/pièces.
-      payload.facturation_active = form.facturation_active
       if (form.sla_response_days !== '') payload.sla_response_days = form.sla_response_days
       if (form.sla_resolution_days !== '') payload.sla_resolution_days = form.sla_resolution_days
       if (form.visites_incluses_an !== '') payload.visites_incluses_an = form.visites_incluses_an
@@ -717,15 +716,9 @@ export function Component() {
               Tous optionnels ; vides = comportement historique inchangé. */}
           <details className="mt-3 rounded-lg border border-border">
             <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
-              Avancé — facturation, SLA, couverture &amp; quotas
+              Avancé — SLA, couverture &amp; quotas
             </summary>
             <div className="flex flex-col gap-4 border-t border-border p-3">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.facturation_active}
-                          onCheckedChange={(v) => setForm((f) => ({ ...f, facturation_active: !!v }))} />
-                Facturation récurrente active
-              </label>
-
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <FormField label="SLA réponse (jours, override)" hint="vide = SLA société">
                   <Input type="number" min="0" step="1" value={form.sla_response_days}

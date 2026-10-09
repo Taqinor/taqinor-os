@@ -47,7 +47,7 @@ function renderPage() {
 }
 
 describe('WIR120 — contrat de maintenance, section Avancé', () => {
-  it('envoie facturation_active + le registre d\'équipements à la création', async () => {
+  it('envoie le registre d\'équipements à la création', async () => {
     const user = userEvent.setup()
     renderPage()
 
@@ -60,16 +60,15 @@ describe('WIR120 — contrat de maintenance, section Avancé', () => {
     const dateInputs = document.querySelectorAll('input[type="date"]')
     fireEvent.change(dateInputs[0], { target: { value: '2026-01-01' } })
 
-    // Section Avancé : facturation + un équipement couvert.
+    // Section Avancé : un équipement couvert.
     fireEvent.click(screen.getByText(/Avancé —/))
-    await user.click(screen.getByRole('checkbox', { name: 'Facturation récurrente active' }))
     await user.click(screen.getByRole('checkbox', { name: 'SN-9 — Onduleur' }))
 
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))
 
     await waitFor(() => expect(saveContrat).toHaveBeenCalledWith(
       null, expect.objectContaining({
-        client: '3', facturation_active: true, equipements: [9],
+        client: '3', equipements: [9],
       }),
     ))
   })
