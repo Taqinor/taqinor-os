@@ -1058,24 +1058,6 @@ export default function DevisGenerator({
     }
     cancel()
   }
-  // EDC3 (suite) — hauteur du pied collant `gen-actions-sticky`, posée sur la
-  // racine (`--gen-pied-h`) : la barre horizontale proxy (BarreDefilementCollante)
-  // se colle AU-DESSUS du pied, jamais derrière lui (les deux sont `bottom: 0`
-  // sinon, et le pied, plus haut dans l'empilement, la recouvrait).
-  useEffect(() => {
-    const pied = document.getElementById('gen-form')?.querySelector('.gen-actions-sticky')
-    const racine = pied?.closest('.gen-root')
-    if (!pied || !racine) return undefined
-    const mesurer = () => {
-      const h = pied.getBoundingClientRect().height
-      racine.style.setProperty('--gen-pied-h', `${Math.ceil(h)}px`)
-    }
-    mesurer()
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const observateur = new ResizeObserver(mesurer)
-    observateur.observe(pied)
-    return () => observateur.disconnect()
-  }, [])
   // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
   // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
   // d'avant QJR581 sans version) il est purgé, avec une notice.

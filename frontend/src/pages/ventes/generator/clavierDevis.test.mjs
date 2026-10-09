@@ -147,6 +147,8 @@ test('le panneau Sheet (role="dialog") qui CONTIENT le formulaire ne le neutrali
 test('composition IME en cours, ou touche déjà traitée par le champ : ignorée', () => {
   const form = formulaire(ligneProduit('a'))
   assert.equal(decisionTouche(touche(par(form, 'remise'), form, { isComposing: true })), 'ignorer')
+  // L'événement synthétique React ne porte pas `isComposing` : seul le natif le dit.
+  assert.equal(decisionTouche(touche(par(form, 'remise'), form, { nativeEvent: { isComposing: true } })), 'ignorer')
   assert.equal(decisionTouche(touche(par(form, 'remise'), form, { keyCode: 229 })), 'ignorer')
   assert.equal(decisionTouche(touche(par(form, 'remise'), form, { defaultPrevented: true })), 'ignorer')
 })

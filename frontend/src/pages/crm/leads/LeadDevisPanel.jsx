@@ -261,7 +261,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // PDF (réentrer = tout recharger) : le « retour d'un coup au devis ».
   const onEnregistre = (id) => {
     if (id) setDevisId(id)
-    setDirty(false)
+    // Le drapeau « non enregistré » reste celui du générateur (`onDirtyChange`) :
+    // s'il passe à faux après l'écriture, il le dit lui-même ; une frappe faite
+    // PENDANT l'enregistrement le laisse à vrai — on ne l'écrase pas ici.
     setRechargeTick((t) => t + 1)
     onDevisChanged?.()
   }

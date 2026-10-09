@@ -69,9 +69,7 @@ describe('EDC3 — BarreDefilementCollante', () => {
     expect(barre).toHaveAttribute('tabindex', '-1')
     expect(barre.style.position).toBe('sticky')
     // EDC3 (suite) — sans prop `bottom`, AUCUN style en ligne : la feuille de
-    // style décide (`.bdc-proxy { bottom: 0 }`, et dans le générateur
-    // `.gen-root .bdc-proxy { bottom: var(--gen-pied-h) }` : au-dessus du pied
-    // collant, jamais derrière lui).
+    // style décide (`.bdc-proxy { bottom: 0 }`).
     expect(barre.style.bottom).toBe('')
     // Frère IMMÉDIAT du conteneur (jamais dedans : il défilerait avec lui).
     expect(wrap.nextElementSibling).toBe(barre)

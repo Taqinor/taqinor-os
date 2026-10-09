@@ -11715,11 +11715,11 @@ textarea.form-control {
 .ldp-body > .ldp-edit { padding: 0; scrollbar-gutter: stable; --header-h: 0px; }
 .ldp-edit > .ldp-edit-inner { padding: 16px; }
 
-/* ── EDC3 (suite) — la barre proxy se colle AU-DESSUS du pied d'actions collant ── */
-/* Les deux étaient `bottom: 0` : le pied `gen-actions-sticky` (palier
-   --z-sticky, plus haut) recouvrait la barre horizontale pendant que l'ouvrier
-   était au milieu de la table. `--gen-pied-h` est mesurée par DevisGenerator.jsx
-   (ResizeObserver sur le pied) et posée sur `.gen-root` ; hors du générateur la
-   barre garde `bottom: 0`. */
+/* ── EDC3 (suite) — la barre proxy colle au vrai bas du défileur ── */
+/* `bottom` n'est plus posé en ligne par BarreDefilementCollante.jsx : la feuille
+   de style décide. Le pied `gen-actions-sticky` ne peut JAMAIS la recouvrir :
+   un `position: sticky` ne quitte pas son bloc conteneur (la carte « Création »,
+   tout en bas), donc tant que l'ouvrier est dans la table, le pied est hors
+   écran — vérifié par la revue du 09/10 (un décalage `--gen-pied-h` tenté
+   d'abord laissait la barre flotter 61 px au-dessus du bas, pour rien). */
 .bdc-proxy { bottom: 0; }
-.gen-root .bdc-proxy { bottom: var(--gen-pied-h, 0px); }

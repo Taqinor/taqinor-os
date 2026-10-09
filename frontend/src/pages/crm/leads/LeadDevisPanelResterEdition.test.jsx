@@ -116,14 +116,27 @@ describe('EDC11 — LeadDevisPanel : on reste dans l\'éditeur après l\'enregis
     expect(enPhaseEdition()).toBe(true)
   })
 
-  it('onEnregistre remet le drapeau « non enregistré » à zéro : « Voir le PDF » ne demande plus rien', async () => {
+  it("après l'enregistrement, le générateur dit lui-même « plus rien à enregistrer » : « Voir le PDF » ne demande plus rien", async () => {
     await ouvrirEdition()
     await act(async () => { generateur.props.onDirtyChange(true) })
-    await act(async () => { generateur.props.onEnregistre(413) })
+    // Le VRAI générateur : `marquerEnregistre()` fait passer `dirty` à faux et
+    // `onDirtyChange(false)` suit — le panneau n'écrase jamais ce drapeau.
+    await act(async () => { generateur.props.onEnregistre(413); generateur.props.onDirtyChange(false) })
     await act(async () => { generateur.props.onVoirPdf() })
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(await screen.findByRole('button', { name: /Télécharger le PDF/ })).toBeInTheDocument()
     expect(enPhaseEdition()).toBe(false)
+  })
+
+  it("une frappe PENDANT l'enregistrement garde la garde : le générateur reste « modifié », « Voir le PDF » demande", async () => {
+    await ouvrirEdition()
+    await act(async () => { generateur.props.onDirtyChange(true) })
+    // Enregistrement réussi… mais l'ouvrier a tapé entre-temps : le générateur
+    // ne redescend pas à faux (revue du 09/10 : le panneau ne doit pas l'écraser).
+    await act(async () => { generateur.props.onEnregistre(413) })
+    await act(async () => { generateur.props.onVoirPdf() })
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(/Voir le PDF sans enregistrer/)
+    expect(enPhaseEdition()).toBe(true)
   })
 
   it('onDone (CRÉATION) continue de basculer en aperçu, sur l\'id créé', async () => {

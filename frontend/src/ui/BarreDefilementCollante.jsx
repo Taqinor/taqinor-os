@@ -33,9 +33,9 @@ import { cn } from '../lib/cn'
    ignoré si `scrollbar-width` ≠ `auto` — d'où `scrollbar-width: auto` sur la
    barre. Aucune règle métier, aucune dépendance.
    ========================================================================== */
-// `bottom` : optionnel — sans lui, la feuille de style décide (`.bdc-proxy`
-// vaut `bottom: 0` ; dans le générateur, `--gen-pied-h` la pose au-dessus du
-// pied collant, bloc EDC3 d'index.css).
+// `bottom` : optionnel — sans lui, la feuille de style décide (`.bdc-proxy
+// { bottom: 0 }`, bloc EDC3 d'index.css) ; un appelant dont le défileur porte
+// un bandeau collant au bas peut le passer.
 export function BarreDefilementCollante({ bottom, className, children, ...props }) {
   const wrapRef = useRef(null)
   const barreRef = useRef(null)

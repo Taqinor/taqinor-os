@@ -49,7 +49,8 @@ export function decisionTouche(e, racine = e?.currentTarget ?? null) {
   if (!e || e.defaultPrevented) return 'ignorer'
   // Saisie IME en cours (accents composés, clavier arabe…) : Entrée valide la
   // composition, jamais le formulaire.
-  if (e.isComposing || e.keyCode === 229) return 'ignorer'
+  // (l'événement synthétique React ne porte pas `isComposing` : lire le natif.)
+  if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return 'ignorer'
   const cible = e.target
   if (!cible || typeof cible.closest !== 'function') return 'ignorer'
   // Événement remonté par un PORTAIL React (popover, dialogue porté hors du
