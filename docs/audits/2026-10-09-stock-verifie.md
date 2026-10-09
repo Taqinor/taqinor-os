@@ -122,8 +122,8 @@ scratchpad `live/RESULTATS.md` + `live/*.py` (sondes re-jouables).
 | **S-B aller-retour produit** (C-ASTK-005) — GET → mouvement +5 par le service → PUT du payload lu sans le toucher | stock 125 conservé (plus de retour à 120) ; `PATCH quantite_stock=999` ignoré (stock 125) |
 | **S-C `prix_achat`** (garde ASTK14 rejouée sur les données démo) — compte Commercial sans `prix_achat_voir` | 235 routes GET découvertes, 103 réponses JSON, **0 clé d'achat** ; contrôle positif admin : clés vues sur 17 routes |
 | **S-A prix** (D-ASTK-1, ASTK140/141) — prix catalogue 1 890 → 2 079 | brouillon recalé à 2 079 ; envoyé figé à 1 890 avec note persistée dans `/historique/` (« devis envoyé conservé ») ; événement périmé (2 079 → 1 890) ignoré, brouillon reste à 2 079 |
-| **S-D achat bout en bout** — BCF 10 × 100 → envoyer → réception 4 → sur-réception 10 → réception 6 → facturer → acompte → paiement | +4 puis sur-réception **plafonnée** au reste dû (stock exactement +10, réception suivante refusée « reste dû 0 », ASTK59) ; facture 4 × 100 = 480 TTC ; 2e facturation de la même réception refusée ; BCF/facturer refusé (pas de ligne « sur commande ») ; acompte créé AVANT la facture imputé (solde 180, « partiellement payée », acomptes ouverts vides, ASTK106) ; paiement du solde → `solde_du` 0, statut « payée » |
-| **S-F correction après coup** | PATCH montant d'une facture payée → 400 « montants verrouillés » ; `reviser` quantité 3 < reçu 10 → 400 ; PATCH `statut=brouillon` d'un BCF envoyé → 400 (« utilisez réviser ») ; annuler une réception confirmée non facturée → stock restauré |
+| **S-D achat bout en bout** — BCF 10 × 100 → envoyer → réception 4 → sur-réception 10 → réception 6 → facturer → acompte → paiement (sondes `probe_SD_SF`, `probe_SD2`) | +4 puis sur-réception **plafonnée** au reste dû (stock exactement +10, réception suivante refusée « reste dû 0 », ASTK59) ; facture 4 × 100 = 480 TTC ; 2e facturation de la même réception refusée ; BCF/facturer refusé (pas de ligne « sur commande ») ; acompte créé AVANT la facture imputé (SD2 : solde 180, « partiellement payée », acomptes ouverts vides) ; **écart** : acompte créé APRÈS la facture ouverte jamais imputé (SD : facture 480 → acompte 200 → `solde_du` 480 → paiement 480 → « payée », 200 versés en trop — relevé par la critique Fable, ERR-ASTK106) ; paiement du solde → `solde_du` 0, statut « payée » |
+| **S-F correction après coup** | PATCH montant d'une facture payée → 400 « montants verrouillés » ; `reviser` quantité 3 < reçu 10 → 400 ; PATCH `statut=brouillon` d'un BCF envoyé → 400 (« utilisez réviser ») ; annuler une réception confirmée non facturée → stock restauré ; **écart** : annuler une réception confirmée ET facturée → 200, stock restauré, facture toujours due (SD2 ; ERR-ASTK54) |
 | **ASTK39 comptage cyclique** (S1) | stock 120 → SORTIE 20 → 100 ; ligne ajoutée avant la sortie (théorique 120), compté 100, `terminer` → AJUSTEMENT −20 posté → **stock 80** au lieu de 100 — **reproduit** |
 | **ASTK6 vague de picking, chantier étranger** (S2) | voir ligne ci-dessous |
 
@@ -136,13 +136,64 @@ réaligné parce que `init_roles` n'a pas tourné localement depuis le merge ; e
 rôles), seuls Commercial responsable / Commercial / Portail client manquent les codes — voulu (D-ASTK-3).
 **Hors périmètre :** `/proposal` d'un devis synthétique sans onduleur → 500 (règle du moteur, ventes).
 
-## 4. Critique Fable
+## 4. Critique Fable (UN appel, contexte frais, lecture seule, effort high)
 
-_(rempli à la fin du run)_
+Entrées : synthèse des 182 verdicts, brouillon des écarts, traces live, les 7 critères, le dossier
+d'origine. Rapport complet au scratchpad (`fable_critique.md`). Verdict :
+- **Les 4 bloquants tiennent**, gravités justes : ASTK39 S1 (re-lu `comptage.py:93-101`,
+  `installations/serializers.py:1983` — les lanes citaient :1830, périmé — `appliquer_ecarts_comptage`
+  stock/services.py:2696) ; ASTK229 S2 ; ASTK221 S2 « faux » exact (et `document_reference` = n° de
+  facture est déjà servi, jamais lu) ; ASTK6 S2 et non S1 (`LignePickingSerializer` n'expose que des
+  ids, pas de fuite de contenu), `installation_id` ET `bon_commande_id` bruts (`services_wms.py:285-286`,
+  `bulk_create` :301-308), décrément d'expédition sauté (:804-808).
+- **Tranché** : annuler une réception confirmée ET facturée (sonde SD2 : 200, stock restauré, facture
+  toujours due) est HORS texte des ASTK54-58/99/125 mais écart d'argent → nouvel ERR S2
+  (`annuler_reception_confirmee` services.py:1636-1788 : 0 occurrence « factur » ; lien réception↔facture
+  = `note__startswith` :3652-3658, aucune FK ; re-réception refacturable).
+- **Complétude (≈20 « ok » re-vérifiés, confirmés : ASTK40-43, 98, 120/129/135, 81, 102-104, 107-109,
+  140-142, 1-5/7-9, 14, 59, 179-182)** — deux écarts manqués par les lanes et l'orchestrateur :
+  (1) ASTK106 : un acompte saisi APRÈS une facture ouverte n'est jamais imputé (`imputer_acomptes_bcf`
+  :5774 n'a qu'un appelant, le constructeur de facture :3579) — **déjà prouvé dans ma propre trace S-D**
+  (facture 480 → acompte 200 → solde 480 → paiement 480 → « payée », 200 versés en trop) et que j'avais
+  lu comme « OK » ; (2) ASTK121 : `reserver_stock_recu_pour_chantier` (installations/services.py
+  :1541-1620) pose `max(existante, reçu plafonné)` sans retrancher `quantite_deja_sortie_chantier`
+  (:1118-1153) → réception après vente partielle = double sortie à « Installé » (S1 **à confirmer** par
+  le test rouge ; L4 l'avait noté en optionnel). Optionnel hors périmètre : `sav/selectors.py:702/798`
+  valorise les pièces SAV au `prix_achat` brut (propriétaire sav).
+- **Triage** : ASTK59-jumeau monté en S2 (quarantaine 10 sur une entrée de 6 → disponible négatif,
+  plafonnement prouvé en direct) ; ASTK231, 232, 233, 192 descendus en optionnel (pas de tâche) ; ASTK63
+  = décision fondateur (GATED). ERR : 0 doublon dans `docs/ERROR_PLAN.md`. Registre : `construit`.
 
-## 5. Écarts retenus → `docs/ERROR_PLAN.md`
+## 5. Écarts retenus → `docs/ERROR_PLAN.md` (17 `[ ]` + 1 GATED)
 
-_(rempli à la fin du run)_
+| ID ERROR_PLAN | Grav. | Origine | Preuve |
+|---|---|---|---|
+| ERR-ASTK39-COMPTAGE-CYCLIQUE-SNAPSHOT-AJOUT | S1 | L3 + live | sonde rollback : stock 80 au lieu de 100 |
+| ERR-ASTK121-RESERVATION-RECEPTION-APRES-SORTIE-DOUBLE | S1 à confirmer | Fable | lecture `installations/services.py:1541-1620` ; test rouge d'abord |
+| ERR-ASTK106-ACOMPTE-APRES-FACTURE-NON-IMPUTE | S2 | Fable (trace S-D) | sonde rollback : 200 versés en trop |
+| ERR-ASTK54-ANNULATION-RECEPTION-FACTUREE | S2 | Fable (trace SD2) | sonde rollback : facture due après annulation |
+| ERR-ASTK6-VAGUE-PICKING-FK-ETRANGERES | S2 | L8 + Fable | lecture `services_wms.py:285-286` (sonde live gelée) |
+| ERR-ASTK59-QUARANTAINE-QUANTITE-SAISIE | S2 | L5 (opt.) + orchestrateur + Fable | lecture `services_qualite_reception.py:159` + plafonnement live |
+| ERR-ASTK229-KITS-REVISIONS-TABLEAU-NU | S2 | L1 + orchestrateur | sonde L1 (liste nue) + lecture |
+| ERR-ASTK221-CONSIGNATION-FACTURE-REFERENCE-LISTE | S2 | L9 + orchestrateur + Fable | lecture `negoce.py:31-58` + test factice |
+| ERR-ASTK12-PICKER-ACHAT-FAUX-PRIX-ZERO (12+15) | S3 | L2, L10 | lecture `CatalogueAchatPicker.jsx:172` |
+| ERR-ASTK209-CELLULE-STOCK-PARSEINT | S3 | L3 | node : validate(7.5)=null, parseInt=7 |
+| ERR-ASTK58-ANNULATION-RECEPTION-JUMEAUX-PESEE-CROSSDOCK | S3 | L5 | grep 0 occurrence |
+| ERR-ASTK205-SORTIE-SANS-LOT-REGISTRE | S3 | L3 | Then non livré, tâche auto-déclarée partielle |
+| ERR-ASTK226-RESOLUTION-INCIDENT-AUTEUR-SERVEUR | S3 | L7 | lecture |
+| ERR-ASTK222-AVOIR-RFA-REFERENCE-APRES-F5 | S3 | L9 | lecture |
+| ERR-ASTK196-CONTRATS-WMS-400-NON-AFFIRMES (196+200+216) | S3 | L9 | lecture des contrats/tests |
+| ERR-ASTK163-CONTRATS-CLES-NON-AFFIRMEES-APICLIENT (163+165+166) | S3 | L6 | lecture |
+| ERR-ASTK53-DETTE-CONCURRENCE-ALLOWLIST | S3 | L10 | lecture |
+| ERR-ASTK63-FRAIS-ANNEXES-COUT-FIGE-VS-DC38 | GATED | L5 + Fable | décision a/b |
+
+Sans tâche (optionnel) : ASTK231, ASTK232, ASTK233, ASTK192 ; `sav/selectors.py` prix_achat brut (hors
+périmètre, propriétaire sav). Réfutés : 403 achats local (`init_roles`), `/proposal` 500 sur devis
+synthétique sans onduleur.
+
+**Registre** `docs/audits/unites.yml` J3 : `audité` → **`construit`** (METHODE §D.5 : `vérifié` exige
+zéro écart S1-S2). Sortie du cycle : deux passages à zéro S1-S2, le second en contre-visite par
+différence. Commande de reprise après correction : `work on error plan` (les 17 ERR), puis `vérifie ASTK`.
 
 ## 6. Couverture et non-couvert
 
