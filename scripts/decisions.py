@@ -99,6 +99,8 @@ def appliquer(racine: Path = ROOT, ecrire: bool = False) -> int:
 
 
 def main(argv=None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parseur = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parseur.add_argument("commande", nargs="?", choices=["appliquer"], default="appliquer")
     parseur.add_argument("--dry-run", action="store_true", help="liste sans ecrire (defaut)")
