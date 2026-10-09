@@ -384,27 +384,24 @@ export function computeCashflowPayback(investment, economieAnnee1, {
 // `annuel` = `etude.annuel` du serveur (taux d'autoconsommation, production,
 // consommation) : la part batterie se dérive comme dans `pricing` (plafond
 // sans ≤ conso/production, plancher avec ≥ sans). Rend
-// `{ paybackYears, jamaisRembourse }`, ou `null` sans coût ni économie.
+// `{ paybackYears, jamaisRembourse, netGain }`, ou `null` sans coût ni économie.
+// AMOT72 — miroir du moteur CORRIGÉ (AMOT58, `rendement_une_fois`) : en modèle
+// horaire, le rendement aller-retour de la batterie est DÉJÀ dans l'économie
+// servie (`etude_horaire` borne le restitué) ; la part batterie du cashflow
+// vaut donc 0 — plus de seconde déduction. Flux année 1 = économie servie.
+// `annuel` et `rendementBatterie` restent acceptés (appelants inchangés).
 export function paybackMoteurHoraire(total, ecoAnnuelle, {
   annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
 } = {}) {
+  void annuel
   const t = parseFloat(total) || 0
   const eco = parseFloat(ecoAnnuelle) || 0
   if (!(t > 0) || !(eco > 0)) return null
-  let part = 0
-  if (stockage && annuel) {
-    const prod = parseFloat(annuel.production_kwh) || 0
-    const conso = parseFloat(annuel.consommation_kwh) || 0
-    let sansEff = parseFloat(annuel.taux_autoconso_sans) || 0
-    if (conso > 0 && prod > 0) sansEff = Math.min(sansEff, conso / prod)
-    const avecEff = Math.max(parseFloat(annuel.taux_autoconso_avec) || 0, sansEff)
-    part = avecEff > 0 ? Math.max(0, avecEff - sansEff) / avecEff : 0
-  }
   const cf = computeCashflowPayback(t, eco, {
-    battery: !!stockage, batteryShare: part, inverterReplaceCost,
+    battery: !!stockage, batteryShare: 0, inverterReplaceCost,
     batteryRoundtrip: rendementBatterie ?? BATTERY_ROUNDTRIP,
   })
-  return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse }
+  return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse, netGain: cf.netGain }
 }
 
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────

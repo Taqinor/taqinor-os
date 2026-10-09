@@ -1,0 +1,111 @@
+{
+ "_": "AMOT72 — produit par le SERVEUR corrigé (AMOT58, rendement_une_fois=True) via frontend/scripts/amot72_fixture_serveur.py ; jamais recopié à la main.",
+ "entree": {
+  "puissance_kwc": 6.0,
+  "total_sans": 60000.0,
+  "total_avec": 90000.0,
+  "battery_kwh": 10.0,
+  "stockage_present": true,
+  "etude_horaire": {
+   "kwc": 6.0,
+   "annuel": {
+    "production_kwh": 9000.0,
+    "consommation_kwh": 8000.0,
+    "economie_sans_mad": 5400.0,
+    "economie_avec_mad": 7200.0,
+    "taux_autoconso_sans": 0.45,
+    "taux_autoconso_avec": 0.75
+   },
+   "mois": [
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    },
+    {
+     "economie_sans_mad": 450.0,
+     "economie_avec_mad": 600.0,
+     "facture_avant_mad": 900.0
+    }
+   ],
+   "rendement_batterie": 0.9
+  }
+ },
+ "serveur": {
+  "prod_kwh": 9000,
+  "eco_s_ann": 5400,
+  "eco_a_ann": 7200,
+  "eco_a_cumul": 7200,
+  "roi_s": 11.4,
+  "roi_a": 12.9,
+  "roi_s_jamais": false,
+  "roi_a_jamais": false,
+  "savings_estimated": false,
+  "autoconso_sans": 0.45,
+  "autoconso_avec": 0.75,
+  "couverture_sans": null,
+  "couverture_avec": null,
+  "tarif_kwh": 1.2,
+  "utility": null,
+  "savings_model": "horaire",
+  "source_consommation": null,
+  "facture_sans": null,
+  "facture_avec_s": null,
+  "facture_avec_a": null,
+  "factures_approximatif": false,
+  "factures_note_methode": null,
+  "productible": 1500.0,
+  "net_gain_sans": 67202,
+  "net_gain_avec": 79603
+ }
+}
