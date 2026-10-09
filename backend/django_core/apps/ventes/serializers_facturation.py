@@ -157,6 +157,10 @@ class PaiementSerializer(serializers.ModelSerializer):
     # valide. Le libellé est servi ici pour que l'écran ne le réinvente pas.
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # AFAC17 — auteur de l'annulation de saisie (contrat
+    # ``paiement_annuler_saisie.json``).
+    annule_par_nom = serializers.CharField(
+        source='annule_par.username', read_only=True, default=None)
 
     # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
     # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
@@ -215,7 +219,9 @@ class PaiementSerializer(serializers.ModelSerializer):
                             'statut_affectation', 'provider_ref',
                             'motif_rejet', 'frais_rejet', 'date_rejet',
                             # APDF30 — numéro de reçu posé par le serveur.
-                            'numero_recu']
+                            'numero_recu',
+                            # AFAC17 — posés par `annuler-saisie` seul.
+                            'annule_le', 'annule_par', 'motif_annulation']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):

@@ -673,13 +673,13 @@ def argent_rattache(facture):
     (``argent_rattache``). Un paiement REJETÉ ne porte plus d'argent (YLEDG5)."""
     from ..models import Paiement
 
-    rejete = Paiement.Statut.REJETE
+    non_comptes = Paiement.STATUTS_NON_COMPTES
     paiements = sum(
-        (p.montant for p in facture.paiements.all() if p.statut != rejete),
+        (p.montant for p in facture.paiements.all() if p.statut not in non_comptes),
         Decimal('0'))
     affectations = sum(
         (a.montant for a in facture.affectations_paiement.select_related(
-            'paiement') if a.paiement.statut != rejete),
+            'paiement') if a.paiement.statut not in non_comptes),
         Decimal('0'))
     return {
         'paiements': paiements,
@@ -1024,10 +1024,10 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
                 {'facture': "Impossible de ventiler sur une facture annulée."})
         # AFAC9 (C-AFAC-014) — une avance REJETÉE (chèque impayé) n'a jamais
         # été encaissée : elle ne se ventile pas.
-        if locked_paiement.statut == Paiement.Statut.REJETE:
+        if locked_paiement.statut in Paiement.STATUTS_NON_COMPTES:
             raise ValidationError(
-                {'paiement': "Avance rejetée : elle ne peut pas être "
-                             "ventilée."})
+                {'paiement': "Avance rejetée ou annulée : elle ne peut pas "
+                             "être ventilée."})
         # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122).
         motif = motif_non_encaissable(locked_facture, timezone.localdate())
         if motif:
@@ -1146,7 +1146,7 @@ def enregistrer_paiement_avec_retenue(
             (r.montant for r in locked.retenues_subies.select_related(
                 'paiement').filter(type_retenue=type_retenue)
              if not (r.paiement_id
-                     and r.paiement.statut == Paiement.Statut.REJETE)),
+                     and r.paiement.statut in Paiement.STATUTS_NON_COMPTES)),
             Decimal('0'))
         retenue_montant = min(due - deja, reste - montant)
         if retenue_montant < 0:
@@ -1526,3 +1526,173 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
 # module, donc un import croisé ne peut jamais lire un module à moitié
 # construit, quel que soit celui qui est chargé le premier.
 from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E402,F401
+
+
+# ── AFAC17 (C-AFAC-013, D-AFAC-C2 a) — corriger un paiement mal saisi ──────
+class CorrectionPaiementRefusee(Exception):
+    """AFAC17 — refus d'une correction de paiement (``code`` + ``detail`` FR,
+    contrats ``paiement_annuler_saisie.json`` / ``paiement_reaffecter.json``).
+    ``conflit`` : l'état du paiement interdit le geste (409)."""
+
+    def __init__(self, code, detail, conflit=False):
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
+        self.conflit = conflit
+
+
+def _remise_du_paiement(paiement):
+    """La remise d'encaissement qui porte ``paiement``, ou ``None``."""
+    from apps.ventes.models import LigneRemiseEncaissement
+    ligne = (LigneRemiseEncaissement.objects.select_related('remise')
+             .filter(paiement=paiement).first())
+    return ligne.remise if ligne is not None else None
+
+
+def _refus_si_remis(paiement, geste):
+    remise = _remise_du_paiement(paiement)
+    if remise is not None:
+        raise CorrectionPaiementRefusee(
+            'paiement_remis_en_banque',
+            f'Ce paiement est déjà porté par la remise '
+            f'{remise.reference or remise.pk} : retirez-le de la remise '
+            f'avant {geste}.')
+
+
+def _note_facture(facture, user, field, label, body, ancien='', nouveau=''):
+    """Ligne de chatter facture (FactureActivity) d'une correction."""
+    from apps.ventes.models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION, field=field,
+        field_label=label, old_value=str(ancien), new_value=str(nouveau),
+        body=body)
+
+
+def _rattacher_paiement(paiement, cible):
+    """Déplace ``paiement`` sur ``cible`` (sans garde) : le seul geste de
+    déplacement, partagé par ``reaffecter_paiement`` et le transfert
+    d'acompte de l'annulation de facture."""
+    paiement.facture = cible
+    paiement.save(update_fields=['facture'])
+
+
+def reaffecter_paiement(*, paiement, facture_cible, user=None):
+    """AFAC17 — réaffecte un paiement rapproché sur la MAUVAISE facture vers
+    ``facture_cible`` (même société, même client, encaissable — porte AFAC9),
+    sous verrou des deux factures (ordre des pk : jamais d'interblocage).
+    Les deux statuts sont redérivés (``recalculer_statut_paiement``, ATOT8)
+    et le chatter des deux factures dit ancien → nouveau. Lève
+    ``CorrectionPaiementRefusee``. Renvoie ``(paiement, source, cible)``."""
+    from django.db import transaction
+
+    from apps.ventes.models import Facture, Paiement
+
+    with transaction.atomic():
+        p = Paiement.objects.select_for_update().get(pk=paiement.pk)
+        if p.statut in Paiement.STATUTS_NON_COMPTES:
+            raise CorrectionPaiementRefusee(
+                'paiement_non_compte',
+                f'Paiement {p.get_statut_display().lower()} : il ne se '
+                'réaffecte pas.', conflit=True)
+        if p.facture_id is None:
+            raise CorrectionPaiementRefusee(
+                'paiement_sans_facture',
+                "Avance non rattachée : utilisez la ventilation.")
+        if facture_cible is None or facture_cible.pk == p.facture_id:
+            raise CorrectionPaiementRefusee(
+                'cible_invalide',
+                'Choisissez une autre facture que celle du paiement.')
+        _refus_si_remis(p, 'de le réaffecter')
+        ids = sorted([p.facture_id, facture_cible.pk])
+        verrous = {f.pk: f for f in
+                   Facture.objects.select_for_update().filter(pk__in=ids)
+                   .order_by('pk')}
+        source, cible = verrous[p.facture_id], verrous.get(facture_cible.pk)
+        if cible is None or cible.company_id != source.company_id:
+            raise CorrectionPaiementRefusee(
+                'cible_invalide', 'Facture cible inconnue.')
+        if cible.client_id != source.client_id:
+            raise CorrectionPaiementRefusee(
+                'facture_autre_client',
+                "La facture cible appartient à un autre client : un paiement "
+                "ne se réaffecte qu'entre factures du même client.")
+        motif = motif_non_encaissable(cible, p.date_paiement)
+        if motif:
+            raise CorrectionPaiementRefusee('cible_non_encaissable', motif)
+        total = Decimal(str(p.montant)) + Decimal(
+            str(p.escompte_montant or 0))
+        if total - cible.montant_du > Decimal('0.01'):
+            raise CorrectionPaiementRefusee(
+                'depasse_reste_cible',
+                f'Le paiement ({total:.2f} MAD) dépasse le reste à payer de '
+                f'la facture cible ({cible.montant_du:.2f} MAD).')
+        _rattacher_paiement(p, cible)
+        texte = (f'Paiement de {p.montant} MAD du {p.date_paiement} '
+                 f'réaffecté : {source.reference} → {cible.reference}.')
+        _note_facture(source, user, 'paiement_reaffecte',
+                      'Paiement réaffecté', texte, source.reference,
+                      cible.reference)
+        _note_facture(cible, user, 'paiement_reaffecte',
+                      'Paiement réaffecté', texte, source.reference,
+                      cible.reference)
+        recalculer_statut_paiement(source, user=user,
+                                   source='reaffectation_paiement')
+        recalculer_statut_paiement(cible, user=user,
+                                   source='reaffectation_paiement')
+    paiement.refresh_from_db()
+    source.refresh_from_db()
+    cible.refresh_from_db()
+    return paiement, source, cible
+
+
+def annuler_saisie_paiement(*, paiement, motif, user=None):
+    """AFAC17 — annule une saisie de paiement ERRONÉE : statut
+    ``annule_saisie`` daté (``annule_le``), motif obligatoire, auteur tracé.
+    Le paiement sort du payé (``Paiement.STATUTS_NON_COMPTES``), la ou les
+    factures touchées sont redérivées (ATOT8) ; ce n'est PAS un rejet
+    bancaire : aucun ``paiement_rejete`` émis, aucun impayé compté. Jamais
+    une suppression (le journal garde la ligne). Lève
+    ``CorrectionPaiementRefusee``."""
+    from django.db import transaction
+    from django.utils import timezone
+
+    from apps.ventes.models import Paiement
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise CorrectionPaiementRefusee(
+            'motif_requis',
+            'Motif obligatoire pour annuler une saisie de paiement.')
+    with transaction.atomic():
+        p = Paiement.objects.select_for_update().get(pk=paiement.pk)
+        if p.statut in Paiement.STATUTS_NON_COMPTES:
+            raise CorrectionPaiementRefusee(
+                'paiement_non_compte',
+                f'Paiement déjà {p.get_statut_display().lower()}.',
+                conflit=True)
+        _refus_si_remis(p, "d'annuler la saisie")
+        p.statut = Paiement.Statut.ANNULE_SAISIE
+        p.annule_le = timezone.now()
+        p.annule_par = user if getattr(user, 'is_authenticated', False) \
+            else None
+        p.motif_annulation = motif[:255]
+        p.save(update_fields=['statut', 'annule_le', 'annule_par',
+                              'motif_annulation'])
+        touchees = []
+        if p.facture_id:
+            touchees.append(p.facture)
+        touchees.extend(a.facture for a in
+                        p.affectations.select_related('facture')
+                        if a.facture is not None)
+        for facture in touchees:
+            _note_facture(
+                facture, user, 'paiement_annule_saisie',
+                'Saisie de paiement annulée',
+                f'Saisie de paiement annulée : {p.montant} MAD du '
+                f'{p.date_paiement} — motif : {p.motif_annulation}.',
+                Paiement.Statut.ENCAISSE, Paiement.Statut.ANNULE_SAISIE)
+            recalculer_statut_paiement(facture, user=user,
+                                       source='annulation_saisie_paiement')
+    paiement.refresh_from_db()
+    return paiement

@@ -872,7 +872,7 @@ def kpis_q2c_periode(company, debut, fin):
     agg = (Paiement.objects
            .filter(company=company,
                    date_paiement__gte=debut, date_paiement__lte=fin)
-           .exclude(statut=Paiement.Statut.REJETE)
+           .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
            .aggregate(montant=Sum('montant'), escompte=Sum('escompte_montant')))
     encaisse = (agg['montant'] or Decimal('0')) + (agg['escompte'] or Decimal('0'))
 
@@ -923,7 +923,7 @@ def kpis_factures(qs):
         agg = (Paiement.objects
                .filter(facture__in=qs.values('pk'),
                        date_paiement__gte=debut, date_paiement__lte=fin)
-               .exclude(statut=Paiement.Statut.REJETE)
+               .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
                .aggregate(montant=Sum('montant'),
                           escompte=Sum('escompte_montant')))
         return ((agg['montant'] or Decimal('0'))

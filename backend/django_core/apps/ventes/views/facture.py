@@ -724,7 +724,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # net est `Facture.montant_paye` — plus aucune somme locale de
             # `p.montant` (elle remboursait 45 000 jamais encaissés).
             paiements = [p for p in locked.paiements.all()
-                         if p.statut != Paiement.Statut.REJETE]
+                         if p.statut not in Paiement.STATUTS_NON_COMPTES]
             net_acompte = Decimal(str(locked.montant_paye))
 
             if acompte_action == 'transferer':
@@ -820,15 +820,17 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 # Re-pointe les paiements vers la cible : les soldes des deux
                 # factures se redérivent (propriétés calculées).
                 nb = len(paiements)
+                from ..domain.encaissements import _rattacher_paiement
                 for p in paiements:
-                    p.facture = cible
-                    p.save(update_fields=['facture'])
+                    # AFAC17 — LE geste de déplacement partagé avec
+                    # ``reaffecter_paiement``.
+                    _rattacher_paiement(p, cible)
                 # AFAC12 — les avances VENTILÉES suivent aussi : le net
                 # transféré (``montant_paye``) les comptait déjà, mais elles
                 # restaient sur la facture morte (la cible recevait moins).
                 for a in locked.affectations_paiement.select_related(
                         'paiement'):
-                    if a.paiement.statut == Paiement.Statut.REJETE:
+                    if a.paiement.statut in Paiement.STATUTS_NON_COMPTES:
                         continue
                     a.facture = cible
                     a.save(update_fields=['facture'])

@@ -490,7 +490,7 @@ def reglements_facture_pdf(facture):
     lignes = []
     for p in sorted(facture.paiements.all(),
                     key=lambda p: (p.date_paiement, p.id)):
-        if p.statut == Paiement.Statut.REJETE:
+        if p.statut in Paiement.STATUTS_NON_COMPTES:
             continue
         lignes.append({
             'date': _date(p.date_paiement), 'mode': p.get_mode_display(),
@@ -504,7 +504,7 @@ def reglements_facture_pdf(facture):
     for a in sorted(facture.affectations_paiement.select_related('paiement'),
                     key=lambda a: a.id):
         source = a.paiement
-        if source is None or source.statut == Paiement.Statut.REJETE:
+        if source is None or source.statut in Paiement.STATUTS_NON_COMPTES:
             continue
         lignes.append({
             'date': _date(source.date_paiement),
