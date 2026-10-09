@@ -36,7 +36,7 @@ function fichiersHtml(dir: string): string[] {
   return out;
 }
 
-/** `bonjour/index.html` → `/bonjour/` ; `index.html` → `/` ; `404.html` → `/404.html`. */
+/** `societe/index.html` → `/societe/` ; `index.html` → `/` ; `404.html` → `/404.html`. */
 export function urlDeFichier(fichierRelatif: string): string {
   const posix = fichierRelatif.split(sep).join('/');
   if (posix === 'index.html') return '/';

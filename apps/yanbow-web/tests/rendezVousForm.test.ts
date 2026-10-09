@@ -82,8 +82,8 @@ describe('YBW55 — formulaire rendu', () => {
     const pot = doc.querySelector<HTMLInputElement>(`input[name="${POT_DE_MIEL}"]`)!;
     expect(pot.getAttribute('tabindex')).toBe('-1');
     expect(pot.closest('.rdv-pot')!.getAttribute('aria-hidden')).toBe('true');
-    // La page sonde CONSTRUITE porte le formulaire : on lit les feuilles de style qu'elle sert.
-    const page = pageRendue('/bonjour/');
+    // La page Rendez-vous CONSTRUITE (YBW66) porte le formulaire : on lit les feuilles de style qu'elle sert.
+    const page = pageRendue('/rendez-vous/');
     expect(page.document.querySelector('form[data-rendez-vous]')).not.toBeNull();
     const feuilles = [...page.document.querySelectorAll('link[rel="stylesheet"]')].map((l) =>
       readFileSync(join(DIST_CLIENT, l.getAttribute('href')!.replace(/^\//, '')), 'utf-8'),

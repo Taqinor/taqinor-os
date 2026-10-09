@@ -323,6 +323,17 @@ export const AFFIRMATIONS: Affirmation[] = [
     preuves: [`${PLAN}:42`, `${PLAN}:54`],
     verifie_a_sha: SHA_PAGES,
   },
+  {
+    id: 'YB-POSITIONNEMENT',
+    produit: 'yanbow',
+    texte_fr:
+      'Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur mesure pour le reste.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:43`, `${PLAN}:44`, `${PLAN}:54`],
+    verifie_a_sha: SHA_PAGES,
+  },
   // ── YanBow — le nom ─────────────────────────────────────────────────────────
   {
     id: 'YB-NOM-SOURCE',

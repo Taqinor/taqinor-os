@@ -44,7 +44,7 @@ test('preuve : la garde rougit sur un en-tête qui passe à la ligne', async ({ 
   expect((await entetePasseALaLigne(page)).length).toBeGreaterThan(0);
 });
 
-const AVEC_ENTETE = pagesDuBuild().filter((u) => !['/bonjour/', '/en/bonjour/'].includes(u));
+const AVEC_ENTETE = pagesDuBuild();
 
 for (const url of AVEC_ENTETE) {
   test(`${url} : en-tête sur une seule ligne de 320 à 1440 px`, async ({ page }) => {

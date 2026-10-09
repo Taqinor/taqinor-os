@@ -69,6 +69,63 @@ describe('YBW64 — Sur mesure', () => {
   });
 });
 
+describe('YBW61 — Accueil', () => {
+  const p = pageRendue(PAGES.accueil.fr);
+  it('positionnement en une phrase, deux cartes produit du registre, sur mesure, société, appel', () => {
+    expect(p.document.querySelector('h1')?.textContent).toBe(texteAffirmation('YB-METIER', 'fr'));
+    expect(affirmationsDe(p)).toEqual([
+      'YB-METIER',
+      'YB-POSITIONNEMENT',
+      'SB-POUR-QUI',
+      'SB-CRM',
+      'SB-CALEPINAGE-3D',
+      'SB-PACKS-FR',
+      'MB-POUR-QUI',
+      'MB-CREATION-EN-PAUSE',
+      'MB-PROPOSE-APPROUVE',
+      'MB-COUPE-CIRCUIT',
+      'SM-OFFRE',
+      'YB-NOM-SOURCE',
+      'YB-REPONSE-HUMAINE',
+    ]);
+    expect([...p.document.querySelectorAll('[data-produit] h3')].map((h) => h.textContent)).toEqual(['SolarBow', 'MarketingBow']);
+  });
+
+  it('aucune statistique (aucun chiffre hors « 3D »/« 2D »), aucun logo client, aucune personne (R13 « en service » : founderRules)', () => {
+    expect(texte(p).replace(/[23]D/g, '')).not.toMatch(/\d/);
+    expect(p.document.querySelectorAll('main img:not(figure[data-capture] img)')).toHaveLength(0);
+  });
+
+  it('la capture du héros est prioritaire et hors de toute animation ; le trait animé est à côté du titre', () => {
+    expect(p.document.querySelector('.capture-hero[data-capture="crm-pipeline"]')).not.toBeNull();
+    expect(p.document.querySelector('h1 .motif-anime')).toBeNull();
+    expect(p.document.querySelectorAll('.hero-trajectoire .motif-anime').length).toBeGreaterThan(0);
+  });
+
+  it('la sonde « bonjour » est supprimée (FR et EN)', () => {
+    expect(pagesRendues().map((x) => x.url)).not.toContain('/bonjour/');
+  });
+});
+
+describe('liens internes : aucun lien mort', () => {
+  const pages = pagesRendues();
+  const urls = new Set(pages.map((x) => x.url));
+  for (const p of pages) {
+    it(p.url, () => {
+      const ids = new Set([...p.document.querySelectorAll('[id]')].map((e) => e.id));
+      for (const a of p.document.querySelectorAll('a[href]')) {
+        const href = a.getAttribute('href')!;
+        if (href.startsWith('#')) expect(ids.has(href.slice(1)), href).toBe(true);
+        else if (href.startsWith('/')) {
+          const u = new URL(href, 'https://x.test');
+          expect(urls.has(u.pathname), href).toBe(true);
+          if (u.hash) expect(pageRendue(u.pathname).document.getElementById(u.hash.slice(1)), href).not.toBeNull();
+        }
+      }
+    });
+  }
+});
+
 /** Modules affichés d'une page produit. */
 const modulesDe = (doc: Document) => [...doc.querySelectorAll('[data-module]')].map((m) => m.getAttribute('data-module'));
 /** Ce que la page produit ne doit JAMAIS dire (D-YBW-8, YBW92 GATED). */
