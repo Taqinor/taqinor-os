@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import Outillage, KitOutillage, KitOutillageItem
@@ -7,7 +8,7 @@ class OutillageSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     emplacement_nom = serializers.CharField(
-        source='emplacement.nom', read_only=True, default=None)
+        source='emplacement.nom', read_only=True, allow_null=True, default=None)
 
     # FG80 — badge « à calibrer » : intervalle > 0 ET date dépassée.
     a_calibrer = serializers.SerializerMethodField()
@@ -27,6 +28,7 @@ class OutillageSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification',
                             'date_prochaine_calibration']
 
+    @extend_schema_field(serializers.BooleanField())
     def get_a_calibrer(self, obj):
         """FG80 — True si une calibration est due (date passée ou pas encore faite
         alors que l'intervalle est défini)."""
@@ -81,6 +83,7 @@ class KitOutillageSerializer(serializers.ModelSerializer):
             'ordre', 'actif', 'items',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_type_intervention_label(self, obj):
         if not obj.type_intervention:
             return None
