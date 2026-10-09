@@ -937,7 +937,12 @@ def _echelle_paliers_batterie(devis):
             'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
             'prix_ttc': cout,
             'economies_annuelles': economie,
-            'payback_annees': _arrondi(_payback(cout, economie)),
+            # AMOT29 — LE payback publié (cashflow 25 ans du document, avec
+            # provision d'onduleur au prix remisé de SA ligne) ; ``None``
+            # quand non chiffrable ou jamais remboursé — jamais le ratio
+            # simple, qui ne sert plus qu'au tri interne.
+            'payback_annees': _payback_publie_palier(
+                cout, economie, vue.get('lignes'), facteur_remise),
             'remplissage_ok': bool(remplissage_ok),
             'retenu': bool(capacite_retenue is not None
                            and abs(capacite - _num(capacite_retenue)) < 0.05),
@@ -985,6 +990,28 @@ def _echelle_paliers_batterie(devis):
     return echelle
 
 
+def _payback_publie_palier(cout, economie, lignes, facteur_remise):
+    """AMOT29 — payback PUBLIÉ d'un palier de l'échelle batterie :
+    ``pricing.payback_publiable`` sur son prix (déjà remisé) et son économie,
+    stockage présent, provision d'onduleur = Σ lignes onduleur de la
+    composition (P.U. HT × qté × 1,20 × remise du devis, comme
+    ``offres_tailles._cout_onduleur_ttc``), ``None`` sans ligne onduleur."""
+    from apps.ventes.quote_engine.pricing import payback_publiable
+    onduleur = 0.0
+    for ligne in (lignes or []):
+        if (ligne or {}).get('role') in ('onduleur_reseau', 'onduleur_hybride'):
+            onduleur += (_num(ligne.get('quantite'))
+                         * _num(ligne.get('prix_unitaire_ht')) * 1.2)
+    onduleur *= float(facteur_remise or 1.0)
+    try:
+        return payback_publiable(
+            cout, economie, stockage=True,
+            cout_onduleur_ttc=(round(onduleur, 2) if onduleur > 0
+                               else None))['payback_annees']
+    except Exception:  # noqa: BLE001 — un payback indisponible s'omet
+        return None
+
+
 # ── LES OUTILS PURS DU BALAYAGE ─────────────────────────────────────────────
 # EN BAS À DESSEIN (voir la docstring du module) : cet import et le bloc de
 # ré-exports de ``dimensionnement.py`` ferment un cycle que seule cette
@@ -993,10 +1020,8 @@ from apps.ventes.dimensionnement import (  # noqa: E402
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
     MAX_PANNEAUX_BALAYAGE,
-    _arrondi,
     _lire_composition,
     _num,
-    _payback,
     capacite_utile_batterie,
     paliers_stockage_candidats,
 )

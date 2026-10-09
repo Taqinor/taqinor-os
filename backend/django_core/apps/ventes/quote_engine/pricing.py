@@ -968,6 +968,40 @@ def compute_cashflow_payback(
     }
 
 
+def payback_publiable(investissement, economie_annee1, *, stockage=False,
+                      part_batterie=None, cout_onduleur_ttc=None,
+                      battery_roundtrip=None) -> dict:
+    """AMOT29 (C-AMOT-030) — LE payback qu'une surface CLIENT publie.
+
+    Une seule définition, celle du document : le croisement à zéro du
+    cashflow 25 ans (:func:`compute_cashflow_payback` — dégradation, provision
+    de remplacement de l'onduleur au prix RÉEL de sa ligne, part réellement
+    stockée), avec « jamais remboursé » dit comme tel. Le ratio simple
+    ``coût ÷ économie`` ne sert plus qu'au TRI interne des tailles.
+
+    Rend ``{'payback_annees': float | None, 'jamais_rembourse': bool}`` :
+    ``payback_annees`` vaut ``None`` quand il n'est pas chiffrable (prix ou
+    économie absents) OU quand le cumul ne croise jamais zéro
+    (``jamais_rembourse`` vrai) — jamais la sentinelle « 25 ans » publiée.
+    """
+    try:
+        inv = float(investissement or 0)
+        eco = float(economie_annee1 or 0)
+    except (TypeError, ValueError):
+        return {"payback_annees": None, "jamais_rembourse": False}
+    if inv <= 0 or eco <= 0:
+        return {"payback_annees": None, "jamais_rembourse": False}
+    kwargs = {"battery": bool(stockage), "battery_share": part_batterie,
+              "inverter_replace_cost": cout_onduleur_ttc}
+    if battery_roundtrip:
+        kwargs["battery_roundtrip"] = float(battery_roundtrip)
+    cf = compute_cashflow_payback(inv, eco, **kwargs)
+    if cf.get("jamais_rembourse"):
+        return {"payback_annees": None, "jamais_rembourse": True}
+    return {"payback_annees": round(float(cf["payback_years"]), 2),
+            "jamais_rembourse": False}
+
+
 def _fr_pct(v) -> str:
     """0.5 -> '0,5' ; 2.0 -> '2' (French decimal comma, no trailing zero)."""
     s = f"{float(v):g}"

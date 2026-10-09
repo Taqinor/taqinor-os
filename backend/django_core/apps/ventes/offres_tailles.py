@@ -206,6 +206,23 @@ def _payback(cout, economie):
     return round(cout / economie, 2)
 
 
+def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
+                    cout_onduleur_ttc=None):
+    """AMOT29 — le payback PUBLIÉ d'une carte : ``pricing.payback_publiable``
+    (cashflow 25 ans, la définition du PDF), ``None`` s'il n'est pas
+    chiffrable ou si l'option n'est jamais remboursée sur l'horizon."""
+    if cout is None or economie is None or cout <= 0 or economie <= 0:
+        return None
+    try:
+        from .quote_engine.pricing import payback_publiable
+        return payback_publiable(
+            cout, economie, stockage=stockage, part_batterie=part_batterie,
+            cout_onduleur_ttc=cout_onduleur_ttc)['payback_annees']
+    except Exception:  # noqa: BLE001 — un payback indisponible s'omet
+        logger.warning('payback publiable indisponible', exc_info=True)
+        return None
+
+
 def _prix_par_kwc(prix_ttc, kwc):
     """Le prix au kWc TTC, arrondi COMME le moteur de rendu l'arrondit.
 
@@ -895,22 +912,26 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                 carte['prix_par_kwc_ttc'] = prix_kwc
         if economie is not None:
             carte['economie_annuelle_mad'] = round(economie, 2)
-        paye = _payback(prix, economie)
+        # AMOT29 — LE payback publié est celui du document (cashflow 25 ans,
+        # mêmes arguments que ``_cumul_moteur`` ci-dessous) ; « jamais
+        # remboursé » ⇒ la clé est OMISE (jamais la sentinelle 25 ans, jamais
+        # le ratio simple, qui ne sert plus qu'au tri interne).
+        _cf_args = {
+            'stockage': bool(variante == 'avec' and capacite),
+            'part_batterie': (_part_batterie(annuel) if variante == 'avec'
+                              else None),
+            'cout_onduleur_ttc': _cout_onduleur_ttc(
+                lignes, list(getattr(lignes, 'roles', ()) or ()),
+                contexte.facteur_remise),
+        }
+        paye = _payback_publie(prix, economie, **_cf_args)
         if paye is not None:
             carte['payback_annees'] = paye
         _ajouter_taux(carte, annuel, variante)
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
         serie = {} if sortie_profonde is not None else None
-        cumul = _cumul_moteur(
-            prix, economie,
-            stockage=bool(variante == 'avec' and capacite),
-            part_batterie=(_part_batterie(annuel) if variante == 'avec'
-                           else None),
-            cout_onduleur_ttc=_cout_onduleur_ttc(
-                lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise),
-            sortie=serie)
+        cumul = _cumul_moteur(prix, economie, sortie=serie, **_cf_args)
         if serie and serie.get('cumulative'):
             sortie_profonde['cashflow'][variante] = serie['cumulative']
         if cumul is not None:
@@ -1201,7 +1222,8 @@ def _carte_du_devis(contexte, data, variante):
     paye = _positif((data or {}).get(
         'roi_s' if variante == 'sans' else 'roi_a'))
     if paye is None:
-        paye = _payback(prix, economie)
+        # AMOT29 — repli : la définition du document, jamais le ratio simple.
+        paye = _payback_publie(prix, economie)
     if paye is not None:
         carte['payback_annees'] = round(paye, 2)
     production = _positif((data or {}).get('prod_kwh_%s' % suffixe))
