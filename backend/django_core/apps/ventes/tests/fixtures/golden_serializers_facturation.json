@@ -2186,6 +2186,13 @@
      null,
      false
     ],
+    "numero_recu": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
     "provider_ref": [
      "CharField",
      true,

@@ -803,6 +803,36 @@ def generate_proforma_pdf(devis, reference):
     return _html_to_pdf(html)
 
 
+def assurer_numero_recu(paiement):
+    """APDF30 (C-APDF-011) — numéro de reçu de la SOCIÉTÉ, posé à la
+    première émission puis STABLE : ``REC-0001``, ``REC-0002``… par
+    plus-haut-utilisé + 1 (``core.numbering`` via ``utils.references`` —
+    jamais ``count()+1``, jamais la séquence Postgres globale). Écriture
+    conditionnelle (``numero_recu=''``) sous savepoint + retry : deux rendus
+    concurrents ne posent jamais deux numéros. Renvoie le numéro."""
+    from django.db import IntegrityError, transaction
+    from apps.ventes.models import Paiement
+    from apps.ventes.utils.references import MAX_ATTEMPTS, next_reference
+
+    if paiement.numero_recu:
+        return paiement.numero_recu
+    for _ in range(MAX_ATTEMPTS):
+        numero = next_reference(
+            Paiement, 'REC', paiement.company, period='none',
+            field='numero_recu')
+        try:
+            with transaction.atomic():
+                Paiement.objects.filter(
+                    pk=paiement.pk, numero_recu='').update(
+                    numero_recu=numero)
+        except IntegrityError:
+            continue
+        paiement.numero_recu = Paiement.objects.filter(
+            pk=paiement.pk).values_list('numero_recu', flat=True).first()
+        return paiement.numero_recu
+    raise IntegrityError('Numéro de reçu : trop de collisions concurrentes.')
+
+
 def generate_recu_pdf(paiement):
     """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
     devis) : identité société, montant en chiffres ET en lettres, mode,
@@ -831,6 +861,8 @@ def generate_recu_pdf(paiement):
 
     context = _company_context(company=company)
     context['paiement'] = paiement
+    # APDF30 — numéro imprimé = séquence de la société (jamais `paiement.id`).
+    context['numero_recu'] = assurer_numero_recu(paiement)
     context['client_nom'] = client_nom
     context['facture_reference'] = facture_reference
     context['affectations'] = affectations

@@ -904,6 +904,10 @@ class Paiement(models.Model):
         max_length=200, null=True, blank=True,
         help_text='Clé d\'idempotence (déduplication webhook PSP) — unique par '
                   'société quand renseignée.')
+    # APDF30 (C-APDF-011) — numéro du REÇU (quittance), séquence PROPRE à la
+    # société (`core.numbering`, plus-haut-utilisé + 1), posé à la première
+    # émission du reçu ; vide tant qu'aucun reçu n'a été rendu.
+    numero_recu = models.CharField(max_length=40, blank=True, default='')
 
     class Meta:
         verbose_name = 'Paiement'
@@ -920,6 +924,12 @@ class Paiement(models.Model):
                 condition=models.Q(idempotency_key__isnull=False)
                 & ~models.Q(idempotency_key=''),
                 name='uniq_paiement_idempotency_par_societe',
+            ),
+            # APDF30 — un numéro de reçu est unique PAR SOCIÉTÉ (vide exclu).
+            models.UniqueConstraint(
+                fields=['company', 'numero_recu'],
+                condition=~models.Q(numero_recu=''),
+                name='uniq_paiement_numero_recu_par_societe',
             ),
             # AUD188 — PAS DE CONTRAINTE DE SIGNE SUR ``montant``, et c'est
             # DÉLIBÉRÉ (retirée par 0006). La première écriture d'AUD188

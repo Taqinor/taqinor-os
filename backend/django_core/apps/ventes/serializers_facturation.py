@@ -213,7 +213,9 @@ class PaiementSerializer(serializers.ModelSerializer):
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
                             'escompte_montant', 'client', 'statut',
                             'statut_affectation', 'provider_ref',
-                            'motif_rejet', 'frais_rejet', 'date_rejet']
+                            'motif_rejet', 'frais_rejet', 'date_rejet',
+                            # APDF30 — numéro de reçu posé par le serveur.
+                            'numero_recu']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):
