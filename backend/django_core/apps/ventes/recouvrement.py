@@ -361,6 +361,18 @@ class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
             raise ValidationError({'client': 'Client introuvable.'})
         serializer.save(company=company)
 
+    def perform_update(self, serializer):
+        """AFAC47 (C-AFAC-035) — même borne qu'à la création : un PATCH/PUT ne
+        re-pointe jamais le paramétrage sur le client d'une autre société
+        (le sérialiseur borne déjà le champ ; défense en profondeur)."""
+        company = self.request.user.company if self.request.user.company_id else None
+        client = serializer.validated_data.get('client')
+        if client is not None and client_base_qs(company).filter(
+                pk=client.pk).exists() is False:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'client': 'Client introuvable.'})
+        serializer.save()
+
 
 def _facture_due_rows(user):
     """Factures ouvertes (dues) de la société, non exclues.

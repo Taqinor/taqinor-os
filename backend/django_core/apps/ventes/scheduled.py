@@ -293,10 +293,13 @@ def relance_reminders():
     sent = 0
     # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
     # responsable le suit via la liste manuelle, pas cet envoi programmé).
+    # AFAC47 (C-AFAC-035) — couples (société, client) : un paramétrage
+    # « manuel » d'une AUTRE société (ligne corrompue) ne coupe jamais les
+    # relances du client d'un locataire voisin.
     clients_manuels = set(
         ParametrageRelanceClient.objects.filter(
             mode=ParametrageRelanceClient.Mode.MANUEL,
-        ).values_list('client_id', flat=True)
+        ).values_list('company_id', 'client_id')
     )
     # AUD131 — MÊME liste de statuts que la vue `relancer` et que la liste des
     # impayés : un seul propriétaire de la définition (`recouvrement`).
@@ -311,8 +314,6 @@ def relance_reminders():
         statut__in=STATUTS_NON_RELANCABLES,
     ).exclude(
         exclu_relances_jusquau__gte=today,
-    ).exclude(
-        client_id__in=clients_manuels,
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
@@ -320,6 +321,8 @@ def relance_reminders():
     societes_pourvues = set()
 
     for facture in factures:
+        if (facture.company_id, facture.client_id) in clients_manuels:
+            continue  # ZFAC8 / AFAC47 — client MANUEL de SA société
         # AUD131 — le prédicat partagé remplace le court-circuit local
         # `montant_du <= 0` (le filtre de statut est déjà appliqué en SQL).
         if not facture_relancable(facture)[0]:
