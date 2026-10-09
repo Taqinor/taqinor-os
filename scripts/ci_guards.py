@@ -530,6 +530,13 @@ GARDES = {
         ('Test the page_size front sous le plafond serveur (APAR65) checker itself',
          'python -m unittest scripts.tests.test_check_page_size_front -v',
          '.'),
+        # ALEA43 - UNE seule definition de « en retard » (controle_suivi.py).
+        ('Check retard de touche defini en un seul endroit (ALEA43)',
+         'python scripts/check_retard_unique.py',
+         '.'),
+        ('Test the retard-unique checker itself (ALEA43)',
+         'python -m unittest scripts.tests.test_check_retard_unique -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
