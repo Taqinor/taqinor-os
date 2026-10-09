@@ -397,9 +397,19 @@ def ensure_checklist_items(installation):
     ``exige_*`` de l'écran « étapes »), croyait devoir tout recréer — violation
     de l'unicité ``(installation, cle)`` → 500. Le manager interroge la base."""
     company = installation.company
-    template = template_for_installation(installation)
     a_jour = ChantierChecklistItem.objects.filter(installation=installation)
-    existing = set(a_jour.values_list('cle', flat=True))
+    # ACHT78 / D-ACHT-2 (ACHT95, option a) — la checklist d'un chantier est
+    # FIGÉE à sa première matérialisation : ni ajout, ni renommage, ni option
+    # du modèle ne la modifie ensuite (comme la désactivation, N57). Un
+    # chantier jamais ouvert reçoit le modèle courant ; un chantier
+    # réceptionné ou clôturé n'est plus JAMAIS modifié.
+    if a_jour.exists():
+        return list(a_jour)
+    if Installation.canonical_statut(installation.statut) in (
+            Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE):
+        return []
+    template = template_for_installation(installation)
+    existing = set()
     modeles = ChecklistEtapeModele.objects.filter(
         company=company, actif=True)
     if template is not None:
