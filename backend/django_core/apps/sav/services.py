@@ -2651,6 +2651,37 @@ def ensure_modele_entretien_ci(company):
     return modele
 
 
+# ── ASAV20 — retards SLA à signaler (lu par le balayage notifications) ──────
+def signaler_tickets_en_retard(company, today=None):
+    """ASAV20 — tickets de ``company`` NOUVELLEMENT en retard SLA, marqués
+    ``sla_breach=True`` ici même (clé partagée avec ``scan_sla_breaches`` :
+    qui pose le drapeau le premier notifie, l'autre voit « déjà signalé » —
+    UNE notification par ticket et par épisode de retard).
+
+    Vide quand la société n'a pas activé le SLA (l'interrupteur gouverne les
+    notifications, ASAV57). La décision du retard est
+    ``selectors.ticket_en_retard_sla`` (pauses décomptées)."""
+    from .models import SavSlaSettings, Ticket
+    from .selectors import ticket_en_retard_sla
+
+    if not SavSlaSettings.get(company).sla_breach_enabled:
+        return []
+    today = today or timezone.localdate()
+    signales = []
+    candidats = (Ticket.objects
+                 .filter(company=company, statut__in=Ticket.OPEN_STATUTS,
+                         annule=False, sla_due_at__isnull=False,
+                         sla_breach=False)
+                 .select_related('technicien_responsable', 'client'))
+    for ticket in candidats:
+        if not ticket_en_retard_sla(ticket, today, sla_actif=True):
+            continue
+        ticket.sla_breach = True
+        ticket.save(update_fields=['sla_breach'])
+        signales.append(ticket)
+    return signales
+
+
 # ── ASAV2 — UNE décision « qui paie » pour toutes les portes ────────────────
 def decision_facturation(ticket, user, override=False):
     """ASAV2 — LE service qui décide qui paie un ticket SAV, appelé par

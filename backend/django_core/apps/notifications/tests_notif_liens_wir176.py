@@ -510,11 +510,16 @@ class SweepLinkTests(TestCase):
         from apps.sav.models import Ticket
         from .sweeps import _sweep_sav_breaching
 
+        from apps.sav.models import SavSlaSettings
+        sla = SavSlaSettings.get(self.company)  # ASAV20 — SLA activé requis
+        sla.sla_breach_enabled = True
+        sla.save()
         cl = Client.objects.create(company=self.company, nom='ClientBreach')
         ticket = Ticket.objects.create(
             company=self.company, client=cl, reference='T-WIR176-BREACH',
             statut=Ticket.Statut.NOUVEAU,
-            date_ouverture=date.today() - timedelta(days=10))
+            date_ouverture=date.today() - timedelta(days=10),
+            sla_due_at=date.today() - timedelta(days=3))
 
         _sweep_sav_breaching(self.company)
         notif = Notification.objects.get(
