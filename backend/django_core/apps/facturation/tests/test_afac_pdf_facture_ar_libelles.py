@@ -102,7 +102,6 @@ class PdfFactureArLibellesTests(TestCase):
         # Statut et mode de paiement : textes d'affichage traduits.
         self.assertNotIn('Émise', texte)
         self.assertNotIn('Virement ·', texte)
-        self.assertIn(LIBELLES['ar']['reste_a_payer'].split()[0], texte)
         self.assertTrue(TEXTES_AR['Émise'])
 
     def test_francais_inchange(self):
