@@ -125,6 +125,9 @@
     {% else %}
     <div class="section-body muted">Aucune photo enregistrée.</div>
     {% endif %}
+    {% if photos_non_reproduites %}
+    <div class="section-body muted">{{ photos_non_reproduites }} photo{{ 's' if photos_non_reproduites > 1 }} non reproduite{{ 's' if photos_non_reproduites > 1 }} dans ce document.</div>
+    {% endif %}
   </div>
 
   <div class="section">

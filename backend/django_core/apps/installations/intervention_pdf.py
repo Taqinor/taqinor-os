@@ -24,10 +24,75 @@ def _photos_payload(intervention):
     for slot in field_services.active_shotlist(intervention.company):
         for att in by_slot.get(slot.cle, []):
             groups.setdefault(slot.phase, []).append({
+                'id': att.id,
                 'libelle': slot.libelle,
                 'url': f'/api/django/records/attachments/{att.id}/download/',
             })
     return groups
+
+
+#: APDF37 — plafonds d'embarquement des photos dans le PDF (nombre, poids
+#: cumulé des data URI, côté long en pixels, qualité JPEG).
+PDF_PHOTOS_MAX = 12
+PDF_PHOTOS_POIDS_MAX = 6 * 1024 * 1024
+PDF_PHOTO_COTE_MAX = 900
+PDF_PHOTO_QUALITE = 72
+
+
+def _photo_data_uri(attachment):
+    """Data URI JPEG réduite (Pillow) d'une pièce jointe photo, ou None si les
+    octets sont illisibles/absents. Les octets sont lus CÔTÉ SERVEUR : le
+    rendu PDF n'a pas d'URL de base pour une URI relative."""
+    import base64
+    import io
+
+    from apps.records.storage import fetch_attachment
+    data, _err = fetch_attachment(attachment.file_key)
+    if not data:
+        return None
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(io.BytesIO(data)) as img:
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((PDF_PHOTO_COTE_MAX, PDF_PHOTO_COTE_MAX))
+            if img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            sortie = io.BytesIO()
+            img.save(sortie, format='JPEG', quality=PDF_PHOTO_QUALITE,
+                     optimize=True)
+    except Exception:  # noqa: BLE001 — une photo illisible ne casse pas le PDF
+        return None
+    return 'data:image/jpeg;base64,' + base64.b64encode(
+        sortie.getvalue()).decode()
+
+
+def _photos_payload_embarquees(intervention):
+    """APDF37 — variante PDF de ``_photos_payload`` : chaque photo porte une
+    data URI (octets lus côté serveur, réduits). Nombre et poids plafonnés ;
+    renvoie ``(groupes, nb_non_reproduites)`` — les photos au-delà du plafond
+    (ou illisibles) sont comptées, jamais silencieusement perdues."""
+    from apps.records.models import Attachment
+
+    groupes = _photos_payload(intervention)
+    embarquees = 0
+    poids = 0
+    non_reproduites = 0
+    for phase in list(groupes):
+        retenues = []
+        for photo in groupes[phase]:
+            if embarquees >= PDF_PHOTOS_MAX:
+                non_reproduites += 1
+                continue
+            att = Attachment.objects.filter(pk=photo['id']).first()
+            uri = _photo_data_uri(att) if att is not None else None
+            if uri is None or poids + len(uri) > PDF_PHOTOS_POIDS_MAX:
+                non_reproduites += 1
+                continue
+            poids += len(uri)
+            embarquees += 1
+            retenues.append({**photo, 'url': uri})
+        groupes[phase] = retenues
+    return groupes, non_reproduites
 
 
 def _serials_payload(intervention):
@@ -125,5 +190,10 @@ def compte_rendu_pdf(intervention):
         'reserves': _reserves_payload(intervention),
         'signature': _signature_payload(intervention),
     })
+    # APDF37 — photos EMBARQUÉES (data URI) : le rendu PDF n'a pas de base
+    # d'URL pour les chemins relatifs du proxy de téléchargement.
+    photos, non_reproduites = _photos_payload_embarquees(intervention)
+    context['photos'] = photos
+    context['photos_non_reproduites'] = non_reproduites
     html = _render_html('compte_rendu_intervention.html', context)
     return _html_to_pdf(html)
