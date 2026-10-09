@@ -19,11 +19,13 @@ from ..serializers import (
     RetourMaterielSerializer, RetourMaterielLigneSerializer,
 )
 from ..services import valider_retour_materiel
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RetourMaterielViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('installation'), p1=oa.qs('statut'))
+class RetourMaterielViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """YSTCK4 — retours de matériel non posé, d'un chantier vers le dépôt.
     Lecture tout rôle, écriture responsable/admin. Filtrable par
     `installation`, `statut`."""
@@ -65,6 +67,7 @@ class RetourMaterielViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
         """YSTCK4 — valide le retour : poste les mouvements ENTREE (plafonnés
@@ -80,7 +83,8 @@ class RetourMaterielViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(retour).data)
 
 
-class RetourMaterielLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('retour'))
+class RetourMaterielLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """YSTCK4 — lignes d'un retour de matériel. Pas de `company` propre :
     scope via le retour parent. Filtrable par `retour`."""
     queryset = RetourMaterielLigne.objects.select_related(

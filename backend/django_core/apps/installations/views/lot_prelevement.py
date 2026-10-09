@@ -18,11 +18,13 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..models import LotPrelevement
 from ..serializers import LotPrelevementSerializer
 from .. import services
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class LotPrelevementViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('statut'))
+class LotPrelevementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """ZSTK10 — lots de prélèvement. Lecture tout rôle, écriture
     responsable/admin. Société/`created_by`/référence posés serveur ; les
     pick-lists sont fournies via `pick_list_ids` dans le corps à la
@@ -43,6 +45,7 @@ class LotPrelevementViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @oa.extend_schema(request=oa.body('CreerLotPrelevementRequete', pick_list_ids=oa.ints(True)), responses={201: LotPrelevementSerializer})
     def create(self, request, *args, **kwargs):
         company = request.user.company
         pick_list_ids = request.data.get('pick_list_ids') or []
@@ -58,6 +61,7 @@ class LotPrelevementViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(responses=oa.LIST)
     @action(detail=True, methods=['get'])
     def lignes(self, request, pk=None):
         """ZSTK10 — vue consolidée des lignes de TOUTES les pick-lists du
@@ -65,6 +69,7 @@ class LotPrelevementViewSet(CompanyScopedModelViewSet):
         lot = self.get_object()
         return Response(services.lignes_lot_prelevement(lot))
 
+    @oa.extend_schema(request=oa.body('CocherLigneLotRequete', ligne_id=oa.i(True), quantite_prelevee=oa.dec()), responses=oa.LIST)
     @action(detail=True, methods=['post'], url_path='cocher-ligne')
     def cocher_ligne(self, request, pk=None):
         """ZSTK10 — coche une ligne du lot (`ligne_id` dans le corps),
@@ -81,6 +86,7 @@ class LotPrelevementViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(services.lignes_lot_prelevement(lot))
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
         """ZSTK10 — clôture le lot (uniquement si toutes ses pick-lists sont

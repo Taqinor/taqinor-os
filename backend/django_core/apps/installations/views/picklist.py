@@ -20,11 +20,13 @@ from apps.ventes.utils.references import create_with_reference
 from ..models import PickList, PickListLigne
 from ..serializers import PickListSerializer, PickListLigneSerializer
 from .. import services
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class PickListViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('installation'), p1=oa.qs('statut'))
+class PickListViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG321 — bons de prélèvement. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur ; les
     lignes sont générées serveur depuis les réservations. Filtrable par
@@ -81,6 +83,7 @@ class PickListViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def demarrer(self, request, pk=None):
         """FG321 — passe le bon en cours."""
@@ -89,6 +92,7 @@ class PickListViewSet(CompanyScopedModelViewSet):
         pick.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(pick).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG321 — clôture le bon (→ terminé)."""
@@ -98,7 +102,8 @@ class PickListViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(pick).data)
 
 
-class PickListLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('pick_list'))
+class PickListLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG321 — lignes de prélèvement. Pas de `company` propre : scope via le bon
     parent. Filtrable par `pick_list`. Lecture tout rôle, écriture
     responsable/admin (typiquement pour cocher `preleve`)."""

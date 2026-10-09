@@ -28,11 +28,13 @@ from ..serializers import (
     GeofenceAlertSerializer, GpsConsentRecordSerializer,
     PositionTechnicienSerializer,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class GpsConsentRecordViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('technicien'))
+class GpsConsentRecordViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """XFSM23 — trace du consentement GPS déjà obtenu. Lecture/écriture
     réservées responsable/admin : un technicien ne peut ni poser ni révoquer
     son propre consentement via l'API — c'est une décision RH, pas un
@@ -55,6 +57,7 @@ class GpsConsentRecordViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company, recorded_by=self.request.user)
 
+    @oa.extend_schema(request=oa.body('RevoquerConsentementRequete', reason=oa.s()))
     @action(detail=True, methods=['post'])
     def revoquer(self, request, pk=None):
         """Révocation explicite (responsable/admin uniquement) — motif
@@ -66,7 +69,8 @@ class GpsConsentRecordViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(record).data)
 
 
-class PositionTechnicienViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+@oa.listing(p0=oa.qi('intervention'), p1=oa.qi('technicien'))
+class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """XFSM23 — positions live. Lecture scopée équipe (superviseur voit son
     équipe, pas toute la société sauf portée 'all') ; l'écriture passe
     exclusivement par l'action ``ping`` (jamais un POST générique — la
@@ -91,6 +95,7 @@ class PositionTechnicienViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(technicien_id=technicien)
         return qs
 
+    @oa.extend_schema(request=oa.body('PingGpsRequete', lat=oa.f(True), lng=oa.f(True), accuracy_m=oa.f(null=True), intervention=oa.i(null=True)), responses={201: oa.OBJ})
     @action(detail=False, methods=['post'], permission_classes=[IsAnyRole])
     def ping(self, request):
         """XFSM23 — le technicien poste sa position live. Corps :
@@ -133,6 +138,7 @@ class PositionTechnicienViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             GeofenceAlertSerializer(alert).data if alert else None)
         return Response(data, status=201)
 
+    @oa.extend_schema(responses=PositionTechnicienSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='carte-live')
     def carte_live(self, request):
         """XFSM23 — dernière position connue par technicien (vue superviseur
@@ -149,7 +155,8 @@ class PositionTechnicienViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response(PositionTechnicienSerializer(positions, many=True).data)
 
 
-class GeofenceAlertViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+@oa.listing(p0=oa.qi('chantier'), p1=oa.qi('intervention'), p2=oa.qs('type_franchissement'))
+class GeofenceAlertViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """XFSM23/NTMOB9 — franchissements du rayon chantier (lecture +
     acquittement responsable/admin). Filtrable par ``intervention``, par
     ``chantier`` et par ``type_franchissement`` (``entree``/``sortie``) : c'est
@@ -175,6 +182,7 @@ class GeofenceAlertViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(type_franchissement=type_franchissement)
         return qs
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def acquitter(self, request, pk=None):
         alert = self.get_object()

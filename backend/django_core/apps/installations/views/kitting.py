@@ -46,6 +46,8 @@ from ..services import (
     enregistrer_controle_qualite, instancier_etapes_ordre,
     cocher_etape_ordre,
 )
+from . import _openapi as oa
+from ..serializers import RevisionKitSerializer  # noqa: E402
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -116,7 +118,8 @@ def _quantite_entiere_composant(ligne, quantite_produite, quantite_ordre):
                     "l'ordre."})
 
 
-class KitViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('active'))
+class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG328 — kits de pré-assemblage. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `active`. XMFG18 : révisions de
     nomenclature (`revisions/`, `composition-au/`) + `dupliquer/`."""
@@ -163,6 +166,7 @@ class KitViewSet(CompanyScopedModelViewSet):
             _exiger_nomenclature(serializer.instance, champ='active')
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(responses=RevisionKitSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='revisions')
     def revisions(self, request, pk=None):
         """XMFG18 — historique des révisions de nomenclature de ce kit
@@ -172,6 +176,7 @@ class KitViewSet(CompanyScopedModelViewSet):
         qs = kit.revisions.select_related('user').order_by('-numero')
         return Response(RevisionKitSerializer(qs, many=True).data)
 
+    @oa.extend_schema(parameters=[oa.qd('date')], responses=RevisionKitSerializer)
     @action(detail=True, methods=['get'], url_path='composition-au')
     def composition_au(self, request, pk=None):
         """XMFG18 — « composition au JJ/MM/AAAA » : la révision en vigueur
@@ -201,6 +206,7 @@ class KitViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return Response(RevisionKitSerializer(revision).data)
 
+    @oa.extend_schema(request=oa.body('DupliquerKitRequete', facteur_echelle=oa.dec()), responses={201: KitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, pk=None):
         """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
@@ -219,7 +225,8 @@ class KitViewSet(CompanyScopedModelViewSet):
             self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
 
 
-class KitComposantViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('kit'))
+class KitComposantViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG328 — composants de kit. Pas de `company` propre : scope via le kit
     parent. Filtrable par `kit`. Lecture tout rôle, écriture
     responsable/admin."""
@@ -278,7 +285,8 @@ class KitComposantViewSet(viewsets.ModelViewSet):
         self._snapshot(kit)
 
 
-class ControleQualiteModeleViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('kit'))
+class ControleQualiteModeleViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """XMFG13 — modèle de checklist QC par kit. Société posée COTE SERVEUR.
     Un kit sans modèle (ou avec un modèle inactif) garde le comportement
     `terminer` actuel inchangé (aucune checklist exigée).
@@ -321,7 +329,8 @@ class ControleQualiteModeleViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class EtapeAssemblageViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('kit'))
+class EtapeAssemblageViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """XMFG14 — gamme légère : étapes d'assemblage d'un kit (mode opératoire).
     Pas de `company` propre : scope via le kit parent. Filtrable par `kit`."""
     queryset = EtapeAssemblage.objects.select_related('kit', 'piece_jointe').all()
@@ -361,7 +370,8 @@ class EtapeAssemblageViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class OrdreAssemblageLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('ordre'))
+class OrdreAssemblageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """XMFG6 — lignes de composant PERSONNALISABLES d'un ordre. Pas de
     `company` propre : scope via l'ordre parent. Filtrable par `ordre`.
     Éditable UNIQUEMENT tant que l'ordre est planifié (verrouillé dès
@@ -421,7 +431,8 @@ class OrdreAssemblageLigneViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('statut'), p1=oa.qd('date_prevue'), p2=oa.qi('kit'), p3=oa.qi('responsable'))
+class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG328 — ordres d'assemblage. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur. Filtrable
     par `statut`, `kit`."""
@@ -520,6 +531,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                 serializer.instance, user=self.request.user)
         activity.log_changes(old, serializer.instance, self.request.user)
 
+    @oa.extend_schema(request=oa.body('OrdresDepuisDevisRequete', devis=oa.i(True)), responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)})
     @action(detail=False, methods=['post'], url_path='depuis-devis')
     def depuis_devis(self, request):
         """XMFG3 — assembler-à-la-commande : pour un devis donné, détecte les
@@ -593,6 +605,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             OrdreAssemblageSerializer(ordres, many=True).data,
             status=201 if any_created else 200)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'])
     def disponibilite(self, request, pk=None):
         """XMFG2 — disponibilité par ligne de composant (disponible / partiel
@@ -600,6 +613,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         ordre = self.get_object()
         return Response(disponibilite_par_ligne(ordre))
 
+    @oa.extend_schema(responses=oa.PDF)
     @action(detail=True, methods=['get'], url_path='bon-pdf',
             permission_classes=[IsAnyRole])
     def bon_pdf(self, request, pk=None):
@@ -614,6 +628,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             f'inline; filename="bon-assemblage-{ordre.id}.pdf"')
         return resp
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def demarrer(self, request, pk=None):
         """FG328/XMFG2 — passe l'ordre en cours. Avertit (non bloquant) si des
@@ -647,6 +662,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         alerter_penurie_assemblage(ordre)
         return Response(self.get_serializer(ordre).data)
 
+    @oa.extend_schema(request=oa.body('AnnulerOrdreAssemblageRequete', motif_annulation=oa.s()))
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
         """XMFG4 — annule l'ordre (motivé). Interdite si le stock a déjà été
@@ -679,6 +695,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         release_reservations_assemblage(ordre)
         return Response(self.get_serializer(ordre).data)
 
+    @oa.extend_schema(responses=OrdreAssemblageActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
@@ -688,6 +705,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             OrdreAssemblageActivitySerializer(
                 ordre.activites.all(), many=True).data)
 
+    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: OrdreAssemblageActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -701,6 +719,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         return Response(OrdreAssemblageActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(request=oa.body('DeclarerRebutRequete', produit=oa.i(True), quantite=oa.dec(True), motif=oa.s(True), note=oa.s()), responses={201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='declarer-rebut')
     def declarer_rebut(self, request, pk=None):
         """XMFG11 — déclare un rebut de production (casse/défaut/erreur/autre)
@@ -736,6 +755,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             'motif_rebut': mouvement.motif_rebut, 'reference': mouvement.reference,
         }, status=status.HTTP_201_CREATED)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='cout-soustraitance',
             permission_classes=[IsResponsableOrAdmin])
     def cout_soustraitance(self, request, pk=None):
@@ -750,6 +770,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return Response({'ordre_id': ordre.id, 'cout_composite': float(cout)})
 
+    @oa.extend_schema(responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='rapport-soustraitants',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_soustraitants(self, request):
@@ -759,6 +780,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         company = self.request.user.company
         return Response(rapport_composants_chez_soustraitants(company))
 
+    @oa.extend_schema(parameters=[oa.qd('date_debut'), oa.qd('date_fin')], responses=oa.LIST)
     @action(detail=False, methods=['get'], url_path='rapport-rebuts')
     def rapport_rebuts(self, request):
         """XMFG11 — mini-rapport rebuts agrégé par produit/période."""
@@ -769,6 +791,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             company, date_debut=params.get('date_debut'),
             date_fin=params.get('date_fin')))
 
+    @oa.extend_schema(responses=ControleQualiteOrdreSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='controle-qualite')
     def controle_qualite(self, request, pk=None):
         """XMFG13 — checklist QC de l'ordre (instanciée à la volée depuis le
@@ -777,6 +800,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         controles = instancier_controle_qualite(ordre)
         return Response(ControleQualiteOrdreSerializer(controles, many=True).data)
 
+    @oa.extend_schema(parameters=[oa.OpenApiParameter('item_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('ControleQualiteItemRequete', resultat=oa.s(True), valeur_mesuree=oa.dec(null=True)), responses=ControleQualiteOrdreSerializer)
     @action(detail=True, methods=['post'],
             url_path='controle-qualite/(?P<item_modele_id>[^/.]+)')
     def enregistrer_controle_qualite_item(self, request, pk=None,
@@ -797,6 +821,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(ControleQualiteOrdreSerializer(controle).data)
 
+    @oa.extend_schema(responses=EtapeOrdreSerializer(many=True))
     @action(detail=True, methods=['get'])
     def etapes(self, request, pk=None):
         """XMFG14 — gamme d'exécution de l'ordre (instanciée à la volée
@@ -805,6 +830,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         etapes = instancier_etapes_ordre(ordre)
         return Response(EtapeOrdreSerializer(etapes, many=True).data)
 
+    @oa.extend_schema(parameters=[oa.OpenApiParameter('etape_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('CocherEtapeRequete', fait=oa.b(), duree_reelle_min=oa.i(null=True)), responses=EtapeOrdreSerializer)
     @action(detail=True, methods=['post'],
             url_path='etapes/(?P<etape_modele_id>[^/.]+)/cocher')
     def cocher_etape(self, request, pk=None, etape_modele_id=None):
@@ -832,6 +858,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(EtapeOrdreSerializer(etape_ordre).data)
 
+    @oa.extend_schema(request=oa.body('TerminerOrdreAssemblageRequete', forcer=oa.b(), motif_forcage=oa.s(), quantite_produite=oa.dec(null=True), emplacement_source=oa.i(null=True), emplacement_destination=oa.i(null=True), series_composite=oa.lst(null=True), series_composants=oa.lst(null=True)))
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG328/XMFG1 — clôture l'ordre (→ terminé, horodate) et backflush le
@@ -980,6 +1007,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
                     user=request.user)
         return Response(self.get_serializer(ordre).data)
 
+    @oa.extend_schema(responses=SerieAssemblageSerializer(many=True))
     @action(detail=True, methods=['get'])
     def series(self, request, pk=None):
         """XMFG7 — séries enregistrées sur cet ordre (composite + composants)."""
@@ -987,6 +1015,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         return Response(
             SerieAssemblageSerializer(ordre.series.all(), many=True).data)
 
+    @oa.extend_schema(parameters=[oa.qs('symbology')], responses=oa.HTML)
     @action(detail=True, methods=['get'])
     def etiquette(self, request, pk=None):
         """XMFG7 — étiquette QR/PDF du composite (référence, kit, série,
@@ -1005,6 +1034,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='analyse',
             permission_classes=[IsResponsableOrAdmin])
     def analyse(self, request, pk=None):
@@ -1014,6 +1044,7 @@ class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
         ordre = self.get_object()
         return Response(analyse_ecarts_ordre(ordre))
 
+    @oa.extend_schema(parameters=[oa.qd('date_debut'), oa.qd('date_fin')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='atelier',
             permission_classes=[IsResponsableOrAdmin])
     def atelier(self, request):
@@ -1060,7 +1091,8 @@ def _verifier_emplacements_ordre(ordre):
             raise ValidationError({champ: _EMPLACEMENT_INCONNU})
 
 
-class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('ordre'))
+class OrdreDemontageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """XMFG12 — lignes de démontage (quantité récupérée éditable). Pas de
     `company` propre : scope via l'ordre parent. Filtrable par `ordre`.
     Éditable UNIQUEMENT tant que l'ordre est planifié."""
@@ -1113,7 +1145,8 @@ class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class OrdreDemontageViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('statut'), p1=oa.qi('kit'))
+class OrdreDemontageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """XMFG12 — ordres de démontage (unbuild) : composite → composants.
     Lecture tout rôle, écriture responsable/admin. Référence/société/
     `created_by` posés serveur. Filtrable par `statut`, `kit`."""
@@ -1176,6 +1209,7 @@ class OrdreDemontageViewSet(CompanyScopedModelViewSet):
         if {'kit', 'quantite'} & set(modifies):
             recreer_lignes_ordre_demontage(serializer.instance)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """XMFG12 — clôture l'ordre de démontage : sort le composite, restocke

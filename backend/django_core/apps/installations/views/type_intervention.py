@@ -32,6 +32,7 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -108,7 +109,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class TypeInterventionViewSet(CompanyScopedModelViewSet):
+class TypeInterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Types d'intervention gérés (Paramètres → Chantiers). Lecture tout rôle,
     écriture admin. Un type protégé ou utilisé ne peut pas être supprimé."""
     queryset = TypeIntervention.objects.all()

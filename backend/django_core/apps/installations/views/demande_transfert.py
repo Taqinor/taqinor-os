@@ -20,11 +20,12 @@ from apps.ventes.utils.references import create_with_reference
 
 from ..models import DemandeTransfert
 from ..serializers import DemandeTransfertSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class DemandeTransfertViewSet(CompanyScopedModelViewSet):
+class DemandeTransfertViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG325 — demandes de transfert. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `statut`, `produit`, `source`,
     `destination`."""
@@ -75,6 +76,7 @@ class DemandeTransfertViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def approuver(self, request, pk=None):
         """FG325 — approuve la demande (demandé → approuvé)."""
@@ -91,6 +93,7 @@ class DemandeTransfertViewSet(CompanyScopedModelViewSet):
             'statut', 'approuve_par', 'date_approbation', 'date_modification'])
         return Response(self.get_serializer(dt).data)
 
+    @oa.extend_schema(request=oa.body('RefusTransfertRequete', motif_refus=oa.s()))
     @action(detail=True, methods=['post'])
     def refuser(self, request, pk=None):
         """FG325 — refuse la demande (→ refusé). Body optionnel `motif_refus`."""
@@ -105,6 +108,7 @@ class DemandeTransfertViewSet(CompanyScopedModelViewSet):
         dt.save(update_fields=['statut', 'motif_refus', 'date_modification'])
         return Response(self.get_serializer(dt).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def executer(self, request, pk=None):
         """FG325/YSTCK2 — marque la demande exécutée (approuvé → exécuté) ET
