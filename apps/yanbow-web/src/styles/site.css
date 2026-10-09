@@ -93,8 +93,14 @@ p {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: var(--espace-6);
+  gap: var(--espace-3);
   min-block-size: 5.5rem;
+}
+
+@media (min-width: 40rem) {
+  .entete-int {
+    gap: var(--espace-6);
+  }
 }
 
 .entete-logo {

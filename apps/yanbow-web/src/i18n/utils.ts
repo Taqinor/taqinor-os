@@ -5,6 +5,7 @@
  */
 import { DEFAULT_LOCALE, LOCALES, LOCALES_ACTIVES, type Locale } from './config';
 import { PAGES, type CheminsParLocale, type PageId } from './pages';
+import { typoFr } from '../lib/typo';
 
 /**
  * Lit `cle` (chemin pointé, ex. « hero.titre ») dans `dict`. Lève si la clé
@@ -49,4 +50,15 @@ export interface LienLangue {
 /** Entrées du sélecteur de langue : les AUTRES langues actives, vers la page équivalente. */
 export function selecteurLangue(chemins: CheminsParLocale, courante: Locale, actives: readonly Locale[] = LOCALES_ACTIVES): LienLangue[] {
   return LOCALES.filter((l) => l !== courante && actives.includes(l)).map((l) => ({ locale: l, href: chemins[l] }));
+}
+
+/**
+ * Lecteur d'un dictionnaire (FR/EN) dans une langue — sans repli (`t` lève sur
+ * une clé absente ou vide) ; typographie française appliquée au français
+ * (U+00A0 avant `; : ? !` et dans « », YBW39). Utilisé par le Layout et les
+ * pages (YBW60+).
+ */
+export function lecteur(fr: unknown, en: unknown, locale: Locale): (cle: string) => string {
+  const dict = locale === 'en' ? en : fr;
+  return (cle) => (locale === 'fr' ? typoFr(t(dict, cle, locale)) : t(dict, cle, locale));
 }
