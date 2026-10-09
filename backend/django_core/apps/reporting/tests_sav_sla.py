@@ -50,6 +50,7 @@ class TestSavSlaCompliance(SavSlaBase):
             priorite=Ticket.Priorite.URGENTE,
             statut=Ticket.Statut.CLOTURE,
             sla_due_at=today + timedelta(days=2),
+            sla_reponse_due_at=today + timedelta(days=2),
             date_resolution=today,
         )
         Ticket.objects.filter(pk=t1.pk).update(
@@ -59,6 +60,7 @@ class TestSavSlaCompliance(SavSlaBase):
             priorite=Ticket.Priorite.URGENTE,
             statut=Ticket.Statut.CLOTURE,
             sla_due_at=today - timedelta(days=1),
+            sla_reponse_due_at=today - timedelta(days=1),
             date_resolution=today,
         )
         Ticket.objects.filter(pk=t2.pk).update(
