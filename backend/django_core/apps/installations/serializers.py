@@ -3,6 +3,8 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 
+from .serializers_stage import valider_unicite_societe
+
 from .models import (
     Equipe,
     Installation, Intervention, InstallationActivity, InterventionActivity,
@@ -93,6 +95,21 @@ class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):
                 "La clé d'une étape protégée ne peut pas être modifiée.")
         return value
 
+    def validate(self, attrs):
+        # ACHT76 — unicité (société, modèle, clé) : 400 sous `cle`, pas 500.
+        cle = attrs.get('cle', getattr(self.instance, 'cle', None))
+        template = attrs.get(
+            'template', getattr(self.instance, 'template', None))
+        if cle is not None and template is not None:
+            try:
+                valider_unicite_societe(
+                    self, 'cle', cle,
+                    "Cette clé d'étape existe déjà dans ce modèle.",
+                    template=template)
+            except serializers.ValidationError as exc:
+                raise serializers.ValidationError({'cle': exc.detail})
+        return attrs
+
 
 class ChecklistTemplateSerializer(serializers.ModelSerializer):
     """N74 — modèle nommé de checklist + ses étapes ordonnées (imbriquées en
@@ -140,7 +157,9 @@ class FicheInterventionTemplateSerializer(serializers.ModelSerializer):
                 and value != self.instance.type_intervention):
             raise serializers.ValidationError(
                 "Le type d'un gabarit protégé ne peut pas être modifié.")
-        return value
+        return valider_unicite_societe(
+            self, 'type_intervention', value,
+            "Un gabarit existe déjà pour ce type d'intervention.")
 
 
 class FicheInterventionValeurSerializer(serializers.ModelSerializer):
@@ -397,7 +416,8 @@ class ShotListSlotSerializer(serializers.ModelSerializer):
         if self.instance and self.instance.protege and value != self.instance.cle:
             raise serializers.ValidationError(
                 "La clé d'un créneau protégé ne peut pas être modifiée.")
-        return value
+        return valider_unicite_societe(
+            self, 'cle', value, 'Cette clé de créneau existe déjà.')
 
     def validate_phase(self, value):
         if value not in dict(ShotListSlot.Phase.choices):
@@ -873,7 +893,8 @@ class SafetyChecklistSlotSerializer(serializers.ModelSerializer):
         if self.instance and self.instance.protege and value != self.instance.cle:
             raise serializers.ValidationError(
                 "La clé d'une consigne protégée ne peut pas être modifiée.")
-        return value
+        return valider_unicite_societe(
+            self, 'cle', value, 'Cette clé de consigne existe déjà.')
 
 
 class SafetyCheckItemSerializer(serializers.ModelSerializer):
@@ -1140,6 +1161,11 @@ class EquipeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification']
+
+    def validate_nom(self, value):
+        # ACHT76 — unicité (société, nom) : 400 sous `nom`, pas 500.
+        return valider_unicite_societe(
+            self, 'nom', value, 'Une équipe porte déjà ce nom.')
 
     @staticmethod
     def _nom(user):
