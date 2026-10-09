@@ -90,6 +90,12 @@ def motif_de_refus(lead, *, maintenant=None):
         return 'Le lead est archivé.'
     if getattr(lead, 'perdu', False):
         return 'Le lead est perdu — le réveil ne s’applique pas.'
+    # ACRM16 — la porte unique de `reveil_b` respecte l'OPPOSITION : aucune
+    # invitation à écrire à une personne qui a demandé à ne plus être
+    # contactée (même garde que le placement et le plan de relance).
+    if getattr(lead, 'ne_plus_contacter', False):
+        return ('Opposition (ne plus contacter) : aucun réveil n’est posé '
+                'pour cette personne.')
     if lead.stage != stages.COLD:
         return ('Le lead n’est pas au Froid : le réveil saisonnier ne '
                 's’adresse qu’aux dormants.')
