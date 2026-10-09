@@ -84,9 +84,9 @@ export default function FactureRow({ f, ctx }) {
     canManage, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
-    // AFAC13 - annulation avec directive d'argent (dialogue).
-    demanderAnnulation,
   } = ctx
+  // AFAC13 - annulation avec directive d'argent (dialogue).
+  const { demanderAnnulation } = ctx
   const overdue = isOverdue(f)
   const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
   const busy = actionId === f.id
