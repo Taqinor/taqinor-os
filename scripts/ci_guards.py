@@ -652,6 +652,13 @@ GARDES = {
         ('Test the reglages lus declares (ADEP20) checker itself',
          'python -m unittest scripts.tests.test_check_settings_declares -v',
          '.'),
+        # AFAC94 - aucun lien client relatif hors constructeur d'URL absolue.
+        ('Check liens client absolus (AFAC94)',
+         'python scripts/check_liens_client_absolus.py',
+         '.'),
+        ('Test the liens client absolus (AFAC94) checker itself',
+         'python -m unittest scripts.tests.test_check_liens_client_absolus -v',
+         '.'),
     ],
 }
 
