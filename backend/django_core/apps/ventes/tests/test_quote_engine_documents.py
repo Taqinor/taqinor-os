@@ -576,6 +576,13 @@ class TestLayoutV2NeBougePasLeDocument(TestCase):
         de la puissance ; le chemin v2 s'allume toujours, mais sur ce qu'il est
         seul à savoir — la PRODUCTION du site, recalée sur la taille vendue
         (13 000 × 7,7 / 8,4 = 11 917).
+
+        AMOT15 (D-ACAL-6, « la production montrée au client = celle du moteur
+        devis ») — la production du calepinage, même recalée, n'est plus
+        imprimée : v1 et v2 servent la MÊME production, celle du moteur. Le
+        chemin v2 s'allume désormais sur l'ÉCONOMIE du calepinage, recalée sur
+        la taille vendue (11 000 × 7,7 / 8,4 = 10 083) et passée à LA chaîne
+        de calcul (``economie_imposee``).
         """
         v1 = self._data(self._layout_v1())
         v2 = self._data(self._layout_v2())
@@ -585,10 +592,16 @@ class TestLayoutV2NeBougePasLeDocument(TestCase):
         self.assertEqual(
             round(v2['puissance_kwc'] * 1000),
             v2['nb_panneaux'] * v2['watt_par_panneau'])
-        # Mais le chemin v2 s'allume bel et bien : sa production recalée entre
+        # AMOT15 (D-ACAL-6) — la production est celle du moteur devis des deux
+        # côtés, jamais la production recalée du calepinage (11 917).
+        self.assertEqual(v2['prod_kwh'], v1['prod_kwh'])
+        self.assertNotEqual(v2['prod_kwh'], 13000)
+        if v1['prod_kwh'] != 11917:
+            self.assertNotEqual(v2['prod_kwh'], 11917)
+        # Mais le chemin v2 s'allume bel et bien : son économie recalée entre
         # dans le document, là où v1 (aucun bloc ``result``) n'apporte rien.
-        self.assertEqual(v2['prod_kwh'], 11917)
-        self.assertNotEqual(v1['prod_kwh'], v2['prod_kwh'])
+        self.assertEqual(v2['eco_s_ann'], 10083)
+        self.assertNotEqual(v1['eco_s_ann'], v2['eco_s_ann'])
 
     def test_les_totaux_sont_identiques_au_centime(self):
         v1 = self._data(self._layout_v1())
