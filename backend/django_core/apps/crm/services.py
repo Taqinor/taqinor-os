@@ -10504,6 +10504,13 @@ PLACEMENT_LOT_MAX = 200
 PLACEMENT_APERCU_MAX = 20
 
 
+#: ACRM47/ACRM61 — message de la réponse 503 ``{detail}`` (contrat
+#: ``placement_anciens_leads.json``, ``exemple_erreur``).
+PLACEMENT_DEVIS_ILLISIBLES = (
+    "Lecture des devis acceptés indisponible : placement suspendu, rien "
+    "n'a été appliqué")
+
+
 class PlacementImpossible(Exception):
     """Un lead retenu n'a finalement pas pu être placé (cadence vide, gabarit
     absent…). Comptée dans ``erreurs`` du rapport, jamais propagée : le
@@ -10540,19 +10547,21 @@ def _placement_devis_du_lot(company, lead_ids):
     (jamais ``ventes.models`` — frontière M3) : les leads à devis ACCEPTÉ (à
     écarter) et le dernier devis ENVOYÉ de chacun (qui date la cadence).
 
-    Best-effort : si ``ventes`` est illisible, le placement continue SANS
-    information de devis plutôt que d'échouer en bloc — les décisions
-    retombent alors sur l'étape et l'ancienneté."""
+    ACRM47 — échoue FERMÉ : si ``ventes`` est illisible, la garde « devis
+    accepté » ne peut plus écarter les signés — continuer enverrait au Froid
+    un client qui a dit oui. ``PlacementImpossible`` (message français) est
+    levée AVANT toute écriture : la vue répond 503 ``{detail}``, la commande
+    sort en erreur, rien n'est appliqué."""
     try:
         from apps.ventes.selectors import (
             dernier_devis_envoye_par_lead, leads_avec_devis_accepte)
         return (leads_avec_devis_accepte(company, lead_ids),
                 dernier_devis_envoye_par_lead(company, lead_ids))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — journalisé puis échec fermé
         logger.warning(
             'MRY30: devis illisibles (société %s)',
             getattr(company, 'pk', '?'), exc_info=True)
-        return set(), {}
+        raise PlacementImpossible(PLACEMENT_DEVIS_ILLISIBLES) from exc
 
 
 def _decider_placements(company, maintenant, gabarits=None,

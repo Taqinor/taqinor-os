@@ -2559,9 +2559,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
                            f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
         # ALEA25 — borné par la portée du viewset (société + équipe).
-        rapport = placer_anciens_leads(
-            request.user.company, request.user, apply=apply, limite=limite,
-            leads_en_portee=self._leads_en_portee())
+        from rest_framework.exceptions import APIException
+
+        from .services import PlacementImpossible
+
+        class _PlacementSuspendu(APIException):
+            # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas
+            # renvoyée, pour ne pas entrer ``detail`` dans la forme du rapport.
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+        try:
+            rapport = placer_anciens_leads(
+                request.user.company, request.user, apply=apply,
+                limite=limite, leads_en_portee=self._leads_en_portee())
+        except PlacementImpossible as exc:
+            raise _PlacementSuspendu(str(exc))
         return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
