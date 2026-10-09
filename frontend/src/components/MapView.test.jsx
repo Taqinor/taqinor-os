@@ -87,6 +87,24 @@ describe('MapView (VX195 — accessibilité clavier)', () => {
     expect(() => carte._onZoomTransitionEnd()).not.toThrow()
   })
 
+  it('CAD177 : démonté juste après un glisser, l’inertie (panBy différé) ne lève plus rien', () => {
+    let carte = null
+    const addLayer = L.Map.prototype.addLayer
+    const spy = vi.spyOn(L.Map.prototype, 'addLayer').mockImplementation(function (couche) {
+      carte = this
+      return addLayer.call(this, couche)
+    })
+    const { unmount } = renderMap()
+    spy.mockRestore()
+    expect(carte).not.toBeNull()
+    unmount()
+    // `Map.Drag._onDragEnd` rappelle ceci dans un requestAnimFrame : il
+    // levait « reading 'classList' » sur le `_mapPane` détruit.
+    expect(() => carte.panBy([120, 40], {
+      duration: 0.3, easeLinearity: 0.2, noMoveStart: true, animate: true,
+    })).not.toThrow()
+  })
+
   it('n\'affiche pas la liste clavier quand il n\'y a aucun marqueur', () => {
     renderMap({ markers: [] })
     expect(screen.queryByText('Liste des points de la carte (accès clavier)')).not.toBeInTheDocument()
