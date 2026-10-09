@@ -9,7 +9,10 @@ Tout est scopé à la société (TenantMixin) ; la société et l'acteur sont po
 côté serveur, jamais lus du corps de requête.
 """
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import filters, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import JSONParser, MultiPartParser
@@ -37,12 +40,52 @@ from .serializers import (
 
 READ_ACTIONS = ['list', 'retrieve']
 
+_ENABLED = OpenApiParameter(
+    'enabled', OpenApiTypes.STR, required=False,
+    enum=['0', '1', 'true', 'false'])
+_RULE = OpenApiParameter('rule', OpenApiTypes.INT, required=False)
+_STATUS = OpenApiParameter('status', OpenApiTypes.STR, required=False)
+_SANS_CORPS = extend_schema(request=None)
 
+
+class NoteDecisionSerializer(drf_serializers.Serializer):
+    note = drf_serializers.CharField(required=False, allow_blank=True)
+
+
+class DemandeInfoSerializer(drf_serializers.Serializer):
+    motif = drf_serializers.CharField(required=False, allow_blank=True)
+
+
+class ResoumettreSerializer(drf_serializers.Serializer):
+    payload = drf_serializers.DictField(required=False)
+
+
+class SimulerSerializer(drf_serializers.Serializer):
+    target_model = drf_serializers.CharField()
+    target_id = drf_serializers.IntegerField()
+    context = drf_serializers.DictField(required=False)
+
+
+class SoumettreDemandeSerializer(drf_serializers.Serializer):
+    request_type = drf_serializers.IntegerField()
+    payload = drf_serializers.DictField(required=False)
+    file = drf_serializers.FileField(required=False)
+
+
+class WebhookCreerSerializer(drf_serializers.Serializer):
+    rule = drf_serializers.IntegerField()
+    hmac_secret = drf_serializers.CharField(required=False, allow_blank=True)
+
+
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter('trigger_type', OpenApiTypes.STR, required=False),
+    _ENABLED]))
 class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     """Règles d'automatisation (N72). Lecture tout rôle ; écriture admin.
     Tout est opt-in : sans règle activée, aucun comportement ne change."""
     queryset = AutomationRule.objects.all()
     serializer_class = AutomationRuleSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'nom', 'date_creation']
 
@@ -131,6 +174,7 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         self._audit_plateforme(
             identifiant, "Règle d'automatisation supprimée", old=nom, new=None)
 
+    @extend_schema(request=None, responses=AutomationRuleSerializer)
     @action(detail=True, methods=['post'], permission_classes=[IsAdminRole])
     def toggle(self, request, pk=None):
         """Bascule l'état activé/désactivé de la règle."""
@@ -148,6 +192,10 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             new='activée' if rule.enabled else 'désactivée')
         return Response(self.get_serializer(rule).data)
 
+    @extend_schema(request=SimulerSerializer, responses=inline_serializer(
+        'SimulationReponse', {
+            'effets': drf_serializers.ListField(),
+            'simulation': drf_serializers.BooleanField()}))
     @action(detail=True, methods=['post'], permission_classes=[IsAdminRole])
     def simuler(self, request, pk=None):
         """NTEXT31 — dry-run : ce que la règle FERAIT, sans aucun effet.
@@ -182,6 +230,7 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'effets': effets, 'simulation': True})
 
 
+@extend_schema_view(list=extend_schema(parameters=[_RULE]))
 class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
     """NTEXT30 — historique des versions d'une règle. Lecture seule ; scopé
     société via ``rule__company`` (le modèle lui-même ne porte pas de FK
@@ -191,6 +240,7 @@ class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
         'rule', 'auteur').all()
     serializer_class = AutomationRuleVersionSerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         user = self.request.user
@@ -204,6 +254,7 @@ class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(rule_id=rule)
         return qs
 
+    @extend_schema(request=None, responses=AutomationRuleSerializer)
     @action(detail=True, methods=['post'])
     def restaurer(self, request, pk=None):
         """NTEXT30 — recrée EXACTEMENT la config de CETTE version sur sa
@@ -227,6 +278,7 @@ class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(AutomationRuleSerializer(rule).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[_RULE, _STATUS]))
 class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Journal des exécutions (N72). Lecture seule, tout rôle, scopé société."""
     queryset = AutomationRun.objects.select_related('rule').all()
@@ -247,6 +299,7 @@ class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return qs
 
 
+@extend_schema_view(list=extend_schema(parameters=[_STATUS]))
 class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Approbations (N73). Liste lecture seule (tout rôle) ; approve/reject
     réservés au palier propriétaire (admin/responsable). Approuver relance
@@ -268,6 +321,7 @@ class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(status=status)
         return qs
 
+    @extend_schema(request=None, responses=AutomationApprovalSerializer)
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Approuve une approbation en attente et relance l'action différée."""
@@ -287,6 +341,7 @@ class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             return Response({'detail': str(exc)}, status=403)
         return Response(self.get_serializer(approval).data)
 
+    @extend_schema(request=None, responses=AutomationApprovalSerializer)
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Rejette une approbation en attente : l'action n'est jamais lancée."""
@@ -296,11 +351,13 @@ class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 # ─────────────────────────────────────────────────────────────────────────────
 # XKB2 — Types de demandes d'approbation ad-hoc + soumission/décision.
 
+@extend_schema_view(list=extend_schema(parameters=[_ENABLED]))
 class ApprovalRequestTypeViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des types de demande (admin) ; lecture tout rôle (pour le picker
     de soumission)."""
     queryset = ApprovalRequestType.objects.all()
     serializer_class = ApprovalRequestTypeSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['nom', 'date_creation']
 
@@ -340,6 +397,9 @@ class ApprovalRequestTypeViewSet(TenantMixin, viewsets.ModelViewSet):
             "Type de demande d'approbation supprimé", old=nom)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _STATUS, OpenApiParameter('mine', OpenApiTypes.STR, required=False,
+                              enum=['1', 'true'])]))
 class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     """Demandes d'approbation ad-hoc (XKB2) : soumission par tout employé,
     décision réservée au palier propriétaire (admin/responsable), et
@@ -378,6 +438,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
                     self.request.user))
         return qs
 
+    @extend_schema(request=SoumettreDemandeSerializer,
+                   responses={201: ApprovalRequestSerializer})
     def create(self, request, *args, **kwargs):
         company = request.user.company
         type_id = request.data.get('request_type')
@@ -413,6 +475,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             self.get_serializer(req).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=NoteDecisionSerializer,
+                   responses=ApprovalRequestSerializer)
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         req = self.get_object()
@@ -426,6 +490,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
 
+    @extend_schema(request=NoteDecisionSerializer,
+                   responses=ApprovalRequestSerializer)
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         req = self.get_object()
@@ -439,6 +505,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
 
+    @extend_schema(request=DemandeInfoSerializer,
+                   responses=ApprovalRequestSerializer)
     @action(detail=True, methods=['post'], url_path='demande-info')
     def demande_info(self, request, pk=None):
         """ZCTR8 — demande un complément d'information (motif obligatoire) :
@@ -452,6 +520,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
 
+    @extend_schema(request=ResoumettreSerializer,
+                   responses=ApprovalRequestSerializer)
     @action(detail=True, methods=['post'])
     def resoumettre(self, request, pk=None):
         """ZCTR8 — le demandeur ré-ouvre un cycle après un complément
@@ -473,6 +543,7 @@ class ApprovalDelegationViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = ApprovalDelegation.objects.select_related(
         'delegant', 'suppleant').all()
     serializer_class = ApprovalDelegationSerializer
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_fin']
 
@@ -508,12 +579,17 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = IncomingWebhookTrigger.objects.select_related('rule').all()
     serializer_class = IncomingWebhookTriggerSerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
 
+    @extend_schema(request=WebhookCreerSerializer,
+                   responses={201: IncomingWebhookTriggerSerializer})
     def create(self, request, *args, **kwargs):
         company = request.user.company
-        rule_id = request.data.get('rule')
+        entree = WebhookCreerSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        rule_id = entree.validated_data['rule']
         rule = AutomationRule.objects.filter(
             pk=rule_id, company=company).first()
         if rule is None:
@@ -523,7 +599,7 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
         if rule.trigger_type != TriggerType.WEBHOOK_INBOUND:
             return Response(
                 {'rule': [WEBHOOK_REGLE_INCOMPATIBLE]}, status=400)
-        hmac_secret = request.data.get('hmac_secret', '') or ''
+        hmac_secret = entree.validated_data.get('hmac_secret', '') or ''
         existant = IncomingWebhookTrigger.objects.filter(rule=rule).first()
         if existant is not None:
             if hmac_secret:
@@ -556,6 +632,7 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
             self.request.user, f'webhook:{pk}', 'Webhook entrant supprimé',
             old=ancien)
 
+    @extend_schema(request=None, responses=IncomingWebhookTriggerSerializer)
     @action(detail=True, methods=['post'])
     def rotate(self, request, pk=None):
         """Régénère le token : l'ancien devient immédiatement invalide."""
@@ -573,6 +650,7 @@ class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
 # FG3 — Bibliothèque de modèles d'automatisation (presets sans-code).
 # GET uniquement ; lecture tout rôle ; pas de modification.
 
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def automation_templates(request):
