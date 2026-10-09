@@ -1280,7 +1280,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # bloc atomique plus bas) : le lire ici, hors transaction, laissait
         # deux requêtes concurrentes lire chacune l'ancien reste et passer
         # toutes deux la garde.
-        from decimal import Decimal
 
         # ERR34 — valider les lignes fournies AVANT toute création, et échouer
         # bruyamment (400) au lieu de les avaler en silence (l'ancien
