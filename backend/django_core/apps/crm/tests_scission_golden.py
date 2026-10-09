@@ -161,7 +161,11 @@ def _routes():
                     'motif': motif, 'nom': p.name,
                     'vue': (cls.__name__ if cls is not None
                             else getattr(cb, '__name__', type(cb).__name__)),
-                    'actions_map': norm(actions) if actions else None})
+                    # DRF ajoute 'head' (= 'get') à ce dict PARTAGÉ au premier GET
+                    # servi : l'ignorer, sinon le golden dépend de l'ordre des tests.
+                    'actions_map': norm({m: a for m, a in actions.items()
+                                         if not (m == 'head' and a == actions.get('get'))})
+                    if actions else None})
     visite(crm_urls.urlpatterns, '')
     return {k: sorted(v, key=lambda r: (r['motif'], str(r['nom'])))
             for k, v in out.items()}
