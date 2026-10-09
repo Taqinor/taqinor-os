@@ -161,6 +161,10 @@ class PaiementSerializer(serializers.ModelSerializer):
     # valide. Le libellé est servi ici pour que l'écran ne le réinvente pas.
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # AFAC17 — auteur de l'annulation de saisie (contrat
+    # ``paiement_annuler_saisie.json``).
+    annule_par_nom = serializers.CharField(
+        source='annule_par.username', read_only=True, default=None)
 
     # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
     # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
@@ -220,7 +224,9 @@ class PaiementSerializer(serializers.ModelSerializer):
                             'statut_affectation', 'provider_ref',
                             'motif_rejet', 'frais_rejet', 'date_rejet',
                             # APDF30 — numéro de reçu posé par le serveur.
-                            'numero_recu']
+                            'numero_recu',
+                            # AFAC17 — posés par `annuler-saisie` seul.
+                            'annule_le', 'annule_par', 'motif_annulation']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):
@@ -534,6 +540,9 @@ class NoteDebitSerializer(serializers.ModelSerializer):
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True)
     client_nom = serializers.SerializerMethodField()
+    # AFAC33 — une ND s'annule par AVOIR (D-AFAC-C4) : son statut reste « émise »,
+    # l'écran lit ce booléen pour la montrer « Annulée » après rechargement.
+    annulee = serializers.SerializerMethodField()
 
     class Meta:
         from .models import NoteDebit
@@ -548,6 +557,11 @@ class NoteDebitSerializer(serializers.ModelSerializer):
     def get_client_nom(self, obj):
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_annulee(self, obj):
+        from .models import Avoir
+        return obj.avoirs_annulation.filter(statut=Avoir.Statut.EMISE).exists()
 
 
 class PromessePaiementSerializer(serializers.ModelSerializer):

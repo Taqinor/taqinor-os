@@ -41,6 +41,27 @@ LIBELLES = {
         'note': 'Note',
         'coordonnees_bancaires': 'Coordonnées bancaires',
         'signature_cachet': 'Signature & Cachet',
+        # AFAC58 (C-AFAC-050) — libellés ajoutés après XSAL13.
+        'deja_paye': 'Déjà payé',
+        'total_deja_paye': 'Total déjà payé',
+        'facture_soldee': 'Facture soldée',
+        'reste_a_payer': 'Reste à payer',
+        'arrondi_commercial': 'Arrondi commercial',
+        'base_ht': 'Base HT',
+        'arrondi_especes': 'Arrondi espèces',
+        'periode_service': 'Période de service',
+        'votre_commande': 'Votre commande',
+        'tel': 'Tél',
+        'instructions_paiement': 'Instructions de paiement',
+        'conditions_generales': 'Conditions générales',
+        'conditions_paiement': 'Conditions de paiement',
+        'facture_generee_le': 'Facture générée automatiquement le',
+        'note_debit': 'Note de débit',
+        'voir_ventilation': 'voir ventilation',
+        # APDF26 (C-APDF-008) — date de livraison / prestation.
+        'date_livraison': 'Date de livraison / prestation',
+        # APDF28 — numérotation des pages.
+        'page': 'Page',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -61,15 +82,165 @@ LIBELLES = {
         'note': 'ملاحظة',
         'coordonnees_bancaires': 'المعلومات البنكية',
         'signature_cachet': 'التوقيع والختم',
+        'deja_paye': 'المبالغ المدفوعة',
+        'total_deja_paye': 'مجموع المبالغ المدفوعة',
+        'facture_soldee': 'فاتورة مسددة بالكامل',
+        'reste_a_payer': 'المبلغ المتبقي للأداء',
+        'arrondi_commercial': 'التقريب التجاري',
+        'base_ht': 'الأساس (خ.ض)',
+        'arrondi_especes': 'تقريب الأداء نقدا',
+        'periode_service': 'فترة الخدمة',
+        'votre_commande': 'طلبيتكم',
+        'tel': 'الهاتف',
+        'instructions_paiement': 'تعليمات الأداء',
+        'conditions_generales': 'الشروط العامة',
+        'conditions_paiement': 'شروط الأداء',
+        'facture_generee_le': 'فاتورة مُنشأة تلقائيا بتاريخ',
+        'note_debit': 'إشعار مدين',
+        'voir_ventilation': 'انظر التفصيل',
+        'date_livraison': 'تاريخ التسليم / الخدمة',
+        'page': 'صفحة',
     },
 }
+
+
+#: AFAC58 — textes DYNAMIQUES du PDF facture (libellés d'affichage des
+#: statuts et des modes de paiement, lignes du bloc « Déjà payé ») : la clé
+#: est le texte français lui-même ; hors arabe, ``libelle`` le rend tel quel.
+TEXTES_AR = {
+    'Brouillon': 'مسودة',
+    'Émise': 'صادرة',
+    'Payée': 'مؤداة',
+    'En retard': 'متأخرة',
+    'Annulée': 'ملغاة',
+    'Espèces': 'نقدا',
+    'Virement': 'تحويل بنكي',
+    'Chèque': 'شيك',
+    'Carte bancaire': 'بطاقة بنكية',
+    'Prélèvement': 'اقتطاع بنكي',
+    'Autre': 'أخرى',
+    'Escompte pour règlement anticipé': 'خصم الأداء المسبق',
+    'Avoir': 'إشعار دائن',
+    'Abandon de créance': 'التخلي عن الدين',
+    'Arrondi espèces': 'تقريب الأداء نقدا',
+    # APDF31 (D-APDF-3 a) — avoir, note de débit, reçu, relance.
+    'AVOIR': 'إشعار دائن',
+    'NOTE DE DÉBIT': 'إشعار مدين',
+    'Note de crédit — sur facture': 'إشعار دائن — على الفاتورة',
+    'Majoration — sur facture': 'زيادة — على الفاتورة',
+    'Tél': 'الهاتف',
+    'Émetteur': 'المُصدر',
+    'Avoir au profit de': 'إشعار دائن لفائدة',
+    'Note de débit à charge de': 'إشعار مدين على عاتق',
+    "Date d'émission": 'تاريخ الإصدار',
+    "Facture d'origine": 'الفاتورة الأصلية',
+    'Statut': 'الحالة',
+    'Émis': 'صادر',
+    'Annulé': 'ملغى',
+    'Désignation': 'البيان',
+    'Qté': 'الكمية',
+    'P.U HT': 'سعر الوحدة (خ.ض)',
+    'Remise': 'الخصم',
+    'Total HT': 'المجموع (خ.ض)',
+    'Avoir sur facture': 'إشعار دائن على الفاتورة',
+    'Note de débit sur facture': 'إشعار مدين على الفاتورة',
+    'Motif': 'السبب',
+    'Sous-total HT crédité': 'المجموع الفرعي الدائن (خ.ض)',
+    'Sous-total HT': 'المجموع الفرعي (خ.ض)',
+    'Remise globale': 'الخصم الإجمالي',
+    'Arrondi commercial': 'التقريب التجاري',
+    'Base HT': 'الأساس (خ.ض)',
+    'TVA': 'الضريبة على القيمة المضافة',
+    'Total crédité TTC': 'المجموع الدائن شامل الضريبة',
+    'Total dû en supplément (TTC)': 'المبلغ الإضافي المستحق شامل الضريبة',
+    'Conditions de paiement': 'شروط الأداء',
+    'Signature & Cachet': 'التوقيع والختم',
+    'Avoir (note de crédit) lié à la facture': 'إشعار دائن مرتبط بالفاتورة',
+    'Note de débit liée à la facture': 'إشعار مدين مرتبط بالفاتورة',
+    'généré le': 'أُنشئ بتاريخ',
+    'générée le': 'أُنشئت بتاريخ',
+    'QUITTANCE': 'وصل أداء',
+    'Reçu de paiement n°': 'وصل الأداء رقم',
+    'Reçu de': 'تم التوصل من',
+    'Date du règlement': 'تاريخ الأداء',
+    'Mode': 'طريقة الأداء',
+    'Référence': 'المرجع',
+    'N° chèque': 'رقم الشيك',
+    'Banque tirée': 'البنك المسحوب عليه',
+    'Facture réglée': 'الفاتورة المؤداة',
+    'Montant affecté': 'المبلغ المخصص',
+    'Solde restant dû': 'الرصيد المتبقي المستحق',
+    'sur': 'على',
+    'Quittance générée automatiquement le': 'وصل مُنشأ تلقائيا بتاريخ',
+    'Objet': 'الموضوع',
+    'Relance': 'تذكير',
+    'facture': 'الفاتورة',
+    'Madame, Monsieur,': 'سيدتي، سيدي،',
+    'Sauf erreur de notre part, la facture ci-dessous reste en attente de règlement. Nous vous remercions de bien vouloir procéder à son paiement.': 'ما لم يكن هناك خطأ من جانبنا، فإن الفاتورة أدناه لا تزال في انتظار الأداء. نشكركم على التفضل بأدائها.',
+    'Facture': 'الفاتورة',
+    'Échéance': 'تاريخ الاستحقاق',
+    'en retard de': 'متأخرة بـ',
+    'jour(s)': 'يوم (أيام)',
+    'Montant restant dû': 'المبلغ المتبقي المستحق',
+    'Pénalité de retard indicative': 'غرامة التأخير الإرشادية',
+    'Nous restons à votre disposition pour toute information.': 'نبقى رهن إشارتكم لأي معلومة.',
+    'Cordialement,': 'مع خالص التحيات،',
+    'Courrier généré le': 'رسالة مُنشأة بتاريخ',
+}
+
+_SUFFIXE_AVANCE = ' (avance)'
+_PREFIXE_RETENUE = 'Retenue à la source ('
+
+
+def _texte_ar(texte):
+    """Traduction arabe d'un texte d'affichage dynamique, ou ``None``."""
+    if texte in TEXTES_AR:
+        return TEXTES_AR[texte]
+    if texte.endswith(_SUFFIXE_AVANCE):
+        base = _texte_ar(texte[:-len(_SUFFIXE_AVANCE)])
+        if base:
+            return f'{base} (تسبيق)'
+    if texte.startswith(_PREFIXE_RETENUE):
+        return 'اقتطاع من المنبع (' + texte[len(_PREFIXE_RETENUE):]
+    return None
+
+
+#: APDF31 (D-APDF-3 a, tranché le 08/10/2026) — documents TRADUITS en
+#: arabe : facture, avoir, note de débit, reçu, lettre de relance. Les
+#: autres (bon de commande, pro-forma, relevé, bordereau) restent en
+#: français AVEC une mention de repli imprimée ; une langue sans
+#: dictionnaire (« en ») aussi — jamais un repli silencieux.
+MENTIONS_REPLI = {
+    'ar': ('Document disponible en français uniquement — '
+           'هذه الوثيقة متوفرة باللغة الفرنسية فقط.'),
+    'en': ('Document disponible en français uniquement — '
+           'This document is available in French only.'),
+}
+_MENTION_REPLI_DEFAUT = 'Document disponible en français uniquement.'
+
+
+def mention_repli(langue_demandee, langue_rendue):
+    """APDF31 — la mention imprimée quand le document n'est PAS rendu dans
+    la langue demandée (``''`` sinon)."""
+    demandee = (langue_demandee or 'fr').lower()
+    if demandee == (langue_rendue or 'fr').lower() or demandee == 'fr':
+        return ''
+    return MENTIONS_REPLI.get(demandee, _MENTION_REPLI_DEFAUT)
 
 
 def libelle(cle, langue='fr'):
     """Traduction d'une clé de libellé. FR par défaut (comportement inchangé
     quand `langue` n'est pas 'ar' ou que la clé est absente du dictionnaire
-    AR — retombe alors sur le FR, jamais une clé brute affichée au client)."""
+    AR — retombe alors sur le FR, jamais une clé brute affichée au client).
+
+    AFAC58 — une clé qui est un TEXTE d'affichage dynamique (statut, mode de
+    paiement) est traduite par ``TEXTES_AR`` en arabe et rendue telle quelle
+    sinon."""
     table = LIBELLES.get(langue) or LIBELLES['fr']
+    if langue == 'ar' and cle not in table and isinstance(cle, str):
+        traduit = _texte_ar(cle)
+        if traduit:
+            return traduit
     return table.get(cle) or LIBELLES['fr'].get(cle, cle)
 
 
@@ -87,23 +258,18 @@ def _load_font_base64(filename):
 
 
 def arabic_font_face_css():
-    """CSS `@font-face` embarquant Noto Sans Arabic (regular + bold), ou une
-    chaîne vide si les fichiers sont absents (le gabarit retombe alors sur une
-    police système — dégradation propre, jamais de crash)."""
-    b64_400 = _load_font_base64('NotoSansArabic-400.woff2')
-    b64_700 = _load_font_base64('NotoSansArabic-700.woff2')
-    faces = []
-    if b64_400:
-        faces.append(
-            '@font-face{font-family:"Noto Sans Arabic";font-style:normal;'
-            'font-weight:400;font-display:block;'
-            f'src:url("data:font/woff2;base64,{b64_400}") format("woff2");}}')
-    if b64_700:
-        faces.append(
-            '@font-face{font-family:"Noto Sans Arabic";font-style:normal;'
-            'font-weight:700;font-display:block;'
-            f'src:url("data:font/woff2;base64,{b64_700}") format("woff2");}}')
-    return ''.join(faces)
+    """APDF25 (C-APDF-002) — PLUS AUCUN ``@font-face`` vendorisé : renvoie
+    toujours ``''``.
+
+    Le woff2 « Noto Sans Arabic » embarqué était HOMONYME de la police
+    système de l'image (``fonts-noto-core``, Dockerfile) : WeasyPrint
+    mélangeait les deux et la colonne Total de la facture arabe sortait en
+    glyphes illisibles (« MAD صنعى », sonde PLANG-1). La police système sert
+    désormais seule, comme pour le moteur devis (APDF6,
+    ``premium_base.css_arabe``). Appelants : ``utils/pdf.generate_facture_pdf``
+    et ``documents/builders`` (BL arabe) — inchangés, ils reçoivent ``''``.
+    ``_load_font_base64`` reste (retrait des woff2 : APDF47)."""
+    return ''
 
 
 def document_langue(client, *, langue_explicite=None, company=None):

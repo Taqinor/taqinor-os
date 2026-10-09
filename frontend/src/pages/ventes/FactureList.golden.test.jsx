@@ -151,10 +151,10 @@ const base = {
 }
 const FACTURES = [
   { ...base, id: 1, reference: 'FAC-2026-07-0001', statut: 'emise', date_echeance: '2026-08-01' },
-  { ...base, id: 2, reference: 'FAC-BROUILLON', statut: 'brouillon', date_echeance: '2026-08-01' },
+  { ...base, id: 2, reference: 'FAC-BROUILLON', statut: 'brouillon', encaissable: false, motif_non_encaissable: 'Facture non émise : émettez-la avant d’encaisser.', date_echeance: '2026-08-01' },
   { ...base, id: 3, reference: 'FAC-PARTIELLE', statut: 'emise', date_echeance: '2026-08-01',
     montant_paye: 2000, montant_du: 3000 },
-  { ...base, id: 4, reference: 'FAC-PAYEE', statut: 'payee', date_echeance: '2026-08-01',
+  { ...base, id: 4, reference: 'FAC-PAYEE', statut: 'payee', encaissable: false, date_echeance: '2026-08-01',
     montant_paye: 5000, montant_du: 0 },
   { ...base, id: 5, reference: 'FAC-RETARD', statut: 'en_retard', date_echeance: '2026-06-01' },
 ]

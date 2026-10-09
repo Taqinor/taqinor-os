@@ -37,7 +37,7 @@ def paiements_remisables(qs):
     ``GET paiements/?remisable=1`` : l'écran ne propose jamais un paiement que
     la déclaration refuserait."""
     return qs.filter(mode__in=MODES_REMISABLES).exclude(
-        statut=Paiement.Statut.REJETE).filter(
+        statut__in=Paiement.STATUTS_NON_COMPTES).filter(
         lignes_remise_encaissement__isnull=True)
 
 
@@ -109,10 +109,11 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
                     f'Encaissement #{paiement.id} en '
                     f'{paiement.get_mode_display().lower()} : une remise '
                     f'terrain ne porte que des espèces ou des chèques.')})
-            if paiement.statut == Paiement.Statut.REJETE:
+            if paiement.statut in Paiement.STATUTS_NON_COMPTES:
                 raise ValidationError({'lignes': (
-                    f'Encaissement #{paiement.id} rejeté : il ne peut pas '
-                    f'être remis en banque.')})
+                    f'Encaissement #{paiement.id} '
+                    f'{paiement.get_statut_display().lower()} : il ne peut '
+                    f'pas être remis en banque.')})
             deja = LigneRemiseEncaissement.objects.select_related(
                 'remise').filter(paiement=paiement).first()
             if deja is not None:

@@ -20,7 +20,7 @@ test('Reste à encaisser (onglet) exclut brouillon, annulée et payée', () => {
 })
 
 test('isOverdue couvre le statut « en_retard » (onglet En retard = lignes En retard)', () => {
-  const m = SRC.match(/const isOverdue = f =>([\s\S]*?)\r?\n\r?\n/)
+  const m = SRC.match(/const isOverdue = \(f, aujourdhui\) =>([\s\S]*?)\r?\n\}\r?\n/)
   assert.ok(m, 'isOverdue introuvable')
-  assert.match(m[1], /f\.statut === 'en_retard'/)
+  assert.match(m[1], /f\?\.statut === 'en_retard'/)
 })

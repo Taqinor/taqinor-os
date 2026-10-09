@@ -407,7 +407,7 @@ UNGUARDED_ACTION_BASELINE = {
     # WIR281 (2026-08-26) : +1 @action `resoudre` de PlanCommissionViewSet —
     # gardée au niveau CLASSE (`permission_classes` prix_achat_voir/admin sur
     # tout le viewset, testée 403) ; dette apparente, pas un trou (1 → 2).
-    "ventes": 2,
+    "ventes": 1,
 }
 
 

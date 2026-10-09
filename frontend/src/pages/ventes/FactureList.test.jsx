@@ -130,7 +130,7 @@ describe('FactureList — WR2b : « Payer en ligne »', () => {
 
   it('n\'affiche pas le bouton quand la facture est déjà soldée', () => {
     renderList({
-      factures: [{ ...baseFacture, id: 2, reference: 'FAC-SOLDEE', montant_du: 0 }],
+      factures: [{ ...baseFacture, id: 2, reference: 'FAC-SOLDEE', montant_du: 0, encaissable: false }],
     })
     const row = screen.getByText('FAC-SOLDEE').closest('tr')
     expect(within(row).queryByRole('button', { name: /Payer en ligne/ })).toBeNull()

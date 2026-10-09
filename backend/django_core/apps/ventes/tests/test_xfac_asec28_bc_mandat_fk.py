@@ -3,7 +3,9 @@ du bon de commande (`client`, `devis`, `lead`), du mandat de paiement
 (`client`), du paramétrage de relance (`client`, `responsable`) et de la
 remise d'encaissement (`technicien`) bornées à la société ;
 `MandatPaiement.statut`/`consentement_horodate` en lecture seule ;
-`mandat_actif_pour_client` filtré par la société du client.
+`mandat_actif_pour_client` filtré par la société du client. AFAC19 : la route
+et le service mandat sont PARQUÉS — leurs cas sont retirés (part ASEC28 sans
+objet, signalée au groupe ASEC).
 
 Rouge sur 51f22174f (V5 : 200/201 ; mandat révoqué → actif par PATCH).
 Endpoints et service réels, aucun mock.
@@ -82,27 +84,6 @@ class BcMandatRelanceRemiseTests(TestCase):
         self.assertIsNone(self.bc.devis_id)
         self.assertIsNone(self.bc.lead_id)
 
-    def test_mandat_client_etranger_400(self):
-        url = f'/api/django/ventes/mandats-paiement/{self.mandat.id}/'
-        r = self.api.patch(url, {'client': self.client_b.pk}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        r = self.api.post('/api/django/ventes/mandats-paiement/',
-                          {'client': self.client_b.pk}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.mandat.refresh_from_db()
-        self.assertEqual(self.mandat.client_id, self.client_a.pk)
-
-    def test_mandat_revoque_reste_revoque(self):
-        from apps.ventes.models import MandatPaiement
-        url = f'/api/django/ventes/mandats-paiement/{self.mandat.id}/'
-        r = self.api.patch(url, {'statut': 'actif',
-                                 'consentement_horodate':
-                                     '2026-10-01T10:00:00Z'}, format='json')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.mandat.refresh_from_db()
-        self.assertEqual(self.mandat.statut, MandatPaiement.Statut.REVOQUE)
-        self.assertIsNone(self.mandat.consentement_horodate)
-
     def test_relance_responsable_etranger_400(self):
         url = (f'/api/django/ventes/parametrages-relance-client/'
                f'{self.relance.id}/')
@@ -122,18 +103,3 @@ class BcMandatRelanceRemiseTests(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         self.remise.refresh_from_db()
         self.assertEqual(self.remise.technicien_id, self.user.pk)
-
-    def test_mandat_actif_filtre_societe(self):
-        from apps.ventes.domain.encaissements import mandat_actif_pour_client
-        from apps.ventes.models import MandatPaiement
-        # Construction de test : un mandat ACTIF de B porte le client de A.
-        etranger = MandatPaiement.objects.create(
-            company=self.b, client=self.client_a, provider='mock_tokenized',
-            token='TOK-B', statut=MandatPaiement.Statut.ACTIF)
-        self.assertIsNone(mandat_actif_pour_client(self.client_a))
-        propre = MandatPaiement.objects.create(
-            company=self.a, client=self.client_a, provider='mock_tokenized',
-            token='TOK-A2', statut=MandatPaiement.Statut.ACTIF)
-        self.assertEqual(mandat_actif_pour_client(self.client_a), propre)
-        self.assertNotEqual(mandat_actif_pour_client(self.client_a),
-                            etranger)

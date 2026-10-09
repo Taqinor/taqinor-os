@@ -182,6 +182,10 @@ def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None)
     if paiement.statut == Paiement.Statut.REJETE:
         raise PaiementRejectError(
             'Ce paiement est déjà marqué rejeté.', conflict=True)
+    if paiement.statut == Paiement.Statut.ANNULE_SAISIE:
+        # AFAC17 — une saisie annulée n'a jamais porté d'argent.
+        raise PaiementRejectError(
+            'Saisie annulée : ce paiement ne se rejette pas.', conflict=True)
 
     with transaction.atomic():
         paiement.statut = Paiement.Statut.REJETE
