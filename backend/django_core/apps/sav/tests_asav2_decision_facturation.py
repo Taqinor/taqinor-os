@@ -65,7 +65,7 @@ class DecisionFacturationTests(TestCase):
     def _prix_lignes(self, ticket):
         ticket.refresh_from_db()
         facture = Facture.objects.get(pk=ticket.facture_id_ext)
-        return [l.prix_unitaire for l in facture.lignes.all()]
+        return [ligne.prix_unitaire for ligne in facture.lignes.all()]
 
     def test_contrat_zero_deux_portes(self):
         self._contrat()

@@ -55,10 +55,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
       MouvementStock (ENTREE) pour les quantités reçues uniquement ;
     - les prix d'ACHAT restent internes (jamais sur un document client).
     """
-    queryset = BonCommandeFournisseur.objects.select_related(
-        'fournisseur', 'created_by',
     # APRF33 — acomptes (+ leur BCF, posé par le préchargement inverse) et
     # annonces de livraison préchargés : requêtes plates en liste.
+    queryset = BonCommandeFournisseur.objects.select_related(
+        'fournisseur', 'created_by',
     ).prefetch_related(
         'lignes__produit', 'acomptes', 'annonces_livraison').all()
     serializer_class = BonCommandeFournisseurSerializer
