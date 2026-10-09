@@ -398,11 +398,10 @@ def _base_context(chantier):
     ctx['systeme'] = _systeme_summary(chantier)
     ctx['client'] = _client_block(chantier.client)
     technicien = chantier.technicien_responsable
-    ctx['technicien'] = (
-        (getattr(technicien, 'get_full_name', lambda: '')() or
-         getattr(technicien, 'username', ''))
-        if technicien else ''
-    )
+    # APDF34 — jamais l'identifiant de connexion sur un document client :
+    # nom complet, sinon raison sociale du profil (sélecteur parametres).
+    from apps.parametres.selectors import nom_intervenant
+    ctx['technicien'] = nom_intervenant(technicien, chantier.company)
     return ctx
 
 
