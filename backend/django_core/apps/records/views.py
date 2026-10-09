@@ -9,7 +9,11 @@ from datetime import timedelta
 from django.db import models
 from django.http import Http404, HttpResponse
 from django.utils import timezone
-from rest_framework import status, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import serializers as drf, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes,
 )
@@ -24,12 +28,147 @@ from core.selectors import get_company_object
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
 )
+from .openapi import (
+    CibleModelField, CibleQuerySerializer, ParsersParActionMixin,
+    SourceApprobationField, paginee,
+)
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
     ChatterActivitySerializer, CommentSerializer, FollowerSerializer,
-    TaggedItemSerializer, TagSerializer, resolve_target,
+    TaggedItemSerializer, TagSerializer, CibleIntrouvable, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
+
+
+# ── ENF7 — schéma OpenAPI exact (briques partagées) ─────────────────────────
+def _S(nom, champs, **kw):
+    return inline_serializer('Records' + nom, champs, **kw)
+
+
+_MA_FILE_ITEM = _S('MaFileItem', {
+    'kind': drf.CharField(),
+    'title': drf.CharField(allow_null=True),
+    'due': drf.CharField(allow_null=True, required=False),
+    'link': drf.CharField(allow_null=True, required=False),
+    'urgency': drf.CharField(),
+    'effort_estime': drf.CharField(),
+    'activity_id': drf.IntegerField(required=False),
+    'source': drf.CharField(required=False),
+    'source_id': drf.JSONField(required=False),
+    'notification_id': drf.IntegerField(required=False, allow_null=True),
+}, many=True)
+
+_MA_FILE = _S('MaFile', {
+    'items': _MA_FILE_ITEM,
+    'total': drf.IntegerField(),
+    'resume': _S('MaFileResume', {
+        'en_retard': drf.IntegerField(),
+        'aujourdhui': drf.IntegerField(),
+        'approbations': drf.IntegerField(),
+    }),
+})
+
+_MINE = _S('ActivitesMine', {
+    'en_retard': ActivitySerializer(many=True),
+    'aujourdhui': ActivitySerializer(many=True),
+    'a_venir': ActivitySerializer(many=True),
+})
+
+_ACTIVITE_CREATION = _S('ActiviteCreation', {
+    'activity_type': drf.IntegerField(),
+    'summary': drf.CharField(required=False, allow_blank=True, max_length=255),
+    'note': drf.CharField(required=False, allow_blank=True),
+    'due_date': drf.DateField(required=False, allow_null=True),
+    'assigned_to': drf.IntegerField(required=False, allow_null=True),
+    'personnelle': drf.BooleanField(required=False),
+    'model': CibleModelField(required=False),
+    'id': drf.IntegerField(required=False),
+})
+
+_ACTIVITE_FAITE_CORPS = _S('ActiviteFaiteCorps', {
+    'next': _S('ActiviteSuite', {
+        'activity_type': drf.IntegerField(),
+        'summary': drf.CharField(
+            required=False, allow_blank=True, max_length=255),
+        'note': drf.CharField(required=False, allow_blank=True),
+        'due_date': drf.DateField(required=False, allow_null=True),
+    }, required=False),
+})
+
+_ACTIVITE_FAITE = _S('ActiviteFaite', {
+    'activity': ActivitySerializer(),
+    'next': ActivitySerializer(allow_null=True),
+    'chained': ActivitySerializer(allow_null=True),
+    'suggestion': drf.DictField(allow_null=True),
+})
+
+_SNOOZE_CORPS = _S('ActiviteSnoozeCorps', {
+    'snoozed_until': drf.DateField(required=False, allow_null=True),
+    'snooze_trigger_event': drf.RegexField(
+        r'^((client_reply|devis_signed|stock_arrive):\S.*)?$',
+        required=False, allow_blank=True),
+})
+
+_SNOOZE_APPRO_CORPS = _S('SnoozeApprobationCorps', {
+    'source': SourceApprobationField(),
+    'id': drf.IntegerField(min_value=1),
+    'snoozed_until': drf.DateField(required=False, allow_null=True),
+})
+
+_OK = _S('Ok', {'ok': drf.BooleanField()})
+
+_NOTE_CORPS = _S('ChatterNoteCorps', {
+    'body': drf.RegexField(r'\S', help_text='Texte de la note (non vide).'),
+})
+
+_COMMENT_CREATION = _S('CommentaireCreation', {
+    'model': CibleModelField(),
+    'id': drf.IntegerField(),
+    'body': drf.CharField(),
+    'resolved': drf.BooleanField(required=False),
+})
+
+_PIECE_JOINTE_CREATION = _S('PieceJointeCreation', {
+    'model': CibleModelField(),
+    'id': drf.IntegerField(),
+    'file': drf.FileField(),
+    'phase': drf.CharField(required=False, allow_blank=True),
+})
+
+_PHASE_CORPS = _S('PieceJointePhaseCorps', {
+    'phase': drf.ChoiceField(
+        choices=['', 'avant', 'pendant', 'apres'], required=False,
+        allow_blank=True),
+})
+
+_TAGGED_CREATION = _S('TagAssocCreation', {
+    'model': CibleModelField(),
+    'id': drf.IntegerField(),
+    'tag': drf.IntegerField(),
+})
+
+_FOLLOWER_CREATION = _S('AbonnementCreation', {
+    'model': CibleModelField(),
+    'id': drf.IntegerField(),
+    'sous_type': drf.CharField(
+        required=False, allow_blank=True, max_length=40),
+})
+
+_COMPTE = _S('PiecesJointesCompte', {'count': drf.IntegerField()})
+
+_PARAM_OUVERT = OpenApiParameter(
+    'open', OpenApiTypes.STR, enum=['1'],
+    description="``1`` : activités non faites seulement.")
+_PARAM_PERSO = OpenApiParameter(
+    'personnelle', OpenApiTypes.STR, enum=['1'],
+    description="``1`` : mes à-faire personnels seulement (sans cible).")
+_PARAM_MINE = OpenApiParameter(
+    'mine', OpenApiTypes.STR, enum=['1'],
+    description="``1`` : mes propres abonnements seulement.")
+_PARAM_RESOLVED = OpenApiParameter(
+    'resolved', OpenApiTypes.BOOL, description="Fils résolus ou non.")
+_PARAM_Q = OpenApiParameter(
+    'q', OpenApiTypes.STR, description="Recherche dans le nom du tag.")
 
 
 # ── ARC8 — Chatter générique réutilisable (le « mail.thread » maison) ─────────
@@ -49,6 +188,8 @@ class ChatterViewSetMixin:
     coexistent avec le journal maison éventuel de la vue (ex. l'action
     ``historique`` de ``ContratViewSet``), sur des URL distinctes."""
 
+    @extend_schema(responses=drf.ListField(
+        child=ChatterActivitySerializer()))
     @action(detail=True, methods=['get'], url_path='chatter/historique',
             permission_classes=[IsAnyRole])
     def chatter_historique(self, request, pk=None):
@@ -57,6 +198,8 @@ class ChatterViewSetMixin:
         qs = chatter_qs(target, company=_company(request))
         return Response(ChatterActivitySerializer(qs, many=True).data)
 
+    @extend_schema(request=_NOTE_CORPS,
+                   responses={201: ChatterActivitySerializer})
     @action(detail=True, methods=['post'], url_path='chatter/noter',
             permission_classes=[IsResponsableOrAdmin])
     def chatter_noter(self, request, pk=None):
@@ -109,6 +252,7 @@ def _scoped(qs, user):
 # ── Types d'activité ────────────────────────────────────────────────
 class ActivityTypeViewSet(viewsets.ModelViewSet):
     serializer_class = ActivityTypeSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -122,9 +266,16 @@ class ActivityTypeViewSet(viewsets.ModelViewSet):
         serializer.save(company=_company(self.request))
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        CibleQuerySerializer, _PARAM_PERSO, _PARAM_OUVERT]),
+    create=extend_schema(
+        request=_ACTIVITE_CREATION, responses={201: ActivitySerializer}),
+)
 # ── Activités ───────────────────────────────────────────────────────
 class ActivityViewSet(viewsets.ModelViewSet):
     serializer_class = ActivitySerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # VX214 — `ma_file` est la file de travail PER-USER (scopée
@@ -173,8 +324,16 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 assigned_to=ser.validated_data.get('assigned_to') or request.user,
             )
             return Response(ser.data, status=status.HTTP_201_CREATED)
+        if not model or not oid:
+            # ENF7 — ``model`` et ``id`` vont ensemble : une moitié de cible
+            # ne désigne aucun enregistrement.
+            return Response({'detail': 'Cible introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
         try:
             ct, _obj = resolve_target(model, oid, company)
+        except CibleIntrouvable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -188,6 +347,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         )
         return Response(ser.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=_MINE)
     @action(detail=False, methods=['get'])
     def mine(self, request):
         """Cockpit « Mes activités » : ouvertes de l'utilisateur, bucketées."""
@@ -214,6 +374,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 buckets['a_venir'].append(data)
         return Response(buckets)
 
+    @extend_schema(responses=_MA_FILE)
     @action(detail=False, methods=['get'], url_path='ma-file')
     def ma_file(self, request):
         """VX83 — « Ma file » : LA file de travail unique, cross-module.
@@ -375,6 +536,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             },
         })
 
+    @extend_schema(request=_ACTIVITE_FAITE_CORPS, responses=_ACTIVITE_FAITE)
     @action(detail=True, methods=['post'], url_path='done',
             permission_classes=[IsResponsableOrAdmin])
     def marquer_fait(self, request, pk=None):
@@ -422,6 +584,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             'suggestion': suggestion,
         })
 
+    @extend_schema(request=_SNOOZE_CORPS, responses=ActivitySerializer)
     @action(detail=True, methods=['post'], url_path='snooze',
             permission_classes=[IsResponsableOrAdmin])
     def snooze(self, request, pk=None):
@@ -456,6 +619,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         snooze_activity(act, d, trigger)
         return Response(ActivitySerializer(act).data)
 
+    @extend_schema(request=_SNOOZE_APPRO_CORPS, responses=_OK)
     @action(detail=False, methods=['post'], url_path='snooze-approbation',
             permission_classes=[IsResponsableOrAdmin])
     def snooze_approbation(self, request):
@@ -747,12 +911,18 @@ def _notify_mentions(body, author, company, content_type=None, object_id=None):
         pass
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[CibleQuerySerializer, _PARAM_RESOLVED]),
+    create=extend_schema(
+        request=_COMMENT_CREATION, responses={201: CommentSerializer}),
+)
 class CommentViewSet(viewsets.ModelViewSet):
     """FG7 — Commentaires génériques + @mentions.
 
     Lecture : tout rôle. Création/modification : propriétaire ou admin.
     Suppression : admin seulement. Scopé société (company posée côté serveur)."""
     serializer_class = CommentSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -785,6 +955,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
+        except CibleIntrouvable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -816,10 +989,18 @@ class CommentViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[CibleQuerySerializer]),
+    create=extend_schema(
+        request={'multipart/form-data': _PIECE_JOINTE_CREATION},
+        responses={201: AttachmentSerializer}),
+)
 # ── Pièces jointes ──────────────────────────────────────────────────
-class AttachmentViewSet(viewsets.ModelViewSet):
+class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
     serializer_class = AttachmentSerializer
-    parser_classes = [MultiPartParser]
+    # ENF7 (D2) — seul le dépôt de fichier est multipart ; le reste est JSON.
+    parser_classes = [JSONParser]
+    parsers_par_action = {'create': [MultiPartParser]}
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'download'):
@@ -847,6 +1028,9 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
+        except CibleIntrouvable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -869,8 +1053,9 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         return Response(AttachmentSerializer(att).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=_PHASE_CORPS, responses=AttachmentSerializer)
     @action(detail=True, methods=['patch'], url_path='phase',
-            parser_classes=[JSONParser, MultiPartParser])
+            parser_classes=[JSONParser])
     def set_phase(self, request, pk=None):
         """N5/L5 — re-tague la phase (avant/pendant/après) d'une pièce jointe
         sans supprimer/ré-uploader le fichier. Scopé société par get_object."""
@@ -883,6 +1068,7 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         att.save(update_fields=['phase'])
         return Response(AttachmentSerializer(att).data)
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
         """B1 — relaie le fichier via Django (MÊME ORIGINE), authentifié par le
@@ -907,12 +1093,14 @@ class AttachmentViewSet(viewsets.ModelViewSet):
 
 # ── Tags (FG9) ──────────────────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[_PARAM_Q]))
 class TagViewSet(viewsets.ModelViewSet):
     """FG9 — Vocabulaire de tags de la société.
 
     Lecture : tout rôle. Création/modification : responsable ou admin.
     Suppression : admin seulement. company posée côté serveur."""
     serializer_class = TagSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -932,12 +1120,19 @@ class TagViewSet(viewsets.ModelViewSet):
         return qs
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[CibleQuerySerializer]),
+    create=extend_schema(
+        request=_TAGGED_CREATION,
+        responses={200: TaggedItemSerializer, 201: TaggedItemSerializer}),
+)
 class TaggedItemViewSet(viewsets.ModelViewSet):
     """FG9 — Associations tag ↔ enregistrement.
 
     Lecture : tout rôle (filtrage par model+id). Création/suppression :
     responsable ou admin. company déduite du tag (jamais du corps)."""
     serializer_class = TaggedItemSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -969,6 +1164,9 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
+        except CibleIntrouvable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -982,13 +1180,18 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
             tag = get_company_object(Tag, tag_id, request.user)
         except Http404:
             return Response({'detail': 'Tag introuvable.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         item, created = TaggedItem.objects.get_or_create(
             tag=tag, content_type=ct, object_id=request.data.get('id'))
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(TaggedItemSerializer(item).data, status=code)
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[CibleQuerySerializer, _PARAM_MINE]),
+    create=extend_schema(
+        request=_FOLLOWER_CREATION, responses={201: FollowerSerializer}),
+)
 # ── Followers (XKB34) ────────────────────────────────────────────────
 class FollowerViewSet(viewsets.ModelViewSet):
     """XKB34 — S'abonner/se désabonner d'un enregistrement.
@@ -998,6 +1201,7 @@ class FollowerViewSet(viewsets.ModelViewSet):
     jamais restreinte à un rôle). Suppression : seulement son propre abonnement.
     Company posée côté serveur, jamais lue du corps de requête."""
     serializer_class = FollowerSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         return [IsAnyRole()]
@@ -1023,14 +1227,21 @@ class FollowerViewSet(viewsets.ModelViewSet):
         try:
             ct, _obj = resolve_target(
                 request.data.get('model'), request.data.get('id'), company)
+        except CibleIntrouvable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        sous_type = (request.data.get('sous_type') or '')
+        if len(str(sous_type)) > 40:
+            return Response({'sous_type': 'Au plus 40 caractères.'},
                             status=status.HTTP_400_BAD_REQUEST)
         from .services import follow
         obj = follow(
             company=company, content_type=ct,
             object_id=request.data.get('id'), user=request.user,
-            sous_type=(request.data.get('sous_type') or ''))
+            sous_type=sous_type)
         return Response(FollowerSerializer(obj).data,
                         status=status.HTTP_201_CREATED)
 
@@ -1044,6 +1255,23 @@ class FollowerViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('mime', OpenApiTypes.STR,
+                         description='Type MIME exact.'),
+        OpenApiParameter('mime_like', OpenApiTypes.STR,
+                         description='Type MIME contenant ce texte.'),
+        OpenApiParameter('phase', OpenApiTypes.STR,
+                         description='avant / pendant / apres / vide.'),
+        OpenApiParameter('model', OpenApiTypes.STR,
+                         description='Modèle « app.modele » de la cible.'),
+        OpenApiParameter('since', OpenApiTypes.STR,
+                         description='Date ou date-heure ISO 8601.'),
+        OpenApiParameter('page', OpenApiTypes.INT,
+                         description='Numéro de page (50 par page).'),
+    ],
+    responses=paginee('RecordsPiecesJointesPage', AttachmentSerializer),
+)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def attachments_all(request):
@@ -1107,6 +1335,7 @@ def attachments_all(request):
     return paginator.get_paginated_response(ser.data)
 
 
+@extend_schema(parameters=[CibleQuerySerializer], responses=_COMPTE)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def attachments_count(request):

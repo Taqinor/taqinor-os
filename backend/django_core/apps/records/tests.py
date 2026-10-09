@@ -108,7 +108,8 @@ class TestActivities(TestCase):
             'model': 'crm.lead', 'id': other_lead.id,
             'activity_type': self.type_appel.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ENF7 — une cible hors société est « introuvable » (404), sans fuite.
+        self.assertEqual(resp.status_code, 404)
 
     def test_snooze_is_non_destructive_and_excludes_from_mine(self):
         # VX85(a) — « ⏰ Plus tard » pose `snoozed_until` SANS toucher
@@ -598,12 +599,12 @@ class TestResolveTargetErrors(TestCase):
         with self.assertRaises(ValueError):
             resolve_target('crm.lead', 'pas-un-entier', self.company)
 
-    def test_create_activity_nonexistent_target_is_400_not_500(self):
+    def test_create_activity_nonexistent_target_is_404_not_500(self):
         resp = self.api.post('/api/django/records/activities/', {
             'model': 'crm.lead', 'id': 999999,
             'activity_type': self.type_appel.id, 'summary': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
 
     def test_create_activity_bad_type_id_is_400_not_500(self):
         resp = self.api.post('/api/django/records/activities/', {
@@ -797,14 +798,14 @@ class TestComments(TestCase):
         self.assertFalse(Comment.objects.filter(id=cmt_id).exists())
 
     def test_cross_company_target_rejected(self):
-        """Commenter un enregistrement étranger → 400."""
+        """Commenter un enregistrement étranger → 404 (ENF7)."""
         other = Company.objects.create(nom='Other Cmt', slug='other-cmt')
         other_lead = Lead.objects.create(company=other, nom='Prospect autre')
         res = self.api.post('/api/django/records/comments/', {
             'model': 'crm.lead', 'id': other_lead.id,
             'body': 'Commentaire interdit.',
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_company_scoped_listing(self):
         """Un utilisateur ne voit que les commentaires de sa société."""
@@ -909,13 +910,13 @@ class TestTags(TestCase):
         self.assertEqual(TaggedItem.objects.count(), 0)
 
     def test_foreign_tag_rejected(self):
-        """Appliquer un tag d'une autre société → 400."""
+        """Appliquer un tag d'une autre société → 404 (ENF7)."""
         other = Company.objects.create(nom='Other T2', slug='other-t2')
         foreign_tag = Tag.objects.create(company=other, nom='Tag Étranger')
         res = self.api.post('/api/django/records/tagged-items/', {
             'model': 'crm.lead', 'id': self.lead.id, 'tag': foreign_tag.id,
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_tag_search_filter(self):
         """Le filtre ?q= sur /records/tags/ filtre par nom (insensible à la casse)."""

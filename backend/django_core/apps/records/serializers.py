@@ -43,8 +43,10 @@ def resolve_target(model_label, object_id, company):
     # ValueError ici.
     try:
         obj = ct.get_object_for_this_type(pk=object_id)
-    except (ct.model_class().DoesNotExist, ValueError, TypeError):
+    except ct.model_class().DoesNotExist:
         raise CibleIntrouvable('Cible introuvable.')
+    except (ValueError, TypeError):
+        raise ValueError('Cible invalide.')
     obj_company = getattr(obj, 'company_id', None)
     # AUD416 — une cible à ``company_id IS NULL`` était traitée comme PARTAGÉE
     # entre toutes les sociétés : le ``not in (None, company.id)`` la laissait
