@@ -170,7 +170,8 @@ def build(ctx):
         # barré + P.U. remisé, Σ des totaux de ligne = Total HT.
         from ..montants import lignes_remisees
         (_it, pu_cat, pu_ht, _tot_cat, total,
-         _remisee) = lignes_remisees([it])[0]
+         _remisee) = lignes_remisees(
+            [it], catalogue_seul=bool(d.get("regles_calcul_origine")))[0]
         taux = _num(it.get("taux_tva"))
         taux_txt = f"{taux:g}\u202f%"
         marque = (it.get("marque") or "").strip()

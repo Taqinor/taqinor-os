@@ -213,7 +213,10 @@ def build(ctx) -> str:
     acompte = pay.get("acompte", 30)
     # AMOT19 — le builder sert les pourcentages des CASES de la branche
     # imprimée ; un créneau absent vaut 0 et n'est pas imprimé.
-    materiel = pay.get("materiel", 0)
+    # Décision fondateur 08/10/2026 — devis envoyé avant AMOT19 : défaut et
+    # créneau « matériel » imprimés comme hier.
+    _origine = bool(d.get("regles_calcul_origine"))
+    materiel = pay.get("materiel", 60 if _origine else 0)
     solde = pay.get("solde", 10)
     tva_note = (d.get("tva_note", "") or "").strip()
     # The builder's note already starts with "TVA :"; drop it so it doesn't
@@ -286,7 +289,7 @@ def build(ctx) -> str:
 
     # ── Conditions (compact) ────────────────────────────────────────────────
     _morceaux = [f"{acompte}% à la commande"]
-    if materiel:
+    if materiel or _origine:
         _morceaux.append(f"{materiel}% à la réception du matériel")
     _morceaux.append(f"{solde}% à la mise en service")
     paiement = " &middot; ".join(_morceaux)

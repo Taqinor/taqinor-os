@@ -34,9 +34,11 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
 # paquets premium ; même double chemin d'import.
 try:
-    from .montants import fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr
+    from .montants import (fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr,
+                           poser_regles_origine, regles_origine)
 except ImportError:  # exécution directe du moteur depuis son dossier
-    from montants import fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr
+    from montants import (fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr,
+                          poser_regles_origine, regles_origine)
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -926,7 +928,10 @@ def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
         # AMOT19 — un créneau ABSENT de l'échéancier (deux tranches : matériel
         # à 0) n'est jamais imprimé « 0 % à la réception du matériel » : la
         # puce qui le porte est omise, comme les cases du « Devis final ».
-        if "{materiel}" in str(raw) and _pct_nul(materiel):
+        # Décision fondateur 08/10/2026 — devis envoyé avant AMOT19 : les puces
+        # d'hier (rien d'omis).
+        if ("{materiel}" in str(raw) and _pct_nul(materiel)
+                and not regles_origine()):
             continue
         try:
             txt = raw.format(
@@ -1990,7 +1995,10 @@ def page1():
         # d'arrondi que le total qu'il barre.
         _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
-        _disc_str = f"\u2212{pct_fr(DISCOUNT_PCT)}\u202f%"  # AMOT24
+        # AMOT24 ; devis envoyé avant la correction (décision 08/10/2026) :
+        # la remise tronquée d'hier.
+        _disc_str = (f"\u2212{int(DISCOUNT_PCT)}\u202f%" if regles_origine()
+                     else f"\u2212{pct_fr(DISCOUNT_PCT)}\u202f%")
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_s_before}</div>'
@@ -4461,7 +4469,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
       <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
-      {'' if _pct_nul(PAY_M) else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
+      {'' if (_pct_nul(PAY_M) and not regles_origine()) else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
       <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
       <span>&#183; {TVA_NOTE}</span>
       {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
@@ -4726,6 +4734,9 @@ def generate_premium_pdf(data: dict, out_path) -> str:
 
     Items dicts must have: designation, quantite, prix_unit_ttc, marque.
     """
+    # Décision fondateur 08/10/2026 — un devis envoyé avant les
+    # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
+    poser_regles_origine((data or {}).get("regles_calcul_origine"))
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
@@ -5140,6 +5151,9 @@ def render_html_for(data: dict) -> str:
     concurrent doit prendre ``_RENDER_LOCK`` lui-même**, ou passer par
     ``generate_premium_pdf``.
     """
+    # Décision fondateur 08/10/2026 — un devis envoyé avant les
+    # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
+    poser_regles_origine((data or {}).get("regles_calcul_origine"))
     # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
     # options (pas d'onduleur) : le document complet est le renderer agricole
     # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ

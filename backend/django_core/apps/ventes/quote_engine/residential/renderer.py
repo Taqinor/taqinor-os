@@ -383,6 +383,10 @@ def render_pdf_bytes(data: dict) -> bytes:
     nombre de pages (impossible en pratique : la garde de 4 mm l'empêche),
     le passe-1 est servi — jamais de régression de pagination.
     """
+    # Décision fondateur 08/10/2026 — un devis envoyé avant les
+    # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
+    from ..montants import poser_regles_origine
+    poser_regles_origine((data or {}).get("regles_calcul_origine"))
     from weasyprint import HTML
     from . import render as residential_render
 
