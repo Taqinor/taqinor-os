@@ -423,6 +423,12 @@ function IndicationRegistre({ chemin, busy, onRegenerer }) {
  * @param {function} onVoirPdf   EDC4 (contrat EDC, optionnel) — « Voir le PDF »
  *                               de la barre d'actions, en embarqué et sur un
  *                               devis existant seulement : le panneau décide.
+ * @param {function} onDirtyChange EDC7 (contrat EDC, optionnel) — appelée avec
+ *                               `dirty` (booléen) à chaque changement.
+ * @param {function} onEnregistre  EDC7 (contrat EDC, optionnel) — succès de
+ *                               l'enregistrement d'un devis EXISTANT en
+ *                               embarqué : l'écran reste ouvert (sans elle,
+ *                               repli sur `onDone` comme avant).
  */
 export default function DevisGenerator({
   embedded = false,
@@ -433,6 +439,8 @@ export default function DevisGenerator({
   onDone = null,
   onCancel = null,
   onVoirPdf = null,
+  onDirtyChange = null,
+  onEnregistre = null,
 } = {}) {
   const navigate = useNavigate()
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
@@ -1015,6 +1023,10 @@ export default function DevisGenerator({
     version: editId ? (editDevis?.updated_at ?? null) : undefined,
   })
   useDirtyGuard(dirty)
+  // EDC7 (contrat EDC) — le panneau suit l'état « non enregistré » de l'écran
+  // (sorties protégées EDC6, « Voir le PDF » EDC11) : appelée à chaque
+  // changement de `dirty`, jamais une valeur déduite côté panneau.
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
   // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
   // d'avant QJR581 sans version) il est purgé, avec une notice.
@@ -3633,8 +3645,27 @@ export default function DevisGenerator({
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // EDC7 — capturé AVANT l'écriture : `editDevis` décide édition vs création.
+    const enEdition = Boolean(editDevis)
     const res = await persisterDevis()
-    if (res) { clear(); marquerEnregistre(); finish(res.devisId, res.devisCree) }
+    if (!res) return
+    clear(); marquerEnregistre()
+    // EDC7 (contrat EDC, fondateur 09/10/2026 : « l'édition complète revient
+    // d'un coup au devis ») — un devis EXISTANT enregistré en Édition complète
+    // embarquée RESTE dans l'éditeur, avec tout son état : le jeton vient
+    // d'être ré-armé par `persisterDevis`, `marquerEnregistre()` remet `dirty`
+    // à faux, la version locale suit `updated_at` (un brouillon local écrit
+    // ensuite porte la BONNE version, QJR581) et l'historique des versions se
+    // relit. Sans `onEnregistre` : `onDone` comme avant ; la création appelle
+    // toujours `onDone` (le panneau bascule alors sur l'aperçu).
+    if (embedded && enEdition && onEnregistre) {
+      setEditDevis(d => (d && jetonRef.current ? { ...d, updated_at: jetonRef.current } : d))
+      setVersionHistorique(n => n + 1)
+      toast.success('Modifications enregistrées.')
+      onEnregistre(res.devisId)
+      return
+    }
+    finish(res.devisId, res.devisCree)
   }
 
   // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
@@ -5397,7 +5428,12 @@ export default function DevisGenerator({
                          title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">
-              {embedded
+              {/* EDC7 — en Édition complète embarquée, l'écran RESTE ouvert
+                  après l'enregistrement : le texte le dit. */}
+              {embedded && editDevis && onEnregistre
+                ? "Vérifiez puis enregistrez : l'écran reste ouvert après l'enregistrement."
+                  + (onVoirPdf ? ' « Voir le PDF », en haut, affiche le document.' : '')
+                : embedded
                 ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
                   + 'avec son PDF, sans quitter la fiche du lead.'
                 : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
