@@ -1301,21 +1301,36 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `montant` (la trace figée à la création)."""
         facture = self.get_object()
         from ..services import LinkError, create_payment_link
-        from ..payments.providers import get_provider
+        from ..domain.encaissements import url_page_paiement
+        from ..payments.providers import get_provider, providers_lien_actifs
         provider_key = request.data.get('provider') or 'noop'
+        # AFAC21 (C-AFAC-020) — clé validée contre la LISTE BLANCHE des
+        # fournisseurs de lien activés AVANT toute écriture : une clé
+        # inconnue créait un lien (201), un fournisseur sans session un 500
+        # avec lien orphelin, une clé trop longue un 500 ``DataError``.
+        if (not isinstance(provider_key, str)
+                or provider_key not in providers_lien_actifs()):
+            return Response(
+                {'detail': 'Fournisseur de paiement inconnu ou inactif.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             link = create_payment_link(facture=facture, provider=provider_key)
         except LinkError as exc:
             return Response({'detail': exc.message},
                             status=status.HTTP_400_BAD_REQUEST)
         session = get_provider(link.provider).create_session(link)
+        # AFAC21 — URL ABSOLUE de la page client : le réglage d'abord, sinon
+        # l'hôte de CETTE requête (jamais un chemin ``/api/…`` relatif).
+        pay_url = session.get('pay_url') or ''
+        if link.provider == 'noop' or not pay_url.startswith('http'):
+            pay_url = url_page_paiement(link.token, request)
         return Response({
             'token': link.token,
             'statut': link.statut,
             'montant': str(link.montant),
             'montant_a_payer': str(link.montant_a_payer),
             'provider': link.provider,
-            'pay_url': session.get('pay_url'),
+            'pay_url': pay_url,
             'expires_at': link.expires_at.isoformat(),
         }, status=status.HTTP_201_CREATED)
 

@@ -76,7 +76,11 @@ class PaymentLinkTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.data['provider'], 'noop')
         self.assertEqual(Decimal(resp.data['montant']), Decimal('1200.00'))
-        self.assertIn('/api/django/public/pay/', resp.data['pay_url'])
+        # AFAC21 — URL ABSOLUE de la page client (liste figée mise à jour
+        # volontairement : l'ancien chemin `/api/django/public/pay/` relatif).
+        self.assertTrue(resp.data['pay_url'].startswith('http'),
+                        resp.data['pay_url'])
+        self.assertIn(f"/payer/{resp.data['token']}", resp.data['pay_url'])
         self.assertTrue(PaymentLink.objects.filter(
             facture=self.facture).exists())
 
