@@ -254,8 +254,8 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             return refus
         return super().destroy(request, *args, **kwargs)
 
-    @extend_schema(responses=oa.liste(FolderSerializer()))
-    @action(detail=True, methods=['get'], url_path='descendants')
+    @extend_schema(responses=FolderSerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='descendants', pagination_class=None)
     def descendants(self, request, pk=None):
         """Sous-arbre strict du dossier (via le chemin matérialisé)."""
         folder = self.get_object()
@@ -373,8 +373,8 @@ class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
-    @extend_schema(responses=oa.liste(DocumentSerializer()))
-    @action(detail=True, methods=['get'], url_path='documents')
+    @extend_schema(responses=DocumentSerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='documents', pagination_class=None)
     def documents(self, request, pk=None):
         """Documents rattachés à ce coffre (l'accès au coffre est déjà filtré
         par `get_queryset` — un non-propriétaire reçoit un 404 sur le coffre)."""
@@ -1270,8 +1270,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = DocumentSerializer(document, context={'request': request}).data
         return Response(data)
 
-    @extend_schema(responses=oa.liste(DocumentVersionSerializer()))
-    @action(detail=True, methods=['get'], url_path='historique')
+    @extend_schema(responses=DocumentVersionSerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='historique', pagination_class=None)
     def historique(self, request, pk=None):
         """GED15 — Historique complet des versions d'un document (scopé société).
 
@@ -1770,8 +1770,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 demande, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(responses=oa.liste(DemandeApprobationSerializer()))
-    @action(detail=True, methods=['get'], url_path='demandes')
+    @extend_schema(responses=DemandeApprobationSerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='demandes', pagination_class=None)
     def demandes(self, request, pk=None):
         """GED18 — Demandes d'approbation/revue de ce document (récentes d'abord).
 
@@ -1907,8 +1907,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=oa.SCINDER_CORPS,
-                   responses={201: oa.liste(DocumentSerializer())})
-    @action(detail=True, methods=['post'], url_path='scinder')
+                   responses={201: DocumentSerializer(many=True)})
+    @action(detail=True, methods=['post'], url_path='scinder', pagination_class=None)
     def scinder(self, request, pk=None):
         """XGED10 — Scinde ce document en segments (chaque segment = un nouveau
         `Document`). Corps : `{"points_de_coupe": [<int>, ...], "version": <id?>}`.
@@ -2118,8 +2118,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 planif, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(responses=oa.liste(oa.TIMELINE_LIGNE))
-    @action(detail=True, methods=['get'], url_path='timeline')
+    @extend_schema(responses=oa.TIMELINE_LIGNE)
+    @action(detail=True, methods=['get'], url_path='timeline', pagination_class=None)
     def timeline(self, request, pk=None):
         """XGED15 — Timeline du document : mêle le journal auto
         (`DocumentActivity`) et les notes/@mentions (`records.Comment`, via le
@@ -2562,8 +2562,8 @@ class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
     @extend_schema(parameters=oa.Q_TAG_DOCS,
-                   responses=oa.liste(DocumentSerializer()))
-    @action(detail=True, methods=['get'], url_path='documents')
+                   responses=DocumentSerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='documents', pagination_class=None)
     def documents(self, request, pk=None):
         """Documents portant ce tag (ACL coffre appliquée). `?descendants=1`
         inclut les documents des sous-tags de la taxonomie."""
@@ -2829,8 +2829,8 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company,
             created_by=self.request.user)
 
-    @extend_schema(responses=oa.liste(oa.ECHU_LIGNE))
-    @action(detail=False, methods=['get'], url_path='echus')
+    @extend_schema(responses=oa.ECHU_LIGNE)
+    @action(detail=False, methods=['get'], url_path='echus', pagination_class=None)
     def echus(self, request):
         """GED22 — Liste les documents ÉCHUS au regard de leur politique.
 
@@ -3908,8 +3908,8 @@ class DemandeDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(
         parameters=[oa.P('folder', oa.ID, required=True,
                          description='Dossier.')],
-        responses=oa.liste(oa.CHECKLIST_LIGNE))
-    @action(detail=False, methods=['get'], url_path='checklist')
+        responses=oa.CHECKLIST_LIGNE)
+    @action(detail=False, methods=['get'], url_path='checklist', pagination_class=None)
     def checklist(self, request):
         """XGED8 — Checklist requis/présent/manquant d'un dossier.
 
@@ -4027,7 +4027,7 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, auteur=self.request.user)
 
-    @extend_schema(responses=oa.TAMPON)
+    @extend_schema(responses={200: oa.TAMPON})
     @action(detail=False, methods=['get'], url_path='tampons')
     def tampons(self, request):
         """XGED16 — Tampons disponibles pour la société (système + propres)."""
@@ -4125,8 +4125,8 @@ class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
-    @extend_schema(responses=oa.liste(ExecutionRegleDossierSerializer()))
-    @action(detail=True, methods=['get'], url_path='executions')
+    @extend_schema(responses=ExecutionRegleDossierSerializer(many=True))
+    @action(detail=True, methods=['get'], url_path='executions', pagination_class=None)
     def executions(self, request, pk=None):
         """PACT132 — Dernières exécutions de cette règle (journal, lecture
         seule). `GET …/regles-dossier/<id>/executions/` — les 20 plus

@@ -33,11 +33,6 @@ FLAG_VRAI = ['1', 'true']
 ID_OU_NULL = {'type': 'string', 'pattern': '^(null|[0-9]+)$'}
 
 
-def liste(serializer):
-    """Liste NON paginée d'un serializer (drf-spectacular paginerait ``many``)."""
-    return s.ListField(child=serializer)
-
-
 # ── Paramètres de requête (par vue) ─────────────────────────────────────────
 Q_DOCUMENT = P('document', ID, description='Identifiant du document.')
 Q_FOLDER = P('folder', ID, description='Identifiant du dossier.')
@@ -268,7 +263,7 @@ OPERATIONS_LOT_REPONSE = S('OperationsLotReponse', {
     'resultats': s.ListField(child=s.JSONField()),
     'erreurs': s.ListField(child=s.JSONField()),
 })
-TIMELINE_LIGNE = S('TimelineLigne', {
+TIMELINE_LIGNE = S('TimelineLigne', many=True, champs={
     'type': s.CharField(),
     'evenement': s.CharField(),
     'message': s.CharField(allow_blank=True, allow_null=True),
@@ -276,7 +271,7 @@ TIMELINE_LIGNE = S('TimelineLigne', {
     'created_at': s.DateTimeField(),
 })
 PAGES_REPONSE = S('VersionPagesReponse', {'pages': s.IntegerField()})
-ECHU_LIGNE = S('DocumentEchu', {
+ECHU_LIGNE = S('DocumentEchu', many=True, champs={
     'document': s.IntegerField(),
     'document_nom': s.CharField(),
     'politique': s.IntegerField(),
@@ -305,12 +300,12 @@ TABLEAU_BORD = S('TableauBordSignatures', {
     'colonnes': s.DictField(child=s.ListField(child=s.JSONField())),
     'total': s.IntegerField(),
 })
-CHECKLIST_LIGNE = S('ChecklistLigne', {
+CHECKLIST_LIGNE = S('ChecklistLigne', many=True, champs={
     'exigence': ExigenceDossierSerializer(),
     'statut': s.CharField(),
     'demande': DemandeDocumentSerializer(allow_null=True),
 })
-TAMPON = s.ListField(child=s.CharField())
+TAMPON = {'type': 'array', 'items': {'type': 'string'}}
 RECENTS = S('MesRecents', {
     'consultes': DocumentSerializer(many=True),
     'deposes': DocumentSerializer(many=True),

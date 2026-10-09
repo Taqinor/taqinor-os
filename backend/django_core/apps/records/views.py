@@ -188,10 +188,9 @@ class ChatterViewSetMixin:
     coexistent avec le journal maison éventuel de la vue (ex. l'action
     ``historique`` de ``ContratViewSet``), sur des URL distinctes."""
 
-    @extend_schema(responses=drf.ListField(
-        child=ChatterActivitySerializer()))
+    @extend_schema(responses=ChatterActivitySerializer(many=True))
     @action(detail=True, methods=['get'], url_path='chatter/historique',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def chatter_historique(self, request, pk=None):
         from .services import chatter_qs
         target = self.get_object()
@@ -251,6 +250,9 @@ def _scoped(qs, user):
 
 # ── Types d'activité ────────────────────────────────────────────────
 class ActivityTypeViewSet(viewsets.ModelViewSet):
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = ActivityType.objects.all()
     serializer_class = ActivityTypeSerializer
     parser_classes = [JSONParser]
 
@@ -274,6 +276,9 @@ class ActivityTypeViewSet(viewsets.ModelViewSet):
 )
 # ── Activités ───────────────────────────────────────────────────────
 class ActivityViewSet(viewsets.ModelViewSet):
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = Activity.objects.all()
     serializer_class = ActivitySerializer
     parser_classes = [JSONParser]
 
@@ -921,6 +926,9 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     Lecture : tout rôle. Création/modification : propriétaire ou admin.
     Suppression : admin seulement. Scopé société (company posée côté serveur)."""
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = Comment.objects.all()
     serializer_class = CommentSerializer
     parser_classes = [JSONParser]
 
@@ -997,6 +1005,9 @@ class CommentViewSet(viewsets.ModelViewSet):
 )
 # ── Pièces jointes ──────────────────────────────────────────────────
 class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = Attachment.objects.all()
     serializer_class = AttachmentSerializer
     # ENF7 (D2) — seul le dépôt de fichier est multipart ; le reste est JSON.
     parser_classes = [JSONParser]
@@ -1099,6 +1110,9 @@ class TagViewSet(viewsets.ModelViewSet):
 
     Lecture : tout rôle. Création/modification : responsable ou admin.
     Suppression : admin seulement. company posée côté serveur."""
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = Tag.objects.all()
     serializer_class = TagSerializer
     parser_classes = [JSONParser]
 
@@ -1131,6 +1145,9 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
 
     Lecture : tout rôle (filtrage par model+id). Création/suppression :
     responsable ou admin. company déduite du tag (jamais du corps)."""
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = TaggedItem.objects.all()
     serializer_class = TaggedItemSerializer
     parser_classes = [JSONParser]
 
@@ -1200,6 +1217,9 @@ class FollowerViewSet(viewsets.ModelViewSet):
     abonnements). Création : tout rôle (suivre est une action personnelle,
     jamais restreinte à un rôle). Suppression : seulement son propre abonnement.
     Company posée côté serveur, jamais lue du corps de requête."""
+    # Type du paramètre de chemin `id` pour le schéma OpenAPI (ENF7) ; le
+    # périmètre société reste appliqué par `get_queryset`.
+    queryset = Follower.objects.all()
     serializer_class = FollowerSerializer
     parser_classes = [JSONParser]
 
