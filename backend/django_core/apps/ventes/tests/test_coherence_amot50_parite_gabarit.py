@@ -22,6 +22,12 @@ from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
 
+# Ancrage RÉEL (12 factures) : sans lui la synthèse économies est omise du
+# gabarit (Z2/M1) et la parité ne compare plus rien (faux vert).
+_ANCRAGE = {'factures_mensuelles_reelles': [900, 850, 800, 750, 800, 950, 1100,
+                                            1150, 1000, 850, 800, 900],
+            'distributeur': 'onee', 'ville': 'casablanca'}
+
 _LIGNES = [
     ('Panneau mono 550W', '10', '1100'),
     ('Onduleur réseau Huawei 5kW', '1', '8000'),
@@ -39,7 +45,7 @@ class PariteGabaritTests(TestCase):
             self.company, self.user, make_client(self.company), _LIGNES,
             reference='DEV-AMOT50-1',
             etude_params=dict(DEUX_OPTIONS, production_annuelle=9000,
-                              economies_annuelles=12000))
+                              economies_annuelles=12000, **_ANCRAGE))
         self.data = build_quote_data(self.devis,
                                      clean_pdf_options({'pdf_mode': 'full'}))
 
