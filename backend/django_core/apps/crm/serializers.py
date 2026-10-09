@@ -2100,7 +2100,6 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
     ce qu'un rejeu va faire."""
     lead_nom = serializers.CharField(
         source='lead.nom', read_only=True, default=None,
-        source='lead.nom', read_only=True, default=None,
         allow_null=True)
     source_display = serializers.CharField(
         source='get_source_display', read_only=True)
