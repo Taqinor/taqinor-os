@@ -58,7 +58,7 @@ class EntiteViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'tree', OpenApiTypes.STR, required=False, enum=['1'],
+            'tree', OpenApiTypes.STR, required=False,
             description='1 = arbre imbriqué (liste de racines).')])
     def list(self, request, *args, **kwargs):
         if request.query_params.get('tree') == '1':

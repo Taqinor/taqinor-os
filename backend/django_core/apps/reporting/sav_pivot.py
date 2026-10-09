@@ -24,7 +24,7 @@ def _co(user):
     parameters=[
         OpenApiParameter('rows', OpenApiTypes.STR, required=False),
         OpenApiParameter('columns', OpenApiTypes.STR, required=False),
-        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): OpenApiTypes.ANY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})

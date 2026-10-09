@@ -22,8 +22,7 @@ _FILTRES = [
     OpenApiParameter('type', OpenApiTypes.STR, required=False),
     OpenApiParameter('depuis', OpenApiTypes.DATETIME, required=False),
     OpenApiParameter('jusqua', OpenApiTypes.DATETIME, required=False),
-    OpenApiParameter('restaures', OpenApiTypes.STR, required=False,
-                     enum=['1', 'true', 'True', '0', 'false']),
+    OpenApiParameter('restaures', OpenApiTypes.STR, required=False),
 ]
 
 

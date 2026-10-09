@@ -173,8 +173,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         return qs
 
     @extend_schema(
-        parameters=[OpenApiParameter('mine', OpenApiTypes.STR, required=False,
-                                     enum=['1', 'true', '0', 'false'])],
+        parameters=[OpenApiParameter('mine', OpenApiTypes.STR, required=False)],
         responses={200: _LISTE_OBJETS})
     def list(self, request, *args, **kwargs):
         lignes = [selectors.ligne_visite_terrain(visite)

@@ -66,7 +66,7 @@ def _monthly_factor(periodicite):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): OpenApiTypes.ANY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})

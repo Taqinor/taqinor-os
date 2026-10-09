@@ -125,7 +125,7 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
         OpenApiParameter('technicien', OpenApiTypes.INT, required=True),
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
-        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): OpenApiTypes.ANY,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})

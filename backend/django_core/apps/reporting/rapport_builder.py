@@ -167,8 +167,7 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         return Response({'rows': rows, 'pivot': pivot})
 
     @extend_schema(
-        parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False,
-                                     enum=['csv', 'xlsx'])],
+        parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False)],
         responses={(200, 'text/csv'): OpenApiTypes.STR,
                    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='export')

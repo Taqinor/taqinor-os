@@ -1726,7 +1726,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'format', OpenApiTypes.STR, required=False, enum=['html'])],
+            'format', OpenApiTypes.STR, required=False)],
         responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
                    (200, 'text/html'): OpenApiTypes.STR})
     @action(detail=True, methods=['get'], url_path='demo-kit',

@@ -41,8 +41,7 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 _ENABLED = OpenApiParameter(
-    'enabled', OpenApiTypes.STR, required=False,
-    enum=['0', '1', 'true', 'false'])
+    'enabled', OpenApiTypes.STR, required=False)
 _RULE = OpenApiParameter('rule', OpenApiTypes.INT, required=False)
 _STATUS = OpenApiParameter('status', OpenApiTypes.STR, required=False)
 _SANS_CORPS = extend_schema(request=None)
@@ -398,8 +397,7 @@ class ApprovalRequestTypeViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[
-    _STATUS, OpenApiParameter('mine', OpenApiTypes.STR, required=False,
-                              enum=['1', 'true'])]))
+    _STATUS, OpenApiParameter('mine', OpenApiTypes.STR, required=False)]))
 class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     """Demandes d'approbation ad-hoc (XKB2) : soumission par tout employé,
     décision réservée au palier propriétaire (admin/responsable), et

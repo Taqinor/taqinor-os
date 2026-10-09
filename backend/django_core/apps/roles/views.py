@@ -342,8 +342,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter('dormant_days', OpenApiTypes.INT, required=False),
-            OpenApiParameter('format', OpenApiTypes.STR, required=False,
-                             enum=['csv']),
+            OpenApiParameter('format', OpenApiTypes.STR, required=False),
         ],
         responses={
             (200, 'application/json'): inline_serializer('RevueAcces', {

@@ -145,8 +145,7 @@ def _period_bounds(period, anchor):
 
 @extend_schema(
     parameters=FILTRES_AUDIT + [
-        OpenApiParameter('period', OpenApiTypes.STR, required=False,
-                         enum=['jour', 'semaine', 'mois']),
+        OpenApiParameter('period', OpenApiTypes.STR, required=False),
         OpenApiParameter('date', OpenApiTypes.STR, required=False),
     ],
     responses=OpenApiTypes.ANY)

@@ -291,8 +291,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         parameters=[
             OpenApiParameter('months', OpenApiTypes.INT, required=False,
                              default=12),
-            OpenApiParameter('export', OpenApiTypes.STR, required=False,
-                             enum=['csv']),
+            OpenApiParameter('export', OpenApiTypes.STR, required=False),
         ],
         responses={
             (200, 'application/json'): inline_serializer(
@@ -481,10 +480,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('period', OpenApiTypes.STR, required=False,
-                             enum=['monthly', 'quarterly']),
-            OpenApiParameter('format', OpenApiTypes.STR, required=False,
-                             enum=['pdf']),
+            OpenApiParameter('period', OpenApiTypes.STR, required=False),
+            OpenApiParameter('format', OpenApiTypes.STR, required=False),
         ],
         responses={(200, 'application/json'): OpenApiTypes.OBJECT,
                    (200, 'application/pdf'): OpenApiTypes.BINARY})

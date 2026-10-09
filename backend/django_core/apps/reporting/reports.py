@@ -111,7 +111,7 @@ def _compare_kpi(current, previous):
         OpenApiParameter('compare', OpenApiTypes.STR, required=False),
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
-        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx', 'pdf']),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): OpenApiTypes.ANY,
                (200, 'application/pdf'): OpenApiTypes.BINARY,
@@ -245,7 +245,7 @@ def sales_report(request):
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
-        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx', 'pdf']),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): OpenApiTypes.ANY,
                (200, 'application/pdf'): OpenApiTypes.BINARY,
@@ -350,7 +350,7 @@ def stock_report(request):
     parameters=[
         OpenApiParameter('from', OpenApiTypes.STR, required=False),
         OpenApiParameter('to', OpenApiTypes.STR, required=False),
-        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx', 'pdf']),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
     ],
     responses={(200, 'application/json'): OpenApiTypes.ANY,
                (200, 'application/pdf'): OpenApiTypes.BINARY,
@@ -457,7 +457,7 @@ def service_report(request):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('vue', OpenApiTypes.STR, required=False, enum=['badges']),
+        OpenApiParameter('vue', OpenApiTypes.STR, required=False),
     ],
     responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
