@@ -772,18 +772,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
   const addPiece = async () => {
     if (!pieceForm.produit) return
-    // L309/L7 — garde anti-survente : si on décrémente le stock et que la qté
-    // demandée dépasse le stock disponible, avertir avant le POST.
-    if (pieceForm.decrement) {
-      const pr = produits.find((p) => String(p.id) === String(pieceForm.produit))
-      const dispo = Number(pr?.quantite_stock ?? 0)
-      const demande = Number(pieceForm.quantite || '1')
-      if (Number.isFinite(demande) && demande > dispo) {
-        setActionError(
-          `Stock insuffisant : ${dispo} en stock pour ${demande} demandé(s).`)
-        return
-      }
-    }
+    // ASAV53 — plus de garde locale « Stock insuffisant » : elle jugeait sur
+    // la liste de produits chargée (pièce compatible absente → faux « 0 en
+    // stock »). La garde serveur ERR80 décide, son message est affiché tel quel.
     setPieceBusy(true)
     setActionError(null)
     try {
@@ -1283,7 +1274,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <FormField label="Produit">
               <Select value={pieceForm.produit ? String(pieceForm.produit) : '__none'}
                       onValueChange={(v) => setPieceForm((s) => ({ ...s, produit: v === '__none' ? '' : v }))}>
-                <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectTrigger aria-label="Produit de la pièce"><SelectValue placeholder="— Produit —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Produit —</SelectItem>
                   {piecesCompatiblesOpts.length > 0 && (
