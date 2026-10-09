@@ -123,6 +123,15 @@ class TestGabaritsLisentLaTable(SimpleTestCase):
         # revente`` calculée, contrat partagé), plus une clé d'étude écran.
         base = copy.deepcopy(sample.build())
         base["economie_ci"] = ind_sample.economie_ci()
+        # AMOT40 — le PDF imprime les mentions SERVIES par ``revente_ci`` (et
+        # non plus une mention 82-21 fixe) : la revente porte ici la liste
+        # que le moteur sert réellement (``economie_ci.revente_ci``), pas les
+        # libellés abrégés de l'exemple du contrat.
+        from apps.ventes import economie_ci as eco
+        base["economie_ci"]["revente"]["mentions"] = [
+            MENTION_82_21, eco.MENTION_NON_GARANTI,
+            eco.MENTION_SECOND_COMPTEUR, eco.MENTION_TSS,
+            eco.MENTION_TARIF_ARRETE, MENTION_ART13]
         return base
 
     def test_rendu_reel_des_deux_gabarits(self):
