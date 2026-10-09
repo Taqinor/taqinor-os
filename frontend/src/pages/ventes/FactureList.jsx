@@ -847,14 +847,22 @@ export default function FactureList() {
   const facturesSelectionnees = useMemo(
     () => factures.filter(f => selectedIds.includes(f.id)),
     [factures, selectedIds])
+  // AFAC10 — seules les factures que le SERVEUR déclare encaissables partent
+  // à l'encaissement groupé ; les autres sont écartées ET nommées.
+  const facturesEncaissables = useMemo(
+    () => facturesSelectionnees.filter(f => f.encaissable !== false),
+    [facturesSelectionnees])
+  const facturesEcartees = useMemo(
+    () => facturesSelectionnees.filter(f => f.encaissable === false),
+    [facturesSelectionnees])
   const clientSelectionUnique = useMemo(() => {
-    const ids = [...new Set(facturesSelectionnees.map(f => f.client))]
+    const ids = [...new Set(facturesEncaissables.map(f => f.client))]
     return ids.length === 1 ? ids[0] : null
-  }, [facturesSelectionnees])
+  }, [facturesEncaissables])
   const openEncaissementGroupe = () => {
     setEncaissementRepartition({})
     setEncaissementForm({
-      montant: String(facturesSelectionnees.reduce(
+      montant: String(facturesEncaissables.reduce(
         (s, f) => s + toNumber(f.montant_du ?? 0), 0)),
       mode: 'virement', date: today, reference: '',
     })
@@ -872,11 +880,14 @@ export default function FactureList() {
         mode: encaissementForm.mode,
         date: encaissementForm.date,
         reference: encaissementForm.reference,
-        factures: selectedIds,
+        factures: facturesEncaissables.map(f => f.id),
         ...(Object.keys(repartition).length ? { repartition } : {}),
       })
       const n = Array.isArray(data) ? data.length : 0
-      toast.success(`Encaissement réparti sur ${n} facture(s).`)
+      toast.success(`Encaissement réparti sur ${n} facture(s).`
+        + (facturesEcartees.length
+          ? ` Écartée(s) car non encaissable(s) : ${facturesEcartees.map(f => f.reference).join(', ')}.`
+          : ''))
       setEncaissementOpen(false)
       clearSelection()
       dispatch(fetchFactures())
@@ -1399,8 +1410,11 @@ export default function FactureList() {
           <DialogHeader>
             <DialogTitle>Encaissement groupé</DialogTitle>
             <DialogDescription>
-              Un seul règlement réparti sur les {selectedIds.length} facture(s)
-              sélectionnées, de la plus ancienne échéance à la plus récente.
+              Un seul règlement réparti sur les {facturesEncaissables.length} facture(s)
+              encaissables, de la plus ancienne échéance à la plus récente.
+              {facturesEcartees.length > 0 && (
+                <> Écartée(s) car non encaissable(s) : {facturesEcartees.map(f => f.reference).join(', ')}.</>
+              )}
               Renseignez la répartition ci-dessous pour la forcer.
             </DialogDescription>
           </DialogHeader>
@@ -1442,7 +1456,7 @@ export default function FactureList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {facturesSelectionnees.map(f => (
+                  {facturesEncaissables.map(f => (
                     <tr key={f.id}>
                       <td data-label="Facture">{f.reference}</td>
                       <td className="ta-right tabular-nums" data-label="Reste dû">
@@ -1651,7 +1665,9 @@ export default function FactureList() {
                     disabled={bulkBusy || wir183Busy || !clientSelectionUnique}
                     title={clientSelectionUnique
                       ? undefined
-                      : 'Sélectionnez des factures d’un SEUL client'}
+                      : (facturesEncaissables.length === 0
+                        ? 'Aucune facture sélectionnée n’est encaissable'
+                        : 'Sélectionnez des factures d’un SEUL client')}
                     onClick={openEncaissementGroupe}
                     className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
                   >
