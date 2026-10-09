@@ -7,6 +7,8 @@ import { vi } from 'vitest'
 import authReducer from '../features/auth/store/authSlice'
 import ventesReducer from '../features/ventes/store/ventesSlice'
 import DevisGenerator from '../pages/ventes/DevisGenerator'
+import { estimerMois } from '../features/ventes/solar'
+import { exempleContrat } from './fixtures/contractSamples'
 
 /* EDC (gardes CI) — banc PARTAGÉ des tests du générateur en Édition complète.
 
@@ -53,6 +55,18 @@ export const DEVIS_INSTALLATION = {
   ],
 }
 
+/** Devis n° 42 brouillon sur le lead 7 (exemple COMMITTÉ du contrat PACT10). */
+export function devisBrouillonLead7() {
+  const contrat = exempleContrat('ventes', 'devis_modifiabilite', 'exemple_brouillon')
+  return {
+    data: {
+      ...DEVIS_EDITION, ...contrat, id: 42, lead: 7, client: 9, lead_nom: 'Karim Brouillon',
+      updated_at: '2026-09-30T10:00:00Z',
+      etude_params: { scenario: 'Sans batterie', factures_mensuelles_reelles: estimerMois(2000, 2000) },
+    },
+  }
+}
+
 /** Store minimal du générateur : `auth` (rôle au choix) + `ventes`. */
 export function makeStoreGenerateur({
   role = 'normal', roleNom = 'Commercial', permissions = [],
@@ -89,6 +103,17 @@ export function renderGenerateurPage(route = '/ventes/devis/nouveau?edit=42') {
         <Routes>
           <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
         </Routes>
+      </MemoryRouter>
+    </Provider>,
+  )
+}
+
+/** Générateur nu (route par défaut) pour un rôle / des permissions donnés. */
+export function renderGenerateurRole({ role_nom: roleNom, permissions }) {
+  return render(
+    <Provider store={makeStoreGenerateur({ roleNom, permissions })}>
+      <MemoryRouter>
+        <DevisGenerator />
       </MemoryRouter>
     </Provider>,
   )

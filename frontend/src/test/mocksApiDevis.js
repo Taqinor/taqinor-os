@@ -20,19 +20,20 @@ import { vi } from 'vitest'
 const vide = () => Promise.resolve({ data: {} })
 
 // Clients / leads : listes vides, lead introuvable.
-export function crmApiMock() {
+export function crmApiMock(extra = {}) {
   return {
     default: {
       getClients: vi.fn(() => Promise.resolve({ data: [] })),
       getLeads: vi.fn(() => Promise.resolve({ data: [] })),
       getLead: vi.fn(() => Promise.resolve({ data: null })),
+      ...extra,
     },
   }
 }
 
 // Catalogue vide (les tests posent leurs produits dans `beforeEach`).
-export function stockApiMock() {
-  return { default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) } }
+export function stockApiMock(extra = {}) {
+  return { default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })), ...extra } }
 }
 
 export function parametresApiMock() {
@@ -41,7 +42,7 @@ export function parametresApiMock() {
 
 // ventesApi du GÉNÉRATEUR embarqué : tout ce que `DevisGenerator` appelle.
 // `getDevisById`, `replaceLignesDevis`… sont posés par chaque test.
-export function ventesApiMock() {
+export function ventesApiMock(extra = {}) {
   return {
     default: {
       getDevisById: vi.fn(),
@@ -56,6 +57,7 @@ export function ventesApiMock() {
       patchEtudeParams: vi.fn(),
       poserOverrides: vi.fn(),
       regenererOverride: vi.fn(),
+      ...extra,
     },
   }
 }
@@ -72,6 +74,21 @@ export function ventesApiPanneauMock() {
       creerDevisAuto: vi.fn(),
       getParametresGammes: vi.fn(vide),
     },
+  }
+}
+
+// API « tout répond » : chaque méthode lue est un `vi.fn` qui résout
+// `{ data: {} }` (ou `reponse()`) ; le test pose seulement les réponses qui comptent.
+export function apiAutoMock(reponse = () => Promise.resolve({ data: {} })) {
+  const fns = {}
+  return {
+    default: new Proxy(fns, {
+      get(cible, cle) {
+        if (typeof cle !== 'string' || cle === 'then' || cle === '__esModule') return undefined
+        if (!cible[cle]) cible[cle] = vi.fn(reponse)
+        return cible[cle]
+      },
+    }),
   }
 }
 

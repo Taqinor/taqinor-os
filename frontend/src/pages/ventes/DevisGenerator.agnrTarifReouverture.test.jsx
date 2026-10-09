@@ -7,29 +7,16 @@
 //
 // Harnais du golden (seules les quatre API sont mockées) ; assert sur le
 // corps `replace-lines` enregistré.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, waitFor, fireEvent, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { cycleEcran } from '../../test/cycleEcran'
+import { act, waitFor, fireEvent } from '@testing-library/react'
 
 import { monter, attendreStable, DEVIS_REGISTRE, LEAD } from './DevisGeneratorGoldenHarnais'
 
-const { apiAuto } = vi.hoisted(() => ({
-  apiAuto: () => {
-    const fns = {}
-    return {
-      default: new Proxy(fns, {
-        get(cible, cle) {
-          if (typeof cle !== 'string' || cle === 'then' || cle === '__esModule') return undefined
-          if (!cible[cle]) cible[cle] = vi.fn(() => Promise.resolve({ data: {} }))
-          return cible[cle]
-        },
-      }),
-    }
-  },
-}))
-vi.mock('../../api/crmApi', () => apiAuto())
-vi.mock('../../api/stockApi', () => apiAuto())
-vi.mock('../../api/parametresApi', () => apiAuto())
-vi.mock('../../api/ventesApi', () => apiAuto())
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 
 // Le devis 42 de la tâche : sans lead, client 9, 1 200,00 @10 % et 9 000,00 @20 %.
 const DEVIS_42 = { ...DEVIS_REGISTRE, id: 42, reference: 'DEV-202610-042' }
@@ -41,21 +28,7 @@ const LISTE_900 = {
   remise_volume: { remise_ligne_pct: '0.00', cascade: [], remise_totale_pct: '0.00' },
 }
 
-beforeEach(() => {
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
-afterEach(() => { cleanup() })
+cycleEcran()
 
 const ligneDe = (container, designation) => [...container.querySelectorAll('tr[data-line-key]')]
   .find((tr) => [...tr.querySelectorAll('input')].some((i) => i.value === designation))
