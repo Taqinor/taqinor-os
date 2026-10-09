@@ -27,6 +27,7 @@
 //                        AGR218 : `attestation` {attestee, le, signataire} →
 //                        `attestation_usage_agricole`.
 import { ligneProduitCatalogue } from '../solar.js'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 const nombre = (v) => {
   const n = parseFloat(v)
@@ -114,14 +115,9 @@ export const ECO_POMPAGE_VIDE = Object.freeze({
 const CARBURANTS = ['butane', 'diesel']
 
 /** AGNR38 — la date du jour à Casablanca (AAAA-MM-JJ). */
+// ADEV73 : la forme unique `todayLocalIso`, jamais un repli UTC (la veille).
 export function aujourdhuiCasablanca(maintenant = new Date()) {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(maintenant)
-  } catch {
-    return maintenant.toISOString().slice(0, 10)
-  }
+  return todayLocalIso(maintenant)
 }
 
 // AGNR38 — la signature de chaque donnée déclarée (forme NORMALISÉE, la même

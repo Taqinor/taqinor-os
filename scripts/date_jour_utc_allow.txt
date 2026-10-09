@@ -36,4 +36,3 @@ frontend/src/pages/ventes/factureKanban.js = 1
 frontend/src/pages/ventes/factureList/factureHelpers.js = 1
 frontend/src/pages/ventes/factureList/useFactureCompta.js = 1
 frontend/src/pages/ventes/generator/CarteEconomiePompage.jsx = 1
-frontend/src/pages/ventes/generator/PanneauAgricole.jsx = 1
