@@ -59,3 +59,11 @@ class CoreConfig(AppConfig):
         # la main immédiatement, aucune ligne n'est écrite.
         from .ai.search import connect_signals
         connect_signals()
+
+        # ENFP (décision fondateur D1, 09/10/2026) — un paramètre de requête
+        # non déclaré au schéma OpenAPI est refusé (400). Enveloppe UNE fois
+        # ``APIView.initial`` ; le réglage ``API_QUERY_PARAMS_STRICT`` est lu
+        # à chaque requête (no-op quand il est faux). Voir
+        # ``core.parametres_requete``.
+        from .parametres_requete import installer
+        installer()
