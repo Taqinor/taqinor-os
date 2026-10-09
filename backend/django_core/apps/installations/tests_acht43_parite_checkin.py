@@ -12,6 +12,7 @@ Run :
 """
 import datetime
 import uuid
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -67,8 +68,9 @@ class PariteCheckinTests(TestCase):
     def test_sync_depart_pose_position(self):
         self._op('intervention.depart_depot', self.sync, lat=33.1, lng=-7.2)
         self.sync.refresh_from_db()
-        self.assertEqual(self.sync.depart_gps_lat, 33.1)
-        self.assertEqual(self.sync.depart_gps_lng, -7.2)
+        # Champs DecimalField : relus de la base en Decimal (pas de float).
+        self.assertEqual(self.sync.depart_gps_lat, Decimal('33.1'))
+        self.assertEqual(self.sync.depart_gps_lng, Decimal('-7.2'))
 
     def test_parite_vue_sync(self):
         self.api.post(f'{BASE}/{self.vue.id}/checkin/',

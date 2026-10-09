@@ -23,7 +23,8 @@ from apps.stock.models import BonCommandeFournisseur, Fournisseur, Produit
 from apps.stock.services import (
     compute_besoin_materiel, draft_bcf_for_shortfall,
 )
-from apps.ventes.models import Client, Devis, LigneDevis
+from apps.crm.models import Client
+from apps.ventes.models import Devis, LigneDevis
 
 User = get_user_model()
 
