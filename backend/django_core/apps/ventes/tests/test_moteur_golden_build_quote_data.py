@@ -16,7 +16,9 @@ chiffre re-capture SES cas seulement ; une tâche SPL ne re-capture JAMAIS.
 
 Temps figé (freezegun) au 2026-10-01 10:00 Africa/Casablanca ; seules les
 deux lectures d'images MinIO sont neutralisées
-(``coherence.contexte.rendu_sans_reseau``) — jamais ``build_quote_data``.
+(``coherence.contexte.rendu_sans_reseau``) — jamais ``build_quote_data`` —
+et le réseau est coupé (``urllib.request.urlopen`` lève : PVGIS prend son repli
+hors-ligne, sinon le golden dépendait de la réponse en ligne).
 Chaque cas tourne dans une transaction ANNULÉE : un ShareLink créé par un cas
 ne change pas le suivant. Masque : jetons ShareLink du devis, clés
 d'identifiant (``split_golden.normaliser``), pk en segment de chemin.
@@ -33,6 +35,7 @@ import os
 import re
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 from django.db import transaction
 from django.test import TestCase
@@ -126,6 +129,17 @@ class MoteurGoldenBuildQuoteDataTests(TestCase):
         self.freezer = freeze_time(INSTANT)
         self.freezer.start()
         self.addCleanup(self.freezer.stop)
+        # HORS RÉSEAU : ``build_quote_data`` interroge PVGIS
+        # (``parametres.pvgis`` / ``pvgis_profils``, ``pvgis_actif`` vrai par
+        # défaut) par ``urllib.request.urlopen``. En ligne, la réponse (ou le
+        # repli sur timeout) changeait d'un processus à l'autre — le cache
+        # locmem la figeait DANS un processus, d'où une re-capture verte puis
+        # une exécution suivante rouge. On coupe le réseau : chaque lecture
+        # prend son repli hors-ligne documenté, identique à chaque exécution.
+        coupure = mock.patch('urllib.request.urlopen',
+                             side_effect=OSError('golden SPL160 hors réseau'))
+        coupure.start()
+        self.addCleanup(coupure.stop)
         self.company = make_company('spl160-golden', 'SPL160 Golden SARL')
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
