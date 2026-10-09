@@ -24,7 +24,20 @@
     }
   },
   "corps_douze_mois_tapes": {
-    "factures_mensuelles_reelles": [420, 410, 430, 450, 640, 700, 760, 780, 690, 520, 440, 430]
+    "factures_mensuelles_reelles": [
+      420,
+      410,
+      430,
+      450,
+      640,
+      700,
+      760,
+      780,
+      690,
+      520,
+      440,
+      430
+    ]
   },
   "exemple": {
     "etude_params": {
@@ -41,7 +54,20 @@
       "entree": "corps_deux_factures",
       "source": "facture_hiver_ete",
       "conso_annuelle_kwh": 5779,
-      "serie_kwh_mensuelle": [310, 310, 310, 310, 653, 653, 653, 653, 653, 653, 310, 310],
+      "serie_kwh_mensuelle": [
+        310,
+        310,
+        310,
+        310,
+        653,
+        653,
+        653,
+        653,
+        653,
+        653,
+        310,
+        310
+      ],
       "methode": "inversion_bareme_tranches",
       "etiquette_ecran": "estimé",
       "libelle_client": "Estimation — deux factures (hiver/été)"
@@ -53,14 +79,6 @@
       "methode": "inversion_bareme_tranches",
       "etiquette_ecran": null,
       "libelle_client": "factures mensuelles réelles"
-    },
-    "facture_hiver": {
-      "entree": "corps_deux_factures_identiques",
-      "source": "facture_hiver",
-      "serie_kwh_mensuelle": "la même valeur sur les douze mois",
-      "methode": "inversion_bareme_tranches",
-      "etiquette_ecran": "estimé",
-      "libelle_client": "Estimation — facture d'hiver"
     }
   }
 }
