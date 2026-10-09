@@ -792,6 +792,13 @@ def generate_proforma_pdf(devis, reference):
     # ERR-QAC-MULTIVILLA-TOTAL-XN — totaux ×N, lignes d'une villa (annoncé).
     from apps.ventes.selectors import nombre_proprietes
     context['nombre_proprietes'] = nombre_proprietes(devis)
+    # APDF29 — date de validité de l'offre (même règle que l'expiration du
+    # devis) ; RIB/banque viennent déjà de `_company_context` (SA société).
+    from apps.ventes.utils.expiry import date_expiration
+    try:
+        context['date_validite'] = date_expiration(devis)
+    except Exception:  # noqa: BLE001 — une date indéterminable n'imprime rien
+        context['date_validite'] = None
     html = _render_html('proforma.html', context)
     return _html_to_pdf(html)
 
