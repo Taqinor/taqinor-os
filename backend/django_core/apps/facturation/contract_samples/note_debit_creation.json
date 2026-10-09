@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/ventes/factures/<int:pk>/creer-note-debit/",
-  "pourquoi": "AFAC20 (C-AFAC-026) — création d'une note de débit (majoration d'une facture émise). La requête est PARTIELLE seulement (AFAC32) : soit des `lignes` saisies, soit un `montant` HT + `taux_tva` — jamais la copie silencieuse de toute la facture. `motif` obligatoire. La réponse est la note sérialisée (`NoteDebitSerializer`), montants en texte décimal ; `lignes` vide quand la note est saisie par montant.",
+  "pourquoi": "AFAC20 (C-AFAC-026) — création d'une note de débit (majoration d'une facture émise). La requête est PARTIELLE seulement (AFAC32) : soit des `lignes` saisies, soit un `montant` HT + `taux_tva` — jamais la copie silencieuse de toute la facture. `motif` obligatoire. La réponse est la note sérialisée (`NoteDebitSerializer`), montants en texte décimal ; `lignes` vide quand la note est saisie par montant. `annulee` (AFAC33) = vrai quand un avoir de note de débit actif la neutralise (son statut reste `emise`).",
   "requete": {
     "motif": "Pénalité de retard — 2e relance",
     "lignes": [
@@ -28,6 +28,7 @@
     "facture": 118,
     "client": 55,
     "statut": "emise",
+    "annulee": false,
     "motif": "Pénalité de retard — 2e relance",
     "date_emission": "2026-10-08",
     "taux_tva": "20.00",

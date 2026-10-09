@@ -814,7 +814,7 @@ def devis_milestones(token):
     paiement = (Paiement.objects
                 .filter(Q(facture__devis=devis)
                         | Q(facture__bon_commande__devis=devis))
-                .exclude(statut=Paiement.Statut.REJETE)
+                .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
                 .order_by('date_paiement', 'id')
                 .first())
     acompte_recu = paiement is not None

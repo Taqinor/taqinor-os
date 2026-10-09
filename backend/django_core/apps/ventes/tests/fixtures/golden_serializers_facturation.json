@@ -1821,6 +1821,13 @@
   },
   "NoteDebitSerializer": {
    "fields": {
+    "annulee": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "client": [
      "PrimaryKeyRelatedField",
      false,
@@ -2039,6 +2046,27 @@
   },
   "PaiementSerializer": {
    "fields": {
+    "annule_le": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "annule_par": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "annule_par_nom": [
+     "CharField",
+     true,
+     false,
+     "annule_par.username",
+     false
+    ],
     "banque_tiree": [
      "CharField",
      false,
@@ -2167,6 +2195,13 @@
     ],
     "montant_disponible": [
      "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "motif_annulation": [
+     "CharField",
      true,
      false,
      null,

@@ -1,6 +1,7 @@
+{# APDF31 (C-APDF-018, D-APDF-3 a) — _L : le texte FRANÇAIS sert de clé ; traduit en arabe par libelles_ar.libelle (TEXTES_AR) ; sans `L` dans le contexte, le texte français tel quel. #}{% macro _L(cle) %}{% if L is defined %}{{ L(cle) }}{% else %}{{ cle }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ langue_document or 'fr' }}"{% if langue_document == 'ar' %} dir="rtl"{% endif %}>
 <head>
   <meta charset="UTF-8" />
   <style>
@@ -50,24 +51,57 @@
 
     .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
     .footer .footer-legal { font-size: 9.5px; color: #b0bec5; margin-top: 4px; }
+    /* APDF28 (C-APDF-010) — règle @page commune (facture, avoir, note de
+       débit, bon de commande) : CHAQUE page porte l'émetteur, son ICE, la
+       référence du document et « Page i / N » — une page isolée reste
+       rattachable à son document. */
+    @page {
+      @top-left {
+        content: "{{ (entreprise_nom or '')|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}{% if entreprise_ice %} — ICE {{ entreprise_ice|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}{% endif %}";
+        font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
+      }
+      @top-right {
+        content: "{{ (avoir.reference or '')|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}";
+        font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " / " counter(pages);
+        font-size: 8px; color: #64748b;
+      }
+    }
+    {% if langue_document == 'ar' %}
+    /* APDF31 — rendu arabe (même règles que la facture, AFAC57/APDF25 :
+       police système, montants en segment LTR). */
+    body { font-family: 'Noto Sans Arabic', 'Helvetica Neue', Arial, sans-serif; direction: rtl; }
+    thead th { text-align: right; }
+    .text-right { text-align: left; }
+    .company-info, .client-block { text-align: left; }
+    .totaux { margin-left: 0; margin-right: 0; }
+    .totaux-row span:last-child, td.text-right {
+      direction: ltr; unicode-bidi: embed; white-space: nowrap;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+    {% endif %}
   </style>
 </head>
 <body>
 <div class="page">
+  {# APDF31 (D-APDF-3) — document non traduit dans la langue du client : la mention de repli est IMPRIMÉE, jamais silencieuse. #}
+  {% if mention_repli %}<div style="margin-bottom: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 10px; color: #475569;">{{ mention_repli }}</div>{% endif %}
 
   <div class="header">
     <div class="header-left">
       {% if logo_uri %}
       <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
       {% endif %}
-      <div class="doc-title">AVOIR</div>
+      <div class="doc-title">{{ _L("AVOIR") }}</div>
       <div class="doc-ref">{{ avoir.reference }}</div>
-      <div class="doc-link">Note de crédit — sur facture {{ avoir.facture.reference }}</div>
+      <div class="doc-link">{{ _L("Note de crédit — sur facture") }} {{ avoir.facture.reference }}</div>
     </div>
     <div class="company-info">
       <strong>{{ entreprise_nom }}</strong><br />
       {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
-      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_telephone %}{{ _L("Tél") }} : {{ entreprise_telephone }}<br />{% endif %}
       {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
       {% if entreprise_tva_intra %}TVA : {{ entreprise_tva_intra }}{% endif %}
     </div>
@@ -75,7 +109,7 @@
 
   <div class="parties">
     <div class="partie-block">
-      <div class="partie-label">Émetteur</div>
+      <div class="partie-label">{{ _L("Émetteur") }}</div>
       <div class="partie-nom">{{ entreprise_nom }}</div>
       <div class="partie-detail">
         {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
@@ -83,7 +117,7 @@
       </div>
     </div>
     <div class="partie-block">
-      <div class="partie-label">Avoir au profit de</div>
+      <div class="partie-label">{{ _L("Avoir au profit de") }}</div>
       {% if avoir.client.type_client == 'entreprise' %}
       <div class="partie-nom">{{ avoir.client.nom }}</div>
       {% else %}
@@ -108,16 +142,16 @@
 
   <div class="meta-row">
     <div class="meta-item">
-      <strong>Date d'émission</strong>
+      <strong>{{ _L("Date d'émission") }}</strong>
       <span>{{ avoir.date_emission.strftime('%d/%m/%Y') }}</span>
     </div>
     <div class="meta-item">
-      <strong>Facture d'origine</strong>
+      <strong>{{ _L("Facture d'origine") }}</strong>
       <span>{{ avoir.facture.reference }}</span>
     </div>
     <div class="meta-item">
-      <strong>Statut</strong>
-      <span>{{ avoir.get_statut_display() }}</span>
+      <strong>{{ _L("Statut") }}</strong>
+      <span>{{ _L(avoir.get_statut_display()) }}</span>
     </div>
   </div>
 
@@ -125,11 +159,11 @@
     <thead>
       <tr>
         <th>#</th>
-        <th>Désignation</th>
-        <th class="text-right">Qté</th>
-        <th class="text-right">P.U HT</th>
-        <th class="text-right">Remise</th>
-        <th class="text-right">Total HT</th>
+        <th>{{ _L("Désignation") }}</th>
+        <th class="text-right">{{ _L("Qté") }}</th>
+        <th class="text-right">{{ _L("P.U HT") }}</th>
+        <th class="text-right">{{ _L("Remise") }}</th>
+        <th class="text-right">{{ _L("Total HT") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -146,7 +180,7 @@
       {% if not avoir.lignes.all() %}
       <tr>
         <td>1</td>
-        <td>Avoir sur facture {{ avoir.facture.reference }}</td>
+        <td>{{ _L("Avoir sur facture") }} {{ avoir.facture.reference }}</td>
         <td class="text-right">1</td>
         <td class="text-right">{{ "%.2f"|format(avoir.total_ht) }} MAD</td>
         <td class="text-right">—</td>
@@ -157,7 +191,7 @@
   </table>
 
   {% if avoir.motif %}
-  <div class="note-block"><strong>Motif :</strong> {{ avoir.motif }}</div>
+  <div class="note-block"><strong>{{ _L("Motif") }} :</strong> {{ avoir.motif }}</div>
   {% endif %}
 
   {# AUD106 — la chaîne HT brut → remise → HT net → TVA → TTC vient d'UNE
@@ -169,18 +203,18 @@
   <div class="totaux">
     {# ATOT11 — chaîne partagée (_chaine_totaux.html). #}
     {{ chaine_totaux(totaux, avoir.remise_globale, {
-         'sous_total': 'Sous-total HT crédité',
-         'remise_globale': 'Remise globale',
-         'arrondi': 'Arrondi commercial', 'total_ht': 'Total HT',
-         'tva': 'TVA', 'total_ttc': 'Total crédité TTC',
-         'base_ht': 'Base HT',
+         'sous_total': _L('Sous-total HT crédité'),
+         'remise_globale': _L('Remise globale'),
+         'arrondi': _L('Arrondi commercial'), 'total_ht': _L('Total HT'),
+         'tva': _L('TVA'), 'total_ttc': _L('Total crédité TTC'),
+         'base_ht': _L('Base HT'),
        }) }}
   </div>
 
   {% if signature_uri %}
   <div class="signature-section">
     <div class="signature-block">
-      <div class="signature-label">Signature & Cachet</div>
+      <div class="signature-label">{{ _L("Signature & Cachet") }}</div>
       <img class="signature-img" src="{{ signature_uri }}" alt="Signature" />
       <div class="signature-line">{{ entreprise_nom }}</div>
     </div>
@@ -198,7 +232,7 @@
       {% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}
       {% if entreprise_patente %} | Patente : {{ entreprise_patente }}{% endif %}
       {% if entreprise_cnss %} | CNSS : {{ entreprise_cnss }}{% endif %}
-      <br />Avoir (note de crédit) lié à la facture {{ avoir.facture.reference }} — généré le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+      <br />{{ _L("Avoir (note de crédit) lié à la facture") }} {{ avoir.facture.reference }} — {{ _L("généré le") }} {{ now.strftime('%d/%m/%Y à %H:%M') }}
     </div>
   </div>
 
