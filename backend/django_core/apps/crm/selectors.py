@@ -1080,15 +1080,20 @@ def _lignes_pipeline_ouvertes(company, membre_ids=None):
 def _valeur_ponderee_leads(leads):
     """Valeur pipeline pondérée (FG362/XSAL15) : réutilise le même calcul que
     `apps.reporting.pipeline` (valeur du devis le plus récent × probabilité de
-    gain du lead), sans dupliquer la logique."""
+    gain du lead), sans dupliquer la logique.
+
+    ACRM34 — la valeur PONDÉRÉE est celle du forecast (XSAL7) :
+    ``_lead_forecast_value`` × ``_lead_win_weight`` (un devis refusé/expiré
+    ne pèse pas ; un lead sans devis actif pèse son ``montant_estime``), pour
+    que la carte « Mes équipes » affiche le même pondéré que le forecast."""
     from decimal import Decimal
-    from apps.reporting.pipeline import _lead_value, _lead_win_weight
+    from apps.reporting.pipeline import (
+        _lead_forecast_value, _lead_value, _lead_win_weight)
     valeur = Decimal('0')
     ponderee = Decimal('0')
     for lead in leads:
-        v = _lead_value(lead)
-        valeur += v
-        ponderee += v * _lead_win_weight(lead)
+        valeur += _lead_value(lead)
+        ponderee += _lead_forecast_value(lead) * _lead_win_weight(lead)
     return valeur, ponderee
 
 
