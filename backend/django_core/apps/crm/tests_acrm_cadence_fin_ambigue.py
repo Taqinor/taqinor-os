@@ -102,6 +102,20 @@ class CadenceFinAmbigueTests(TestCase):
         CadenceRelanceEtape.objects.filter(
             company=self.company, cadence='contact',
             ordre__gt=self.touche.ordre).update(actif=False)
+        # CI #904 — ``initialiser_plan_relance`` matérialise aussi les touches
+        # DÉJÀ ÉCHUES : passé l'ouverture des appels (09:00, Casablanca), les
+        # touches du jour même sont échues et restent ouvertes, donc la touche
+        # close n'est plus la DERNIÈRE ouverte (``restantes_avant`` > 0) et la
+        # cadence ne se clôt pas — le test ne passait qu'avant 09:00. Une fin
+        # RÉELLE, c'est aussi : plus aucune touche ouverte des barreaux qu'on
+        # vient de désactiver. On la pose explicitement, à toute heure.
+        self.lead.relance_etapes.filter(
+            cadence='contact', statut=RelanceEtape.Statut.A_FAIRE,
+            ordre__gt=self.touche.ordre).delete()
+        self.assertEqual(
+            self.lead.relance_etapes.filter(
+                cadence='contact',
+                statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
         self._fait()
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.COLD)

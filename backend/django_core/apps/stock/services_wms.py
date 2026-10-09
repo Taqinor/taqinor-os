@@ -202,6 +202,41 @@ def recalculer_parcours_vague(vague):
     return vague
 
 
+def _verifier_sources_besoins(company, besoins, modele_ligne):
+    """ERR-ASTK6 — chaque ``installation_id`` / ``bon_commande_id`` d'un
+    besoin doit désigner un objet de ``company`` ; sinon ``ValueError``
+    « objet inexistant », identique pour un id étranger, absent ou mal
+    formé. Modèles atteints par nos propres string-FK (aucun import des
+    modèles d'installations/achats)."""
+    champs = (('installation_id', 'installation', 'Chantier'),
+              ('bon_commande_id', 'bon_commande', 'Bon de commande'))
+    for cle, champ, libelle in champs:
+        valeurs = [b.get(cle) for b in besoins
+                   if isinstance(b, dict) and b.get(cle) not in (None, '')]
+        if not valeurs:
+            continue
+        ids = set()
+        for valeur in valeurs:
+            try:
+                ids.add(int(valeur))
+            except (TypeError, ValueError):
+                raise ValueError(f'{libelle} : objet inexistant.')
+        modele = modele_ligne._meta.get_field(champ).related_model
+        connus = set(modele.objects.filter(
+            company=company, id__in=ids).values_list('id', flat=True))
+        if ids - connus:
+            raise ValueError(f'{libelle} : objet inexistant.')
+    # Les ids validés sont réécrits en entiers (jamais la chaîne brute).
+    for besoin in besoins:
+        if not isinstance(besoin, dict):
+            continue
+        for cle, _champ, _libelle in champs:
+            if besoin.get(cle) not in (None, ''):
+                besoin[cle] = int(besoin[cle])
+            else:
+                besoin[cle] = None
+
+
 def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
                                installations=None, note=''):
     """Crée UNE vague regroupant plusieurs besoins, ordonnée par le parcours.
@@ -241,6 +276,12 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
 
     if not besoins:
         raise ValueError('Aucun besoin à regrouper dans cette vague.')
+
+    # ERR-ASTK6 — les sources d'un besoin (chantier / BCF) sont des string-FK
+    # cross-app : relues ICI bornées à la société. Un id étranger et un id
+    # absent répondent la MÊME erreur « objet inexistant » (avant : l'id
+    # étranger était recopié tel quel → 201, l'absent violait la FK → 500).
+    _verifier_sources_besoins(company, besoins, LignePicking)
 
     # Regroupement multi-source : un même produit demandé par deux sources
     # reste DEUX lignes (chaque source doit être servie et tracée), mais la
@@ -450,6 +491,9 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             apres = avant - quantite
         else:  # transfert : déplacement physique, total inchangé
             apres = avant
+        if type_mouvement == 'sortie':
+            # ERR-ASTK205 — sortie scannée sans lot : écart nommé.
+            note = note_sortie_sans_lot(company, verrouille, note)
         mouvement = record_stock_movement(
             company=company, produit=verrouille,
             type_mouvement=getattr(
@@ -466,6 +510,45 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             company, user, verrouille, type_mouvement, quantite,
             bin_source, bin_destination, reference)
         return mouvement
+
+
+MENTION_SORTIE_SANS_LOT = 'Non affectée à un lot'
+
+
+def produit_suivi_par_lot(company, produit):
+    """ERR-ASTK205 — vrai si le registre des lots (``LotEntrepot``) porte au
+    moins un lot ENCORE en stock pour ce produit de cette société."""
+    from .models import LotEntrepot
+    return LotEntrepot.objects.filter(
+        company=company, produit=produit, quantite_restante__gt=0).exists()
+
+
+def note_sortie_sans_lot(company, produit, note=None):
+    """ERR-ASTK205 (C-ASTK-052) — une SORTIE manuelle SANS lot sur un produit
+    suivi par lot reste permise, mais l'écart est NOMMÉ, jamais muet : la
+    note du mouvement porte « Non affectée à un lot ». Renvoie la note à
+    poser (inchangée pour un produit non suivi par lot)."""
+    if not produit_suivi_par_lot(company, produit):
+        return note
+    note = (note or '').strip()
+    if MENTION_SORTIE_SANS_LOT in note:
+        return note
+    return (f'{MENTION_SORTIE_SANS_LOT} — {note}' if note
+            else MENTION_SORTIE_SANS_LOT)
+
+
+def ecart_lots_non_affecte(company, produit):
+    """ERR-ASTK205 — écart du registre des lots : Σ restant des lots −
+    stock du produit. > 0 = unités sorties sans lot (non affectées) ; 0 pour
+    un produit sans lot. Lecture seule, bornée à la société."""
+    from django.db.models import Sum
+    from .models import LotEntrepot
+    total = LotEntrepot.objects.filter(
+        company=company, produit=produit,
+    ).aggregate(total=Sum('quantite_restante'))['total']
+    if not total:
+        return 0
+    return int(total) - int(produit.quantite_stock or 0)
 
 
 def _emplacement_du_casier(casier):
@@ -731,6 +814,7 @@ def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
     Refuse une unité non scellée : on n'expédie jamais un colis dont le contenu
     peut encore changer.
     """
+    from django.db import transaction
     from .models_wms import ExpeditionTransporteur, UniteLogistique
 
     if unite is None or unite.company_id != getattr(company, 'id', None):
@@ -740,10 +824,16 @@ def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
             "Scellez l'unité logistique avant de l'expédier.")
     if provider_code not in dict(ExpeditionTransporteur.Provider.choices):
         raise ValueError('Transporteur inconnu.')
-    return ExpeditionTransporteur.objects.create(
-        company=company, unite_logistique=unite,
-        transporteur_provider=provider_code, transporteur=transporteur,
-        destination=destination or '', cout_reel=cout_reel)
+    with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49).
+        unite = UniteLogistique.objects.select_for_update().get(pk=unite.pk)
+        if unite.statut == UniteLogistique.Statut.EN_PREPARATION:
+            raise ValueError(
+                "Scellez l'unité logistique avant de l'expédier.")
+        return ExpeditionTransporteur.objects.create(
+            company=company, unite_logistique=unite,
+            transporteur_provider=provider_code, transporteur=transporteur,
+            destination=destination or '', cout_reel=cout_reel)
 
 
 def reference_sortie_expedition(expedition):
@@ -890,16 +980,7 @@ def generer_etiquette_expedition(*, expedition, user=None):
 
     if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
         raise ValueError('Cette expédition est annulée.')
-    if expedition.etiquette_pdf_key and expedition.numero_suivi:
-        decrementer_stock_expedition(expedition=expedition, user=user)
-        return expedition
 
-    provider = provider_pour_societe(
-        expedition.company, expedition.transporteur_provider)
-    numero_suivi, pdf_bytes = provider.creer_expedition(
-        expedition.unite_logistique)
-    cle = (_stocker_etiquette(expedition.company, expedition, pdf_bytes)
-           if pdf_bytes else expedition.etiquette_pdf_key)
     # Le rollback annule la base, PAS l'objet en mémoire : sans restauration,
     # un rappel sur ce même objet croirait l'étiquette posée et sortirait par
     # la branche « déjà étiquetée » sans jamais enregistrer le statut.
@@ -908,6 +989,25 @@ def generer_etiquette_expedition(*, expedition, user=None):
     avant = {champ: getattr(expedition, champ) for champ in champs}
     try:
         with transaction.atomic():
+            # ERR-ASTK53 — statut et étiquette relus SOUS verrou (patron
+            # ASTK49) : deux « Générer l'étiquette » concurrents ne
+            # demandent jamais deux envois au transporteur.
+            ExpeditionTransporteur.objects.select_for_update().get(
+                pk=expedition.pk)
+            expedition.refresh_from_db(fields=list(champs))
+            if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
+                raise ValueError('Cette expédition est annulée.')
+            if expedition.etiquette_pdf_key and expedition.numero_suivi:
+                decrementer_stock_expedition(expedition=expedition, user=user)
+                return expedition
+
+            provider = provider_pour_societe(
+                expedition.company, expedition.transporteur_provider)
+            numero_suivi, pdf_bytes = provider.creer_expedition(
+                expedition.unite_logistique)
+            cle = (_stocker_etiquette(expedition.company, expedition,
+                                      pdf_bytes)
+                   if pdf_bytes else expedition.etiquette_pdf_key)
             expedition.numero_suivi = numero_suivi or ''
             expedition.etiquette_pdf_key = cle
             expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
@@ -1045,9 +1145,18 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
                 'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
     else:
         seuil_lignes = None
-    vague.mode_liberation = mode
-    vague.seuil_lignes = seuil_lignes
-    vague.save(update_fields=['mode_liberation', 'seuil_lignes'])
+    from django.db import transaction
+    with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou : une vague lancée entre la
+        # lecture et l'écriture n'est jamais reconfigurée.
+        verrou = VaguePicking.objects.select_for_update().get(pk=vague.pk)
+        if verrou.statut != VaguePicking.Statut.BROUILLON:
+            raise ValueError(
+                'Seule une vague en brouillon peut changer de mode de '
+                'libération.')
+        vague.mode_liberation = mode
+        vague.seuil_lignes = seuil_lignes
+        vague.save(update_fields=['mode_liberation', 'seuil_lignes'])
     return vague
 
 
@@ -1961,6 +2070,12 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
 
     mouvements = []
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49) : une unité
+        # expédiée entre la lecture et l'écriture ne se déplace plus.
+        verrou = type(unite).objects.select_for_update().get(pk=unite.pk)
+        if verrou.statut == verrou.Statut.EXPEDIE:
+            raise ValueError(
+                'Une unité expédiée ne se déplace plus en entrepôt.')
         for u in unites:
             bin_source = u.bin_actuel
             for ligne in u.lignes.select_related('produit').all():
@@ -2245,6 +2360,14 @@ def receptionner_retour_client(*, retour, user=None):
         raise ValueError(
             'Seul un retour demandé ou en transit peut être réceptionné.')
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49) : deux
+        # réceptions concurrentes ne réintègrent jamais deux fois le stock.
+        verrou = RetourClient.objects.select_for_update().get(pk=retour.pk)
+        if verrou.statut not in (RetourClient.Statut.DEMANDE,
+                                 RetourClient.Statut.EN_TRANSIT):
+            raise ValueError(
+                'Seul un retour demandé ou en transit peut être '
+                'réceptionné.')
         for ligne in retour.lignes.select_related('retour').all():
             _reintegrer_ligne_retour(ligne, user=user)
         retour.statut = RetourClient.Statut.RECEPTIONNE
@@ -2278,6 +2401,12 @@ def inspecter_retour_client(*, retour, lignes=None, user=None):
         retour.company_id,
         [e.get('bin') for e in list(lignes or []) if 'bin' in e])
     with transaction.atomic():
+        # ERR-ASTK53 — statut relu SOUS verrou (patron ASTK49).
+        verrou = RetourClient.objects.select_for_update().get(pk=retour.pk)
+        if verrou.statut not in (RetourClient.Statut.RECEPTIONNE,
+                                 RetourClient.Statut.INSPECTE):
+            raise ValueError(
+                "Le retour doit être réceptionné avant d'être inspecté.")
         for entree in list(lignes or []):
             ligne = par_id.get(_entier_ou_none(entree.get('ligne')))
             if ligne is None:

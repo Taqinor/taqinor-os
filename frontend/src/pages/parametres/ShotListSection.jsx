@@ -14,7 +14,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 
 const PHASES = [
   ['avant', 'Avant'],
@@ -29,6 +29,7 @@ const slugify = (s) => s.trim().toLowerCase()
   .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
 
 export default function ShotListSection() {
+  const { confirmDelete } = useConfirmDialog()
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
   // ERR62 — un échec de chargement affiche une erreur + Réessayer (pas un état
@@ -82,7 +83,7 @@ export default function ShotListSection() {
     } catch { /* */ }
   }
   const del = async (s) => {
-    if (!window.confirm(`Supprimer le créneau « ${s.libelle} » ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer le créneau « ${s.libelle} » ?`, description: 'Cette action est définitive.' }))) return
     try { await installationsApi.deleteShotlistSlot(s.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (créneau protégé ?).') }
   }
