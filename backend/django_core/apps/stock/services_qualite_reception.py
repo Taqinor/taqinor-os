@@ -154,9 +154,14 @@ def router_apres_controle(reception, user):
             company=reception.company, reception=reception).exists():
         return []
 
+    from .services import quantite_entree_ligne_reception
+
     blocages = []
     for ligne in reception.lignes.select_related('produit'):
-        qte = int(ligne.quantite or 0)
+        # ERR-ASTK59 — on bloque ce qui est RÉELLEMENT entré (plafonné au
+        # reste dû, ASTK59), jamais la saisie : sur-livraison 12/10 ⇒ 10
+        # bloqués, jamais un disponible négatif.
+        qte = int(quantite_entree_ligne_reception(ligne) or 0)
         if ligne.produit_id is None or qte <= 0:
             continue
         blocages.append(BlocageQualite.objects.create(
