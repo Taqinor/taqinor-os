@@ -15,6 +15,10 @@ from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
     FieldRolePermissionSerializer, _module_model,
 )
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 # NTEXT2 — largeur/formatage suggérés par type de champ pour la vue LISTE
 # auto-générée (purement indicatif, le front reste libre de les ajuster).
@@ -83,6 +87,8 @@ def _champ_formulaire(field_def, niveau_role=None):
     }
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter('module', OpenApiTypes.STR, required=False)]))
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     """Définitions de champs personnalisés (Paramètres). Lecture tout rôle
     (les formulaires en ont besoin), écriture admin. Filtre ?module=lead.
@@ -90,6 +96,7 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     des paramètres (section='champs')."""
     queryset = CustomFieldDef.objects.all()
     serializer_class = CustomFieldDefSerializer
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -153,11 +160,13 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                     old=instance.libelle, new=None)
         instance.delete()
 
+    @extend_schema(request=None, responses=CustomFieldDefSerializer)
     @action(detail=True, methods=['post'])
     def verrouiller(self, request, pk=None):
         """NTEXT38 — pose le verrou anti-casse (admin), et l'audite."""
         return self._basculer_verrou(True)
 
+    @extend_schema(request=None, responses=CustomFieldDefSerializer)
     @action(detail=True, methods=['post'])
     def deverrouiller(self, request, pk=None):
         """NTEXT38 — retire le verrou anti-casse (admin), et l'audite."""
@@ -176,6 +185,13 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
             new='verrouillé' if verrouille else 'déverrouillé')
         return Response(self.get_serializer(field_def).data)
 
+    @extend_schema(
+        request=inline_serializer('CustomFieldReorderRequete', {
+            'ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField())}),
+        responses=inline_serializer('CustomFieldReorderReponse', {
+            'ok': drf_serializers.BooleanField(),
+            'count': drf_serializers.IntegerField()}))
     @action(detail=False, methods=['post'])
     def reorder(self, request):
         """L813 — réordonne les définitions d'un module. Corps : une liste
@@ -193,6 +209,15 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                 d.save(update_fields=['ordre'])
         return Response({'ok': True, 'count': len(defs)})
 
+    @extend_schema(
+        request=inline_serializer('CustomFieldGenererRequete', {
+            'record_id': drf_serializers.IntegerField()}),
+        responses=inline_serializer('CustomFieldGenererReponse', {
+            'configured': drf_serializers.BooleanField(),
+            'ok': drf_serializers.BooleanField(),
+            'value': drf_serializers.CharField(required=False),
+            'source': drf_serializers.CharField(required=False),
+            'error': drf_serializers.CharField(required=False, allow_null=True)}))
     @action(detail=True, methods=['post'])
     def generer(self, request, pk=None):
         """XPLT17 — génère (bouton « Générer ») la valeur d'un champ IA pour
@@ -252,6 +277,8 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                          'source': result.source})
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter('field_def', OpenApiTypes.INT, required=False)]))
 class FieldRolePermissionViewSet(CompanyScopedModelViewSet):
     """NTEXT9 — permissions de champ par palier de rôle. Lecture tout rôle
     (le formulaire en a besoin — cf. ``CustomFieldDefSerializer.
@@ -266,6 +293,7 @@ class FieldRolePermissionViewSet(CompanyScopedModelViewSet):
     inchangée."""
     queryset = FieldRolePermission.objects.all()
     serializer_class = FieldRolePermissionSerializer
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -298,6 +326,7 @@ class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
     Journal d'audit des paramètres (section='plateforme')."""
     queryset = CustomObjectDef.objects.all()
     serializer_class = CustomObjectDefSerializer
+    parser_classes = [JSONParser]
     audit_plateforme_cible = 'objet'
     audit_plateforme_nom = 'Objet personnalisé'
 
@@ -324,11 +353,13 @@ class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
             raise _refus_verrouille('Cet objet personnalisé', 'supprimer')
         super().perform_destroy(instance)
 
+    @extend_schema(request=None, responses=CustomObjectDefSerializer)
     @action(detail=True, methods=['post'])
     def verrouiller(self, request, pk=None):
         """NTEXT38 — pose le verrou anti-casse (admin), et l'audite."""
         return self._basculer_verrou(True)
 
+    @extend_schema(request=None, responses=CustomObjectDefSerializer)
     @action(detail=True, methods=['post'])
     def deverrouiller(self, request, pk=None):
         """NTEXT38 — retire le verrou anti-casse (admin), et l'audite."""
@@ -351,6 +382,9 @@ class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
     # Exposées par des routes DÉDIÉES (``urls.py``) et non par le routeur :
     # le catalogue vit à ``customfields/objets-catalogue/``, pas sous
     # ``objects/`` (il ne décrit pas un objet existant de la société).
+    @extend_schema(responses=inline_serializer('ObjetsCatalogue', {
+        'modeles': drf_serializers.ListField(
+            child=drf_serializers.DictField())}))
     def objets_catalogue(self, request):
         """NTEXT34 — modèles d'objets prêts à l'emploi + état d'installation.
 
@@ -381,6 +415,11 @@ class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
             for modele in CATALOGUE
         ]})
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ObjetsCatalogueInstalle', {
+            'objet': CustomObjectDefSerializer(),
+            'cree': drf_serializers.BooleanField(),
+            'champs_crees': drf_serializers.JSONField()}))
     def installer_modele_catalogue(self, request, code=None):
         """NTEXT34 — installe un modèle du catalogue pour la société (admin).
 
@@ -411,6 +450,7 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     autres écrans de l'ERP, cf. ``IsAnyRole``/``IsAdminRole`` ; la permission
     par objet est un raffinement OPT-IN posé par l'admin sur les rôles fins)."""
     serializer_class = CustomRecordSerializer
+    parser_classes = [JSONParser]
 
     def _objet(self):
         company = self.request.user.company
@@ -452,6 +492,7 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_object_permission('gerer')
         instance.delete()
 
+    @extend_schema(responses=OpenApiTypes.ANY)
     def vue_liste(self, request, *args, **kwargs):
         """NTEXT2 — schéma de liste auto-générée (colonnes ``visible_liste``)
         + les données paginées de l'objet. Multi-tenant strict : la société
@@ -478,6 +519,8 @@ class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
         data['colonnes'] = colonnes
         return Response(data)
 
+    @extend_schema(responses=inline_serializer('VueFormulaire', {
+        'champs': drf_serializers.ListField(child=drf_serializers.DictField())}))
     def vue_formulaire(self, request, *args, **kwargs):
         """NTEXT3 — schéma de formulaire auto-généré (tous les champs actifs
         de l'objet, ordonnés) pour un rendu no-code du formulaire de saisie.
