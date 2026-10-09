@@ -24,7 +24,7 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes, lignes_remisees
+from ..montants import fmt_centimes, lignes_remisees, tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
@@ -884,7 +884,8 @@ def _fiches_annexe(d, lg):
         if marque:
             titre += f" — {marque}"
         fiches.append(f'<div class="ag-li"><b>{titre}</b> : '
-                      f'{description[:220]}</div>')
+                      # AMOT46 — troncature sur le texte BRUT, au mot.
+                      f'{tronquer_au_mot(description, 220)}</div>')
     if not fiches:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
     return "".join(fiches)

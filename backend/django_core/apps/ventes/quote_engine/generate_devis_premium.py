@@ -631,11 +631,9 @@ def _renvoi_texte_integral():
 def _tronquer_texte_echappe(texte, longueur):
     """AMOT20 — tronque un texte DÉJÀ échappé sur son texte BRUT (au mot,
     « … ») puis le ré-échappe : jamais une entité HTML coupée."""
-    brut = html.unescape(str(texte or ""))
-    if len(brut) <= longueur:
-        return texte
-    coupe = brut[:longueur].rsplit(" ", 1)[0] or brut[:longueur]
-    return html.escape(coupe.rstrip(), quote=False) + "&#8230;"
+    # AMOT46 — LE helper unique de troncature (``montants.tronquer_au_mot``).
+    from .montants import tronquer_au_mot
+    return tronquer_au_mot(texte, longueur)
 
 
 def _clauses_cgv_html(font_pt="7.5"):
