@@ -1803,6 +1803,17 @@ def annuler_reception_confirmee(reception, user):
                     and not (ligne.ligne_commande is not None
                              and ligne.ligne_commande.sans_stock))
 
+        # ERR-ASTK54 — réception FACTURÉE : contre-passer le stock laisserait
+        # la facture due (et la re-réception se refacturerait → double
+        # facture). Refus tant que la facture n'est pas supprimée ou
+        # neutralisée par un avoir.
+        factures = factures_ouvertes_de_reception(verrou)
+        if factures:
+            refs = ', '.join(f.reference for f in factures)
+            raise ValueError(
+                f'Réception facturée ({refs}) : supprimez la facture ou '
+                "émettez un avoir avant d'annuler la réception.")
+
         # ASTK54 — livraison DIRECTE chantier : la marchandise est sortie
         # vers le chantier dès la confirmation (entrée + sortie). Annuler
         # ressortirait du stock LIBRE qui n'a jamais reçu ces unités : refus,
@@ -3779,10 +3790,13 @@ def facturer_reception(company, user, reception):
 
     # Garde idempotence : si une FF porte déjà ce bon de commande et la même
     # réception (on lie via note), on refuse.
-    if FactureFournisseur.objects.filter(
-            company=company,
+    deja_liee = FactureFournisseur.objects.filter(
+        reception=reception).exists()
+    if deja_liee or FactureFournisseur.objects.filter(
+            company=company, reception__isnull=True,
             bon_commande=reception.bon_commande,
-            note__startswith=f'Facture réception {reception.reference}').exists():
+            note__startswith=f'Facture réception {reception.reference}'
+    ).exists():
         raise ValueError(
             f"Cette réception ({reception.reference}) est déjà facturée.")
 
@@ -3825,9 +3839,41 @@ def facturer_reception(company, user, reception):
             'entrer aucune quantité.')
 
     # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
-    return _construire_facture_fournisseur(
+    facture = _construire_facture_fournisseur(
         company, user, reception.bon_commande, lignes,
         note=f'Facture réception {reception.reference}')
+    # ERR-ASTK54 — lien réel réception → facture (garde d'annulation).
+    facture.reception = reception
+    facture.save(update_fields=['reception'])
+    return facture
+
+
+def factures_ouvertes_de_reception(reception):
+    """ERR-ASTK54 — factures fournisseur ISSUES de cette réception et encore
+    dues au sens comptable (non neutralisées par un avoir couvrant tout le
+    TTC). Lien = FK ``FactureFournisseur.reception`` ; repli pour les
+    factures antérieures à la FK : note EXACTE « Facture réception <REF> »
+    sur le même BCF (jamais un simple préfixe : REC-1 ≠ REC-10). Une
+    facture SUPPRIMÉE n'existe plus → l'annulation redevient possible."""
+    from django.db.models import Q
+    from .models import FactureFournisseur
+    note = f'Facture réception {reception.reference}'
+    candidates = FactureFournisseur.objects.filter(
+        Q(reception=reception)
+        | Q(reception__isnull=True, company=reception.company,
+            bon_commande_id=reception.bon_commande_id,
+            note__startswith=note))
+    ouvertes = []
+    for facture in candidates:
+        if facture.reception_id is None:
+            texte = (facture.note or '')
+            suite = texte[len(note):len(note) + 1]
+            if not texte.startswith(note) or suite not in ('', ' ', '\n'):
+                continue
+        if facture.total_avoirs_imputes >= (facture.montant_ttc or 0):
+            continue
+        ouvertes.append(facture)
+    return ouvertes
 
 
 # ── ZPUR1 — Politique de facturation d'achat (Odoo « Bill Control ») ────────
