@@ -557,9 +557,14 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
         # travaux (patron crm/serializers.py:794-803).
         if self.instance is not None and self.instance.cloture_verrouillee:
             geles = ('bom', 'puissance_installee_kwc', 'devis', 'client')
+            # ACHT58 — seuls les champs réellement MODIFIÉS sont gelés : un
+            # client qui renvoie la fiche complète avec les mêmes valeurs
+            # (puissance, client, devis, nomenclature) est accepté.
             errors = {
                 champ: "Chantier clôturé — champ gelé, non modifiable."
-                for champ in geles if champ in attrs
+                for champ in geles
+                if champ in attrs
+                and attrs[champ] != getattr(self.instance, champ)
             }
             if errors:
                 raise serializers.ValidationError(errors)
