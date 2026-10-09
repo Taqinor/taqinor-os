@@ -4197,15 +4197,19 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
     pas faire retomber l'acceptation d'un devis déjà actée."""
     if not lead_id:
         return 0
+    from django.db import transaction
     try:
-        qs = Lead.objects.filter(pk=lead_id)
-        if company is not None:
-            qs = qs.filter(company=company)
-        lead = qs.first()
-        if lead is None:
-            return 0
-        return arreter_cadence(lead, user=user, motif=motif,
-                               cadences=cadences)
+        # ADEV54 — point de sauvegarde PROPRE : une erreur base pendant
+        # l'arrêt est annulée seule, jamais la signature du devis.
+        with transaction.atomic():
+            qs = Lead.objects.filter(pk=lead_id)
+            if company is not None:
+                qs = qs.filter(company=company)
+            lead = qs.first()
+            if lead is None:
+                return 0
+            return arreter_cadence(lead, user=user, motif=motif,
+                                   cadences=cadences)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
