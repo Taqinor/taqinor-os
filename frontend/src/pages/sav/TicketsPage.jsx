@@ -29,7 +29,7 @@ import { searchCompanies } from '../../features/crm/companyLookup'
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { downloadBlob } from '../../utils/downloadBlob'
-import { timeAgo } from '../../lib/format'
+import { formatMAD, timeAgo } from '../../lib/format'
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
@@ -1190,7 +1190,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 affiché, jamais saisi ; réservé responsable/admin. */}
             {peutTaguer && current.cout != null && current.cout !== '' && (
               <p className="text-sm text-muted-foreground" data-testid="cout-interne">
-                Coût interne : {Number(current.cout).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                Coût interne : {formatMAD(current.cout)}
               </p>
             )}
             {saveError && (
