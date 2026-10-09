@@ -950,8 +950,10 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
         # le ratio simple, qui ne sert plus qu'au tri interne).
         _cf_args = {
             'stockage': bool(variante == 'avec' and capacite),
-            'part_batterie': (_part_batterie(annuel) if variante == 'avec'
-                              else None),
+            # AMOT58 — l'économie de la carte vient du moteur HORAIRE, déjà
+            # nette du rendement aller-retour : rien à re-déduire au cashflow
+            # (``battery_share = 0``), comme ``pricing`` en modèle horaire.
+            'part_batterie': (0.0 if variante == 'avec' else None),
             'cout_onduleur_ttc': _cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
                 contexte.facteur_remise),

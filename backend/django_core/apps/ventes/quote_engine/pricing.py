@@ -1673,6 +1673,16 @@ def calculate_savings_roi(
     # pourcentage du total ; aucune ligne onduleur ⇒ aucune provision.
     _stockage = (bool(battery_kwh and battery_kwh > 0)
                  if stockage_present is None else bool(stockage_present))
+    # ── AMOT58 (C-AMOT-024) — LE RENDEMENT ALLER-RETOUR DÉDUIT UNE FOIS ──────
+    # Modèle HORAIRE : l'énergie restituée par la batterie est DÉJÀ bornée
+    # par son rendement (``etude_horaire`` : restitué ≤ rendement × chargé) —
+    # le cashflow ne le re-déduit plus (``battery_share = 0``) : flux de
+    # l'année 1 de la courbe = économie annuelle imprimée. (Modèles
+    # « factures » / « estimation » : la perte Z5 reste appliquée au seul
+    # cashflow — leur économie imprimée est BRUTE ; volet laissé à une tâche
+    # dédiée, il re-chiffrerait des valeurs épinglées hors de cette lane.)
+    if _h:
+        _batt_part = 0.0
     # QJR158 (c) — UNE SEULE définition des paramètres de projection, employée
     # par le CALCUL (les deux appels ci-dessous) et par le bloc d'hypothèses
     # PUBLIÉ plus bas. Tant qu'elles étaient recopiées des constantes du module
