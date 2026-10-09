@@ -17,7 +17,7 @@ every concrete ``models.Model`` subclass either:
       to repeat the FK itself.
 
 A model that fails all three is a finding UNLESS it is listed by name in
-``scripts/tenant_exempt_models.txt`` (one ``app.Model`` per line — global/
+``scripts/exceptions_permanentes.yml (tenant_exempt_models)`` (one ``app.Model`` per line — global/
 foundation-shaped models: singleton config, token/hash tables, pure
 many-to-many "through" tables with no business fields of their own, etc.;
 generated once from the current repo state so this v1 heuristic — a purely
@@ -33,10 +33,12 @@ import ast
 import sys
 from pathlib import Path
 
+import _exceptions_permanentes  # ENF14 — exceptions permanentes signées
+
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
-EXEMPT_PATH = ROOT / "scripts" / "tenant_exempt_models.txt"
+EXEMPT_PATH = ROOT / "scripts" / "exceptions_permanentes.yml"
 
 # Foundation apps under apps/ that are intentionally out of scope (never
 # scanned — not even for exemption bookkeeping): they are the base layer,
@@ -77,15 +79,7 @@ def _rel(path: Path) -> str:
 
 
 def _load_exempt():
-    if not EXEMPT_PATH.exists():
-        return set()
-    out = set()
-    for line in EXEMPT_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        out.add(line)
-    return out
+    return _exceptions_permanentes.charger("tenant_exempt_models", EXEMPT_PATH)
 
 
 def _call_name(node):
@@ -254,7 +248,7 @@ def main(argv):
                 f"{info['file']}:{info['lineno']}: {key} has no company "
                 "scope (no direct FK, no TenantModel base, no FK to a "
                 "model that has one) and is not in "
-                "scripts/tenant_exempt_models.txt.")
+                "scripts/exceptions_permanentes.yml (tenant_exempt_models).")
 
     if findings:
         print("\ncheck_company_fk: violation(s) found:")
@@ -264,7 +258,7 @@ def main(argv):
             "\nFix by adding a `company` FK (or a FK to a company-scoped "
             "model), inheriting core.models.TenantModel, or — if this is "
             "genuinely a foundation/global model — add its 'app.Model' key "
-            "to scripts/tenant_exempt_models.txt after review."
+            "to scripts/exceptions_permanentes.yml (tenant_exempt_models) after review."
         )
         return 1
 
