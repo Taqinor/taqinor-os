@@ -4,9 +4,6 @@
 # proprietaires retirent leurs lignes : ADEP32, ADEP35-ADEP40...).
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_GRAPH_EOL_ALERT_MONTHS  # ADEP20 clé non déclarée
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_ROLLUP_AFTER_MONTHS  # ADEP20 clé non déclarée
-backend/django_core/apps/adsengine/whatsapp_webhook.py::WHATSAPP_CLOUD_APP_SECRET  # ADEP20 clé non déclarée
-backend/django_core/apps/adsengine/whatsapp_webhook.py::WHATSAPP_CLOUD_COMPANY_ID  # ADEP20 clé non déclarée
-backend/django_core/apps/adsengine/whatsapp_webhook.py::WHATSAPP_CLOUD_VERIFY_TOKEN  # ADEP20 clé non déclarée
 backend/django_core/apps/automation/actions.py::CONTACT_FROM_EMAIL  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::ESIGN_ENABLED  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::ESIGN_PROVIDER  # ADEP20 clé non déclarée

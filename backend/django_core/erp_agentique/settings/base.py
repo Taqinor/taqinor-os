@@ -1914,3 +1914,12 @@ OPENSEARCH_URL = os.environ.get('OPENSEARCH_URL', '')
 CF_CONNECTING_IP_TRUSTED = (
     os.environ.get('CF_CONNECTING_IP_TRUSTED', '').strip().lower()
     in ('1', 'true'))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP35 — apps.adsengine : webhook WhatsApp Cloud (attribution CTWA). Lus par
+# whatsapp_webhook.py ET par l'écran santé (audit.boucle CTWA) — même source.
+# Vides = webhook 404 + écran « inactif » (D-ADEP-3 : absentes en prod).
+WHATSAPP_CLOUD_VERIFY_TOKEN = os.environ.get('WHATSAPP_CLOUD_VERIFY_TOKEN', '')
+WHATSAPP_CLOUD_APP_SECRET = os.environ.get('WHATSAPP_CLOUD_APP_SECRET', '')
+# Société ERP cible des conversations (sans elle : repli bruyant, écran inactif).
+WHATSAPP_CLOUD_COMPANY_ID = os.environ.get('WHATSAPP_CLOUD_COMPANY_ID') or None
