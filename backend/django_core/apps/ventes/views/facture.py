@@ -86,7 +86,7 @@ from ..domain.encaissements import (  # noqa: E402,F401
 
 
 from authentication.scoping import scope_queryset  # noqa: E402
-from core.mixins import company_qs  # noqa: E402
+from core.mixins import company_qs  # noqa: E402,F401
 
 
 class IsSuperuserOnly(BasePermission):
@@ -1961,8 +1961,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'factures (liste d\'ids) requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        factures = list(
-            Facture.objects.filter(company=company, id__in=facture_ids))
+        # AFAC55 — portée du rôle (`get_queryset`) en plus de la société.
+        factures = list(self.get_queryset().filter(id__in=facture_ids))
         if len(factures) != len(set(facture_ids)):
             return Response(
                 {'detail': 'Une ou plusieurs factures sont introuvables '
@@ -2030,10 +2030,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'La liste `ids` est requise et doit être non vide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Borner aux factures de la société (scoping multi-tenant).
-        factures_qs = company_qs(
-            Facture.objects.select_related('client').all(), request.user
-        ).filter(id__in=ids)
+        # Borner aux factures de la société (scoping multi-tenant). AFAC55
+        # (C-AFAC-048) — ET à la portée du rôle (`get_queryset` : créées par
+        # soi / l'équipe) : un id invisible répond « Introuvable. ».
+        factures_qs = self.get_queryset().filter(id__in=ids)
         factures_by_id = {f.id: f for f in factures_qs}
 
         results = {}

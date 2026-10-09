@@ -81,7 +81,20 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-date_paiement']
 
     def get_queryset(self):
-        return company_qs(super().get_queryset(), self.request.user)
+        # AFAC55 (C-AFAC-048) — même portée que `FactureViewSet` : un rôle
+        # restreint ne voit que les paiements qu'il a saisis ou ceux des
+        # factures de sa portée (créées par soi / l'équipe).
+        from authentication.scoping import scope_queryset
+        return scope_queryset(
+            company_qs(super().get_queryset(), self.request.user),
+            self.request.user, ['created_by', 'facture__created_by'])
+
+    def _facture_visible(self, facture_id):
+        """AFAC55 — facture de la société ET de la portée du rôle, ou None."""
+        from authentication.scoping import scope_queryset
+        return scope_queryset(
+            company_qs(Facture.objects.all(), self.request.user),
+            self.request.user, ['created_by']).filter(pk=facture_id).first()
 
     def get_permissions(self):
         # La garde déclarée par l'@action elle-même PRIME sur le tiering
@@ -190,8 +203,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import ventiler_avance as _ventiler_avance
 
         paiement = self.get_object()
-        facture = company_qs(Facture.objects.all(), request.user).filter(
-            pk=request.data.get('facture')).first()
+        facture = self._facture_visible(request.data.get('facture'))
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -217,8 +229,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import (
             enregistrer_paiement_avec_retenue as _enregistrer_avec_retenue,
         )
-        facture = company_qs(Facture.objects.all(), request.user).filter(
-            pk=facture_id).first()
+        facture = self._facture_visible(facture_id)
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
