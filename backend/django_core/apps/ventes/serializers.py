@@ -78,6 +78,35 @@ class _ProduitSocieteOuCatalogueGlobalField(CompanyScopedPrimaryKeyRelatedField)
             Q(company_id=company_id) | Q(company__isnull=True))
 
 
+def _borne_saisie(valeur, champ, garde):
+    """ATOT21 — une borne d'argent de la garde unique (`domain/bornes`
+    `pourcentage_saisi` / `montant_saisi`) appliquée au niveau du
+    sérialiseur : un 400 NOMMÉ en français, jamais l'IntegrityError d'une
+    contrainte CHECK (500) ni son texte SQL."""
+    if valeur is None:
+        return valeur
+    from .domain.bornes import montant_saisi, pourcentage_saisi
+    if garde == 'pourcentage':
+        nombre, erreur = pourcentage_saisi({champ: valeur}, champ, None)
+    else:
+        nombre, erreur = montant_saisi(valeur, champ)
+    if erreur:
+        raise serializers.ValidationError(erreur[champ])
+    return nombre
+
+
+#: ATOT21 — le message DRF « Ensure that there are no more than 2 decimal
+#: places » remplacé par la règle française de la garde unique.
+MSG_DEUX_DECIMALES = 'au plus 2 décimales.'
+
+
+def _messages_decimaux(fields, noms):
+    for nom in noms:
+        champ = fields.get(nom)
+        if champ is not None and hasattr(champ, 'error_messages'):
+            champ.error_messages['max_decimal_places'] = MSG_DEUX_DECIMALES
+
+
 class LigneDevisSerializer(SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """La ligne d'un devis, telle que l'écran la lit et l'écrit.
@@ -126,7 +155,18 @@ class LigneDevisSerializer(SameCompanyFKSerializerMixin,
             # retire la borne entière (garde du test ASEC22).
             if type(champ) is CompanyScopedPrimaryKeyRelatedField:
                 champ.__class__ = _ProduitSocieteOuCatalogueGlobalField
+        _messages_decimaux(fields, ('quantite', 'prix_unitaire', 'remise'))
         return fields
+
+    # ATOT21 — bornes d'argent de la ligne : 400 nommé, jamais 500.
+    def validate_remise(self, value):
+        return _borne_saisie(value, 'remise', 'pourcentage')
+
+    def validate_quantite(self, value):
+        return _borne_saisie(value, 'quantite', 'montant')
+
+    def validate_prix_unitaire(self, value):
+        return _borne_saisie(value, 'prix_unitaire', 'montant')
 
     def validate(self, attrs):
         """XSAL14 — cohérence produit vs section/note.
@@ -989,6 +1029,9 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
             'retenue_garantie', 'penalites_retard_livraison', 'caution',
             # CIQ216 — référence de commande du client (≤ 60, facultative).
             'reference_commande_client',
+            # Règles de calcul du rendu (décision fondateur 08/10/2026) —
+            # jamais écrivables depuis le corps.
+            'regles_calcul',
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
@@ -1005,6 +1048,9 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
                             # ``tarification``) la pose ; un PATCH qui
                             # l'élèverait s'auto-approuverait une remise.
                             'remise_approuvee_pct',
+                            # Règles de calcul du rendu : posées par la
+                            # migration / le défaut du modèle seulement.
+                            'regles_calcul',
                             # Posés côté serveur uniquement.
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
@@ -1035,6 +1081,16 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
                             # serveur (``request.user``), jamais du corps.
                             'roof_image', 'updated_by']
         extra_kwargs = {'client': {'required': False}}
+
+    # ATOT21 — la remise globale bornée 0-100 (2 décimales) au sérialiseur :
+    # PATCH « 150 » répondait 500 (contrainte ck_devis_remise_globale_0_100).
+    def get_fields(self):
+        fields = super().get_fields()
+        _messages_decimaux(fields, ('remise_globale',))
+        return fields
+
+    def validate_remise_globale(self, value):
+        return _borne_saisie(value, 'remise_globale', 'pourcentage')
 
     def create(self, validated_data):
         """ASEC22 — l'auteur est TOUJOURS ``request.user`` (le corps ne
