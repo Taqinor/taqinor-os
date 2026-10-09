@@ -596,6 +596,10 @@ GARDES = {
         ('Check for naive datetime / DateField timestamps (YDATA10/11)',
          'python scripts/check_naive_datetime.py',
          '.'),
+        # ADEP26 — une ligne d'allowlist dont le fichier n'existe plus rougit la garde concernée.
+        ('Test allowlists sans ligne morte (fichier absent, ADEP26)',
+         'python -m unittest scripts.tests.test_allowlists_orphelines -v',
+         '.'),
         # ACRM51 — toute lecture « devis accepté / envoyé » du CRM passe par la version en vigueur.
         ('Check lecture de devis sans version en vigueur (is_active, ACRM51)',
          'python scripts/check_version_en_vigueur.py',
