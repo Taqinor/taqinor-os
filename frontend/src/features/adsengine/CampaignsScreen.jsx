@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw, History, ChevronRight, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import ManualActionMenu from './ManualActionMenu'
@@ -17,6 +18,21 @@ import UpdateBanner from './UpdateBanner'
 
 // PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
 // campagnes listées) — pure, testable isolément.
+// AACQ68 — lit TOUTES les pages d'une liste de campagnes (page 1 seule = total
+// faux dès 51 campagnes). Renvoie ``{ rows, total }`` (``total`` = ``count``
+// serveur quand il dépasse les lignes lues, sinon null).
+async function listAllCampaigns(params) {
+  let count = null
+  const data = await fetchAllPages((page) => adsengineApi.campaigns
+    .list({ ...params, page })
+    .then((r) => {
+      if (page === 1 && typeof r.data?.count === 'number') count = r.data.count
+      return r.data
+    }), { concurrency: 3 })
+  const rows = Array.isArray(data) ? data : (data?.results || [])
+  return { rows, total: count != null && count > rows.length ? count : null }
+}
+
 function totalCampaignSpend(campaigns) {
   return (campaigns || []).reduce(
     (sum, c) => sum + (Number(c.depense_mad ?? c.spend_mad) || 0), 0)
@@ -90,15 +106,18 @@ export default function CampaignsScreen() {
   const [range, setRange] = useState(
     () => ({ preset: 'tout', ...presetRange('tout'), compare: false }))
   const [previousTotal, setPreviousTotal] = useState(null)
+  // AACQ68 — total serveur quand la liste lue est plafonnée (« N sur M »).
+  const [campaignsTotal, setCampaignsTotal] = useState(null)
   // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
   const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
-    adsengineApi.campaigns.list(params)
-      .then(r => {
-        setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+    listAllCampaigns(params)
+      .then(({ rows, total }) => {
+        setCampaigns(rows)
+        setCampaignsTotal(total)
         setLoadError(false)
       })
       .catch(() => setLoadError(true))
@@ -122,9 +141,8 @@ export default function CampaignsScreen() {
     // PUB40 — comparaison : dépense TOTALE de la période précédente.
     if (range.compare && range.debut && range.fin) {
       const prev = previousRange(range)
-      adsengineApi.campaigns.list({ debut: prev.debut, fin: prev.fin })
-        .then(r => setPreviousTotal(
-          totalCampaignSpend(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+      listAllCampaigns({ debut: prev.debut, fin: prev.fin })
+        .then(({ rows }) => setPreviousTotal(totalCampaignSpend(rows)))
         .catch(() => setPreviousTotal(null))
     } else {
       setPreviousTotal(null)
@@ -226,6 +244,12 @@ export default function CampaignsScreen() {
       {/* ADSDEEP66 — les comptes de leads affichés ici sont bornés à la
           fenêtre Meta 90 j (au-delà, seul l'ERP/Odoo fait foi). */}
       <DataWindowNotice kind="leads" />
+
+      {campaignsTotal != null && (
+        <p data-testid="ae-camp-truncation" style={{ color: '#92400e', margin: '0 0 0.75rem' }}>
+          {campaigns.length} sur {campaignsTotal} campagnes affichées.
+        </p>
+      )}
 
       {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
       {loadError && (

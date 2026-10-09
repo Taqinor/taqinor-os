@@ -93,6 +93,21 @@ describe('CampaignsScreen (ENG24)', () => {
     expect(screen.getAllByTestId('ae-camp-row')).toHaveLength(2)
   })
 
+  it('AACQ68 — toutes les pages de campagnes sont lues (période courante et précédente)', async () => {
+    mocks.list.mockImplementation((params = {}) => {
+      const p = params.page || 1
+      return Promise.resolve({ data: {
+        count: 4, next: p === 1 ? 'p2' : null,
+        results: [
+          { id: p * 10, nom: `Camp page ${p} A`, statut_display: 'Actif', depense_mad: 100 },
+          { id: p * 10 + 1, nom: `Camp page ${p} B`, statut_display: 'Actif', depense_mad: 100 },
+        ],
+      } })
+    })
+    renderScreen()
+    expect(await screen.findByText('Camp page 2 B')).toBeInTheDocument()
+  })
+
   it('le bouton Synchroniser appelle syncNow puis recharge', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
