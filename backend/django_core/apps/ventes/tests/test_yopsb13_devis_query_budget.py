@@ -106,10 +106,17 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             email='budget@example.com', telephone='+212600000002')
         # SCA43 — singletons de config société pré-créés AVANT toute requête
         # mesurée (sinon la 1ʳᵉ requête paie un get_or_create « à froid »).
+        # Le troisième singleton lu par le moteur d'affichage
+        # (``etude_horaire._reglages_tarifaires`` → ``TariffSettings.get``,
+        # QJR409) : sans lui, le premier GET mesuré paie l'INSERT « à froid »
+        # de la tarification société et la garde « aucune écriture » d'APRF5
+        # échoue sur un artefact de fixture, pas sur la liste.
         from apps.parametres.models import CompanyProfile
         from apps.parametres.models_documents import DocumentTemplates
+        from apps.parametres.models_tariff import TariffSettings
         CompanyProfile.get(company=self.company)
         DocumentTemplates.get(company=self.company)
+        TariffSettings.get(company=self.company)
 
     def _seed_devis(self, count, start=0):
         """Page MIXTE : un devis sur quatre à deux options, un sur quatre

@@ -100,6 +100,12 @@ class DevisViewSet(DevisEditionActionsMixin,
         'factures', 'factures__paiements', 'factures__avoirs',
         'factures__affectations_paiement__paiement', 'factures__lignes',
         'factures__avoirs__lignes',
+        # APRF5 — ``solde_devis`` lit aussi, PAR facture, les notes de débit
+        # et les retenues subies (``Facture.montant_du``, patron AUD157 de
+        # FactureViewSet) : sans eux, deux requêtes par devis facturé — la
+        # garde 10→25 lignes de test_yopsb13 a mesuré 25 → 33.
+        'factures__notes_debit', 'factures__notes_debit__lignes',
+        'factures__retenues_subies',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
