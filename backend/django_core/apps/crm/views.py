@@ -969,7 +969,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else list(queryset)
+        donnees = self._serialiser_leads_en_lot(objects)
+        if page is not None:
+            return self.get_paginated_response(donnees)
+        return Response(donnees)
 
+    def _serialiser_leads_en_lot(self, objects):
+        """APRF18 (C-APRF-009) — LA sérialisation EN LOT d'une liste de
+        leads : les cartes ``{lead_id/devis_id: …}`` (prochaine activité,
+        chantiers, ancienneté d'étape, liens de partage, lectures) sont
+        calculées UNE fois pour tout le lot et posées dans le contexte, que le
+        sérialiseur préfère à son repli requête-par-ligne. Partagée par
+        ``list``, ``relances`` et ``sla_breach`` : aucune des trois ne paie
+        une requête par lead."""
+        objects = list(objects)
         extra_context = {
             'next_activity_map': self._next_activity_map(objects),
             'chantier_map': self._chantier_map(objects),
@@ -977,15 +990,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'share_link_map': self._share_link_map(objects),
             'lecture_map': self._lecture_map(objects),
         }
-        if page is not None:
-            serializer = self.get_serializer(
-                page, many=True, context={
-                    **self.get_serializer_context(), **extra_context})
-            return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(
             objects, many=True, context={
                 **self.get_serializer_context(), **extra_context})
-        return Response(serializer.data)
+        return serializer.data
 
     def retrieve(self, request, *args, **kwargs):
         """LW30 — pose ``include_chatter_recent`` dans le contexte pour que
@@ -2791,8 +2799,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # agrégats (16 requêtes par carte sur la file du jour).
         from .signaux import annotations_signaux
         qs = qs.annotate(**annotations_signaux())
-        serializer = LeadSerializer(qs, many=True, context={'request': request})
-        return Response({'count': qs.count(), 'results': serializer.data})
+        # APRF18 — sérialisation EN LOT (mêmes cartes que la liste).
+        return Response({'count': qs.count(),
+                         'results': self._serialiser_leads_en_lot(qs)})
 
     # ── FG34 — ROI par source / campagne ────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='roi-sources',
@@ -3047,11 +3056,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # agrégats (16 requêtes par carte sur la file du jour).
         from .signaux import annotations_signaux
         qs = qs.annotate(**annotations_signaux())
-        serializer = LeadSerializer(qs, many=True, context={'request': request})
+        # APRF18 — sérialisation EN LOT (mêmes cartes que la liste).
         return Response({
             'sla_hours': sla,
             'count': qs.count(),
-            'results': serializer.data,
+            'results': self._serialiser_leads_en_lot(qs),
         })
 
     # ── VISITE-CADENCE — LA VISITE TECHNIQUE, VUE DEPUIS LA FICHE LEAD ───────

@@ -3781,7 +3781,12 @@ def relances_du_jour(company, user, scope='today', today=None):
         qs = qs.filter(relance_date__gte=today, relance_date__lte=week_end)
     else:  # today
         qs = qs.filter(relance_date=today)
-    return qs.order_by('relance_date', 'nom')
+    # APRF18 — préchargement de ce que la sérialisation lit par lead
+    # (responsable, client, devis et leurs lignes) : la file « Relances »
+    # et « Ma file » ne paient plus une requête par carte.
+    return (qs.select_related('owner', 'client')
+            .prefetch_related('devis', 'devis__lignes')
+            .order_by('relance_date', 'nom'))
 
 
 # ── RELANCE FOUNDATION — file des étapes de cadence de relance dues ─────────
