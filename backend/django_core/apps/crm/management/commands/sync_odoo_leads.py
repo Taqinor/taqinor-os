@@ -128,6 +128,14 @@ class Command(BaseCommand):
                 f"{prefix}gelé(s) : {rapport.geles} — lead(s) perdu(s), "
                 "archivé(s) ou « ne plus contacter », étape laissée telle "
                 "quelle."))
+        if rapport.divergences_assumees:
+            # AACQ31 — recul/changement humain plus récent qu'Odoo : l'ERP
+            # fait foi, rien n'est écrit.
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}divergence(s) assumée(s) : "
+                f"{rapport.divergences_assumees} — étape changée à la main "
+                "dans l'ERP après le dernier mouvement Odoo, laissée telle "
+                "quelle."))
         if rapport.inconnus:
             self.stdout.write(self.style.WARNING(
                 f"{prefix}{rapport.inconnus} lead(s) laissés intouchés : "

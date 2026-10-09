@@ -598,3 +598,62 @@ class AlignementGelTests(OdooSyncBase):
         self.assertIn('gelé(s) :', sortie)
         beta = Lead.objects.get(company=self.company, nom='Beta perdu')
         self.assertEqual(beta.stage, stages.NEW)
+
+
+class AlignementReculHumainTests(OdooSyncBase):
+    """AACQ31 — un recul confirmé par un humain dans l'ERP, plus récent que
+    le dernier changement d'étape Odoo, survit à l'alignement (l'ERP fait
+    foi, D-AACQ 08/10/2026) et est rapporté en « divergence assumée »."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        role, _ = Role.objects.get_or_create(
+            company=self.company, nom='Responsable',
+            defaults={'permissions': RESPONSABLE_PERMISSIONS,
+                      'est_systeme': True})
+        self.resp = get_user_model().objects.create_user(
+            username='aacq31-resp', password='x', company=self.company,
+            role=role, role_legacy='responsable')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Recul', external_system='odoo',
+            external_id='12', email='beta@example.test',
+            stage=stages.FOLLOW_UP, owner=self.resp)
+        api = APIClient()
+        api.force_authenticate(self.resp)
+        resp = api.patch(f'/api/django/crm/leads/{self.lead.pk}/',
+                         {'stage': stages.CONTACTED, 'confirme_recul': True},
+                         format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+
+    def _ligne(self, date_odoo):
+        return [{'id': 12, 'stage': 'Quote Discussed',
+                 'date_last_stage_update_odoo': date_odoo}]
+
+    def test_recul_humain_recent_survit_a_l_alignement(self):
+        for _ in range(2):
+            rapport = odoo_sync.align_stages_from_rows(
+                self.company, self._ligne('2020-01-01 10:00:00'),
+                apply_changes=True)
+            self.assertEqual(rapport.divergences_assumees, 1)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body='auto — alignement sur le pipeline Odoo').exists())
+        sortie = self._sync()
+        self.assertIn('divergence(s) assumée(s) : 1', sortie)
+
+    def test_odoo_plus_recent_avance_toujours(self):
+        rapport = odoo_sync.align_stages_from_rows(
+            self.company, self._ligne('2099-01-01 10:00:00'),
+            apply_changes=True)
+        self.assertEqual(rapport.divergences_assumees, 0)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.FOLLOW_UP)
