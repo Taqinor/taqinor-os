@@ -125,16 +125,21 @@ export default function WarrantyClaimsPage() {
   const startEdit = (row) => setEdit({
     id: row.id, statut: row.statut, resolution: row.resolution ?? '',
     rma_ref: row.rma_ref ?? '',
+    // ASAV38 — valeurs d'origine : on n'envoie que les champs ÉDITÉS.
+    orig: {
+      statut: row.statut, resolution: row.resolution ?? '', rma_ref: row.rma_ref ?? '',
+    },
   })
   const saveEdit = async () => {
     try {
-      const payload = { statut: edit.statut, rma_ref: edit.rma_ref }
-      if (edit.resolution) payload.resolution = edit.resolution
-      if (edit.statut === 'resolu' || edit.statut === 'refuse') {
-        payload.date_resolution = new Date().toISOString().slice(0, 10)
-      }
-      if (edit.statut === 'envoye') {
-        payload.date_envoi_fournisseur = new Date().toISOString().slice(0, 10)
+      // ASAV38 — seuls les champs édités partent ; les dates d'état
+      // (envoi / résolution) sont posées par le SERVEUR (ASAV37), relues
+      // ensuite : l'écran n'écrit plus aucune date d'état.
+      const payload = {}
+      if (edit.statut !== edit.orig.statut) payload.statut = edit.statut
+      if (edit.rma_ref !== edit.orig.rma_ref) payload.rma_ref = edit.rma_ref
+      if (edit.resolution !== edit.orig.resolution && edit.resolution) {
+        payload.resolution = edit.resolution
       }
       await savApi.saveWarrantyClaim(edit.id, payload)
       setEdit(null)
@@ -191,6 +196,10 @@ export default function WarrantyClaimsPage() {
     {
       id: 'date_signalement', header: 'Signalé le', width: 120,
       accessor: (r) => formatDateFR(r.date_signalement),
+    },
+    {
+      id: 'date_envoi_fournisseur', header: 'Envoyé le', width: 120,
+      accessor: (r) => formatDateFR(r.date_envoi_fournisseur),
     },
     {
       id: 'date_resolution', header: 'Résolu le', width: 120,
