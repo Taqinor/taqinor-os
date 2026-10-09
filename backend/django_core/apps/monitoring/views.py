@@ -228,6 +228,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
                       if index is not None else ''),
                 created_by=request.user))
         ProductionReading.objects.bulk_create(a_creer)
+        if a_creer:
+            # ASAV66 — l'import ré-évalue la sous-performance (comme la
+            # saisie manuelle), au lieu de laisser le drapeau périmé.
+            evaluate_underperformance(installation, user=request.user)
         return Response({
             'crees': len(a_creer),
             'doublons': doublons,
