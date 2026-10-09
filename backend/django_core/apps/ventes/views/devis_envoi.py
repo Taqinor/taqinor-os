@@ -6,6 +6,8 @@ Les imports function-locaux des corps restent dans les corps (les
 ``mock.patch`` ``apps.ventes.services.*`` / ``apps.ventes.utils.pdf.*``
 n'interceptent qu'ainsi).
 """
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
@@ -85,6 +87,7 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
 class DevisEnvoiActionsMixin:
     """SPL138 — actions d'envoi de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=D.ShareLinkRequest, responses=D.ShareLinkResponse)
     @action(detail=True, methods=['post'], url_path='share-link',
             permission_classes=[IsResponsableOrAdmin])
     def share_link(self, request, pk=None):
@@ -205,6 +208,7 @@ class DevisEnvoiActionsMixin:
              'sections': link.sections or {}},
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=D.EnvoyerEmailRequest, responses={200: D.EnvoyerEmailResponse, 502: D.EnvoyerEmailEchec})
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_email(self, request, pk=None):
@@ -402,6 +406,7 @@ class DevisEnvoiActionsMixin:
             'friction': link.friction_alert if link else None,
         })
 
+    @extend_schema(request=D.WhatsappRequest, responses=D.WhatsappPreviewResponse)
     @action(detail=True, methods=['post'], url_path='whatsapp-preview',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_preview(self, request, pk=None):
@@ -446,6 +451,7 @@ class DevisEnvoiActionsMixin:
             'gamme': _gamme_envoi_payload(devis),
         })
 
+    @extend_schema(request=D.WhatsappRequest, responses=D.WhatsappResponse)
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp(self, request, pk=None):
@@ -512,6 +518,7 @@ class DevisEnvoiActionsMixin:
             'devis_statut': devis.statut,
         })
 
+    @extend_schema(request=None, responses=D.PdfPartageResponse)
     @action(detail=True, methods=['post'], url_path='pdf-partage',
             permission_classes=[IsResponsableOrAdmin])
     def pdf_partage(self, request, pk=None):
@@ -540,6 +547,7 @@ class DevisEnvoiActionsMixin:
                 f'PDF du devis {devis.reference} partagé (feuille de partage).')
         return Response({'devis_statut': devis.statut})
 
+    @extend_schema(request=D.ContacterSuperieurRequest, responses=D.ContacterSuperieurResponse)
     @action(detail=True, methods=['post'], url_path='contacter-superieur',
             permission_classes=[IsResponsableOrAdmin])
     def contacter_superieur(self, request, pk=None):

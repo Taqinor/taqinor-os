@@ -8,6 +8,7 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+from .openapi_params import qstr
 import logging
 
 from django.http import HttpResponse
@@ -1940,7 +1941,8 @@ _TAILLE_DETAIL_RESPONSE = inline_serializer('PublicTailleDetail', {
 })
 
 
-@extend_schema(responses={200: _TAILLE_DETAIL_RESPONSE})
+@extend_schema(parameters=[qstr('variante')],
+               responses={200: _TAILLE_DETAIL_RESPONSE})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -2083,6 +2085,7 @@ def proposal_roof_image(request, token):
     return _noindex(reponse)
 
 
+@extend_schema(parameters=[qstr('variante')])
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

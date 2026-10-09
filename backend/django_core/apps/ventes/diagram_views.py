@@ -19,6 +19,8 @@ document client : c'est la pièce « schéma unifilaire » du dossier technique,
 donc elle ne passe évidemment PAS par le moteur de devis premium ni par
 ``/proposal`` (règle #4) et ne touche aucun statut.
 """
+from drf_spectacular.utils import extend_schema
+from .openapi_params import qstr
 import re
 
 from django.http import HttpResponse, Http404
@@ -120,6 +122,7 @@ def _pdf_response(svg, nom_fichier):
     return reponse
 
 
+@extend_schema(parameters=[qstr('format')])
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)
@@ -140,6 +143,7 @@ def schema_unifilaire(request):
     return _svg_response(svg)
 
 
+@extend_schema(parameters=[qstr('format')])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)

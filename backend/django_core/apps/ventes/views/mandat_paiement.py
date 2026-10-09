@@ -8,6 +8,8 @@ Endpoints :
   GET    /ventes/mandats-paiement/{id}/          retrieve
   POST   /ventes/mandats-paiement/{id}/revoquer/ révoque le mandat
 """
+from drf_spectacular.utils import extend_schema_view, extend_schema
+from ..openapi_params import qint
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,6 +22,8 @@ from ..serializers_facturation import MandatPaiementSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('client')]))
 class MandatPaiementViewSet(CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique. get_queryset et
     # perform_create SURCHARGENT la base (scoping direct sur `company` + filtre

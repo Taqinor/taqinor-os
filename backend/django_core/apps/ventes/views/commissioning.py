@@ -6,6 +6,8 @@ DÉRIVÉS côté serveur des essais/mesures (jamais lus du corps). Multi-tenancy
 société de l'utilisateur). Querysets scopés. Aucun prix ; ne change aucun statut
 de devis (RULE #4).
 """
+from drf_spectacular.utils import extend_schema_view, extend_schema
+from ..openapi_params import qint, qstr
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -63,6 +65,8 @@ def _refresh_recette_result(recette):
     recette.save(update_fields=['resultat', 'updated_at'])
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('chantier'), qint('devis'), qstr('resultat')]))
 class CommissioningTestViewSet(CompanyScopedModelViewSet):
     """FG274 — CRUD fiche de recette ; résultat dérivé serveur.
 
@@ -138,6 +142,8 @@ class CommissioningTestViewSet(CompanyScopedModelViewSet):
         _refresh_recette_result(instance)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('recette'), qint('defaut')]))
 class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG275 — CRUD courbes I-V ; écart & défaut dérivés serveur."""
 
@@ -240,6 +246,8 @@ def _resolve_company_from_links(user, *objects):
     raise ValidationError({'company': 'Aucune société : opération impossible.'})
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('chantier')]))
 class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG276 — CRUD pack documentaire as-built ; ``company`` forcée serveur."""
 
@@ -282,6 +290,8 @@ class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessu
         serializer.save(company=company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('chantier'), qstr('statut')]))
 class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG277 — CRUD attestation de conformité électrique."""
 
@@ -326,6 +336,8 @@ class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir not
         serializer.save(company=company)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('chantier'), qstr('verdict')]))
 class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG278 — CRUD test PR de réception ; pr/ecart/verdict dérivés serveur."""
 
@@ -405,6 +417,8 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
                         ecart_pct=ecart, verdict=verdict)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[qint('chantier'), qstr('statut')]))
 class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG287 — CRUD attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
 

@@ -10,6 +10,10 @@ function-locaux (les ``mock.patch`` ``apps.ventes.quote_engine.*`` /
 ``apps.ventes.utils.pdf.*`` n'interceptent qu'ainsi).
 """
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
+from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -38,6 +42,7 @@ def _signaler_pdf_devis_genere(devis):
 class DevisPdfActionsMixin:
     """SPL139 — actions de rendu PDF de ``DevisViewSet`` (mixin, aucune base)."""
 
+    @extend_schema(request=D.PdfOptionsRequest, responses={202: D.PdfTaskResponse})
     @action(
         detail=True,
         methods=['post'],
@@ -105,6 +110,7 @@ class DevisPdfActionsMixin:
             'date': job.get('at') if statut == 'echec' else None,
         })
 
+    @extend_schema(parameters=[OpenApiParameter('pdf_mode', OpenApiTypes.STR, required=False, enum=['full', 'onepage']), OpenApiParameter('show_monthly', OpenApiTypes.STR, required=False), OpenApiParameter('devis_final', OpenApiTypes.STR, required=False), OpenApiParameter('include_etude', OpenApiTypes.STR, required=False), OpenApiParameter('include_calepinage', OpenApiTypes.STR, required=False), OpenApiParameter('include_note_calcul', OpenApiTypes.STR, required=False), OpenApiParameter('langue', OpenApiTypes.STR, required=False)], responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(
         detail=True,
         methods=['get'],
@@ -197,6 +203,7 @@ class DevisPdfActionsMixin:
         )
         return response
 
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(
         detail=True,
         methods=['get'],
