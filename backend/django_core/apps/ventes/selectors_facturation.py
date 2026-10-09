@@ -425,10 +425,16 @@ def ca_devis_factures_par_clients(company, client_ids):
         return {}
 
     out = {}
-    devis_qs = (Devis.objects
-                .filter(company=company, client_id__in=client_ids,
-                        client__company=company)
-                .exclude(statut=Devis.Statut.REFUSE))
+    # APRF12 (C-APRF-004) — devis via `devis_avec_totaux` (APRF7), factures
+    # via `factures_avec_montant_du` (APRF11) : +N devis n'ajoutent aucune
+    # requête.
+    from apps.facturation.selectors import factures_avec_montant_du
+    from .selectors import devis_avec_totaux
+    devis_qs = devis_avec_totaux(
+        Devis.objects
+        .filter(company=company, client_id__in=client_ids,
+                client__company=company)
+        .exclude(statut=Devis.Statut.REFUSE))
     for devis in devis_qs:
         entry = out.setdefault(devis.client_id, {
             'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
@@ -440,10 +446,11 @@ def ca_devis_factures_par_clients(company, client_ids):
             pass
         entry['nb_devis'] += 1
 
-    facture_qs = (Facture.objects
-                  .filter(company=company, client_id__in=client_ids,
-                          client__company=company)
-                  .exclude(statut=Facture.Statut.ANNULEE))
+    facture_qs = factures_avec_montant_du(
+        Facture.objects
+        .filter(company=company, client_id__in=client_ids,
+                client__company=company)
+        .exclude(statut=Facture.Statut.ANNULEE))
     for facture in facture_qs:
         entry = out.setdefault(facture.client_id, {
             'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
@@ -655,6 +662,9 @@ def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
     qs = Facture.objects.filter(company=company, devis_id__in=devis_ids)
     if exclure_annulee:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    # APRF12 — totaux de N factures en un nombre constant de requêtes.
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     out = {}
     for facture in qs:
         entry = out.setdefault(
@@ -690,8 +700,11 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
                 date_acceptation__lte=mois_fin)
         .exclude(factures__isnull=False)
         .distinct()
-        .prefetch_related('lignes')
     )
+    # APRF12 — `devis_avec_totaux` (APRF7) : `lignes__produit`, ce que lit
+    # `Devis.total_ttc` (avec `lignes` seul : +1/+2 requêtes par devis).
+    from .selectors import devis_avec_totaux
+    candidats = devis_avec_totaux(candidats)
     par_mois = {}
     for devis in candidats:
         d = devis.date_acceptation
