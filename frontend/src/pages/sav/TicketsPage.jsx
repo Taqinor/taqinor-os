@@ -70,7 +70,6 @@ import {
   filterTickets,
   sortTickets,
   statusLabel,
-  isStatusTransitionAllowed,
   ticketAgeDays,
   ticketSlaLevel,
   statusCounts,
@@ -370,7 +369,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     sous_garantie: current.sous_garantie ?? 'a_determiner',
     equipement: current.equipement ?? '',
     technicien_responsable: current.technicien_responsable ?? '',
-    date_resolution: current.date_resolution ?? '',
     // WIR233 — distinct de `description` (motif signalé) et du chatter
     // (notes) : instructions D'INTERVENTION, éditables.
     instructions: current.instructions ?? '',
@@ -542,8 +540,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     }
   }
 
-  // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
-  const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
+  // ASAV42 — statuts proposés = statut courant + `statuts_suivants` servi par
+  // le serveur (jamais une copie du graphe côté écran). Repli : tous, si le
+  // serveur ne sert pas la clé.
+  const statutsProposes = Array.isArray(current.statuts_suivants)
+    ? TICKET_STATUSES.filter((k) => k === current.statut || current.statuts_suivants.includes(k))
+    : TICKET_STATUSES
 
   // WIR117/XSAV25 — options du picker de pièces : compatibles d'abord (groupe
   // dédié), puis le reste du catalogue (dédupliqué des compatibles).
@@ -588,29 +590,25 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         // `nullable()`).
         instructions: fields.instructions ?? '',
       }
-      // date_resolution reste PATCHable directement (pas de action dédiée) ;
-      // auto-tamponnée si le statut cible est resolu/cloture et qu'elle est
-      // encore vide (comportement inchangé).
-      let dateResolution = fields.date_resolution
-      if (!dateResolution && ['resolu', 'cloture'].includes(fields.statut)) {
-        dateResolution = todayISO()
-      }
-      data.date_resolution = nullable(dateResolution)
-
-      let updated = await dispatch(updateTicket({ id, data })).unwrap()
+      // ASAV42 — l'action de statut d'abord (le serveur pose date_resolution,
+      // ASAV14) ; le PATCH des champs seulement si elle a réussi.
       if (fields.statut && fields.statut !== current.statut) {
         const action = STATUT_ACTION[fields.statut]
-        if (action) {
-          const r = await action(id)
-          updated = r.data
-        }
+        if (action) await action(id)
       }
+      const updated = await dispatch(updateTicket({ id, data })).unwrap()
       setCurrent(updated)
       loadHistorique()
       toast.success('Ticket mis à jour')
       onSaved?.()
     } catch (err) {
       setSaveError(frError(err, 'Échec de la mise à jour.'))
+      // ASAV42 — refus : rien n'a été écrit, la fiche reprend l'état serveur.
+      try {
+        const r = await savApi.getTicket(id)
+        setCurrent(r.data)
+        set('statut', r.data?.statut ?? current.statut)
+      } catch { /* silencieux */ }
     } finally {
       setSaving(false)
     }
@@ -944,23 +942,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Select value={fields.statut} onValueChange={(v) => set('statut', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TICKET_STATUSES.map((k) => {
-                    // L296 — signaler les sauts hors ordre depuis le statut actuel.
-                    const horsOrdre = !isStatusTransitionAllowed(current.statut, k)
-                    return (
-                      <SelectItem key={k} value={k}>
-                        {TICKET_STATUS_LABELS[k]}{horsOrdre ? ' (saut d’étape)' : ''}
-                      </SelectItem>
-                    )
-                  })}
+                  {statutsProposes.map((k) => (
+                    <SelectItem key={k} value={k}>{TICKET_STATUS_LABELS[k]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              {statutSautHorsOrdre && (
-                <p className="mt-1 flex items-center gap-1 text-xs text-warning">
-                  <AlertTriangle className="size-3" aria-hidden="true" />
-                  Saut d&apos;étape : passez par les statuts intermédiaires (ex. En cours).
-                </p>
-              )}
             </FormField>
             <FormField label="Type">
               <Select value={fields.type} onValueChange={(v) => set('type', v)}>
@@ -1084,8 +1070,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </Select>
             </FormField>
             <FormField label="Date de résolution">
-              <Input type="date" value={fields.date_resolution ?? ''}
-                     onChange={(e) => set('date_resolution', e.target.value)} />
+              <Input value={formatDateFR(current.date_resolution)} readOnly />
             </FormField>
             {/* ASAV41 — `cout` est en lecture seule côté serveur (ASEC34) :
                 affiché, jamais saisi ; réservé responsable/admin. */}

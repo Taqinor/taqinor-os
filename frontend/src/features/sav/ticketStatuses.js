@@ -135,19 +135,6 @@ export function filterTickets(items, filters) {
   })
 }
 
-// ── L296 — garde de transition de statut (machine à états entonnoir) ──────────
-// Bloque uniquement les SAUTS EN AVANT qui sautent une étape (ex. nouveau →
-// clôturé sans en_cours). Reculer ou rester est toujours permis. Retourne true
-// si le passage `from → to` est autorisé. Statuts inconnus : permissif.
-export function isStatusTransitionAllowed(from, to) {
-  if (!from || !to || from === to) return true
-  const fi = TICKET_STATUSES.indexOf(from)
-  const ti = TICKET_STATUSES.indexOf(to)
-  if (fi === -1 || ti === -1) return true
-  // Recul autorisé ; avancée d'une seule étape autorisée ; saut > 1 bloqué.
-  return ti <= fi || ti - fi === 1
-}
-
 // ── L298 — âge / SLA d'un ticket (calculé à la lecture, sans planificateur) ──
 // Jours écoulés depuis date_ouverture (ou date_creation en repli). Null si
 // aucune date exploitable. Le seuil d'escalade dépend de la priorité.
