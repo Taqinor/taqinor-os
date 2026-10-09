@@ -547,6 +547,7 @@ class NoteDebitSerializer(serializers.ModelSerializer):
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
 
+    @extend_schema_field(serializers.BooleanField())
     def get_annulee(self, obj):
         from .models import Avoir
         return obj.avoirs_annulation.filter(statut=Avoir.Statut.EMISE).exists()
