@@ -491,6 +491,16 @@ def _niveau_tension_from_lead(lead):
         lead, 'compteur_puissance_kva', None)
 
 
+def _nature_ligne_bom(produit):
+    """APDF40 — nature d'une ligne de nomenclature : ``service`` si le type de
+    sa catégorie produit est ``service``, sinon ``materiel`` (ligne libre
+    incluse). Lecture par l'objet produit déjà chargé, sans import stock."""
+    categorie = getattr(produit, 'categorie', None) if produit else None
+    if getattr(categorie, 'type_equipement', None) == 'service':
+        return 'service'
+    return 'materiel'
+
+
 def _freeze_bom(devis):
     """Nomenclature gelée depuis les lignes du devis (N1) : composants +
     quantités, pour le résumé système et la base parc. Ignore les lignes
@@ -520,6 +530,7 @@ def _freeze_bom(devis):
             or (produit.nom if produit else ''),
             'quantite': qte,
             'marque': getattr(produit, 'marque', None) if produit else None,
+            'nature': _nature_ligne_bom(produit),
         })
     return bom
 
