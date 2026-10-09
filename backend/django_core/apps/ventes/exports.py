@@ -46,6 +46,28 @@ def facture_par_taux(facture):
     return par_taux, _q2(facture.total_ttc)
 
 
+def paniers_figes(facture):
+    """AFAC52 (C-AFAC-045) — une facture SANS lignes (tranche, contrat
+    récurrent) ventilée par ses taux RÉELS (``facture_par_taux`` : sa
+    ``ventilation_tva`` posée par ATOT6/CIQ215, sinon son taux unique) —
+    jamais un panier au « taux mélangé » (16,62 %). Renvoie ``[(taux, ht,
+    tva, ttc)]`` dont la somme TTC égale ``facture.total_ttc`` au centime (le
+    dernier panier absorbe l'écart d'arrondi)."""
+    par_taux, ttc_total = facture_par_taux(facture)
+    paniers = []
+    cumul = Decimal('0')
+    taux_tries = sorted(par_taux)
+    for i, taux in enumerate(taux_tries):
+        ht = _q2(par_taux[taux]['ht'])
+        tva = _q2(par_taux[taux]['tva'])
+        ttc = _q2(ht + tva)
+        if i == len(taux_tries) - 1:
+            ttc = _q2(ttc_total - cumul)
+        cumul += ttc
+        paniers.append((taux, ht, tva, ttc))
+    return paniers
+
+
 def lignes_ventilees(facture):
     """AUD110 — lignes d'une facture avec leurs montants NETS de remise globale.
 
@@ -189,22 +211,21 @@ def export_journal_ventes(company, debut, fin):
             # fichier (`_compta_rows`, `_grand_livre_rows`) avaient déjà ce
             # filet ; seul le journal ne l'avait pas. Montants figés lus sur
             # les propriétés du document, qui gèrent ce cas.
-            ht = _q2(f.total_ht)
-            taux = Decimal(f.taux_tva or 0)
-            tva = _q2(f.total_tva)
-            ttc = _q2(f.total_ttc)
-            ws.append([
-                f.reference, date_f, type_libelle, nom, ice,
-                f.libelle or type_libelle or 'Facture', '', '',
-                float(ht), float(taux), float(tva), float(ttc),
-            ])
-            bucket = par_taux.setdefault(
-                taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
-            bucket['ht'] += ht
-            bucket['tva'] += tva
-            tot_ht += ht
-            tot_tva += tva
-            tot_ttc += ttc
+            # AFAC52 — une ligne PAR TAUX réel (ventilation de la tranche),
+            # jamais le taux mélangé d'en-tête.
+            for taux, ht, tva, ttc in paniers_figes(f):
+                ws.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    f.libelle or type_libelle or 'Facture', '', '',
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                bucket = par_taux.setdefault(
+                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+                bucket['ht'] += ht
+                bucket['tva'] += tva
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
 
     # Avoirs (notes de crédit) émis sur la période : lignes NÉGATIVES pour
     # réconcilier le CA. Ventilés par taux (10/20) comme les factures, et
@@ -304,19 +325,17 @@ def _compta_rows(company, debut, fin):
                 tot_tva += tva
                 tot_ttc += ttc
         else:
-            # Facture de tranche sans lignes : montants figés (un seul taux).
-            ht = _q2(f.total_ht)
-            taux = Decimal(f.taux_tva or 0)
-            tva = _q2(f.total_tva)
-            ttc = _q2(f.total_ttc)
-            rows.append([
-                f.reference, date_f, type_libelle, nom, ice,
-                type_libelle or 'Facture', '', '',
-                float(ht), float(taux), float(tva), float(ttc),
-            ])
-            tot_ht += ht
-            tot_tva += tva
-            tot_ttc += ttc
+            # Facture de tranche sans lignes : montants figés. AFAC52 — une
+            # ligne PAR TAUX réel (ventilation), jamais le taux mélangé.
+            for taux, ht, tva, ttc in paniers_figes(f):
+                rows.append([
+                    f.reference, date_f, type_libelle, nom, ice,
+                    type_libelle or 'Facture', '', '',
+                    float(ht), float(taux), float(tva), float(ttc),
+                ])
+                tot_ht += ht
+                tot_tva += tva
+                tot_ttc += ttc
     return rows, (tot_ht, tot_tva, tot_ttc)
 
 
