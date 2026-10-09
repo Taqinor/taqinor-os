@@ -761,12 +761,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         setPreviewBlob(pdfBlob(res.data))
       })
       .catch(async (err) => {
-        let detail = ''
-        try {
-          const d = err?.response?.data
-          const brut = d && typeof d.text === 'function' ? JSON.parse(await d.text()) : d
-          detail = typeof brut?.detail === 'string' ? brut.detail : ''
-        } catch { /* corps illisible : message générique */ }
+        const d = err?.response?.data
+        const brut = d && typeof d.text === 'function'
+          ? await d.text().then(JSON.parse).catch(() => null)
+          : d
+        const detail = typeof brut?.detail === 'string' ? brut.detail : ''
         if (cancelled) return
         setPreviewErrorDetail(detail)
         if (classifyFetchError(err) === 'server') setPreviewServerError(true)

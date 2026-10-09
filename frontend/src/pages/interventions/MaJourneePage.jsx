@@ -289,7 +289,7 @@ export default function MaJourneePage() {
       })
     } catch (err) {
       // NO-OP silencieux : le statut reste ce qu'il est, l'horodatage est gardé.
-      // ACHT61 — la raison est lue dans sa forme réelle `{statut: [raisons]}`.
+      // ACHT61 — la raison est lue dans sa forme réelle (liste sous « statut »).
       setIndiceStatut(
         raisonRefusStatut(err)
         ?? `Statut « ${interventionStatusLabel(cible)} » non appliqué automatiquement.`)
