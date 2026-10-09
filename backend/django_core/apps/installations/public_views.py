@@ -96,8 +96,7 @@ class InterventionRapportPhotoPublicView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [PublicPhotoThrottle]
 
-    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY,
-                              404: OpenApiTypes.OBJECT})
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY})
     def get(self, request, token, att_id):
         interv = (
             Intervention.objects
