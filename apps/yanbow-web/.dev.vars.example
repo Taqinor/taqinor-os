@@ -8,5 +8,13 @@
 # (noindex, robots Disallow, aucun sitemap). Laisser vide en local.
 SITE_PUBLIC=
 #
+# Demande de rendez-vous (YBW54, src/lib/rdv/forward.ts) : relais SIGNÉ vers le
+# récepteur ERP (YBW51). Les trois doivent être posées, sinon le formulaire
+# répond « pas encore ouvert » (503) et rien n'est envoyé. Le secret et
+# l'identifiant de clé sont ceux de `SITE_RDV_CLES` côté serveur ERP.
+YANBOW_RDV_URL=
+YANBOW_RDV_CLE_ID=
+YANBOW_RDV_SECRET=
+#
 # ── Variables de BUILD ───────────────────────────────────────────────────────
 # (aucune — le domaine canonique est une constante de src/lib/site.ts)

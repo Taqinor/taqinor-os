@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
@@ -25,6 +25,20 @@ vi.mock('../../api/stockApi', () => ({
     getFacturesFournisseurDe: vi.fn(),
     getRetoursFournisseurDe: vi.fn(),
     getDocumentsConformiteFournisseur: vi.fn(),
+    // ASTK225 — CRUD des pièces XPUR1.
+    createDocumentConformiteFournisseur: vi.fn(),
+    updateDocumentConformiteFournisseur: vi.fn(),
+    deleteDocumentConformiteFournisseur: vi.fn(),
+    // ASTK226 — incidents qualité.
+    getIncidentsQualiteFournisseurDe: vi.fn(),
+    createIncidentQualiteFournisseur: vi.fn(),
+    updateIncidentQualiteFournisseur: vi.fn(),
+    // ASTK227 — accès fournisseur (compte portail + liens à jeton).
+    getPortailTokensFournisseur: vi.fn(),
+    genererPortailTokenFournisseur: vi.fn(),
+    revoquerPortailTokenFournisseur: vi.fn(),
+    provisionnerAccesFournisseur: vi.fn(),
+    revoquerAccesFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),
     createAcompteFournisseur: vi.fn(),
@@ -48,9 +62,10 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 // ASTK178 — frontière réseau des VRAIS wrappers stockApi (importActual).
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
 
 import stockApi from '../../api/stockApi'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 import FournisseurFiche360 from './FournisseurFiche360.jsx'
 
 function makeStore({ role = 'admin', permissions = [] } = {}) {
@@ -556,5 +571,230 @@ describe('WIR268/XPUR14 — onglet Tarif (export/import xlsx)', () => {
     const panel = await ouvrirTarif()
     expect(within(panel).queryByText(/Importer un tarif/)).toBeNull()
     expect(within(panel).getByRole('button', { name: /Exporter le tarif/ })).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK225 (C-ASTK-045, FOUR-12) — onglet Conformité : CRUD des pièces XPUR1
+   datées + TYPES requis manquants lus du serveur (ASTK188). Réponses = le
+   contrat committé `fournisseur_conformite.json`.
+   ========================================================================== */
+describe('ASTK225 — onglet Conformité saisissable', () => {
+  const routes = documentContrat('stock', 'fournisseur_conformite').routes
+
+  it('ajouter une pièce de conformité datée', async () => {
+    const vue = routes.fournisseurs_vue_360.exemple_vue_360_nouveau_astk188
+    const piece = routes.documents_conformite_fournisseur.exemple_element
+    stockApi.getFournisseur360.mockResolvedValue({ data: vue })
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur
+      .mockResolvedValueOnce({ data: routes.documents_conformite_fournisseur.exemple_vide })
+      .mockResolvedValue({ data: routes.documents_conformite_fournisseur.exemple })
+    stockApi.createDocumentConformiteFournisseur.mockResolvedValue({ data: piece })
+
+    renderPage({ fournisseurId: '12' })
+    await userEvent.click(await screen.findByRole('tab', { name: /Conformité/ }))
+    const panel = await screen.findByTestId('f360-tab-documents')
+    expect(await within(panel).findByTestId('conformite-manquants'))
+      .toHaveTextContent('Attestation CNSS, Assurance')
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Ajouter une pièce/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Référence'), piece.reference)
+    fireEvent.change(within(dialog).getByLabelText("Date d'expiration"), { target: { value: piece.date_expiration } })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(stockApi.createDocumentConformiteFournisseur).toHaveBeenCalledWith({
+      fournisseur: 12, type_document: 'arf', reference: piece.reference,
+      date_emission: null, date_expiration: piece.date_expiration, obligatoire: true,
+    }))
+    // La pièce relue et le résumé (types manquants) rechargé.
+    expect(await within(panel).findByText(/ARF-2026-01/)).toBeInTheDocument()
+    await waitFor(() => expect(stockApi.getFournisseur360).toHaveBeenCalledTimes(2))
+  })
+
+  it('le 400 serveur sur la date s\'affiche sous le champ', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: routes.documents_conformite_fournisseur.exemple_vide })
+    stockApi.createDocumentConformiteFournisseur.mockRejectedValue({
+      response: { status: 400, data: { error: 'x', date_expiration: ['Date invalide.'] } },
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /Conformité/ }))
+    const panel = await screen.findByTestId('f360-tab-documents')
+    await userEvent.click(await within(panel).findByRole('button', { name: /Ajouter une pièce/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+    expect(await within(dialog).findByText('Date invalide.')).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK226 (C-ASTK-045, D-ASTK-4) — onglet « Incidents qualité » : déclarer,
+   suivre, résoudre. Les VRAIS wrappers stockApi (seul axios est simulé) :
+   la liste est filtrée côté serveur par `?fournisseur=` ; le badge de
+   risque est recalculé après chaque écriture. Réponses = le contrat.
+   ========================================================================== */
+describe('ASTK226 — onglet Incidents qualité', () => {
+  const route = documentContrat('stock', 'fournisseur_conformite').routes.incidents_qualite_fournisseur
+
+  it('déclarer puis résoudre un incident', async () => {
+    const vrai = (await vi.importActual('../../api/stockApi')).default
+    const api = (await import('../../api/axios')).default
+    stockApi.getIncidentsQualiteFournisseurDe.mockImplementation(vrai.getIncidentsQualiteFournisseurDe)
+    stockApi.createIncidentQualiteFournisseur.mockImplementation(vrai.createIncidentQualiteFournisseur)
+    stockApi.updateIncidentQualiteFournisseur.mockImplementation(vrai.updateIncidentQualiteFournisseur)
+    const critique = { ...route.exemple_element, id: 3, fournisseur: 12, gravite: 'critique', resolu: false, est_bloquant: true }
+    let liste = route.exemple_vide
+    api.get.mockImplementation(() => Promise.resolve({ data: liste }))
+    api.post.mockImplementation(() => { liste = { ...route.exemple, results: [critique] }; return Promise.resolve({ data: critique }) })
+    api.patch.mockImplementation(() => {
+      liste = { ...route.exemple, results: [{ ...critique, resolu: true, date_resolution: '2026-10-12', est_bloquant: false }] }
+      return Promise.resolve({ data: liste.results[0] })
+    })
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+
+    renderPage({ fournisseurId: '12' })
+    await userEvent.click(await screen.findByRole('tab', { name: /Incidents qualité/ }))
+    const panel = await screen.findByTestId('f360-tab-incidents')
+    expect(await within(panel).findByText('Aucun incident qualité.')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/',
+      { params: { fournisseur: '12' } })
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Déclarer un incident/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Gravité' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Critique' }))
+    await userEvent.type(within(dialog).getByLabelText('Description'), route.exemple_element.description)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Déclarer' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/',
+      expect.objectContaining({ fournisseur: 12, gravite: 'critique', description: route.exemple_element.description })))
+    const ligne = await within(panel).findByTestId('incident-3')
+    expect(within(ligne).getByText('Critique')).toBeInTheDocument()
+    const scoresAvant = stockApi.getScoreRisqueFournisseur.mock.calls.length
+
+    await userEvent.click(within(ligne).getByRole('button', { name: /Résoudre/ }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/3/',
+      expect.objectContaining({ resolu: true })))
+    expect(await within(panel).findByText(/Résolu le/)).toBeInTheDocument()
+    await waitFor(() => expect(stockApi.getScoreRisqueFournisseur.mock.calls.length).toBeGreaterThan(scoresAvant))
+  })
+
+  it('un 403 (rôle sans accès) est affiché tel quel', async () => {
+    stockApi.getIncidentsQualiteFournisseurDe.mockRejectedValue({
+      response: { status: 403, data: { detail: "Vous n'avez pas la permission d'effectuer cette action." } },
+    })
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /Incidents qualité/ }))
+    const panel = await screen.findByTestId('f360-tab-incidents')
+    expect(await within(panel).findByText(/pas la permission/)).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   ASTK227 (C-ASTK-045 / C-ASTK-040) — onglet « Accès » : provisionner /
+   révoquer le compte portail, générer / lister / révoquer les liens à jeton
+   (URL ABSOLUE copiable /fournisseur/lien/<token>) ; « N lien(s) révoqué(s) »
+   (ASTK179) affiché ; onglet absent hors administrateur. Réponses = le
+   contrat `fournisseur_portail_jetons.json`.
+   ========================================================================== */
+describe('ASTK227 — onglet Accès fournisseur', () => {
+  const routes = documentContrat('stock', 'fournisseur_portail_jetons').routes
+  const neutres = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+  }
+  const ouvrirAcces = async () => {
+    await userEvent.click(await screen.findByRole('tab', { name: /^Accès/ }))
+    return screen.findByTestId('f360-tab-acces')
+  }
+
+  it('générer puis révoquer un lien', async () => {
+    neutres()
+    const jeton = routes.portail_tokens_liste.exemple_element
+    const revoque = routes.portail_token_revoquer.exemple
+    // Corps RÉEL = tableau nu ; le contrat l'enveloppe sous `jetons`.
+    stockApi.getPortailTokensFournisseur
+      .mockResolvedValueOnce({ data: routes.portail_tokens_liste.exemple_vide.jetons })
+      .mockResolvedValueOnce({ data: routes.portail_tokens_liste.exemple.jetons })
+      .mockResolvedValue({ data: [revoque] })
+    stockApi.genererPortailTokenFournisseur.mockResolvedValue({ data: jeton })
+    stockApi.revoquerPortailTokenFournisseur.mockResolvedValue({ data: revoque })
+
+    renderPage({ fournisseurId: '5' })
+    const panel = await ouvrirAcces()
+    expect(await within(panel).findByText('Aucun lien généré.')).toBeInTheDocument()
+    await userEvent.click(within(panel).getByRole('button', { name: /Générer un lien/ }))
+    await waitFor(() => expect(stockApi.genererPortailTokenFournisseur).toHaveBeenCalledWith('5'))
+    const ligne = await within(panel).findByTestId(`jeton-${jeton.id}`)
+    expect(within(ligne).getByText(`${window.location.origin}/fournisseur/lien/${jeton.token}`)).toBeInTheDocument()
+
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Révoquer le lien' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Révoquer' }))
+    await waitFor(() => expect(stockApi.revoquerPortailTokenFournisseur).toHaveBeenCalledWith('5', jeton.id))
+    expect(await within(panel).findByText('Révoqué')).toBeInTheDocument()
+  })
+
+  it("révoquer l'accès affiche jetons_revoques", async () => {
+    neutres()
+    stockApi.getPortailTokensFournisseur.mockResolvedValue({ data: routes.portail_tokens_liste.exemple.jetons })
+    stockApi.revoquerAccesFournisseur.mockResolvedValue({
+      data: routes.fournisseur_revoquer_acces.exemple_nouveau_astk179,
+    })
+    renderPage({ fournisseurId: '5' })
+    const panel = await ouvrirAcces()
+    await userEvent.click(await within(panel).findByRole('button', { name: /Révoquer l'accès/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Révoquer' }))
+    await waitFor(() => expect(stockApi.revoquerAccesFournisseur).toHaveBeenCalledWith('5'))
+    const n = routes.fournisseur_revoquer_acces.exemple_nouveau_astk179.jetons_revoques
+    expect(await within(panel).findByTestId('acces-info')).toHaveTextContent(`${n} lien(s) révoqué(s)`)
+  })
+
+  it('provisionner affiche le message du serveur ; un 403 est affiché tel quel', async () => {
+    neutres()
+    stockApi.getPortailTokensFournisseur.mockResolvedValue({ data: [] })
+    stockApi.provisionnerAccesFournisseur
+      .mockResolvedValueOnce({ data: routes.fournisseur_provisionner_acces.exemple })
+      .mockRejectedValueOnce({ response: { status: 403, data: { detail: 'Réservé aux administrateurs.' } } })
+    renderPage({ fournisseurId: '5' })
+    const panel = await ouvrirAcces()
+    const bouton = await within(panel).findByRole('button', { name: /Ouvrir l'accès portail/ })
+    await userEvent.click(bouton)
+    expect(await within(panel).findByTestId('acces-info'))
+      .toHaveTextContent(routes.fournisseur_provisionner_acces.exemple.detail)
+    await userEvent.click(bouton)
+    expect(await within(panel).findByText('Réservé aux administrateurs.')).toBeInTheDocument()
+  })
+
+  it("un non-administrateur ne voit pas l'onglet Accès", async () => {
+    neutres()
+    renderPage({ authState: { role: 'responsable', permissions: [] } })
+    await screen.findByRole('tab', { name: /Conformité/ })
+    expect(screen.queryByRole('tab', { name: /^Accès/ })).toBeNull()
+    expect(stockApi.getPortailTokensFournisseur).not.toHaveBeenCalled()
   })
 })

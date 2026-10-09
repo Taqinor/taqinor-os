@@ -13,29 +13,29 @@
 # de toute façon monté par-dessus /app (bind vérifié sur le conteneur).
 
 # Artefacts Python régénérés à l'exécution
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
 
 # Généré au démarrage du conteneur, jamais versionné
-staticfiles/
-media/
+**/staticfiles/
+/media/
 
 # Environnements et bases locales — jamais dans une image
-.venv/
-venv/
-*.sqlite3
-db.sqlite3
+**/.venv/
+**/venv/
+**/*.sqlite3
+**/db.sqlite3
 
 # Journaux et fichiers temporaires
-*.log
-.coverage
-htmlcov/
+**/*.log
+**/.coverage
+**/htmlcov/
 
 # Secrets : ne doivent JAMAIS entrer dans une couche d'image
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example

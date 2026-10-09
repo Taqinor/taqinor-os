@@ -252,7 +252,9 @@ class ProposalTextTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='PT Co', slug='pt-co')
         MetaConnection.objects.create(
-            company=self.company, ad_account_id='act_1', currency='USD',
+            # AACQ2 — compte MAD : les seuils/plafonds MAD des règles ne se
+            # comparent qu'à un compte MAD (USD = « non applicable »).
+            company=self.company, ad_account_id='act_1', currency='MAD',
             page_id='page-1')
         self.campaign = AdCampaignMirror.objects.create(
             company=self.company, meta_id='cmp-1', name='Solaire',
@@ -337,7 +339,7 @@ class ProposalTextTests(TestCase):
 
         action = self._evaluate(_index(by_ad={'ad-1': [_iso(1), _iso(4)]}))
         self.assertIsNotNone(action)
-        self.assertIn('USD/j', action.reason_fr)          # PUB134 intact
+        self.assertIn('MAD/j', action.reason_fr)          # PUB134 intact
         self.assertIn('Fenêtre 7 j', action.reason_fr)
         self.assertIn('Vie entière', action.reason_fr)
         self.assertIn('2 leads en vie entière', action.reason_fr)

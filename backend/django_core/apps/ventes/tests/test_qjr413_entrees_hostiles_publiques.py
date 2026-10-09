@@ -239,8 +239,10 @@ class GardeStructurelleCompareDigestTests(SimpleTestCase):
                         ".encode(", rendu,
                         "%s:%d — opérande encore en `str` : %s"
                         % (chemin, site.lineno, rendu))
-        # 9 sites recalés par QJR413 + les 2 de ``cycle_vie`` déjà en bytes.
-        self.assertEqual(total, 11, '%d sites trouvés' % total)
+        # 9 sites recalés par QJR413 + les 2 de ``cycle_vie`` déjà en bytes
+        # + YBW51 (signature HMAC de la demande de rendez-vous YanBow,
+        # apps/crm/webhooks.py — née en bytes).
+        self.assertEqual(total, 12, '%d sites trouvés' % total)
 
     def test_les_deux_sites_de_cycle_vie_sont_inchanges(self):
         """Troisième test du `Done` : ils appartiennent à une autre lane."""

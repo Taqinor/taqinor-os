@@ -3,7 +3,7 @@
 # car la page ERP /devis-design importe le builder 3D roofPro11 depuis
 # apps/web/src via un alias Vite (../apps/web/src). Sans ces fichiers dans le
 # contexte, `npm run build` echoue (l'alias ne resout rien).
-FROM node:20-alpine AS builder
+FROM node:22.14-alpine AS builder
 WORKDIR /build/frontend
 COPY frontend/package*.json ./
 RUN npm ci --frozen-lockfile

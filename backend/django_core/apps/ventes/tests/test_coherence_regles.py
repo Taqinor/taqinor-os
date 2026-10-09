@@ -497,7 +497,11 @@ class TestRegleSecurite(_Base):
         self.assertEqual(out[0].company_id, self.company.pk)
 
     @override_settings(DEBUG=True)
-    def test_muet_en_developpement(self):
-        self._compte('demo_admin')
+    def test_tire_aussi_sous_debug(self):
+        # ASEC25 : plus de retour anticipé sous DEBUG (la prod a tourné en
+        # DEBUG, C-ASEC-029) — le compte de seed actif est signalé.
+        actif = self._compte('demo_admin')
         self.assertEqual(
-            self.run_rule('SEC_COMPTE_DEMO_ACTIF', self.company), [])
+            [v.object_id for v in
+             self.run_rule('SEC_COMPTE_DEMO_ACTIF', self.company)],
+            [actif.pk])

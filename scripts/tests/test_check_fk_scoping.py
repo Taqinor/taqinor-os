@@ -386,6 +386,87 @@ class TestBornesDeclarees(BaseArbre):
         self.assertEqual(code, 0, out)
 
 
+SER_EXCLUDE = '''
+from rest_framework import serializers
+from .models import Ligne
+
+
+class LigneWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ligne
+        exclude = ['company', 'voisine']
+'''
+
+SER_EXCLUDE_BORNE = '''
+from rest_framework import serializers
+from .models import Ligne
+
+
+class LigneWriteSerializer(serializers.ModelSerializer):
+    same_company_fields = ('produit',)
+
+    class Meta:
+        model = Ligne
+        exclude = ['company', 'voisine']
+'''
+
+VUE_ID_BRUT = '''
+from rest_framework.decorators import action
+
+
+class LigneViewSet:
+    @action(detail=False, methods=['post'])
+    def rattacher(self, request):
+        produit_id = request.data.get('produit_id')
+        return Ligne.objects.create(produit_id=produit_id)
+'''
+
+VUE_ID_BORNE = '''
+from rest_framework.decorators import action
+
+
+class LigneViewSet:
+    @action(detail=False, methods=['post'])
+    def rattacher(self, request):
+        produit_id = request.data.get('produit_id')
+        produit = Produit.objects.filter(
+            company=request.user.company).get(pk=produit_id)
+        return Ligne.objects.create(produit=produit)
+'''
+
+
+class TestASEC46(BaseArbre):
+    def test_exclude_detecte(self):
+        self._monter(SER_EXCLUDE)
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("LigneWriteSerializer.produit", out)
+        # le champ exclu n'est pas écrivable : jamais signalé
+        self.assertNotIn("LigneWriteSerializer.voisine", out)
+
+    def test_exclude_borne_est_vert(self):
+        self._monter(SER_EXCLUDE_BORNE)
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
+    def test_id_brut_action_detecte(self):
+        self._monter(SER_VIDE, extra={"views.py": VUE_ID_BRUT})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("LigneViewSet.rattacher.produit_id", out)
+
+    def test_id_action_borne_est_vert(self):
+        self._monter(SER_VIDE, extra={"views.py": VUE_ID_BORNE})
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
+    def test_depot_reel_voit_facture_write_serializer(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cfs.main(["--list"])
+        self.assertIn("FactureWriteSerializer", buf.getvalue())
+
+
 class TestDepotReel(unittest.TestCase):
     """Le dépôt RÉEL doit rester vert (allowlist à jour)."""
 

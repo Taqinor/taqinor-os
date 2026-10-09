@@ -463,7 +463,9 @@ class TestResidentialQRESRound(TestCase):
         LIGNE (le PDF ne les rend plus, QRES61)."""
         from apps.ventes.quote_engine.residential import sample_data
         items = sample_data.build("deux")["hypotheses"]["items"]
-        self.assertEqual(sum("82-21" in i for i in items), 1)
+        # AMOT25 — la mention sourcée unique MENTION_BT remplace la phrase 82-21.
+        self.assertEqual(sum("Revente du surplus non ouverte" in i for i in items), 1)
+        self.assertFalse(any("plafond d'injection" in i for i in items))
 
     def test_join_meta_dedups_repeated_fragments(self):
         """« casablanca, casablanca · casablanca » → « casablanca » (l'adresse
@@ -482,9 +484,12 @@ class TestResidentialQRESRound(TestCase):
         """Le builder réel dédoublonne : une seule formulation 82-21 dans le
         bloc hypothèses (il en cumulait deux, plus celle de la méthode)."""
         from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_BT
         notes = cashflow_assumptions()["notes"]
-        self.assertTrue(any("82-21" in n for n in notes))
-        self.assertTrue(any("injection" in n.lower() for n in notes))
+        # AMOT25 — LA mention sourcée unique (MENTION_BT), une seule fois,
+        # au lieu de « plafond d'injection 20 % intégré, rachat BT non publié ».
+        self.assertEqual(sum(MENTION_BT in n for n in notes), 1)
+        self.assertFalse(any("plafond d'injection" in n for n in notes))
         # plus de décimale anglaise dans les notes rendues au client
         joined = " ".join(notes)
         self.assertNotIn("0.5", joined)
@@ -583,7 +588,7 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         self.client_obj = make_client(self.company)
 
     def _resid_devis(self):
-        return make_devis(self.company, self.user, self.client_obj, [
+        devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
@@ -597,6 +602,16 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
                 1200, 1200, 1300, 1400, 1600, 1800,
                 1900, 1900, 1700, 1500, 1300, 1200],
         })
+        # ADEV68 / AMOT13 — le moteur n'imprime « signer » que pour un devis
+        # HORS brouillon, et LIT le lien sans jamais le créer : ces tests du
+        # CTA de signature portent donc sur un devis ENVOYÉ dont le lien a été
+        # frappé par l'envoi (cas brouillon : test_quote_engine_adev68_* ;
+        # lecture pure : test_quote_engine_amot13_*).
+        from apps.ventes.models import ShareLink
+        type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        ShareLink.for_devis(devis)
+        return devis
 
     def test_builder_mints_tokenized_signer_link(self):
         from apps.ventes.models import ShareLink
@@ -863,14 +878,18 @@ class TestResidentialFooterBranding(SimpleTestCase):
         self.assertNotIn('TAQINOR', foot)
         self.assertNotIn('contact@taqinor.com', foot)
 
-    def test_footer_nom_only_keeps_founder_contact_line(self):
-        """Nom fourni sans contact → contact fondateur préservé (comme DC1)."""
+    def test_footer_nom_only_omits_founder_contact_line(self):
+        """AMOT18 (C-AMOT-016) — nom fourni sans contact : la société est
+        IDENTIFIÉE, ses champs vides sont OMIS — jamais le contact fondateur
+        sous le nom d'un autre (la règle de ``bande_legale`` et du legacy ;
+        l'ancien repli « comme DC1 » est retiré par la décision d'audit)."""
         from apps.ventes.quote_engine.residential import theme
         foot = theme.page_footer(
             {'ref': 'DEV-3', 'entreprise': {'nom': 'Helios SARL'}})
         self.assertIn('<b>Helios SARL</b>', foot)
-        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10',
-                      foot)
+        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('+212 6 61 85 04 10', foot)
+        self.assertNotIn('taqinor.ma', foot)
 
     def test_footer_html_escapes_tenant_name(self):
         from apps.ventes.quote_engine.residential import theme
@@ -1353,6 +1372,10 @@ class TestRoofRenderDataUri(SimpleTestCase):
 
     class _Devis:
         pk = 1
+        # ASEC24 — le lecteur n'accepte qu'une clé sous ``roofs/<company_id>/``
+        # de la société du devis : la doublure porte donc sa société (1, celle
+        # des clés ``roofs/1/…`` ci-dessous).
+        company_id = 1
 
         def __init__(self, key):
             self.roof_image = key

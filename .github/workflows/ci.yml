@@ -257,6 +257,24 @@ jobs:
             # job requis `web-build-test` (aucun nouveau contexte requis). Le
             # motif `^apps/web/` ne le couvre PAS (autre dossier).
             grep -qE '^apps/yanbow-web/' <<< "$changed" && yanbow=true || true
+            # ADEP11 — couplages inter-surfaces PROUVES (un test/une garde d'une
+            # surface lit un fichier d'une autre ; l'edition seule du fichier
+            # doit faire tourner la surface qui le lit) :
+            #  - apps/web/(src|worker) : importes par le front via @rooflib/@roofpro/
+            #    @roofbuilder (vite.config.js) et copies par Dockerfile.prod ;
+            #  - backend/nginx : lu par permissions-policy.test.mjs ;
+            #  - contract_samples : lus par frontend/src/test/fixtures/contractSamples.js ;
+            #  - baselines de gardes docs/* : lues par check_on_delete / check_openapi_schema.
+            grep -qE '^apps/web/(src|worker)/' <<< "$changed" && frontend=true || true
+            grep -qE '^backend/nginx/' <<< "$changed" && frontend=true || true
+            grep -qE '^backend/django_core/apps/[^/]+/contract_samples/' <<< "$changed" && frontend=true || true
+            grep -qE '^docs/(on-delete-financial-audit\.md|openapi-schema\.yml|money-fields-audit\.md|currency-audit\.md)' <<< "$changed" && backend=true || true
+            # ADEP13 — lectures croisees RELEVEES par scripts/check_filtre_chemins_ci.py
+            # (fichiers hors frontend/ ouverts par un test frontend) + docs lu par une
+            # garde de backend-lint-fast : l'edition seule du fichier lu doit declencher
+            # le job qui le lit.
+            grep -qE '^backend/django_core/apps/(adsengine/(urls|views)|crm/platform|ventes/domain/etude_schema|parametres/serializers_tariff|sav/serializers|records/storage|stock/serializers)\.py$|^docs/engine/field-tests\.md$' <<< "$changed" && frontend=true || true
+            grep -qE '^docs/(get-or-create-audit|db-invariants-gap)\.md$' <<< "$changed" && backend=true || true
             # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
             # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
             # `backend == true` et lisent leur BASELINE ici
@@ -540,6 +558,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       # WOW-CI RONDE 5 — même garde que sur `backend-tests` : `backend-openapi`
       # dépend de l'image CI, donc un échec de `ci-image-check` le laisserait
       # « skipped » et ferait passer ce check REQUIS au vert sans rien valider.
@@ -1033,6 +1060,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       # WOW-CI RONDE 5 — GARDE OBLIGATOIRE. Les shards déclarent désormais
       # `needs: ci-image-check` ; si ce job échoue, les shards ne sont pas
       # « failure » mais « skipped », et sans cette étape cet agrégateur —
@@ -1200,6 +1236,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       - name: Fail if a frontend lane failed or was cancelled
         if: ${{ needs.frontend-static.result == 'failure' || needs.frontend-static.result == 'cancelled' || needs.frontend-vitest-shard.result == 'failure' || needs.frontend-vitest-shard.result == 'cancelled' }}
         run: |
@@ -1254,13 +1299,23 @@ jobs:
   # permet de les cabler des maintenant, avant que le dossier ne soit complet.
   web-build-test:
     needs: changes
-    if: ${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.yanbow == 'true' }}
+    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true' || needs.changes.outputs.yanbow == 'true') }}
     runs-on: ubuntu-latest
     # 12 min pour apps/web + le budget YanBow (chaque etape YanBow porte son
     # propre timeout-minutes ci-dessous).
     timeout-minutes: 40
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       - uses: actions/checkout@v4
+        if: ${{ needs.changes.result == 'success' }}
       # -- TAQINOR (apps/web) --------------------------------------------------
       - uses: actions/setup-node@v4
         if: ${{ needs.changes.outputs.web == 'true' }}
@@ -1314,7 +1369,13 @@ jobs:
       - name: YanBow — navigateur Playwright (chromium)
         if: ${{ needs.changes.outputs.yanbow == 'true' && hashFiles('apps/yanbow-web/playwright.config.ts') != '' }}
         working-directory: apps/yanbow-web
-        timeout-minutes: 6
+        # CI vague 5 (08/10/2026) — 6 min ne suffisaient pas : le dépaquetage
+        # apt de `--with-deps` (polices fonts-freefont/unifont/wqy-zenhei sur
+        # le miroir azure) a tourné > 6 min (run 37780121463), le navigateur
+        # lui-même n'a jamais commencé. Même plafond que l'étape Playwright de
+        # la lane e2e (10 min) : un miroir étranglé échoue toujours en NOMMANT
+        # l'étape, sans retomber dans les 59 min silencieuses du 19/08.
+        timeout-minutes: 10
         run: npx playwright install --with-deps chromium
       - name: YanBow — gardes navigateur (test:e2e)
         if: ${{ needs.changes.outputs.yanbow == 'true' && hashFiles('apps/yanbow-web/playwright.config.ts') != '' }}
@@ -1676,6 +1737,15 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # ADEP10 - `changes` en echec (checkout transitoire, timeout 5 min) laisse
+      # tous les jobs en aval « skipped » : sans cette etape, ce check REQUIS
+      # passerait au VERT sans rien valider. Un saut par filtre de chemins
+      # (changes=success, sorties false) reste, lui, vert.
+      - name: Fail if changes did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "changes=${{ needs.changes.result }} - le filtre de chemins n'a pas resolu, aucun test n'a ete decide."
+          exit 1
       # WOW-CI RONDE 5 — même garde que sur `backend-tests` et `backend-lint` :
       # `e2e-shard` dépend désormais de l'image CI, donc un `ci-image-check`
       # rouge le laisserait « skipped » et ferait passer ce check REQUIS au vert

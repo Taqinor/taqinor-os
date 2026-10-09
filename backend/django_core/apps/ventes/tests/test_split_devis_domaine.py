@@ -415,7 +415,9 @@ class ComportementBaseTests(TestCase):
 #: sa valeur dépend de la séquence de la base (migrations de données, ordre
 #: des tests, shard CI) — pas du comportement. Elle est figée comme un id ;
 #: l'identité du produit reste vérifiée par ``designation``/``role``/prix.
-CLES_IDS_BASE = sg.CLES_IDS_PAR_DEFAUT | {'produit', 'produit_id'}
+#: ADEV18 — l'instantané de configuration porte l'en-tête : ``client`` (pk)
+#: et ``date_validite`` (relative au jour) dépendent de la base / de la date.
+CLES_IDS_BASE = sg.CLES_IDS_PAR_DEFAUT | {'produit', 'produit_id', 'client', 'date_validite'}
 
 
 def _verifier_digests(test, cle, scenarios, cles_ids=sg.CLES_IDS_PAR_DEFAUT):

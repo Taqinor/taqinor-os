@@ -8,15 +8,16 @@
 // funnel et le statut du document restent deux couches séparées).
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Eye, FileWarning } from 'lucide-react'
-import ventesApi from '../../../api/ventesApi'
+import ventesApi, { acceptationDejaFaite } from '../../../api/ventesApi'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { Button, Spinner } from '../../../ui'
 // VX182 — le shell fait-main de SigneDialog est passé à ResponsiveDialog.
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
-// VX155 — la carte de victoire (enrichit le Done= de VX40) remplace le
-// toast plat + celebrateDealSigned() appelés directement d'ici ; le burst
-// CSS-only reste posé, mais DEPUIS <DealSignedCelebration> lui-même.
-import DealSignedCelebration from '../../../ui/DealSignedCelebration'
+// La fête « affaire signée » est annoncée au bus global : elle est rendue par
+// <DealSignedCelebrationHost/> (ShellGlobal), HORS de la fenêtre lead — sinon
+// elle restait cachée derrière le dialogue (z-index / transform / focus-trap).
+import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
+import { toastError } from '../../../lib/toast'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
 import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
@@ -132,7 +133,10 @@ function todayLocalStr(now = new Date()) {
   return now.toLocaleDateString('fr-CA') // « AAAA-MM-JJ », comme <input type="date">
 }
 
-export default function SigneDialog({ lead, onClose, onConfirmed }) {
+// `onConfirmed` : appelé AU CLIC (ferme le dialogue) ; `onAccepted` : appelé
+// quand le serveur a confirmé l'acceptation (rafraîchir les listes) ;
+// `onFailed` : le serveur a refusé (défaire l'affichage optimiste).
+export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, onFailed }) {
   const [loading, setLoading] = useState(true)
   const [devisList, setDevisList] = useState([])
   // Nombre TOTAL de devis du lead (avant filtrage) : distingue « aucun devis »
@@ -156,9 +160,6 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const [previewBlob, setPreviewBlob] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
-  // VX155 — carte de victoire affichée après acceptation (null = pas encore
-  // signé) ; { reference, montantTtc, kwc } réels, jamais un chiffre inventé.
-  const [celebration, setCelebration] = useState(null)
 
   // Le dialogue est monté à neuf par lead (clé signeLead) → un seul fetch.
   useEffect(() => {
@@ -243,46 +244,38 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     }
     setBusy(true)
     setError(null)
+    const corps = corpsAcceptation({ nom, date, option }, selected, entreprise)
+    // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
+    // accepté (rare, lié au revenu). Montant + kWc réels, CO₂ dérivé.
+    const chosenKey = twoOptions ? option : 'avec_batterie'
+    const chosenDetail = detailAll?.[chosenKey]
+    const montantTtc = chosenDetail?.ttc
+      ?? (parseFloat(selected.total_affiche ?? selected.total_ttc) || 0)
+    const victoire = {
+      reference: selected.reference,
+      montantTtc,
+      kwc: chosenDetail?.kwc ?? null,
+    }
+    // Décision fondateur 08/10/2026 — la fête part DÈS le clic ; l'acceptation
+    // (chantier, contrat, PDF scellé… souvent > 20 s) se fait PENDANT la fête.
+    // La fenêtre lead se ferme aussitôt : aucune modale ne lutte avec la fête.
+    annoncerAffaireSignee(victoire)
+    onConfirmed?.()
     try {
-      const corps = corpsAcceptation({ nom, date, option }, selected, entreprise)
       await ventesApi.accepterDevis(selected.id, corps)
-      // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
-      // accepté (rare, lié au revenu). La carte de victoire (montant + kWc
-      // réels, CO₂ dérivé) remplace le toast plat ; onConfirmed() n'est
-      // appelé qu'à la fermeture de la carte (voir le rendu ci-dessous).
-      const chosenKey = twoOptions ? option : 'avec_batterie'
-      const chosenDetail = detailAll?.[chosenKey]
-      const montantTtc = chosenDetail?.ttc
-        ?? (parseFloat(selected.total_affiche ?? selected.total_ttc) || 0)
-      const victoire = {
-        reference: selected.reference,
-        montantTtc,
-        kwc: chosenDetail?.kwc ?? null,
-      }
-      setCelebration(victoire)
+      onAccepted?.()
     } catch (err) {
-      setError(err?.response?.data?.detail
+      // Déjà accepté (réponse précédente perdue) = c'est signé : on garde la fête.
+      if (acceptationDejaFaite(err)) { onAccepted?.(); return }
+      // Vrai refus serveur : la fête s'arrête et le motif s'affiche.
+      effacerAffaireSignee()
+      onFailed?.()
+      toastError(err?.response?.data?.detail
         ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
-      setBusy(false)
     }
   }
 
   const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
-
-  // VX155 — après acceptation, la carte de victoire remplace le dialogue ;
-  // onConfirmed() (qui ferme SigneDialog côté appelant) n'est appelé qu'à la
-  // fermeture de la carte — jamais avant que le vendeur l'ait vue.
-  if (celebration) {
-    return (
-      <DealSignedCelebration
-        open
-        reference={celebration.reference}
-        montantTtc={celebration.montantTtc}
-        kwc={celebration.kwc}
-        onClose={() => { setCelebration(null); onConfirmed?.() }}
-      />
-    )
-  }
 
   return (
     // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-

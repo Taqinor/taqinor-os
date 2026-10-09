@@ -112,7 +112,9 @@ const REAPPRO_COLUMNS = [
   { id: 'stock_seuil', header: 'Stock / seuil', sortable: false,
     cell: (v, p) => <span className="tabular-nums">{p.quantite_stock} / {p.seuil_alerte}</span> },
   { id: 'qte_suggeree', header: 'Qté suggérée', sortable: false,
-    cell: (v, p) => <span className="font-semibold tabular-nums">{p.quantite_suggere}</span> },
+    // ASTK207 — même clé (`quantite_suggeree`) et même calcul serveur que le
+    // panneau Prévisions et le catalogue.
+    cell: (v, p) => <span className="font-semibold tabular-nums">{p.quantite_suggeree}</span> },
   { id: 'fournisseur', header: 'Fournisseur le − cher', sortable: false,
     cell: (v, p) => p.fournisseur_nom ?? <span className="text-muted-foreground">—</span> },
   { id: 'prix_achat', header: 'Prix achat (interne)', sortable: false,
@@ -311,9 +313,9 @@ export default function PilotageStock({ onBcfGenere }) {
   const top5Reappro = useMemo(() => {
     const rows = reappro.data ?? []
     return [...rows]
-      .sort((a, b) => (b.quantite_suggere ?? 0) - (a.quantite_suggere ?? 0))
+      .sort((a, b) => (b.quantite_suggeree ?? 0) - (a.quantite_suggeree ?? 0))
       .slice(0, 5)
-      .map((p) => ({ label: libelleAxe(p), value: Number(p.quantite_suggere ?? 0) }))
+      .map((p) => ({ label: libelleAxe(p), value: Number(p.quantite_suggeree ?? 0) }))
   }, [reappro.data])
 
   // VX148 — top 5 consommation mensuelle moyenne (barres horizontales) :

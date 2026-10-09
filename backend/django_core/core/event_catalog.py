@@ -63,6 +63,10 @@ CATALOG = {
     'devis_accepted': _e(
         'Un devis passe à « accepté ».',
         ['devis', 'user', 'ancien_statut']),
+    'devis_acceptation_annulee': _e(
+        "L'acceptation d'un devis est annulée (le lead sort de « Signé ») : "
+        'le devis repasse « envoyé ».',
+        ['devis', 'user', 'option_acceptee', 'date_acceptation', 'motif']),
     'devis_sent': _e(
         'Un devis passe à « envoyé » (partage client).',
         ['devis', 'user', 'ancien_statut']),
@@ -131,6 +135,8 @@ CATALOG = {
     # configuré pour la ``source``. WIR165 en a posé le premier émetteur réel
     # (``ventes.utils.pdf`` → source='ventes_facture'), d'où l'alignement de
     # ces clés sur les kwargs réellement envoyés.
+    # ADOC74 — mêmes kwargs pour 'ventes_avoir', 'ventes_note_debit' et
+    # 'ventes_remise' (helper unique ``ventes.utils.pdf._emettre_document_produit``).
     'document_produit': _e(
         "Une app émettrice a produit un fichier à centraliser en GED "
         "(routé par ``source`` via RoutageDocumentaire).",

@@ -17,6 +17,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -253,6 +255,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 // (calculées par la page, qui a le store) : les tests montent ce détail sans
 // Provider. Un geste que le serveur refuserait n'est jamais affiché.
 export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner = true, peutPayer = true }) {
+  const [demanderConfirmation, dialogueConfirmation] = useConfirmation()
   const { stock_lots_series_actif: lotsSeriesActif } = useStockFlags()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -274,7 +277,7 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
   }
 
   const annuler = async () => {
-    if (!window.confirm('Annuler cette réception ?')) return
+    if (!(await demanderConfirmation({ title: 'Annuler cette réception ?', confirmLabel: 'Annuler la réception' }))) return
     setBusy(true); setError(null)
     try {
       await stockApi.annulerReceptionFournisseur(reception.id)
@@ -405,6 +408,7 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           )}
         </DialogFooter>
       </DialogContent>
+      {dialogueConfirmation}
     </Dialog>
   )
 }

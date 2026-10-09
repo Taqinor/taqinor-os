@@ -274,11 +274,10 @@ describe('APX19 — reassort en <= 2 clics', () => {
   it('expose « Reapprovisionner » avec la quantite suggeree, et l\'appelle', () => {
     const onReapprovisionner = vi.fn()
     renderTable({
-      produits: [sousSeuil()], canWrite: false, onInlineSave: null,
+      produits: [sousSeuil({ quantite_suggeree: 9 })], canWrite: false, onInlineSave: null,
       onToggleSelect: null, onReapprovisionner,
     })
-    // ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — meme formule que l'API
-    // a-reapprovisionner : 2x seuil - disponible - en commande = 10 - 1 - 0 = 9.
+    // ASTK207 — la quantite vient du serveur (`quantite_suggeree`).
     const boutons = screen.getAllByLabelText(/Réapprovisionner \(commander ~9\)/)
     expect(boutons.length).toBeGreaterThan(0)
     fireEvent.click(boutons[0])
@@ -286,18 +285,21 @@ describe('APX19 — reassort en <= 2 clics', () => {
     expect(onReapprovisionner.mock.calls[0][0].id).toBe(11)
   })
 
-  it('la quantite suggeree deduit aussi le deja-en-commande (ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE)', () => {
-    // Cas du constat : stock 2 / seuil 6 -> API 12 - 2 = 10 ; ici 4 deja en
-    // commande -> 12 - 2 - 4 = 6, identique a quantite_suggere de l'API.
+  it('lit quantite_suggeree du serveur', () => {
+    // ASTK207 (MVT-21) — stock 2, seuil 6, cible 20, 5 deja en commande : le
+    // serveur dit 13 (20 - 2 - 5). L'ancienne formule front (seuil x 2 -
+    // disponible - en commande = 12 - 2 - 5 = 5) affichait « ~5 ».
     renderTable({
       produits: [sousSeuil({
         quantite_stock: 2, quantite_reservee: 0, quantite_disponible: 2,
-        seuil_alerte: 6, quantite_en_commande: 4,
+        seuil_alerte: 6, quantite_reappro_cible: 20, quantite_en_commande: 5,
+        quantite_suggeree: 13,
       })],
       canWrite: false, onInlineSave: null, onToggleSelect: null,
       onReapprovisionner: () => {},
     })
-    expect(screen.getAllByLabelText(/Réapprovisionner \(commander ~6\)/).length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText(/Réapprovisionner \(commander ~13\)/).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText(/commander ~5\)/)).toBeNull()
   })
 
   it('aucun reassort propose sur un produit sain', () => {

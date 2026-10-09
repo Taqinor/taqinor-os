@@ -133,6 +133,8 @@ class RoofImageProxy(TestCase):
             f'/api/django/ventes/devis/{self.devis.pk}/roof-image/fichier/')
 
         # 2. Charge publique de la proposition — chemin borné par le jeton.
+        # ADEV11 : un brouillon n'est plus servi sur le jeton client.
+        Devis.objects.filter(pk=self.devis.pk).update(statut='envoye')
         lien = ShareLink.for_devis(self.devis)
         pub = APIClient().get(f'/api/django/ventes/proposal/{lien.token}/')
         self.assertEqual(pub.status_code, 200, pub.content)
@@ -156,6 +158,8 @@ class RoofImageProxy(TestCase):
         self.assertEqual(r['Content-Type'], 'image/png')
         self.assertEqual(r.content, PNG)
 
+        # ADEV11 : un brouillon n'est plus servi sur le jeton client.
+        Devis.objects.filter(pk=self.devis.pk).update(statut='envoye')
         lien = ShareLink.for_devis(self.devis)
         pub = APIClient().get(
             f'/api/django/ventes/proposal/{lien.token}/roof-image/')

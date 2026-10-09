@@ -46,6 +46,9 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const fileInputs = useRef({})
+  // ASTK225 — date d'expiration saisie par pièce (envoyée avec le
+  // téléversement ; la validité est recalculée par le serveur).
+  const [expirations, setExpirations] = useState({})
 
   const charger = useCallback(() => {
     if (!fournisseurId) return
@@ -86,11 +89,15 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
       const existant = (dossier.documents ?? []).find(
         (d) => d.type_document === typeDocument)
       let documentId = existant?.id
+      const dateExpiration = expirations[typeDocument] || null
       if (!documentId) {
         const cree = await stockApi.createDocumentFournisseur({
           dossier: dossier.id, type_document: typeDocument,
+          ...(dateExpiration ? { date_expiration: dateExpiration } : {}),
         })
         documentId = cree.data?.id
+      } else if (dateExpiration && dateExpiration !== existant?.date_expiration) {
+        await stockApi.updateDocumentFournisseur(documentId, { date_expiration: dateExpiration })
       }
       const formData = new FormData()
       formData.append('file', fichier)
@@ -196,6 +203,16 @@ export default function OnboardingFournisseurWizard({ fournisseur }) {
                 <span className="text-xs text-muted-foreground">
                   {recu ? 'reçue' : expire ? 'expirée' : 'manquante'}
                 </span>
+                {/* ASTK225 — date d'expiration de la pièce, envoyée au téléversement. */}
+                <input
+                  type="date"
+                  aria-label={`Date d'expiration ${LIBELLES[type] ?? type}`}
+                  className="rounded-md border border-input bg-card px-2 py-1 text-xs"
+                  value={expirations[type]
+                    ?? (dossier.documents ?? []).find((d) => d.type_document === type)?.date_expiration
+                    ?? ''}
+                  onChange={(e) => setExpirations((x) => ({ ...x, [type]: e.target.value }))}
+                />
                 <input
                   type="file"
                   aria-label={`Téléverser ${LIBELLES[type] ?? type}`}

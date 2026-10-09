@@ -479,9 +479,10 @@ function AddLigneDialog({ liste, produits, onClose, onSaved }) {
             </Select>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="al-prix" required>Prix unitaire (TTC/HT selon mode générateur)</Label>
+            <Label htmlFor="al-prix" required>Prix unitaire HT</Label>
             <Input id="al-prix" type="number" min="0" step="any"
                    value={prixUnitaire} onChange={(e) => setPrixUnitaire(e.target.value)} placeholder="0" />
+            <p className="text-xs text-muted-foreground">Le générateur le convertit au taux de chaque ligne.</p>
           </div>
           {error && (
             <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

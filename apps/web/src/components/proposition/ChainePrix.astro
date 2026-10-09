@@ -1,0 +1,61 @@
+---
+/**
+ * ATOT34 — LA chaîne de prix de la page publique /proposition (carte « Voir le
+ * détail du prix »), un seul rendu pour tout le site :
+ *
+ *   Sous-total HT → Remise (si > 0) → Arrondi commercial (si > 0) → Total HT
+ *   → TVA → Total TTC
+ *
+ * Les montants sont ceux que SERT l'ERP (`quote.totaux_sans/avec`, contrat
+ * `src/contract_samples/proposal_data.json`, ATOT26) : jamais recalculés ici.
+ * Ils s'affichent AU CENTIME (`formatMADCentimes`) — arrondir chaque étage au
+ * dirham faisait afficher une chaîne qui ne s'additionne pas. Chaque ligne porte
+ * `data-figure` (vocabulaire de `quote_engine/figures.py`), si bien que le test
+ * peut lire le HTML RENDU et vérifier :
+ *   Sous-total − Remise − Arrondi = Total HT   et   Total HT + TVA = Total TTC.
+ * Les lignes `prix_achat` / marge n'existent pas dans cette charge utile.
+ */
+import { formatMADCentimes } from '../../lib/proposition';
+import type { ProposalTotaux } from '../../lib/proposition';
+
+interface Props {
+  totaux: ProposalTotaux;
+  /** `sans` | `avec` — valeur de `data-figure-option`. */
+  option: string;
+}
+
+const { totaux, option } = Astro.props;
+const remise = totaux.remise ?? 0;
+const arrondi = totaux.arrondi ?? 0;
+---
+
+<dl class="mt-3 space-y-1.5 text-sm" data-chaine-prix>
+  <div class="flex justify-between">
+    <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-en="Subtotal excl. tax" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
+    <dd class="fig text-lune-soft" dir="ltr" data-figure="sous_total_ht" data-figure-option={option}>{formatMADCentimes(totaux.ht_brut)}</dd>
+  </div>
+  {remise > 0 && (
+    <div class="flex justify-between">
+      <dt class="text-lune-faint" data-i18n data-fr="Remise" data-en="Discount" data-ar="التخفيض">Remise</dt>
+      <dd class="fig text-brass-300" dir="ltr" data-figure="remise" data-figure-option={option}>−{formatMADCentimes(remise)}</dd>
+    </div>
+  )}
+  {arrondi > 0 && (
+    <div class="flex justify-between">
+      <dt class="text-lune-faint" data-i18n data-fr="Arrondi commercial" data-en="Commercial rounding" data-ar="تقريب تجاري">Arrondi commercial</dt>
+      <dd class="fig text-brass-300" dir="ltr" data-figure="arrondi" data-figure-option={option}>−{formatMADCentimes(arrondi)}</dd>
+    </div>
+  )}
+  <div class="flex justify-between">
+    <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-en="Total excl. tax" data-ar="المجموع (بدون ضريبة)">Total HT</dt>
+    <dd class="fig text-lune-soft" dir="ltr" data-figure="total_ht" data-figure-option={option}>{formatMADCentimes(totaux.ht_net)}</dd>
+  </div>
+  <div class="flex justify-between">
+    <dt class="text-lune-faint" data-i18n data-fr="TVA" data-en="VAT" data-ar="الضريبة على القيمة المضافة">TVA</dt>
+    <dd class="fig text-lune-soft" dir="ltr" data-figure="tva" data-figure-option={option}>{formatMADCentimes(totaux.tva)}</dd>
+  </div>
+  <div class="flex justify-between border-t border-white/10 pt-2">
+    <dt class="text-lune" data-i18n data-fr="Total TTC" data-en="Total incl. tax" data-ar="المجموع شامل الضريبة">Total TTC</dt>
+    <dd class="fig text-lg text-lune" dir="ltr" data-figure="total_ttc" data-figure-option={option}>{formatMADCentimes(totaux.ttc)}</dd>
+  </div>
+</dl>

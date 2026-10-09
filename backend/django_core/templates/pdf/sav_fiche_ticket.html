@@ -112,7 +112,7 @@
     {% endif %}
     <div class="meta-item">
       <strong>Technicien</strong>
-      <span>{{ ticket.technicien_responsable.username if ticket.technicien_responsable else '—' }}</span>
+      <span>{{ technicien_nom or '—' }}</span>
     </div>
   </div>
 

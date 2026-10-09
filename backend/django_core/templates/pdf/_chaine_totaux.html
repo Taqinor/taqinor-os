@@ -1,0 +1,76 @@
+{# ATOT11 (C-ATOT-017) — LA chaîne d'argent des documents de facturation
+   legacy, en UNE macro partagée par facture, avoir, note de débit, bon de
+   commande et pro-forma (il y en avait cinq copies, dont trois sans la base
+   nette) :
+
+     Sous-total HT → Remise globale → Arrondi commercial → Total HT
+     → TVA (par taux, ou une ligne unique) → Total TTC
+
+   « Total HT » (la base nette sur laquelle la TVA est calculée) est imprimé
+   dès qu'une remise ou un arrondi > 0 ; sinon il égale le Sous-total et n'est
+   pas répété (rendu inchangé). UN GABARIT NE RECALCULE JAMAIS UN MONTANT :
+   ``t`` vient du serveur (``totaux_affichage`` / ``option_totaux``).
+
+   Arguments :
+     t            — {ht_brut, remise, arrondi, ht_net (ou ht), tva_par_taux
+                    et/ou tva, ttc}
+     remise_pct   — pourcentage de remise globale affiché dans le libellé
+     lib          — libellés déjà résolus (fr/ar via _L côté appelant) :
+                    sous_total, remise_globale, arrondi, total_ht, tva,
+                    total_ttc, base_ht
+     ventilation  — CIQ215 : imprime « Base HT (x %) » avant chaque TVA
+     tva_ventilee — False : une seule ligne « TVA » = t.tva (BC, pro-forma)
+
+   Chaque ligne garde la forme <span>libellé</span><span>montant</span> que
+   lisent les tests de parité (aud108, ATOT16). #}
+{% macro chaine_totaux(t, remise_pct, lib, ventilation=False, tva_ventilee=True) %}
+{% set remise = t.remise or 0 %}
+{% set arrondi = t.arrondi or 0 %}
+{% set ht_net = t.ht_net if t.ht_net is defined else t.ht %}
+    <div class="totaux-row">
+      <span>{{ lib.sous_total }}</span>
+      <span>{{ "%.2f"|format(t.ht_brut) }} MAD</span>
+    </div>
+    {% if remise > 0 %}
+    <div class="totaux-row remise">
+      <span>{{ lib.remise_globale }} ({{ remise_pct }}%)</span>
+      <span>−{{ "%.2f"|format(remise) }} MAD</span>
+    </div>
+    {% endif %}
+    {# ARRONDI-100 — palier hérité du devis / de la facture. #}
+    {% if arrondi > 0 %}
+    <div class="totaux-row remise">
+      <span>{{ lib.arrondi }}</span>
+      <span>−{{ "%.2f"|format(arrondi) }} MAD</span>
+    </div>
+    {% endif %}
+    {% if remise > 0 or arrondi > 0 %}
+    <div class="totaux-row">
+      <span>{{ lib.total_ht }}</span>
+      <span>{{ "%.2f"|format(ht_net) }} MAD</span>
+    </div>
+    {% endif %}
+    {% if tva_ventilee %}
+    {% for b in t.tva_par_taux %}
+    {% if ventilation %}
+    <div class="totaux-row">
+      <span>{{ lib.base_ht }} ({{ b.taux }}%)</span>
+      <span>{{ "%.2f"|format(b.base_ht) }} MAD</span>
+    </div>
+    {% endif %}
+    <div class="totaux-row">
+      <span>{{ lib.tva }} ({{ b.taux }}%)</span>
+      <span>{{ "%.2f"|format(b.montant) }} MAD</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="totaux-row">
+      <span>{{ lib.tva }}</span>
+      <span>{{ "%.2f"|format(t.tva) }} MAD</span>
+    </div>
+    {% endif %}
+    <div class="totaux-row total-ttc">
+      <span>{{ lib.total_ttc }}</span>
+      <span>{{ "%.2f"|format(t.ttc) }} MAD</span>
+    </div>
+{% endmacro %}

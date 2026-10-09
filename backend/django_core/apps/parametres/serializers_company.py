@@ -181,6 +181,13 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             # NTDMO20 — assignation réservée au founder (admin Django /
             # gestion technique) : jamais éditable par le tenant via ce PATCH.
             'essai_expire_le',
+            # APAR16 — horodatage du verrou optimiste : posé par le serveur
+            # (auto_now), renvoyé par l'écran pour comparaison, jamais écrit.
+            'updated_at',
+            # APAR53 — le fuseau de la société est UN réglage
+            # (``fuseau_horaire``, validé IANA) ; l'ancien champ NTOBS23 reste
+            # servi en lecture mais n'est plus inscriptible par ce PATCH.
+            'timezone_affichage',
         ]
 
     def validate_responsable_defaut_leads(self, value):
@@ -351,7 +358,10 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # en attendant — comportement historique, puisque toute société
     # actuelle EST marocaine. Jamais bloquant pour un champ vide.
     def validate_ice(self, value):
-        from .tax_id_validators import validate_tax_id
+        # APAR31 — normalisé AVANT validation puis stocké sous sa forme
+        # canonique (15 chiffres) : « 001 234 567 000 089 » est accepté.
+        from .tax_id_validators import normaliser_ice, validate_tax_id
+        value = normaliser_ice(value)
         resultat = validate_tax_id('MA', 'ice', value)
         if not resultat['valide']:
             raise serializers.ValidationError(resultat['message'])

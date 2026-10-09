@@ -1,0 +1,234 @@
+---
+// Confidentialité (YBW27) — UN gabarit FR + EN (`en/privacy.astro` l'importe).
+// Tout ce que la page affirme vient d'un registre : identités et garanties
+// (`src/lib/legal.ts`), données collectées (`src/lib/rdv/champs.ts`, contrat
+// YBW50), destinataires (`src/lib/subprocessors.ts`), durée
+// (`CONSERVATION_PROSPECTS`, = ce que fait l'ERP). Tant que la page n'est pas
+// complète (`confidentialiteComplete`), la route est retirée du build et le
+// Worker la sert en 404 (porte YBW12). La version française fait foi.
+import '../styles/global.css';
+import { POLICES_PRECHARGEES } from '../lib/typo';
+import { DEFAULT_LOCALE, LANG_HTML, LOCALES_ACTIVES, NOM_LANGUE, type Locale } from '../i18n/config';
+import { PAGES } from '../i18n/pages';
+import { alternates, selecteurLangue, t } from '../i18n/utils';
+import { fr } from '../i18n/pages/confidentialite.fr';
+import { en } from '../i18n/pages/confidentialite.en';
+import { CONSERVATION_PROSPECTS, type Conservation, LEGAL, type Legal, responsableTraitement, routesJuridiquesCompletes } from '../lib/legal';
+import { donneesCollectees } from '../lib/rdv/champs';
+import { SOUS_TRAITANTS, type SousTraitant } from '../lib/subprocessors';
+import LegalLinks from '../components/LegalLinks.astro';
+
+interface Props {
+  locale?: Locale;
+  /** Surcharge des langues actives — réservée aux tests (fixture). */
+  locales?: readonly Locale[];
+  /** Surcharge des identités — réservée aux tests (fixture). */
+  legal?: Legal;
+  /** Surcharge de la conservation — réservée aux tests (fixture). */
+  conservation?: Conservation;
+  /** Surcharge du registre des sous-traitants — réservée aux tests (fixture). */
+  sousTraitants?: readonly SousTraitant[];
+}
+const {
+  locale = DEFAULT_LOCALE,
+  locales = LOCALES_ACTIVES,
+  legal = LEGAL,
+  conservation = CONSERVATION_PROSPECTS,
+  sousTraitants = SOUS_TRAITANTS,
+} = Astro.props;
+const dict = locale === 'en' ? en : fr;
+const chemins = PAGES.confidentialite;
+const liens = alternates(chemins, locales);
+const autres = selecteurLangue(chemins, locale, locales);
+const tt = (cle: string, n?: string | number) => {
+  const v = t(dict, cle, locale);
+  return n === undefined ? v : v.replace('{n}', String(n));
+};
+
+const responsable = responsableTraitement(legal, conservation);
+const email = legal.commun.email;
+const garanties = legal.commun.garantiesTransferts?.[locale] ?? null;
+const representant = legal.commun.representantUe;
+
+// Durée en toutes lettres, depuis la constante (jamais un chiffre réécrit à la main).
+const EN_LETTRES: Record<number, Record<Locale, string>> = {
+  1: { fr: 'Un an', en: 'One year' },
+  2: { fr: 'Deux ans', en: 'Two years' },
+  3: { fr: 'Trois ans', en: 'Three years' },
+  4: { fr: 'Quatre ans', en: 'Four years' },
+  5: { fr: 'Cinq ans', en: 'Five years' },
+};
+const duree = EN_LETTRES[conservation.ans]?.[locale];
+if (responsable && !duree) throw new Error(`confidentialite : durée ${conservation.ans} sans libellé en toutes lettres`);
+
+const PAYS: Record<string, Record<Locale, string>> = { DE: { fr: 'Allemagne', en: 'Germany' } };
+const pays = (codes?: string[]) => (codes && codes.length ? codes.map((c) => PAYS[c]?.[locale] ?? c).join(', ') : tt('destinataires.nonPrecise'));
+const donnees = donneesCollectees(locale);
+---
+<!doctype html>
+<html lang={LANG_HTML[locale]}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{tt('titre')}</title>
+    <meta name="description" content={tt('description')} />
+    {POLICES_PRECHARGEES.map((p) => <link rel="preload" href={p} as="font" type="font/woff2" crossorigin />)}
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    {liens.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
+  </head>
+  <body>
+    <main>
+      <h1>{tt('h1')}</h1>
+      {responsable && email && (
+        <>
+          <section data-section="responsable" aria-labelledby="titre-responsable">
+            <h2 id="titre-responsable">{tt('responsable.titre')}</h2>
+            <dl>
+              <div><dt>{tt('responsable.nom')}</dt><dd data-responsable>{responsable.nom}</dd></div>
+              <div><dt>{tt('responsable.siege')}</dt><dd>{responsable.siege}</dd></div>
+              <div><dt>{tt('responsable.contact')}</dt><dd><a href={`mailto:${email}`}>{email}</a></dd></div>
+            </dl>
+          </section>
+
+          <section data-section="donnees" aria-labelledby="titre-donnees">
+            <h2 id="titre-donnees">{tt('donnees.titre')}</h2>
+            <p>{tt('donnees.intro')}</p>
+            <div class="tableau">
+              <table>
+                <thead>
+                  <tr><th scope="col">{tt('donnees.donnee')}</th><th scope="col">{tt('donnees.finalite')}</th><th scope="col">{tt('donnees.statut')}</th></tr>
+                </thead>
+                <tbody>
+                  {donnees.map((d) => (
+                    <tr data-champ={d.cle}>
+                      <td>{d.donnee}</td>
+                      <td>{d.finalite}</td>
+                      <td>{tt(d.obligatoire ? 'donnees.obligatoire' : 'donnees.facultatif')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p data-aucune-ip>{tt('donnees.aucuneIp')}</p>
+            <p>{tt('donnees.aucunTraceur')}</p>
+          </section>
+
+          <section data-section="finalite" aria-labelledby="titre-finalite">
+            <h2 id="titre-finalite">{tt('finalite.titre')}</h2>
+            <p>{tt('finalite.texte')}</p>
+          </section>
+
+          <section data-section="base" aria-labelledby="titre-base">
+            <h2 id="titre-base">{tt('base.titre')}</h2>
+            <p>{tt('base.texte')}</p>
+          </section>
+
+          <section data-section="destinataires" aria-labelledby="titre-destinataires">
+            <h2 id="titre-destinataires">{tt('destinataires.titre')}</h2>
+            <p>{tt('destinataires.equipe')}</p>
+            <div class="tableau">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">{tt('destinataires.nom')}</th>
+                    <th scope="col">{tt('destinataires.role')}</th>
+                    <th scope="col">{tt('destinataires.quand')}</th>
+                    <th scope="col">{tt('destinataires.pays')}</th>
+                    <th scope="col">{tt('destinataires.conservation')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sousTraitants.map((st) => (
+                    <tr data-sous-traitant={st.id}>
+                      <td>{st.nom}</td>
+                      <td>{locale === 'en' && st.roleEn ? st.roleEn : st.role}</td>
+                      <td>{st.quand ? st.quand[locale] : tt('destinataires.nonPrecise')}</td>
+                      <td>{pays(st.pays)}</td>
+                      <td>{typeof st.dureeJours === 'number' ? <span dir="ltr">{tt('destinataires.jours', st.dureeJours)}</span> : tt('destinataires.nonPrecise')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section data-section="transferts" aria-labelledby="titre-transferts">
+            <h2 id="titre-transferts">{tt('transferts.titre')}</h2>
+            <p>{tt('transferts.texte')}</p>
+            <p>{tt('transferts.garanties')} <span data-garanties>{garanties}</span></p>
+          </section>
+
+          <section data-section="duree" aria-labelledby="titre-duree">
+            <h2 id="titre-duree">{tt('duree.titre')}</h2>
+            <p data-duree>{tt('duree.texte', duree)}</p>
+          </section>
+
+          <section data-section="droits" aria-labelledby="titre-droits">
+            <h2 id="titre-droits">{tt('droits.titre')}</h2>
+            <ul>
+              <li>{tt('droits.loiMaroc')}</li>
+              <li>{tt('droits.rgpd')}</li>
+            </ul>
+            <p>{tt('droits.exercer')} <a href={`mailto:${email}`}>{email}</a></p>
+          </section>
+
+          <section data-section="reclamation" aria-labelledby="titre-reclamation">
+            <h2 id="titre-reclamation">{tt('reclamation.titre')}</h2>
+            <p>{tt('reclamation.texte')}</p>
+          </section>
+
+          {representant && (
+            <section data-section="representant" aria-labelledby="titre-representant">
+              <h2 id="titre-representant">{tt('representant.titre')}</h2>
+              <p>{representant}</p>
+            </section>
+          )}
+
+          <section data-section="whatsapp" aria-labelledby="titre-whatsapp">
+            <h2 id="titre-whatsapp">{tt('whatsapp.titre')}</h2>
+            <p>{tt('whatsapp.texte')}</p>
+          </section>
+
+          <section data-section="prospection" aria-labelledby="titre-prospection">
+            <h2 id="titre-prospection">{tt('prospection.titre')}</h2>
+            <p>{tt('prospection.texte')}</p>
+          </section>
+
+          <p data-foi>{tt('foi')}</p>
+        </>
+      )}
+      {autres.length > 0 && (
+        <nav aria-label={tt('langue')}>
+          {autres.map((l) => <a href={l.href} hreflang={l.locale} lang={LANG_HTML[l.locale]}>{NOM_LANGUE[l.locale]}</a>)}
+        </nav>
+      )}
+    </main>
+    <footer>
+      <LegalLinks locale={locale} completes={routesJuridiquesCompletes(legal, conservation)} />
+    </footer>
+    <script>
+      import '../scripts/client-error';
+    </script>
+  </body>
+</html>
+
+<style>
+  .tableau {
+    overflow-x: auto;
+    max-inline-size: 100%;
+  }
+  table {
+    border-collapse: collapse;
+  }
+  th,
+  td {
+    text-align: start;
+    vertical-align: top;
+    padding-block: var(--espace-2);
+    padding-inline: var(--espace-3);
+    border-block-end: 1px solid var(--texte-attenue);
+  }
+</style>

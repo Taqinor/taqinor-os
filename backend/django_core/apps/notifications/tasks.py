@@ -73,9 +73,9 @@ def _fetes_manquantes(company, annee):
     """Clés (parmi ``FETES_MOBILES_CLES``) encore SANS date saisie pour
     ``annee``, via l'assistant NTI18N33 — jamais une requête ``Holiday``
     réinventée ici."""
-    from apps.parametres.fetes_mobiles import fetes_mobiles_saisies
-    saisies = fetes_mobiles_saisies(company, annee)
-    return [cle for cle, valeur in saisies.items() if not valeur]
+    # APAR36 — LE détecteur partagé (libellés canoniques + anciens alias).
+    from apps.parametres.fetes_mobiles import fetes_mobiles_manquantes
+    return fetes_mobiles_manquantes(company, annee)
 
 
 @shared_task(name='notifications.rappel_fetes_mobiles')

@@ -11,6 +11,11 @@ from .models import (
     IncomingWebhookTrigger, TriggerType, record_state_change_targets,
 )
 
+#: APAR9 — message unique (création et modification d'un webhook entrant).
+WEBHOOK_REGLE_INCOMPATIBLE = (
+    "Un webhook entrant ne s'attache qu'à une règle au déclencheur "
+    "« Webhook entrant ».")
+
 
 class AutomationRuleSerializer(serializers.ModelSerializer):
     trigger_type_display = serializers.CharField(
@@ -46,6 +51,24 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
         champ visé est désormais confronté au registre FERMÉ
         ``actions.SET_FIELD_TARGETS`` — voir ``_valider_set_field``."""
         self._valider_set_field(attrs)
+        # APAR25 — une action sans fournisseur (SMS) n'est plus proposée : sa
+        # simulation promettait un envoi que l'exécution ne faisait jamais.
+        from .actions import ACTIONS_INDISPONIBLES
+        if attrs.get('action_type') in ACTIONS_INDISPONIBLES and (
+                self.instance is None
+                or self.instance.action_type != attrs['action_type']):
+            raise serializers.ValidationError({'action_type': (
+                "Canal SMS non disponible pour les automatisations : aucun "
+                "fournisseur n'est branché.")})
+        # APAR43 — déclencheur dont l'émetteur est parqué : refusé (une règle
+        # existante n'est ni supprimée ni bloquée tant qu'elle le garde).
+        from .selectors import DECLENCHEURS_PARQUES
+        if attrs.get('trigger_type') in DECLENCHEURS_PARQUES and (
+                self.instance is None
+                or self.instance.trigger_type != attrs['trigger_type']):
+            raise serializers.ValidationError({'trigger_type': (
+                'Déclencheur indisponible (module parqué) : rien ne peut '
+                'plus le déclencher.')})
         trigger_type = attrs.get(
             'trigger_type', getattr(self.instance, 'trigger_type', None))
         if trigger_type != TriggerType.RECORD_STATE_CHANGE:
@@ -313,3 +336,10 @@ class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
 
     def get_url_path(self, obj):
         return f'/api/django/public/hooks/{obj.token}/'
+
+    def validate_rule(self, rule):
+        # APAR9 — un webhook entrant ne s'attache qu'à une règle WEBHOOK_INBOUND
+        # (aussi sur PATCH : jamais rebrancher un jeton sur une autre règle).
+        if rule is not None and rule.trigger_type != TriggerType.WEBHOOK_INBOUND:
+            raise serializers.ValidationError(WEBHOOK_REGLE_INCOMPATIBLE)
+        return rule

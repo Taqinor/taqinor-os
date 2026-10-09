@@ -747,7 +747,7 @@ def two_bills_savings(
     tarifer (le seuil des marches est MENSUEL).
 
     Self-consumption-first (loi 82-21) : seuls les kWh autoconsommés réduisent
-    la facture — le surplus injecté ne vaut rien (tarif ANRE BT non publié).
+    la facture — le surplus injecté ne vaut rien (``MENTION_BT``).
 
     QJR157 (audit QJR79) — LA FACTURE PUBLIÉE COMPTE CE QUE LE CLIENT PAIE
     VRAIMENT. Deux corrections d'un même modèle :
@@ -989,8 +989,7 @@ def cashflow_assumptions(inverter_replace_cost=None,
                          escalation: float = TARIFF_ESCALATION,
                          inverter_replace_year=INVERTER_REPLACE_YEAR) -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
-    proposition (autoconsommation d'abord ; rachat BT surplus toujours non
-    publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
+    proposition (autoconsommation d'abord ; revente BT : ``MENTION_BT``).
 
     QRES1 — chaque idée tient en UNE note (la loi 82-21 et le plafond
     d'injection fusionnés ; plus de « performance garantie 25 ans » redondant
@@ -1030,10 +1029,11 @@ def cashflow_assumptions(inverter_replace_cost=None,
         if not escalation else
         f"hausse du tarif électrique supposée "
         f"{_fr_pct(round(float(escalation) * 100, 2))} %/an")
+    # AMOT25 — LA mention sourcée unique (constants_82_21.MENTION_BT) ;
+    # import local : ce module de calcul reste sans dépendance de tête.
+    from .constants_82_21 import MENTION_BT
     notes = [
-        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
-        "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
-        "intégré).",
+        f"{MENTION_BT}. Seuls les kWh autoconsommés réduisent la facture.",
         f"Dégradation panneau "
         f"{_fr_pct(round(float(degradation) * 100, 2))} "
         f"%/an intégrée ; {_tarif_txt} ; coûts d'exploitation (nettoyage, "

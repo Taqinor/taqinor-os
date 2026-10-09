@@ -7,7 +7,8 @@ TOUTE la société (écran d'administration : gérer aussi les éléments inacti
 réservés à un autre palier). Écriture réservée à l'administration.
 """
 from django.db.models import Q
-from rest_framework import serializers
+from rest_framework import serializers
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -61,7 +62,7 @@ def _instance_field_context(instance):
     return out
 
 
-class UiActionBoutonSerializer(serializers.ModelSerializer):
+class UiActionBoutonSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = UiActionBouton
         fields = ['id', 'cible', 'libelle', 'icone', 'type_action', 'ref',
@@ -125,12 +126,20 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': '« target_model » et « target_id » sont requis.'},
                 status=400)
+        # APAR47 — un bouton posé sur une fiche ne vise QUE son modèle cible :
+        # sans ce contrôle, un bouton « crm.lead » exécutait sa règle sur un
+        # devis (ou tout autre modèle) choisi par l'appelant.
+        cible = (bouton.cible or '').strip().lower()
+        if cible and target_model.lower() != cible:
+            return Response(
+                {'detail': '« bouton » : cible non autorisée pour ce bouton.'},
+                status=400)
         ok, message = ui_extensions.declencher_bouton(
             bouton, target_model, target_id, user=request.user)
         return Response({'ok': ok, 'message': message})
 
 
-class UiOngletCustomSerializer(serializers.ModelSerializer):
+class UiOngletCustomSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = UiOngletCustom
         fields = ['id', 'cible', 'titre', 'type_contenu', 'ref', 'condition',

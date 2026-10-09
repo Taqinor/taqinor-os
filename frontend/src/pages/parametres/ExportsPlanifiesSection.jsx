@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react'
 import { CalendarClock, Play, Plus, Trash2 } from 'lucide-react'
 import api from '../../api/axios'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -50,6 +50,8 @@ const VIDE = {
 }
 
 export default function ExportsPlanifiesSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const canManage = useIsAdminOrResponsable()
 
   const [rows, setRows] = useState([])
@@ -129,7 +131,7 @@ export default function ExportsPlanifiesSection() {
   }
 
   const supprimer = async (row) => {
-    if (!window.confirm(`Supprimer l'export planifié « ${row.titre} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer l'export planifié « ${row.titre} » ?` }))) return
     try {
       await api.delete(`/core/scheduled-exports/${row.id}/`)
       charger()

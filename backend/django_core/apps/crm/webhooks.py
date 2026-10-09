@@ -3102,3 +3102,325 @@ def replay_meta_lead_payload(raw):
         return False, (raw.error or 'Rejeu échoué : récupération Graph '
                                     'impossible.'), None
     return True, 'Lead Meta Lead Ads rejoué.', lead
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# YBW51 — Récepteur des demandes de rendez-vous du site public YanBow
+# (`apps/yanbow-web`, proxy même origine `POST /api/rendez-vous`, YBW54).
+#
+# Contrat : `apps/crm/contract_samples/demande_rdv_site.json` (YBW50, PACT10).
+# Principes (DISTINCTS du récepteur taqinor.ma ci-dessus, qui retombe sur la
+# PREMIÈRE société et lance un devis solaire automatique) :
+#   * société tirée de la CLÉ (`X-Site-Cle` → `SITE_RDV_CLES`), JAMAIS du corps
+#     ni d'un réglage global, AUCUN repli ; une clé de `refus` dans le corps →
+#     400 ;
+#   * signature HMAC `X-Signature: t=<epoch>,v1=<hex>` sur `f"{t}." + corps`
+#     (sémantique de `apps.publicapi.delivery.verify_signature_v2`, recopiée
+#     ici : le domaine `crm` ne s'importe pas le satellite `publicapi`) ;
+#   * échec = FERMÉ : réglage vide, clé inconnue, slug vide/introuvable,
+#     signature fausse ou périmée → 401 à corps CONSTANT, RIEN écrit ;
+#   * ORDRE IMPOSÉ : clé → signature → limite par clé → contrôles du corps →
+#     `transaction.atomic()` { dedupe_event ; Lead ; LeadActivity } →
+#     `notify_new_lead` en `on_commit` ;
+#   * idempotence sur `idempotency_key` DU CORPS (couvert par la signature),
+#     jamais sur l'en-tête `Idempotency-Key` (simple miroir) ;
+#   * aucune IP ni agent du visiteur reçu ni stocké ; aucune donnée
+#     personnelle dans les journaux ; PAS de devis automatique, PAS de mapping
+#     du tunnel solaire, PAS de cadence.
+# Limite connue (hors périmètre) : le lien « Répondre maintenant » de
+# `notify_new_lead` force le préfixe +212 (faux pour un numéro français).
+# ════════════════════════════════════════════════════════════════════════════
+
+#: Source `dedupe_event` des demandes de rendez-vous du site.
+DEMANDE_RDV_SOURCE = 'crm.demande_rdv'
+#: Marqueur de provenance posé sur le lead (`external_system`) ; `external_id`
+#: porte l'`idempotency_key` pour retrouver le lead lors d'un rejeu.
+DEMANDE_RDV_EXTERNAL_SYSTEM = 'site_rdv'
+#: Tolérance anti-rejeu de `t` (identique à `verify_signature_v2`).
+DEMANDE_RDV_TOLERANCE_SECONDES = 300
+#: Limite PAR CLÉ (jamais par IP : derrière un Worker, l'IP vue est celle de
+#: sortie Cloudflare) — demandes par fenêtre d'une minute.
+DEMANDE_RDV_LIMITE_PAR_MINUTE_DEFAUT = 30
+
+_RDV_401 = {'detail': 'Non autorisé.'}
+_RDV_PRODUITS = {
+    'solarbow': 'SolarBow',
+    'marketingbow': 'MarketingBow',
+    'sur_mesure': 'Sur mesure',
+}
+_RDV_LANGUES = ('fr', 'en')
+_RDV_UTM = ('utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
+            'utm_content')
+#: Longueurs maximales — miroir du contrat (`champs.*.max`).
+_RDV_MAX = {
+    'idempotency_key': 36, 'nom': 120, 'societe': 160, 'email': 254,
+    'telephone': 30, 'message': 2000, 'page': 200,
+    **{k: 300 for k in _RDV_UTM},
+}
+#: Clés du corps reconnues (toutes mappées sur le lead ou sa note).
+DEMANDE_RDV_CLES_CORPS = (
+    'idempotency_key', 'nom', 'societe', 'email', 'telephone', 'produit',
+    'message', 'langue', 'consentement', 'consentement_le', 'page',
+) + _RDV_UTM
+#: Clés REFUSÉES (400) — miroir de `refus` du contrat. Tout nom commençant par
+#: `company` est refusé aussi (variantes `companyId`, `company_slug`…).
+DEMANDE_RDV_REFUS = ('company', 'company_id', 'societe_id')
+
+
+def _rdv_cles_configurees():
+    """Parse ``SITE_RDV_CLES`` = ``id_cle:slug_societe:secret,…``.
+
+    Renvoie ``{id_cle: (slug, secret)}``. Une entrée mal formée (autre chose
+    que trois parties, identifiant ou secret vide) est IGNORÉE — jamais une
+    clé partiellement valide. Un slug vide est conservé tel quel : la
+    résolution de société le refuse ensuite (401)."""
+    brut = getattr(settings, 'SITE_RDV_CLES', '') or ''
+    cles = {}
+    for entree in str(brut).split(','):
+        parties = entree.strip().split(':')
+        if len(parties) != 3:
+            continue
+        id_cle, slug, secret = (p.strip() for p in parties)
+        if not id_cle or not secret:
+            continue
+        cles[id_cle] = (slug, secret)
+    return cles
+
+
+def _rdv_signature_valide(secret, corps, entete, *, maintenant=None):
+    """Sémantique EXACTE de ``publicapi.delivery.verify_signature_v2`` :
+    ``t`` dans ±300 s, HMAC-SHA256(secret, f"{t}." + corps) en hex, comparé
+    en OCTETS (un en-tête non ASCII est invalide, jamais une exception)."""
+    try:
+        parties = dict(
+            item.split('=', 1) for item in str(entete).split(',') if '=' in item)
+        t = int(parties['t'])
+        recu = parties['v1']
+    except (KeyError, ValueError, AttributeError):
+        return False
+    maintenant = int(maintenant if maintenant is not None
+                     else timezone.now().timestamp())
+    if abs(maintenant - t) > DEMANDE_RDV_TOLERANCE_SECONDES:
+        return False
+    attendu = hmac.new(secret.encode('utf-8'),
+                       f'{t}.'.encode('utf-8') + corps,
+                       hashlib.sha256).hexdigest()
+    return hmac.compare_digest(attendu.encode('utf-8'),
+                               str(recu).encode('utf-8'))
+
+
+def _rdv_limite_atteinte(id_cle):
+    """Compteur PAR CLÉ sur une fenêtre d'une minute (cache Django)."""
+    from django.core.cache import cache
+    limite = int(getattr(settings, 'SITE_RDV_LIMITE_PAR_MINUTE',
+                         DEMANDE_RDV_LIMITE_PAR_MINUTE_DEFAUT)
+                 or DEMANDE_RDV_LIMITE_PAR_MINUTE_DEFAUT)
+    fenetre = int(timezone.now().timestamp() // 60)
+    cle_cache = f'crm:demande_rdv:limite:{id_cle}:{fenetre}'
+    try:
+        if cache.add(cle_cache, 1, timeout=120):
+            return False
+        return cache.incr(cle_cache) > limite
+    except Exception:  # noqa: BLE001 — cache indisponible : jamais bloquant
+        logger.warning('demande_rdv: compteur de limite indisponible')
+        return False
+
+
+def _rdv_texte(data, cle, erreurs, *, obligatoire):
+    valeur = data.get(cle)
+    if valeur is None or (isinstance(valeur, str) and not valeur.strip()):
+        if obligatoire:
+            erreurs[cle] = 'obligatoire'
+        return ''
+    if not isinstance(valeur, str):
+        erreurs[cle] = 'type'
+        return ''
+    valeur = valeur.strip()
+    if len(valeur) > _RDV_MAX[cle]:
+        erreurs[cle] = 'trop_long'
+        return ''
+    return valeur
+
+
+def _rdv_valider_corps(data):
+    """Contrôle le corps contre le contrat. Renvoie ``(propre, erreurs)`` ;
+    ``erreurs`` = ``{champ: code}`` (jamais la valeur reçue)."""
+    import uuid as _uuid
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+
+    erreurs = {}
+    propre = {}
+
+    cle_idem = _rdv_texte(data, 'idempotency_key', erreurs, obligatoire=True)
+    if cle_idem:
+        try:
+            propre['idempotency_key'] = str(_uuid.UUID(cle_idem))
+        except ValueError:
+            erreurs['idempotency_key'] = 'format'
+
+    for cle in ('nom', 'societe'):
+        propre[cle] = _rdv_texte(data, cle, erreurs, obligatoire=True)
+
+    email = _rdv_texte(data, 'email', erreurs, obligatoire=True)
+    if email:
+        try:
+            validate_email(email)
+            propre['email'] = email.lower()
+        except ValidationError:
+            erreurs['email'] = 'format'
+
+    propre['telephone'] = _rdv_texte(data, 'telephone', erreurs,
+                                     obligatoire=False)
+    propre['message'] = _rdv_texte(data, 'message', erreurs, obligatoire=False)
+    page = _rdv_texte(data, 'page', erreurs, obligatoire=False)
+    if page and not page.startswith('/'):
+        erreurs['page'] = 'format'
+    propre['page'] = page
+    for cle in _RDV_UTM:
+        propre[cle] = _rdv_texte(data, cle, erreurs, obligatoire=False)
+
+    produit = data.get('produit')
+    if not isinstance(produit, str) or produit not in _RDV_PRODUITS:
+        erreurs['produit'] = 'obligatoire' if produit in (None, '') else 'valeur'
+    else:
+        propre['produit'] = produit
+
+    langue = data.get('langue')
+    if not isinstance(langue, str) or langue not in _RDV_LANGUES:
+        erreurs['langue'] = 'obligatoire' if langue in (None, '') else 'valeur'
+    else:
+        propre['langue'] = langue
+
+    if data.get('consentement') is not True:
+        erreurs['consentement'] = 'obligatoire'
+
+    brut_le = data.get('consentement_le')
+    try:
+        le = parse_datetime(brut_le) if isinstance(brut_le, str) else None
+    except ValueError:
+        le = None
+    if le is None:
+        erreurs['consentement_le'] = ('obligatoire' if brut_le in (None, '')
+                                      else 'format')
+    else:
+        if timezone.is_naive(le):
+            le = timezone.make_aware(le, timezone.utc)
+        propre['consentement_le'] = le
+
+    return propre, erreurs
+
+
+def _rdv_creer_lead(company, propre):
+    """Crée le lead + SA note unique (appelé DANS la transaction)."""
+    produit_libelle = _RDV_PRODUITS[propre['produit']]
+    champs = {
+        'company': company,
+        'nom': propre['nom'],
+        'societe': propre['societe'],
+        'email': propre['email'],
+        'telephone': propre['telephone'] or None,
+        'source': Lead.Source.SITE_WEB,
+        'canal': Lead.Canal.SITE_WEB,
+        'tags': f'Rendez-vous {produit_libelle}',
+        'consent_timestamp': propre['consentement_le'],
+        'external_system': DEMANDE_RDV_EXTERNAL_SYSTEM,
+        'external_id': propre['idempotency_key'],
+    }
+    # `Lead.LanguePreferee` ne connaît que fr/darija (modèle hors périmètre) :
+    # `fr` est posé, `en` est consigné dans la note (jamais une valeur hors
+    # choix en base).
+    if propre['langue'] == 'fr':
+        champs['langue_preferee'] = Lead.LanguePreferee.FR
+    for cle in _RDV_UTM:
+        if propre[cle]:
+            champs[cle] = propre[cle]
+    lead = Lead.objects.create(**champs)
+
+    lignes = [f'Demande de rendez-vous depuis le site — produit : '
+              f'{produit_libelle}.',
+              f'Langue du visiteur : {propre["langue"]}.']
+    if propre['page']:
+        lignes.append(f'Page : {propre["page"]}')
+    if propre['message']:
+        lignes.append('Message :')
+        lignes.append(propre['message'])
+    LeadActivity.objects.create(
+        company=company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body='\n'.join(lignes))
+    return lead
+
+
+def _rdv_notifier(lead_id):
+    try:
+        from .services import notify_new_lead
+        lead = Lead.objects.filter(pk=lead_id).first()
+        if lead is not None:
+            notify_new_lead(lead)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('demande_rdv: notify_new_lead échoué (lead #%s)',
+                       lead_id)
+
+
+@csrf_exempt
+@require_POST
+def demande_rdv_webhook(request):
+    # 1. Clé → société (jamais depuis le corps, aucun repli).
+    id_cle = request.headers.get('X-Site-Cle', '').strip()
+    cles = _rdv_cles_configurees()
+    if not id_cle or id_cle not in cles:
+        return JsonResponse(_RDV_401, status=401)
+    slug, secret = cles[id_cle]
+    company = Company.objects.filter(slug=slug).first() if slug else None
+    if company is None:
+        return JsonResponse(_RDV_401, status=401)
+
+    # 2. Signature sur le corps BRUT.
+    if not _rdv_signature_valide(
+            secret, request.body, request.headers.get('X-Signature', '')):
+        return JsonResponse(_RDV_401, status=401)
+
+    # 3. Limite PAR CLÉ (après authentification : un inconnu ne consomme
+    #    jamais le budget d'une clé).
+    if _rdv_limite_atteinte(id_cle):
+        resp = JsonResponse({'detail': 'Trop de demandes.'}, status=429)
+        resp['Retry-After'] = '60'
+        return resp
+
+    # 4. Contrôles du corps.
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'detail': 'JSON invalide.'}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({'detail': 'JSON invalide.'}, status=400)
+    refusees = sorted(
+        k for k in data
+        if k in DEMANDE_RDV_REFUS or str(k).lower().startswith('company'))
+    if refusees:
+        return JsonResponse(
+            {'detail': 'Clé interdite dans le corps.', 'refus': refusees},
+            status=400)
+    propre, erreurs = _rdv_valider_corps(data)
+    if erreurs:
+        return JsonResponse(
+            {'detail': 'Corps invalide.', 'erreurs': erreurs}, status=400)
+
+    # 5. Dédoublonnage + création, atomiques : un échec après le
+    #    dédoublonnage annule aussi la ligne `ProcessedWebhookEvent` (la
+    #    relance du Worker recrée le lead, rien n'est perdu).
+    with transaction.atomic():
+        premier = dedupe_event(company=company, source=DEMANDE_RDV_SOURCE,
+                               event_id=propre['idempotency_key'])
+        if not premier:
+            existant = (Lead.all_objects
+                        .filter(company=company,
+                                external_system=DEMANDE_RDV_EXTERNAL_SYSTEM,
+                                external_id=propre['idempotency_key'])
+                        .order_by('pk').values_list('pk', flat=True).first())
+            return JsonResponse({'id': existant, 'statut': 'deja_recu'},
+                                status=200)
+        lead = _rdv_creer_lead(company, propre)
+        lead_id = lead.pk
+        transaction.on_commit(lambda: _rdv_notifier(lead_id))
+    return JsonResponse({'id': lead_id, 'statut': 'recu'}, status=201)

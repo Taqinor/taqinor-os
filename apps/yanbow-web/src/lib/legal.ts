@@ -70,6 +70,12 @@ export interface Commun {
   /** Représentant UE (RGPD art. 27) — seulement s'il est désigné. */
   representantUe: string | null;
   responsableTraitement: Responsable | null;
+  /**
+   * Garanties RÉELLEMENT utilisées pour les transferts hors du pays du
+   * responsable (texte fourni par Reda après avis du conseil, YBWM9) — `null`
+   * tant qu'il n'est pas fourni : la page Confidentialité reste alors fermée.
+   */
+  garantiesTransferts: Record<Locale, string> | null;
 }
 
 export interface Legal {
@@ -102,8 +108,22 @@ export const LEGAL: Legal = {
     recepissesCndp: null,
     representantUe: null,
     responsableTraitement: null,
+    garantiesTransferts: null,
   },
 };
+
+/**
+ * Conservation des demandes dans l'ERP (YBW27) — ce que le code fait VRAIMENT
+ * (`backend/django_core/apps/crm/dsr_provider.py`) : un prospect est
+ * ANONYMISÉ (jamais « supprimé ») `ans` après son dernier contact, et
+ * SEULEMENT quand Reda arme `CRM_LEAD_RETENTION_ACTIF` sur le serveur. Tant
+ * que `anonymisationArmee` est faux, la page Confidentialité ne promet rien :
+ * elle reste fermée. Passer à `true` seulement une fois le réglage armé en
+ * production. `tests/privacyPage.test.ts` compare `ans` au code de l'ERP.
+ */
+export const CONSERVATION_PROSPECTS = { ans: 3, anonymisationArmee: false } as const satisfies { ans: number; anonymisationArmee: boolean };
+
+export type Conservation = { ans: number; anonymisationArmee: boolean };
 
 const plein = (v: string | null | undefined): v is string => typeof v === 'string' && v.trim() !== '';
 
@@ -189,9 +209,34 @@ export function mentionsLegalesCompletes(l: Legal = LEGAL): boolean {
   return editeurComplet(l) && plein(l.commun.email) && plein(l.commun.directeurPublication) && hebergeurComplet(l);
 }
 
+/**
+ * Page Confidentialité publiable (YBW27) : responsable du traitement désigné
+ * ET son entité complète, e-mail de contact pour les droits, garanties de
+ * transfert fournies, et anonymisation des prospects armée (sinon la durée
+ * annoncée serait une promesse que le code ne tient pas). Sinon la route
+ * n'existe pas (porte YBW12).
+ */
+export function confidentialiteComplete(l: Legal = LEGAL, conservation: Conservation = CONSERVATION_PROSPECTS): boolean {
+  const r = l.commun.responsableTraitement;
+  const entite = r === 'editeur' ? editeurComplet(l) : r === 'maroc' ? marocComplet(l) : false;
+  const g = l.commun.garantiesTransferts;
+  return entite && plein(l.commun.email) && g !== null && plein(g.fr) && conservation.anonymisationArmee === true;
+}
+
+/** Identité du responsable du traitement (nom + siège), seulement si la page est publiable. */
+export function responsableTraitement(l: Legal = LEGAL, conservation: Conservation = CONSERVATION_PROSPECTS): { nom: string; siege: string } | null {
+  if (!confidentialiteComplete(l, conservation)) return null;
+  return l.commun.responsableTraitement === 'editeur'
+    ? { nom: l.editeur.nomExact as string, siege: l.editeur.siege as string }
+    : { nom: l.maroc.denomination as string, siege: l.maroc.siege as string };
+}
+
 /** Routes juridiques déclarées complètes (lues par le build → Worker, YBW12). */
-export function routesJuridiquesCompletes(l: Legal = LEGAL): string[] {
-  return mentionsLegalesCompletes(l) ? ['/mentions-legales', '/en/legal'] : [];
+export function routesJuridiquesCompletes(l: Legal = LEGAL, conservation: Conservation = CONSERVATION_PROSPECTS): string[] {
+  return [
+    ...(mentionsLegalesCompletes(l) ? ['/mentions-legales', '/en/legal'] : []),
+    ...(confidentialiteComplete(l, conservation) ? ['/confidentialite', '/en/privacy'] : []),
+  ];
 }
 
 /**

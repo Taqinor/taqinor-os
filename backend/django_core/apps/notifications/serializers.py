@@ -89,6 +89,17 @@ class NotificationRoutingRuleSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'event_label', 'target_role_label', 'created_at']
 
+    def validate_event_type(self, value):
+        # APAR21 — seule la liste UNIQUE des événements routables est
+        # acceptée (une règle sur un événement notifié directement à une
+        # personne serait sans effet).
+        from .services import EVENEMENTS_ROUTABLES
+        if value not in EVENEMENTS_ROUTABLES:
+            raise serializers.ValidationError(
+                f'Événement non routable : « {value} » est notifié '
+                'directement à une personne, une règle serait sans effet.')
+        return value
+
     def validate(self, data):
         if not data.get('target_role') and not data.get('target_user'):
             raise serializers.ValidationError(

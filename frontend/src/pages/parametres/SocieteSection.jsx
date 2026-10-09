@@ -17,9 +17,11 @@ import { mediaUrl } from './peConstants'
 import DemoResetButton from './DemoResetButton'
 import PresentationModeToggle from './PresentationModeToggle'
 
-// L773 — validation de format des identifiants marocains, NON bloquante : on
-// affiche un indice si la longueur en chiffres ne correspond pas, sans rejeter
-// la saisie. { len } = nombre de chiffres attendu.
+// L773 — indice de format des identifiants marocains affiché pendant la
+// saisie (longueur en chiffres). APAR31 : l'ICE est NORMALISÉ par le serveur
+// (espaces, tirets, points, préfixe « ICE » retirés) puis REFUSÉ s'il ne fait
+// pas 15 chiffres — l'erreur s'affiche alors sous le champ. Les autres
+// identifiants restent non bloquants. { len } = nombre de chiffres attendu.
 const ID_FORMATS = {
   ice: { len: 15, nom: 'ICE' },
   identifiant_fiscal: { len: 8, nom: 'IF' },
@@ -57,6 +59,18 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
   const setTelephone = (e) => { clearField('telephone'); set(e) }
   // ERR-QAH-PARAMETRES-EMAIL-ERREUR-HORS-CHAMP — idem pour l'e-mail.
   const setEmail = (e) => { clearField('email'); set(e) }
+  // APAR31 — toute erreur 400 du profil s'affiche SOUS son champ (ICE, RIB,
+  // IF…), plus seulement e-mail/téléphone ; la frappe efface le rouge.
+  const onField = (e) => { clearField(e.target.name); set(e) }
+  const errProps = (name) => ({
+    invalid: !!fieldErrors[name],
+    'aria-describedby': fieldErrors[name] ? `pe-${name}-error` : undefined,
+  })
+  const fieldErr = (name) => (fieldErrors[name] ? (
+    <p id={`pe-${name}-error`} role="alert" className="text-[11px] text-destructive">
+      {fieldErrors[name]}
+    </p>
+  ) : null)
 
   return (
     <>
@@ -123,10 +137,12 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
               <SectionTitle label="Identité" icon={<><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>}/>
               <div className="flex flex-col gap-3">
                 <Field label="Nom de l'entreprise" required htmlFor="pe-nom">
-                  <Input id="pe-nom" name="nom" value={form.nom} onChange={set} required placeholder="TAQINOR SARL"/>
+                  <Input id="pe-nom" name="nom" value={form.nom} onChange={onField} {...errProps('nom')} required placeholder="TAQINOR SARL"/>
+                  {fieldErr('nom')}
                 </Field>
                 <Field label="Adresse" htmlFor="pe-adresse">
-                  <Textarea id="pe-adresse" className="min-h-[68px] resize-y" name="adresse" value={form.adresse} onChange={set} placeholder="12 rue Mohammed V, Casablanca" rows={2}/>
+                  <Textarea id="pe-adresse" className="min-h-[68px] resize-y" name="adresse" value={form.adresse} onChange={onField} {...errProps('adresse')} placeholder="12 rue Mohammed V, Casablanca" rows={2}/>
+                  {fieldErr('adresse')}
                 </Field>
               </div>
             </CardContent>
@@ -173,10 +189,12 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
               <SectionTitle label="Informations légales" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>}/>
               <div className="pe-grid-2">
                 <Field label="RIB / IBAN" htmlFor="pe-rib">
-                  <Input id="pe-rib" name="rib" value={form.rib} onChange={set} placeholder="RIB 24 chiffres / IBAN"/>
+                  <Input id="pe-rib" name="rib" value={form.rib} onChange={onField} {...errProps('rib')} placeholder="RIB 24 chiffres / IBAN"/>
+                  {fieldErr('rib')}
                 </Field>
                 <Field label="Banque" htmlFor="pe-banque">
-                  <Input id="pe-banque" name="banque" value={form.banque} onChange={set} placeholder="CIH, Attijariwafa…"/>
+                  <Input id="pe-banque" name="banque" value={form.banque} onChange={onField} {...errProps('banque')} placeholder="CIH, Attijariwafa…"/>
+                  {fieldErr('banque')}
                 </Field>
               </div>
               {/* L772 — SIRET & TVA intra (inutiles au Maroc) repliés par défaut. */}
@@ -191,10 +209,12 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
               {showLegacyFr && (
                 <div className="pe-grid-2 mt-2.5">
                   <Field label="SIRET" htmlFor="pe-siret">
-                    <Input id="pe-siret" name="siret" value={form.siret} onChange={set} placeholder="14 chiffres"/>
+                    <Input id="pe-siret" name="siret" value={form.siret} onChange={onField} {...errProps('siret')} placeholder="14 chiffres"/>
+                    {fieldErr('siret')}
                   </Field>
                   <Field label="N° TVA intracommunautaire" htmlFor="pe-tva-intra">
-                    <Input id="pe-tva-intra" name="tva_intra" value={form.tva_intra} onChange={set} placeholder="FR12345678901"/>
+                    <Input id="pe-tva-intra" name="tva_intra" value={form.tva_intra} onChange={onField} {...errProps('tva_intra')} placeholder="FR12345678901"/>
+                    {fieldErr('tva_intra')}
                   </Field>
                 </div>
               )}
@@ -249,28 +269,33 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
               )}
               <div className="pe-grid-2">
                 <Field label="ICE" required htmlFor="pe-ice">
-                  <Input id="pe-ice" name="ice" value={form.ice} onChange={set} placeholder="000000000000000"/>
+                  <Input id="pe-ice" name="ice" value={form.ice} onChange={onField} {...errProps('ice')} placeholder="000000000000000"/>
+                  {fieldErr('ice')}
                   {idHint('ice', form.ice) && (
                     <p className="text-[11px] text-muted-foreground">{idHint('ice', form.ice)}</p>
                   )}
                 </Field>
                 <Field label="IF (Identifiant Fiscal)" htmlFor="pe-if">
-                  <Input id="pe-if" name="identifiant_fiscal" value={form.identifiant_fiscal} onChange={set} placeholder="00000000"/>
+                  <Input id="pe-if" name="identifiant_fiscal" value={form.identifiant_fiscal} onChange={onField} {...errProps('identifiant_fiscal')} placeholder="00000000"/>
+                  {fieldErr('identifiant_fiscal')}
                   {idHint('identifiant_fiscal', form.identifiant_fiscal) && (
                     <p className="text-[11px] text-muted-foreground">{idHint('identifiant_fiscal', form.identifiant_fiscal)}</p>
                   )}
                 </Field>
                 <Field label="RC (Registre de Commerce)" htmlFor="pe-rc">
-                  <Input id="pe-rc" name="rc" value={form.rc} onChange={set} placeholder="N° RC"/>
+                  <Input id="pe-rc" name="rc" value={form.rc} onChange={onField} {...errProps('rc')} placeholder="N° RC"/>
+                  {fieldErr('rc')}
                 </Field>
                 <Field label="Patente / Taxe professionnelle" htmlFor="pe-patente">
-                  <Input id="pe-patente" name="patente" value={form.patente} onChange={set} placeholder="00000000"/>
+                  <Input id="pe-patente" name="patente" value={form.patente} onChange={onField} {...errProps('patente')} placeholder="00000000"/>
+                  {fieldErr('patente')}
                   {idHint('patente', form.patente) && (
                     <p className="text-[11px] text-muted-foreground">{idHint('patente', form.patente)}</p>
                   )}
                 </Field>
                 <Field label="CNSS" htmlFor="pe-cnss">
-                  <Input id="pe-cnss" name="cnss" value={form.cnss} onChange={set} placeholder="N° affiliation CNSS"/>
+                  <Input id="pe-cnss" name="cnss" value={form.cnss} onChange={onField} {...errProps('cnss')} placeholder="N° affiliation CNSS"/>
+                  {fieldErr('cnss')}
                   {idHint('cnss', form.cnss) && (
                     <p className="text-[11px] text-muted-foreground">{idHint('cnss', form.cnss)}</p>
                   )}

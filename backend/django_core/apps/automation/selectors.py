@@ -6,6 +6,17 @@ d'automatisation à travers ces fonctions plutôt qu'en important
 """
 
 
+#: APAR43 — déclencheurs dont l'ÉMETTEUR vit dans un module PARQUÉ
+#: (``core.parked``) : refusés à la création/modification d'une règle (400
+#: « déclencheur indisponible (module parqué) »), absents du brouillon IA et
+#: de l'écran. Les règles existantes ne sont PAS supprimées.
+DECLENCHEURS_PARQUES = frozenset({
+    'projet_status_change',   # gestion_projet
+    'projet_phase_change',    # gestion_projet
+    'rfq_attribuee',          # achats avancés (RFQ)
+})
+
+
 def approvals_en_attente(company):
     """XKB1 — approbations d'automatisation EN ATTENTE d'une société
     (QuerySet). Sélecteur company-wide utilisé par l'agrégateur
@@ -29,6 +40,7 @@ def closed_rule_catalogue():
     Renvoie des types simples (listes/dicts de chaînes) — jamais les classes
     ``TriggerType``/``ActionType`` elles-mêmes — pour que l'appelant n'ait
     besoin d'aucune connaissance du modèle Django sous-jacent."""
+    from .actions import ACTIONS_INDISPONIBLES
     from .models import ActionType, DATE_TRIGGER_TARGETS, TriggerType
 
     date_targets = {
@@ -36,7 +48,13 @@ def closed_rule_catalogue():
         for (app_label, model), fields in DATE_TRIGGER_TARGETS.items()
     }
     return {
-        'trigger_types': sorted(v for v, _ in TriggerType.choices),
-        'action_types': sorted(v for v, _ in ActionType.choices),
+        # APAR43 — un déclencheur parqué n'est jamais proposé.
+        'trigger_types': sorted(
+            v for v, _ in TriggerType.choices
+            if v not in DECLENCHEURS_PARQUES),
+        # APAR25 — une action sans fournisseur (SMS) n'est pas proposée.
+        'action_types': sorted(
+            v for v, _ in ActionType.choices
+            if v not in ACTIONS_INDISPONIBLES),
         'date_trigger_targets': date_targets,
     }

@@ -9,7 +9,7 @@ import {
   fetchDevis,
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
-import ventesApi from '../../api/ventesApi'
+import ventesApi, { acceptationDejaFaite } from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import {
@@ -31,10 +31,8 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import FacturerDevisDialog from '../../features/ventes/FacturerDevisDialog'
-// VX155 — la carte de victoire (enrichit VX40) remplace le toast plat +
-// celebrateDealSigned() appelés directement d'ici ; le burst reste posé,
-// mais DEPUIS <DealSignedCelebration> lui-même.
-import DealSignedCelebration from '../../ui/DealSignedCelebration'
+// La fête « affaire signée » est rendue par l'hôte global (ShellGlobal).
+import { annoncerAffaireSignee, effacerAffaireSignee } from '../../ui/dealSignedBus'
 import { DataTable } from '../../ui/datatable'
 import { StateBlock } from '../../components/StateBlock'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
@@ -52,7 +50,7 @@ import { STATUT_DISPLAY, DL_ECRAN } from './devisList/devisListConstants.js'
 // SPL204 — flux PDF et son dialogue (move only).
 import { useDevisPdf } from './devisList/useDevisPdf.js'
 import DevisPdfDialog from './devisList/DevisPdfDialog.jsx'
-import { frenchError, useDevisListSynthese } from './devisList/devisListHelpers.js'
+import { corpsRefus, frenchError, useDevisListSynthese } from './devisList/devisListHelpers.js'
 // SPL205 — parcours d'envoi et ses dialogues (move only).
 import { useDevisEnvoi } from './devisList/useDevisEnvoi.js'
 import EnvoiDialogs from './devisList/EnvoiDialogs.jsx'
@@ -384,9 +382,6 @@ export default function DevisList() {
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptEntreprise, setAcceptEntreprise] = useState(ENTREPRISE_VIDE)
   const [acceptBusy, setAcceptBusy] = useState(false)
-  // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
-  // porte pas les lignes du devis — jamais un chiffre inventé).
-  const [dealCelebration, setDealCelebration] = useState(null)
 
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
@@ -599,10 +594,9 @@ export default function DevisList() {
     if (!d || !refusMotifId) return
     setRefusBusy(true)
     try {
-      await ventesApi.refuserDevis(d.id, {
-        motif_perte: refusMotifId,
-        motif: refusNote.trim() || undefined,
-      })
+      await ventesApi.refuserDevis(d.id, corpsRefus({
+        motifsPerte, motifId: refusMotifId, note: refusNote,
+      }))
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
       closeRefusModal()
@@ -617,27 +611,33 @@ export default function DevisList() {
   const submitAccept = async () => {
     const d = acceptTarget
     if (!d) return
+    const corps = corpsAcceptation({
+      nom: acceptNom,
+      date: acceptDate,
+      option: d.nb_options === 2 ? acceptOption : '',
+    }, d, acceptEntreprise)
+    // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
+    // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
+    // Décision fondateur 08/10/2026 — la fête part DÈS le clic ; l'acceptation
+    // (chantier, contrat, PDF scellé… souvent > 20 s) se fait PENDANT la fête.
+    setAcceptTarget(null)
+    annoncerAffaireSignee({
+      reference: d.reference,
+      montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
+      kwc: null,
+    })
     setAcceptBusy(true)
     try {
-      await ventesApi.accepterDevis(d.id, corpsAcceptation({
-        nom: acceptNom,
-        date: acceptDate,
-        option: d.nb_options === 2 ? acceptOption : '',
-      }, d, acceptEntreprise))
-      dispatch(fetchDevis())
-      setAcceptTarget(null)
-      // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
-      // (rare, lié au revenu). La carte de victoire remplace le toast plat
-      // (montant réel ; pas de kWc dans la vue liste — jamais inventé).
-      setDealCelebration({
-        reference: d.reference,
-        montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
-        kwc: null,
-      })
+      await ventesApi.accepterDevis(d.id, corps)
     } catch (err) {
-      toast.error(frenchError(err, 'Acceptation impossible.'))
+      // Déjà accepté (réponse précédente perdue) = c'est signé : on garde la fête.
+      if (!acceptationDejaFaite(err)) {
+        effacerAffaireSignee()
+        toast.error(frenchError(err, 'Acceptation impossible.'))
+      }
     } finally {
       setAcceptBusy(false)
+      dispatch(fetchDevis())
     }
   }
 
@@ -984,16 +984,6 @@ export default function DevisList() {
         description="Proposition client. Téléchargeable ou ouvrable dans un onglet."
         filename={previewDevis ? `${previewDevis.reference}.pdf` : undefined}
         fetchBlob={fetchDevisPreviewBlob}
-      />
-
-      {/* VX155 — carte de victoire posée sur l'acceptation inline (montant
-          réel ; pas de kWc dans cette vue liste). */}
-      <DealSignedCelebration
-        open={!!dealCelebration}
-        reference={dealCelebration?.reference}
-        montantTtc={dealCelebration?.montantTtc}
-        kwc={dealCelebration?.kwc}
-        onClose={() => setDealCelebration(null)}
       />
 
       {/* QX26 — Modale de refus OBLIGATOIRE : motif MotifPerte (taxonomie

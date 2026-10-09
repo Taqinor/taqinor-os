@@ -705,8 +705,14 @@ class TestHonestCashflowPayback(TestCase):
         # QRES54 (fondateur) — AUCUNE hausse tarifaire supposée : la projection
         # est à tarif constant, seule la dégradation érode les économies.
         self.assertEqual(a['escalation_pct'], 0.0)
-        self.assertTrue(any('82-21' in n for n in a['notes']))
-        self.assertTrue(any('injection' in n.lower() for n in a['notes']))
+        # AMOT25 (C-AMOT-025) — la note réglementaire est LA mention sourcée
+        # unique ``constants_82_21.MENTION_BT`` (plus « Loi 82-21 … plafond
+        # d'injection 20 % intégré », phrase que le calcul ne fait pas).
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_BT
+        self.assertTrue(any(MENTION_BT in n for n in a['notes']))
+        self.assertTrue(any('seuls les kwh autoconsommés' in n.lower()
+                            for n in a['notes']))
+        self.assertFalse(any("plafond d'injection" in n for n in a['notes']))
 
     # ── Z4 (ORDRE FONDATEUR, 20/08/2026) — la courbe ne change JAMAIS de pente
     #    sans raison de modèle, et le seul palier autorisé est ANNONCÉ ──────────
@@ -844,7 +850,9 @@ class TestHonestCashflowPayback(TestCase):
         self.assertEqual(len(data['cashflow_sans']), 25)
         # les hypothèses documentées apparaissent dans le bloc « Nos hypothèses »
         items = ' '.join(data['hypotheses']['items'])
-        self.assertIn('82-21', items)
+        # AMOT25 — la mention sourcée unique remplace « Loi 82-21 : … ».
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_BT
+        self.assertIn(MENTION_BT, items)
         self.assertIn('gradation', items.replace('é', 'e'))
 
 
@@ -1349,6 +1357,12 @@ class TestBuilderWiresTenantSite(TestCase):
         from apps.ventes.quote_engine import build_quote_data
         self._set_site('https://www.helios.ma/')
         devis = self._residential_devis('DEV-SCA27-WITH')
+        # ADEV68 / AMOT13 — « signer » : devis HORS brouillon, lien frappé
+        # par l'envoi (le moteur le lit, ne le crée jamais).
+        from apps.ventes.models import ShareLink
+        type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        ShareLink.for_devis(devis)
         data = build_quote_data(devis)
         # Ligne site du pied de page = SON site (forme d'affichage normalisée).
         self.assertEqual(data['site_url'], 'helios.ma')

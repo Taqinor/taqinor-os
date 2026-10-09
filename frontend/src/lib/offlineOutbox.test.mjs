@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  OFFLINE_MODULES, Outbox, countByPayloadKey, discardModuleOp,
+  BinaryOutbox, OFFLINE_MODULES, Outbox, countByPayloadKey, discardModuleOp,
   flushModuleOutboxes, getModuleOutbox, notifyOfflineOutboxChange,
   onOfflineOutboxChange, pendingCountByTarget, pendingModuleOps,
   purgeModuleOutboxes, queueIfOffline, queueOperation, setModuleSender,
@@ -189,4 +189,176 @@ test('NTMOB24 — comptage par clé de corps (file terrain : payload.chantier)',
   assert.equal(compte.get('12'), 1)
   assert.equal(compte.size, 2)
   assert.equal(countByPayloadKey(undefined, 'chantier').size, 0)
+})
+
+// ADEP17 — file sûre entre onglets et entre appels concurrents. Magasin PARTAGÉ à 5 ms
+// de latence (imite IndexedDB) ; `avecUpdate: false` = magasin load/save nu (repli verrouillé).
+function storePartage({ avecUpdate = true } = {}) {
+  let data = []
+  let chaine = Promise.resolve()
+  const attendre = () => new Promise((r) => setTimeout(r, 5))
+  const s = {
+    async load() { await attendre(); return structuredClone(data) },
+    async save(ops) { await attendre(); data = structuredClone(ops) },
+    contenu: () => data.map((o) => o.client_op_id),
+  }
+  if (avecUpdate) {
+    s.update = (fn) => {
+      const p = chaine.then(async () => {
+        await attendre()
+        data = structuredClone(fn(structuredClone(data)))
+        return structuredClone(data)
+      })
+      chaine = p.catch(() => {})
+      return p
+    }
+  }
+  return s
+}
+
+for (const avecUpdate of [true, false]) {
+  const etiquette = avecUpdate ? 'update atomique' : 'repli load/save verrouillé'
+
+  test(`deux onglets : aucune op écrasée (${etiquette})`, async () => {
+    const store = storePartage({ avecUpdate })
+    const A = new Outbox({ store, sender: async () => ({ results: [] }) })
+    const B = new Outbox({ store, sender: async () => ({ results: [] }) })
+    await A.enqueue('t.op', {}, { clientOpId: 'a0' })
+    await B.enqueue('t.op', {}, { clientOpId: 'b1' })
+    await A.enqueue('t.op', {}, { clientOpId: 'a2' })
+    assert.deepEqual(store.contenu(), ['a0', 'b1', 'a2'])
+    // Persistance : un onglet neuf voit tout.
+    const C = new Outbox({ store })
+    assert.deepEqual((await C.pending()).map((o) => o.client_op_id), ['a0', 'b1', 'a2'])
+  })
+
+  test(`enqueue concurrents au premier accès (${etiquette})`, async () => {
+    const store = storePartage({ avecUpdate })
+    const o = new Outbox({ store })
+    await Promise.all([
+      o.enqueue('t.op', {}, { clientOpId: 'x1' }),
+      o.enqueue('t.op', {}, { clientOpId: 'x2' }),
+    ])
+    assert.deepEqual(store.contenu().sort(), ['x1', 'x2'])
+  })
+
+  test(`le flush d'un onglet n'efface pas l'op d'un autre (${etiquette})`, async () => {
+    const store = storePartage({ avecUpdate })
+    let ouvrir
+    const porte = new Promise((r) => { ouvrir = r })
+    let appels = 0
+    const sender = async (ops) => {
+      appels += 1
+      // 2e envoi (l'op de B) : coupure réseau, pour isoler la conservation de b1
+      if (appels > 1) throw new Error('réseau coupé')
+      await porte                         // le réseau « répond » plus tard
+      return { results: ops.map((op) => ({ client_op_id: op.client_op_id, status: 'applied' })) }
+    }
+    const A = new Outbox({ store, sender })
+    const B = new Outbox({ store, sender })
+    await A.enqueue('t.op', {}, { clientOpId: 'a0' })
+    const flushA = A.flush()
+    await new Promise((r) => setTimeout(r, 30))   // A a lu a0 et attend le réseau
+    await B.enqueue('t.op', {}, { clientOpId: 'b1' })
+    ouvrir()
+    const res = await flushA
+    assert.equal(res.flushed, 1)
+    assert.deepEqual(store.contenu(), ['b1'], 'l’op de B n’est jamais perdue')
+  })
+}
+
+test('BinaryOutbox : deux enqueue concurrents sont tous deux conservés', async () => {
+  const store = storePartage()
+  const a = new BinaryOutbox({ store })
+  const b = new BinaryOutbox({ store })
+  const buf = () => new Uint8Array([1, 2, 3]).buffer
+  await Promise.all([
+    a.enqueue('photo', {}, { bytes: buf() }, { clientOpId: 'p1' }),
+    b.enqueue('photo', {}, { bytes: buf() }, { clientOpId: 'p2' }),
+  ])
+  assert.deepEqual(store.contenu().sort(), ['p1', 'p2'])
+})
+
+// ADEP18 — une erreur HTTP non transitoire du lot (4xx hors 401/408/429) n'est pas une
+// coupure réseau : les ops du lot sont MARQUÉES (visibles, abandonnables), et une op
+// refusée en tête ne bloque plus les suivantes. 5xx / réseau : réessai sans marque.
+const erreurHttp = (status, detail) => Object.assign(new Error(`HTTP ${status}`), {
+  response: { status, data: detail ? { detail } : {} },
+})
+
+test('lot refusé en 400 : ops marquées serverError (ADEP18)', async () => {
+  const store = storePartage()
+  const ob = new Outbox({ store, sender: async () => { throw erreurHttp(400, 'Aucune société') } })
+  for (const id of ['o1', 'o2', 'o3']) await ob.enqueue('t.op', {}, { clientOpId: id })
+  let res
+  for (let i = 0; i < 3; i += 1) res = await ob.flush()
+  assert.equal(res.remaining, 3)
+  const echecs = await ob.failed()
+  assert.equal(echecs.length, 3, 'les 3 ops sont visibles comme refusées')
+  assert.ok(echecs.every((o) => o.serverError === 'Aucune société' && o.attempts === 3))
+  // Persistance : un onglet neuf retrouve marques et compteur.
+  const autre = new Outbox({ store })
+  assert.equal((await autre.failed()).length, 3)
+  await ob.discard('o1')
+  assert.equal((await ob.failed()).length, 2, 'abandonnable')
+})
+
+test('op refusée en tête : les suivantes partent (ADEP18)', async () => {
+  const store = storePartage()
+  const envoyes = []
+  const sender = async (ops) => {
+    envoyes.push(ops.map((o) => o.client_op_id))
+    return { results: ops.map((o) => ({ client_op_id: o.client_op_id, status: 'applied' })) }
+  }
+  const ob = new Outbox({ store, sender })
+  await ob.enqueue('t.op', {}, { clientOpId: 'refusee' })
+  // marquée refusée par un flush antérieur
+  await store.update((cur) => cur.map((o) => ({ ...o, serverError: 'Refusée', attempts: 1 })))
+  await ob.enqueue('t.op', {}, { clientOpId: 'suite1' })
+  await ob.enqueue('t.op', {}, { clientOpId: 'suite2' })
+  const res = await ob.flush()
+  assert.deepEqual(envoyes, [['suite1', 'suite2']], 'l’op marquée est sautée')
+  assert.equal(res.flushed, 2)
+  assert.deepEqual(store.contenu(), ['refusee'])
+})
+
+test('5xx et réseau : réessai sans marque (ADEP18)', async () => {
+  for (const erreur of [erreurHttp(503), erreurHttp(401), erreurHttp(429), new Error('réseau')]) {
+    const ob = new Outbox({ store: storePartage(), sender: async () => { throw erreur } })
+    await ob.enqueue('t.op', {}, { clientOpId: 'a' })
+    const res = await ob.flush()
+    assert.equal(res.remaining, 1)
+    assert.equal((await ob.failed()).length, 0, 'aucune marque')
+    assert.equal((await ob.pending())[0].attempts, undefined)
+  }
+})
+
+// ADEP16 — un timeout APRES l'effet serveur ne doit jamais produire un second effet :
+// la MEME cle d'idempotence voyage avec l'appel en ligne et avec l'op mise en file.
+test('queueIfOffline : timeout après effet serveur → une seule application (ADEP16)', async () => {
+  await reset()
+  const serveur = fakeServer()           // idempotent par client_op_id
+  setModuleSender(serveur.sender)
+  const ecritures = []                   // clés vues par l'appel EN LIGNE
+  const appelEnLigne = async (clientOpId) => {
+    // l'effet a lieu côté serveur (dédoublonné par clé), la réponse n'arrive jamais
+    if (!serveur.vues.has(clientOpId)) {
+      serveur.vues.add(clientOpId)
+      serveur.applied.push({ client_op_id: clientOpId, via: 'en ligne' })
+    }
+    ecritures.push(clientOpId)
+    throw Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' })
+  }
+  const r = await queueIfOffline('visites', appelEnLigne, 'visite.mesures',
+    { visite: 1, categorie: 'toit', valeurs: { a: 1 } }, { target: 1 })
+  assert.equal(r.queued, true)
+  assert.ok(ecritures[0], 'l’appel en ligne reçoit une clé d’idempotence')
+  assert.equal(r.clientOpId, ecritures[0], 'l’op filée porte la clé de l’appel en ligne')
+  const [op] = await pendingModuleOps()
+  assert.equal(op.client_op_id, ecritures[0])
+
+  await flushModuleOutboxes()
+  assert.equal(serveur.applied.length, 1, 'UN effet pour UNE action')
+  assert.equal((await pendingModuleOps()).length, 0)
+  await reset()
 })

@@ -53,10 +53,87 @@ logger = logging.getLogger("apps.ventes.services")
 class AcceptError(Exception):
     """Raised when a devis cannot be accepted (wrong status / bad option)."""
 
-    def __init__(self, message, conflict=False):
+    def __init__(self, message, conflict=False, code=None):
         super().__init__(message)
         self.message = message
         self.conflict = conflict  # True → 409, False → 400
+        # ADEV11 — code machine du 409 (liste FERMÉE ``codes_409`` du contrat
+        # ``proposal_accept.json``) ; ``None`` = refus historique sans code.
+        self.code = code
+
+
+#: ADEV13 — message NEUTRE du 409 ``validation_requise`` (contrat
+#: ``proposal_accept.json``, ``reponses_409.validation_requise`` — ADEV2) :
+#: aucun motif interne (crédit, avertissement) n'est exposé au client.
+VALIDATION_REQUISE_REFUS = (
+    'Cette proposition attend une validation interne avant de pouvoir être '
+    'signée.')
+
+
+class AcceptationBloquee(AcceptError):
+    """ADEV13 (C-ADEV-005) — acceptation refusée par un blocage crédit
+    (XFAC28) ou un avertissement de vente bloquant (ZSAL9).
+
+    Sous-classe d'``AcceptError`` : la signature publique et le portail
+    (qui attrapent ``AcceptError``) répondent donc 409 avec le message NEUTRE
+    et ``code = "validation_requise"`` ; la vue interne l'attrape AVANT et
+    garde son 403 détaillé (``motif``, ``nature`` = ``credit_hold`` |
+    ``sale_warning``)."""
+
+    def __init__(self, nature, motif):
+        super().__init__(VALIDATION_REQUISE_REFUS, conflict=True,
+                         code='validation_requise')
+        self.nature = nature
+        self.motif = motif
+
+
+def peut_passer_outre(user):
+    """ADEV14 (C-ADEV-006) — seul un Administrateur ou un Responsable (palier
+    ``menu_tier`` faisant autorité, dérivé du rôle) peut passer outre un
+    blocage crédit ou un avertissement de vente bloquant. Porter
+    ``ventes_valider`` (rôle « Commercial ») ne suffit PAS. Sans utilisateur
+    (signature publique) : jamais."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return getattr(user, 'menu_tier', None) in ('admin', 'responsable')
+
+
+def _garde_blocages_acceptation(devis, *, user, override_credit=False,
+                                override_avertissement=False):
+    """ADEV13 — LA garde unique des trois portes d'acceptation (interne,
+    signature publique, portail) : blocage crédit dur (XFAC28) puis
+    avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
+    un override n'est honoré que s'il est demandé (les portes client ne le
+    demandent jamais) ET que ``peut_passer_outre(user)`` (ADEV14) — un
+    drapeau posé par un Commercial est ignoré, le refus tombe."""
+    from apps.ventes.domain.recouvrement import (
+        CreditHoldError, SaleWarningError, verifier_credit_hold,
+        verifier_sale_warnings,
+    )
+    autorise = peut_passer_outre(user)
+    override_credit = bool(override_credit) and autorise
+    override_avertissement = bool(override_avertissement) and autorise
+    if devis.client_id is not None:
+        try:
+            verifier_credit_hold(
+                devis.client, override=bool(override_credit), user=user,
+                chatter_target=devis, contexte='acceptation devis')
+        except CreditHoldError as exc:
+            raise AcceptationBloquee('credit_hold', exc.motif) from exc
+    try:
+        verifier_sale_warnings(
+            devis, override=bool(override_avertissement), user=user,
+            chatter_target=devis)
+    except SaleWarningError as exc:
+        raise AcceptationBloquee('sale_warning', exc.motif) from exc
+
+
+#: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
+#: ``reponses_409.brouillon`` — ADEV2), repris tel quel ; partagé par la
+#: garde du service et celle du résolveur public (``public/noyau.py``).
+BROUILLON_REFUS = (
+    "Cette proposition n'a pas encore été envoyée : elle ne peut pas être "
+    'signée.')
 
 
 def activate_optional_line(*, devis, ligne_id, user=None):
@@ -104,8 +181,24 @@ def activate_optional_line(*, devis, ligne_id, user=None):
         if not ligne.optionnelle:
             return ligne
 
+        # ADEV19 (C-ADEV-012) — l'activation par le client est un GESTE DE
+        # LIGNE comme un autre : état vu par le client capturé AVANT
+        # l'écriture (instantané « avant correction », envoyé seulement).
+        from apps.ventes.domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis,
+        )
+        avant_geste = debut_de_geste_devis(ligne.devis, user)
+
         ligne.optionnelle = False
         ligne.save(update_fields=['optionnelle'])
+
+    # ADEV19 — après la transaction (best-effort, comme ``LigneDevisViewSet``) :
+    # rafraîchissement (MODE_RAFRAICHIR : études, kWc, marge), instantané du
+    # geste, trace « corrigé après envoi — option client » et AVANCE du jeton
+    # d'édition (``updated_at``) — un écran interne ouvert avant l'activation
+    # reçoit alors 409 ``devis_modifie`` au lieu d'effacer le choix du client.
+    _geste_option_client(devis, user=user, avant=avant_geste,
+                         fin_de_geste=fin_de_geste_devis)
 
     # Chatter (hors transaction — miroir de accept_devis).
     try:
@@ -116,6 +209,31 @@ def activate_optional_line(*, devis, ligne_id, user=None):
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         pass
     return ligne
+
+
+def _geste_option_client(devis, *, user, avant, fin_de_geste):
+    """ADEV19 — la moitié « après écriture » du geste d'option client, dans
+    l'ordre du jumeau interne (``views/ligne_devis.py``) : rafraîchir, puis
+    instantané, puis trace d'envoi, puis jeton. Chaque étape est best-effort :
+    l'option est déjà activée, rien ne doit l'annuler."""
+    try:
+        from apps.ventes.domain.pipeline import (
+            MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
+        )
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
+            company=devis.company))
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception('ADEV19 : rafraîchissement ignoré (devis %s)',
+                         devis.pk)
+    try:
+        from apps.ventes.domain.historique_config import instantane_de_geste
+        instantane_de_geste(devis, user=user)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.exception('ADEV19 : instantané ignoré (devis %s)', devis.pk)
+    fin_de_geste(devis, user, avant=avant, objet='option client')
+    from apps.ventes.domain.verrou_devis import toucher
+    toucher(devis)
 
 
 # ── QJ11 — OTP e-signature (toggle) ─────────────────────────────────────────
@@ -215,6 +333,22 @@ def _plafond_demandes_otp_atteint(prefixe, link_token):
     return compte > OTP_DEMANDES_MAX_PAR_JOUR
 
 
+#: ADEV20 (C-ADEV-021) — message du 409 ``aucun_canal`` (contrat
+#: ``proposal_accept.json``, bloc ``otp.reponse_409`` — ADEV2), rendu par les
+#: deux demandes d'OTP quand AUCUN code n'est réellement parti.
+OTP_AUCUN_CANAL = "Aucun moyen d'envoyer le code : contactez votre conseiller."
+
+
+def canal_otp_disponible(client):
+    """ADEV20 — vrai si un code peut réellement partir vers ``client``.
+
+    Le seul canal câblé est l'e-mail : WhatsApp est un STUB (QX10,
+    ``_send_otp_whatsapp`` rend toujours False tant qu'aucun BSP n'est
+    branché). Sert à refuser ``otp_lecture`` au ``share-link`` d'un client
+    injoignable — sinon le lien serait illisible pour toujours."""
+    return bool((getattr(client, 'email', '') or '').strip())
+
+
 def request_esign_otp(link):
     """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
 
@@ -263,8 +397,11 @@ def request_esign_otp(link):
         logger.warning(
             'QJ11: OTP généré pour %s mais aucun canal disponible (phone=%s, email=%s)',
             devis.reference, bool(phone), bool(email))
-    else:
-        logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
+        # ADEV20 — aucun code n'est parti : aucun code ne reste en cache, et
+        # la vue répond 409 ``aucun_canal`` au lieu de « Code envoyé. ».
+        cache.delete(cache_key)
+        return OTP_AUCUN_CANAL
+    logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
     return None
 
 
@@ -401,8 +538,10 @@ def request_otp_lecture(link):
         logger.warning(
             'L-NIV: OTP lecture généré pour %s mais aucun canal disponible '
             '(phone=%s, email=%s)', devis.reference, bool(phone), bool(email))
-    else:
-        logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
+        # ADEV20 — même règle que l'OTP de signature (jumeau).
+        cache.delete(_otp_lecture_cache_key(link.token))
+        return OTP_AUCUN_CANAL
+    logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
     return None
 
 
@@ -1313,7 +1452,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
-                 entreprise=None):
+                 entreprise=None, override_credit=False,
+                 override_avertissement=False):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1424,15 +1564,22 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # sans cette garde, signer le lien public de v1 après « Réviser »
         # acceptait v1 ET effondrait v2 (sa « sœur ») en REFUSE — plus aucune
         # version active, aucun BC. Rien n'est écrit (règle #4).
-        if not devis.is_active:
-            successeur = (Devis.objects.filter(pk=devis.superseded_by_id)
-                          .values_list('reference', flat=True).first()
-                          if devis.superseded_by_id else None)
-            if successeur:
-                message = f'Cette proposition a été remplacée par {successeur}.'
-            else:
-                message = "Cette proposition n'est plus active."
+        # ADEV7 — la règle vit dans ``modifiabilite.geste_cycle_permis``
+        # (partagée par refuser / envoyer / relancer).
+        from apps.ventes.domain.modifiabilite import (
+            ACCEPTER, geste_cycle_permis)
+        permis, message = geste_cycle_permis(devis, ACCEPTER)
+        if not permis:
             raise AcceptError(message, conflict=True)
+
+        # ADEV11 (C-ADEV-004) — la signature PUBLIQUE (``user=None`` : le
+        # jeton authentifie, aucun compte) ne peut jamais accepter un
+        # BROUILLON, même si une vue l'appelle sans passer par
+        # ``_resolve_proposal_link`` : un devis jamais envoyé n'a pas été
+        # présenté au client. L'acceptation INTERNE d'un brouillon (``user``
+        # posé) reste régie par ERR33 ci-dessous (ADEV12, GATED D-ADEV-2).
+        if user is None and devis.statut == Devis.Statut.BROUILLON:
+            raise AcceptError(BROUILLON_REFUS, conflict=True, code='brouillon')
 
         # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
         if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
@@ -1440,6 +1587,15 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
+
+        # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
+        # bloquant : UNE garde, ici, pour les trois portes (vue interne,
+        # signature publique, portail client). Auparavant seule la vue
+        # interne la posait — le lien public et le portail acceptaient un
+        # client bloqué (chantier créé). Rien n'est écrit sur refus.
+        _garde_blocages_acceptation(
+            devis, user=user, override_credit=override_credit,
+            override_avertissement=override_avertissement)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
@@ -1670,6 +1826,207 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
+    return devis
+
+
+# ── Décision fondateur (Reda, 08/10/2026) — DÉS-ACCEPTATION ─────────────────
+#
+# Un lead qui SORT de « Signé » par une action utilisateur (changement d'étape
+# unitaire ou en masse) dés-accepte son devis : le devis repasse « envoyé »,
+# les tampons d'acceptation sont effacés, les variantes sœurs refusées PAR
+# cette acceptation reviennent, et ce que l'acceptation a créé
+# AUTOMATIQUEMENT (chantier, contrat SAV, commission, parrainage) est défait
+# par les abonnés de ``devis_acceptation_annulee``. Si quelque chose de RÉEL
+# existe en aval (facture, bon de commande, chantier avancé, contrat SAV
+# facturé…), RIEN n'est écrit et la raison est rendue en français.
+#
+# La preuve de signature (``DevisSignature``, PDF scellé) n'est JAMAIS
+# supprimée : une note de chatter dit que l'acceptation a été annulée.
+
+#: Motif posé par l'effondrement des sœurs (``_effondrer_soeurs_et_publier``)
+#: — c'est le MARQUEUR qui prouve qu'une sœur a été refusée par l'acceptation
+#: (avec ``date_refus`` == date d'acceptation et le même groupe).
+MOTIF_VARIANTE_NON_RETENUE = 'variante non retenue'
+
+
+class AnnulationAcceptationBloquee(Exception):
+    """L'acceptation ne peut pas être annulée : quelque chose de réel existe
+    en aval. ``message`` nomme exactement ce qui bloque (français)."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def raison_blocage_annulation_acceptation(devis):
+    """Rend la raison (français) qui EMPÊCHE d'annuler l'acceptation de
+    ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
+
+    Bloquent : une facture non annulée liée au devis (directement, par son bon
+    de commande ou par une facture consolidée — brouillon comprise : elle
+    n'est jamais créée par l'acceptation), un bon de commande non annulé, un
+    dossier 82-21 sorti de « En constitution », puis ce que disent les
+    sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
+    from django.db.models import Q
+    from apps.ventes.models import (
+        BonCommande, Facture, RegulatoryDossier,
+    )
+
+    company_id = devis.company_id
+    facture = (Facture.objects
+               .filter(company_id=company_id)
+               .filter(Q(devis_id=devis.pk)
+                       | Q(bon_commande__devis_id=devis.pk)
+                       | Q(sources__devis_id=devis.pk))
+               .exclude(statut=Facture.Statut.ANNULEE)
+               .order_by('pk').distinct().first())
+    if facture is not None:
+        if facture.statut == Facture.Statut.BROUILLON:
+            return (f'la facture {facture.reference} (brouillon) est déjà '
+                    "créée. Supprimez-la ou annulez-la d'abord.")
+        if facture.statut == Facture.Statut.PAYEE:
+            return (f'la facture {facture.reference} est déjà payée. '
+                    "Annulez-la d'abord.")
+        return (f'la facture {facture.reference} est déjà émise. '
+                "Annulez-la d'abord.")
+    bc = (BonCommande.objects
+          .filter(company_id=company_id, devis_id=devis.pk)
+          .exclude(statut=BonCommande.Statut.ANNULE)
+          .first())
+    if bc is not None:
+        return (f'le bon de commande {bc.reference} existe déjà '
+                f"(« {bc.get_statut_display()} »). Annulez-le d'abord.")
+    dossier = (RegulatoryDossier.objects
+               .filter(company_id=company_id, devis_id=devis.pk)
+               .exclude(statut=RegulatoryDossier.Statut.EN_CONSTITUTION)
+               .first())
+    if dossier is not None:
+        nom = dossier.reference_dossier or f'n° {dossier.pk}'
+        return (f'le dossier 82-21 {nom} est déjà '
+                f'« {dossier.get_statut_display()} ».')
+    # Apps propriétaires — par leurs sélecteurs, jamais leurs modèles.
+    from apps.installations.selectors import (
+        blocage_annulation_acceptation as blocage_chantier,
+    )
+    from apps.sav.selectors import (
+        blocage_annulation_acceptation as blocage_sav,
+    )
+    company = devis.company
+    return (blocage_chantier(devis.pk, company)
+            or blocage_sav(devis.pk, company))
+
+
+def annuler_acceptation(*, devis, user, motif=''):
+    """Dés-accepte ``devis`` (miroir d'``accept_devis``) — décision fondateur
+    du 08/10/2026.
+
+    UNE transaction, sous le verrou du GROUPE DE VARIANTES pris dans l'ordre
+    des ``pk`` (le même qu'``accept_devis`` : jamais d'inter-blocage entre une
+    acceptation et une annulation concurrentes). Dans l'ordre :
+
+    1. contrôle de blocage (``raison_blocage_annulation_acceptation``) — un
+       blocage lève ``AnnulationAcceptationBloquee`` AVANT toute écriture ;
+    2. le devis repasse « envoyé », ``date_acceptation`` / ``accepte_par_nom``
+       / ``option_acceptee`` sont effacés (une ré-acceptation est une
+       acceptation FRAÎCHE : l'événement ``devis_accepted`` repart) ;
+    3. les sœurs refusées PAR cette acceptation (motif
+       ``MOTIF_VARIANTE_NON_RETENUE``, ``date_refus`` == date d'acceptation,
+       même groupe, jamais une version remplacée) redeviennent actives —
+       « envoyé » si elles avaient été envoyées, sinon « brouillon » ;
+    4. note de chatter (qui, quand, option et date annulées ; preuve de
+       signature conservée) ;
+    5. ``devis_acceptation_annulee`` est publié DANS la transaction : les
+       abonnés défont leurs effets et tombent avec elle en cas d'échec.
+
+    Un devis qui n'est pas « accepté » est rendu tel quel (no-op). La preuve
+    e-signature (``DevisSignature``, PDF scellé) n'est jamais touchée.
+    """
+    from django.db import transaction
+    from django.db.models import Q
+    from django.utils import timezone
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from core.events import devis_acceptation_annulee
+
+    with transaction.atomic():
+        racine = devis.version_parent_id or devis.pk
+        groupe = list(
+            Devis.objects
+            .select_related('company')
+            .select_for_update(of=('self',))
+            .filter(Q(pk=racine) | Q(version_parent_id=racine))
+            .order_by('pk'))
+        courant = next((d for d in groupe if d.pk == devis.pk), None)
+        if courant is None or courant.statut != Devis.Statut.ACCEPTE:
+            return courant or devis
+        devis = courant
+
+        raison = raison_blocage_annulation_acceptation(devis)
+        if raison:
+            raise AnnulationAcceptationBloquee(raison)
+
+        ancienne_option = devis.option_acceptee or ''
+        ancienne_date = devis.date_acceptation
+        ancien_nom = devis.accepte_par_nom or ''
+        devis.statut = Devis.Statut.ENVOYE
+        devis.date_acceptation = None
+        devis.accepte_par_nom = ''
+        devis.option_acceptee = ''
+        devis.save(update_fields=[
+            'statut', 'date_acceptation', 'accepte_par_nom',
+            'option_acceptee'])
+
+        # Sœurs refusées PAR cette acceptation — et elles seules.
+        restaurees = []
+        if ancienne_date is not None:
+            for soeur in groupe:
+                if (soeur.pk == devis.pk
+                        or soeur.company_id != devis.company_id
+                        or soeur.statut != Devis.Statut.REFUSE
+                        or soeur.is_active
+                        or soeur.superseded_by_id is not None
+                        or soeur.motif_refus != MOTIF_VARIANTE_NON_RETENUE
+                        or soeur.date_refus != ancienne_date):
+                    continue
+                soeur.statut = (Devis.Statut.ENVOYE if soeur.date_envoi
+                                else Devis.Statut.BROUILLON)
+                soeur.date_refus = None
+                soeur.motif_refus = ''
+                soeur.is_active = True
+                soeur.save(update_fields=[
+                    'statut', 'date_refus', 'motif_refus', 'is_active'])
+                activity.log_devis_note(
+                    soeur, user,
+                    f"Variante rétablie : l'acceptation de {devis.reference} "
+                    'a été annulée.')
+                restaurees.append(soeur.reference)
+
+        qui = getattr(user, 'username', None) or 'le système'
+        quand = timezone.localtime().strftime('%d/%m/%Y %H:%M')
+        details = []
+        if ancienne_option in Devis.OptionAcceptee.values:
+            details.append(
+                f'option « {Devis.OptionAcceptee(ancienne_option).label} »')
+        elif ancienne_option:
+            details.append(f'option « {ancienne_option} »')
+        if ancienne_date:
+            details.append(f'acceptée le {ancienne_date.strftime("%d/%m/%Y")}')
+        if ancien_nom:
+            details.append(f'par {ancien_nom}')
+        corps = (f'Acceptation annulée le {quand} par {qui}'
+                 + (f' ({", ".join(details)})' if details else '')
+                 + ' — le devis repasse « Envoyé ».')
+        if motif:
+            corps += f' Motif : {motif}.'
+        if restaurees:
+            corps += f' Variante(s) rétablie(s) : {", ".join(restaurees)}.'
+        corps += ' La preuve de signature du client est conservée.'
+        activity.log_devis_note(devis, user, corps)
+
+        devis_acceptation_annulee.send(
+            sender=Devis, devis=devis, user=user,
+            option_acceptee=ancienne_option,
+            date_acceptation=ancienne_date, motif=motif or '')
     return devis
 
 

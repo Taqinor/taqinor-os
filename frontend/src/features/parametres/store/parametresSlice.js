@@ -85,10 +85,18 @@ const parametresSlice = createSlice({
         state.error = action.payload
       })
 
-      .addCase(saveProfile.pending, (state) => { state.saving = true; state.saveSuccess = false })
+      // APAR42 — une nouvelle tentative / un succès ACQUITTE l'erreur
+      // précédente : l'ancien bandeau rouge ne revient plus après « Profil
+      // enregistré ».
+      .addCase(saveProfile.pending, (state) => {
+        state.saving = true
+        state.saveSuccess = false
+        state.error = null
+      })
       .addCase(saveProfile.fulfilled, (state, action) => {
         state.saving = false
         state.saveSuccess = true
+        state.error = null
         state.profile = action.payload
       })
       .addCase(saveProfile.rejected, (state, action) => {
@@ -96,9 +104,10 @@ const parametresSlice = createSlice({
         state.error = action.payload
       })
 
-      .addCase(uploadLogo.pending, (state) => { state.uploading = true })
+      .addCase(uploadLogo.pending, (state) => { state.uploading = true; state.error = null })
       .addCase(uploadLogo.fulfilled, (state, action) => {
         state.uploading = false
+        state.error = null
         state.profile = action.payload
       })
       .addCase(uploadLogo.rejected, (state, action) => {
@@ -106,11 +115,12 @@ const parametresSlice = createSlice({
         state.error = action.payload
       })
 
-      .addCase(deleteLogo.fulfilled, (state, action) => { state.profile = action.payload })
+      .addCase(deleteLogo.fulfilled, (state, action) => { state.profile = action.payload; state.error = null })
 
-      .addCase(uploadSignature.pending, (state) => { state.uploading = true })
+      .addCase(uploadSignature.pending, (state) => { state.uploading = true; state.error = null })
       .addCase(uploadSignature.fulfilled, (state, action) => {
         state.uploading = false
+        state.error = null
         state.profile = action.payload
       })
       .addCase(uploadSignature.rejected, (state, action) => {
@@ -118,7 +128,7 @@ const parametresSlice = createSlice({
         state.error = action.payload
       })
 
-      .addCase(deleteSignature.fulfilled, (state, action) => { state.profile = action.payload })
+      .addCase(deleteSignature.fulfilled, (state, action) => { state.profile = action.payload; state.error = null })
   },
 })
 

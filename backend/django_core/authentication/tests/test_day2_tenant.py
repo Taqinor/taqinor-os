@@ -325,23 +325,22 @@ class Day2TenantProposalPdfTest(TestCase):
 class Day2FooterNomOnlyFallbackTest(SimpleTestCase):
     """SCA23 (doc) — sémantique DC1 « nom seul » du pied de page résidentiel.
 
-    DÉCISION connue (guidance SCA23) : un tenant qui ne renseigne QUE son nom
-    (sans email/téléphone) garde la ligne de contact FONDATEUR — c'est la
-    sémantique par-champ de ``theme._footer_brand`` / DC1 ``_apply_entreprise``.
-    On l'ACTE ici (pas de DB, fonction pure) pour qu'un changement futur soit
-    délibéré et non une régression silencieuse : le parcours jour-2 remplit donc
-    email+téléphone AVANT d'exiger « zéro contact fondateur » sur le PDF.
+    DÉCISION (AMOT18, C-AMOT-016 — remplace la guidance SCA23 « nom seul
+    garde le contact fondateur ») : un tenant qui ne renseigne QUE son nom est
+    IDENTIFIÉ ; ses champs vides sont OMIS — jamais le contact fondateur sous
+    le nom d'un autre. On l'ACTE ici (pas de DB, fonction pure) pour qu'un
+    changement futur soit délibéré et non une régression silencieuse.
     """
 
-    def test_footer_nom_only_keeps_founder_contact_line(self):
+    def test_footer_nom_only_omits_founder_contact_line(self):
         from apps.ventes.quote_engine.residential import theme
         foot = theme.page_footer(
             {'ref': 'DEV-DAY2', 'entreprise': {'nom': 'ACME Énergie'}})
         # Nom du tenant présent…
         self.assertIn('<b>ACME Énergie</b>', foot)
-        # …mais la ligne de contact reste celle du fondateur (DC1, par champ).
-        self.assertIn('contact@taqinor.com', foot)
-        self.assertIn('+212 6 61 85 04 10', foot)
+        # …et AUCUNE coordonnée fondateur (AMOT18, omission par champ).
+        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('+212 6 61 85 04 10', foot)
 
     def test_footer_full_identity_replaces_founder_contact(self):
         """Nom + email + téléphone → coordonnées tenant, zéro trace fondateur."""

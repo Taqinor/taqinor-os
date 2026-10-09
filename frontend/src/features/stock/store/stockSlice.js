@@ -110,7 +110,7 @@ export const createCategorie = createAsyncThunk('stock/createCategorie', async (
 // ── Fournisseurs ───────────────────────────────────────────────
 export const fetchFournisseurs = createAsyncThunk('stock/fetchFournisseurs', async (_, { rejectWithValue }) => {
   try {
-    const res = await stockApi.getFournisseurs()
+    const res = await stockApi.getAllFournisseurs()
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

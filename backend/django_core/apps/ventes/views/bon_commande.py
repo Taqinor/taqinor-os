@@ -56,6 +56,45 @@ def _reserver_stock_bc_actif(company):
         return False
 
 
+def _sortir_reliquat_bc(bc, user):
+    """AFAC15 (C-AFAC-001) — sortie de stock de « Livrer » (toggle OFF).
+
+    Ne sort que le RELIQUAT du panier VENDU (``bc.reliquat_par_ligne``, déjà
+    ×N villas et borné à ``option_lines``) : les livraisons partielles ont
+    déjà posé leurs SORTIES. Ne sort RIEN si la vente est déjà sortie par la
+    facture directe (SORTIE sous la référence du devis,
+    ``reserver_stock_devis_facture``) — « une vente = une sortie ». Même
+    décompteur unique (AUD116) et même solde de réservation chantier
+    (ASTK135). À appeler dans la transaction (BC verrouillé) de l'appelant ;
+    lève ``StockInsuffisantError``."""
+    from types import SimpleNamespace
+
+    from apps.stock.services import sortie_exists_for_reference
+    from ..domain.facturation_ops import (
+        decompter_stock_lignes, solder_reservations_chantier_vente,
+    )
+    from ..utils.options import option_lines
+
+    if sortie_exists_for_reference(bc.company, bc.devis.reference):
+        return {}
+    produits = {li.id: li.produit_id for li in option_lines(bc.devis)}
+    a_sortir = [
+        SimpleNamespace(compte_dans_totaux=True,
+                        produit_id=produits[r['ligne_devis_id']],
+                        quantite=r['reliquat'])
+        for r in bc.reliquat_par_ligne
+        if r['reliquat'] > 0 and produits.get(r['ligne_devis_id'])]
+    sorties = {}
+    decompter_stock_lignes(
+        lignes=a_sortir, company=bc.company, user=user,
+        reference=bc.reference, note=f'Livraison BC {bc.reference}',
+        multiplicateur=1, sorties=sorties)
+    solder_reservations_chantier_vente(
+        devis=bc.devis, company=bc.company, sorties=sorties,
+        reference=bc.reference, user=user)
+    return sorties
+
+
 def _notifier_chantier_materiel_confirme(bc):
     """CHT15 — notifie (best-effort, ne lève jamais) le responsable du
     chantier né du même devis que ce BC désormais CONFIRMÉ.
@@ -236,27 +275,25 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         toggle_bc_stock = _reserver_stock_bc_actif(bc.company)
         try:
             with transaction.atomic():
-                if bc.devis and not toggle_bc_stock:
-                    # AUD116 — LE MÊME PANIER ET LE MÊME DÉCOMPTEUR que la
-                    # facture du BC et que la nomenclature du chantier. Cette
-                    # boucle lisait `bc.devis.lignes` NU : elle plantait sur
-                    # une ligne sans produit (nullable depuis XSAL14) et, sur
-                    # un devis à deux options accepté « sans batterie », elle
-                    # consommait les DEUX kits — le stock physique divergeait
-                    # du stock ERP du montant d'une batterie.
-                    from ..utils.options import option_lines
-                    from ..domain.facturation_ops import decompter_stock_lignes
-                    # ERR-QAC-MULTIVILLA-MATERIEL-XN — ×N villas : livrer
-                    # le BC sort le matériel des N villas facturées.
-                    from ..multivilla import nombre_proprietes
-                    decompter_stock_lignes(
-                        lignes=option_lines(bc.devis),
-                        company=bc.company,
-                        user=request.user,
-                        reference=bc.reference,
-                        note=f'Livraison BC {bc.reference}',
-                        multiplicateur=nombre_proprietes(bc.devis),
+                # AFAC15 — VERROU du BC : deux « Livrer » concurrents (ou un
+                # « Livrer » et un « Livrer partiellement ») ne peuvent plus
+                # sortir deux fois le même reliquat.
+                bc = BonCommande.objects.select_for_update().get(pk=bc.pk)
+                if bc.statut != BonCommande.Statut.CONFIRME:
+                    return Response(
+                        {'detail': (
+                            'Le BC doit être confirmé avant d\'être livré.'
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
+                if bc.devis and not toggle_bc_stock:
+                    # AFAC15 (C-AFAC-001) — « Livrer » ne sort QUE le
+                    # RELIQUAT non encore sorti : les livraisons partielles
+                    # ont déjà posé leurs SORTIES (re-sortir tout le panier
+                    # comptait deux fois les quantités livrées), et RIEN si
+                    # la vente est déjà sortie par la facture directe
+                    # (`reserver_stock_devis_facture`, référence = le devis).
+                    _sortir_reliquat_bc(bc, request.user)
                 bc.statut = BonCommande.Statut.LIVRE
                 from django.utils import timezone as _tz2
                 bc.date_livraison_reelle = _tz2.now().date()
@@ -291,19 +328,12 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Ce BC ne porte aucun devis : aucune ligne à livrer.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if bc.statut == BonCommande.Statut.LIVRE:
-            return Response(
-                {'detail': 'Ce BC est déjà entièrement livré.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         lignes_payload = request.data.get('lignes') or []
         if not lignes_payload:
             return Response(
                 {'detail': 'lignes est requis (liste de {ligne_devis, quantite}).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        reliquats = {r['ligne_devis_id']: r for r in bc.reliquat_par_ligne}
 
         # Validation intégrale AVANT toute écriture — un payload invalide ne
         # doit laisser aucune trace (pas de LivraisonBC orpheline). Le stock
@@ -317,6 +347,24 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         # transaction (`refresh_from_db()`), puis le bloc atomique écrivait
         # des `qte_avant`/`qte_apres` calculés sur cette valeur déjà morte.
         with transaction.atomic():
+            # AFAC15 (C-AFAC-006) — BC VERROUILLÉ et machine à états
+            # respectée : seul un BC CONFIRMÉ se livre (ni en attente, ni
+            # annulé — un BC annulé ne repasse jamais « livré ») ; le
+            # reliquat est relu SOUS le verrou, sur le seul panier VENDU.
+            bc = BonCommande.objects.select_for_update().get(pk=bc.pk)
+            if bc.statut == BonCommande.Statut.LIVRE:
+                return Response(
+                    {'detail': 'Ce BC est déjà entièrement livré.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if bc.statut != BonCommande.Statut.CONFIRME:
+                return Response(
+                    {'detail': (
+                        'Le BC doit être confirmé avant d\'être livré.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            reliquats = {r['ligne_devis_id']: r for r in bc.reliquat_par_ligne}
             stock_reserve = {}
             validated = []
             for entry in lignes_payload:
@@ -392,6 +440,25 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     created_by=request.user,
                 )
 
+            # ERR-BC-LIVRER-PARTIEL-DOUBLE-SORTIE — « une vente = une
+            # sortie » : la sortie de CETTE livraison solde (même
+            # transaction) la réservation du chantier à hauteur des seules
+            # quantités livrées ; « Installé » ne ressort que le reliquat.
+            # Référence propre à la livraison : le solde est idempotent par
+            # (référence, produit), deux livraisons ne doivent pas s'annuler.
+            from ..domain.facturation_ops import (
+                solder_reservations_chantier_vente,
+            )
+            sorties_livraison = {}
+            for (_ld, produit, _q, qte_entiere, _qa, _qp) in validated:
+                sorties_livraison[produit.id] = (
+                    sorties_livraison.get(produit.id, 0) + qte_entiere)
+            solder_reservations_chantier_vente(
+                devis=bc.devis, company=bc.company,
+                sorties=sorties_livraison,
+                reference=f'{bc.reference} (livraison {livraison.id})',
+                user=request.user)
+
             # Solde intégral atteint sur toutes les lignes → passage LIVRE
             # (une seule fois — les side-effects existants de `marquer_livre`
             # NE sont PAS ré-exécutés ici : le statut est simplement posé).
@@ -411,6 +478,16 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         if bc.statut == BonCommande.Statut.LIVRE:
             return Response(
                 {'detail': 'Un BC livré ne peut pas être annulé.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # AFAC15 (C-AFAC-006) — un BC PARTIELLEMENT livré a déjà sorti du
+        # stock : l'annuler laissait des sorties orphelines (aucune extourne).
+        if bc.livraisons.exists():
+            return Response(
+                {'detail': (
+                    'Ce BC a déjà été livré partiellement : il ne peut plus '
+                    'être annulé (le matériel livré est sorti du stock).'
+                )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # AUD118 — UN BC DÉJÀ FACTURÉ NE S'ANNULE PAS EN SILENCE. Le bouton
@@ -464,16 +541,17 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         # (acompte/tranche) passait ici sans obstacle, et le client recevait
         # deux fois la même vente. Prédicat partagé, une seule définition de
         # « déjà facturé » pour les deux portes.
-        from ..selectors import devis_deja_facture
-        if bc.devis_id and devis_deja_facture(bc.devis):
-            return Response(
-                {'detail': (
-                    f'Le devis {bc.devis.reference} est déjà (partiellement) '
-                    'facturé par son échéancier : facturer ce bon de commande '
-                    'facturerait la même vente une seconde fois.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # ATOT2 — LA garde unique des quatre portes (échéancier, complète,
+        # consolidée) : le refus nomme la facture existante.
+        from ..selectors_facturation import (
+            DevisDejaFacture, exiger_devis_facturable,
+        )
+        if bc.devis_id:
+            try:
+                exiger_devis_facturable(bc.devis, 'bc')
+            except DevisDejaFacture as exc:
+                return Response({'detail': exc.motif},
+                                status=status.HTTP_400_BAD_REQUEST)
         # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
         # La règle maison est « company forcée côté serveur, jamais issue de la
         # requête » : elle venait bien du serveur, mais du MAUVAIS objet
@@ -514,10 +592,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 statut=Facture.Statut.BROUILLON,
                 created_by=request.user,
                 company=company,
-                # CIQ216 — la référence de commande du client suit le devis.
-                reference_commande_client=(
-                    bc.devis.reference_commande_client or ''
-                    if bc.devis_id else ''),
+                # CIQ216/ATOT4 — référence de commande du client et retenue
+                # de garantie du devis : portées par `entete` (geste partagé
+                # des quatre portes).
                 **entete,
             )
             if bc.devis:

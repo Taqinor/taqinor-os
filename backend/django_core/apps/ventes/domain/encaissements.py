@@ -86,6 +86,9 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     with transaction.atomic():
         locked = Facture.objects.select_for_update().get(pk=facture.pk)
         if locked.statut in (Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
+            # AFAC23 — une facture close (soldée ou annulée) ne garde aucun
+            # lien de paiement ouvert, même sur un rejeu idempotent.
+            _fermer_liens_facture_close(locked)
             return False
         if not force:
             residuel = locked.montant_du if reste is None else Decimal(
@@ -103,11 +106,57 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
             company=locked.company)
         facture_payee.send(
             sender=Facture, instance=locked, company=locked.company)
+        # AFAC23 (C-AFAC-018) — le SOLDE (paiement manuel, avoir, abandon,
+        # ventilation…) ferme les liens « Payer en ligne » encore ouverts :
+        # la page client ne réclame plus rien sur une facture soldée. Le lien
+        # soldé par SON propre encaissement est déjà PAYÉ (pas touché).
+        _fermer_liens_facture_close(locked)
 
     # L'instance de l'appelant reflète la bascule (elle n'est pas ``locked``).
     if facture.pk == locked.pk:
         facture.statut = Facture.Statut.PAYEE
     return True
+
+
+def recalculer_statut_paiement(facture, *, user=None, source=''):
+    """ATOT8 (C-ATOT-006) — LE service unique qui DÉRIVE le statut de
+    paiement d'une facture de son reste dû (D-ATOT-4) : « payée » si et
+    seulement si ``montant_du`` ≤ 0 (au centime).
+
+      * reste dû nul → bascule PAYÉE par ``marquer_facture_soldee`` (verrou,
+        idempotent, ``facture_payee`` émis UNE fois) ;
+      * reste EXIGIBLE > 0 (CIQ214 : une retenue de garantie non libérée ne
+        rouvre pas) → ÉMISE, ou EN_RETARD si l'échéance est dépassée — une
+        facture PAYÉE dont un avoir est annulé revient au recouvrement ;
+      * brouillon et annulée : jamais touchées.
+
+    Appelé après création ET annulation d'avoir, et au rejet d'un paiement
+    (réouverture extraite de ``recouvrement._rouvrir_facture_apres_rejet``).
+    Idempotent. Renvoie le statut résultant."""
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from apps.ventes.models import Facture
+
+    facture.refresh_from_db()
+    if facture.statut in (Facture.Statut.ANNULEE, Facture.Statut.BROUILLON):
+        return facture.statut
+    if facture.montant_du <= Decimal('0.01'):
+        marquer_facture_soldee(facture, user=user,
+                               source=source or 'recalcul_statut')
+        facture.refresh_from_db()
+        return facture.statut
+    if facture.montant_exigible <= 0:
+        return facture.statut
+    today = timezone.now().date()
+    nouveau = (Facture.Statut.EN_RETARD
+               if facture.date_echeance and facture.date_echeance < today
+               else Facture.Statut.EMISE)
+    if facture.statut != nouveau:
+        facture.statut = nouveau
+        facture.save(update_fields=['statut'])
+    return facture.statut
 
 
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
@@ -415,6 +464,10 @@ def affecter_encaissement_groupe(
             for facture, part in parts:
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
+            # AFAC8 (C-AFAC-010) — Σ parts < montant encaissé : le reste
+            # était PERDU (seule la branche FIFO créait l'avance). Même
+            # traitement que FIFO ci-dessous.
+            restant = montant - total_parts
         else:
             # FIFO : échéance la plus ancienne d'abord (None en dernier) ; à
             # échéance égale, la facture la plus ancienne (pk) — sans ce
@@ -433,18 +486,19 @@ def affecter_encaissement_groupe(
                 paiements.append(_creer_paiement_groupe(
                     facture, part, mode, date_paiement, user, reference))
                 restant -= part
-            # AUD120 — le reliquat n'est plus abandonné en silence : ce qui
-            # a été encaissé et que les factures listées n'absorbent pas
-            # devient une avance XFAC1 (Paiement sans facture, non affecté),
-            # ventilable plus tard par ``ventiler_avance``.
-            restant = quantize_mad(restant)
-            if restant > TOLERANCE_CENTIME:
-                paiements.append(enregistrer_avance(
-                    company=company, client=client, montant=restant,
-                    date_paiement=date_paiement, mode=mode,
-                    reference=reference,
-                    note="Reliquat d'encaissement groupé (XFAC1).",
-                    created_by=user))
+        # AUD120 / AFAC8 — le reliquat n'est plus abandonné en silence (ni
+        # en FIFO, ni en répartition explicite) : ce qui a été encaissé et
+        # que les factures listées n'absorbent pas devient une avance XFAC1
+        # (Paiement sans facture, non affecté), ventilable plus tard par
+        # ``ventiler_avance``. Un reliquat ≤ 1 centime ne crée rien.
+        restant = quantize_mad(restant)
+        if restant > TOLERANCE_CENTIME:
+            paiements.append(enregistrer_avance(
+                company=company, client=client, montant=restant,
+                date_paiement=date_paiement, mode=mode,
+                reference=reference,
+                note="Reliquat d'encaissement groupé (XFAC1).",
+                created_by=user))
 
         # AUD102 (P3) — la bascule passe par LE service unique : ce chemin
         # soldait en silence, sans `facture_payee`, donc sans lettrage compta.
@@ -482,6 +536,25 @@ def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
 # une seule source de vérité, jamais dupliquée ici.
 
 
+def fermer_liens_paiement(facture, statut):
+    """AFAC23 (C-AFAC-018) — LE service unique de fermeture des liens
+    « Payer en ligne » d'une facture : tout lien EN ATTENTE passe ``statut``
+    (``annule`` sur annulation / solde par un autre chemin, ``paye`` quand la
+    facture est soldée par son propre encaissement). Appelé par l'annulation,
+    le solde (``marquer_facture_soldee``) et la révocation manuelle.
+    Idempotent ; renvoie le nombre de liens fermés."""
+    from ..models import PaymentLink
+
+    return PaymentLink.objects.filter(
+        facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
+    ).update(statut=statut)
+
+
+def _fermer_liens_facture_close(facture):
+    from ..models import PaymentLink
+    return fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+
+
 def expirer_liens_paiement_perimes(facture):
     """AUD136 — bascule en EXPIRÉ les liens EN ATTENTE dont la date est passée.
 
@@ -500,6 +573,55 @@ def expirer_liens_paiement_perimes(facture):
     ).update(statut=PaymentLink.Statut.EXPIRE)
 
 
+def argent_rattache(facture):
+    """AFAC11 (C-AFAC-004) — TOUT l'argent rattaché à une facture, par nature.
+
+    Prédicat UNIQUE du domaine (lu par « Remettre en brouillon » et par la
+    garde d'annulation AFAC12) : une facture qui porte de l'argent ne se
+    rouvre ni ne s'annule sans qu'on dise où va cet argent. L'ancienne garde
+    (``facture.paiements.exists()``) ne voyait ni une avance VENTILÉE (zéro
+    paiement direct), ni une note de débit émise, ni une retenue subie.
+
+    Renvoie ``{paiements, affectations, notes_debit, retenues, avoirs_actifs}``
+    en ``Decimal`` (TTC), clés du contrat ``facture_annulation.json``
+    (``argent_rattache``). Un paiement REJETÉ ne porte plus d'argent (YLEDG5)."""
+    from ..models import Paiement
+
+    rejete = Paiement.Statut.REJETE
+    paiements = sum(
+        (p.montant for p in facture.paiements.all() if p.statut != rejete),
+        Decimal('0'))
+    affectations = sum(
+        (a.montant for a in facture.affectations_paiement.select_related(
+            'paiement') if a.paiement.statut != rejete),
+        Decimal('0'))
+    return {
+        'paiements': paiements,
+        'affectations': affectations,
+        'notes_debit': facture.notes_debit_total,
+        'retenues': facture.retenues_subies_total,
+        'avoirs_actifs': facture.avoirs_total,
+    }
+
+
+#: Libellés français des natures d'argent (message de refus).
+LIBELLES_ARGENT_RATTACHE = {
+    'paiements': 'paiements',
+    'affectations': 'avances ventilées',
+    'notes_debit': 'notes de débit',
+    'retenues': 'retenues à la source subies',
+    'avoirs_actifs': 'avoirs actifs',
+}
+
+
+def decrire_argent_rattache(argent):
+    """AFAC11 — phrase française qui NOMME l'argent rattaché (ou '' si aucun)."""
+    morceaux = [
+        f"{LIBELLES_ARGENT_RATTACHE[cle]} {montant:.2f} MAD"
+        for cle, montant in argent.items() if montant and montant > 0]
+    return ', '.join(morceaux)
+
+
 def revoquer_lien_paiement(*, facture, user=None):
     """AUD136 — révoque le lien de paiement actif d'une facture (ANNULÉ).
 
@@ -514,8 +636,9 @@ def revoquer_lien_paiement(*, facture, user=None):
             .order_by('-created_at').first())
     if lien is None:
         return None
-    lien.statut = PaymentLink.Statut.ANNULE
-    lien.save(update_fields=['statut'])
+    # AFAC23 — même service de fermeture que l'annulation et le solde.
+    fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+    lien.refresh_from_db()
     return lien
 
 
@@ -547,6 +670,13 @@ def create_payment_link(*, facture, provider=None):
         raise LinkError('Facture déjà payée : aucun lien de paiement.')
     if (facture.montant_du or Decimal('0')) <= Decimal('0'):
         raise LinkError('Cette facture est déjà soldée.')
+    # AFAC24 (C-AFAC-019) — le lien RÉCLAME de l'argent : il ne porte que ce
+    # qui est EXIGIBLE maintenant (CIQ214), jamais la retenue de garantie non
+    # libérée. Rien d'exigible ⇒ aucun lien.
+    if (facture.montant_exigible or Decimal('0')) <= Decimal('0'):
+        raise LinkError(
+            "Rien d'exigible maintenant : seule la retenue de garantie reste "
+            "due.")
 
     # Ferme d'abord ce qui est périmé : sinon un lien mort tiendrait la place
     # du lien actif et la contrainte partielle bloquerait la ré-émission.
@@ -564,7 +694,7 @@ def create_payment_link(*, facture, provider=None):
         company=facture.company,
         facture=facture,
         provider=(provider or 'noop'),
-        montant=facture.montant_du,
+        montant=facture.montant_exigible,
     )
 
 
@@ -638,10 +768,14 @@ def record_payment_from_link(*, link, payload=None):
     if not result.get('paid'):
         return None, 'Paiement non confirmé par le fournisseur.'
 
+    # AFAC23 (C-AFAC-023) — sans montant déclaré, le repli est ce qui reste
+    # à payer MAINTENANT (`montant_a_payer`), jamais le montant FIGÉ à la
+    # création du lien (une note de débit postérieure était perdue).
     montant = result.get('montant')
     if montant is None:
-        montant = link.montant
+        montant = link.montant_a_payer
     montant = Decimal(str(montant))
+    provider_ref = (result.get('provider_ref') or '')[:120]
 
     with transaction.atomic():
         locked_link = (PaymentLink.objects.select_for_update()
@@ -653,6 +787,14 @@ def record_payment_from_link(*, link, payload=None):
                    .get(pk=locked_link.facture_id))
         if facture.statut == Facture.Statut.ANNULEE:
             return None, 'Facture annulée.'
+        # AFAC23 — rejeu d'une confirmation PARTIELLE (le lien reste ouvert) :
+        # même référence fournisseur ⇒ le paiement existant, jamais un second.
+        if provider_ref:
+            deja = Paiement.objects.filter(
+                facture=facture, mode=Paiement.Mode.CARTE,
+                reference=provider_ref).first()
+            if deja is not None:
+                return deja, None
         # Borne le montant au reste à payer (jamais de sur-paiement).
         reste = facture.montant_du
         if montant > reste:
@@ -665,7 +807,7 @@ def record_payment_from_link(*, link, payload=None):
             montant=montant,
             date_paiement=timezone.localdate(),
             mode=Paiement.Mode.CARTE,
-            reference=(result.get('provider_ref') or '')[:120],
+            reference=provider_ref,
             note='Paiement en ligne (lien « Payer en ligne »).',
         )
         # YLEDG1 — événement documentaire générique (pose du seam pour
@@ -673,13 +815,19 @@ def record_payment_from_link(*, link, payload=None):
         from core.events import paiement_enregistre
         paiement_enregistre.send(
             sender=Paiement, instance=paiement, company=facture.company)
-        locked_link.statut = PaymentLink.Statut.PAYE
-        locked_link.paiement = paiement
+        facture.refresh_from_db()
+        # AFAC23 — le lien ne passe PAYÉ que si la facture est SOLDÉE : un
+        # règlement partiel le laisse ouvert pour le reste (la page affiche
+        # alors le nouveau reste, `paye: false`).
         locked_link.provider_ref = (result.get('provider_ref') or '')[:200]
-        locked_link.paid_at = timezone.now()
+        # AFAC24 — « soldée » au sens de ce que le lien réclame : l'exigible
+        # (une retenue de garantie non libérée ne garde pas le lien ouvert).
+        if facture.montant_exigible <= Decimal('0.01'):
+            locked_link.statut = PaymentLink.Statut.PAYE
+            locked_link.paiement = paiement
+            locked_link.paid_at = timezone.now()
         locked_link.save(update_fields=[
             'statut', 'paiement', 'provider_ref', 'paid_at'])
-        facture.refresh_from_db()
         # AUD102 (P4) — YDOCF4/YEVNT6 passent par LE service unique (garde
         # centime-près, verrou, `facture_paid` + `facture_payee` une seule
         # fois). Comportement identique pour ce chemin, déjà correct.
@@ -818,26 +966,28 @@ def enregistrer_paiement_avec_retenue(
     payée » à tort — la retenue n'est pas un montant perdu, c'est une créance
     d'attestation à recevoir de la DGT/du client.
 
-    ``taux`` est informatif (tracé sur la retenue) ; le MONTANT de la retenue
-    est déduit du reste à payer : ``retenue = reste_avant − montant`` (le
-    paiement partiel + la retenue soldent ensemble EXACTEMENT le reste à
-    payer). Rejette un montant qui dépasserait seul le reste à payer, ou une
-    retenue résultante négative (le paiement seul suffirait déjà). Le
+    AFAC30 — le MONTANT de la retenue vient de son assiette fiscale (TVA ou
+    HT × ``taux``), moins les RAS déjà constatées, plafonné au reste après
+    paiement ; le reste non couvert RESTE DÛ. Rejette un montant qui
+    dépasserait seul le reste à payer. Le
     paiement + la retenue sont créés dans la MÊME transaction ; la facture
     bascule automatiquement « Payée » si le solde tombe à zéro (même seuil que
     ``enregistrer_paiement``).
     """
-    from decimal import Decimal
+    from decimal import Decimal, InvalidOperation
     from django.db import transaction
     from rest_framework.exceptions import ValidationError
     from ..models import Facture, Paiement, RetenueSubie
 
-    montant = Decimal(montant)
+    try:
+        montant = Decimal(str(montant))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError({'montant': 'Montant invalide.'})
     if montant <= 0:
         raise ValidationError({'montant': 'Le montant doit être positif.'})
     try:
-        taux = Decimal(taux)
-    except (TypeError, ValueError):
+        taux = Decimal(str(taux))
+    except (InvalidOperation, TypeError, ValueError):
         raise ValidationError({'taux': 'Taux de RAS invalide.'})
     if taux < 0 or taux > 100:
         raise ValidationError(
@@ -855,13 +1005,28 @@ def enregistrer_paiement_avec_retenue(
                     f'Le paiement dépasse le reste à payer '
                     f'({reste:.2f} MAD).'),
             })
-        # Base de la retenue = ce qui reste dû après le règlement partiel ;
-        # le paiement + la retenue soldent ensemble exactement le reste à
-        # payer (jamais de fraction perdue, jamais de sur-solde).
-        base = reste - montant
-        retenue_montant = base.quantize(Decimal('0.01'))
+        # AFAC30 (C-AFAC-028) — ASSIETTE FISCALE de la RAS, plus le reste
+        # dû : RAS-TVA = TVA × taux, RAS-IS = HT × taux, moins les RAS du
+        # même type déjà constatées (hors paiement rejeté), plafonnée au
+        # reste après le paiement. Ce qui n'est pas couvert RESTE DÛ (l'ancien
+        # `reste − montant` soldait toute facture : 1 MAD à 0 % = tout le
+        # reste en « RAS »).
+        if type_retenue == RetenueSubie.TypeRetenue.RAS_IS:
+            base = Decimal(str(locked.total_ht))
+        else:
+            base = Decimal(str(locked.total_tva))
+        from core.money import quantize_mad
+        due = quantize_mad(base * taux / Decimal('100'))
+        deja = sum(
+            (r.montant for r in locked.retenues_subies.select_related(
+                'paiement').filter(type_retenue=type_retenue)
+             if not (r.paiement_id
+                     and r.paiement.statut == Paiement.Statut.REJETE)),
+            Decimal('0'))
+        retenue_montant = min(due - deja, reste - montant)
         if retenue_montant < 0:
             retenue_montant = Decimal('0')
+        retenue_montant = quantize_mad(retenue_montant)
 
         paiement = Paiement.objects.create(
             company=locked.company, facture=locked, montant=montant,
@@ -880,20 +1045,81 @@ def enregistrer_paiement_avec_retenue(
         activity.log_facture_retenue_subie(locked, created_by, retenue)
 
         locked.refresh_from_db()
-        # AUD102 (P6) — la retenue à la source a sa PROPRE assiette (payé +
-        # retenue soldent ensemble le TTC net d'avoirs) : on la passe en
-        # ``reste`` au service unique, qui applique la même garde centime-près
-        # puis émet `facture_payee` — ce que ce chemin ne faisait pas.
-        reste_retenue = (locked.total_ttc - locked.avoirs_total
-                         - locked.montant_paye_avec_retenues)
+        # AUD102 (P6) / AFAC30 — la bascule passe par le service unique, sur
+        # le reste dû RÉEL (paiements + RAS + avoirs + notes de débit) : une
+        # RAS ne solde plus ce qu'elle ne couvre pas.
         marquer_facture_soldee(
-            locked, montant=montant, reste=reste_retenue,
-            source='retenue_source')
+            locked, montant=montant, source='retenue_source')
 
     return paiement, retenue
 
 
 # ── XFAC11 — Facture consolidée multi-devis/BC d'un même client ────────────
+
+def _composer_remise_et_palier(facture, devis_qs):
+    """ATOT3 — pose sur la consolidée la remise globale et le palier
+    d'arrondi qui lui font valoir Σ TTC des devis (``option_totaux``) AU
+    CENTIME, ou refuse (400) : jamais un total faux.
+
+    Une remise globale n'est composable que si TOUS les devis portent la
+    même ; le palier ARRONDI-100 du devis (appliqué par devis) n'est gardé
+    que s'il redonne la somme, sinon le total brut des lignes est essayé."""
+    from rest_framework.exceptions import ValidationError
+
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.utils.options import option_totaux
+
+    noms = ', '.join(d.reference for d in devis_qs)
+    remises = {Decimal(str(d.remise_globale or 0)) for d in devis_qs}
+    if len(remises) > 1:
+        raise ValidationError({'devis_ids': (
+            f'Les devis {noms} portent des remises globales différentes : '
+            'une seule facture ne peut pas les reproduire au centime. '
+            'Facturez-les séparément.')})
+    attendu = sum((Decimal(str(option_totaux(d)['ttc'])) for d in devis_qs),
+                  Decimal('0'))
+    facture.remise_globale = remises.pop()
+    facture.arrondi_unites = 1
+    for pas in (int(PAS_ARRONDI_DEVIS), 0):
+        facture.arrondi_pas = pas
+        facture.save(update_fields=[
+            'remise_globale', 'arrondi_pas', 'arrondi_unites'])
+        if Decimal(str(facture.total_ttc)) == attendu:
+            return
+    raise ValidationError({'devis_ids': (
+        f'Les devis {noms} ne se regroupent pas en une facture au centime '
+        f'(total attendu {attendu:.2f} MAD : remises ou arrondis non '
+        'composables). Facturez-les séparément.')})
+
+
+def _entete_consolidee(facture, devis_qs):
+    """ATOT4 — l'en-tête de la consolidée par LE geste partagé
+    ``entete_facture_depuis_devis``, appelé devis par devis : retenue de
+    garantie = Σ des retenues de chaque devis sur SON TTC (prorata), phrases
+    AUD180 conservées, références de commande client distinctes jointes. Le
+    taux de tête n'est pas repris (chaque ligne porte son taux effectif)."""
+    from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
+    retenue = Decimal('0')
+    phrases, refs = [], []
+    for d in devis_qs:
+        entete = entete_facture_depuis_devis(d)
+        if entete.get('retenue_garantie_mad') is not None:
+            retenue += Decimal(str(entete['retenue_garantie_mad']))
+            phrases.append(f'{d.reference} : {entete["conditions_paiement"]}')
+        ref = entete.get('reference_commande_client') or ''
+        if ref and ref not in refs:
+            refs.append(ref)
+    champs = []
+    if phrases:
+        facture.retenue_garantie_mad = retenue
+        facture.conditions_paiement = '\n'.join(phrases)
+        champs += ['retenue_garantie_mad', 'conditions_paiement']
+    if refs:
+        facture.reference_commande_client = ', '.join(refs)[:60]
+        champs.append('reference_commande_client')
+    if champs:
+        facture.save(update_fields=champs)
+
 
 def consolider_factures(*, company, devis_ids, user, created_by=None):
     """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
@@ -916,6 +1142,9 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
     from django.db import transaction
     from rest_framework.exceptions import ValidationError
     from ..models import Devis, Facture, FactureSource, LigneFacture
+    from ..selectors_facturation import (
+        DevisDejaFacture, exiger_devis_facturable,
+    )
     from ..utils.company_settings import create_numbered
 
     if not devis_ids or len(devis_ids) < 2:
@@ -939,12 +1168,14 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
                     f'Le devis {d.reference} doit être accepté pour être '
                     f'consolidé.'),
             })
-        deja_facture = Facture.objects.filter(
-            devis=d).exclude(statut=Facture.Statut.ANNULEE).exists() or \
-            FactureSource.objects.filter(devis=d).exists()
-        if deja_facture:
+        # ATOT2 — LA garde unique des quatre portes (``factures_du_devis`` :
+        # échéancier, complète, BC ET consolidée active) ; une consolidée
+        # ANNULÉE ne bloque plus (elle bloquait à vie via FactureSource).
+        try:
+            exiger_devis_facturable(d, 'consolidee')
+        except DevisDejaFacture as exc:
             raise ValidationError({
-                'devis_ids': f'Le devis {d.reference} est déjà facturé.',
+                'devis_ids': f'{d.reference} — {exc.motif}',
             })
 
     client = devis_qs[0].client
@@ -958,27 +1189,28 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
 
         facture = create_numbered(Facture, company, 'facture', _create)
 
-        from ..selectors import nombre_proprietes
+        # ATOT3 (C-ATOT-002) — chaque devis apporte EXACTEMENT le panier de
+        # `copier_devis_sur_facture` (`lignes_facture_du_devis` : option
+        # effective, lignes comptées seulement, ×N villas, taux par ligne —
+        # effectif, le repli de la consolidée n'étant pas le taux du devis).
+        # La boucle `d.lignes.all()` recopiait les sections (500), les
+        # options non activées et les deux options, et perdait la remise.
+        from apps.ventes.domain.facturation_ops import lignes_facture_du_devis
         for d in devis_qs:
             sous_total = Decimal('0')
-            # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas identiques »
-            # se facture au total ×N (décision fondateur 30/09/2026), comme la
-            # facture de BC : chaque quantité ×N. N=1 → inchangé.
-            n_prop = nombre_proprietes(d)
-            for ligne in d.lignes.all():
-                LigneFacture.objects.create(
-                    facture=facture, produit=ligne.produit,
-                    designation=f'{d.reference} — {ligne.designation}',
-                    quantite=ligne.quantite * n_prop,
-                    prix_unitaire=ligne.prix_unitaire,
-                    remise=ligne.remise, taux_tva=ligne.taux_tva,
-                    source_devis=d,
+            for champs in lignes_facture_du_devis(d, taux_effectif=True):
+                ligne = LigneFacture.objects.create(
+                    facture=facture, source_devis=d,
+                    **{**champs, 'designation':
+                       f'{d.reference} — {champs["designation"]}'},
                 )
-                sous_total += ligne.total_ht * n_prop
+                sous_total += Decimal(str(ligne.total_ht))
             FactureSource.objects.create(
                 company=company, facture=facture, devis=d,
                 sous_total_ht=sous_total,
             )
+        _composer_remise_et_palier(facture, devis_qs)
+        _entete_consolidee(facture, devis_qs)
 
         # AUD101 — l'émission passe par LE service unique, APRÈS la recopie
         # des lignes (émettre une facture consolidée encore vide écrirait une
@@ -1000,9 +1232,14 @@ def mandat_actif_pour_client(client):
     ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
     par défaut) fait strictement l'encaissement manuel actuel."""
     from apps.ventes.models import MandatPaiement
+    if client is None:
+        return None
+    # ASEC28 — borné à la SOCIÉTÉ du client : un mandat d'une autre société
+    # ne peut jamais servir au prélèvement (signature inchangée).
     return (
         MandatPaiement.objects
-        .filter(client=client, statut=MandatPaiement.Statut.ACTIF)
+        .filter(client=client, company_id=client.company_id,
+                statut=MandatPaiement.Statut.ACTIF)
         .exclude(token='')
         .order_by('-created_at')
         .first()

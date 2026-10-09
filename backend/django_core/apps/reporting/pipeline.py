@@ -98,14 +98,85 @@ def _lead_win_weight(lead):
 
 
 def _lead_value(lead):
-    """Valeur pipeline d'un lead = total TTC de son devis le plus récent."""
+    """Valeur pipeline d'un lead = total TTC de son devis le plus récent.
+
+    APRF14 (C-APRF-004) — calculée UNE fois par lead : quand ses devis sont
+    préchargés (``leads_avec_devis_totaux``), la valeur est mémoïsée sur
+    l'instance — ``pipeline`` la relisait 2 à 3 fois par lead (étape,
+    prévision, gagnés/perdus), chaque fois au prix de ``total_ttc``. Sans
+    préchargement, aucun mémo (une instance dont les devis changent entre deux
+    appels relit la base, comme avant). Survivant unique : ``commercial.py``
+    importe celui-ci."""
+    prefetch = getattr(lead, '_prefetched_objects_cache', None) or {}
+    memo = 'devis' in prefetch
+    if memo and hasattr(lead, '_aprf14_valeur'):
+        return lead._aprf14_valeur
     devis = max(lead.devis.all(), key=lambda d: d.id, default=None)
     if devis is None:
-        return Decimal('0')
-    try:
-        return Decimal(str(devis.total_ttc or 0))
-    except Exception:
-        return Decimal('0')
+        valeur = Decimal('0')
+    else:
+        try:
+            valeur = Decimal(str(devis.total_ttc or 0))
+        except Exception:
+            valeur = Decimal('0')
+    if memo:
+        lead._aprf14_valeur = valeur
+    return valeur
+
+
+def leads_avec_devis_totaux(qs):
+    """APRF14 — précharge les devis des leads AVEC ce que lit ``total_ttc``
+    (``ventes.selectors.devis_avec_totaux`` : ``lignes__produit``) et la
+    société (lue par l'expiration à la volée). Prend et rend un queryset de
+    leads ; aucun montant ne change."""
+    from django.db.models import Prefetch
+
+    from apps.ventes.models import Devis
+    from apps.ventes.selectors import devis_avec_totaux
+    return qs.prefetch_related(Prefetch(
+        'devis',
+        queryset=devis_avec_totaux(Devis.objects.select_related('company'))))
+
+
+def durees_par_etape(leads):
+    """APRF14 (C-APRF-026) — durées de séjour (jours) par étape pour ``leads``,
+    lues en UNE requête ``LeadActivity`` (et non une par lead).
+
+    Helper unique partagé par ``funnel_velocity`` et
+    ``commercial.commercial_dashboard`` : même reconstitution qu'avant (entrée
+    en NEW à la création, puis chaque changement d'étape du chatter, libellé →
+    clé STAGES.py ; durées hors [0, 730] j ignorées). Rend
+    ``{clé d'étape: [jours, ...]}`` pour toutes les clés de ``STAGES``."""
+    from apps.crm.models import LeadActivity
+
+    leads = list(leads)
+    stage_dwell = {key: [] for key in stage_mod.STAGES}
+    if not leads:
+        return stage_dwell
+    label_vers_cle = {v: k for k, v in stage_mod.STAGE_LABELS.items()}
+    changements = {}
+    lignes = (LeadActivity.objects
+              .filter(lead_id__in=[le.pk for le in leads],
+                      kind=LeadActivity.Kind.MODIFICATION, field='stage')
+              .order_by('lead_id', 'created_at', 'id')
+              .values_list('lead_id', 'created_at', 'new_value'))
+    for lead_id, created_at, new_value in lignes:
+        changements.setdefault(lead_id, []).append(
+            (created_at, label_vers_cle.get(new_value, new_value)))
+    for lead in leads:
+        events = [(lead.date_creation, stage_mod.NEW)]
+        events.extend(changements.get(lead.pk, []))
+        for i in range(len(events) - 1):
+            t_in, stage = events[i]
+            t_out, _ = events[i + 1]
+            if stage in stage_dwell and t_in and t_out:
+                try:
+                    days = (t_out - t_in).total_seconds() / 86400
+                    if 0 <= days <= 730:  # ignore les valeurs aberrantes
+                        stage_dwell[stage].append(days)
+                except Exception:
+                    pass
+    return stage_dwell
 
 
 def _lead_has_devis_actif(lead):
@@ -170,9 +241,9 @@ def pipeline(request):
     from apps.ventes.models import Devis
     from apps.ventes.utils.expiry import is_expired
 
-    leads = list(
-        Lead.objects.filter(**co, is_archived=False)
-        .prefetch_related('devis'))
+    # APRF14 — devis préchargés AVEC leurs totaux (requêtes constantes).
+    leads = list(leads_avec_devis_totaux(
+        Lead.objects.filter(**co, is_archived=False)))
 
     # ── Valeur par étape + prévision pondérée ────────────────────────────
     par_etape = []
@@ -202,7 +273,12 @@ def pipeline(request):
     # un second devis (ni une seconde vente si elle était acceptée).
     statut_labels = dict(Devis.Statut.choices)
     buckets = {}
-    for d in Devis.objects.filter(**co, is_active=True).prefetch_related('lignes'):
+    # APRF14 — ``devis_avec_totaux`` (lignes__produit) + la société lue par
+    # ``is_expired`` : plus aucune requête par devis.
+    from apps.ventes.selectors import devis_avec_totaux
+    devis_actifs = devis_avec_totaux(
+        Devis.objects.filter(**co, is_active=True).select_related('company'))
+    for d in devis_actifs:
         statut = 'expire' if is_expired(d) else d.statut
         b = buckets.setdefault(statut, {'count': 0, 'valeur': Decimal('0')})
         b['count'] += 1
@@ -258,42 +334,14 @@ def funnel_velocity(request):
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
 
-    from apps.crm.models import Lead, LeadActivity
+    from apps.crm.models import Lead
 
-    # Pour chaque lead, reconstituer la séquence de changements d'étape
-    leads = Lead.objects.filter(**co, is_archived=False)
-    stage_dwell = {key: [] for key in stage_mod.STAGES}
+    # APRF14 — durées par étape en UNE requête LeadActivity (helper partagé
+    # avec commercial_dashboard), au lieu d'une requête par lead.
+    leads = list(Lead.objects.filter(**co, is_archived=False))
+    stage_dwell = durees_par_etape(leads)
     stalled = {key: 0 for key in stage_mod.STAGES}
-
     for lead in leads:
-        changes = list(
-            LeadActivity.objects
-            .filter(lead=lead, kind=LeadActivity.Kind.MODIFICATION, field='stage')
-            .order_by('created_at')
-        )
-        # Ajouter l'entrée depuis la création (étape initiale = NEW)
-        events = [(lead.date_creation, stage_mod.NEW)]
-        for ch in changes:
-            try:
-                # Retrouver la clé depuis le label
-                key = next(
-                    (k for k, v in stage_mod.STAGE_LABELS.items() if v == ch.new_value),
-                    ch.new_value
-                )
-                events.append((ch.created_at, key))
-            except Exception:
-                continue
-        # Calculer les durées entre événements consécutifs
-        for i in range(len(events) - 1):
-            t_in, stage = events[i]
-            t_out, _ = events[i + 1]
-            if stage in stage_dwell and t_in and t_out:
-                try:
-                    days = (t_out - t_in).total_seconds() / 86400
-                    if 0 <= days <= 730:  # ignore les valeurs aberrantes
-                        stage_dwell[stage].append(days)
-                except Exception:
-                    pass
         # Lead actuellement dans son étape (comptage stalled)
         current_stage = lead.stage
         if current_stage in stalled:

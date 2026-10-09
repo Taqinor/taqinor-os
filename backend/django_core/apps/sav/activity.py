@@ -37,7 +37,9 @@ def _display(ticket: Ticket, field: str, value):
     if isinstance(value, bool):
         return _BOOL_LABELS[value]
     if field == 'technicien_responsable':
-        return getattr(value, 'username', str(value))
+        # ASAV34 — nom d'intervenant, jamais l'identifiant de connexion.
+        from apps.parametres.selectors import nom_intervenant
+        return nom_intervenant(value, ticket.company) or '—'
     if field == 'equipement':
         return getattr(value, 'numero_serie', None) or str(value)
     if field in ('cause', 'remede'):
@@ -45,11 +47,17 @@ def _display(ticket: Ticket, field: str, value):
     return str(value)
 
 
+def _nom_auteur(user, company):
+    from apps.parametres.selectors import nom_intervenant
+    return nom_intervenant(user, company) or '—'
+
+
 def log_creation(ticket: Ticket, user):
     TicketActivity.objects.create(
         company=ticket.company, ticket=ticket, user=user,
         kind=TicketActivity.Kind.CREATION,
-        body=f"Ticket créé par {getattr(user, 'username', '?')}",
+        # ASAV34 — nom d'intervenant, jamais l'identifiant de connexion.
+        body=f"Ticket créé par {_nom_auteur(user, ticket.company)}",
     )
 
 

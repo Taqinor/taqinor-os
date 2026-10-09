@@ -98,6 +98,51 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
                 .order_by('-id')
                 .first())
 
+    @staticmethod
+    def _contre_passer_restockage(avoir, user):
+        """AFAC28 — SORTIE miroir de chaque ENTRÉE de stock posée par le
+        retour (lue par ``stock.selectors``, écrite par ``stock.services`` —
+        jamais ses modèles). Idempotente : une sortie déjà posée sous la
+        référence de l'avoir ⇒ rien à refaire. Renvoie un motif de refus
+        (unités déjà ressorties : le stock retomberait sous son niveau
+        d'avant le retour) ou ``None``. À appeler dans la transaction."""
+        from apps.stock.selectors import mouvements_par_reference
+        from apps.stock.services import (
+            mouvement_type_entree, verrouiller_produit,
+        )
+        entree, sortie = mouvement_type_entree(), mouvement_type_sortie()
+        mouvements = list(mouvements_par_reference(
+            avoir.company, avoir.reference))
+        if any(m.type_mouvement == sortie for m in mouvements):
+            return None
+        par_produit = {}
+        for m in mouvements:
+            if m.type_mouvement != entree or not m.produit_id:
+                continue
+            qte, avant = par_produit.get(m.produit_id, (0, None))
+            par_produit[m.produit_id] = (
+                qte + m.quantite,
+                m.quantite_avant if avant is None
+                else min(avant, m.quantite_avant))
+        plan = []
+        for produit_id, (qte, avant) in par_produit.items():
+            produit = verrouiller_produit(produit_id)
+            if avant is not None and produit.quantite_stock - qte < avant:
+                return ('Les unités retournées sont déjà ressorties du stock '
+                        f'(« {produit.nom} ») : annulation de l\'avoir '
+                        'refusée.')
+            plan.append((produit, qte))
+        for produit, qte in plan:
+            record_stock_movement(
+                company=avoir.company, produit=produit,
+                type_mouvement=sortie, quantite=qte,
+                quantite_avant=produit.quantite_stock,
+                quantite_apres=produit.quantite_stock - qte,
+                reference=avoir.reference,
+                note=f"Annulation de l'avoir de retour {avoir.reference}",
+                created_by=user)
+        return None
+
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """AUD127 — annule un avoir ET contre-passe son effet.
@@ -126,6 +171,15 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
         from core.events import avoir_annule
 
         with transaction.atomic():
+            # AFAC28 (C-AFAC-025) — un avoir de RETOUR re-stocké a posé une
+            # ENTRÉE de stock : l'annuler la contre-passe (SORTIE miroir,
+            # référence = l'avoir), en premier et avant toute autre écriture ;
+            # refus 400 si les unités sont déjà ressorties.
+            if avoir.restocke:
+                refus = self._contre_passer_restockage(avoir, request.user)
+                if refus:
+                    return Response({'detail': refus},
+                                    status=status.HTTP_400_BAD_REQUEST)
             trace = self._trace_contre_passation(avoir)
             if trace is not None:
                 facture = Facture.objects.select_for_update().get(
@@ -160,6 +214,14 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             # l'écriture d'avoir (jamais de suppression, COMPTA11).
             avoir_annule.send(
                 sender=Avoir, instance=avoir, company=avoir.company)
+            # ATOT8 — le reste dû remonte : une facture PAYÉE grâce à cet
+            # avoir revient au recouvrement (statut dérivé du reste dû).
+            if trace is None:
+                from ..domain.encaissements import recalculer_statut_paiement
+                recalculer_statut_paiement(
+                    Facture.objects.get(
+                        pk=avoir.facture_id, company=avoir.company),
+                    user=request.user, source='annulation_avoir')
         return Response(AvoirSerializer(avoir).data)
 
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')

@@ -24,5 +24,6 @@ export const LEGAL_COMPLET: Legal = {
     recepissesCndp: ['CNDP-TEST'],
     representantUe: 'Représentant Test',
     responsableTraitement: 'editeur',
+    garantiesTransferts: { fr: 'Garanties de test.', en: 'Test safeguards.' },
   },
 };

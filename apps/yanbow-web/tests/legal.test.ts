@@ -33,6 +33,7 @@ describe('YBW25 — état réel : tout est null', () => {
       null,
     ]);
     expect(c.hebergeur).toEqual({ valeur: null, urlSource: null, dateLecture: null });
+    expect(c.garantiesTransferts).toBeNull();
   });
 
   it('aucune ligne à afficher, aucun bloc complet', () => {

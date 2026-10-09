@@ -162,9 +162,11 @@ def build(variant: str = "deux") -> dict:
                 "Tarif électricité : référence résidentielle prudente — "
                 "transmettez une facture récente et nous recalculons vos "
                 "économies par tranches, sur votre barème exact.",
-                "Loi 82-21 : seuls les kWh autoconsommés réduisent la "
-                "facture — le surplus injecté n'est pas rémunéré (plafond "
-                "d'injection 20 % intégré, rachat BT non publié).",
+                # AMOT25 — LA mention sourcée unique (MENTION_BT).
+                "Revente du surplus non ouverte en basse tension à ce jour "
+                "— ANRE décision 04/26 ; installation dimensionnée pour "
+                "l'autoconsommation. Seuls les kWh autoconsommés réduisent "
+                "la facture.",
                 "Production estimée : ≈ 1 420 kWh par kWc et par an, pertes "
                 "système de 14 % déduites.",
                 "Autoconsommation retenue : 60 % sans batterie · 85 % avec "

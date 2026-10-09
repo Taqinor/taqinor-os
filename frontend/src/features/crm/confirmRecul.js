@@ -23,9 +23,23 @@
    STAGES.py, règle #2) — aucun littéral d'étape ici. */
 import { useCallback } from 'react'
 import { STAGE_LABELS } from './stages'
+import { devisAccepteReference, isSortieSigne } from './stages'
 import { useConfirmDialog } from '../../ui/confirm'
 
 const libelle = (key) => STAGE_LABELS[key] ?? key
+
+/* Décision fondateur (Reda, 08/10/2026) — QUITTER « Signé » dés-accepte le
+   devis côté serveur (retour à « Envoyé », chantier de la signature annulé).
+   La question le DIT, en nommant le devis quand la fiche le connaît, et vaut
+   aussi pour Froid (qui n'est pas un recul) : les appelants la posent dès
+   que `isSortieSigne(lead.stage, cible)`. Si une suite réelle existe
+   (facture émise, chantier avancé…), le serveur refuse en 409 et son texte
+   est affiché tel quel par l'appelant. */
+export const descriptionSortieSigne = (lead) => {
+  const ref = devisAccepteReference(lead)
+  return `${ref ? `Le devis ${ref}` : 'Le devis accepté'} repassera en `
+    + '« Envoyé » et le chantier créé à la signature sera annulé. Continuer ?'
+}
 
 /**
  * useConfirmerRecul — hook de confirmation d'un retour en arrière d'étape.
@@ -40,8 +54,10 @@ export function useConfirmerRecul() {
     (lead, cible) => confirm({
       title: `Ramener « ${lead?.nom || 'ce lead'} » de `
         + `${libelle(lead?.stage)} à ${libelle(cible)} ?`,
-      description: "Le lead recule dans l'entonnoir. Le changement est tracé "
-        + "dans l'historique du lead.",
+      description: isSortieSigne(lead?.stage, cible)
+        ? descriptionSortieSigne(lead)
+        : "Le lead recule dans l'entonnoir. Le changement est tracé "
+          + "dans l'historique du lead.",
       confirmLabel: 'Ramener',
       cancelLabel: 'Annuler',
       destructive: false,

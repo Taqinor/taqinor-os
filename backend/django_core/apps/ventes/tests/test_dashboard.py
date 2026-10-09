@@ -162,14 +162,16 @@ class TestDashboardAggregation(TestCase):
         self.assertGreaterEqual(d['total'], 4)
 
     def test_taux_acceptation_pct_calculated(self):
-        # 2 envoyés, 1 accepté → 50 %
-        _devis(self.co, self.user, self.cli, statut='envoye', ref='D-ENV-A1')
-        _devis(self.co, self.user, self.cli, statut='envoye', ref='D-ENV-A2')
-        _devis(self.co, self.user, self.cli, statut='accepte', ref='D-ACC-A1')
+        # ADEV10 — base = devis ENVOYÉS DANS LA PÉRIODE (date_envoi) : 3
+        # envoyés dont 1 accepté depuis → 33,3 % (l'ancienne base, le stock
+        # d'envoyés encore ouverts, donnait 1 / 2 = 50 %).
+        from django.utils import timezone
+        for statut, ref in (('envoye', 'D-ENV-A1'), ('envoye', 'D-ENV-A2'),
+                            ('accepte', 'D-ACC-A1')):
+            d = _devis(self.co, self.user, self.cli, statut=statut, ref=ref)
+            Devis.objects.filter(pk=d.pk).update(date_envoi=timezone.now())
         r = self.api.get(URL)
-        # taux_acceptation = acceptes / envoyes × 100
-        # 1 accepte / 2 envoyes = 50 %
-        self.assertEqual(r.data['devis']['taux_acceptation_pct'], 50.0)
+        self.assertEqual(r.data['devis']['taux_acceptation_pct'], 33.3)
 
     def test_valeur_pipeline_non_zero_when_lignes(self):
         d = _devis(self.co, self.user, self.cli, statut='envoye', ref='D-PIPE-1')
@@ -193,11 +195,15 @@ class TestDashboardAggregation(TestCase):
         self.assertGreaterEqual(enc, 6000)
 
     def test_dso_calculation(self):
-        # DSO = encours / (montant_facture / 30)
-        _facture(self.co, self.cli, statut='emise', ttc=Decimal('3000'))
-        r = self.api.get(URL)
+        # AFAC53 — DSO = encours (Σ montant_du) / facturé × JOURS DE LA PÉRIODE
+        # (bornes incluses), plus l'ancien « / 30 » figé quelle que soit la
+        # période. Période explicite de 30 jours, facture émise dedans.
+        from datetime import date
+        f = _facture(self.co, self.cli, statut='emise', ttc=Decimal('3000'))
+        Facture.objects.filter(pk=f.pk).update(date_emission=date(2026, 1, 15))
+        r = self.api.get(URL, {'start': '2026-01-01', 'end': '2026-01-30'})
         dso = r.data['dso_jours']
-        # encours = 3000, montant_facture = 3000 → DSO = 30
+        # encours = 3000, facturé = 3000, période = 30 jours → DSO = 30
         self.assertIsNotNone(dso)
         self.assertAlmostEqual(dso, 30.0, delta=1.0)
 

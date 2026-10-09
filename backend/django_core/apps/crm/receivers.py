@@ -15,7 +15,8 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    appointment_effectue, devis_accepted, devis_refused, devis_sent,
+    appointment_effectue, devis_acceptation_annulee, devis_accepted,
+    devis_refused, devis_sent,
     facture_emise, layout_finalise, lead_created, lead_stage_changed,
     salle_vente_signal_interet, ticket_resolu, visite_planifiee,
     visite_terminee, visite_validee,
@@ -150,6 +151,84 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     # lit les commissions dues par ``deals-enregistres/a-payer/`` (inchangé).
     # QJR560 : un recalcul sur révision (V2 d’un devis signé) reste une mise
     # à jour du montant, jamais une seconde commission.
+
+
+@receiver(devis_acceptation_annulee,
+          dispatch_uid="crm_defaire_acceptation_on_acceptation_annulee")
+def _defaire_acceptation_on_acceptation_annulee(sender, devis, user,
+                                                **kwargs):
+    """Décision fondateur (08/10/2026) — l'acceptation du devis est annulée
+    (le lead sort de « Signé » par une action utilisateur). Le CRM défait SES
+    effets d'acceptation, dans la transaction de dés-acceptation (aucun
+    filet : une erreur annule tout) :
+
+    * NTCRM22 — la commission du deal passée « À payer » par CETTE vente
+      revient « Approuvé », montant dû effacé (aucun état « payé » n'existe :
+      rien à bloquer) — seulement si le lead n'a plus aucun devis accepté ;
+    * QX35/CRX34 — le parrainage passé « Converti » revient « En attente »
+      quand le filleul n'a plus aucun devis accepté (« Récompense versée »
+      n'est jamais touchée : c'est un geste humain déjà accompli) ;
+    * note au chatter du lead (qui, quel devis, quelle option). Les cadences
+      arrêtées à la signature (MRY9) ne sont PAS relancées automatiquement :
+      la note le dit, l'humain replanifie.
+
+    Le lien de parrainage CRX38 (une notification déjà partie) et
+    l'avancement d'étape (le lead sort déjà de « Signé ») n'ont rien à
+    défaire."""
+    from apps.ventes.selectors import devis_acceptes_actifs
+
+    from .models import DealEnregistre, Parrainage
+
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return
+    lead_id = getattr(devis, 'lead_id', None)
+    client_id = getattr(devis, 'client_id', None)
+
+    if lead_id and not devis_acceptes_actifs(
+            company, lead_id=lead_id, exclure_id=devis.pk):
+        (DealEnregistre.objects
+         .filter(company=company, lead_id=lead_id,
+                 statut=DealEnregistre.Statut.A_PAYER)
+         .update(statut=DealEnregistre.Statut.APPROUVE,
+                 montant_commission_du=None))
+
+    from django.db.models import Q
+    appariement = Q(pk__in=[])
+    if lead_id:
+        appariement |= Q(filleul_lead_id=lead_id)
+    if client_id:
+        appariement |= Q(filleul_client_id=client_id)
+    for parrainage in Parrainage.objects.filter(
+            appariement, company=company,
+            statut=Parrainage.Statut.CONVERTI):
+        encore = devis_acceptes_actifs(
+            company, lead_id=parrainage.filleul_lead_id,
+            exclure_id=devis.pk) if parrainage.filleul_lead_id else []
+        if not encore and parrainage.filleul_client_id:
+            encore = devis_acceptes_actifs(
+                company, client_id=parrainage.filleul_client_id,
+                exclure_id=devis.pk)
+        if encore:
+            continue
+        parrainage.statut = Parrainage.Statut.EN_ATTENTE
+        parrainage.save(update_fields=['statut'])
+
+    if lead_id:
+        lead = Lead.objects.filter(pk=lead_id, company=company).first()
+        if lead is not None:
+            from . import activity as crm_activity
+            qui = getattr(user, 'username', None) or 'le système'
+            option = kwargs.get('option_acceptee') or ''
+            crm_activity.log_note(
+                lead, user,
+                f"Acceptation du devis {devis.reference} annulée par {qui}"
+                + (f' (option {option})' if option else '')
+                + ' — le devis repasse « Envoyé » ; ce que la signature avait '
+                'créé automatiquement (chantier, commission, contrat) est '
+                'défait. La preuve de signature du client est conservée. Les '
+                'relances arrêtées à la signature ne reprennent pas seules : '
+                'replanifiez si besoin.')
 
 
 @receiver(devis_sent, dispatch_uid="crm_plan_apres_devis_on_devis_sent")

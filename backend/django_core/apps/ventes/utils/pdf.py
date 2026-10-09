@@ -274,6 +274,41 @@ def generate_devis_pdf(devis_id):
     return key
 
 
+def _emettre_document_produit(source, company, pdf_bytes, reference, *,
+                              date=None, client_nom='', uploaded_by=None):
+    """WIR165 + ADOC74 — émet ``core.events.document_produit`` après le
+    stockage d'un PDF de facturation (facture, avoir, note de débit,
+    bordereau de remise).
+
+    Best-effort : sans ``RoutageDocumentaire`` configuré pour ``source``, le
+    receveur ged (apps/ged/receivers.py) est un no-op strict — la génération
+    de PDF est INCHANGÉE tant qu'un admin n'a rien réglé ; une exception est
+    journalisée, jamais propagée (le PDF est déjà stocké). ``ventes``
+    n'importe jamais ``apps.ged`` (frontière cross-app) : l'événement est le
+    seul canal. Idempotent par source+reference (router_document_module) ;
+    un rendu au contenu différent devient une nouvelle version (ADOC61).
+    """
+    try:
+        from django.core.files.base import ContentFile
+
+        from core.events import document_produit
+
+        filename = f'{reference}.pdf'
+        document_produit.send(
+            sender=None, source=source, company=company,
+            file=ContentFile(pdf_bytes, name=filename),
+            filename=filename, reference=reference,
+            contexte={
+                'annee': date.year if date else '',
+                'reference': reference,
+                'client': client_nom or '',
+            },
+            uploaded_by=uploaded_by)
+    except Exception:  # noqa: BLE001 — émission best-effort
+        logger.exception(
+            'document_produit (%s) — échec émission pour %s', source, reference)
+
+
 def generate_facture_pdf(facture_id):
     """Generate, upload and persist PDF for a Facture. Returns MinIO key."""
     from apps.ventes.models import Facture
@@ -335,32 +370,14 @@ def generate_facture_pdf(facture_id):
     logger.info('PDF facture généré : %s', key)
 
     # WIR165 — premier émetteur RÉEL de core.events.document_produit (ZGED6).
-    # Best-effort : sans RoutageDocumentaire configuré pour 'ventes_facture',
-    # le receveur ged (apps/ged/receivers.py) est un no-op strict — le
-    # comportement de génération de PDF ci-dessus est INCHANGÉ tant qu'un
-    # admin n'a rien réglé. `ventes` n'importe jamais `apps.ged` (frontière
-    # cross-app) : l'événement est le seul canal. Idempotent par
-    # source+reference (router_document_module) — régénérer le même PDF ne
-    # duplique jamais le document GED.
-    try:
-        from django.core.files.base import ContentFile
-
-        from core.events import document_produit
-
-        document_produit.send(
-            sender=None, source='ventes_facture', company=facture.company,
-            file=ContentFile(pdf_bytes, name=f'{facture.reference}.pdf'),
-            filename=f'{facture.reference}.pdf', reference=facture.reference,
-            contexte={
-                'annee': facture.date_emission.year if facture.date_emission else '',
-                'reference': facture.reference,
-                'client': getattr(facture.client, 'nom', '') or '',
-            },
-            uploaded_by=facture.created_by)
-    except Exception:  # pragma: no cover - défensif (émission best-effort)
-        logger.exception(
-            'document_produit (ventes_facture) — échec émission pour %s',
-            facture.reference)
+    # ADOC74 — l'émission est factorisée dans ``_emettre_document_produit``
+    # (helper unique des quatre générateurs facture/avoir/note de débit/
+    # bordereau de remise).
+    _emettre_document_produit(
+        'ventes_facture', facture.company, pdf_bytes, facture.reference,
+        date=facture.date_emission,
+        client_nom=getattr(facture.client, 'nom', '') or '',
+        uploaded_by=facture.created_by)
 
     return key
 
@@ -422,12 +439,30 @@ def reglements_facture_pdf(facture):
             'date': _date(getattr(r, 'attestation_date', None)),
             'mode': f'Retenue à la source ({r.get_type_retenue_display()})',
             'reference': '', 'montant': Decimal(str(r.montant))})
-    if not lignes:
+    # AFAC31 (C-AFAC-031) — les deux termes de `decomposition_du` que le
+    # bloc taisait : une note de débit AUGMENTE ce qui est dû (ligne
+    # « Note de débit +x »), un abandon de créance (arrondi espèces compris)
+    # le réduit (« Abandon de créance −x ») — le reste se recalcule à la main.
+    notes_debit = [
+        {'date': _date(nd.date_emission), 'reference': nd.reference or '',
+         'montant': Decimal(str(nd.total_ttc))}
+        for nd in sorted(facture.notes_debit.all(), key=lambda nd: nd.id)
+        if nd.statut == 'emise']
+    abandon = None
+    if facture.abandon_montant and facture.abandon_montant > 0:
+        abandon = {
+            'libelle': ('Arrondi espèces'
+                        if facture.abandon_motif == 'arrondi_caisse'
+                        else 'Abandon de créance'),
+            'montant': Decimal(str(facture.abandon_montant))}
+    if not lignes and not notes_debit and abandon is None:
         return None
     total = sum((li['montant'] for li in lignes), Decimal('0'))
     reste = Decimal(str(facture.montant_du))
     return {
         'lignes': lignes,
+        'notes_debit': notes_debit,
+        'abandon': abandon,
         'total_deja_paye': total,
         'reste_a_payer': reste,
         'soldee': reste <= 0,
@@ -503,6 +538,14 @@ def _reglements_empreinte(facture):
             for li in bloc['lignes']],
         'total_deja_paye': str(bloc['total_deja_paye']),
         'reste_a_payer': str(bloc['reste_a_payer']),
+        # AFAC31 — clés posées seulement si présentes : l'empreinte d'une
+        # facture sans note de débit ni abandon reste inchangée.
+        **({'notes_debit': [
+            {'reference': nd['reference'], 'montant': str(nd['montant'])}
+            for nd in bloc['notes_debit']]} if bloc['notes_debit'] else {}),
+        **({'abandon': {'libelle': bloc['abandon']['libelle'],
+                        'montant': str(bloc['abandon']['montant'])}}
+           if bloc['abandon'] else {}),
     }
 
 
@@ -586,6 +629,12 @@ def generate_avoir_pdf(avoir_id):
     avoir.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF avoir généré : %s', key)
+    # ADOC74 — archivage GED (best-effort, no-op sans routage).
+    _emettre_document_produit(
+        'ventes_avoir', avoir.company, pdf_bytes, avoir.reference,
+        date=avoir.date_emission,
+        client_nom=getattr(avoir.client, 'nom', '') or '',
+        uploaded_by=avoir.created_by)
     return key
 
 
@@ -616,6 +665,12 @@ def generate_note_debit_pdf(note_debit_id):
     note_debit.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF note de débit généré : %s', key)
+    # ADOC74 — archivage GED (best-effort, no-op sans routage).
+    _emettre_document_produit(
+        'ventes_note_debit', note_debit.company, pdf_bytes,
+        note_debit.reference, date=note_debit.date_emission,
+        client_nom=getattr(note_debit.client, 'nom', '') or '',
+        uploaded_by=note_debit.created_by)
     return key
 
 
@@ -697,23 +752,6 @@ def generate_lettre_relance_pdf(facture, niveau, message):
     return _html_to_pdf(html)
 
 
-def _proforma_option(devis):
-    """QJR19 — l'option dont le pro-forma imprime l'argent.
-
-    MÊME règle que la chaîne canonique (``quote_engine.builder`` : deux vraies
-    options ⇒ l'option AVEC batterie, jamais la somme des deux ; l'option
-    ACCEPTÉE quand le client a tranché ; mono-option / pompage / liste libre ⇒
-    toutes les lignes). Rendre la somme des deux paniers imprimait un montant
-    qui n'existe dans AUCUN document.
-    """
-    from apps.ventes.utils.options import AVEC_BATTERIE, has_two_options
-
-    option = getattr(devis, 'option_acceptee', '') or ''
-    if option:
-        return option
-    return AVEC_BATTERIE if has_two_options(devis) else ''
-
-
 def generate_proforma_pdf(devis, reference):
     """XFAC10 — facture pro-forma NON comptabilisée (layout facture legacy,
     variante filigranée). Rendu à la volée, non stocké — ne touche jamais le
@@ -731,12 +769,18 @@ def generate_proforma_pdf(devis, reference):
     client, au centime. Le jour où la façade ``argent.totaux(vue=…)`` (QJR49)
     remplacera ``option_totaux``, la substitution est mécanique : ce module ne
     calcule RIEN lui-même.
+
+    ATOT10 (C-ATOT-015) — l'option vient d'``option_effective`` (acceptée,
+    sinon scénario mono déclaré, sinon option mise en avant — SANS pour un
+    C&I, CIQ302), exactement comme le BC : ``option_lines``/``option_totaux``
+    sans argument. Le pro-forma imprime donc ``Devis.total_ttc``, le total de
+    la liste et du PDF /proposal ; l'ancien ``_proforma_option`` (AVEC dès
+    qu'il y avait deux options) est supprimé.
     """
     from apps.ventes.utils.options import option_lines, option_totaux
 
-    option = _proforma_option(devis)
-    lignes = option_lines(devis, option)
-    totaux = option_totaux(devis, option, lignes=lignes)
+    lignes = option_lines(devis)
+    totaux = option_totaux(devis, lignes=lignes)
 
     context = _company_context(company=devis.company)
     context['devis'] = devis
@@ -821,4 +865,10 @@ def generate_bordereau_remise_pdf(remise_id):
     remise.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF bordereau de remise généré : %s', key)
+    # ADOC74 — archivage GED (best-effort, no-op sans routage). Pas de
+    # client : un bordereau regroupe les encaissements d'un technicien.
+    _emettre_document_produit(
+        'ventes_remise', remise.company, pdf_bytes,
+        remise.reference or str(remise.id), date=remise.date_collecte,
+        uploaded_by=remise.created_by)
     return pdf_bytes

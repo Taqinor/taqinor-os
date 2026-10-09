@@ -1057,6 +1057,13 @@ class CompanyProfile(models.Model):
                   "serveur. Défaut Africa/Casablanca (comportement "
                   "historique inchangé).")
 
+    # ── APAR16 — verrou optimiste du profil : horodatage de la DERNIÈRE
+    # écriture, lu par l'écran au chargement et renvoyé avec le PATCH ; un
+    # écart ⇒ 409 (« modifié par X entre-temps ») au lieu d'écraser la saisie
+    # concurrente. NULL pour les profils jamais réécrits depuis la migration.
+    updated_at = models.DateTimeField(
+        auto_now=True, null=True, verbose_name='Modifié le')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

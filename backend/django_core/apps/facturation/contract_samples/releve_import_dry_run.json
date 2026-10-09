@@ -1,0 +1,63 @@
+{
+  "endpoint": "POST /api/django/ventes/paiements/import-releve/dry-run/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AFAC3 (C-AFAC-009) — l'aperçu d'un relevé bancaire renvoie TOUTES les décisions de rapprochement (plus de troncature à 10 lignes : `preview` = l'intégralité du fichier, AFAC6), la FILE DE REVUE (`revue` : lignes qu'aucune machine ne tranche) et le jeton à repasser au commit. Aucune écriture d'argent. Statuts de ligne (énumération fermée, `statuts_ligne`) : a_importer (seul statut écrit par le commit), non_trouve, deja_regle, surpaiement, montant_invalide, ambigu (plusieurs factures candidates — revue), client_non_identifie (une candidate, donneur d'ordre inconnu — revue), doublon_import (ligne déjà importée par un relevé antérieur — AFAC5), date_invalide (date non reconnue — revue, jamais remplacée par la date du jour — AFAC5). `deja_importe` = ce CONTENU de fichier a déjà été importé (le commit le refusera). Montants en texte décimal ; `montant` null seulement pour montant_invalide ; `date` ISO ou null.",
+  "statuts_ligne": [
+    "a_importer",
+    "non_trouve",
+    "deja_regle",
+    "surpaiement",
+    "montant_invalide",
+    "ambigu",
+    "client_non_identifie",
+    "doublon_import",
+    "date_invalide"
+  ],
+  "exemple": {
+    "token": "q3Zt0b7c1nYw2kVx9mL4pR8sT6uE5aHd",
+    "columns": {"Date": "date", "Référence": "reference", "Montant": "montant", "Libellé": "libelle"},
+    "unmapped": ["Solde"],
+    "total_rows": 3,
+    "preview": [
+      {
+        "ligne": 2, "date": "2026-06-20", "reference": "FAC-2026-06-0012",
+        "libelle": "VIR SARL ATLAS", "montant": "5000.00", "mode": "virement",
+        "statut": "a_importer", "facture_id": 118,
+        "facture_reference": "FAC-2026-06-0012", "match_type": "reference",
+        "candidats": []
+      },
+      {
+        "ligne": 3, "date": "2026-06-21", "reference": "",
+        "libelle": "VIR M. ALAMI", "montant": "12000.00", "mode": "virement",
+        "statut": "ambigu", "facture_id": null, "facture_reference": null,
+        "match_type": null,
+        "candidats": ["FAC-2026-06-0014", "FAC-2026-06-0019"]
+      },
+      {
+        "ligne": 4, "date": null, "reference": "FAC-2026-06-0020",
+        "libelle": "VIR SOCIETE NOUR", "montant": "3000.00", "mode": "virement",
+        "statut": "date_invalide", "facture_id": null, "facture_reference": null,
+        "match_type": null, "candidats": []
+      }
+    ],
+    "revue": [
+      {
+        "ligne": 3, "date": "2026-06-21", "reference": "",
+        "libelle": "VIR M. ALAMI", "montant": "12000.00", "mode": "virement",
+        "statut": "ambigu", "facture_id": null, "facture_reference": null,
+        "match_type": null,
+        "candidats": ["FAC-2026-06-0014", "FAC-2026-06-0019"]
+      },
+      {
+        "ligne": 4, "date": null, "reference": "FAC-2026-06-0020",
+        "libelle": "VIR SOCIETE NOUR", "montant": "3000.00", "mode": "virement",
+        "statut": "date_invalide", "facture_id": null, "facture_reference": null,
+        "match_type": null, "candidats": []
+      }
+    ],
+    "matched": 1,
+    "ambigus": 2,
+    "already_paid": 0,
+    "deja_importe": false
+  }
+}

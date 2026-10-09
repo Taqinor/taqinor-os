@@ -16,8 +16,8 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, isStageMoveAllowed, isStageMoveBackward,
-  PIPELINE_STAGES, STAGE_LABELS,
+  formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
+  isStageMoveBackward, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -410,6 +410,10 @@ export default function KanbanView({
     const enArriere = isStageMoveBackward(lead.stage, over.id)
     if (!enAvant && !enArriere) return
     if (enArriere && !(await confirmerRecul(lead, over.id))) return
+    // Décision fondateur 08/10/2026 — quitter « Signé » vers Froid (pas un
+    // recul) dés-accepte AUSSI le devis côté serveur : même question.
+    if (!enArriere && isSortieSigne(lead.stage, over.id)
+        && !(await confirmerRecul(lead, over.id))) return
     onChangeStage(lead, over.id, { confirmeRecul: enArriere })
     // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
     // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau

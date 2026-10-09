@@ -146,6 +146,50 @@ def exiger_modifiable(devis, geste):
     return v
 
 
+# ── ADEV7 (C-ADEV-002) — UNE VERSION REMPLACÉE EST HORS JEU ────────────────
+#
+# Distinct de la table d'ÉDITION ci-dessus : les gestes de CYCLE DE VIE
+# (accepter, refuser, envoyer, relancer) ne lisent ici QUE la règle « version
+# en jeu » — leurs propres conditions de statut restent à leurs sites
+# (``accept_devis``, ``refuser``, ``mark_devis_sent``). Une V1 révisée
+# (``is_active=False``) n'accepte AUCUN de ces gestes : la refuser émettait
+# ``devis_refused`` et clôturait le lead alors que la V2 vit ; la renvoyer
+# relançait le client sur une proposition caduque. Une seule règle, partagée
+# avec la garde QJR520 de l'acceptation. Lecture seule (règle #4).
+
+ACCEPTER = 'ACCEPTER'
+REFUSER = 'REFUSER'
+ENVOYER = 'ENVOYER'
+RELANCER = 'RELANCER'
+GESTES_CYCLE = frozenset({ACCEPTER, REFUSER, ENVOYER, RELANCER})
+CODE_VERSION_REMPLACEE = 'version_remplacee'
+
+
+def message_version_remplacee(devis):
+    """Le message unique d'une version hors jeu (repris de QJR520)."""
+    ref = _reference_successeur(devis)
+    if ref:
+        return f'Cette proposition a été remplacée par {ref}.'
+    return "Cette proposition n'est plus active."
+
+
+def geste_cycle_permis(devis, geste):
+    """``(permis, message)`` — un geste de cycle de vie sur ce devis est-il
+    permis au regard de la version en jeu ? ``message`` vaut ``''`` quand
+    permis."""
+    if geste not in GESTES_CYCLE:
+        raise ValueError(f'Geste de cycle de vie inconnu : {geste!r}.')
+    if not bool(getattr(devis, 'is_active', True)):
+        return False, message_version_remplacee(devis)
+    return True, ''
+
+
+def corps_version_remplacee(devis):
+    """Le corps 409 ``{detail, code}`` (contrat ``devis_refuser.json``)."""
+    return {'detail': message_version_remplacee(devis),
+            'code': CODE_VERSION_REMPLACEE}
+
+
 # ── QJR518 — UNE CORRECTION APRÈS ENVOI EST TRACÉE À UN SEUL POINT ─────────
 #
 # D-QJR5-1 : un devis ENVOYÉ se corrige SUR PLACE — même référence, même lien
@@ -181,6 +225,10 @@ _CHAMPS_ENTETE_VISIBLES = (
     'client_id', 'date_validite', 'taux_tva', 'remise_globale', 'echeancier',
     'acompte_pct', 'acompte_montant',
 )
+#: ADEV18 — nom PUBLIC de la même liste : l'instantané restaurable
+#: (``historique_config.configuration_devis_contenu``) la lit pour porter
+#: chaque champ d'en-tête que l'empreinte compare — une seule source.
+CHAMPS_ENTETE_VISIBLES = _CHAMPS_ENTETE_VISIBLES
 _LIBELLES = {
     'lignes': 'lignes',
     'entete': 'en-tête',
@@ -193,6 +241,8 @@ _LIBELLES = {
 _OBJETS_NOMMES = {
     'calepinage': 'calepinage',
     'taille': "taille d'offre",
+    # ADEV19 — l'option activée par le CLIENT sur sa page publique.
+    'option client': 'option client',
 }
 
 

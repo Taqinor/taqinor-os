@@ -514,6 +514,25 @@ def _freeze_bom(devis):
     return bom
 
 
+def _devis_successeurs_revision_ids(devis):
+    """ACHT4 — ids des versions qui REMPLACENT ``devis`` (chaîne
+    ``superseded_by`` : v1 → v2 → v3), même société, sans cycle. Lu par
+    traversée de la FK du devis reçu (aucun import de ``ventes.models``)."""
+    ids = []
+    vus = {getattr(devis, 'pk', None)}
+    courant = devis
+    while True:
+        suivant_id = getattr(courant, 'superseded_by_id', None)
+        if not suivant_id or suivant_id in vus:
+            return ids
+        suivant = getattr(courant, 'superseded_by', None)
+        if suivant is None or suivant.company_id != devis.company_id:
+            return ids
+        vus.add(suivant_id)
+        ids.append(suivant_id)
+        courant = suivant
+
+
 def _rattacher_chantier_de_revision(devis, user, company):
     """QJR559 — si une version que ``devis`` REMPLACE (révision, lue par
     ``ventes.selectors.devis_predecesseurs_revision_ids``) a déjà un chantier,
@@ -564,12 +583,12 @@ def _realigner_nomenclature_revision(chantier, devis):
     ``seed_reservations`` et libère les réservations des SKU disparus.
 
     Gardes :
-      * une réservation CONSOMMÉE n'est jamais touchée (``seed_reservations``
-        et ``release_reservations`` l'ignorent déjà) ;
-      * une quantité déjà SORTIE par la vente (réservation soldée par
-        ``solder_reservations_vente`` : réservé < nomenclature V1) n'est
-        jamais re-réservée — la V2 ne réserve que son besoin moins ce déjà
-        sorti ;
+      * une réservation consommée par N14 n'est jamais touchée ; une
+        réservation SOLDÉE à 0 (vente / F11) n'est rouverte que pour l'écart
+        d'une V2 plus grande (ACHT1, ``_poser_reservation_ecart``) ;
+      * une quantité déjà SORTIE (vente + F11 validée, source unique
+        ``quantite_deja_sortie_chantier``) n'est jamais re-réservée — la V2
+        ne réserve que son besoin moins ce déjà sorti ;
       * mode de réservation « manuelle » sans aucune réservation posée :
         la nomenclature est réalignée mais aucune réservation n'est créée
         (le bouton explicite reste le déclencheur).
@@ -577,14 +596,6 @@ def _realigner_nomenclature_revision(chantier, devis):
     V2 sans autre changement. Renvoie True si le chantier a été réaligné."""
     if not _chantier_realignable(chantier):
         return False
-    ancien_bom = _quantites_depuis_bom(chantier.bom)
-    deja_sorti = {}
-    actives = StockReservation.objects.filter(
-        installation=chantier, active=True, consomme=False)
-    for resa in actives:
-        ecart = ancien_bom.get(resa.produit_id, 0) - resa.quantite
-        if ecart > 0:
-            deja_sorti[resa.produit_id] = ecart
     a_des_reservations = StockReservation.objects.filter(
         installation=chantier).exists()
 
@@ -596,21 +607,104 @@ def _realigner_nomenclature_revision(chantier, devis):
             and methode_reservation_stock(chantier.company)
             == METHODE_RESERVATION_MANUELLE):
         return True
+    # ACHT1 — le « déjà sorti » (vente + F11 validée) est lu à sa source
+    # unique par `seed_reservations` (`quantite_deja_sortie_chantier`) :
+    # la V2 ne réserve que l'écart, jamais ce qui est déjà sorti.
     seed_reservations(chantier)
-    for produit_id, sorti in deja_sorti.items():
-        if produit_id not in nouveaux:
-            continue
-        reste = max(0, nouveaux[produit_id] - sorti)
-        (StockReservation.objects
-         .filter(installation=chantier, produit_id=produit_id,
-                 active=True, consomme=False)
-         .update(quantite=reste))
     # SKU absents de la V2 : réservations non consommées libérées (jamais
     # supprimées — trace conservée, comme `release_reservations`).
     (StockReservation.objects
      .filter(installation=chantier, active=True, consomme=False)
      .exclude(produit_id__in=list(nouveaux))
      .update(active=False))
+    return True
+
+
+#: Décision fondateur (08/10/2026) — motif posé sur un chantier annulé parce
+#: que l'acceptation de son devis a été annulée (lead sorti de « Signé »).
+#: C'est le MARQUEUR qui autorise sa réactivation à la ré-acceptation.
+MOTIF_ANNULATION_DESACCEPTATION = (
+    'Acceptation du devis annulée (lead sorti de « Signé »)')
+
+
+def annuler_chantiers_desaccepte(devis, user, company):
+    """Décision fondateur (08/10/2026) — défait le chantier auto-créé par
+    l'acceptation de ``devis`` quand cette acceptation est annulée.
+
+    Le chantier n'est JAMAIS supprimé : il reçoit le drapeau d'annulation
+    (comme l'action « Annuler ») avec le motif-marqueur
+    ``MOTIF_ANNULATION_DESACCEPTATION``, ses réservations non consommées sont
+    libérées et une note est posée au chatter. Le contrôle de blocage
+    (``selectors.blocage_annulation_acceptation``) a déjà garanti qu'il était
+    dans son état initial. N'attrape rien : appelé dans la transaction de
+    dés-acceptation, une erreur annule tout. Rend le nombre de chantiers
+    annulés."""
+    from . import activity
+    qs = (Installation.objects
+          .select_for_update()
+          .filter(devis_id=devis.pk, company=company, annule=False)
+          .order_by('pk'))
+    nb = 0
+    for inst in qs:
+        inst.annule = True
+        inst.motif_annulation = MOTIF_ANNULATION_DESACCEPTATION[:255]
+        inst.save(update_fields=['annule', 'motif_annulation'])
+        activity.log_note(
+            inst, user,
+            f"Chantier annulé automatiquement : l'acceptation du devis "
+            f'{devis.reference} a été annulée (lead sorti de « Signé »).')
+        liberees = release_reservations(inst)
+        if liberees:
+            activity.log_note(
+                inst, user,
+                f'Réservation de stock libérée — {liberees} référence(s) '
+                '(acceptation annulée).')
+        nb += 1
+    return nb
+
+
+def _reactiver_chantier_reaccepte(inst, devis, user):
+    """Ré-acceptation d'un devis dés-accepté : le chantier annulé par la
+    dés-acceptation redevient actif (jamais un second chantier), sa date de
+    signature suit la nouvelle acceptation et ses réservations sont
+    réamorcées s'il en portait (même règle que l'action « Réactiver »)."""
+    from . import activity
+    inst.annule = False
+    inst.motif_annulation = None
+    champs = ['annule', 'motif_annulation']
+    date_acc = getattr(devis, 'date_acceptation', None)
+    if date_acc and inst.date_signature != date_acc:
+        inst.date_signature = date_acc
+        champs.append('date_signature')
+    inst.save(update_fields=champs)
+    activity.log_note(
+        inst, user,
+        f'Chantier réactivé : le devis {devis.reference} a été accepté de '
+        'nouveau.')
+    if inst.reservations.exists():
+        seed_reservations(inst)
+
+
+def realigner_nomenclature_si_divergente(chantier, user, contexte):
+    """ACHT7 (C-ACHT-006) — un chantier ANNULÉ rattaché à une V2 a gardé la
+    nomenclature V1 (``_chantier_realignable`` l'écarte tant qu'il est
+    annulé). Au plus tard à sa réactivation (ou à ``reserver-stock``), si
+    ``chantier.bom`` diffère du gel de ``chantier.devis``, on rejoue le
+    survivant unique ``_realigner_nomenclature_revision`` (qui réamorce les
+    réservations) et on le note au chatter. Renvoie True si réaligné."""
+    devis = getattr(chantier, 'devis', None)
+    if devis is None or not _chantier_realignable(chantier):
+        return False
+    if _quantites_depuis_bom(chantier.bom) == _quantites_depuis_bom(
+            _freeze_bom(devis)):
+        return False
+    if not _realigner_nomenclature_revision(chantier, devis):
+        return False
+    from . import activity
+    activity.log_note(
+        chantier, user,
+        f'Matériel : nomenclature réalignée sur {devis.reference} '
+        f'{contexte}.')
     return True
 
 
@@ -634,7 +728,23 @@ def create_installation_from_devis(devis, user, company):
     existing = Installation.objects.filter(
         devis=devis, company=company).first()
     if existing is not None:
+        # Décision fondateur 08/10/2026 — un chantier annulé PAR une
+        # dés-acceptation (lead sorti de « Signé ») est RÉACTIVÉ à la
+        # ré-acceptation : il n'existe jamais qu'un seul chantier par devis.
+        if (existing.annule and existing.motif_annulation
+                == MOTIF_ANNULATION_DESACCEPTATION):
+            _reactiver_chantier_reaccepte(existing, devis, user)
         return existing, False
+    # ACHT4 (C-ACHT-004) — UN chantier par AFFAIRE : une version REMPLACÉE
+    # (V1 révisée) dont l'affaire a déjà un chantier (porté par une version
+    # plus récente) renvoie ce chantier, jamais un second.
+    successeurs = _devis_successeurs_revision_ids(devis)
+    if successeurs:
+        existing = (Installation.objects
+                    .filter(company=company, devis_id__in=successeurs)
+                    .order_by('pk').first())
+        if existing is not None:
+            return existing, False
     # QJR559 — V2 d'un devis signé (D-QJR5-2) : le chantier de la version
     # remplacée est RATTACHÉ à la révision acceptée, jamais dupliqué.
     # ASTK177 (décision ASTK173 (a)) — tant que le chantier n'est pas
@@ -855,8 +965,13 @@ def _notifier_chantier_assigne(inst, technicien):
 def _bom_quantities(installation):
     """Quantités requises par produit (entier ≥ 1) depuis la nomenclature gelée
     du chantier (`Installation.bom`). Ignore les lignes sans produit catalogue
-    et les quantités nulles/illisibles. Renvoie {produit_id: quantite}."""
-    return _quantites_depuis_bom(installation.bom)
+    et les quantités nulles/illisibles. Renvoie {produit_id: quantite}.
+
+    ACHT8 — alias : délègue au sélecteur unique
+    ``selectors.quantites_nomenclature_chantier`` (repli sur le gel du devis
+    quand la nomenclature est vide)."""
+    from .selectors import quantites_nomenclature_chantier
+    return quantites_nomenclature_chantier(installation)
 
 
 def _quantites_depuis_bom(bom):
@@ -937,32 +1052,125 @@ def seed_reservations(installation):
     for produit_id, qte in besoins.items():
         if produit_id not in valid_ids:
             continue
-        resa, created = StockReservation.objects.get_or_create(
-            installation=installation, produit_id=produit_id,
-            defaults={
-                'company': company, 'quantite': qte,
-                'origine_calepinage_id': origine_calepinage_id,
-            })
-        if not created and not resa.consomme:
-            # Réaligne la quantité réservée sur le BOM (réservation non encore
-            # consommée). Une réservation consommée reste figée.
-            changed = []
-            if resa.quantite != qte:
-                resa.quantite = qte
-                changed.append('quantite')
-            if not resa.active:
-                resa.active = True
-                changed.append('active')
-            if resa.company_id is None:
-                resa.company = company
-                changed.append('company')
-            if (resa.origine_calepinage_id is None
-                    and origine_calepinage_id is not None):
-                resa.origine_calepinage_id = origine_calepinage_id
-                changed.append('origine_calepinage_id')
-            if changed:
-                resa.save(update_fields=changed)
+        _poser_reservation_ecart(
+            installation, produit_id, qte,
+            origine_calepinage_id=origine_calepinage_id)
     return list(installation.reservations.filter(active=True))
+
+
+def quantite_deja_sortie_chantier(installation, produit_id):
+    """ACHT1 (D-ACHT-1, « une vente = une sortie ») — LA source unique de la
+    quantité déjà SORTIE du stock pour ce chantier et ce produit HORS
+    réservation N14 : la vente (réservations soldées par
+    ``solder_reservations_vente``) + la consommation terrain F11 validée
+    (lignes ``stock_applique``), arrondie à l'entier comme la nomenclature
+    (HALF_UP). Lue par tout écrivain de réservation (``seed_reservations`` —
+    V2, réactivation, ``reserver-stock`` — et ``reserver_stock_depuis_bc``)
+    pour ne réserver que l'écart."""
+    from decimal import ROUND_HALF_UP
+    from django.db.models import Sum
+    from .models import ConsommationLigne
+    f11 = (
+        ConsommationLigne.objects
+        .filter(consommation__intervention__installation=installation,
+                produit_id=produit_id, stock_applique=True)
+        .aggregate(total=Sum('quantite_utilisee'))['total']
+    ) or Decimal('0')
+    total = Decimal(str(f11)) + _quantite_soldee_par_vente(
+        installation, produit_id)
+    return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def _poser_reservation_ecart(installation, produit_id, besoin,
+                             origine_calepinage_id=None):
+    """ACHT1 — pose/réaligne la réservation (chantier, produit) sur
+    ``besoin − quantite_deja_sortie_chantier`` (borné à 0).
+
+    * réservation non consommée : quantité réalignée sur l'écart, réactivée ;
+    * réservation consommée par N14 (``quantite > 0``) : jamais touchée ;
+    * réservation SOLDÉE à 0 par la vente ou F11 (``consomme`` et
+      ``quantite == 0``) : rouverte, avec une note au chatter, si le besoin
+      dépasse désormais le déjà sorti (V2 plus grande)."""
+    from . import activity
+    company = installation.company
+    ecart = max(0, int(besoin) - quantite_deja_sortie_chantier(
+        installation, produit_id))
+    resa, created = StockReservation.objects.get_or_create(
+        installation=installation, produit_id=produit_id,
+        defaults={
+            'company': company, 'quantite': ecart,
+            'origine_calepinage_id': origine_calepinage_id,
+        })
+    if created:
+        return resa
+    changed = []
+    if resa.consomme:
+        if resa.quantite > 0 or ecart <= 0:
+            return resa
+        resa.consomme = False
+        resa.date_consommation = None
+        changed += ['consomme', 'date_consommation']
+        activity.log_note(
+            installation, None,
+            f"Réservation {getattr(resa.produit, 'sku', '') or produit_id} "
+            f"rouverte : {ecart} à réserver en plus du déjà sorti "
+            f"(nomenclature agrandie).")
+    if resa.quantite != ecart:
+        resa.quantite = ecart
+        changed.append('quantite')
+    if not resa.active:
+        resa.active = True
+        changed.append('active')
+    if resa.company_id is None:
+        resa.company = company
+        changed.append('company')
+    if (resa.origine_calepinage_id is None
+            and origine_calepinage_id is not None):
+        resa.origine_calepinage_id = origine_calepinage_id
+        changed.append('origine_calepinage_id')
+    if changed:
+        resa.save(update_fields=changed)
+    return resa
+
+
+def solder_reservations_consommation_terrain(installation, quantites):
+    """ACHT1 — la consommation terrain F11 validée SOLDE la réservation N14
+    du chantier (au lieu de la libérer) : pour chaque ``{produit_id: qte}``,
+    la réservation active non consommée est décrémentée (bornée à 0) ; à 0
+    elle porte ``consomme=True`` et une note « soldée par la consommation
+    terrain ». `consume_reservations` à « Installé » ne sort donc plus ce
+    qui l'a déjà été. Renvoie le nombre de réservations modifiées."""
+    from decimal import ROUND_HALF_UP
+    from django.utils import timezone
+    from . import activity
+    modifiees = 0
+    for produit_id, qte in quantites.items():
+        if not produit_id or qte <= 0:
+            continue
+        resa = (StockReservation.objects.select_for_update()
+                .select_related('produit')
+                .filter(installation=installation, produit_id=produit_id,
+                        active=True, consomme=False)
+                .first())
+        if resa is None:
+            continue
+        decompte = min(
+            int(Decimal(str(qte)).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP)),
+            resa.quantite)
+        resa.quantite -= decompte
+        changed = ['quantite']
+        if resa.quantite <= 0:
+            resa.consomme = True
+            resa.date_consommation = timezone.now()
+            changed += ['consomme', 'date_consommation']
+            activity.log_note(
+                installation, None,
+                f"Réservation {resa.produit.sku or resa.produit.nom} soldée "
+                f"par la consommation terrain ({decompte} posé(s)).")
+        resa.save(update_fields=changed)
+        modifiees += 1
+    return modifiees
 
 
 def consume_reservations(installation, user):
@@ -1421,20 +1629,10 @@ def reserver_stock_depuis_bc(bon_commande):
     for produit_id, qte in besoins.items():
         if produit_id not in valid_ids:
             continue
-        resa, created = StockReservation.objects.get_or_create(
-            installation=installation, produit_id=produit_id,
-            defaults={'company': installation.company, 'quantite': qte})
-        if not created and not resa.consomme:
-            changed = []
-            if resa.quantite != qte:
-                resa.quantite = qte
-                changed.append('quantite')
-            if not resa.active:
-                resa.active = True
-                changed.append('active')
-            if changed:
-                resa.save(update_fields=changed)
-        reservations.append(resa)
+        # ACHT1 — même prédicat « déjà sorti » que `seed_reservations` :
+        # le BC confirmé ne réserve que l'écart.
+        reservations.append(
+            _poser_reservation_ecart(installation, produit_id, qte))
     return reservations
 
 
@@ -3644,6 +3842,60 @@ def etiquette_items_assemblage(ordre):
 
 # ── XMFG12 — Ordre de démontage (unbuild) ─────────────────────────────────────
 
+#: ACHT17 — message unique d'un en-tête d'ordre figé.
+MESSAGE_ORDRE_FIGE = "Ordre figé : annulez-le et recréez-le."
+
+#: ACHT17 — champs d'en-tête figés hors « planifié » (assemblage / démontage).
+CHAMPS_FIGES_ORDRE_ASSEMBLAGE = (
+    'kit', 'quantite', 'quantite_produite', 'emplacement_source',
+    'emplacement_destination', 'devis', 'chantier')
+CHAMPS_FIGES_ORDRE_DEMONTAGE = (
+    'kit', 'quantite', 'emplacement_source', 'emplacement_destination')
+
+
+def champs_entete_ordre_modifies(ordre, donnees, champs):
+    """ACHT17 — champs d'en-tête de ``champs`` dont ``donnees`` (corps
+    validé) change réellement la valeur sur ``ordre``."""
+    modifies = []
+    for nom in champs:
+        if nom not in donnees:
+            continue
+        nouveau = donnees[nom]
+        nouveau = getattr(nouveau, 'pk', nouveau)
+        actuel = getattr(ordre, f'{nom}_id', None) if hasattr(
+            ordre, f'{nom}_id') else getattr(ordre, nom, None)
+        if nouveau != actuel:
+            modifies.append(nom)
+    return modifies
+
+
+def recreer_nomenclature_ordre_assemblage(ordre, user=None):
+    """ACHT17 (C-ACHT-016) — un ordre d'assemblage PLANIFIÉ dont le kit ou la
+    quantité change : ses lignes sont recopiées depuis la BOM du kit courant
+    × la quantité courante, la révision de nomenclature est re-figée, et ses
+    réservations composant sont re-semées (les non consommées des composants
+    disparus sont libérées). La clôture consomme donc toujours la
+    nomenclature du kit produit × la quantité produite."""
+    from .models import ReservationAssemblage
+    ordre.lignes.all().delete()
+    (ReservationAssemblage.objects
+     .filter(ordre=ordre, active=True, consomme=False)
+     .update(active=False))
+    revision, _created = snapshot_revision_kit(ordre.kit, user=user)
+    if ordre.revision_kit_numero != revision.numero:
+        ordre.revision_kit_numero = revision.numero
+        ordre.save(update_fields=['revision_kit_numero'])
+    seed_lignes_assemblage(ordre)
+    seed_reservations_assemblage(ordre)
+
+
+def recreer_lignes_ordre_demontage(ordre_demontage):
+    """ACHT17 — jumeau démontage : lignes recopiées depuis la BOM du kit
+    courant × la quantité courante (ordre planifié)."""
+    ordre_demontage.lignes.all().delete()
+    seed_lignes_demontage(ordre_demontage)
+
+
 def seed_lignes_demontage(ordre_demontage):
     """XMFG12 — copie la BOM du kit en lignes de démontage éditables (quantité
     ATTENDUE = BOM × ordre.quantite ; RÉCUPÉRÉE par défaut = attendue, éditable
@@ -3700,6 +3952,35 @@ def controle_qualite_bloque_cloture(ordre):
         c.resultat != ControleQualiteOrdre.Resultat.PASS_ for c in controles)
 
 
+class SaisieAtelierRefusee(ValueError):
+    """ACHT26 — saisie d'atelier refusée ; ``erreurs`` = {champ: message}."""
+
+    def __init__(self, erreurs):
+        self.erreurs = erreurs
+        super().__init__(' '.join(str(v) for v in erreurs.values()))
+
+
+def _dec_txt(valeur):
+    """ACHT26 — Decimal lisible (1.00 → « 1 », 2.50 → « 2.5 »), « — » si
+    absent."""
+    if valeur is None:
+        return '—'
+    from decimal import Decimal
+    texte = format(Decimal(str(valeur)).normalize(), 'f')
+    return texte
+
+
+def _exiger_ordre_ouvert_saisie(ordre):
+    """ACHT26 — aucune saisie de contrôle qualité ni d'étape une fois l'ordre
+    terminé ou annulé."""
+    from .models import OrdreAssemblage
+    if ordre.statut in (OrdreAssemblage.Statut.TERMINE,
+                        OrdreAssemblage.Statut.ANNULE):
+        raise SaisieAtelierRefusee({'statut': (
+            f"Ordre {ordre.get_statut_display().lower()} : saisie "
+            "figée.")})
+
+
 def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
                                  valeur_mesuree=None, photo=None, user):
     """XMFG13 — enregistre le résultat d'un item QC pour cet ordre. Si une
@@ -3709,15 +3990,35 @@ def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
     from django.utils import timezone
     from .models import ControleQualiteOrdre
 
+    _exiger_ordre_ouvert_saisie(ordre)  # ACHT26
     controle = ControleQualiteOrdre.objects.select_related('item_modele').get(
         ordre=ordre, item_modele_id=item_modele_id)
     item = controle.item_modele
 
+    if valeur_mesuree in ('',):
+        valeur_mesuree = None
     if valeur_mesuree is not None and not isinstance(valeur_mesuree, Decimal):
         try:
             valeur_mesuree = Decimal(str(valeur_mesuree))
         except (InvalidOperation, ValueError, TypeError):
             raise ValueError('valeur_mesuree invalide.')
+    # ACHT26 (C-ACHT-024) — résultat borné à la liste ; un « pass » saisi
+    # hors tolérance est refusé (il faut enregistrer un échec).
+    if resultat in ('',):
+        resultat = None
+    if resultat is not None and resultat not in ControleQualiteOrdre.Resultat.values:
+        raise SaisieAtelierRefusee({'resultat': (
+            f"Résultat « {resultat} » inconnu : pass, fail ou en_attente.")})
+    if (resultat == ControleQualiteOrdre.Resultat.PASS_
+            and valeur_mesuree is not None
+            and ((item.valeur_min is not None
+                  and valeur_mesuree < item.valeur_min)
+                 or (item.valeur_max is not None
+                     and valeur_mesuree > item.valeur_max))):
+        raise SaisieAtelierRefusee({'resultat': (
+            f"Valeur {_dec_txt(valeur_mesuree)} hors tolérance "
+            f"[{_dec_txt(item.valeur_min)} ; {_dec_txt(item.valeur_max)}] : "
+            "enregistrez un échec.")})
 
     if resultat is None and valeur_mesuree is not None and (
             item.valeur_min is not None or item.valeur_max is not None):
@@ -3768,6 +4069,7 @@ def cocher_etape_ordre(ordre, etape_modele_id, *, fait, duree_reelle_min, user):
     from django.utils import timezone
     from .models import EtapeOrdre
 
+    _exiger_ordre_ouvert_saisie(ordre)  # ACHT26 — même garde que le QC
     etape_ordre = EtapeOrdre.objects.get(
         ordre=ordre, etape_modele_id=etape_modele_id)
     etape_ordre.fait = bool(fait)
@@ -3886,8 +4188,21 @@ def appliquer_statut_document(instance, cible, *, user=None, champs=None):
             instance.save(update_fields=noms)
         ancien = instance.statut
         changer_statut(instance, cible, user=user)
+        _effets_statut_demande_achat(instance, cible)
     _log_transition_statut_chatter(instance, ancien, cible, user=user)
     return instance
+
+
+def _effets_statut_demande_achat(instance, cible):
+    """ACHT13 (C-ACHT-011) — effets attachés au POINT D'ÉCRITURE du statut
+    d'une demande d'achat : toute entrée en « refusée » (action `refuser`,
+    `rejeter-etape`, boîte d'approbations `decider_demande_achat`) rend
+    l'enveloppe budgétaire engagée — une seule fois, dans la transaction de
+    la transition."""
+    from .models import DemandeAchat
+    if (isinstance(instance, DemandeAchat)
+            and cible == DemandeAchat.Statut.REFUSEE):
+        liberer_budget_demande_achat(instance)
 
 
 # ── NTP2P38 — Événements Procure-to-Pay émis sur le bus ``core.events`` ──────
@@ -4215,30 +4530,76 @@ def confier_composants_soustraitance(ordre):
     if ordre.emplacement_source_id == emplacement.id:
         return ordre  # déjà confié — idempotent.
 
+    from django.db import transaction
+
     depot_principal = ensure_emplacements(ordre.company)
+    # ACHT24 (C-ACHT-022) — tout ou rien : un composant qui ne peut pas être
+    # confié REFUSE le démarrage (ConfiageImpossible nomme le composant) ;
+    # aucun transfert partiel ne reste (transaction annulée).
+    with transaction.atomic():
+        for produit, quantite in _composants_ordre_assemblage(ordre):
+            try:
+                transfer_stock(
+                    company=ordre.company, user=ordre.created_by,
+                    produit_id=produit.id, source_id=depot_principal.id,
+                    destination_id=emplacement.id, quantite=quantite,
+                    note=f'Confié sous-traitant — ordre {ordre.reference}')
+            except ValueError as exc:
+                raise ConfiageImpossible(
+                    f"Composant « {produit.nom} » impossible à confier au "
+                    f"sous-traitant : {exc}") from exc
+        ordre.emplacement_source = emplacement
+        ordre.save(update_fields=['emplacement_source'])
+    return ordre
+
+
+class ConfiageImpossible(Exception):
+    """ACHT24 — un composant ne peut pas être confié au sous-traitant."""
+
+
+def _composants_ordre_assemblage(ordre):
+    """(produit, quantité) des composants d'un ordre : lignes XMFG6, repli
+    BOM du kit × quantité. Quantités nulles et produits absents ignorés."""
     lignes = list(ordre.lignes.select_related('produit').all())
     composants = (
         [(ligne.produit, ligne.quantite) for ligne in lignes] if lignes
         else [(c.produit, (c.quantite or 0) * ordre.quantite)
               for c in ordre.kit.composants.select_related('produit').all()])
-    for produit, quantite in composants:
-        if produit is None or not quantite:
-            continue
-        try:
-            transfer_stock(
-                company=ordre.company, user=ordre.created_by,
-                produit_id=produit.id, source_id=depot_principal.id,
-                destination_id=emplacement.id, quantite=quantite,
-                note=f'Confié sous-traitant — ordre {ordre.reference}')
-        except ValueError:
-            # Stock insuffisant au dépôt principal : best-effort, le rapport
-            # de reliquat (ci-dessous) restera visible à l'appelant — on ne
-            # bloque jamais la confirmation d'ordre pour cette raison.
-            continue
+    return [(p, q) for p, q in composants if p is not None and q]
 
-    ordre.emplacement_source = emplacement
-    ordre.save(update_fields=['emplacement_source'])
-    return ordre
+
+def rapatrier_composants_soustraitance(ordre, user=None):
+    """ACHT24 (C-ACHT-022) — à l'annulation d'un ordre sous-traité DÉMARRÉ
+    (composants confiés, jamais backflushés), contre-transfère vers le dépôt
+    principal ce qui reste de SES composants à l'emplacement du
+    sous-traitant (borné au solde réel), par le même `transfer_stock` que le
+    confiage. No-op sans sous-traitant, sans confiage ou après backflush.
+    Renvoie le nombre de produits rapatriés."""
+    from apps.stock.services import ensure_emplacements, transfer_stock
+
+    if (ordre.sous_traitant_id is None or ordre.emplacement_source_id is None
+            or ordre.stock_mouvemente):
+        return 0
+    emplacement = ordre.emplacement_source
+    if emplacement.is_principal:
+        return 0
+    depot_principal = ensure_emplacements(ordre.company)
+    soldes = {se.produit_id: se.quantite
+              for se in emplacement.stocks.all()}
+    rapatries = 0
+    for produit, quantite in _composants_ordre_assemblage(ordre):
+        a_rendre = min(quantite, soldes.get(produit.id, 0) or 0)
+        if a_rendre <= 0:
+            continue
+        transfer_stock(
+            company=ordre.company, user=user or ordre.created_by,
+            produit_id=produit.id, source_id=emplacement.id,
+            destination_id=depot_principal.id, quantite=a_rendre,
+            note=f'Rapatrié du sous-traitant — ordre {ordre.reference} '
+                 'annulé')
+        soldes[produit.id] = soldes.get(produit.id, 0) - a_rendre
+        rapatries += 1
+    return rapatries
 
 
 def cout_composite_soustraite(ordre):
@@ -4264,28 +4625,32 @@ def rapport_composants_chez_soustraitants(company):
     lignes: [{produit_id, produit_nom, quantite}]}]. Lecture seule."""
     from .models import OrdreAssemblage
 
+    # ACHT24 — calculé sur le SOLDE RÉEL des emplacements sous-traitants :
+    # tant qu'un emplacement n'est pas soldé, il figure au rapport quel que
+    # soit le statut de l'ordre qui l'a alimenté (annulé compris).
     ordres = (OrdreAssemblage.objects
               .filter(company=company, sous_traitant__isnull=False,
                       emplacement_source__isnull=False,
-                      stock_mouvemente=False)
-              .exclude(statut=OrdreAssemblage.Statut.ANNULE)
-              .select_related('sous_traitant', 'emplacement_source'))
+                      emplacement_source__is_principal=False)
+              .select_related('sous_traitant', 'emplacement_source')
+              .order_by('pk'))
     par_emplacement = {}
     for ordre in ordres:
         emp = ordre.emplacement_source
-        entry = par_emplacement.setdefault(emp.id, {
+        if emp.id in par_emplacement:
+            continue
+        lignes = [
+            {'produit_id': se.produit_id, 'produit_nom': se.produit.nom,
+             'quantite': se.quantite}
+            for se in emp.stocks.select_related('produit').all()
+            if (se.quantite or 0) > 0]
+        par_emplacement[emp.id] = {
             'sous_traitant_id': ordre.sous_traitant_id,
             'sous_traitant_nom': ordre.sous_traitant.nom,
             'emplacement_id': emp.id,
-            'lignes': [],
-        })
-        for se in emp.stocks.select_related('produit').all():
-            entry['lignes'].append({
-                'produit_id': se.produit_id,
-                'produit_nom': se.produit.nom,
-                'quantite': se.quantite,
-            })
-    return list(par_emplacement.values())
+            'lignes': lignes,
+        }
+    return [e for e in par_emplacement.values() if e['lignes']]
 
 
 def marquer_serie_entrepot_sortie(*, company, produit_id, numero_serie):
@@ -4493,9 +4858,19 @@ def peupler_series_entrepot_reception(*, reception, company, user):
     principal, statut « en stock »). Une série déjà enregistrée pour ce
     produit+société n'est jamais dupliquée (contrainte unique_together —
     `get_or_create`). Sans BCF ni séries, no-op. Renvoie le nombre de séries
-    créées."""
+    créées.
+
+    ACHT14 (C-ACHT-013) — le registre « en stock » d'une ligne est PLAFONNÉ à
+    la quantité RÉELLEMENT entrée (`stock.services.
+    quantite_entree_ligne_reception`, survivant unique : les premières
+    séries saisies, dans l'ordre) ; une série « retournée » (réception
+    annulée, ASTK57) qui revient par une nouvelle réception repasse « en
+    stock » avec la référence de CETTE réception. Une série sortie ou
+    réservée n'est jamais remise en stock en silence."""
     from .models_serie_entrepot import SerieEntrepot
-    from apps.stock.services import ensure_emplacements
+    from apps.stock.services import (
+        ensure_emplacements, quantite_entree_ligne_reception,
+    )
 
     if company is None or reception is None:
         return 0
@@ -4505,12 +4880,15 @@ def peupler_series_entrepot_reception(*, reception, company, user):
         if ligne.produit_id is None:
             continue
         series = getattr(ligne, 'numeros_serie', None) or []
+        numeros = []
         for numero in series:
             numero = (numero or '').strip() if isinstance(numero, str) \
                 else numero
-            if not numero:
-                continue
-            _, was_created = SerieEntrepot.objects.get_or_create(
+            if numero and numero not in numeros:
+                numeros.append(numero)
+        plafond = max(0, quantite_entree_ligne_reception(ligne))
+        for numero in numeros[:plafond]:
+            serie, was_created = SerieEntrepot.objects.get_or_create(
                 company=company, produit_id=ligne.produit_id,
                 numero_serie=numero,
                 defaults={
@@ -4521,6 +4899,10 @@ def peupler_series_entrepot_reception(*, reception, company, user):
                 })
             if was_created:
                 created += 1
+            elif serie.statut == SerieEntrepot.Statut.RETOURNE:
+                serie.statut = SerieEntrepot.Statut.EN_STOCK
+                serie.reference_reception = reception.reference
+                serie.save(update_fields=['statut', 'reference_reception'])
     return created
 
 
@@ -4713,6 +5095,50 @@ def _stamp_statut_dates(inst, old_statut):
         inst.save(update_fields=[field])
         return field
     return None
+
+
+# ADOC172 — statut canonique atteint → (phase du jalon, libellé, champ date).
+_STATUT_JALON_SUIVI = {
+    Installation.Statut.MATERIEL_COMMANDE: (
+        'appro', 'Matériel commandé', 'date_materiel_commande'),
+    Installation.Statut.INSTALLE: (
+        'pose', 'Installation', 'date_pose_reelle'),
+}
+
+
+def _publier_jalon_statut(inst, canon_old, canon_new, user):
+    """ADOC172 — à l'ARRIVÉE à ``materiel_commande`` / ``installe``, atteint le
+    jalon de phase correspondant (``appro`` / ``pose``) puis le publie au suivi
+    client par ``synchroniser_jalon_portail`` (même primitive que la réception).
+    Idempotent (contrainte unique installation+phase) ; un retour en arrière
+    n'atteint rien de nouveau ; best-effort, ne bloque jamais la transition."""
+    if canon_new == canon_old or canon_new not in _STATUT_JALON_SUIVI:
+        return None
+    phase, libelle, champ_date = _STATUT_JALON_SUIVI[canon_new]
+    try:
+        from django.db import transaction
+        from django.utils import timezone
+        from .models import JalonProjet
+        with transaction.atomic():
+            jalon, _ = JalonProjet.objects.get_or_create(
+                installation=inst, phase=phase,
+                defaults={'company': inst.company, 'libelle': libelle})
+            champs = []
+            if not jalon.atteint:
+                jalon.atteint = True
+                champs.append('atteint')
+            if jalon.date_reelle is None:
+                jalon.date_reelle = (getattr(inst, champ_date, None)
+                                     or timezone.localdate())
+                champs.append('date_reelle')
+            if champs:
+                jalon.save(update_fields=champs)
+        synchroniser_jalon_portail(jalon, user)
+        return phase
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.warning('ADOC172 — jalon %s du chantier %s non publié',
+                       phase, inst.pk, exc_info=True)
+        return None
 
 
 def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
@@ -4942,6 +5368,52 @@ def _derogation_ci_utilisee(installation, nouveau_statut, user,
         _gardes_ci(installation, nouveau_statut, user, None))
 
 
+RAISON_CHANTIER_ANNULE = (
+    "Chantier annulé : réactivez-le avant de changer son statut.")
+
+
+def _ordre_statuts_effectif(company):
+    """ACHT2 — l'entonnoir sur lequel se compte « un pas » : ``STATUT_ORDER``
+    pour une société sans étapes CH2 ; sinon les seuls statuts canoniques que
+    ses étapes ACTIVES portent (``statut_legacy``), dans l'ordre canonique —
+    le cycle par défaut passe d'« Approvisionnement » (Matériel commandé) à
+    « Montage » (En cours) sans étape « Planifié » : c'est UN pas."""
+    if not stages_configures(company):
+        return list(Installation.STATUT_ORDER)
+    portes = {Installation.canonical_statut(s.statut_legacy)
+              for s in stages_actifs(company) if s.statut_legacy}
+    return [s for s in Installation.STATUT_ORDER if s in portes]
+
+
+def raison_machine_etats(installation, nouveau_statut):
+    """ACHT2 (D-ACHT-2) — table de transitions ADJACENTES du chantier, gardée
+    par le serveur. Renvoie la raison française du refus, ou None.
+
+    * chantier annulé : tout changement de statut canonique est refusé ;
+    * pas en avant de plus d'un rang canonique (``STATUT_ORDER``, statuts
+      hérités rabattus sur leur colonne) : refusé — « un pas à la fois ».
+    Un recul n'est jamais bloqué ici (la réouverture d'un chantier clôturé
+    garde son verrou AUD326 dédié)."""
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_old == canon_new:
+        return None
+    if getattr(installation, 'annule', False):
+        return RAISON_CHANTIER_ANNULE
+    ordre = _ordre_statuts_effectif(installation.company)
+    if canon_old not in ordre or canon_new not in ordre:
+        ordre = Installation.STATUT_ORDER
+    if canon_old not in ordre or canon_new not in ordre:
+        return None
+    i, j = ordre.index(canon_old), ordre.index(canon_new)
+    if j - i > 1:
+        libelles = dict(Installation.Statut.choices)
+        return (f"Passage de {libelles.get(canon_old, canon_old)} à "
+                f"{libelles.get(canon_new, canon_new)} refusé : un pas à la "
+                f"fois.")
+    return None
+
+
 def _raisons_transition(installation, nouveau_statut, user,
                         motif_override_acompte, motif_reouverture,
                         motif_derogation_8221=None):
@@ -4950,7 +5422,15 @@ def _raisons_transition(installation, nouveau_statut, user,
     Ordre : gates CH2 (étapes configurées), puis le verrou de clôture AUD326,
     puis le gate d'acompte YSERV1 — ce dernier armé sur TOUTE arrivée à
     PLANIFIE, quel que soit le chemin (il n'était testé que par le PATCH) —
-    puis CIQ621 : site pro sans convention, même sans étapes amorcées."""
+    puis CIQ621 : site pro sans convention, même sans étapes amorcées.
+
+    ACHT2 (D-ACHT-2) — EN TÊTE, la machine d'états serveur : un chantier
+    annulé ne change plus de statut, et aucun pas en AVANT ne saute un rang
+    canonique (miroir serveur de ``canMoveStatus``). Ces deux refus sont
+    exclusifs : le reste de la chaîne n'est pas évalué."""
+    raison_machine = raison_machine_etats(installation, nouveau_statut)
+    if raison_machine:
+        return [raison_machine]
     raisons = list(verifier_transition_statut(installation, nouveau_statut))
     raisons.extend(_gardes_ci(installation, nouveau_statut, user,
                               motif_derogation_8221))
@@ -5031,6 +5511,9 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
 
     effets = {}
     effets['date_jalon'] = _stamp_statut_dates(installation, ancien_statut)
+    # ADOC172 — « Matériel » / « Installation » du suivi client.
+    effets['jalon_suivi'] = _publier_jalon_statut(
+        installation, canon_old, canon_new, user)
     activity.log_changes(old, installation, user)
     if (canon_new == Installation.Statut.RECEPTIONNE
             and canon_old != Installation.Statut.RECEPTIONNE):
@@ -5344,6 +5827,9 @@ def notifier_jalon_a_facturer(jalon, user=None):
     if jalon.rappel_facturation_envoye:
         return False
     installation = jalon.installation
+    # ACHT2 — un chantier annulé ne réclame aucune facture de tranche.
+    if getattr(installation, 'annule', False):
+        return False
     devis = getattr(installation, 'devis', None)
     if devis is None:
         return False
@@ -5562,8 +6048,14 @@ def ventiler_stock_livraison(livraison, user):
     livraison vers l'emplacement van. No-op sûr (renvoie 0) si la livraison
     n'a pas de dépôt source, si son mode est `direct_site` (jamais passé par
     le dépôt — rien à décrémenter), ou si `stock_mouvemente` est déjà posé
-    (idempotent). Une ligne sans produit catalogue ou en stock insuffisant au
-    dépôt est ignorée (best-effort, ne bloque jamais l'expédition)."""
+    (idempotent). Une ligne sans produit catalogue est ignorée.
+
+    ACHT20 (C-ACHT-018) — EXACTE et ATOMIQUE : une ligne en stock
+    insuffisant au dépôt REFUSE l'expédition (`ExpeditionImpossible` nomme
+    la ligne : « Stock insuffisant pour B (3 < 4) ») et rien n'est transféré
+    (transaction annulée) — l'annulation peut donc contre-transférer
+    exactement les lignes."""
+    from django.db import transaction
     from .models_livraison import Livraison
     if livraison.stock_mouvemente:
         return 0
@@ -5576,21 +6068,46 @@ def ventiler_stock_livraison(livraison, user):
         return 0
     from apps.stock.services import transfer_stock
     transferred = 0
-    for ligne in livraison.lignes.select_related('produit').all():
-        if ligne.produit_id is None or not ligne.quantite:
-            continue
-        try:
-            transfer_stock(
-                company=livraison.company, user=user,
-                produit_id=ligne.produit_id, source_id=livraison.depot_id,
-                destination_id=van.id, quantite=ligne.quantite,
-                note=f'Expédition livraison {livraison.reference}')
+    with transaction.atomic():
+        for ligne in livraison.lignes.select_related('produit').all():
+            if ligne.produit_id is None or not ligne.quantite:
+                continue
+            try:
+                transfer_stock(
+                    company=livraison.company, user=user,
+                    produit_id=ligne.produit_id,
+                    source_id=livraison.depot_id,
+                    destination_id=van.id, quantite=ligne.quantite,
+                    note=f'Expédition livraison {livraison.reference}')
+            except ValueError as exc:
+                dispo = _quantite_emplacement(
+                    ligne.produit, livraison.depot_id)
+                detail = (f' ({dispo} < {ligne.quantite})'
+                          if dispo is not None else f' ({exc})')
+                raise ExpeditionImpossible(
+                    f'Stock insuffisant pour {ligne.produit.nom}'
+                    f'{detail}.') from exc
             transferred += 1
-        except ValueError:
-            continue  # best-effort : stock insuffisant, on n'échoue pas l'expédition.
-    livraison.stock_mouvemente = True
-    livraison.save(update_fields=['stock_mouvemente'])
+        livraison.stock_mouvemente = True
+        livraison.save(update_fields=['stock_mouvemente'])
     return transferred
+
+
+class ExpeditionImpossible(Exception):
+    """ACHT20 — une ligne de livraison ne peut pas être ventilée."""
+
+
+def _quantite_emplacement(produit, emplacement_id):
+    """ACHT20 — quantité d'un produit sur un emplacement (ventilation du
+    service stock), ou None si illisible."""
+    try:
+        from apps.stock.services import stock_breakdown
+        for ligne in stock_breakdown(produit):
+            if ligne.get('emplacement_id') == emplacement_id:
+                return ligne.get('quantite')
+    except Exception:  # pragma: no cover - défensif, lecture d'appoint
+        return None
+    return 0
 
 
 def contre_transferer_stock_livraison(livraison, user):
@@ -5636,10 +6153,18 @@ def generer_retour_livraison(livraison, user, motif=''):
     Renvoie le retour créé."""
     from .models_retour_livraison import RetourLivraison, RetourLivraisonLigne
 
+    # ACHT21 — rien à retourner quand chaque produit livré est déjà couvert
+    # par des retours (brouillon + validés).
+    lignes_livrees = list(livraison.lignes.select_related('produit').all())
+    if lignes_livrees and not any(
+            _reliquat_retour_livraison(livraison, li.produit_id) > 0
+            for li in lignes_livrees if li.produit_id):
+        raise ValueError('Rien à retourner : la livraison est déjà '
+                         'entièrement couverte par des retours.')
     retour = RetourLivraison.objects.create(
         company=livraison.company, livraison=livraison, motif=motif or '',
         created_by=user)
-    for ligne in livraison.lignes.select_related('produit').all():
+    for ligne in lignes_livrees:
         RetourLivraisonLigne.objects.create(
             retour=retour, produit_id=ligne.produit_id,
             designation=ligne.designation or (
@@ -5648,17 +6173,48 @@ def generer_retour_livraison(livraison, user, motif=''):
     return retour
 
 
+def _reliquat_retour_livraison(livraison, produit_id, exclure_ligne_id=None):
+    """ACHT21 — Σ livré du produit sur la livraison − Σ des retours
+    (brouillon + validés) de ce produit, hors ``exclure_ligne_id`` ; ≥ 0."""
+    from django.db.models import Sum
+    from .models_retour_livraison import RetourLivraisonLigne
+
+    livre = (livraison.lignes.filter(produit_id=produit_id)
+             .aggregate(t=Sum('quantite'))['t']) or 0
+    retours = RetourLivraisonLigne.objects.filter(
+        retour__livraison=livraison, produit_id=produit_id)
+    if exclure_ligne_id is not None:
+        retours = retours.exclude(pk=exclure_ligne_id)
+    deja = retours.aggregate(t=Sum('quantite_retournee'))['t'] or 0
+    return max(0, int(livre) - int(deja))
+
+
+def quantite_retournable_livraison(ligne):
+    """ACHT21 (C-ACHT-019) — LA fonction unique : quantité qu'une ligne de
+    retour peut encore porter = cumul livré du produit sur la livraison −
+    les AUTRES retours (brouillon + validés) de ce produit. Une ligne sans
+    produit catalogue reste plafonnée à sa quantité livrée."""
+    if ligne.produit_id is None:
+        return ligne.quantite_livree
+    return _reliquat_retour_livraison(
+        ligne.retour.livraison, ligne.produit_id, exclure_ligne_id=ligne.pk)
+
+
 def valider_retour_livraison(retour, user):
-    """ZSTK8 — valide le retour : pour chaque ligne dont
-    `quantite_retournee > 0`, poste UN `MouvementStock` ENTREE au dépôt
-    SOURCE de la livraison (idempotent via `stock_applique`). Refuse (lève
-    ValueError) si une ligne dépasse la quantité livrée, ou si la livraison
-    source n'a pas de dépôt. Renvoie le nombre de lignes appliquées."""
+    """ZSTK8 — valide le retour (idempotent via `stock_applique`). Renvoie le
+    nombre de lignes appliquées.
+
+    ACHT21 (C-ACHT-019) — un retour est un TRANSFERT de l'emplacement de
+    destination de la livraison (camionnette/site, où l'expédition l'a
+    ventilé) vers son dépôt d'origine, JAMAIS une entrée : le stock global
+    ne bouge pas. Chaque ligne est plafonnée, sous verrou de la livraison,
+    par ``quantite_retournable_livraison`` (cumul livré − autres retours) ;
+    une destination qui n'a plus la quantité (consommée par le chantier)
+    refuse lisiblement. Lève ValueError (message français) sinon."""
     from django.db import transaction
-    from apps.stock.selectors import lock_produit
-    from apps.stock.services import (
-        mouvement_type_entree, record_stock_movement,
-    )
+    from django.utils import timezone
+    from apps.stock.services import transfer_stock
+    from .models_livraison import Livraison
     from .models_retour_livraison import RetourLivraison
 
     if retour.statut == RetourLivraison.Statut.VALIDE:
@@ -5667,41 +6223,52 @@ def valider_retour_livraison(retour, user):
     if livraison.depot_id is None:
         raise ValueError('Cette livraison n\'a pas de dépôt source.')
 
-    lignes = list(retour.lignes.select_related('produit').all())
-    for ligne in lignes:
-        if ligne.quantite_retournee > ligne.quantite_livree:
-            raise ValueError(
-                f'Quantité retournée ({ligne.quantite_retournee}) '
-                f'supérieure à la quantité livrée ({ligne.quantite_livree}) '
-                f'pour « {ligne.designation or ligne.produit_id} ».')
-
     applied = 0
     with transaction.atomic():
+        livraison = Livraison.objects.select_for_update().get(
+            pk=livraison.pk)
+        lignes = list(retour.lignes.select_related('produit').all())
         for ligne in lignes:
-            if (ligne.stock_applique or ligne.produit_id is None
-                    or ligne.quantite_retournee <= 0):
+            plafond = quantite_retournable_livraison(ligne)
+            if ligne.quantite_retournee > plafond:
+                raise ValueError(
+                    f'Quantité retournée ({ligne.quantite_retournee}) '
+                    f'supérieure au reliquat retournable ({plafond}) '
+                    f'pour « {ligne.designation or ligne.produit_id} ».')
+        a_transferer = [
+            li for li in lignes
+            if not li.stock_applique and li.produit_id is not None
+            and li.quantite_retournee > 0]
+        if a_transferer and not livraison.stock_mouvemente:
+            raise ValueError(
+                'Livraison jamais ventilée depuis le dépôt : aucun '
+                'transfert à reprendre.')
+        van = _emplacement_van(livraison.company) if a_transferer else None
+        for ligne in lignes:
+            if ligne not in a_transferer:
                 if not ligne.stock_applique:
                     ligne.stock_applique = True
                     ligne.save(update_fields=['stock_applique'])
                 continue
-            produit = lock_produit(ligne.produit_id)
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + ligne.quantite_retournee
-            record_stock_movement(
-                company=livraison.company, produit=produit,
-                type_mouvement=mouvement_type_entree(),
-                quantite=ligne.quantite_retournee,
-                quantite_avant=qte_avant, quantite_apres=qte_apres,
-                reference=f'RETOUR-LIV-{livraison.reference}',
-                note=f'Retour livraison {livraison.reference}',
-                created_by=user)
+            try:
+                transfer_stock(
+                    company=livraison.company, user=user,
+                    produit_id=ligne.produit_id, source_id=van.id,
+                    destination_id=livraison.depot_id,
+                    quantite=ligne.quantite_retournee,
+                    note=f'Retour livraison {livraison.reference}')
+            except ValueError as exc:
+                nom = ligne.designation or ligne.produit_id
+                raise ValueError(
+                    f'Retour impossible pour « {nom} » : la destination de '
+                    f'la livraison n\'a plus cette quantité ({exc}).'
+                ) from exc
             ligne.stock_applique = True
             ligne.save(update_fields=['stock_applique'])
             applied += 1
         retour.statut = RetourLivraison.Statut.VALIDE
         retour.valide_par = user
-        from django.utils import timezone as _tz
-        retour.valide_le = _tz.now()
+        retour.valide_le = timezone.now()
         retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
     return applied
 

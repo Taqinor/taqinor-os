@@ -3,6 +3,8 @@ import PwaPrompts from '../features/pwa/PwaPrompts'
 // VX156 — moment d'accueil de marque, one-shot à la première connexion.
 import WelcomeMoment from './WelcomeMoment'
 import { Toaster } from '../ui/Toaster'
+// Fête « affaire signée » : hôte global, hors de tout dialogue (au-dessus des modales).
+import DealSignedCelebrationHost from '../ui/DealSignedCelebrationHost'
 // NTI18N3 — langue d'interface persistée serveur (retrouvée d'un autre poste).
 // Composant sans rendu, séparé pour ne pas coupler I18nProvider à Redux.
 import ServerLocaleSync from '../i18n/ServerLocaleSync'
@@ -29,6 +31,7 @@ export default function ShellGlobal() {
     <>
       <ServerLocaleSync />
       <Toaster />
+      <DealSignedCelebrationHost />
       <PwaPrompts />
       <Suspense fallback={null}><MessageAccueilModal /></Suspense>
       <WelcomeMoment />

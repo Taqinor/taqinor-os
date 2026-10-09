@@ -89,10 +89,11 @@ class DispatchWebpushApprovalPayloadTests(TestCase):
             captured['data'] = json_module.loads(data)
 
         with mock.patch('pywebpush.webpush', side_effect=fake_webpush):
-            notify(
-                self.user, EventType.LEAD_ASSIGNED, 'Étape de contrat',
-                approval_action={'source': 'contrats', 'id': 9},
-            )
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(
+                    self.user, EventType.LEAD_ASSIGNED, 'Étape de contrat',
+                    approval_action={'source': 'contrats', 'id': 9},
+                )
         self.assertIn('actions', captured['data'])
         action_keys = {a['action'] for a in captured['data']['actions']}
         self.assertEqual(action_keys, {'approve', 'reject'})
@@ -120,7 +121,8 @@ class DispatchWebpushApprovalPayloadTests(TestCase):
             captured['data'] = json_module.loads(data)
 
         with mock.patch('pywebpush.webpush', side_effect=fake_webpush):
-            notify(self.user, EventType.LEAD_ASSIGNED, 'Lead assigné')
+            with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                notify(self.user, EventType.LEAD_ASSIGNED, 'Lead assigné')
         self.assertNotIn('actions', captured['data'])
         self.assertNotIn('approval', captured['data'])
 

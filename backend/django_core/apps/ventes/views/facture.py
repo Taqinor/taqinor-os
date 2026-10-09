@@ -39,10 +39,18 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
     HasPermissionOrLegacy,
 )
+from core.permissions import declared_action_permissions
+
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+#: ASEC29 / D-ASEC-1 — LA garde des gestes d'argent : le code ``encaisser``
+#: (Administrateur, Directeur, Commercial et Commercial responsable par
+#: défaut ; JAMAIS Commercial terrain, Technicien ni Admin RH). Aucune liste
+#: de rôles codée ici : le code est la seule source (compte hérité sans rôle
+#: fin = palier responsable, comme ``HasPermissionOrLegacy``).
+PeutEncaisser = HasPermissionOrLegacy('encaisser')
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -55,6 +63,18 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
     'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
     'type_facture',
 ])
+
+# ATOT9 (C-ATOT-007, D-ATOT-1) — les champs d'ARGENT d'une facture sont FIGÉS
+# dès qu'elle quitte le brouillon, QUEL QUE SOIT `factures_immuables` : une
+# facture émise se corrige par avoir (ou `remettre-brouillon`), jamais en
+# place. Le flag ne gouverne plus que le reste de FACTURE_CHAMPS_FINANCIERS.
+FACTURE_CHAMPS_ARGENT = frozenset([
+    'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale', 'taux_tva',
+    'pourcentage', 'arrondi_pas', 'arrondi_unites',
+])
+MESSAGE_MONTANT_FIGE = (
+    'Montant figé après émission : corrigez par un avoir '
+    '(ou remettez la facture en brouillon).')
 
 
 # ZFAC11 — `arrondir_au_pas` / `proposer_arrondi_caisse` vivent désormais dans
@@ -186,6 +206,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return FactureSerializer
 
     def get_permissions(self):
+        # ASEC29 — la garde DÉCLARÉE par l'@action PRIME (patron AUD421) :
+        # sans cette ligne, le ``permission_classes=`` des gestes d'argent
+        # était jeté en silence au profit du tiering ci-dessous.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in READ_ACTIONS + [
             'paiements', 'relances', 'emails', 'arrondi_caisse', 'kpis',
         ]:
@@ -335,6 +361,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # non financiers (conditions, notes, dates de livraison…) restent
         # modifiables.
         facture = self.get_object()
+        argent_touche = (set(serializer.validated_data.keys())
+                         & FACTURE_CHAMPS_ARGENT)
+        if facture.statut != Facture.Statut.BROUILLON and argent_touche:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                'detail': MESSAGE_MONTANT_FIGE,
+                'champs_refuses': sorted(argent_touche),
+            })
         if facture.statut != Facture.Statut.BROUILLON:
             from apps.parametres.models import CompanyProfile
             profile = CompanyProfile.get(company=facture.company)
@@ -353,9 +387,29 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                         ),
                         'champs_refuses': sorted(champs_touches),
                     })
+        # ATOT9 — toute modification d'argent ACCEPTÉE (brouillon) laisse une
+        # trace avant/après dans le chatter de la facture.
+        avant = {champ: getattr(facture, champ) for champ in argent_touche}
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern created_by.
         serializer.save(updated_by=self.request.user)
+        if argent_touche:
+            from ..models import FactureActivity
+            instance = serializer.instance
+            for champ in sorted(argent_touche):
+                apres = getattr(instance, champ)
+                if apres == avant[champ]:
+                    continue
+                FactureActivity.objects.create(
+                    company=instance.company, facture=instance,
+                    user=self.request.user,
+                    kind=FactureActivity.Kind.MODIFICATION,
+                    field=champ, field_label=champ,
+                    old_value='' if avant[champ] is None else str(avant[champ]),
+                    new_value='' if apres is None else str(apres),
+                    body=(f'Montant modifié sur le brouillon : {champ} '
+                          f'{avant[champ]} -> {apres}.'),
+                )
 
     @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
@@ -395,51 +449,74 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='remettre-brouillon',
             permission_classes=[IsResponsableOrAdmin])
     def remettre_brouillon(self, request, pk=None):
-        """ZFAC1 — Reset to Draft (opt-in période ouverte).
+        """ZFAC1 — Reset to Draft.
 
-        Repasse une facture ÉMISE en brouillon UNIQUEMENT si elle n'a AUCUN
-        paiement ni avoir actif et que la période comptable de sa date
-        d'émission n'est pas verrouillée (YLEDG3) ni que XFAC24
-        (immutabilité) est activée pour la société. Le numéro/référence est
-        CONSERVÉ (pas de renumérotation) — seul le statut change."""
+        Repasse une facture ÉMISE en brouillon UNIQUEMENT si elle ne porte
+        AUCUN argent (AFAC11 : paiements, avances ventilées, notes de débit
+        émises, retenues subies, avoirs actifs — prédicat unique
+        ``argent_rattache``) et que XFAC24 (immutabilité) n'est pas activée
+        pour la société. Contrôlé SOUS VERROU de la facture (un paiement
+        concurrent ne peut pas passer entre la garde et la bascule). Le lien
+        de paiement actif est RÉVOQUÉ : le client ne peut plus payer une
+        facture en cours d'édition. Le numéro/référence est CONSERVÉ (pas de
+        renumérotation) — seul le statut change. (Aucun contrôle de période
+        comptable n'est fait ici — YLEDG3 hors périmètre.)"""
+        from django.db import transaction
+
+        from ..domain.encaissements import (
+            argent_rattache, decrire_argent_rattache, revoquer_lien_paiement,
+        )
         facture = self.get_object()
-        if facture.statut != Facture.Statut.EMISE:
-            return Response(
-                {'detail': (
-                    'Seule une facture émise (sans paiement ni avoir) peut '
-                    'être remise en brouillon.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if facture.paiements.exists():
-            return Response(
-                {'detail': (
-                    'Impossible : cette facture a déjà au moins un '
-                    'paiement enregistré.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
-            return Response(
-                {'detail': (
-                    'Impossible : cette facture a un avoir actif.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=facture.company)
-        if getattr(profile, 'factures_immuables', False):
-            return Response(
-                {'detail': (
-                    "Facture immuable : l'immutabilité (XFAC24) est activée "
-                    "pour cette société — corrigez par un avoir puis une "
-                    "nouvelle facture."
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        ancien = facture.statut
-        facture.statut = Facture.Statut.BROUILLON
-        facture.save(update_fields=['statut'])
+        with transaction.atomic():
+            facture = Facture.objects.select_for_update().get(pk=facture.pk)
+            if facture.statut != Facture.Statut.EMISE:
+                return Response(
+                    {'detail': (
+                        'Seule une facture émise (sans paiement ni avoir) peut '
+                        'être remise en brouillon.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if facture.paiements.exists():
+                return Response(
+                    {'detail': (
+                        'Impossible : cette facture a déjà au moins un '
+                        'paiement enregistré.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
+                return Response(
+                    {'detail': (
+                        'Impossible : cette facture a un avoir actif.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            argent = decrire_argent_rattache(argent_rattache(facture))
+            if argent:
+                return Response(
+                    {'detail': (
+                        'Impossible de remettre en brouillon : de l\'argent '
+                        f'est rattaché à cette facture ({argent}). Corrigez '
+                        'par un avoir ou une note de débit.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from apps.parametres.models import CompanyProfile
+            profile = CompanyProfile.get(company=facture.company)
+            if getattr(profile, 'factures_immuables', False):
+                return Response(
+                    {'detail': (
+                        "Facture immuable : l'immutabilité (XFAC24) est activée "
+                        "pour cette société — corrigez par un avoir puis une "
+                        "nouvelle facture."
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            ancien = facture.statut
+            facture.statut = Facture.Statut.BROUILLON
+            facture.save(update_fields=['statut'])
+            revoquer_lien_paiement(facture=facture, user=request.user)
         from .. import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
         return Response(FactureSerializer(facture).data)
@@ -582,8 +659,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     {'detail': 'Cette facture ne peut plus être annulée.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            paiements = list(locked.paiements.all())
-            net_acompte = sum((p.montant for p in paiements), Decimal('0'))
+            # ATOT7 (D-ATOT-4) — LA définition unique du payé : un paiement
+            # REJETÉ (chèque impayé) n'est ni remboursé ni transféré, et le
+            # net est `Facture.montant_paye` — plus aucune somme locale de
+            # `p.montant` (elle remboursait 45 000 jamais encaissés).
+            paiements = [p for p in locked.paiements.all()
+                         if p.statut != Paiement.Statut.REJETE]
+            net_acompte = Decimal(str(locked.montant_paye))
 
             if acompte_action == 'transferer':
                 if net_acompte <= 0:
@@ -734,6 +816,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 locked.save(update_fields=['statut'])
                 facture = locked
 
+            # AFAC23 (C-AFAC-018) — les trois branches convergent vers
+            # ANNULEE : les liens « Payer en ligne » ouverts sont fermés dans
+            # la même transaction (la page client répond « annulé »).
+            from ..domain.encaissements import fermer_liens_paiement
+            from ..models import PaymentLink
+            fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
+
         # YEVNT6 — événement documentaire (best-effort), une fois pour les
         # trois branches ci-dessus (toutes convergent vers ANNULEE).
         from core.events import facture_annulee
@@ -776,7 +865,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def enregistrer_paiement(self, request, pk=None):
         """Enregistre MANUELLEMENT un paiement (montant + date + mode).
 
@@ -811,7 +900,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         )
 
     @action(detail=True, methods=['post'], url_path='abandonner-solde',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def abandonner_solde(self, request, pk=None):
         """XFAC13 — abandon manuel du résiduel (write-off).
 
@@ -1151,7 +1240,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
-    @action(detail=True, methods=['post'], url_path='creer-avoir')
+    @action(detail=True, methods=['post'], url_path='creer-avoir',
+            permission_classes=[PeutEncaisser])
     def creer_avoir(self, request, pk=None):
         """Crée un Avoir (note de crédit) depuis une facture ÉMISE — admin only
         (get_permissions par défaut). Total ou partiel : si `lignes` est fourni
@@ -1238,94 +1328,18 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'remise': remise, 'taux_tva': taux_tva,
                 })
 
-        def _create(ref, source):
-            avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, taux_tva=facture.taux_tva,
-                # AUD106 — la remise globale de la facture SUIT sur l'avoir.
-                # Elle n'était jamais reprise : l'avoir total recopiait les
-                # lignes BRUTES alors que la facture facture le NET, donc il
-                # créditait plus que ce qui avait été facturé.
-                remise_globale=facture.remise_globale,
-                # ARRONDI-100 — l'avoir TOTAL (lignes de la facture recopiées)
-                # reprend son palier : il crédite exactement le facturé. Un
-                # avoir PARTIEL (lignes saisies) n'arrondit jamais.
-                arrondi_pas=(0 if clean_lignes
-                             else getattr(source, 'arrondi_pas', 0) or 0),
-                arrondi_unites=(1 if clean_lignes
-                                else getattr(source, 'arrondi_unites', 1) or 1),
-                created_by=request.user)
-            if clean_lignes:
-                for ligne in clean_lignes:
-                    LigneAvoir.objects.create(avoir=avoir, **ligne)
-            else:
-                f_lignes = list(source.lignes.all())
-                if f_lignes:
-                    for ligne in f_lignes:
-                        LigneAvoir.objects.create(
-                            avoir=avoir, produit=ligne.produit,
-                            designation=ligne.designation,
-                            quantite=ligne.quantite,
-                            prix_unitaire=ligne.prix_unitaire,
-                            remise=ligne.remise, taux_tva=ligne.taux_tva)
-                else:
-                    # Facture de tranche sans lignes : montants figés.
-                    avoir.montant_ht = source.total_ht
-                    avoir.montant_tva = source.total_tva
-                    avoir.montant_ttc = source.total_ttc
-                    avoir.save(update_fields=[
-                        'montant_ht', 'montant_tva', 'montant_ttc'])
-            return avoir
-
-        # AUD126 — LECTURE DU PLAFOND ET CRÉATION SÉRIALISÉES. `creer_avoir`
-        # n'avait ni `transaction.atomic` ni `select_for_update` : deux
-        # requêtes concurrentes (double-clic, deux gestionnaires) lisaient
-        # chacune l'ancien `reste_creditable` et passaient toutes deux la
-        # garde, créditant le client de deux fois le plafond. C'est le motif
-        # que `enregistrer-paiement` a déjà corrigé sous ERR72 ; le même
-        # correctif est porté ici — verrou de ligne sur la Facture PUIS
-        # lecture du reste, création et contrôle du plafond dans la même
-        # transaction.
-        with transaction.atomic():
-            locked = Facture.objects.select_for_update().get(pk=facture.pk)
-            reste_creditable = locked.total_ttc - locked.avoirs_total
-            avoir = create_numbered(
-                Avoir, company, 'avoir', lambda ref: _create(ref, locked))
-            # Garde plafond : si l'avoir créé dépasse le reste créditable, on
-            # le supprime (avec ses lignes) et on refuse — un avoir partiel
-            # correct passe inchangé. Tolérance d'un centime pour les arrondis.
-            if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-                avoir.lignes.all().delete()
-                avoir.delete()
-                return Response(
-                    {'detail': "L'avoir dépasse le montant restant de la "
-                               f"facture ({reste_creditable:.2f} MAD)."},
-                    status=status.HTTP_400_BAD_REQUEST)
-            # Chatter facture : trace la création de l'avoir (acteur côté
-            # serveur, jamais lu du corps de la requête).
-            from .. import activity
-            activity.log_facture_avoir(locked, request.user, avoir)
-            if mode == 'contre_passation':
-                # ZFAC5 — annulation NETTE : la facture d'origine passe
-                # annulee, avec un FactureActivity liant les deux pièces.
-                from ..models import FactureActivity
-                ancien_statut = locked.statut
-                locked.statut = Facture.Statut.ANNULEE
-                locked.save(update_fields=['statut'])
-                FactureActivity.objects.create(
-                    company=company, facture=locked, user=request.user,
-                    kind=FactureActivity.Kind.MODIFICATION,
-                    field='statut', field_label='Statut',
-                    old_value=ancien_statut,
-                    new_value=Facture.Statut.ANNULEE,
-                    body=(f"Facture annulée par contre-passation — avoir "
-                          f"miroir {avoir.reference}."),
-                )
-            # YLEDG1 — événement documentaire générique (pose du seam pour
-            # compta.ecriture_pour_avoir, jamais d'import de son service ici).
-            from core.events import avoir_cree
-            avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        # AFAC27 — LE constructeur unique (`creer_avoir_facture`) : verrou de
+        # la facture, plafond lu SOUS le verrou (AUD126), remise globale et
+        # palier repris, ventilation TVA (ATOT6), chatter, `avoir_cree`,
+        # contre-passation (ZFAC5) et recalcul du statut (ATOT8).
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        try:
+            avoir = creer_avoir_facture(
+                facture=facture, user=request.user, motif=motif, mode=mode,
+                lignes_saisies=clean_lignes)
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
         try:
             from ..utils.pdf import generate_avoir_pdf
@@ -1421,10 +1435,23 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     note_debit.montant_ttc = facture.total_ttc
                     note_debit.save(update_fields=[
                         'montant_ht', 'montant_tva', 'montant_ttc'])
+            # ATOT6 — même règle que l'avoir : paniers de la facture.
+            from ..domain.facturation_ops import (
+                ventiler_document_depuis_facture,
+            )
+            ventiler_document_depuis_facture(
+                note_debit, facture, partiel=bool(clean_lignes),
+                lignes_saisies=clean_lignes)
             return note_debit
 
         note_debit = create_numbered(
             NoteDebit, company, 'note_debit', _create)
+        # AFAC29 (C-AFAC-027) — une note de débit AUGMENTE le reste dû : le
+        # statut de paiement est re-dérivé par LE service d'ATOT8 (une facture
+        # PAYÉE majorée revient au recouvrement, émise ou en retard).
+        from ..domain.encaissements import recalculer_statut_paiement
+        recalculer_statut_paiement(
+            facture, user=request.user, source='note_debit')
         try:
             from ..utils.pdf import generate_note_debit_pdf
             generate_note_debit_pdf(note_debit.id)
@@ -1450,7 +1477,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        company = facture.company
         motif = (request.data.get('motif') or '').strip()
         if not motif:
             return Response(
@@ -1463,121 +1489,19 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Au moins une ligne retournée est requise.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-        reste_creditable = facture.total_ttc - facture.avoirs_total
-
-        # Quantité déjà retournée par produit (avoirs actifs déjà émis sur
-        # cette facture) — pour ne jamais accepter un retour au-delà du vendu.
-        deja_retourne = {}
-        for a in facture.avoirs.filter(statut=Avoir.Statut.EMISE):
-            for lig in a.lignes.all():
-                if lig.produit_id:
-                    deja_retourne[lig.produit_id] = (
-                        deja_retourne.get(lig.produit_id, Decimal('0'))
-                        + lig.quantite)
-
-        vendu_par_produit = {}
-        for lig in facture.lignes.all():
-            if lig.produit_id:
-                vendu_par_produit[lig.produit_id] = (
-                    vendu_par_produit.get(lig.produit_id, Decimal('0'))
-                    + lig.quantite)
-
-        clean_lignes = []
-        for i, ligne in enumerate(lignes, start=1):
-            if not isinstance(ligne, dict):
-                return Response(
-                    {'detail': f'Ligne {i} invalide.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            produit_id = ligne.get('produit') or None
-            if produit_id is None:
-                return Response(
-                    {'detail': f'Ligne {i} : produit requis.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            from apps.stock.selectors import get_produit_scoped
-            produit = get_produit_scoped(company, produit_id)
-            if produit is None:
-                return Response(
-                    {'detail': f'Ligne {i} : produit inconnu.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            try:
-                qte = Decimal(str(ligne.get('quantite')))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response(
-                    {'detail': f'Ligne {i} : quantité numérique requise.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if qte <= 0:
-                return Response(
-                    {'detail': f'Ligne {i} : quantité > 0 requise.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            vendu = vendu_par_produit.get(produit_id, Decimal('0'))
-            deja = deja_retourne.get(produit_id, Decimal('0'))
-            disponible_retour = vendu - deja
-            if qte > disponible_retour:
-                return Response(
-                    {'detail': (
-                        f'Ligne {i} : quantité retournée ({qte}) supérieure '
-                        f'à la quantité vendue restant retournable '
-                        f'({disponible_retour}) pour « {produit.nom} ».')},
-                    status=status.HTTP_400_BAD_REQUEST)
-            f_ligne = next(
-                (lig for lig in facture.lignes.all()
-                 if lig.produit_id == produit_id), None)
-            prix_unitaire = f_ligne.prix_unitaire if f_ligne else Decimal('0')
-            remise = f_ligne.remise if f_ligne else Decimal('0')
-            taux_tva = f_ligne.taux_tva if f_ligne else None
-            designation = (
-                f_ligne.designation if f_ligne else produit.nom)[:255]
-            clean_lignes.append({
-                'produit': produit, 'produit_id': produit_id,
-                'designation': designation, 'quantite': qte,
-                'prix_unitaire': prix_unitaire, 'remise': remise,
-                'taux_tva': taux_tva,
-            })
-
-        def _create(ref):
-            avoir = Avoir.objects.create(
-                company=company, reference=ref, facture=facture,
-                client=facture.client, statut=Avoir.Statut.EMISE,
-                motif=motif, motif_retour=motif, restocke=restocker,
-                taux_tva=facture.taux_tva, created_by=request.user)
-            for ligne in clean_lignes:
-                LigneAvoir.objects.create(
-                    avoir=avoir, produit=ligne['produit'],
-                    designation=ligne['designation'],
-                    quantite=ligne['quantite'],
-                    prix_unitaire=ligne['prix_unitaire'],
-                    remise=ligne['remise'], taux_tva=ligne['taux_tva'])
-            return avoir
-
-        avoir = create_numbered(Avoir, company, 'avoir', _create)
-        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
-            avoir.lignes.all().delete()
-            avoir.delete()
-            return Response(
-                {'detail': "Le retour dépasse le montant restant de la "
-                           f"facture ({reste_creditable:.2f} MAD)."},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        if restocker:
-            for ligne in clean_lignes:
-                produit = ligne['produit']
-                produit.refresh_from_db()
-                qte_entiere = int(Decimal(ligne['quantite']).quantize(
-                    Decimal('1'), rounding=ROUND_HALF_UP))
-                qte_avant = produit.quantite_stock
-                qte_apres = qte_avant + qte_entiere
-                record_stock_movement(
-                    company=company, produit=produit,
-                    type_mouvement=mouvement_type_entree(),
-                    quantite=qte_entiere, quantite_avant=qte_avant,
-                    quantite_apres=qte_apres, reference=avoir.reference,
-                    note=f'Retour client — {motif} (facture {facture.reference})',
-                    created_by=request.user,
-                )
-
-        from .. import activity
-        activity.log_facture_avoir(facture, request.user, avoir)
+        # AFAC27 (C-AFAC-024) — LE constructeur unique d'avoir : quantités
+        # retournables, prix/remise/TVA FACTURÉS, remise globale et palier
+        # d'arrondi de la facture (au prorata, le dernier retour porte le
+        # solde au centime), plafond SOUS verrou, re-stockage dans la même
+        # transaction, `avoir_cree`, recalcul du statut (ATOT8).
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        try:
+            avoir = creer_avoir_facture(
+                facture=facture, user=request.user, motif=motif,
+                retour_lignes=lignes, restocker=restocker)
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
@@ -1697,20 +1621,22 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..utils.company_settings import create_numbered
 
         facture = self.get_object()
-        levels = list(FollowupLevel.objects.filter(
-            company=facture.company).order_by('delai_jours', 'ordre'))
+        # AFAC24 (C-AFAC-040, base) — UNE formule : la pénalité facturée est
+        # la pénalité INDICATIVE de la lettre et de la liste des relances
+        # (`recouvrement._current_level`), calculée sur l'EXIGIBLE (CIQ214),
+        # jamais sur `montant_du` (qui compte la retenue de garantie).
+        from ..recouvrement import _current_level, _levels, montant_exigible
         jr = facture.jours_retard
-        niveau = None
-        for lvl in levels:
-            if jr >= lvl.delai_jours:
-                niveau = lvl
+        niveau = _current_level(
+            jr, _levels(facture.company),
+            montant_du=montant_exigible(facture))
         if niveau is None:
             return Response(
                 {'detail': "Aucun niveau de relance atteint pour "
                            "cette facture."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        penalite = niveau.calcul_penalite(facture.montant_du, jr)
+        penalite = Decimal(niveau['penalite'])
         if penalite <= 0:
             return Response(
                 {'detail': "Aucune pénalité à facturer (taux/frais à 0)."},
@@ -1718,7 +1644,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
         libelle = (
             f"Pénalités de retard — facture {facture.reference} "
-            f"({jr} jour(s) de retard, {niveau.nom})")
+            f"({jr} jour(s) de retard, {niveau['nom']})")
 
         def _create(ref):
             return Facture.objects.create(
@@ -1836,7 +1762,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='encaissement-groupe',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[PeutEncaisser])
     def encaissement_groupe(self, request):
         """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
         (virement global, chèque unique). Body : ``{client, montant, mode,

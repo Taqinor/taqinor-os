@@ -10,7 +10,10 @@ laissent AUCUN orphelin silencieux :
   dans le code source (ou est explicitement réservé dans
   ``ALLOWED_UNPRODUCED``) ;
 * chaque récepteur câblé (``@receiver(events.<signal>)``) pointe vers un signal
-  qui existe réellement dans ``core.events``.
+  qui existe réellement dans ``core.events`` ;
+* APAR43 — sens INVERSE : chaque signal qui a un abonné VIVANT a aussi au
+  moins un émetteur statique (ou est justifié dans ``ALLOWED_UNEMITTED``),
+  et aucune liste blanche n'est périmée (``stale_allowlist``).
 
 ``core`` reste une app de FONDATION : ce module n'importe AUCUNE app métier au
 niveau module. La liste des ``EventType`` et le recensement des producteurs se
@@ -118,7 +121,8 @@ ALLOWED_UNCONSUMED = {
     "contrat_actif",                    # contrats (chatter ARC8)
     "incident_declared",                # QHSE (declaration d'incident)
     "cycle_sterilisation_non_conforme",  # QHSE (non-conformite de cycle)
-    "budget_cycle_clos",                # FP&A (cloture de cycle budgetaire)
+    # APAR43 — doublon de ``budget_cycle_clos`` (déjà listé plus haut, NTFPA29)
+    # retiré ici.
     "dossier_juridique_clos",           # juridique (banniere de reprise)
     # SOLMVP (suite) — MEME raison, constatee en CI apres le coquillage reel des
     # 47 apps : l'abonne vivait dans un module sorti, ou dans un fichier de
@@ -127,7 +131,8 @@ ALLOWED_UNCONSUMED = {
     # scm_event_receivers.py, le recepteur `contrat_resilie` d'apps/sav). Meme
     # traitement : on RESERVE, on ne supprime pas — au retour du module,
     # l'abonnement redevient vrai sans toucher `core`.
-    "facture_emise",                    # compta (ecriture de vente)
+    # APAR43 — ``facture_emise`` RETIRÉ : il a de nouveau un abonné vivant
+    # (le garder ici masquait la liste ; ``stale_allowlist`` le refuse).
     "facture_annulee",                  # compta (extourne)
     "avoir_cree",                       # compta (ecriture d'avoir)
     "avoir_annule",                     # compta (extourne d'avoir)
@@ -148,6 +153,27 @@ ALLOWED_UNCONSUMED = {
     # module, l'abonnement est à recâbler avec lui (hors périmètre ALEA3).
     "ao_depose",                        # crm (avance de funnel AOF13, retiré)
     "ao_gagne",                         # crm (avance de funnel AOF13, retiré)
+    # APAR43 — abonnés X3 RETIRÉS car leur UNIQUE émetteur vit dans un module
+    # PARQUÉ (rien ne pouvait plus les déclencher) : le signal reste déclaré
+    # (golden SPL283) et catalogué ; l'abonnement est à recâbler au retour du
+    # module. Abonné retiré entre parenthèses.
+    "contrat_signe",                    # notifications (CONTRAT_SIGNE) — contrats parqué
+    "projet_status_change",             # notifications (PROJET_STATUT_CHANGE) — gestion_projet parqué
+    "rfq_attribuee",                    # automation (RFQ_ATTRIBUEE) — achats avancés parqués
+}
+
+# APAR43 — signaux qui ont un abonné VIVANT mais AUCUN émetteur statique dans
+# le code scanné, parce que leur producteur vit dans un module PARQUÉ
+# (``core.parked``). Tout autre abonné sans émetteur fait échouer la garde
+# (``receivers_without_emitter``) : un récepteur câblé sur un signal que rien
+# n'émet est du code mort qui fait croire à une réaction qui n'arrive jamais.
+ALLOWED_UNEMITTED = {
+    # Producteur parqué (compta/services.py) ; abonné vivant
+    # ``apps/monitoring/receivers.py`` (propriétaire : sav).
+    "abonnement_monitoring_resilie",
+    # Producteur parqué (compta/services.py) ; abonné vivant
+    # ``apps/ventes/receivers.py`` (propriétaire : facturation).
+    "effet_rejete",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
@@ -166,6 +192,10 @@ ALLOWED_UNPRODUCED: set[str] = {
     # plutôt que de supprimer, le producteur redevient vrai au retour du module.
     "CONSENTEMENT_RETIRE_TRAITE",  # grc (alerte DPO NTGRC9)
     "PAIE_ECHEANCE_RAPPEL",        # paie (rappel d'échéance déclarative)
+    # APAR43 — producteurs = récepteurs ``contrat_signe`` /
+    # ``projet_status_change`` retirés (émetteurs dans des modules parqués).
+    "CONTRAT_SIGNE",               # contrats (signature intégrale)
+    "PROJET_STATUT_CHANGE",        # gestion_projet (transition de statut)
 }
 
 
@@ -328,6 +358,45 @@ def unproduced_eventtypes() -> set[str]:
     return {m for m in members if m not in produced and m not in ALLOWED_UNPRODUCED}
 
 
+def emitted_signals() -> set[str]:
+    """APAR43 — signaux de ``core.events`` dotés d'au moins un émetteur
+    STATIQUE : ``<signal>.send|send_robust(...)`` (signal importé, aliasé ou
+    ``events.<nom>``), ``emit_reliable('<nom>', ...)``, ou un ``send`` porté
+    par le signal dans son propre module du bus (``core/events/``)."""
+    return set(_scan_emitters()[1])
+
+
+def receivers_without_emitter() -> set[str]:
+    """APAR43 — signaux avec un récepteur VIVANT mais sans émetteur statique,
+    hors ``ALLOWED_UNEMITTED`` (producteur parqué justifié)."""
+    emis = emitted_signals()
+    return {
+        name
+        for name, sig in declared_signals().items()
+        if signal_has_receiver(sig) and name not in emis
+        and name not in ALLOWED_UNEMITTED
+    }
+
+
+def stale_allowlist() -> set[str]:
+    """APAR43 — entrées PÉRIMÉES des listes blanches : un signal réservé
+    « sans abonné » (``ALLOWED_UNCONSUMED``) qui en a un, ou un signal réservé
+    « sans émetteur » (``ALLOWED_UNEMITTED``) qui a un émetteur ou n'a plus
+    d'abonné. Une liste blanche qui ment masque les vraies régressions."""
+    declared = declared_signals()
+    emis = emitted_signals()
+    perimes = {
+        name for name in ALLOWED_UNCONSUMED
+        if name in declared and signal_has_receiver(declared[name])
+    }
+    perimes |= {
+        name for name in ALLOWED_UNEMITTED
+        if name not in declared or name in emis
+        or not signal_has_receiver(declared[name])
+    }
+    return perimes
+
+
 def dangling_receiver_signals() -> set[str]:
     """Signaux référencés par un @receiver mais absents de core.events."""
     declared = set(declared_signals())
@@ -475,8 +544,15 @@ def emitter_payload_keys() -> dict:
     l'événement peut porter. C'est le pendant « émetteur » d'``uncatalogued_events``
     (couverture des NOMS) : il vérifie la parité des CLÉS de payload (WIR139).
     """
+    return _scan_emitters()[0]
+
+
+def _scan_emitters():
+    """(clés de payload par signal, signaux dotés d'au moins un émetteur)."""
     declared = set(declared_signals())
     keys: dict = {name: set() for name in declared}
+    presents: set = set()
+    bus_dir = CORE_ROOT / "events"
     for root in (APPS_ROOT, CORE_ROOT):
         for path in root.rglob("*.py"):
             if "migrations" in path.parts:
@@ -497,27 +573,42 @@ def emitter_payload_keys() -> dict:
                 if is_events:
                     for a in node.names:
                         alias[a.asname or a.name] = a.name
+            dans_le_bus = path.parent == bus_dir
             for node in ast.walk(tree):
-                if not (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                # APAR43 — ``emit_reliable('<nom>', ...)`` émet ``<nom>``.
+                nom_fn = (func.id if isinstance(func, ast.Name)
+                          else func.attr if isinstance(func, ast.Attribute)
+                          else None)
+                if (nom_fn == "emit_reliable" and node.args
+                        and isinstance(node.args[0], ast.Constant)
+                        and node.args[0].value in declared):
+                    presents.add(node.args[0].value)
+                    continue
+                if not (isinstance(func, ast.Attribute)
                         # ACAL91 — ``send_robust`` (émission best-effort)
                         # porte les mêmes kwargs que ``send``.
-                        and node.func.attr in ("send", "send_robust")):
+                        and func.attr in ("send", "send_robust")):
                     continue
-                obj = node.func.value
+                obj = func.value
                 sig = None
                 if isinstance(obj, ast.Name) and obj.id in alias:
                     sig = alias[obj.id]
+                elif isinstance(obj, ast.Name) and dans_le_bus:
+                    sig = obj.id
                 elif (isinstance(obj, ast.Attribute)
                       and isinstance(obj.value, ast.Name)
                       and obj.value.id == "events"):
                     sig = obj.attr
                 if sig in declared:
+                    presents.add(sig)
                     keys[sig] |= {
                         kw.arg for kw in node.keywords
                         if kw.arg and kw.arg != "sender"
                     }
-    return keys
+    return keys, presents
 
 
 def catalog_payload_mismatches() -> dict:

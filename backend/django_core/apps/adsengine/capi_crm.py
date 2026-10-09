@@ -89,6 +89,18 @@ def _sha256(value):
     return hashlib.sha256((value or '').strip().lower().encode()).hexdigest()
 
 
+def phone_hash_list(raw):
+    """AACQ18 — UNE dérivation de la clé ``ph`` Meta pour tout envoi CAPI :
+    ``[sha256(normalize_phone_e164(tel))]`` (même clé que QJR136 et que les
+    audiences), ou ``None`` si le numéro n'est pas normalisable (aucune clé
+    ``ph`` plutôt qu'un hash de chiffres bruts qui ne matcherait jamais)."""
+    if not raw:
+        return None
+    from apps.ventes.utils.phone import normalize_phone_e164
+    norme = normalize_phone_e164(str(raw))
+    return [_sha256(norme)] if norme else None
+
+
 def _setting(name):
     """Valeur d'un réglage (settings puis environnement), strip. '' si absent."""
     from django.conf import settings
@@ -148,9 +160,9 @@ def build_stage_event(company, lead_id, new_stage, *, old_stage=None, now=None):
     if ids['leadgen_id']:
         # Clé de match préférée de Meta (leadgen_id 15-17 chiffres) — NON hachée.
         user_data['lead_id'] = ids['leadgen_id']
-    phone_digits = ''.join(c for c in ids['phone'] if c.isdigit())
-    if phone_digits:
-        user_data['ph'] = [_sha256(phone_digits)]
+    ph = phone_hash_list(ids['phone'])  # AACQ18 — clé E.164 partagée
+    if ph:
+        user_data['ph'] = ph
     if ids['email']:
         user_data['em'] = [_sha256(ids['email'])]
     if ids['fbclid']:
@@ -319,9 +331,9 @@ def build_appointment_event(company, lead_id, appointment_id, statut, *,
     user_data = {}
     if ids['leadgen_id']:
         user_data['lead_id'] = ids['leadgen_id']
-    phone_digits = ''.join(c for c in ids['phone'] if c.isdigit())
-    if phone_digits:
-        user_data['ph'] = [_sha256(phone_digits)]
+    ph = phone_hash_list(ids['phone'])  # AACQ18 — clé E.164 partagée
+    if ph:
+        user_data['ph'] = ph
     if ids['email']:
         user_data['em'] = [_sha256(ids['email'])]
     if ids['fbclid']:
@@ -481,6 +493,21 @@ def _capture_old_stage(sender, instance, **kwargs):
     setattr(instance, _STASH_ATTR, old)
 
 
+def on_commit_best_effort(fn):
+    """AACQ19 — Exécute ``fn`` après le COMMIT de la transaction courante
+    (immédiatement hors transaction) ; une exception y est journalisée, jamais
+    remontée."""
+    from django.db import transaction
+
+    def _run():
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('CAPI CRM : émission après commit échouée',
+                           exc_info=True)
+    transaction.on_commit(_run)
+
+
 def _emit_on_stage_change(sender, instance, created, **kwargs):
     """``post_save`` : sur une transition d'étape AVANT, émet l'événement CAPI
     CRM-stage. Best-effort — jamais d'exception remontée au save du lead."""
@@ -493,9 +520,13 @@ def _emit_on_stage_change(sender, instance, created, **kwargs):
         old_stage = getattr(instance, _STASH_ATTR, None)
         if not created and old_stage == new_stage:
             return  # save sans changement d'étape → rien à émettre.
-        emit_lead_stage_event(
-            getattr(instance, 'company_id', None), instance.pk, new_stage,
-            old_stage=old_stage)
+        company_id = getattr(instance, 'company_id', None)
+        lead_pk = instance.pk
+        # AACQ19 — émission APRÈS validation de la transaction (comme QJ9 et
+        # ``lead_erased``) : une écriture annulée n'envoie aucune conversion,
+        # et aucun appel réseau (urlopen 5 s) ne part sous verrou.
+        on_commit_best_effort(lambda: emit_lead_stage_event(
+            company_id, lead_pk, new_stage, old_stage=old_stage))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning('ADSENG32: récepteur CRM-stage CAPI échoué',
                        exc_info=True)

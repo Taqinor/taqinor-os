@@ -1,6 +1,8 @@
 """Sérialiseurs de facturation de ventes (BC, factures, paiements, avoirs,
 notes de débit, relances, remises, mandats) — déplacés tels quels de
 `serializers.py` par SPL148 (move only, sans ré-export)."""
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -8,12 +10,18 @@ from .models import (
     BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir,
     RemiseEncaissement, LigneRemiseEncaissement,
-    MandatPaiement,
+    MandatPaiement, RetenueSubie,
 )
 from .serializers import _fallback_taux_tva
+from core.mixins import SameCompanyFKSerializerMixin
 
 
-class BonCommandeSerializer(serializers.ModelSerializer):
+class BonCommandeSerializer(SameCompanyFKSerializerMixin,
+                            serializers.ModelSerializer):
+    # ASEC28 (C-ASEC-005) — FK inscriptibles bornées à la société de la
+    # requête : un id étranger = 400 « objet inexistant », en PATCH comme en
+    # création (la garde ERR13 de perform_create ne couvrait que la création).
+    same_company_fields = ('client', 'devis', 'lead')
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
@@ -103,7 +111,12 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         return str(totaux.ttc) if totaux is not None else None
 
 
-class LigneFactureSerializer(serializers.ModelSerializer):
+class LigneFactureSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    # ASEC27 (C-ASEC-005) — `produit` et `source_devis` bornés à la société
+    # de la requête : un id étranger = 400 « objet inexistant » (ACAL298).
+    same_company_fields = ('produit', 'source_devis')
+
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -230,6 +243,46 @@ class RetenueSubieSerializer(serializers.ModelSerializer):
                             'paiement']
 
 
+class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
+    """AFAC30 (C-AFAC-029) — valide l'ENTRÉE de `paiement-avec-retenue` :
+    montant décimal > 0, date requise, `mode` ∈ `Paiement.Mode`,
+    `type_retenue` ∈ `TypeRetenue`, taux 0-100. Une entrée invalide donne un
+    400 en français SOUS le champ fautif — plus jamais un 500
+    (`InvalidOperation`/`TypeError`/`IntegrityError`) ni un `zzz` enregistré."""
+
+    montant = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        error_messages={
+            'required': 'Le montant est requis.',
+            'invalid': 'Montant invalide : un nombre décimal est attendu.',
+            'min_value': 'Le montant doit être positif.',
+            'max_decimal_places': 'Montant : deux décimales au plus.',
+        })
+    date_paiement = serializers.DateField(error_messages={
+        'required': 'La date de paiement est requise.',
+        'invalid': 'Date de paiement invalide (AAAA-MM-JJ).',
+    })
+    mode = serializers.ChoiceField(
+        choices=Paiement.Mode.choices, default=Paiement.Mode.VIREMENT,
+        error_messages={'invalid_choice': 'Mode de paiement inconnu.'})
+    type_retenue = serializers.ChoiceField(
+        choices=RetenueSubie.TypeRetenue.choices,
+        default=RetenueSubie.TypeRetenue.RAS_TVA,
+        error_messages={'invalid_choice': 'Type de retenue inconnu.'})
+    taux = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal('0'),
+        max_value=Decimal('100'),
+        error_messages={
+            'required': 'Le taux de RAS est requis.',
+            'invalid': 'Taux de RAS invalide : un nombre est attendu.',
+            'min_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
+            'max_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
+        })
+    reference = serializers.CharField(
+        required=False, allow_blank=True, default='', max_length=120)
+    note = serializers.CharField(required=False, allow_blank=True, default='')
+
+
 class FactureSerializer(serializers.ModelSerializer):
     lignes = LigneFactureSerializer(many=True, read_only=True)
     paiements = PaiementSerializer(many=True, read_only=True)
@@ -287,7 +340,9 @@ class FactureSerializer(serializers.ModelSerializer):
                             # ARRONDI-100 — hérités du devis côté serveur.
                             'arrondi_pas', 'arrondi_unites',
                             # CIQ214 — posés par la tranche / ``liberer-retenue``.
-                            'retenue_garantie_mad', 'retenue_liberee_le']
+                            'retenue_garantie_mad', 'retenue_liberee_le',
+                            # ATOT5 — clé de tranche posée par le serveur.
+                            'cle_tranche']
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
@@ -316,11 +371,40 @@ class FactureSerializer(serializers.ModelSerializer):
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
-class FactureWriteSerializer(serializers.ModelSerializer):
-    """Création/modification sans lignes imbriquées."""
+class FactureWriteSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    """Création/modification sans lignes imbriquées.
+
+    ASEC27 (C-ASEC-005/009) — chaque FK inscriptible est BORNÉE à la société
+    de la requête (un id d'une autre société = 400 « objet inexistant »,
+    indiscernable d'un id absent) et les champs posés par le SERVEUR sont en
+    lecture seule : `statut` ne bouge que par les actions dédiées
+    (validation, paiement, abandon — AUD124/XFAC18). Liste `fields`
+    EXPLICITE (plus d'`exclude=`) : tout nouveau champ du modèle doit y être
+    ajouté consciemment."""
+    same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
+                           'entite', 'condition_paiement_ref')
+
     class Meta:
         model = Facture
-        exclude = ['reference', 'fichier_pdf']
+        fields = [
+            'id', 'bon_commande', 'devis', 'lead', 'type_facture',
+            'pourcentage', 'libelle', 'montant_ht', 'montant_tva',
+            'montant_ttc', 'client', 'statut', 'date_emission',
+            'date_echeance', 'taux_tva', 'remise_globale', 'arrondi_pas',
+            'arrondi_unites', 'note', 'date_livraison', 'conditions_paiement',
+            'retenue_garantie_mad', 'retenue_liberee_le', 'ventilation_tva',
+            'cle_tranche', 'reference_commande_client',
+            'condition_paiement_ref', 'prochaine_relance', 'exclu_relances',
+            'exclu_relances_jusquau', 'escompte_pct', 'escompte_jours',
+            'abandon_motif', 'abandon_montant', 'abandon_date',
+            'abandon_auto', 'abandon_par', 'revue_statut',
+            'statut_teledeclaration', 'created_by', 'pdf_render_meta',
+            'fichier_ubl', 'devise', 'taux_change', 'dgi_statut',
+            'dgi_reference', 'dgi_motif_rejet', 'periode_service_debut',
+            'periode_service_fin', 'updated_at', 'updated_by', 'entite',
+            'company',
+        ]
         # company is force-assigned in perform_create — never accept it from the body.
         # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par
         # `transmettre_facture` (action serveur), jamais depuis le corps.
@@ -330,6 +414,14 @@ class FactureWriteSerializer(serializers.ModelSerializer):
             # CIQ215 — ventilation posée par le serveur à la création d'une
             # tranche, jamais depuis le corps.
             'ventilation_tva',
+            # ATOT5 — clé de tranche posée par le serveur, jamais le corps.
+            'cle_tranche',
+            # ASEC27 — champs posés par le serveur (actions dédiées), jamais
+            # depuis le corps : un PATCH qui les porte est sans effet.
+            'statut', 'revue_statut', 'abandon_motif', 'abandon_montant',
+            'abandon_date', 'abandon_auto', 'abandon_par',
+            'retenue_liberee_le', 'statut_teledeclaration', 'fichier_ubl',
+            'pdf_render_meta', 'updated_by',
         ]
 
 
@@ -368,7 +460,9 @@ class AvoirSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
                             'date_emission', 'company',
                             # ARRONDI-100 — repris de la facture côté serveur.
-                            'arrondi_pas', 'arrondi_unites']
+                            'arrondi_pas', 'arrondi_unites',
+                            # ATOT6 — ventilation recopiée par le serveur.
+                            'ventilation_tva']
 
     def get_tva_par_taux(self, obj):
         return [
@@ -412,7 +506,9 @@ class NoteDebitSerializer(serializers.ModelSerializer):
         model = NoteDebit
         fields = '__all__'
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
-                            'date_emission', 'company']
+                            'date_emission', 'company',
+                            # ATOT6 — ventilation recopiée par le serveur.
+                            'ventilation_tva']
 
     def get_client_nom(self, obj):
         c = obj.client
@@ -502,8 +598,12 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
                   'taux_interet_annuel', 'frais_fixes', 'canal']
 
 
-class ParametrageRelanceClientSerializer(serializers.ModelSerializer):
-    """ZFAC8 — réglage par client du responsable/mode de relance."""
+class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
+                                         serializers.ModelSerializer):
+    """ZFAC8 — réglage par client du responsable/mode de relance.
+
+    ASEC28 — `client` et `responsable` bornés à la société de la requête."""
+    same_company_fields = ('client', 'responsable')
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     responsable_username = serializers.CharField(
@@ -562,7 +662,11 @@ class LigneRemiseEncaissementSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
-class RemiseEncaissementSerializer(serializers.ModelSerializer):
+class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # ASEC28 — le technicien d'une remise est un utilisateur de la société.
+    same_company_fields = ('technicien',)
+
     lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
@@ -576,16 +680,26 @@ class RemiseEncaissementSerializer(serializers.ModelSerializer):
     class Meta:
         model = RemiseEncaissement
         fields = '__all__'
+        # AFAC16 (C-AFAC-012) — `statut` en lecture seule : seule l'action
+        # `cloturer` le change (un technicien ne « valide » plus sa propre
+        # remise par PATCH, une remise ne naît plus clôturée).
         read_only_fields = [
             'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
-            'company', 'cloture_par', 'date_cloture',
+            'company', 'cloture_par', 'date_cloture', 'statut',
         ]
 
 
-class MandatPaiementSerializer(serializers.ModelSerializer):
+class MandatPaiementSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
     """XCTR22 — mandat de prélèvement carte. `token` n'est JAMAIS accepté en
     écriture directe (posé uniquement par le service de tokenisation) ; seuls
-    les 4 derniers chiffres/expiration sont exposés pour l'affichage."""
+    les 4 derniers chiffres/expiration sont exposés pour l'affichage.
+
+    ASEC28 — `client` borné à la société ; `statut` et
+    `consentement_horodate` en lecture seule : seules les actions dédiées
+    (tokenisation, `revoquer`) les changent — un mandat révoqué ne redevient
+    jamais actif par PATCH."""
+    same_company_fields = ('client',)
     client_nom = serializers.CharField(source='client.nom', read_only=True)
 
     class Meta:
@@ -593,4 +707,5 @@ class MandatPaiementSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = [
             'id', 'token', 'company', 'created_at', 'revoked_at',
+            'statut', 'consentement_horodate',
         ]

@@ -969,3 +969,36 @@ class WhatsAppInboundMessage(TenantModel):
 
     def __str__(self):
         return f'WA-in:{self.wa_message_id}'
+
+
+class MarqueurEmissionBalayage(TenantModel):
+    """APAR23 — marqueur d'ÉMISSION d'un balayage, indépendant des
+    préférences de canal.
+
+    L'idempotence des balayages se lisait sur la présence d'une ligne
+    ``Notification`` : in-app coupé (push seul), aucune ligne ne restait et le
+    même lead chaud était rediffusé à chaque passage. Une ligne par
+    ``(company, event_type, cle, periode)`` : ``cle`` désigne l'objet (ex.
+    ``lead:113`` ou le lien d'une facture), ``periode`` vaut ``''`` pour une
+    émission UNIQUE (lead chaud escaladé une fois) ou la date ``AAAA-MM-JJ``
+    pour une émission QUOTIDIENNE (facture en retard, DA en attente). La
+    contrainte d'unicité rend la réservation sûre face à deux passages
+    concurrents ; le marqueur survit à la suppression de la notification
+    support (``_livrer_differee``)."""
+
+    event_type = models.CharField(max_length=64, verbose_name="Type d'événement")
+    cle = models.CharField(max_length=255, verbose_name='Objet')
+    periode = models.CharField(
+        max_length=10, blank=True, default='', verbose_name='Période')
+
+    class Meta:
+        verbose_name = "Marqueur d'émission de balayage"
+        verbose_name_plural = "Marqueurs d'émission de balayage"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'event_type', 'cle', 'periode'],
+                name='notif_marqueur_emission_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.event_type}:{self.cle}@{self.periode or "unique"}'

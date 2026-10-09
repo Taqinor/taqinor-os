@@ -43,10 +43,17 @@ def _recipients(company):
 
     Priorité aux comptes d'administration/responsables (ceux qui pilotent) ; à
     défaut, tous les utilisateurs actifs de la société. Toujours borné à la
-    société (multi-tenant), jamais d'utilisateur d'une autre société."""
+    société (multi-tenant), jamais d'utilisateur d'une autre société.
+
+    APAR21 — une règle de routage ACTIVE sur ``digest`` (Paramètres ›
+    Notifications) remplace cette liste par ses destinataires."""
+    from .services import regle_de_routage_active, resolve_recipients
+    if regle_de_routage_active(company, EventType.DIGEST):
+        return list(resolve_recipients(company, EventType.DIGEST))
     try:
-        from authentication.models import CustomUser
-        base = CustomUser.objects.filter(company=company, is_active=True)
+        from .selectors import utilisateurs_internes_actifs
+        # APAR20 — internes seulement (jamais un compte portail).
+        base = utilisateurs_internes_actifs(company)
         managers = [u for u in base if _is_manager(u)]
         if managers:
             return managers
@@ -58,13 +65,10 @@ def _recipients(company):
 
 
 def _is_manager(user):
-    """True pour un compte d'administration/responsable (best-effort)."""
-    try:
-        if getattr(user, 'is_admin_role', False):
-            return True
-        return getattr(user, 'role_tier', None) in ('admin', 'responsable')
-    except Exception:  # pragma: no cover - défensif
-        return False
+    """True pour un compte d'administration/responsable (best-effort).
+    APAR21 — palier faisant autorité (``menu_tier``)."""
+    from .services import est_manager
+    return est_manager(user)
 
 
 # ── Sections du résumé (chacune défensive et bornée à la société) ────────────
@@ -110,10 +114,14 @@ def _count_maintenances_dues(company):
 
 
 def _count_sav_ouverts(company):
-    """Tickets SAV encore ouverts (nouveau/planifié/en cours)."""
-    from apps.sav.models import Ticket
-    return Ticket.objects.filter(
-        company=company, statut__in=Ticket.OPEN_STATUTS).count()
+    """Tickets SAV encore ouverts (nouveau/planifié/en cours) et NON annulés.
+
+    APAR24 — lu via ``sav.selectors`` (frontière cross-app : plus d'import du
+    modèle SAV) : ``resume_par_equipe`` compte les tickets ouverts
+    non annulés par équipe active + « Sans équipe ». Un ticket annulé ne
+    gonfle plus « SAV ouverts »."""
+    from apps.sav.selectors import resume_par_equipe
+    return sum(ligne['ouverts'] for ligne in resume_par_equipe(company))
 
 
 # Chaque section : (libellé FR, fonction de comptage). L'ordre est l'ordre

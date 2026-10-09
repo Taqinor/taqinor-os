@@ -30,6 +30,7 @@ import * as cf from 'cloudflare:workers';
 import { buildProposalTrackPayload, type ProposalEngagementEvent } from '../../lib/proposition';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { cleanVisitePage } from '../../lib/visite';
 
 interface TrackEnv {
   /** WJ109 — canal télémétrie DÉDIÉ, distinct du webhook de lead CRM (voir la
@@ -46,6 +47,28 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 const VALID_EVENTS: ProposalEngagementEvent[] = ['proposal_first_view', 'proposal_scrolled_financing'];
+
+/**
+ * AACQ42 (C-AACQ-042) — vue SÛRE pour le journal du Worker. Le jeton de la
+ * proposition est un PORTEUR : il suffit à lire nom, téléphone, référence et
+ * total TTC (`/api/django/public/proposal/<token>/data/`). Il ne doit donc
+ * JAMAIS apparaître dans un `console.*` — ni en `token`, ni dans `page`. Le
+ * journal garde `event_type` et la page masquée « …<6 derniers> » par
+ * `cleanVisitePage` (masquage des segments-jetons de lib/visite.ts, F3#7 —
+ * aucun troisième rédacteur), sans référence ni `appareil_id`. Le corps
+ * envoyé au webhook funnel, lui, reste celui de `buildProposalTrackPayload`.
+ */
+function redactProposalTrackForLog(payload: { event_type: string; token: string; page: string }): {
+  event_type: string;
+  page: string;
+} {
+  let page = cleanVisitePage(payload.page);
+  if (payload.token && page.includes(payload.token)) {
+    // Jeton court (≤ 24 caractères) que le masquage par longueur laisse passer.
+    page = page.split(payload.token).join(`…${payload.token.slice(-6)}`);
+  }
+  return { event_type: payload.event_type, page };
+}
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
@@ -95,8 +118,9 @@ export const POST: APIRoute = async ({ request }) => {
   // LEAD_WEBHOOK_URL ici (voir la note en tête de fichier).
   const url = env.FUNNEL_WEBHOOK_URL?.trim();
   if (!url) {
-    // Log-only, comme funnel-beacon.ts : aucune PII, jamais bloquant.
-    console.log('[proposition-track]', JSON.stringify(payload));
+    // Log-only, comme funnel-beacon.ts : aucune PII ni jeton (AACQ42),
+    // jamais bloquant.
+    console.log('[proposition-track]', JSON.stringify(redactProposalTrackForLog(payload)));
     return json({ ok: true, sent: false }, 202);
   }
 

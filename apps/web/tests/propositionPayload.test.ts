@@ -628,6 +628,11 @@ const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_industriel.': 'Fragment d’exemple industriel (CIQ4) : la charge utile publique d’un devis industriel MT (`synthese_ci` 25 ans, `mode_kpis` C&I v2), posée seule sur main avant que CIQ306 la serve et que la page /proposition C&I (CIQ308) la lise.',
   'exemple_signature_entreprise.': 'Fragment d’exemple (CIQ4) : le bloc `signature_entreprise` d’un devis C&I accepté (raison sociale, qualité, ICE, D-CIQ-11), posé avant l’acceptation entreprise serveur (CIQ319) et sa lecture par la page (CIQ321).',
   'notes_ciq4.': 'Notes de contrat CIQ4 : pourquoi les fragments C&I sont posés avant leurs deux moitiés et quelles clés résidentielles sont absentes ou vidées en C&I — documentation, jamais une valeur lue par la page.',
+  // ADEV2 (contrat d'abord PACT10, 08/10/2026) — même patron que AGR4 : la
+  // moitié serveur (ADEV49-ADEV53) servira ces cinq clés additives, la page
+  // les lira et range alors chaque clé dans CLES_LUES / NON_LU.
+  'exemple_adev2.': 'Fragment d’exemple ADEV2 : les cinq clés additives (cumul 25 ans par option, empreinte du contenu signable, offre expirée, date d’expiration, PDF disponible) posées seules sur main avant que le serveur les serve et que la page cesse de les recalculer.',
+  'notes_adev2.': 'Notes de contrat ADEV2 : pourquoi le fragment `exemple_adev2` est posé avant ses deux moitiés et ce que veut dire chacune des cinq clés additives — documentation, jamais une valeur lue par la page.',
   'exemple_roof_layout_riche.': 'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
 const decideeParFragment = (c: string): boolean =>

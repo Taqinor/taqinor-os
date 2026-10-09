@@ -501,7 +501,10 @@ def etat_recouvrement_client(company, client_id):
         jr = f.jours_retard
         if jr > 0:
             retard_max = max(retard_max, jr)
-            encours_echu += f.montant_du
+            # AFAC25 — l'échu est l'EXIGIBLE : une retenue de garantie non
+            # libérée n'est jamais « en retard » (elle n'est pas due avant sa
+            # libération).
+            encours_echu += f.montant_exigible
 
     if retard_max <= 0:
         return {
@@ -718,16 +721,19 @@ def factures_via_bon_commande(devis, *, inclure_annulees=False):
 
 
 def factures_du_devis(devis, *, inclure_annulees=False):
-    """TOUTES les factures d'un devis, LES DEUX VOIES CONFONDUES (queryset).
+    """TOUTES les factures d'un devis, LES QUATRE PORTES CONFONDUES (queryset).
 
-    ``Q(devis=devis) | Q(bon_commande__devis=devis)`` : l'échéancier ET le bon
-    de commande. Les factures ANNULÉES sont exclues par défaut (elles ne
-    consomment plus rien)."""
+    ``Q(devis=devis) | Q(bon_commande__devis=devis) | Q(sources__devis=devis)``
+    : l'échéancier et la facture complète (``devis``), le bon de commande ET
+    la facture consolidée (ATOT2 — ``FactureSource`` : une consolidée porte
+    ``devis=None``, elle était invisible). Les factures ANNULÉES sont exclues
+    par défaut (elles ne consomment plus rien)."""
     from django.db.models import Q
 
     from .models import Facture
     qs = Facture.objects.filter(
-        Q(devis=devis) | Q(bon_commande__devis=devis))
+        Q(devis=devis) | Q(bon_commande__devis=devis)
+        | Q(sources__devis=devis))
     if not inclure_annulees:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
     return qs.distinct()
@@ -744,6 +750,118 @@ def devis_deja_facture(devis):
     if devis is None:
         return False
     return factures_du_devis(devis).exists()
+
+
+class DevisDejaFacture(ValueError):
+    """ATOT2 — refus d'une porte de facturation (message FR prêt pour un 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+#: ATOT2 — les quatre portes de facturation d'un devis.
+PORTES_FACTURATION = ('tranche', 'bc', 'complete', 'consolidee')
+
+
+def est_facture_de_tranche(facture, devis=None):
+    """ATOT2 — ``facture`` est-elle une facture de TRANCHE d'échéancier ?
+
+    Une tranche porte son devis (``Facture.devis``), aucun bon de commande et
+    n'est pas la facture COMPLÈTE (``facturer-complet``). La facture de BC
+    porte aussi ``devis`` (AUD112) mais garde son ``bon_commande`` ; la
+    consolidée ne porte pas de devis (``FactureSource``)."""
+    from .models import Facture
+    if facture.devis_id is None or facture.bon_commande_id is not None:
+        return False
+    if devis is not None and facture.devis_id != devis.id:
+        return False
+    return facture.type_facture != Facture.TypeFacture.COMPLETE
+
+
+def exiger_devis_facturable(devis, porte):
+    """ATOT2 (C-ATOT-001) — LA garde unique des quatre portes de facturation.
+
+    « Une vente ne se facture qu'une fois » : ``porte`` ∈
+    ``PORTES_FACTURATION``. La porte ``tranche`` reste ouverte tant que les
+    seules factures actives du devis sont ses propres tranches (l'échéancier
+    continue) ; toute autre porte exige un devis sans AUCUNE facture active
+    (``factures_du_devis``, consolidée comprise). Lève ``DevisDejaFacture``
+    en nommant la ou les factures existantes ; ne renvoie rien sinon."""
+    if porte not in PORTES_FACTURATION:
+        raise ValueError(f'Porte de facturation inconnue : {porte!r}.')
+    if devis is None:
+        return
+    actives = list(factures_du_devis(devis).order_by('id'))
+    if porte == 'tranche':
+        bloquantes = [f for f in actives
+                      if not est_facture_de_tranche(f, devis)]
+    else:
+        bloquantes = actives
+    if not bloquantes:
+        return
+    refs = ', '.join(f.reference for f in bloquantes)
+    if len(bloquantes) > 1:
+        motif = (f'Ce devis est déjà facturé par {refs} : '
+                 'corrigez-les par un avoir.')
+    else:
+        motif = (f'Ce devis est déjà facturé par {refs} : '
+                 'corrigez-la par un avoir.')
+    raise DevisDejaFacture(motif)
+
+
+def kpis_q2c_periode(company, debut, fin):
+    """AFAC53 — KPI factures du tableau Quote-to-Cash, sur les DÉFINITIONS du
+    modèle et de la période ``[debut, fin]`` (dates incluses).
+
+    * Facturé  = Σ ``Facture.total_ttc`` des factures émises (émise / payée /
+      en retard, jamais brouillon ni annulée) dont ``date_emission`` est dans
+      la période — la propriété modèle, pas la colonne ``montant_ttc`` (NULL
+      pour une facture classique à lignes).
+    * Encours  = Σ ``Facture.montant_du`` de ces factures encore ouvertes.
+    * Encaissé = paiements NON rejetés de la période, escompte compris — la
+      même définition que ``kpis_factures`` / ``Facture.montant_paye``.
+    * DSO      = encours / facturé × jours de la période (None si rien facturé).
+
+    Lecture seule ; renvoie des ``Decimal`` et un DSO flottant arrondi.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    from .models import Facture, Paiement
+
+    emises = (Facture.objects
+              .filter(company=company,
+                      statut__in=[Facture.Statut.EMISE, Facture.Statut.PAYEE,
+                                  Facture.Statut.EN_RETARD],
+                      date_emission__gte=debut, date_emission__lte=fin)
+              .prefetch_related('lignes', 'paiements', 'avoirs',
+                                'notes_debit', 'retenues_subies',
+                                'affectations_paiement__paiement'))
+    facture = Decimal('0')
+    encours = Decimal('0')
+    for f in emises:
+        facture += f.total_ttc
+        if f.statut == Facture.Statut.PAYEE:
+            continue
+        du = f.montant_du
+        if du > 0:
+            encours += du
+
+    agg = (Paiement.objects
+           .filter(company=company,
+                   date_paiement__gte=debut, date_paiement__lte=fin)
+           .exclude(statut=Paiement.Statut.REJETE)
+           .aggregate(montant=Sum('montant'), escompte=Sum('escompte_montant')))
+    encaisse = (agg['montant'] or Decimal('0')) + (agg['escompte'] or Decimal('0'))
+
+    jours = (fin - debut).days + 1
+    dso = None
+    if facture > 0 and jours > 0:
+        dso = round(float(encours) / float(facture) * jours, 1)
+    return {'facture': facture, 'encours': encours, 'encaisse': encaisse,
+            'dso_jours': dso}
 
 
 def kpis_factures(qs):
@@ -817,10 +935,13 @@ def kpis_factures(qs):
         total_du += du
         # Une facture au statut « En retard » compte même sans échéance : la
         # tuile doit dire ce que les lignes affichent (ERR-QAH-VENTES-…-KPI).
-        if (facture.jours_retard > 0
-                or facture.statut == Facture.Statut.EN_RETARD):
+        # AFAC25 — « en retard » = EXIGIBLE échu : une retenue de garantie non
+        # libérée n'entre jamais dans la tuile « En retard ».
+        exigible = facture.montant_exigible
+        if exigible > 0 and (facture.jours_retard > 0
+                             or facture.statut == Facture.Statut.EN_RETARD):
             nb_en_retard += 1
-            total_en_retard += du
+            total_en_retard += exigible
         elif (facture.date_echeance
                 and aujourdhui <= facture.date_echeance <= dans_7_jours):
             total_a_echoir_7j += du

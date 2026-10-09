@@ -96,7 +96,8 @@ class Command(BaseCommand):
             avant, apres, delta_ht = resultat
             try:
                 ttc = totaux(devis, vue=Vue.NET).ttc
-                taux = Decimal(devis.taux_tva or 20) / Decimal(100)
+                taux = Decimal(20 if devis.taux_tva is None
+                               else devis.taux_tva) / Decimal(100)
                 ttc_apres = ttc + delta_ht * (1 + taux)
             except Exception:  # noqa: BLE001 — un total illisible est signalé
                 ttc, ttc_apres = '?', '?'

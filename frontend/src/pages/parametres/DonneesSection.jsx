@@ -13,6 +13,7 @@ import {
   ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink, Pencil, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Button, IconButton, Badge, Spinner, EmptyState,
@@ -20,6 +21,16 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { useConfirmDialog } from '../../ui/confirm'
+
+// APAR40 — liste COMPLÈTE (suit les pages DRF, 200 par page max) au lieu d'un
+// `page_size: 1000/500` que le serveur plafonne à 200 : avec 311 produits le
+// sélecteur en propose 311. Une réponse non paginée passe inchangée.
+async function toutesLesPages(appel) {
+  const res = await fetchAllPages(
+    (page) => appel({ page, page_size: 200 }).then((r) => r?.data))
+  return Array.isArray(res) ? res : (res?.results ?? [])
+}
 
 const INV_STATUT = {
   brouillon: { label: 'Brouillon', tone: 'warning' },
@@ -48,6 +59,8 @@ function frErr(err, fallback = 'Une erreur est survenue. Réessayez.') {
 
 // ── Sessions d'inventaire (FG63) ─────────────────────────────────────────────
 function InventaireSessions() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirm: confirmerAction } = useConfirmDialog()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -78,7 +91,7 @@ function InventaireSessions() {
   }
 
   const annuler = async (s) => {
-    if (!window.confirm(`Annuler la session ${s.reference} ?`)) return
+    if (!(await confirmerAction({ title: `Annuler la session ${s.reference} ?` }))) return
     setBusyId(s.id); setError(null); setInfo(null)
     try {
       await stockApi.annulerInventaireSession(s.id)
@@ -187,8 +200,7 @@ function KitExplosion() {
       const facteur = facteurEchelle.trim() ? Number(facteurEchelle) : undefined
       const r = await stockApi.dupliquerKit(kitId, facteur)
       setDupliqueInfo(`Kit dupliqué : « ${r.data?.nom ?? '—'} » (révision 1).`)
-      const kr = await stockApi.getKits({ page_size: 500 })
-      setKits(kr.data?.results ?? kr.data ?? [])
+      setKits(await toutesLesPages(stockApi.getKits))
     } catch (e) {
       setError(frErr(e, 'La duplication a échoué.'))
     } finally { setDupliquant(false) }
@@ -206,8 +218,8 @@ function KitExplosion() {
   }
 
   useEffect(() => {
-    stockApi.getKits({ page_size: 500 })
-      .then((r) => setKits(r.data?.results ?? r.data ?? []))
+    toutesLesPages(stockApi.getKits)
+      .then(setKits)
       .catch(() => {})
   }, [])
 
@@ -420,6 +432,8 @@ function champsNumeriquesPour(type) {
 }
 
 function FichesTechniques() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [produits, setProduits] = useState([])
   const [fiches, setFiches] = useState([])
   const [loading, setLoading] = useState(true)
@@ -442,8 +456,8 @@ function FichesTechniques() {
   // asynchrones (jamais synchrone dans l'effet).
   useEffect(() => {
     load()
-    stockApi.getProduits({ page_size: 1000 })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    toutesLesPages(stockApi.getProduits)
+      .then(setProduits).catch(() => {})
   }, [])
 
   // Produits sans fiche (une fiche par produit, OneToOne) — sauf la fiche en
@@ -516,7 +530,7 @@ function FichesTechniques() {
   }
 
   const supprimer = async (f) => {
-    if (!window.confirm(`Supprimer la fiche de « ${f.produit_nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer la fiche de « ${f.produit_nom} » ?` }))) return
     setError(null)
     try {
       await stockApi.deleteFicheTechnique(f.id)
@@ -708,8 +722,8 @@ function RemplacementComposant() {
   const [done, setDone] = useState(null)
 
   useEffect(() => {
-    stockApi.getProduits({ page_size: 1000 })
-      .then((r) => setProduits(r.data?.results ?? r.data ?? []))
+    toutesLesPages(stockApi.getProduits)
+      .then(setProduits)
       .catch(() => {})
   }, [])
 

@@ -274,3 +274,17 @@ def est_hors_fenetre_silence(moment, company) -> bool:
         if heure < _HEURE_DEBUT_JOUR or heure >= _HEURE_FIN_JOUR:
             return True
     return False
+
+
+# ── APAR20 — destinataires INTERNES des notifications ───────────────────────
+def utilisateurs_internes_actifs(company):
+    """QuerySet des comptes ACTIFS et INTERNES (``portee='interne'``) de
+    ``company`` — l'UNIQUE base de tout destinataire « toute la société / par
+    rôle / managers » des notifications (annonces, règles de routage par rôle,
+    balayages, récapitulatifs). Un compte de portail (client, fournisseur,
+    partenaire) n'est jamais destinataire d'un contenu interne (même règle que
+    ``adminops.views_annonces.destinataires_annonce``)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    return User.objects.filter(
+        company=company, is_active=True, portee=User.PORTEE_INTERNE)

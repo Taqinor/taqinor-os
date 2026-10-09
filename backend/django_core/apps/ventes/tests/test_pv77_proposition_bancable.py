@@ -96,6 +96,7 @@ class PropositionBancableTest(TestCase):
         self.devis = Devis.objects.create(
             company=self.company, reference='DV-PV77-1',
             client=self.crm_client, mode_installation='industriel',
+            statut=Devis.Statut.ENVOYE,
             etude_params={'production_annuelle': 12486,
                           'conso_annuelle': 120000,
                           'economies_annuelles': 21851, 'payback': 3.0})

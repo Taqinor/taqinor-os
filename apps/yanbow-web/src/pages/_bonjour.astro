@@ -9,6 +9,9 @@ import { SONDE } from '../i18n/pages';
 import { alternates, selecteurLangue, t } from '../i18n/utils';
 import { fr } from '../i18n/pages/bonjour.fr';
 import { en } from '../i18n/pages/bonjour.en';
+// YBW55 : la sonde porte le formulaire de rendez-vous (gardes navigateur YBW15
+// + bout en bout YBW56) jusqu'à la page Rendez-vous (YBW66).
+import RendezVousForm from '../components/RendezVousForm.astro';
 
 interface Props {
   locale?: Locale;
@@ -39,6 +42,7 @@ const autres = selecteurLangue(SONDE, locale, locales);
   <body>
     <main>
       <h1>{t(dict, 'h1', locale)}</h1>
+      <RendezVousForm locale={locale} />
       {autres.length > 0 && (
         <nav aria-label={t(dict, 'langue', locale)}>
           {autres.map((l) => <a href={l.href} hreflang={l.locale} lang={LANG_HTML[l.locale]}>{NOM_LANGUE[l.locale]}</a>)}

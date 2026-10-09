@@ -49,8 +49,11 @@ class TestAcceptationSignature(GammeBase):
     @mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
                 return_value='devis/1/DEV-GAM-041.pdf')
     def test_signature_referencee_sur_la_gamme_choisie(self, _moteur):
-        from apps.ventes.models import DevisSignature
+        from apps.ventes.models import Devis, DevisSignature
         source, soeur = self._paire('DEV-GAM-041')
+        # ADEV11 : l'acceptation par jeton client exige un devis envoyé.
+        Devis.objects.filter(pk__in=[source.pk, soeur.pk]).update(
+            statut=Devis.Statut.ENVOYE)
         lien_soeur = ShareLink.for_devis(soeur)
         APIClient().post(url_accept(lien_soeur.token), {
             'nom': 'Salma Alaoui', 'consent_esign': True,

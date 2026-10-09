@@ -8,7 +8,8 @@ vues d'équipe des équipes dont l'utilisateur est membre.
 ``?cible=crm.lead`` filtre sur une liste donnée. ``core`` n'importe aucune app
 métier : ``cible`` reste une chaîne.
 """
-from rest_framework import serializers
+from rest_framework import serializers
+from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
 from rest_framework.response import Response
 
 from authentication.role_tiers import (
@@ -27,7 +28,7 @@ from .vues import (
 TIERS_VALIDES = frozenset({ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE})
 
 
-class VuePersonnaliseeSerializer(serializers.ModelSerializer):
+class VuePersonnaliseeSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
     partage_label = serializers.CharField(
         source='get_partage_display', read_only=True)
     owner_username = serializers.CharField(

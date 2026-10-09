@@ -16,15 +16,25 @@ TRACKED_FIELDS = {
     'date_realisee': 'Date réalisée',
     'technicien': 'Technicien',
     'camionnette': 'Camionnette',
+    # ACHT28 — la signature client de l'intervention est une PREUVE : une
+    # signature ou une re-signature apparaît dans l'Historique (patron AUD305
+    # du chantier).
+    'signature_client': 'Signature client',
+    'signataire_nom': 'Nom du signataire',
+    'signe_le': 'Date de signature',
 }
 
 _CHOICE_FIELDS = {'statut', 'type_intervention'}
+# ACHT28 — on ne journalise que la PRÉSENCE de la signature (data-URL base64).
+_PRESENCE_ONLY_FIELDS = {'signature_client'}
 
 
 def _display(field: str, value):
     """Valeur lisible pour la timeline."""
     if value is None or value == '':
         return '—'
+    if field in _PRESENCE_ONLY_FIELDS:
+        return 'Signature enregistrée'
     if field in _CHOICE_FIELDS:
         choices = dict(Intervention._meta.get_field(field).choices or [])
         return str(choices.get(value, value))

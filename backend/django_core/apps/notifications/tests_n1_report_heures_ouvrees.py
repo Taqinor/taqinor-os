@@ -84,10 +84,11 @@ class _Base(TestCase):
         with frozen(moment):
             with mock.patch.object(
                     services, '_dispatch_email', return_value=True) as email:
-                n = services.notify(
-                    self.meryem, event_type, 'Relances du jour',
-                    body='3 relances', link='/crm/cockpit',
-                    company=self.company, **kw)
+                with self.captureOnCommitCallbacks(execute=True):  # APAR18
+                    n = services.notify(
+                        self.meryem, event_type, 'Relances du jour',
+                        body='3 relances', link='/crm/cockpit',
+                        company=self.company, **kw)
         return n, email
 
     def _api(self):

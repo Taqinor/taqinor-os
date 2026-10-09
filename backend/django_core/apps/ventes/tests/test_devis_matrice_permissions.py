@@ -74,7 +74,10 @@ FIGEE = {
     # QJR659 (décision fondateur 01/10) : partager le PDF vaut envoi.
     'pdf_partage': RESP,
     # Fondateur 05/10/2026 : « Facturer » un devis accepté (écriture).
-    'facturer_complet': RESP,
+    # ASEC29 / D-ASEC-1 — garde INVERSÉE par la tâche : geste d'argent,
+    # réservé au code ``encaisser``.
+    'facturer_complet': 'HasPermissionOrLegacy_encaisser',
+
     # ADOC131 (D-ADOC-4) : « Révoquer le lien client » (écriture).
     'revoquer_lien_public': RESP,
     # ACAL314 : LECTURE des octets de l'affiche (proxy même origine).

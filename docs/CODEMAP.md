@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: d38d7fb6d9719aa4fbf1ae97d3a58b16b5e8ea9f391d5a5163de84c3e334c425
+Structure fingerprint: adbc7c3dd4761a48d3794b721e2447f1d95cd4334ebff75bfae51af0f38e8273
 Plan fingerprint: 39fab5bceb153b6f1ceb39d85bb72b26f6df94388ee4bb045063d81af25d4c65
 
 
@@ -250,7 +250,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |
 | `entites` | `entites/` | 1 | Intra-tenant org tree (`Entite`: holding/filiale/agence) with anti-cycle guard. |
 | `adminops` | `adminops/` | 12 | Health score, sandbox, config packages, adoption, `PlanLicence`/`FactureLicence`, impersonation, signup requests, product announcements. |
-| `notifications` | `notifications/` | 17 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), push, `MessageAccueil`, working hours. |
+| `notifications` | `notifications/` | 18 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), sweep emission marker (`MarqueurEmissionBalayage`), push, `MessageAccueil`, working hours. |
 | `automation` | `automation/` | 13 | No-code rules + approvals: `AutomationRule`/`Run`/`Step`, `ApprovalRequest`/`Decision`/`Delegation`, incoming webhooks. |
 | `agent` | `agent/` | 1 | Agentic action catalogue (declared in code, `AgentActionLog` only) — metadata; the endpoint re-checks permissions. |
 | `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. |
@@ -513,7 +513,7 @@ ventes.Devis --(installation.devis / .lead / .bon_commande / .client)--> install
 ```
 
 1. **Lead** (`crm.Lead`) — captured natively, by import, or by the website webhook. Funnel via `stage` (STAGES.py); lost via `perdu` + `motif_perte`, independent of stage.
-2. **Devis** (`ventes.Devis`) — carries `lead` FK **and** `client` FK; the client is resolved from the lead server-side (`apps/crm/services.resolve_client_for_lead` — reuse, else company-scoped email match, else create). `statut` walks brouillon -> envoye -> accepte. Accepting captures `option_acceptee` and advances the lead's `stage` to **SIGNED** (the conversion event, emitted on `core.events` as `devis_accepted`, to which `apps/crm/receivers.py` subscribes).
+2. **Devis** (`ventes.Devis`) — carries `lead` FK **and** `client` FK; the client is resolved from the lead server-side (`apps/crm/services.resolve_client_for_lead` — reuse, else company-scoped email match, else create). `statut` walks brouillon -> envoye -> accepte. Accepting captures `option_acceptee` and advances the lead's `stage` to **SIGNED** (the conversion event, emitted on `core.events` as `devis_accepted`, to which `apps/crm/receivers.py` subscribes). Reverse (founder 08/10/2026): a user moving the lead OUT of SIGNED (PATCH or bulk `set_stage`) calls `ventes.services.annuler_acceptation` — devis back to envoye, `core.events.devis_acceptation_annulee` lets installations/sav/crm undo their auto-created effects; a real downstream (facture, BC, advanced chantier) → 409.
 3. **BonCommande** (`ventes.BonCommande`) — `devis` OneToOne; marking it `livre` decrements stock via `MouvementStock`.
 4. **Facture** (`facturation.Facture`) — linked by `devis` FK (échéancier path) and/or `bon_commande` OneToOne (legacy). `type_facture` = acompte / intermediaire / solde / complete. `Paiement.facture` records payments, `Avoir.facture` credit notes; `montant_du = total_ttc - montant_paye - avoirs_total`.
 5. **Installation/Chantier** (`installations.Installation`) — created from the quote (`creer-depuis-devis`); links back via `devis`/`bon_commande`/`lead`/`client`; freezes the quote's bill of materials into `bom` (JSON); `statut` SIGNE -> … -> CLOTURE.

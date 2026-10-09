@@ -29,7 +29,10 @@ test('QX26 : le bouton de confirmation reste désactivé sans motif sélectionn�
 test('QX26 : submitRefus bloque sans refusMotifId (mandatory — jamais un refus silencieux)', () => {
   const body = SRC.slice(SRC.indexOf('const submitRefus = async'), SRC.indexOf('const submitRefus = async') + 500)
   assert.match(body, /if \(!d \|\| !refusMotifId\) return/)
-  assert.match(body, /motif_perte: refusMotifId/)
+  // ADEV44 — le corps est construit par corpsRefus (contrat devis_refuser.json),
+  // plus jamais la clé non déclarée `motif_perte`.
+  assert.match(body, /corpsRefus\(\{/)
+  assert.doesNotMatch(SRC, /motif_perte: refusMotifId/)
 })
 
 test('QX26 : le bouton « Refuser » de la ligne ouvre la modale (openRefusModal), plus de handleRefuser direct', () => {

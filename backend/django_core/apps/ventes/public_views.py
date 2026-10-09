@@ -143,6 +143,20 @@ def _opts_pdf_public(link, variante=None):
     return opts
 
 
+def _opts_quote_data_public(link):
+    """AMOT66 — options moteur de la charge JSON publique d'un lien.
+
+    ``{'pdf_mode': 'full'}`` + le jeton PUBLIC du lien résolu (``link.token``,
+    même pour un aperçu interne : c'est la page client de CE lien). Le moteur
+    ne le croit pas sur parole (``ShareLink`` de ce devis, non expiré, sinon
+    repli historique) — voir ``_opts_pdf_public``."""
+    opts = {'pdf_mode': 'full'}
+    _token = (getattr(link, 'token', '') or '').strip()
+    if _token:
+        opts['share_token'] = _token
+    return opts
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -1010,7 +1024,13 @@ def proposal_data(request, token):
     try:
         from .quote_engine.builder import build_quote_data
         devis = link.devis
-        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        # AMOT66 (C-AMOT-011) — LE JETON DU LIEN QUI SERT CETTE CHARGE, jamais
+        # un autre : sans lui, le moteur prend ``ShareLink.for_devis`` (le lien
+        # à l'expiration la plus lointaine, tout niveau confondu) et un visiteur
+        # « standard » recevait dans ``quote.links.signer`` le jeton d'un lien
+        # « confiance » du même devis. Même source unique que le PDF public
+        # (``_opts_pdf_public``, QRP1/A5).
+        data = build_quote_data(devis, _opts_quote_data_public(link))
         # Rule #4 — jamais de prix d'achat / marge côté client, même si le
         # builder en plaçait par mégarde dans la donnée du devis. Défense en
         # profondeur RÉCURSIVE : un layout 3D brut (Devis.roof_layout) peut être
@@ -1672,8 +1692,9 @@ def _data_pour_taille_detail(devis, link):
         ancrage_reel_absent, is_residential,
     )
 
-    data = _strip_confidential_deep(build_quote_data(devis, {'pdf_mode':
-                                                             'full'}))
+    # AMOT66 — même jeton servi que ``proposal_data`` (données identiques).
+    data = _strip_confidential_deep(build_quote_data(
+        devis, _opts_quote_data_public(link)))
     data = _sans_internes_bancables(data)
     resid = is_residential(devis, {'pdf_mode': 'full'})
     if resid and ancrage_reel_absent(data):

@@ -521,12 +521,12 @@ describe('redactLeadForLog — aucune PII dans les logs (ERR32)', () => {
     expect(redacted.billRange).toBe('1500-3000');
     expect(redacted.hasName).toBe(true);
     expect(redacted.hasCity).toBe(true);
-    expect(typeof redacted.id).toBe('string');
+    expect(redacted).not.toHaveProperty('id');
     expect(redacted.fbclid).toBe('present');
     expect(redacted.utmKeys).toContain('utm_source');
   });
 
-  it('id corrélable, stable, non réversible (même téléphone → même id)', () => {
+  it('pseudonyme stable (même téléphone → même id), hors journal depuis AACQ43', () => {
     const id1 = leadLogId('+212612345678');
     const id2 = leadLogId('+212612345678');
     const id3 = leadLogId('+212699999999');

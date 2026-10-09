@@ -355,7 +355,12 @@ CHEMINS_BASCULES = {
     # SPL244 — clé de GROUPE : la découpe de ``creation.py`` (SPL266 pont
     # calepinage, SPL267 devis automatique) répartit ces deux appels sur
     # ``creation_*.py`` ; le TOTAL du groupe reste 2, aucun autre fichier admis.
-    'domain/creation*.py': 2,
+    # ADEV25 (C-ADEV-036) — +2 : le devis automatique COMMERCIAL/INDUSTRIEL et
+    # AGRICOLE (``creation_auto._ecrire_devis_auto_par_pipeline``) passe lui
+    # aussi par le pipeline : ``MODE_ECRIRE`` sous transaction puis
+    # ``MODE_RAFRAICHIR``. Golden :
+    # ``test_adev25_auto_ci_agricole_pipeline``.
+    'domain/creation*.py': 4,
     # QJR97 — la resynchronisation 3D : ``sync_devis_from_layout`` est devenue
     # un adaptateur qui DEMANDE le mode « réconcilier » ; le geste lui-même est
     # l'étape ``reconcilier`` de ce même module.
@@ -366,6 +371,11 @@ CHEMINS_BASCULES = {
     # QJR554 — ``LigneDevisViewSet`` (ajout / modification / retrait d'une
     # ligne) demande le mode « rafraîchir » : études + caches (kWc, marge).
     'views/ligne_devis.py': 1,
+    # ADEV19 — l'activation d'une option par le CLIENT (``cycle_vie.
+    # _geste_option_client``) est un geste de ligne comme ``views/
+    # ligne_devis.py`` : même mode « rafraîchir » (études, kWc, marge).
+    # Golden : ``test_adev19_option_client_geste.test_kwc_rafraichi``.
+    'domain/cycle_vie.py': 1,
 }
 
 

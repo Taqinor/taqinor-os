@@ -22,11 +22,11 @@
 // re-vérifie (IsAdminOrResponsableTier) ; ce contrôle UI ne fait que masquer
 // les commandes. `company` n'est JAMAIS envoyée : elle est imposée côté
 // serveur (TenantMixin).
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { FileText, Mail, MessageCircle, Plus, Trash2, Eye, Save } from 'lucide-react'
 import api from '../../api/axios'
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast } from '../../ui/confirm'
+import useSectionListeAdmin from './useSectionListeAdmin'
 import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
   EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -53,12 +53,10 @@ const CONTEXTE_EXEMPLE = {
 const VIDE = { kind: 'email', code: '', nom: '', sujet: '', corps: '' }
 
 export default function ModelesBrandesSection() {
-  const canManage = useIsAdminOrResponsable()
-
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [busy, setBusy] = useState(false)
+  // APAR41 — confirmation MAISON + droit + état de liste : useSectionListeAdmin.
+  const {
+    confirmerSuppression, canManage, rows, loading, loadError, busy, setBusy, charger,
+  } = useSectionListeAdmin('/core/branded-templates/')
 
   const [draft, setDraft] = useState(VIDE)
   const [selectedId, setSelectedId] = useState(null)
@@ -69,16 +67,6 @@ export default function ModelesBrandesSection() {
     () => JSON.stringify(CONTEXTE_EXEMPLE, null, 2))
   const [apercu, setApercu] = useState(null)
   const [apercuErreur, setApercuErreur] = useState('')
-
-  const charger = () => api.get('/core/branded-templates/')
-    .then((res) => {
-      setRows(res.data?.results ?? res.data ?? [])
-      setLoadError(false)
-    })
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
-
-  useEffect(() => { charger() }, [])
 
   // Groupement par canal, ordre stable (email → pdf → whatsapp).
   const groupes = useMemo(() => KINDS.map(([kind, label, Icon]) => ({
@@ -171,7 +159,7 @@ export default function ModelesBrandesSection() {
   }
 
   const supprimer = async (row) => {
-    if (!window.confirm(`Supprimer le modèle « ${row.nom || row.code} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le modèle « ${row.nom || row.code} » ?` }))) return
     try {
       await api.delete(`/core/branded-templates/${row.id}/`)
       if (selectedId === row.id) { setSelectedId(null); setEdit(null); setApercu(null) }

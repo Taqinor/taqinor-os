@@ -81,7 +81,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+            libpango-1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi8 libharfbuzz0b shared-mime-info fonts-liberation fonts-noto-core libxmlsec1-openssl
       - name: Install dependencies (incl. mutmut 3 + the pytest-django bridge)
         working-directory: backend/django_core
         run: pip install -r requirements.txt -r requirements-dev.txt

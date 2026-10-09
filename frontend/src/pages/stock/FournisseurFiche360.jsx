@@ -9,7 +9,8 @@ import {
   Pencil, Trash2, Check, X, Download, Upload,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { formatMAD } from '../../lib/format'
+import { formatDate, formatMAD } from '../../lib/format'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { telHref } from '../../lib/contactLinks'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
@@ -26,6 +27,8 @@ import OnboardingFournisseurWizard from '../../components/OnboardingFournisseurW
 import ScoreRisqueFournisseurBadge from '../../components/ScoreRisqueFournisseurBadge'
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
+import { useConfirmation } from '../../features/stock/useConfirmation'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -700,6 +703,7 @@ function ContactForm({ fournisseurId, contact, onClose, onSaved }) {
 }
 
 function OngletContacts({ fournisseurId, canWrite }) {
+  const [confirmer, dialogueConfirmation] = useConfirmation()
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -715,7 +719,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
   useEffect(() => { reload() }, [fournisseurId])
 
   const supprimer = async (c) => {
-    if (!window.confirm(`Supprimer le contact « ${c.nom} » ?`)) return
+    if (!(await confirmer({ title: `Supprimer le contact « ${c.nom} » ?`, confirmLabel: 'Supprimer' }))) return
     try { await stockApi.deleteContactFournisseur(c.id); reload() } catch { /* affiché via reload */ }
   }
 
@@ -761,6 +765,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
         <ContactForm fournisseurId={fournisseurId} contact={editing.id ? editing : null}
                      onClose={() => setEditing(null)} onSaved={reload} />
       )}
+      {dialogueConfirmation}
     </div>
   )
 }
@@ -776,21 +781,136 @@ function statutExpiration(dateExpiration) {
   return { label: 'Valide', tone: 'success' }
 }
 
-function OngletDocuments({ fournisseurId }) {
+// ASTK225 — types XPUR1 (DocumentConformiteFournisseur.Type, models.py).
+const TYPES_CONFORMITE = [
+  { value: 'arf', label: 'Attestation de régularité fiscale (ARF)' },
+  { value: 'cnss', label: 'Attestation CNSS' },
+  { value: 'rc', label: 'Registre du commerce (RC)' },
+  { value: 'assurance', label: 'Assurance' },
+  { value: 'autre', label: 'Autre pièce' },
+]
+const libelleTypeConformite = (v) => TYPES_CONFORMITE.find((t) => t.value === v)?.label ?? v
+
+// ASTK225 — premier message d'un 400 DRF par champ (sous le champ fautif).
+function erreursParChamp(err, champs) {
+  const data = err?.response?.data ?? {}
+  const out = {}
+  for (const k of champs) {
+    const v = data[k]
+    const m = Array.isArray(v) ? v[0] : v
+    if (typeof m === 'string') out[k] = m
+  }
+  return out
+}
+
+function DocumentConformiteForm({ fournisseurId, document, onClose, onSaved }) {
+  const isNew = !document?.id
+  const [fields, setFields] = useState({
+    type_document: document?.type_document ?? 'arf',
+    reference: document?.reference ?? '',
+    date_emission: document?.date_emission ?? '',
+    date_expiration: document?.date_expiration ?? '',
+    obligatoire: document?.obligatoire ?? true,
+  })
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    setSaving(true); setErrors({})
+    const payload = {
+      type_document: fields.type_document,
+      reference: fields.reference.trim() || null,
+      date_emission: fields.date_emission || null,
+      date_expiration: fields.date_expiration || null,
+      obligatoire: !!fields.obligatoire,
+    }
+    try {
+      if (isNew) {
+        await stockApi.createDocumentConformiteFournisseur({ fournisseur: Number(fournisseurId), ...payload })
+      } else {
+        await stockApi.updateDocumentConformiteFournisseur(document.id, payload)
+      }
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      const parChamp = erreursParChamp(err, Object.keys(payload))
+      setErrors({ ...parChamp, submit: Object.keys(parChamp).length ? undefined : frErr(err, "L'enregistrement a échoué.") })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isNew ? 'Nouvelle pièce de conformité' : 'Modifier la pièce'}</DialogTitle>
+          <DialogDescription>Pièce légale du fournisseur (donnée interne).</DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Type de pièce" htmlFor="conf-type" error={errors.type_document}>
+            <Select value={fields.type_document} onValueChange={(v) => setField('type_document', v)}>
+              <SelectTrigger id="conf-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_CONFORMITE.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Référence" htmlFor="conf-ref" error={errors.reference}>
+            <Input id="conf-ref" value={fields.reference} onChange={(e) => setField('reference', e.target.value)} />
+          </FormField>
+          <FormField label="Date d'émission" htmlFor="conf-emission" error={errors.date_emission}>
+            <Input id="conf-emission" type="date" value={fields.date_emission}
+                   onChange={(e) => setField('date_emission', e.target.value)} />
+          </FormField>
+          <FormField label="Date d'expiration" htmlFor="conf-expiration" error={errors.date_expiration}>
+            <Input id="conf-expiration" type="date" value={fields.date_expiration}
+                   onChange={(e) => setField('date_expiration', e.target.value)} />
+          </FormField>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Checkbox checked={!!fields.obligatoire} onCheckedChange={(v) => setField('obligatoire', !!v)} />
+            Pièce obligatoire
+          </label>
+          {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>Enregistrer</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OngletDocuments({ fournisseurId, canWrite, resume, onConformiteChange }) {
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null) // {} = nouvelle pièce
+  const [aSupprimer, setASupprimer] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const isAdmin = useIsAdmin()
 
-  useEffect(() => {
-    let active = true
+  const reload = () => {
     stockApi.getDocumentsConformiteFournisseur(fournisseurId)
-      .then((r) => { if (active) setItems(r.data?.results ?? r.data ?? []) })
-      .catch((e) => { if (active) setError(frErr(e, 'Documents indisponibles.')) })
-    return () => { active = false }
-  }, [fournisseurId])
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Documents indisponibles.')))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const apresEcriture = () => { reload(); onConformiteChange?.() }
+  const supprimer = async (d) => {
+    setASupprimer(null); setActionError(null)
+    try {
+      await stockApi.deleteDocumentConformiteFournisseur(d.id)
+      apresEcriture()
+    } catch (err) {
+      setActionError(frErr(err, 'Suppression impossible.'))
+    }
+  }
 
   if (error) return <Indisponible message={error} />
   if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
-  if (items.length === 0) return <Indisponible message="Aucun document de conformité." />
 
   const toneClass = {
     destructive: 'text-destructive',
@@ -798,19 +918,390 @@ function OngletDocuments({ fournisseurId }) {
     success: 'text-emerald-600',
     muted: 'text-muted-foreground',
   }
+  // ASTK188 — TYPES requis manquants, calculés par le serveur (vue-360).
+  const manquants = Array.isArray(resume?.conformite_documents_manquants)
+    ? resume.conformite_documents_manquants : null
 
   return (
-    <ul className="flex flex-col gap-2">
-      {items.map((d) => {
-        const st = statutExpiration(d.date_expiration)
-        return (
-          <li key={d.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
-            <span>{d.type_document ?? `Document #${d.id}`}</span>
-            <span className={toneClass[st.tone]}>{st.label} · {fmtDate(d.date_expiration)}</span>
-          </li>
+    <div className="flex flex-col gap-3">
+      {manquants && (
+        manquants.length > 0 ? (
+          <div data-testid="conformite-manquants" role="status"
+               className="rounded-lg border border-warning/30 bg-warning/10 p-2 text-sm">
+            Pièces requises manquantes : {manquants.map(libelleTypeConformite).join(', ')}
+          </div>
+        ) : (
+          <div data-testid="conformite-manquants" className="text-sm text-emerald-600">
+            Toutes les pièces requises sont présentes et valides.
+          </div>
         )
-      })}
-    </ul>
+      )}
+      {canWrite && (
+        <div>
+          <Button type="button" size="sm" onClick={() => setEditing({})}>
+            <Plus className="size-4" /> Ajouter une pièce
+          </Button>
+        </div>
+      )}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun document de conformité." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((d) => {
+            const st = statutExpiration(d.date_expiration)
+            return (
+              <li key={d.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+                <span className="flex-1">
+                  {d.type_document_display ?? libelleTypeConformite(d.type_document) ?? `Document #${d.id}`}
+                  {d.reference ? <span className="text-muted-foreground"> · {d.reference}</span> : null}
+                </span>
+                <span className={toneClass[st.tone]}>
+                  {st.label}{d.date_expiration ? ` · ${formatDate(d.date_expiration)}` : ''}
+                </span>
+                {canWrite && (
+                  <IconButton size="sm" variant="ghost" label="Modifier la pièce" onClick={() => setEditing(d)}>
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </IconButton>
+                )}
+                {isAdmin && (
+                  <IconButton size="sm" variant="ghost" label="Supprimer la pièce"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setASupprimer(d)}>
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </IconButton>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {editing && (
+        <DocumentConformiteForm fournisseurId={fournisseurId} document={editing.id ? editing : null}
+                                onClose={() => setEditing(null)} onSaved={apresEcriture} />
+      )}
+      <ConfirmDialog
+        open={!!aSupprimer}
+        onOpenChange={(o) => { if (!o) setASupprimer(null) }}
+        title="Supprimer la pièce ?"
+        description={aSupprimer ? `${libelleTypeConformite(aSupprimer.type_document)} sera supprimée.` : ''}
+        confirmLabel="Supprimer"
+        onConfirm={() => supprimer(aSupprimer)}
+      />
+    </div>
+  )
+}
+
+// ── Onglet Incidents qualité (NTSCM9) — ASTK226 ─────────────────────────────
+// Déclarer / suivre / résoudre les incidents qualité du fournisseur. Liste
+// filtrée CÔTÉ SERVEUR (`?fournisseur=`) ; `declare_par` posé par le serveur ;
+// route Responsable/Admin (un 403 s'affiche tel quel). Le badge de risque
+// (ASTK187) est recalculé après chaque écriture.
+const GRAVITES_INCIDENT = [
+  { value: 'mineure', label: 'Mineure' },
+  { value: 'majeure', label: 'Majeure' },
+  { value: 'critique', label: 'Critique' },
+]
+const TYPES_INCIDENT = [
+  { value: 'non_conforme', label: 'Non conforme' },
+  { value: 'endommage', label: 'Endommagé' },
+  { value: 'erreur_reference', label: 'Erreur de référence' },
+  { value: 'documentation_manquante', label: 'Documentation manquante' },
+  { value: 'autre', label: 'Autre' },
+]
+const libelle = (liste, v) => liste.find((x) => x.value === v)?.label ?? v
+// Date du jour (calendrier marocain) au format ISO attendu par DRF.
+const aujourdhuiIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' })
+
+function IncidentForm({ fournisseurId, onClose, onSaved }) {
+  const [fields, setFields] = useState({
+    type_incident: 'non_conforme', gravite: 'mineure', date_incident: aujourdhuiIso(),
+    quantite_affectee: '0', description: '',
+  })
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    setSaving(true); setErrors({})
+    const payload = {
+      fournisseur: Number(fournisseurId),
+      type_incident: fields.type_incident,
+      gravite: fields.gravite,
+      date_incident: fields.date_incident,
+      quantite_affectee: Number(fields.quantite_affectee || 0),
+      description: fields.description.trim(),
+    }
+    try {
+      await stockApi.createIncidentQualiteFournisseur(payload)
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      const parChamp = erreursParChamp(err, Object.keys(payload))
+      setErrors({ ...parChamp, submit: Object.keys(parChamp).length ? undefined : frErr(err, 'Déclaration impossible.') })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Déclarer un incident qualité</DialogTitle>
+          <DialogDescription>Incident imputable au fournisseur (donnée interne).</DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Type d'incident" htmlFor="inc-type" error={errors.type_incident}>
+            <Select value={fields.type_incident} onValueChange={(v) => setField('type_incident', v)}>
+              <SelectTrigger id="inc-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_INCIDENT.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Gravité" htmlFor="inc-gravite" error={errors.gravite}>
+            <Select value={fields.gravite} onValueChange={(v) => setField('gravite', v)}>
+              <SelectTrigger id="inc-gravite"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {GRAVITES_INCIDENT.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Date de l'incident" htmlFor="inc-date" error={errors.date_incident}>
+            <Input id="inc-date" type="date" value={fields.date_incident}
+                   onChange={(e) => setField('date_incident', e.target.value)} />
+          </FormField>
+          <FormField label="Quantité affectée" htmlFor="inc-qte" error={errors.quantite_affectee}>
+            <Input id="inc-qte" type="number" step="any" value={fields.quantite_affectee}
+                   onChange={(e) => setField('quantite_affectee', e.target.value)} />
+          </FormField>
+          <FormField label="Description" htmlFor="inc-desc" error={errors.description} fullWidth>
+            <Textarea id="inc-desc" rows={2} value={fields.description}
+                      onChange={(e) => setField('description', e.target.value)} />
+          </FormField>
+          {errors.submit && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errors.submit}</p>}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>Déclarer</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OngletIncidents({ fournisseurId, canWrite, onConformiteChange }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [actionError, setActionError] = useState(null)
+  const [resolvingId, setResolvingId] = useState(null)
+
+  const reload = () => {
+    stockApi.getIncidentsQualiteFournisseurDe(fournisseurId)
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Incidents indisponibles.')))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const apresEcriture = () => { reload(); onConformiteChange?.() }
+  const resoudre = async (inc) => {
+    setResolvingId(inc.id); setActionError(null)
+    try {
+      await stockApi.updateIncidentQualiteFournisseur(inc.id, { resolu: true, date_resolution: aujourdhuiIso() })
+      apresEcriture()
+    } catch (err) {
+      setActionError(frErr(err, 'Résolution impossible.'))
+    } finally { setResolvingId(null) }
+  }
+
+  if (error) return <Indisponible message={error} />
+  if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canWrite && (
+        <div>
+          <Button type="button" size="sm" onClick={() => setShowForm(true)}>
+            <Plus className="size-4" /> Déclarer un incident
+          </Button>
+        </div>
+      )}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun incident qualité." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((inc) => (
+            <li key={inc.id} data-testid={`incident-${inc.id}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+              <span className="flex items-center gap-2">
+                <Badge tone={inc.gravite === 'critique' ? 'danger' : inc.gravite === 'majeure' ? 'warning' : 'neutral'}>
+                  {libelle(GRAVITES_INCIDENT, inc.gravite)}
+                </Badge>
+                {libelle(TYPES_INCIDENT, inc.type_incident)}
+                {inc.description ? <span className="text-muted-foreground">· {inc.description}</span> : null}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-muted-foreground">{formatDate(inc.date_incident)}</span>
+                {inc.resolu ? (
+                  <Badge tone="success">
+                    Résolu{inc.date_resolution ? ` le ${formatDate(inc.date_resolution)}` : ''}
+                  </Badge>
+                ) : canWrite ? (
+                  <Button type="button" size="sm" variant="outline" loading={resolvingId === inc.id}
+                          onClick={() => resoudre(inc)}>
+                    <Check className="size-4" /> Résoudre
+                  </Button>
+                ) : (
+                  <Badge tone="warning">Ouvert</Badge>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showForm && (
+        <IncidentForm fournisseurId={fournisseurId} onClose={() => setShowForm(false)} onSaved={apresEcriture} />
+      )}
+    </div>
+  )
+}
+
+// ── Onglet Accès (XPUR22 + NTPRT3) — ASTK227 ────────────────────────────────
+// Compte portail du fournisseur (provisionner / révoquer — Admin) et liens à
+// jeton (générer / lister / révoquer — URL ABSOLUE copiable vers la page
+// publique /fournisseur/lien/<token>, ASTK228). L'onglet n'est monté que pour
+// un administrateur ; le SERVEUR reste la garde (un 403 s'affiche tel quel).
+// Révoquer l'accès coupe AUSSI les liens publics (ASTK179) : le nombre de
+// jetons révoqués renvoyé par le serveur est affiché.
+const urlLienFournisseur = (token) => `${window.location.origin}/fournisseur/lien/${token}`
+
+function OngletAcces({ fournisseurId }) {
+  const [jetons, setJetons] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(null) // 'provisionner' | 'generer' | 'revoquer' | id jeton
+  const [info, setInfo] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const [confirmation, setConfirmation] = useState(null) // { kind: 'acces' } | { kind: 'jeton', jeton }
+  const [copie, setCopie] = useState(null)
+
+  const reload = () => {
+    stockApi.getPortailTokensFournisseur(fournisseurId)
+      .then((r) => setJetons(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+      .catch((e) => setError(frErr(e, 'Liens du portail indisponibles.')))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const agir = async (cle, appel, succes) => {
+    setBusy(cle); setActionError(null); setInfo(null)
+    try {
+      const r = await appel()
+      setInfo(succes(r?.data ?? {}))
+      reload()
+    } catch (err) {
+      setActionError(frErr(err, 'Action impossible.'))
+    } finally { setBusy(null) }
+  }
+  const provisionner = () => agir('provisionner',
+    () => stockApi.provisionnerAccesFournisseur(fournisseurId),
+    (d) => d.detail || 'Accès portail ouvert.')
+  const generer = () => agir('generer',
+    () => stockApi.genererPortailTokenFournisseur(fournisseurId),
+    () => 'Nouveau lien généré.')
+  const revoquerAcces = () => agir('revoquer',
+    () => stockApi.revoquerAccesFournisseur(fournisseurId),
+    (d) => `${d.detail || "L'accès portail de ce fournisseur est fermé."} `
+      + `${d.jetons_revoques ?? 0} lien(s) révoqué(s).`)
+  const revoquerJeton = (j) => agir(j.id,
+    () => stockApi.revoquerPortailTokenFournisseur(fournisseurId, j.id),
+    () => 'Lien révoqué.')
+  const copier = async (j) => {
+    try {
+      await navigator.clipboard.writeText(urlLienFournisseur(j.token))
+      setCopie(j.id)
+    } catch {
+      setActionError('Copie impossible : sélectionnez le lien à la main.')
+    }
+  }
+
+  if (error) return <Indisponible message={error} />
+  if (jetons === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">Compte portail</h3>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" loading={busy === 'provisionner'} onClick={provisionner}>
+            <Check className="size-4" /> Ouvrir l&apos;accès portail
+          </Button>
+          <Button type="button" size="sm" variant="destructive" loading={busy === 'revoquer'}
+                  onClick={() => setConfirmation({ kind: 'acces' })}>
+            <X className="size-4" /> Révoquer l&apos;accès
+          </Button>
+        </div>
+      </section>
+      {info && <p role="status" data-testid="acces-info" className="text-sm text-emerald-600">{info}</p>}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Liens à jeton</h3>
+          <Button type="button" size="sm" loading={busy === 'generer'} onClick={generer}>
+            <Plus className="size-4" /> Générer un lien
+          </Button>
+        </div>
+        {jetons.length === 0 ? (
+          <Indisponible message="Aucun lien généré." />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {jetons.map((j) => (
+              <li key={j.id} data-testid={`jeton-${j.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <code className="truncate text-xs">{urlLienFournisseur(j.token)}</code>
+                  <span className="text-xs text-muted-foreground">
+                    Créé le {formatDate(j.created_at)}
+                    {j.expires_at ? ` · expire le ${formatDate(j.expires_at)}` : ''}
+                  </span>
+                </span>
+                {j.est_valide ? (
+                  <span className="flex items-center gap-1">
+                    <Badge tone="success">Actif</Badge>
+                    <Button type="button" size="sm" variant="outline" onClick={() => copier(j)}>
+                      {copie === j.id ? 'Copié' : 'Copier le lien'}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" loading={busy === j.id}
+                            onClick={() => setConfirmation({ kind: 'jeton', jeton: j })}>
+                      Révoquer le lien
+                    </Button>
+                  </span>
+                ) : (
+                  <Badge tone={j.revoked ? 'danger' : 'neutral'}>{j.revoked ? 'Révoqué' : 'Expiré'}</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <ConfirmDialog
+        open={!!confirmation}
+        onOpenChange={(o) => { if (!o) setConfirmation(null) }}
+        title={confirmation?.kind === 'acces' ? "Révoquer l'accès du fournisseur ?" : 'Révoquer ce lien ?'}
+        description={confirmation?.kind === 'acces'
+          ? 'Le compte portail est fermé et TOUS les liens à jeton cessent de fonctionner immédiatement.'
+          : 'Le lien cesse de fonctionner immédiatement.'}
+        confirmLabel="Révoquer"
+        onConfirm={() => {
+          const c = confirmation
+          setConfirmation(null)
+          if (c?.kind === 'acces') revoquerAcces()
+          else if (c?.jeton) revoquerJeton(c.jeton)
+        }}
+      />
+    </div>
   )
 }
 
@@ -1006,6 +1497,8 @@ export default function FournisseurFiche360({
   const [resumeData, setResumeData] = useState(null)
   const [resumeUnavailable, setResumeUnavailable] = useState(false)
   const [resumeLoading, setResumeLoading] = useState(true)
+  // ASTK225 — rechargé après chaque écriture de conformité (types manquants).
+  const [resumeVersion, setResumeVersion] = useState(0)
   useEffect(() => {
     if (!fournisseurId || !canView) return undefined
     let active = true
@@ -1014,7 +1507,7 @@ export default function FournisseurFiche360({
       .catch(() => { if (active) setResumeUnavailable(true) })
       .finally(() => { if (active) setResumeLoading(false) })
     return () => { active = false }
-  }, [fournisseurId, canView])
+  }, [fournisseurId, canView, resumeVersion])
 
   // NTP2P8 — score de risque (0-100) affiché en badge sous le titre. En cas
   // d'échec on laisse `null` : le badge disparaît plutôt que d'afficher un
@@ -1027,7 +1520,8 @@ export default function FournisseurFiche360({
       .then((r) => { if (active) setScoreRisque(r.data ?? null) })
       .catch(() => { if (active) setScoreRisque(null) })
     return () => { active = false }
-  }, [fournisseurId, canView])
+    // ASTK226 — `resumeVersion` : recalculé après un incident / une pièce.
+  }, [fournisseurId, canView, resumeVersion])
 
   // WIR219/NTPRT25 — candidature d'auto-inscription au portail : visible et
   // décidable directement sur la fiche 360 (même garde Admin que la liste
@@ -1067,13 +1561,17 @@ export default function FournisseurFiche360({
     { value: 'avoirs', label: 'Avoirs', icon: FileMinus2, Comp: OngletAvoirs },
     { value: 'contacts', label: 'Contacts', icon: Users, Comp: OngletContacts },
     { value: 'documents', label: 'Conformité', icon: ShieldCheck, Comp: OngletDocuments },
+    // ASTK226 — incidents qualité (NTSCM9), jusqu'ici sans écran.
+    { value: 'incidents', label: 'Incidents qualité', icon: FileWarning, Comp: OngletIncidents },
+    // ASTK227 — accès fournisseur (compte portail + liens à jeton), Admin seul.
+    { value: 'acces', label: 'Accès', icon: Users, Comp: OngletAcces, admin: true },
     // NTP2P29 — wizard d'onboarding (dossier NTP2P7). Contextuelle : atteinte
     // par la fiche fournisseur, jamais une route autonome.
     { value: 'onboarding', label: 'Onboarding', icon: ShieldCheck, Comp: OngletOnboarding },
     { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix, prix: true },
     // WIR268/XPUR14 — export/import xlsx du tarif fournisseur.
     { value: 'tarif', label: 'Tarif', icon: Wallet, Comp: OngletTarif, prix: true },
-  ].filter((t) => voitPrix || !t.prix)), [voitPrix])
+  ].filter((t) => (voitPrix || !t.prix) && (isAdmin || !t.admin))), [voitPrix, isAdmin])
 
   if (!fournisseurId) {
     return (
@@ -1179,7 +1677,8 @@ export default function FournisseurFiche360({
         </TabsList>
         {tabs.map((t) => (
           <TabsContent key={t.value} value={t.value} data-testid={`f360-tab-${t.value}`}>
-            <t.Comp fournisseurId={fournisseurId} canWrite={canWrite} />
+            <t.Comp fournisseurId={fournisseurId} canWrite={canWrite} resume={resumeData}
+                    onConformiteChange={() => setResumeVersion((v) => v + 1)} />
           </TabsContent>
         ))}
       </Tabs>

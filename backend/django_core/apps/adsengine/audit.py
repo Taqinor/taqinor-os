@@ -214,17 +214,22 @@ def _audit_tracking(company):
             "Meta n'apprend pas des transitions CONTACTED/QUOTE_SENT/SIGNED "
             "du CRM.")
     # PUB29 — connecteur Odoo lecture seule (coût-par-signature RÉEL Odoo).
-    odoo_ok = bool(
-        os.environ.get('ODOO_URL') and os.environ.get('ODOO_DB')
-        and os.environ.get('ODOO_USERNAME') and os.environ.get('ODOO_API_KEY'))
+    # AACQ25 — état RÉEL du connecteur pour CETTE société (ASEC40 : les 4
+    # variables ET ``ODOO_COMPANY_ID`` = cette société), jamais la seule
+    # présence des 4 variables.
+    from . import odoo_client
+    odoo_ok = odoo_client.is_configured(company)
     if not odoo_ok:
         items.append(
             "Connecteur Odoo non câblé — le coût-par-signature RÉEL (deals "
             "Odoo) reste indisponible, seul le proxy CRM ERP est visible.")
     # PUB29 — webhook WhatsApp Cloud (attribution des conversations CTWA).
+    # AACQ25 — jumeau : le webhook exige aussi WHATSAPP_CLOUD_COMPANY_ID
+    # (``whatsapp_webhook`` le lit pour rattacher la conversation).
     whatsapp_ok = bool(
         os.environ.get('WHATSAPP_CLOUD_VERIFY_TOKEN')
-        and os.environ.get('WHATSAPP_CLOUD_APP_SECRET'))
+        and os.environ.get('WHATSAPP_CLOUD_APP_SECRET')
+        and os.environ.get('WHATSAPP_CLOUD_COMPANY_ID'))
     if not whatsapp_ok:
         items.append(
             "Webhook WhatsApp Cloud non câblé — l'attribution des "
@@ -300,14 +305,17 @@ PENDING_LOOPS = (
     {
         'id': 'odoo_connector',
         'nom': 'Connecteur Odoo lecture seule (coût-par-signature réel)',
-        'requires': ('ODOO_URL', 'ODOO_DB', 'ODOO_USERNAME', 'ODOO_API_KEY'),
+        'requires': ('ODOO_URL', 'ODOO_DB', 'ODOO_USERNAME', 'ODOO_API_KEY',
+                     'ODOO_COMPANY_ID'),
         'remediation_fr': (
             'Odoo Online → Paramètres → Utilisateurs & Sociétés → '
             'Utilisateurs → votre compte → onglet « Sécurité du compte » → '
             'Clés API → Nouvelle clé API. Renseigner ODOO_URL (ex. '
             'https://votre-instance.odoo.com), ODOO_DB, ODOO_USERNAME (votre '
             'login) et ODOO_API_KEY (la clé générée, utilisée comme mot de '
-            'passe).'),
+            'passe), puis poser ODOO_COMPANY_ID = id de la société '
+            'propriétaire des données Odoo dans l\'ERP (sans elle, le '
+            'connecteur reste inactif pour toutes les sociétés).'),
     },
     {
         'id': 'whatsapp_cloud_ctwa',
@@ -374,6 +382,11 @@ def pending_activation_loops():
     loops = []
     for loop in PENDING_LOOPS:
         actif = all(os.environ.get(key) for key in loop['requires'])
+        if loop['id'] == 'odoo_connector':
+            # AACQ25 — l'état affiché = l'état RÉEL du connecteur (même
+            # fonction que celle qui décide des appels Odoo).
+            from . import odoo_client
+            actif = odoo_client.is_configured()
         loops.append({
             'id': loop['id'],
             'nom': loop['nom'],

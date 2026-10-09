@@ -40,6 +40,19 @@ def _budget_of(payload):
         payload.get('daily_budget') or payload.get('lifetime_budget'))
 
 
+def _adset_budget_and_type(payload):
+    """AACQ16 — ``(budget, type)`` d'un ad set Meta : un ``lifetime_budget``
+    > 0 fait un budget À VIE (même si ``daily_budget`` vaut ``'0'``) ; sinon un
+    ``daily_budget`` > 0 fait un budget QUOTIDIEN ; sinon ``(None, '')``."""
+    lifetime = _to_decimal(payload.get('lifetime_budget'))
+    if lifetime is not None and lifetime > 0:
+        return lifetime, 'lifetime'
+    daily = _to_decimal(payload.get('daily_budget'))
+    if daily is not None and daily > 0:
+        return daily, 'daily'
+    return None, ''
+
+
 def sync_campaigns(company, payloads, *, created_via_engine=False):
     """Upsert les miroirs de campagne depuis des payloads Meta. Idempotent."""
     mirrors = []
@@ -78,10 +91,12 @@ def sync_adsets(company, payloads, *, created_via_engine=False):
         if camp_mid:
             campaign = AdCampaignMirror.objects.filter(
                 company=company, meta_id=camp_mid).first()
+        budget, budget_type = _adset_budget_and_type(p)
         fields = {
             'name': p.get('name', '') or '',
             'status': p.get('status', '') or '',
-            'budget': _budget_of(p),
+            'budget': budget,
+            'budget_type': budget_type,  # AACQ16
             'campaign': campaign,
         }
         obj, created = AdSetMirror.objects.get_or_create(

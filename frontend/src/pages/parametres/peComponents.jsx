@@ -8,6 +8,7 @@ import {
   Card, CardContent, Label, Input, Button, IconButton, Spinner, EmptyState,
 } from '../../ui'
 import { ACCEPTED, MAX_MB, mediaUrl } from './peConstants'
+import { useConfirmDialog } from '../../ui/confirm'
 
 // ── SVG helper ────────────────────────────────────────────────────────────────
 // Conservé : les icônes de titre de section sont passées en tracés SVG bruts
@@ -135,8 +136,10 @@ export function UploadZone({ label, hint, currentUrl, onUpload, onDelete, upload
 
 // ── Référentiel block (Catégories / Fournisseurs) ─────────────────────────────
 // Liste éditable inline. Mêmes callbacks onCreate/onUpdate/onDelete, même
-// confirmation de suppression (window.confirm) — comportement identique.
+// confirmation de suppression (dialogue maison, APAR41).
 export function ReferentielBlock({ title, icon, items, onCreate, onUpdate, onDelete }) {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [newName, setNewName]       = useState('')
   const [creating, setCreating]     = useState(false)
   const [editId, setEditId]         = useState(null)
@@ -161,7 +164,7 @@ export function ReferentielBlock({ title, icon, items, onCreate, onUpdate, onDel
   }
 
   const doDelete = async (id) => {
-    if (!window.confirm('Supprimer ?')) return
+    if (!(await confirmerSuppression({ title: 'Supprimer ?' }))) return
     await onDelete(id)
   }
 

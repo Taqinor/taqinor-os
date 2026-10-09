@@ -155,6 +155,8 @@ class ResyncParite(TestCase):
             self.assertEqual(reponse.status_code, 200, reponse.data)
         publics = []
         for devis in (module, ventes):
+            # ADEV11 : un brouillon n'est plus servi sur le jeton client.
+            Devis.objects.filter(pk=devis.pk).update(statut='envoye')
             lien = ShareLink.for_devis(devis)
             pub = APIClient().get(f'/api/django/ventes/proposal/{lien.token}/')
             # Diagnostic : la resynchro et les lignes RÉELLES du devis.

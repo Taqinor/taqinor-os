@@ -24,7 +24,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Boxes, Plus, Trash2, ArrowLeft } from 'lucide-react'
 import api from '../../api/axios'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   Button, IconButton, Input, Spinner, EmptyState, Card, CardContent,
 } from '../../ui'
@@ -49,6 +49,8 @@ function formulaireVide(champs) {
 }
 
 export default function CustomObjectRecordsPage() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const { code } = useParams()
 
   const [colonnes, setColonnes] = useState([])
@@ -115,7 +117,7 @@ export default function CustomObjectRecordsPage() {
   }
 
   const supprimer = async (ligne) => {
-    if (!window.confirm('Supprimer cet enregistrement ?')) return
+    if (!(await confirmerSuppression({ title: 'Supprimer cet enregistrement ?' }))) return
     try {
       await api.delete(`/custom-fields/custom-objects/${code}/records/${ligne.id}/`)
       if (editionId === ligne.id) annulerEdition()

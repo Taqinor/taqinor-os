@@ -21,7 +21,9 @@ from apps.adsengine.rules import (
 
 class RenderTests(SimpleTestCase):
     def test_all_eight_templates_render(self):
-        self.assertEqual(len(alerts.WA_TEMPLATES), 8)
+        # AACQ7 — + ``cost_per_lead_ceiling`` (stop-loss CPL) ; AACQ22 —
+        # + ``regle_moteur`` (alerte de règle générique) : 10 gabarits.
+        self.assertEqual(len(alerts.WA_TEMPLATES), 10)
         ctx = {
             'campaign_name': 'Solaire', 'ad_name': 'Ad1', 'adset_name': 'Set1',
             'value': 300, 'window_days': 7, 'threshold': 250, 'spend': 40,

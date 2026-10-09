@@ -132,6 +132,8 @@ creer_facture_contrat = _facturation_ops.creer_facture_contrat
 creer_facture_regie = _facturation_ops.creer_facture_regie
 creer_facture_acompte_situation = _facturation_ops.creer_facture_acompte_situation
 creer_facture_classique = _facturation_ops.creer_facture_classique
+# ASTK197 — facture brouillon d'une consommation de consignation (stock).
+creer_facture_consignation = _facturation_ops.creer_facture_consignation
 ajouter_lignes_frais_refactures = _facturation_ops.ajouter_lignes_frais_refactures
 calculer_date_echeance = _facturation_ops.calculer_date_echeance
 get_facture_or_none = _facturation_ops.get_facture_or_none
@@ -178,6 +180,11 @@ otp_lecture_verified = _cycle_vie.otp_lecture_verified
 # pin `tests/test_services_surface.py`, mis à jour dans le même commit.
 verifier_empreinte_signature = _cycle_vie.verifier_empreinte_signature
 accept_devis = _cycle_vie.accept_devis
+# Décision fondateur 08/10/2026 — dés-acceptation (lead sorti de « Signé »).
+annuler_acceptation = _cycle_vie.annuler_acceptation
+AnnulationAcceptationBloquee = _cycle_vie.AnnulationAcceptationBloquee
+raison_blocage_annulation_acceptation = (
+    _cycle_vie.raison_blocage_annulation_acceptation)
 share_link_for_bcf = _cycle_vie.share_link_for_bcf
 INSTALLATION_SHARE_UTM_CAMPAIGN = _cycle_vie.INSTALLATION_SHARE_UTM_CAMPAIGN
 installation_share_link = _cycle_vie.installation_share_link
@@ -490,6 +497,7 @@ __all__ = [
     'AVERTISSEMENTS_KIT_ABSENT',
     'AcceptError',
     'AcompteAvantDelaiLegal',
+    'AnnulationAcceptationBloquee',
     'AutoDevisError',
     'BOQ_CATEGORIES',
     'BOQ_SUFFIXE_A_CHIFFRER',
@@ -548,6 +556,7 @@ __all__ = [
     'ajouter_lignes_devis_import',
     'ajouter_lignes_facture_import',
     'ajouter_lignes_frais_refactures',
+    'annuler_acceptation',
     'anomalies_emission_facture',
     'arbitrer_compte_calepinage',
     'auto_devis_tunnel_actif',
@@ -586,6 +595,7 @@ __all__ = [
     'creer_devis_import',
     'creer_facture_acompte_situation',
     'creer_facture_classique',
+    'creer_facture_consignation',
     'creer_facture_contrat',
     'creer_facture_import',
     'creer_facture_regie',
@@ -647,6 +657,7 @@ __all__ = [
     'rafraichir_etude_horaire',
     'rafraichir_etude_horaire_devis',
     'rafraichir_etudes_du_devis',
+    'raison_blocage_annulation_acceptation',
     'recommended_option_effective',
     'record_payment_from_link',
     'refresh_marge_snapshot',

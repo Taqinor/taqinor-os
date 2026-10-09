@@ -39,154 +39,29 @@ ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
 
-# YDATA10 — baseline: reviewed as-of 2026-07-12. Currently EMPTY — every
-# datetime.now(...)/datetime.utcnow(...) call in apps/ already passes an
-# explicit tzinfo (e.g. datetime.now(CASABLANCA), datetime.now(timezone.utc))
-# and is therefore not flagged in the first place (see _is_naive_call below);
-# kept here so a genuinely reviewed naive call can be added without a second
-# file (not in this task's declared Files: list).
+# ADEP25 — les listes d'exceptions sont des IDENTITES DE CONTENU (`fichier::Classe.champ`),
+# jamais `fichier:ligne` : une cle par numero de ligne se decalait a chaque insertion
+# (bug-class #34), laissait des cles mortes et PRE-AUTORISAIT la ligne vide laissee
+# derriere (un `DateField(auto_now_add=True)` pose en ligne 697 passait). Une cle qui
+# n'apparie plus aucun site FAIT ECHOUER la garde (cliquet decroissant).
+
+# YDATA10 — appels datetime.now/utcnow/ctor naifs revus : aucun (cle = `fichier::fonction`).
 NAIVE_DATETIME_ALLOWLIST: set[str] = set()
 
-# YDATA11 — DateField(auto_now[_add]=True) sites reviewed as-of 2026-07-12:
-# ventes numbering-anchor dates (date_emission/date), deliberately DATE-only
-# business fields, not timestamps — not a drift to fix here.
-# Rebased 2026-07-13 (wave-7 ODX17 fold): the state-only facturation split
-# relocated Facture/Avoir/RelanceLog ventes->facturation (and shifted
-# NoteDebit up), so the SAME 4 reviewed fields keep their old keys' meaning
-# at new file:line — Facture.date_emission ventes:722->facturation:113,
-# Avoir.date_emission ventes:1523->facturation:888, NoteDebit.date_emission
-# ventes:1649->ventes:681, RelanceLog.date ventes:1922->facturation:1072.
+# YDATA11 — DateField(auto_now[_add]=True) revus : dates-ancre de numerotation, champs
+# DATE metier (jour), pas des horodatages.
 DATEFIELD_AUTO_NOW_ALLOWLIST = {
-    "backend/django_core/apps/ventes/models.py:697",
-    "backend/django_core/apps/facturation/models.py:118",
-    # Remappés 917->945 (Avoir.date_emission) et 1101->1155 (RelanceLog.date)
-    # par AUD188 : les CheckConstraint d'argent ajoutées sur Facture,
-    # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
-    # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
-    # avant/après (vérifiée contre 024a132c). Bug-class #34.
-    # Remappés 937->967 et 1139->1169 par CIQ214 : la retenue de garantie
-    # (2 champs + 2 propriétés, +30 lignes) est insérée dans Facture, AVANT
-    # ces deux champs. MÊME champ, déclaration byte-identique. Bug-class #34.
-    # Remappés 967->980 et 1169->1182 par CIQ215/CIQ216 : ventilation_tva et
-    # reference_commande_client (+13 lignes) insérés dans Facture, AVANT ces
-    # deux champs. MÊME champ, déclaration byte-identique. Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:980",
-    "backend/django_core/apps/facturation/models.py:1182",
-    # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
-    # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
-    # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux
-    # lectures). MÊME champ, déclaration identique avant/après (vérifié contre
-    # origin/dev-cad : `date_emission = models.DateField(auto_now_add=True)`).
-    # Bug-class #34.
-    "backend/django_core/apps/ventes/models_facturation.py:450",  # NoteDebit.date_emission (models.py:1376->models_facturation.py:450 : SPL149 déplace NoteDebit, move only, champ byte-identique) (1361->1376 : ERR-QJR570 LigneDevis.ligne_composee insère 15 lignes avant) (1354->1361 : ERR-QAC-MULTIVILLA-MATERIEL-XN insère 7 lignes avant, reliquat_par_ligne ×N) (1350->1354 : QJR669 remplace le gel de Devis.save par rafraichir_prix_par_kwc) (1346->1350 : ERR-QAC-MULTIVILLA-TOTAL-XN insère 4 lignes avant) (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
-    # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
-    # actif couvert et date de déclaration d'un sinistre ; même motif que les
-    # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
-    # created_at). Pas un bug de fuseau à corriger.
-    "backend/django_core/apps/assurances/models.py:290",  # ActifCouvert.date_ajout
-    "backend/django_core/apps/assurances/models.py:340",  # DeclarationSinistre.date_declaration
-    # NTEDU4 — Inscription.date_demande : date (jour) de la demande d'inscription,
-    # même motif que les dates-ancre facture/paiement ci-dessus (pas un horodatage).
-    # Remappé 255->259 (NTEDU25 : Eleve.allergies inséré avant Inscription
-    # dans models.py), puis 259->268 (WIR91 : Famille.client, +9 lignes
-    # insérées avant Inscription dans le même fichier), même champ inchangé
-    # (vérifié: déclaration identique DateField(auto_now_add=True) avant/après).
-    "backend/django_core/apps/education/models.py:268",
+    "backend/django_core/apps/facturation/models.py::Facture.date_emission",
+    "backend/django_core/apps/facturation/models.py::Avoir.date_emission",
+    "backend/django_core/apps/facturation/models.py::RelanceLog.date",
+    "backend/django_core/apps/ventes/models_facturation.py::NoteDebit.date_emission",
 }
+# DateField dont le nom ressemble a un horodatage mais qui est une DATE (jour) revue.
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
-    # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),
-    # champ pré-existant, même motif que les dates-ancre ventes du
-    # DATEFIELD_AUTO_NOW_ALLOWLIST ci-dessus — pas un bug d'horodatage.
-    # Modèle relocalisé compta→crm par ODX13 (2026-07-12) : clé remappée.
-    # Remappé 2017->2113 (NTMIG26 : couche certification ajoutée sur
-    # Partenaire, +96 lignes AVANT CommissionPartenaire dans le même
-    # fichier) — même champ inchangé (vérifié : déclaration identique
-    # DateField(null=True, blank=True) avant/après).
-    # 2002 -> 2017 -> 2027 -> 2113 -> 2123 -> 2138 (WREF2 +15) : MÊME champ, poussé par les
-    # insertions successives dans crm/models.py (fusion de deux sessions
-    # parallèles le 14/08/2026). Une seule entrée désormais, les doublons
-    # périmés ci-dessous ayant été retirés. Bug-class #34.
-    # Remappé 2210->2276 (lot moteur 24/08 : +66 lignes — champs équipements
-    # Lead 0079 insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
-    # identique avant/après (vérifié contre origin/main). Bug-class #34.
-    # Remappé 2316->2332 (T-TRACE 25/08 : +16 lignes — Lead.appareil_id et son
-    # index insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
-    # identique avant/après (`paye_le = models.DateField(null=True, blank=True,
-    # verbose_name='Payée le')`, vérifié contre 1d6f4c29). Bug-class #34.
-    # Remappé 2402->2441 (lane CRX 02/09 : +39 lignes insérées AVANT
-    # CommissionPartenaire dans crm/models.py — contrainte CI e-mail CRX24,
-    # champ Lead.score_ajustement CRX22, retrait de Playbook.bloquant CRX35).
-    # MÊME champ, déclaration identique avant/après (vérifié contre e17ef026 :
-    # `paye_le = models.DateField(null=True, blank=True,
-    # verbose_name='Payée le')`). Bug-class #34.
-    # Remappé 2511->2532 (lane CKP 10/09 : +21 lignes insérées AVANT
-    # CommissionPartenaire dans crm/models.py — statut ANNULEE de
-    # RelanceEtape (CKP1) et champ RelanceEtape.cadence_depart (CKP2)).
-    # MÊME champ, déclaration identique avant/après (vérifié contre
-    # e1226355 : `paye_le = models.DateField(null=True, blank=True,
-    # verbose_name='Payée le')`). Bug-class #34.
-    # Remappé 2532->2538 (lane VISITE-CADENCE 15/09 : +6 lignes insérées AVANT
-    # CommissionPartenaire dans crm/models.py — l'issue « visite acceptée »
-    # ajoutée à LeadActivity.OUTCOMES). MÊME champ, déclaration identique
-    # avant/après (vérifié contre HEAD : `paye_le = models.DateField(
-    # null=True, blank=True, verbose_name='Payée le')`). Bug-class #34.
-    # Remappe 2538->2558 (lane STKCAT9 16/09 : +20 lignes inserees AVANT
-    # CommissionPartenaire dans crm/models.py — le champ
-    # Lead.structure_produit et son commentaire). MEME champ, declaration
-    # identique avant/apres (verifie contre main : `paye_le = models.DateField(
-    # null=True, blank=True, verbose_name='Payee le')`). Bug-class #34.
-    # Remappé 2558->2685 (lane CAD149 21/09 : +127 lignes insérées AVANT
-    # CommissionPartenaire dans crm/models.py — les six vocabulaires et les
-    # huit champs de la vague 1 du script d'appel guidé). MÊME champ,
-    # déclaration identique avant/après (vérifié contre origin/dev-cad :
-    # `paye_le = models.DateField(null=True, blank=True,
-    # verbose_name='Payée le')`). Bug-class #34.
-    # Remappé 2685->2757 (lane CAD154, même run : +72 lignes — les deux
-    # vocabulaires et les six champs de la vague 2). MÊME champ, déclaration
-    # identique (`paye_le = models.DateField(null=True, blank=True,
-    # verbose_name='Payée le')`). Bug-class #34.
-    # Remappé 2757->2807 (lane CAD167, même run : +50 lignes — les douze SRM
-    # régionales, les libellés historiques et le help_text du distributeur).
-    # MÊME champ, déclaration identique. Bug-class #34.
-    # Remappé 2558->2605 (lane CAD IK-MESURE 21/09 : +47 lignes insérées
-    # AVANT CommissionPartenaire dans crm/models.py — la colonne
-    # RelanceEtape.outcome de CAD118, le champ Lead.date_creation_origine et
-    # la propriété Lead.date_origine de CAD119). MÊME champ, déclaration
-    # identique avant/après (vérifié contre origin/dev-cad : `paye_le =
-    # models.DateField(null=True, blank=True, verbose_name='Payée le')`).
-    # Bug-class #34.
-    # Remappé 2605->2624 (fold des autres lanes CAD du 21/09 : +19 lignes
-    # insérées AVANT CommissionPartenaire dans crm/models.py). MÊME champ,
-    # déclaration identique avant/après. Bug-class #34.
-    # Remappé après le FOLD des deux lanes (CAD IK-MESURE + CAD149/154/167)
-    # dans crm/models.py : les deux séries d'insertions se cumulent, la
-    # ligne réelle du fichier fusionné est 2854. MÊME champ, déclaration
-    # identique. Bug-class #34.
-    # Remappé 2854->2902->2922 (vague CAD 2, 24/09/2026 : CAD144 contact
-    # secondaire + CAD158 + CAD65 civilite insérés AVANT CommissionPartenaire)
-    # (note d'origine : CAD144 contact
-    # secondaire + CAD158 facture_hiver insérés AVANT CommissionPartenaire)
-    # — MÊME champ, déclaration identique avant/après. Bug-class #34.
-    # Remappé 2922->2933 (PARAM-CADENCE 25/09/2026 : +11 lignes — le champ
-    # RelanceEtape.cle et son commentaire, insérés AVANT CommissionPartenaire)
-    # — MÊME champ, déclaration identique (`paye_le = models.DateField(
-    # null=True, blank=True, verbose_name='Payée le')`). Bug-class #34.
-    # Remappé 2933->2985 (CAD178 28/09/2026 : +52 lignes — le modèle
-    # GesteRelanceAppareil inséré AVANT CommissionPartenaire) — MÊME champ,
-    # déclaration identique. Bug-class #34.
-    # Remappé 2985->3019 (COCKPIT-CONTRÔLE B1 30/09/2026 : +34 lignes —
-    # RelanceEtape.due_initial_at / nb_reports et RelanceEtape.save, insérés
-    # AVANT CommissionPartenaire) — MÊME champ, déclaration identique
-    # (`paye_le = models.DateField(null=True, blank=True,
-    # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:3845",  # CommissionPartenaire.paye_le (3305->3808 : vague 1 CIQ/AGR insère +503 lignes de modèles Lead/visites AVANT ; 3808->3815 : Lead.gclid + canal GOOGLE_ADS, +7 lignes AVANT ; 3815->3845 : CIQ666 contrat_electricite + option_tarifaire_bt, +30 lignes AVANT ; déclaration relue identique, bug-class #34)
-    # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
-    # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
-    # identique avant/après (vérifié contre origin/main), pas un nouveau site.
-    # PUB75 (batch-2) — ConsentRecord.date_consentement : DATE (jour) de recueil
-    # du consentement image/témoignage (loi 09-08), pas un horodatage. Le champ
-    # timestamp de ce modèle (revoked_at) EST bien un DateTimeField. Pas un bug.
-    "backend/django_core/apps/adsengine/models.py:2631",  # ConsentRecord.date_consentement
+    # CommissionPartenaire.paye_le : date de paiement (jour).
+    "backend/django_core/apps/crm/models.py::CommissionPartenaire.paye_le",
+    # PUB75 ConsentRecord.date_consentement : jour de recueil du consentement (loi 09-08).
+    "backend/django_core/apps/adsengine/models.py::ConsentRecord.date_consentement",
 }
 
 TIMESTAMP_NAME_RE = re.compile(
@@ -283,9 +158,30 @@ def _is_naive_datetime_ctor_call(node):
     return _kwarg(node, "tzinfo") is None
 
 
+def _enclosing_function(tree, node) -> str:
+    """Nom (qualifie par la classe) de la fonction englobante, `<module>` sinon : identite
+    de CONTENU stable quand des lignes sont inserees au-dessus."""
+    meilleur, taille = "<module>", None
+    for outer in ast.walk(tree):
+        if not isinstance(outer, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        fin = getattr(outer, "end_lineno", outer.lineno)
+        if outer.lineno <= node.lineno <= fin and (taille is None or fin - outer.lineno < taille):
+            meilleur, taille = outer.name, fin - outer.lineno
+    return meilleur
+
+
+def _orphelines(allow, used, nom):
+    return [("ORPHAN_ALLOWLIST_KEY",
+             f"{nom} : cle « {cle} » n'apparie aucun site - retirez-la "
+             "(les exceptions sont des identites de contenu, base decroissante).")
+            for cle in sorted(set(allow) - used)]
+
+
 def check_naive_datetime():
     all_rows = []
     findings = []
+    used = set()
     for _app, path in _iter_source_files():
         source = path.read_text(encoding="utf-8")
         try:
@@ -305,13 +201,15 @@ def check_naive_datetime():
             lineno = node.lineno
             rel = _rel(path)
             all_rows.append((rel, lineno, kind))
-            allow_key = f"{rel}:{lineno}"
+            allow_key = f"{rel}::{_enclosing_function(tree, node)}"
+            used.add(allow_key)
             if allow_key not in NAIVE_DATETIME_ALLOWLIST:
                 findings.append((
                     kind,
                     f"{rel}:{lineno}: naive datetime construction — use "
                     "django.utils.timezone.now() instead.",
                 ))
+    findings += _orphelines(NAIVE_DATETIME_ALLOWLIST, used, "NAIVE_DATETIME_ALLOWLIST")
     return all_rows, findings
 
 
@@ -338,6 +236,8 @@ def _iter_field_assignments(tree):
 def check_datefield_timestamps():
     all_rows = []
     findings = []
+    used_auto = set()
+    used_ts = set()
     for path in _iter_model_files():
         source = path.read_text(encoding="utf-8")
         try:
@@ -350,7 +250,7 @@ def check_datefield_timestamps():
                 continue
             lineno = node.lineno
             rel = _rel(path)
-            allow_key = f"{rel}:{lineno}"
+            allow_key = f"{rel}::{model}.{field}"
 
             auto_now = _kwarg(node, "auto_now")
             auto_now_add = _kwarg(node, "auto_now_add")
@@ -361,6 +261,7 @@ def check_datefield_timestamps():
             )
             if has_auto_now:
                 all_rows.append((rel, lineno, model, field, "AUTO_NOW_DATEFIELD"))
+                used_auto.add(allow_key)
                 if allow_key not in DATEFIELD_AUTO_NOW_ALLOWLIST:
                     findings.append((
                         "DATEFIELD_AUTO_NOW",
@@ -371,6 +272,7 @@ def check_datefield_timestamps():
                     ))
             elif TIMESTAMP_NAME_RE.search(field):
                 all_rows.append((rel, lineno, model, field, "TIMESTAMP_AS_DATEFIELD"))
+                used_ts.add(allow_key)
                 if allow_key not in TIMESTAMP_AS_DATEFIELD_ALLOWLIST:
                     findings.append((
                         "TIMESTAMP_AS_DATEFIELD",
@@ -378,6 +280,10 @@ def check_datefield_timestamps():
                         "timestamp but is a plain DateField — use an aware "
                         "DateTimeField.",
                     ))
+    findings += _orphelines(DATEFIELD_AUTO_NOW_ALLOWLIST, used_auto,
+                            "DATEFIELD_AUTO_NOW_ALLOWLIST")
+    findings += _orphelines(TIMESTAMP_AS_DATEFIELD_ALLOWLIST, used_ts,
+                            "TIMESTAMP_AS_DATEFIELD_ALLOWLIST")
     return all_rows, findings
 
 

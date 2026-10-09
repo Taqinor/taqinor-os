@@ -882,7 +882,7 @@ def _creer_brouillon(intention):
     cross-app sanctionnée, jamais un import de ``crm.models``.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.utils.references import create_with_reference
+    from apps.ventes.utils.company_settings import create_numbered
 
     client = intention.client
     if client is None:
@@ -911,7 +911,7 @@ def _creer_brouillon(intention):
             roof_layout=intention.layout or None,
         )
 
-    return create_with_reference(Devis, 'DEV', intention.company, _create)
+    return create_numbered(Devis, intention.company, 'devis', _create)
 
 
 def appliquer(devis, intention):

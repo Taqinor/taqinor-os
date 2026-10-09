@@ -1,0 +1,54 @@
+{
+  "endpoint": "POST /api/django/installations/sync/",
+  "op_type": "chantier.cocher_checklist (une op du lot `ops`)",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Le handler `_h_cocher_checklist` ignore encore `equipements` : ACHT70 le lui fait traiter (meme service que l'action en ligne) et remet `forme_serveur: complete`.",
+  "pourquoi": "ACHT40 (Groupe ACHT, audit chantiers du 08/10/2026, C-ACHT-067) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui l'op hors-ligne ne porte que `{chantier, cle, fait}` (frontend/src/pages/installations/ChantierChecklist.jsx:76-78) : les n° de serie saisis hors ligne sont perdus. Le `payload` de l'op a la forme IDENTIQUE au corps en ligne de l'action `cocher-checklist` (views/installation.py, docstring de `cocher_checklist` : {cle, fait, equipements: [{produit, numero_serie}]}) plus l'identifiant du chantier. ACHT70 etend le handler de synchro, ACHT71 fait envoyer `equipements` par l'ecran (ACHT66/ACHT67 consomment le contrat jumeau installation_divergence_devis.json). `equipements` vide est accepte (la saisie de serie ne bloque jamais la completion). Valeurs illustratives.",
+  "note_forme": "`requete` = le corps POST (lot `ops`) ; `exemple` = la reponse du lot, forme de `field_sync.apply_batch` ({applied, replayed, errors, results}) ; `detail` n'est rempli que sur un refus du lot entier (400 : ops non liste, lot trop grand, pas de societe), null sinon.",
+  "requete": {
+    "ops": [
+      {
+        "client_op_id": "c0ffee00-0000-4000-8000-000000000071",
+        "op_type": "chantier.cocher_checklist",
+        "payload": {
+          "chantier": 88,
+          "cle": "pose_onduleur",
+          "fait": true,
+          "equipements": [
+            {"produit": 87, "numero_serie": "SN-OND-2026-0042"}
+          ]
+        }
+      },
+      {
+        "client_op_id": "c0ffee00-0000-4000-8000-000000000072",
+        "op_type": "chantier.cocher_checklist",
+        "payload": {
+          "chantier": 88,
+          "cle": "pose_panneaux",
+          "fait": true,
+          "equipements": []
+        }
+      }
+    ]
+  },
+  "exemple": {
+    "applied": 2,
+    "replayed": 0,
+    "errors": 0,
+    "detail": null,
+    "results": [
+      {
+        "client_op_id": "c0ffee00-0000-4000-8000-000000000071",
+        "op_type": "chantier.cocher_checklist",
+        "status": "applied",
+        "result": {"cle": "pose_onduleur", "fait": true}
+      },
+      {
+        "client_op_id": "c0ffee00-0000-4000-8000-000000000072",
+        "op_type": "chantier.cocher_checklist",
+        "status": "applied",
+        "result": {"cle": "pose_panneaux", "fait": true}
+      }
+    ]
+  }
+}

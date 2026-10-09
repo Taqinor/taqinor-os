@@ -15,6 +15,19 @@ def compter_devis(company):
     return Devis.objects.filter(company=company).count()
 
 
+def devis_en_jeu(qs):
+    """ADEV9 (C-ADEV-003) — LE filtre unique des devis « en jeu » : la version
+    COURANTE de chaque installation (``is_active=True``).
+
+    Un devis révisé garde sa V1 (``is_active=False``, ``superseded_by`` posé,
+    statut inchangé — souvent ``envoye``) à côté de sa V2 : tout lecteur
+    AGRÉGÉ (tableau de bord, KPI kWc, cartes de synthèse, relances) qui ne
+    filtre pas compte la même installation deux fois (1 envoyé → 2, 74 800 →
+    146 600 MAD). Tous ces lecteurs passent par CE sélecteur ; un devis jamais
+    révisé est ``is_active=True`` et compte comme avant. Lecture pure."""
+    return qs.filter(is_active=True)
+
+
 def devis_for_lead(lead, ids):
     """Devis d'un lead (dans la société du lead), pour les ids donnés, triés par
     id. Liste matérialisée — comportement identique au filtre inline d'origine."""
@@ -22,6 +35,25 @@ def devis_for_lead(lead, ids):
     return list(
         Devis.objects.filter(id__in=ids, lead=lead, company=lead.company)
         .order_by('id'))
+
+
+def devis_avec_totaux(qs):
+    """APRF7 (C-APRF-004) — LE préchargement unique de ce que lit
+    ``Devis.total_ttc`` / ``total_ht``, pour un devis mono-option ET un devis à
+    deux options : ``lignes__produit``.
+
+    ``Devis.total_*`` → ``domain.argent.totaux`` → ``utils.options.
+    option_effective`` → ``deux_options_declarees`` → ``lignes_avec_produit``,
+    puis (deux options) ``_lignes_du_devis(avec_produit=True)`` → encore
+    ``lignes_avec_produit``. Ce lecteur ne sert le cache que si CHAQUE ligne
+    porte déjà son produit : avec ``prefetch_related('lignes')`` seul, il
+    retombait sur ``select_related('produit')`` — +1 requête par devis mono,
+    +2 par devis deux options (sondes V_VA F/G/G2). ``lignes__produit`` peuple
+    les deux caches ; ``ligne.devis`` est reposé par le prefetch inverse.
+
+    Prend et rend un QUERYSET (chaînable, aucune évaluation). Aucun montant ne
+    change : mêmes lignes, même ordre, mêmes objets. Lecture seule."""
+    return qs.prefetch_related('lignes__produit')
 
 
 def devis_lecture_seule_pour_lead(lead):
@@ -48,10 +80,9 @@ def devis_lecture_seule_pour_lead(lead):
 
     cent = Decimal('0.01')
     dossiers = []
-    devis_qs = (Devis.objects
-                .filter(lead=lead, company=lead.company)
-                .prefetch_related('lignes')
-                .order_by('-id'))
+    # APRF7 — préchargement unique des totaux (lignes ET leur produit).
+    devis_qs = devis_avec_totaux(
+        Devis.objects.filter(lead=lead, company=lead.company).order_by('-id'))
     for devis in devis_qs:
         lignes = []
         for ligne in devis.lignes.all():
@@ -672,7 +703,10 @@ def montants_devis(devis_ids, company):
     if not devis_ids:
         return {}
     out = {}
-    for devis in Devis.objects.filter(company=company, id__in=devis_ids):
+    # APRF7 — préchargement unique : requêtes constantes quel que soit le
+    # nombre de devis (mono ET deux options).
+    for devis in devis_avec_totaux(
+            Devis.objects.filter(company=company, id__in=devis_ids)):
         try:
             ht = Decimal(str(devis.total_ht or 0))
             ttc = Decimal(str(devis.total_ttc or 0))
@@ -1002,9 +1036,11 @@ def ca_par_entite(company, entite_ids):
         }
 
     out = {}
-    devis_qs = (Devis.objects
-                .filter(company=company, entite_id__in=ids)
-                .exclude(statut=Devis.Statut.REFUSE))
+    # APRF7 — préchargement unique des totaux (``total_ttc`` sommé plus bas).
+    devis_qs = devis_avec_totaux(
+        Devis.objects
+        .filter(company=company, entite_id__in=ids)
+        .exclude(statut=Devis.Statut.REFUSE))
     for devis in devis_qs:
         entry = out.setdefault(devis.entite_id, _vide())
         try:
@@ -1035,9 +1071,9 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
     les lignes/produits (le calcul de conformité les parcourt)."""
     from .models import Devis
-    qs = Devis.objects.filter(
+    qs = devis_en_jeu(Devis.objects.filter(
         company=company, date_envoi__isnull=False,
-    ).select_related('client', 'created_by').prefetch_related(
+    )).select_related('client', 'created_by').prefetch_related(
         'lignes__produit__categorie')
     if date_debut:
         qs = qs.filter(date_envoi__date__gte=date_debut)
@@ -1061,9 +1097,9 @@ def devis_envoyes_en_attente(company, since=None):
     ``since`` est un datetime (borne basse sur ``date_envoi``, ouverte si
     absente)."""
     from .models import Devis
-    qs = Devis.objects.filter(
+    qs = devis_en_jeu(Devis.objects.filter(
         company=company, statut=Devis.Statut.ENVOYE,
-        date_envoi__isnull=False)
+        date_envoi__isnull=False))
     if since is not None:
         qs = qs.filter(date_envoi__gte=since)
     return qs.order_by('date_envoi', 'id')
@@ -1186,8 +1222,9 @@ def dernier_devis_relancable_du_lead(lead, brouillon_compris=False):
     exclus = [Devis.Statut.REFUSE, Devis.Statut.EXPIRE, Devis.Statut.ACCEPTE]
     if not brouillon_compris:
         exclus.append(Devis.Statut.BROUILLON)
-    return (Devis.objects
-            .filter(company_id=lead.company_id, lead=lead)
+    # ADEV9 — une version remplacée n'est jamais « le dernier devis » à relancer.
+    return (devis_en_jeu(Devis.objects
+                         .filter(company_id=lead.company_id, lead=lead))
             .exclude(statut__in=exclus)
             .order_by('-id').first())
 
@@ -1862,3 +1899,25 @@ from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
     classer_produit_nom,
     devis_utilisant_produit,
 )
+
+
+def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
+                          exclure_id=None):
+    """Décision fondateur (08/10/2026) — les devis ACCEPTÉS et actifs d'un
+    lead (ou d'un client), du plus ancien au plus récent. Lecture cross-app
+    pour ``apps.crm`` (dés-acceptation à la sortie de « Signé », retour de la
+    commission / du parrainage) sans importer ``apps.ventes.models``.
+    ``exclure_id`` écarte un devis (celui qu'on vient de dés-accepter).
+    Sans ``lead_id`` ni ``client_id`` : liste vide (jamais toute la société)."""
+    from .models import Devis
+    if company is None or (lead_id is None and client_id is None):
+        return []
+    qs = Devis.objects.filter(
+        company=company, statut=Devis.Statut.ACCEPTE, is_active=True)
+    if lead_id is not None:
+        qs = qs.filter(lead_id=lead_id)
+    if client_id is not None:
+        qs = qs.filter(client_id=client_id)
+    if exclure_id is not None:
+        qs = qs.exclude(pk=exclure_id)
+    return list(qs.order_by('pk'))

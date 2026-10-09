@@ -98,10 +98,12 @@ class TestOrdreDemontage(TestCase):
         self.assertEqual(self.comp1.quantite_stock, 2)
         self.assertEqual(self.comp2.quantite_stock, 8)
 
-        # Re-clôture : aucun second mouvement.
+        # Re-clôture : aucun second mouvement. ACHT18 — la table de transitions
+        # refuse désormais la re-clôture d'un ordre terminé (400, comportement
+        # inversé par la tâche) ; la garde « pas de double mouvement » tient.
         r2 = self.api.post(
             f'{BASE}/ordres-demontage/{ordre_id}/terminer/', {}, format='json')
-        self.assertEqual(r2.status_code, 200, r2.content)
+        self.assertEqual(r2.status_code, 400, r2.content)
         self.composite.refresh_from_db()
         self.comp1.refresh_from_db()
         self.assertEqual(self.composite.quantite_stock, 5 - 2)

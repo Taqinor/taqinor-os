@@ -229,8 +229,66 @@ def resolution_days_pour(company, client, priorite):
     return resolution_days
 
 
+def response_days_pour(company, client, priorite):
+    """ASAV19 — délai de PREMIÈRE RÉPONSE (jours), même précédence que la
+    résolution : override du contrat de maintenance ACTIF du client >
+    ``sla_par_priorite`` (``response``) > défaut société."""
+    from .models import ContratMaintenance, SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    contrat = ContratMaintenance.actif_pour_client(client)
+    if contrat is not None and contrat.sla_response_days is not None:
+        return contrat.sla_response_days
+    response_days, _ = sla.days_for(priorite)
+    return response_days
+
+
+def compute_sla_reponse_due_at(company, client, priorite, date_ouverture):
+    """ASAV19 — échéance de PREMIÈRE RÉPONSE, ou None quand la société n'a
+    pas activé le SLA. Même service et même calendrier (jours ouvrés si
+    ``sla_jours_ouvres``) que l'échéance de résolution."""
+    from datetime import timedelta
+
+    from .models import SavSlaSettings
+
+    sla = SavSlaSettings.get(company)
+    if not sla.sla_breach_enabled:
+        return None
+    jours = response_days_pour(company, client, priorite)
+    if jours is None:
+        return None
+    if sla.sla_jours_ouvres:
+        from core.calendar import add_working_days
+        return add_working_days(date_ouverture, jours)
+    return date_ouverture + timedelta(days=jours)
+
+
+def poser_premiere_reponse(ticket, at=None):
+    """ASAV19 — pose ``date_premiere_reponse`` UNE seule fois, à la première
+    réponse réelle au client (e-mail, appel abouti, note visible client,
+    action manuelle). Renvoie True si elle vient d'être posée."""
+    if ticket.date_premiere_reponse is not None:
+        return False
+    ticket.date_premiere_reponse = at or timezone.now()
+    ticket.save(update_fields=['date_premiere_reponse'])
+    return True
+
+
 def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
-    """FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
+    """FG81/XSAV5/XSAV7 — DATE de l'échéance (voir ``compute_sla_echeance``)."""
+    return compute_sla_echeance(
+        company, client, priorite, date_ouverture, depart=depart)[0]
+
+
+def compute_sla_echeance(company, client, priorite, date_ouverture,
+                         depart=None):
+    """ASAV21 — ``(date, horodatage)`` de l'échéance SLA de résolution.
+
+    L'horodatage (datetime AWARE, fuseau métier) n'existe que sur le chemin
+    HEURES ouvrées (NTSRV11) — ``None`` sur le chemin en jours, où seule la
+    date compte. ``(None, None)`` sans SLA activé.
+
+    FG81/XSAV5/XSAV7 — échéance SLA cible, ou None quand la société n'a pas
     activé ``sla_breach_enabled``. Logique extraite telle quelle de
     ``TicketViewSet._compute_sla_due_at`` (jours ouvrés si ``sla_jours_ouvres``,
     calendaires sinon).
@@ -247,7 +305,7 @@ def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
 
     sla = SavSlaSettings.get(company)
     if not sla.sla_breach_enabled:
-        return None
+        return None, None
 
     # NTSRV11 — chemin HEURES ouvrées (opt-in double : flag + clé de priorité).
     if sla.sla_heures_ouvrees_actif:
@@ -257,13 +315,17 @@ def compute_sla_due_at(company, client, priorite, date_ouverture, depart=None):
             echeance = echeance_sla_heures_ouvrees(
                 company, depart or _depart_sla(date_ouverture, sla), heures)
             if echeance is not None:
-                return echeance.date()
+                # ASAV21 — heure murale locale → horodatage aware.
+                if timezone.is_naive(echeance):
+                    echeance = timezone.make_aware(
+                        echeance, timezone.get_current_timezone())
+                return timezone.localtime(echeance).date(), echeance
 
     resolution_days = resolution_days_pour(company, client, priorite)
     if sla.sla_jours_ouvres:
         from core.calendar import add_working_days
-        return add_working_days(date_ouverture, resolution_days)
-    return date_ouverture + timedelta(days=resolution_days)
+        return add_working_days(date_ouverture, resolution_days), None
+    return date_ouverture + timedelta(days=resolution_days), None
 
 
 def _depart_sla(date_ouverture, sla):
@@ -294,14 +356,20 @@ def poser_sla_due_at(ticket, *, persister=True):
     (AUD502). Renvoie le ticket."""
     if ticket is None or ticket.sla_due_at or ticket.company_id is None:
         return ticket
-    due = compute_sla_due_at(
+    due, echeance_at = compute_sla_echeance(
         ticket.company, ticket.client, ticket.priorite,
         ticket.date_ouverture or timezone.localdate())
     if due is None:
         return ticket
     ticket.sla_due_at = due
+    ticket.sla_echeance_at = echeance_at
+    # ASAV19 — l'échéance de première réponse naît avec celle de résolution.
+    ticket.sla_reponse_due_at = compute_sla_reponse_due_at(
+        ticket.company, ticket.client, ticket.priorite,
+        ticket.date_ouverture or timezone.localdate())
     if persister:
-        ticket.save(update_fields=['sla_due_at'])
+        ticket.save(update_fields=[
+            'sla_due_at', 'sla_echeance_at', 'sla_reponse_due_at'])
     return ticket
 
 
@@ -672,6 +740,38 @@ class OperationDestinationIncoherenteError(ValueError):
     ``stock_occasion`` (cohérence avec le restock XMFG10)."""
 
 
+class RetraitHorsPerimetreError(ValueError):
+    """ASAV8 — la série désigne un équipement hors du chantier / client du
+    ticket (400 sous ``numero_serie``)."""
+
+
+class RetraitProduitIncoherentError(ValueError):
+    """ASAV8 — le produit déclaré n'est pas celui de l'équipement trouvé
+    (400 sous ``produit``)."""
+
+
+class EquipementDejaRemplaceError(Exception):
+    """ASAV8 — l'équipement est déjà remplacé : un rejeu ne recrée ni retrait,
+    ni mouvement de stock, ni RMA, ni signal (409)."""
+
+
+def _equipement_dans_perimetre_ticket(equipement, ticket):
+    """ASAV8 — l'équipement appartient-il au chantier ou au client du ticket ?
+
+    Chantier du ticket = celui de l'équipement ; sinon client du ticket =
+    client du chantier de l'équipement ou client de sa vente comptoir."""
+    if ticket.installation_id and (
+            equipement.installation_id == ticket.installation_id):
+        return True
+    if not ticket.client_id:
+        return False
+    if equipement.client_vente_id == ticket.client_id:
+        return True
+    installation = equipement.installation
+    return bool(installation is not None
+                and installation.client_id == ticket.client_id)
+
+
 def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
                   destination, user, operation=None):
     """Trace une pièce RETIRÉE du ticket (`PieceRetiree`) et applique les
@@ -702,9 +802,29 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
 
     equipement_remplace = None
     if numero_serie:
-        equipement_remplace = Equipement.objects.filter(
-            company=company, numero_serie=numero_serie).first()
+        # ASAV8 — verrou de ligne : deux retraits concurrents de la même
+        # série ne peuvent pas basculer (ni restocker) deux fois.
+        from django.db import connection
+        equipements = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie)
+        if connection.in_atomic_block:
+            equipements = equipements.select_for_update()
+        equipement_remplace = equipements.first()
         if equipement_remplace is not None:
+            if not _equipement_dans_perimetre_ticket(
+                    equipement_remplace, ticket):
+                raise RetraitHorsPerimetreError(
+                    "Ce numéro de série est hors du chantier / client du "
+                    "ticket.")
+            if equipement_remplace.produit_id != produit.pk:
+                raise RetraitProduitIncoherentError(
+                    "Le produit ne correspond pas à celui de l'équipement "
+                    f"{numero_serie}.")
+            if equipement_remplace.statut == Equipement.Statut.REMPLACE:
+                ref = getattr(equipement_remplace.remplace_par_ticket,
+                              'reference', '') or '—'
+                raise EquipementDejaRemplaceError(
+                    f"Équipement déjà remplacé par {ref}.")
             equipement_remplace.statut = Equipement.Statut.REMPLACE
             equipement_remplace.remplace_par_ticket = ticket
             equipement_remplace.save(
@@ -721,7 +841,11 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
                     sender=None, equipement=equipement_remplace,
                     ticket=ticket, company=company, user=user)
             except Exception:  # pragma: no cover - défensif (best-effort)
-                pass
+                # ASAV8 — l'échec d'un abonné est journalisé, plus avalé.
+                logger.exception(
+                    'retirer_piece: envoi du signal equipement_remplace '
+                    'en échec (ticket %s, série %s)',
+                    ticket.reference, numero_serie)
 
     piece = PieceRetiree.objects.create(
         company=company, ticket=ticket, produit=produit, quantite=quantite,
@@ -1176,6 +1300,108 @@ def emettre_changement_statut_ticket(ticket, *, company, user=None,
         pass
 
 
+# ── ASAV12 — LE service unique de transition de statut d'un ticket ──────────
+
+class TransitionTicketRefusee(Exception):
+    """ASAV12 — transition refusée (graphe ou garde YSERV2). ``detail`` est le
+    dict d'erreur DRF à renvoyer tel quel (400) par une vue."""
+
+    def __init__(self, detail):
+        super().__init__(str(detail))
+        self.detail = detail
+
+
+def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
+                                request=None, canal_resolution_defaut=None):
+    """ASAV12 — applique UNE transition de statut GARDÉE et TOUS ses effets.
+
+    Chemin unique pour la vue (actions ``planifier/demarrer/resoudre/
+    cloturer/reouvrir``, actions groupées, ``planifier-intervention``) et le
+    récepteur d'intervention terminée : machine d'états (``systeme`` ouvre
+    les transitions automatiques AUD514), garde de clôture YSERV2, canal de
+    résolution YSERV12, ``ticket_resolu`` (ARC37), RECORD_STATE_CHANGE
+    (ARC34), ``sla_breach`` (FG81), ``reopen_count`` (XSAV11), chatter,
+    notification client (XSAV4), suiveurs (ZSAV9), clôture des
+    immobilisations (XSAV16). Lève ``TransitionTicketRefusee`` sans rien
+    écrire sur une transition refusée. Renvoie le ticket."""
+    from django.db.models import F
+
+    from . import activity, machine_etats
+    from .models import Ticket
+
+    clotures = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
+    old = Ticket.objects.get(pk=ticket.pk)
+    # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
+    # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
+    if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+        from apps.installations.selectors import (
+            interventions_ouvertes_pour_ticket,
+        )
+        ouvertes = interventions_ouvertes_pour_ticket(ticket.id)
+        if ouvertes:
+            raise TransitionTicketRefusee({
+                'statut': ('Impossible de clôturer : intervention(s) encore '
+                           'ouverte(s) sur ce ticket.'),
+                'interventions_ouvertes': ouvertes,
+            })
+    try:
+        machine_etats.changer_statut(
+            ticket, cible, persister=False, systeme=systeme)
+    except machine_etats.TransitionInterdite as exc:
+        raise TransitionTicketRefusee({'statut': str(exc)})
+    # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
+    # l'appelant n'en a pas déjà posé un (jamais écrasé) ; le champ est
+    # toujours listé dans update_fields (sinon perdu en silence).
+    update_fields = ['statut']
+    if cible == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU:
+        if not ticket.canal_resolution:
+            ticket.canal_resolution = (
+                canal_resolution_defaut or old.canal_resolution_propose())
+        update_fields.append('canal_resolution')
+    # ASAV14 — la date de résolution est posée par le SERVEUR (date locale
+    # Maroc) au passage à résolu/clôturé si vide, et vidée à la réouverture.
+    if ticket.statut in clotures and old.statut not in clotures:
+        if not ticket.date_resolution:
+            ticket.date_resolution = timezone.localdate()
+            update_fields.append('date_resolution')
+    elif old.statut in clotures and ticket.statut in Ticket.OPEN_STATUTS:
+        if ticket.date_resolution:
+            ticket.date_resolution = None
+            update_fields.append('date_resolution')
+    ticket.save(update_fields=update_fields)
+    emettre_ticket_resolu(
+        ticket, company=ticket.company, user=user, ancien_statut=old.statut)
+    emettre_changement_statut_ticket(
+        ticket, company=ticket.company, user=user, ancien_statut=old.statut)
+    # FG81 — recalcule sla_breach après toute mise à jour de statut.
+    ticket.recompute_sla_breach()
+    # XSAV11 / AUD829 — réouverture comptée par incrément atomique.
+    if old.statut in clotures and ticket.statut in Ticket.OPEN_STATUTS:
+        Ticket.objects.filter(pk=ticket.pk).update(
+            reopen_count=F('reopen_count') + 1)
+        ticket.refresh_from_db(fields=['reopen_count'])
+    ticket.save(update_fields=['sla_breach'])
+    activity.log_changes(old, ticket, user)
+    if old.statut != ticket.statut:
+        # XSAV4 — notification client best-effort (toggle OFF = no-op).
+        from .notifications_client import notify_ticket_transition
+        notify_ticket_transition(ticket, ticket.statut, request=request)
+        # ZSAV9 — notifie les suiveurs de la transition (best-effort).
+        from apps.notifications.types_evenements import EventType
+        notify_followers(
+            ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
+            title=f'Statut changé — {ticket.reference}',
+            body=f'Nouveau statut : {ticket.get_statut_display()}.',
+            link=f'/sav/tickets/{ticket.pk}',
+            exclude_user=user)
+        # XSAV16 — la résolution / clôture referme (idempotent) toute
+        # immobilisation EN COURS de CE ticket.
+        if ticket.statut in clotures:
+            for dt in ticket.downtimes.filter(fin__isnull=True):
+                dt.clore()
+    return ticket
+
+
 def abonner_suiveurs_globaux(ticket):
     """ZSAV9 — Abonne automatiquement (idempotent) chaque utilisateur listé
     dans ``SavSlaSettings.suivre_tous_tickets_sav`` au ticket nouvellement
@@ -1192,6 +1418,64 @@ def abonner_suiveurs_globaux(ticket):
 
 
 # ── XCTR1 — Devis accepté (ligne récurrente) → contrat de maintenance ───────
+
+def _marqueur_desaccepte(devis_id):
+    """Marqueur porté par un contrat désactivé par une dés-acceptation."""
+    return f'[devis-desaccepte:{devis_id}]'
+
+
+def desactiver_contrat_desaccepte(*, devis, user=None):
+    """Décision fondateur (08/10/2026) — l'acceptation de ``devis`` est
+    annulée (lead sorti de « Signé ») : le contrat de maintenance qu'elle
+    avait créé (marqueur ``[devis:<id>]``) est DÉSACTIVÉ (jamais supprimé) et
+    son marqueur devient ``[devis-desaccepte:<id>]`` — ce qui permet à la
+    ré-acceptation de le réactiver au lieu d'en créer un second. Le contrôle
+    de blocage (``selectors.blocage_annulation_acceptation``) a déjà garanti
+    qu'il n'était pas engagé. Rend le nombre de contrats désactivés."""
+    from .models import ContratMaintenance
+
+    marqueur = f'[devis:{devis.pk}]'
+    nb = 0
+    for contrat in (ContratMaintenance.objects
+                    .select_for_update()
+                    .filter(company=devis.company, actif=True,
+                            notes__contains=marqueur)
+                    .order_by('pk')):
+        contrat.actif = False
+        contrat.notes = (contrat.notes or '').replace(
+            marqueur, _marqueur_desaccepte(devis.pk))
+        contrat.notes += (
+            f"\nDésactivé : l'acceptation du devis {devis.reference} a été "
+            'annulée (lead sorti de « Signé »).')
+        contrat.save(update_fields=['actif', 'notes'])
+        nb += 1
+    return nb
+
+
+def _reactiver_contrat_reaccepte(devis):
+    """Ré-acceptation : réactive le contrat désactivé par la dés-acceptation
+    de ce devis (marqueur restauré), ou rend ``None`` s'il n'y en a pas."""
+    from .models import ContratMaintenance
+
+    contrat = (ContratMaintenance.objects
+               .select_for_update()
+               .filter(company=devis.company,
+                       notes__contains=_marqueur_desaccepte(devis.pk))
+               .order_by('pk').first())
+    if contrat is None:
+        return None
+    contrat.actif = True
+    contrat.notes = contrat.notes.replace(
+        _marqueur_desaccepte(devis.pk), f'[devis:{devis.pk}]')
+    contrat.notes += (
+        f'\nRéactivé : le devis {devis.reference} a été accepté de nouveau.')
+    champs = ['actif', 'notes']
+    if devis.date_acceptation:
+        contrat.date_debut = devis.date_acceptation
+        champs.append('date_debut')
+    contrat.save(update_fields=champs)
+    return contrat
+
 
 def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     """XCTR1 — quand un ``ventes.Devis`` contenant AU MOINS UNE ligne dont le
@@ -1216,6 +1500,11 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     from .models import ContratMaintenance
 
     marqueur = f'[devis:{devis.pk}]'
+    # Décision fondateur 08/10/2026 — ré-acceptation d'un devis dés-accepté :
+    # le contrat désactivé par la dés-acceptation est RÉACTIVÉ, jamais doublé.
+    reactive = _reactiver_contrat_reaccepte(devis)
+    if reactive is not None:
+        return reactive
     if ContratMaintenance.objects.filter(
             company=devis.company, notes__contains=marqueur).exists():
         return None
@@ -1269,7 +1558,7 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     if premiere_periodicite:
         kwargs['periodicite'] = premiere_periodicite
 
-    installation = getattr(devis, 'installation', None)
+    installation = _chantier_du_devis(devis)
     if installation is not None:
         kwargs['installation'] = installation
 
@@ -1319,6 +1608,17 @@ def _poser_om(contrat, devis, ligne_om):
         for type_, libelle in PRESTATIONS_OM_CI])
 
 
+def _chantier_du_devis(devis):
+    """ASAV6 — le chantier d'un devis, lu par le sélecteur d'installations.
+
+    Le devis n'a PAS d'attribut ``installation`` (le lien est porté par le
+    chantier, related_name ``installations``) : l'ancien ``getattr`` rendait
+    toujours None. Lecture inter-app scopée société, sans exception avalée.
+    """
+    from apps.installations.selectors import installation_for_devis
+    return installation_for_devis(devis, devis.company)
+
+
 def _creer_contrat_om(devis, ligne_om, marqueur):
     """CIQ640 — contrat O&M C&I d'un devis accepté SANS ligne récurrente :
     prix « à renseigner » (NULL), aucune facturation, prestations vides."""
@@ -1334,7 +1634,7 @@ def _creer_contrat_om(devis, ligne_om, marqueur):
         notes=f'Créé automatiquement depuis le devis {marqueur} '
               f'(ligne O&M — CIQ640 ; prix et fréquences à renseigner).',
     )
-    installation = getattr(devis, 'installation', None)
+    installation = _chantier_du_devis(devis)
     if installation is not None:
         kwargs['installation'] = installation
     contrat = ContratMaintenance.objects.create(**kwargs)

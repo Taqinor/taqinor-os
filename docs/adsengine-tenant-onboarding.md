@@ -174,3 +174,58 @@ fichier ni de liste (D-VEIL-7 — l'export CSV est l'outil de la mise en
 service, pas du pilote). **Déclencheur du serveur séparé** : le premier client
 payant — mise en service sous SON accès officiel, YanBow prestataire
 technique.
+
+### 7 bis. Addendum — la société YanBow reçoit les demandes de rendez-vous du site (PLAN_YANBOW_WEB, YBW52)
+
+Le formulaire « Prendre rendez-vous » du site YanBow (`apps/yanbow-web`) arrive
+dans l'ERP par le récepteur dédié `POST /api/django/crm/webhooks/demande-rdv/`
+(`demande_rdv_webhook`, `backend/django_core/apps/crm/webhooks.py`, YBW51). La
+société destinataire est tirée de la **clé** envoyée par le Worker — jamais du
+formulaire, jamais un repli sur une autre société. **Ce paragraphe REMPLACE,
+pour la société YanBow, le point 3 ci-dessus** (« couper CRM si utile ») :
+
+1. **CRM ALLUMÉ.** Dans **Paramètres → Applications**
+   (`frontend/src/pages/parametres/ApplicationsSection.jsx`), ne PAS couper le
+   module CRM : chaque demande devient un lead (source « Site web », étiquette
+   « Rendez-vous <produit> », message et produit dans une note du fil
+   d'activité) que l'équipe YanBow traite dans le CRM. Aucun devis automatique,
+   aucune cadence de relance : seule la notification « nouveau lead » part.
+2. **Au moins un utilisateur YanBow ACTIF de rôle « Directeur » ou
+   « Commercial responsable ».** `notify_new_lead`
+   (`backend/django_core/apps/crm/services.py`) prévient le responsable du lead
+   et son supérieur, avec repli sur ces deux rôles
+   (`_company_fallback_managers`) — le rôle « adsengine » créé au point 2 ne
+   reçoit JAMAIS cette notification. Ces rôles système sont créés
+   automatiquement quand la société est ajoutée par l'admin (`CompanyAdmin.
+   save_model`, `backend/django_core/authentication/admin.py`) ; il suffit de
+   les affecter (*Authentication › Users*, champ rôle). Limite connue : le lien
+   « Répondre maintenant » de la notification force le préfixe marocain +212
+   (faux pour un numéro français) — composer le numéro à la main.
+3. **Lire le slug de la société** : admin Django → *Authentication ›
+   Companies* — la colonne **slug** est affichée dans la liste (`CompanyAdmin.
+   list_display`) et en lecture seule sur la fiche. Vérifier qu'il n'est pas
+   vide : une clé liée à un slug vide ou introuvable est refusée (401).
+4. **Poser la clé côté serveur.** Générer un secret :
+   `python -c "import secrets; print(secrets.token_hex(32))"`. Dans le `.env`
+   du serveur (`/opt/taqinor-os/.env`), ajouter
+   `SITE_RDV_CLES=<id_cle>:<slug yanbow>:<secret>` (plusieurs clés séparées
+   par des virgules — par exemple une clé de TEST liée à une société de TEST
+   pour la preuve YBW86 ; format et défaut dans `.env.example` et
+   `erp_agentique/settings/base.py`). Vide = tout refusé. Puis RECRÉER le
+   conteneur Django pour qu'il relise le `.env` (un simple `restart` ne le
+   relit pas) : `docker compose -f docker-compose.yml -f
+   docker-compose.prod.yml up -d django_core`. Facultatif :
+   `SITE_RDV_LIMITE_PAR_MINUTE` (défaut 30, compté par clé).
+5. **Côté Cloudflare — actions de Reda, jamais d'un agent** (aucun jeton
+   demandé, jamais `wrangler deploy`) :
+   - créer le projet **Workers Builds** depuis ce dépôt, racine
+     `apps/yanbow-web`, nom `yanbow-web` (le `name` de
+     `apps/yanbow-web/wrangler.jsonc`), commande `npm run build`, branche
+     `main`, Node 22 ;
+   - poser les **secrets du Worker** au tableau de bord :
+     `YANBOW_RDV_URL=https://api.taqinor.ma/api/django/crm/webhooks/demande-rdv/`,
+     `YANBOW_RDV_CLE_ID=<id_cle>`, `YANBOW_RDV_SECRET=<le même secret>` ;
+   - (facultatif) créer un **espace KV** de reprise des demandes non livrées
+     et donner son id (une ligne à ajouter dans `wrangler.jsonc`) ; sans lui,
+     rien n'est stocké et le visiteur garde le bouton WhatsApp.
+   Le serveur `:80` sert déjà tout `/api/django/` : aucun changement nginx.

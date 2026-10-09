@@ -67,7 +67,9 @@ def _make_client(company, nom):
 def _make_devis(company, client, ref):
     return Devis.objects.get_or_create(
         company=company, reference=ref,
-        defaults={'client': client, 'taux_tva': Decimal('20')},
+        # ADEV11 : un brouillon n'est plus servi sur le jeton client public.
+        defaults={'client': client, 'taux_tva': Decimal('20'),
+                  'statut': Devis.Statut.ENVOYE},
     )[0]
 
 
@@ -218,6 +220,9 @@ class TestProposalPublicRealRender(TestCase):
             ('Onduleur hybride', '1', '12000'),
             ('Structures acier', '12', '450'),
         ], reference='DEV-ARC5-RENDER')
+        # ADEV11 : un brouillon n'est plus servi sur le jeton client public.
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ENVOYE)
         self.link = ShareLink.objects.create(
             company=self.company, devis=self.devis)
 

@@ -46,7 +46,7 @@ from .serializers import (
     VisiteExterneSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
-from . import activity
+from . import activity, stages
 from .services import (
     COOKIE_APPAREIL, default_responsable_for,
     domaine_cookies_equipe, enregistrer_appareil_equipe,
@@ -70,6 +70,15 @@ class ReportToucheEchoue(APIException):
     default_detail = ('Le report de la prochaine touche a échoué : rien n’a '
                       'été enregistré. Réessayez.')
     default_code = 'report_touche_echoue'
+
+
+class SortieSigneRefusee(APIException):
+    """Décision fondateur (08/10/2026) — le lead ne peut pas sortir de
+    « Signé » : son devis accepté a déjà une suite réelle. 409, RIEN n'est
+    écrit (ni étape, ni dés-acceptation) et ``detail`` nomme ce qui bloque."""
+    status_code = 409
+    default_detail = 'Impossible de sortir ce lead de cette étape.'
+    default_code = 'sortie_signe_bloquee'
 
 
 def _best_effort(libelle, fn, *args, **kwargs):
@@ -1176,6 +1185,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             sync_relance_activity,
         )
         with transaction.atomic():
+            # Décision fondateur 08/10/2026 — SORTIR de « Signé » par une
+            # action utilisateur dés-accepte le(s) devis du lead (retour à
+            # « envoyé », chantier auto-créé annulé…), dans CETTE transaction
+            # et AVANT l'écriture : un blocage (facture émise, chantier
+            # avancé…) rend un 409 qui nomme la cause, rien n'est écrit.
+            if (old.stage == stages.SIGNED and 'stage' in vd
+                    and vd['stage'] != stages.SIGNED):
+                from .services import (
+                    SortieSigneBloquee, desaccepter_devis_du_lead,
+                )
+                try:
+                    desaccepter_devis_du_lead(old, self.request.user)
+                except SortieSigneBloquee as exc:
+                    raise SortieSigneRefusee(exc.message) from exc
             with _save_borne_aux_champs(
                     instance, self._champs_ecrivables(ecrits)):
                 super().perform_update(serializer)
@@ -2297,8 +2320,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             raise DRFValidationError(
                 {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
                            f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
+        # ALEA25 — borné par la portée du viewset (société + équipe).
         rapport = placer_anciens_leads(
-            request.user.company, request.user, apply=apply, limite=limite)
+            request.user.company, request.user, apply=apply, limite=limite,
+            leads_en_portee=self._leads_en_portee())
         return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='resoudre-gps',

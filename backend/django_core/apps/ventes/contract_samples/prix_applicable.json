@@ -1,0 +1,38 @@
+{
+  "endpoint": "GET /api/django/ventes/prix-applicable/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AGNR1 (PACT10, C-AGNR-003) — contrat d'abord de GET /ventes/prix-applicable/ ?produit=<id>[&client=<id>&quantite=<q>&panier=…] (views/liste_prix.prix_applicable_view). Le prix servi est un prix HT (Produit.prix_vente ou LignePrixListe.prix_unitaire, jamais ×(1+TVA)) : la clé `unite` le DIT. Consommateurs : écran générateur (refreshTarif, AGNR15) et page des listes de prix (AGNR10).",
+  "notes": {
+    "unite": "toujours 'HT' — prix HT : tout écran TTC le convertit au taux de la ligne.",
+    "prix": "texte décimal à 2 décimales ('1961.82').",
+    "source": "'standard' (prix catalogue), 'liste' (liste de prix du client) ou 'regle' (règle de prix / palier).",
+    "liste_nom": "nom de la liste appliquée, null quand source = 'standard'.",
+    "remise_volume": "NTCPQ17 — décomposition des remises volume (remise_ligne_pct, cascade, remise_totale_pct ; remise_ligne_palier_id quand un palier s'applique). Tout à 0 sans palier configuré."
+  },
+  "exemple": {
+    "produit": 812,
+    "quantite": "1",
+    "prix": "1961.82",
+    "unite": "HT",
+    "source": "liste",
+    "liste_nom": "Z",
+    "remise_volume": {
+      "remise_ligne_pct": "0.00",
+      "cascade": [],
+      "remise_totale_pct": "0.00"
+    }
+  },
+  "exemple_standard": {
+    "produit": 812,
+    "quantite": "1",
+    "prix": "2061.82",
+    "unite": "HT",
+    "source": "standard",
+    "liste_nom": null,
+    "remise_volume": {
+      "remise_ligne_pct": "0.00",
+      "cascade": [],
+      "remise_totale_pct": "0.00"
+    }
+  }
+}

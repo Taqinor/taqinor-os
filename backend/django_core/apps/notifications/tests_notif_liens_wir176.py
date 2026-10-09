@@ -224,31 +224,8 @@ class FacturePayeeBonCommandeLinkTests(TestCase):
         self.assertNotIn('/bons-commande/', notif.link)
 
 
-# ── PROJET_STATUT_CHANGE ────────────────────────────────────────────────────
-
-class ProjetStatutChangeLinkTests(TestCase):
-    def test_link_lands_on_projets_detail_route(self):
-        # SOLMVP19 — le récepteur (`signals.projet_status_change_receiver`)
-        # ne lit que `projet.responsable`/`.nom`/`.pk` (attributs génériques) :
-        # un objet DUCK-TYPÉ suffit à l'exercer, jamais un import d'apps.
-        # gestion_projet (app sortie du produit) depuis ce test notifications.
-        from types import SimpleNamespace
-
-        from core.events import projet_status_change
-
-        company = _make_company('Wir176ProjetCo')
-        resp = _make_user(company, 'wir176-proj-resp', role_legacy='responsable')
-        projet = SimpleNamespace(pk=4242, nom='Projet WIR176', responsable=resp)
-
-        projet_status_change.send(
-            sender=None, projet=projet, company=company, user=resp,
-            ancien_statut='planifie', nouveau_statut='en_cours')
-
-        notif = Notification.objects.get(
-            recipient=resp, event_type=EventType.PROJET_STATUT_CHANGE)
-        self.assertEqual(notif.link, f'/projets/{projet.pk}')
-        self.assertNotIn('/gestion-projet/', notif.link)
-
+# ── PROJET_STATUT_CHANGE : APAR43 — récepteur retiré (gestion_projet parqué),
+# plus aucun lien à vérifier ; voir tests_apar43_bus_bidirectionnel.
 
 # ── Approbations : automation / installations / ged → boîte unique XKB1 ────
 

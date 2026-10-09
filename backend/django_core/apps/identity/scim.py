@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from authentication.models import CustomUser
 from authentication.selectors import revoke_user_sessions
+from core.throttling import ScimThrottle
 
 from .models import ScimGroupMapping, ScimToken
 
@@ -99,6 +100,7 @@ class ScimUsersView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScimThrottle]
 
     def get(self, request, company_slug):
         company, err = _authenticate(request, company_slug)
@@ -157,6 +159,7 @@ class ScimUserDetailView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScimThrottle]
 
     def _get_user(self, company, pk):
         return CustomUser.objects.filter(company=company, pk=pk).first()
@@ -280,6 +283,7 @@ class ScimGroupsView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScimThrottle]
 
     def get(self, request, company_slug):
         company, err = _authenticate(request, company_slug)
@@ -325,6 +329,7 @@ class ScimGroupDetailView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScimThrottle]
 
     def _get(self, company, pk):
         return ScimGroupMapping.objects.filter(company=company, pk=pk).first()

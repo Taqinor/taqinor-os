@@ -26,7 +26,8 @@ test('charge aussi les demandes info_requested (pas seulement pending)', () => {
 // « tests des 3 appels » (Done WIR261) : demander un complément, resoumettre,
 // supprimer un type — les 3 appelants applicatifs manquants.
 test('appel 1/3 — bouton « Demander un complément » (motif obligatoire)', () => {
-  assert.match(PAGE, /const demanderComplement = async \(id\) => \{/)
+  // APAR41 — le motif vient du dialogue maison (motif obligatoire), passé en 2e argument.
+  assert.match(PAGE, /const demanderComplement = async \(id, motif = ''\) => \{/)
   assert.match(PAGE, /automationApi\.demandeInfoApprovalRequest\(id, motif\.trim\(\)\)/)
   assert.match(PAGE, /Demander un complément/)
 })

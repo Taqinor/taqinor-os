@@ -61,6 +61,8 @@ SURFACE_PUBLIQUE = (
     "AcceptError",
     # ADOC143 — garde loi 31-08 rattrapée par le portail (rapprochement).
     "AcompteAvantDelaiLegal",
+    # Décision fondateur 08/10/2026 — dés-acceptation.
+    "AnnulationAcceptationBloquee",
     "AutoDevisError",
     "BOQ_CATEGORIES",
     "BOQ_SUFFIXE_A_CHIFFRER",
@@ -125,6 +127,8 @@ SURFACE_PUBLIQUE = (
     "ajouter_lignes_devis_import",
     "ajouter_lignes_facture_import",
     "ajouter_lignes_frais_refactures",
+    # Décision fondateur 08/10/2026 — dés-acceptation.
+    "annuler_acceptation",
     "anomalies_emission_facture",
     "arbitrer_compte_calepinage",
     "auto_devis_tunnel_actif",
@@ -164,6 +168,7 @@ SURFACE_PUBLIQUE = (
     "creer_devis_import",
     "creer_facture_acompte_situation",
     "creer_facture_classique",
+    "creer_facture_consignation",
     "creer_facture_contrat",
     "creer_facture_import",
     "creer_facture_regie",
@@ -256,6 +261,8 @@ SURFACE_PUBLIQUE = (
     "rafraichir_etude_horaire",
     "rafraichir_etude_horaire_devis",
     "rafraichir_etudes_du_devis",
+    # Décision fondateur 08/10/2026 — dés-acceptation.
+    "raison_blocage_annulation_acceptation",
     # QJR64 — le scénario et l'option recommandée passent par le REGISTRE de
     # surcharges : une déclaration humaine survit à tout recalcul aval.
     "recommended_option_effective",

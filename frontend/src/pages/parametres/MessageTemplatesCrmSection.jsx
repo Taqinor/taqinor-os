@@ -11,6 +11,7 @@ import {
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import crmApi from '../../api/crmApi'
+import { useConfirmDialog } from '../../ui/confirm'
 
 // Placeholders disponibles au rendu (render_template, apps/crm/views.py) :
 // {prenom}/{ville}/{lien} toujours substituables ; {lien_rdv} (XSAL17) exige
@@ -23,6 +24,8 @@ const LANGUES = [
 ]
 
 export default function MessageTemplatesCrmSection() {
+  // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
+  const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -58,7 +61,7 @@ export default function MessageTemplatesCrmSection() {
   const archiveTemplate = (tpl) => patchTemplate(tpl, { archived: !tpl.archived })
 
   const delTemplate = async (tpl) => {
-    if (!window.confirm(`Supprimer le modèle « ${tpl.nom} » ?`)) return
+    if (!(await confirmerSuppression({ title: `Supprimer le modèle « ${tpl.nom} » ?` }))) return
     await crmApi.deleteMessageTemplate(tpl.id).catch(() => {})
     load()
   }
