@@ -14083,6 +14083,83 @@ MOTIF_BULK_CADENCE_ACTIVE = (
 )
 
 
+#: APAR51 — les issues de ``appliquer_champ_automatique``.
+CHAMP_AUTO_APPLIQUE = 'applique'
+CHAMP_AUTO_INCHANGE = 'inchange'
+CHAMP_AUTO_INVALIDE = 'invalide'
+CHAMP_AUTO_CADENCE = 'cadence_active'
+
+
+def appliquer_champ_automatique(lead, champ, valeur, user=None):
+    """APAR51 (C-APAR-032) — LA porte d'écriture d'un champ de lead par une
+    AUTOMATISATION (règle SET_FIELD, action serveur, assignation) : la même
+    discipline que le geste manuel.
+
+    * la valeur est VALIDÉE par le champ du modèle (choix, longueur, type) —
+      hors choix ⇒ ``(CHAMP_AUTO_INVALIDE, motif)``, rien n'est écrit ;
+    * ``relance_date`` sur un lead à CADENCE ACTIVE ⇒ refus CAD49
+      (``(CHAMP_AUTO_CADENCE, MOTIF_BULK_CADENCE_ACTIVE)``) : la date vient
+      de la prochaine touche du plan ;
+    * une valeur égale ⇒ ``(CHAMP_AUTO_INCHANGE, '')`` ;
+    * sinon le champ est écrit et UNE ligne MODIFICATION (ancien → nouveau)
+      entre au chatter, l'acteur étant ``user`` (la règle).
+
+    ``champ='owner'`` accepte un utilisateur (ou son identifiant) de la
+    société du lead. Rend ``(issue, motif)``."""
+    from django.core.exceptions import ValidationError
+
+    from . import activity as _activity
+
+    try:
+        champ_modele = Lead._meta.get_field(champ)
+    except Exception:  # noqa: BLE001
+        return CHAMP_AUTO_INVALIDE, f'Champ « {champ} » inconnu.'
+    if champ == 'owner':
+        from django.contrib.auth import get_user_model
+        pk = getattr(valeur, 'pk', valeur)
+        cible = get_user_model().objects.filter(
+            pk=pk, company=lead.company).first() if pk else None
+        if cible is None:
+            return CHAMP_AUTO_INVALIDE, 'Utilisateur cible inconnu.'
+        ancien = lead.owner
+        if ancien is not None and ancien.pk == cible.pk:
+            return CHAMP_AUTO_INCHANGE, ''
+        lead.owner = cible
+        lead.save(update_fields=['owner'])
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.MODIFICATION, field='owner',
+            field_label=_activity.TRACKED_FIELDS.get('owner', 'owner'),
+            old_value=_activity._display(lead, 'owner', ancien),
+            new_value=_activity._display(lead, 'owner', cible))
+        return CHAMP_AUTO_APPLIQUE, ''
+    try:
+        propre = champ_modele.clean(valeur, lead)
+    except ValidationError as exc:
+        hors_choix = bool(getattr(champ_modele, 'choices', None))
+        detail = '; '.join(exc.messages)
+        return CHAMP_AUTO_INVALIDE, (
+            f'Valeur hors choix pour « {champ} » : {valeur!r}.' if hors_choix
+            else f'Valeur invalide pour « {champ} » : {detail}')
+    if champ == 'relance_date' and leads_avec_cadence_active(
+            lead.company, [lead.pk]):
+        return CHAMP_AUTO_CADENCE, MOTIF_BULK_CADENCE_ACTIVE
+    ancien = getattr(lead, champ, None)
+    if ancien == propre:
+        return CHAMP_AUTO_INCHANGE, ''
+    setattr(lead, champ, propre)
+    lead.save(update_fields=[champ])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION, field=champ,
+        field_label=_activity.TRACKED_FIELDS.get(champ, champ),
+        old_value=_activity._display(lead, champ, ancien),
+        new_value=_activity._display(lead, champ, propre))
+    if champ == 'relance_date':
+        sync_relance_activity(lead, user)
+    return CHAMP_AUTO_APPLIQUE, ''
+
+
 def leads_avec_cadence_active(company, lead_ids):
     """CAD49 — le sous-ensemble de ``lead_ids`` portant AU MOINS une touche de
     relance encore À FAIRE. Renvoie un ``set`` d'identifiants.

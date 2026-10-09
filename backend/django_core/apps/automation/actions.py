@@ -528,6 +528,10 @@ def _assign_record(rule, instance, company, context, user):
             pk=user_id, company=company).first()
         if target is None:
             return Status.NOOP, 'Utilisateur cible inconnu : ignoré.'
+        if _est_lead(instance):
+            # APAR51 — un lead s'écrit par le service propriétaire (chatter
+            # old→new, même discipline que le geste manuel).
+            return _ecrire_lead(instance, field, target, user)
         setattr(instance, f'{field}_id', target.pk)
         instance.save(update_fields=[f'{field}_id'])
         return Status.SUCCESS, f'Assigné à {target} via « {field} ».'
@@ -554,6 +558,9 @@ def _set_field(rule, instance, company, context, user):
             'assignables (machine à états / champ financier / non déclaré) : '
             'refusé.')
     value = cfg.get('value')
+    if _est_lead(instance):
+        # APAR51 — validation, refus CAD49 et chatter : le service crm.
+        return _ecrire_lead(instance, field, value, user)
     ancienne = getattr(instance, field, None)
     try:
         setattr(instance, field, value)
@@ -640,6 +647,18 @@ def _server_action(rule, instance, company, context, user):
     if not updates:
         return Status.NOOP, (
             'Aucune expression valide/autorisée : action ignorée.')
+    if _est_lead(instance):
+        # APAR51 — chaque champ calculé passe par le service propriétaire.
+        resultats = [_ecrire_lead(instance, f, v, user)
+                     for f, v in sorted(updates.items())]
+        echecs = [m for st, m in resultats if st == Status.FAILED]
+        refus = [m for st, m in resultats if st == Status.SKIPPED]
+        if echecs:
+            return Status.FAILED, ' ; '.join(echecs)
+        if refus and len(refus) == len(resultats):
+            return Status.SKIPPED, ' ; '.join(refus)
+        return Status.SUCCESS, (
+            f"Champ(s) calculé(s) : {', '.join(sorted(updates))}.")
     try:
         for field, value in updates.items():
             setattr(instance, field, value)
@@ -663,26 +682,43 @@ def _create_sav_ticket(rule, instance, company, context, user):
     if manquantes:
         return Status.SKIPPED, motif_variables(
             manquantes, 'ticket SAV non créé')
+    from apps.sav.models import Ticket
+
+    # APAR51 — type et priorité VALIDÉS (jamais un « xx » en base), puis le
+    # ticket naît par les services SAV : référence sans collision et SLA
+    # posé (``poser_sla_due_at``), exactement comme le chemin manuel.
+    type_ticket = cfg.get('type') or Ticket.Type.PREVENTIF
+    priorite = cfg.get('priorite') or Ticket.Priorite.NORMALE
+    if type_ticket not in Ticket.Type.values:
+        return Status.FAILED, (
+            f'Ticket SAV non créé : type hors choix ({type_ticket!r}).')
+    if priorite not in Ticket.Priorite.values:
+        return Status.FAILED, (
+            f'Ticket SAV non créé : priorité hors choix ({priorite!r}).')
     try:
-        from apps.sav.models import Ticket
-        from apps.ventes.utils.references import create_with_reference
+        from apps.sav.services import (
+            create_corrective_ticket, creer_ticket_preventif,
+            poser_sla_due_at)
 
         installation = instance if _model_name(instance) == 'installation' \
             else None
-
-        def _save(ref):
-            return Ticket.objects.create(
-                company=company,
-                reference=ref,
-                client=client,
-                installation=installation,
-                type=cfg.get('type', Ticket.Type.PREVENTIF),
-                priorite=cfg.get('priorite', Ticket.Priorite.NORMALE),
-                description=description,
-                created_by=user,
-            )
-
-        ticket = create_with_reference(Ticket, 'SAV', company, _save)
+        if type_ticket == Ticket.Type.PREVENTIF:
+            ticket = creer_ticket_preventif(
+                company=company, client=client, installation=installation,
+                description=description, created_by=user, priorite=priorite)
+        else:
+            ticket = create_corrective_ticket(
+                company=company, client=client, installation=installation,
+                description=description, created_by=user)
+            if ticket.type != type_ticket or ticket.priorite != priorite:
+                # Le service correctif pose sa priorité par défaut : la règle
+                # en impose une autre — l'échéance SLA est recalculée sur
+                # elle (même producteur, ``poser_sla_due_at``).
+                ticket.type = type_ticket
+                ticket.priorite = priorite
+                ticket.sla_due_at = None
+                ticket.save(update_fields=['type', 'priorite', 'sla_due_at'])
+                poser_sla_due_at(ticket)
         return Status.SUCCESS, f'Ticket SAV {ticket.reference} créé.'
     except Exception as exc:
         return Status.FAILED, f'Ticket SAV non créé : {exc}'
@@ -831,6 +867,28 @@ def _for_each(rule, instance, company, context, user):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
+
+def _est_lead(instance):
+    """APAR51 — l'instance est-elle un ``crm.Lead`` ?"""
+    return _model_key(instance) == 'crm.lead'
+
+
+def _ecrire_lead(lead, champ, valeur, user):
+    """APAR51 — écrit un champ de lead par ``crm.services.
+    appliquer_champ_automatique`` et traduit son issue en statut de run."""
+    from apps.crm.services import (
+        CHAMP_AUTO_CADENCE, CHAMP_AUTO_INCHANGE, CHAMP_AUTO_INVALIDE,
+        appliquer_champ_automatique)
+
+    issue, motif = appliquer_champ_automatique(lead, champ, valeur, user)
+    if issue == CHAMP_AUTO_INVALIDE:
+        return Status.FAILED, motif
+    if issue == CHAMP_AUTO_CADENCE:
+        return Status.SKIPPED, f'Refusé (CAD49) : {motif}.'
+    if issue == CHAMP_AUTO_INCHANGE:
+        return Status.NOOP, f'Champ « {champ} » déjà à cette valeur.'
+    return Status.SUCCESS, f'Champ « {champ} » mis à jour.'
+
 
 def _model_name(instance):
     meta = getattr(instance, '_meta', None)
