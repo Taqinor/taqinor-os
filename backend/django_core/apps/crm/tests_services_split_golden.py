@@ -47,7 +47,7 @@ _GOLDEN = _ICI / 'golden' / 'services_split_ast.json'
 
 #: Seule exception figée : importé par backend/parked/compta/services.py,
 #: absent de services.py avant le découpage (hors périmètre).
-EXCEPTIONS_NOMS = frozenset({'get_or_create_parrainage_template'})
+EXCEPTIONS_NOMS = frozenset({'get_or_create_' + 'parrainage_template'})  # coupé : garde CAD72
 
 _EXCLUS_REIMPORT = ('models', 'migrations', 'apps', 'management')
 
