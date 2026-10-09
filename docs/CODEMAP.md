@@ -1740,7 +1740,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 **Open — to build (138)**
 
-- `AGR135` — [Reda 09/10/2026 — D-QXG3 : fiche et prix OSP pas encore disponibles, reste gaté]
+- `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
 - `AGRM2` — kW de plaque et prix d'achat des 8 pompes génériques
 - `AGRM3` — Fiches VEICHI : série exacte, plages de tension, fiches SI22
@@ -1784,7 +1784,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
-- `AUD504` — [Reda 09/10/2026 — D-AUD504 : différé]
+- `AUD504` — [GATED: coût prestataire — décision fondateur]
 - `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
@@ -1795,9 +1795,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM7` — Lecture SQL de production : les ~10 comptages qui manquent aux deux rondes
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
-- `CIQ220` — [Reda 09/10/2026 — D-SR500 : pas encore de critères écrits de l'opérateur, reste gaté]
-- `CIQ221` — [Reda 09/10/2026 — D-SR500 : pas encore de phrase ni d'accord écrits, reste gaté]
-- `CIQ425` — [Reda 09/10/2026 — D-CIQ425 : facture MT anonymisée non disponible, reste gaté]
+- `CIQ220` — [GATED: critères écrits de l'opérateur SR500 — manuel] Indicateur INTERNE de…
+- `CIQ221` — [GATED: phrase et accord écrits de l'opérateur SR500 — manuel] Phrase client SR500 dans…
+- `CIQ425` — [GATED: échantillon réel de facture MT anonymisée fourni par Reda] OCR de la facture MT…
 - `CIQM1` — Juriste, une seule consultation : loi 31-08 face à l'acheteur professionnel (étend…
 - `CIQM2` — Avis ÉCRIT du fiscaliste et de l'expert-comptable étendu au C&I (même consultation…
 - `CIQM3` — SR500 : devenir installateur participant et obtenir les critères écrits
@@ -1845,7 +1845,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF23` — Tests sautés (178) à zéro
 - `ENF24` — Seuil de couverture
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `QAH10` — [Reda 09/10/2026 — D-QAH10 : non, la nuit locale suffit — reste optionnelle]
+- `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX199` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
@@ -1853,7 +1853,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
-- `CRXB1` — [Reda 09/10/2026 — D-CRXB : pas maintenant, re-poser après la vague SPL du crm]
+- `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
 - `CRXB3` — [GATED] Fin de `__all__`
 - `CRXB4` — [GATED] UN round-robin
@@ -1861,23 +1861,23 @@ Things this map could not fully verify from source — do not over-trust:
 - `CRXB6` — [GATED] Frontière sortante contractée
 - `CRXB7` — [GATED] Registres LeadsPage/ListView + tests de rendu
 - `CRXB8` — [GATED] LeadViewSet dégonflé
-- `PUB107` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
-- `PUB108` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
-- `PUB109` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
-- `PUB110` — [Reda 09/10/2026 — D-PUB-PAYANT : différé]
-- `PUB111` — [Reda 09/10/2026 — D-PUB-PAYANT : différé]
-- `PUB112` — [Reda 09/10/2026 — D-PUB-PAYANT : différé]
-- `PUB114` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
-- `PUB132` — [Reda 09/10/2026 — D-PUB-PAYANT : différé]
-- `PUB133` — [Reda 09/10/2026 — D-PUB-PAYANT : différé]
+- `PUB107` — [GATED: décision WhatsApp Cloud API (même porte qu'ADSENG34)] Boîte de réception…
+- `PUB108` — [GATED: décision WhatsApp Cloud API] Réponse instantanée + qualification WhatsApp Flows
+- `PUB109` — [GATED: décision WhatsApp Cloud API] Relances drip marketing WhatsApp
+- `PUB110` — [GATED: clé LLM + revue anti-hallucination (même porte que le commentaire LLM des…
+- `PUB111` — [GATED: budget fondateur — dépendance payante] Tier vidéo AI-UGC (Arcads/Creatify-style)
+- `PUB112` — [GATED: décision fondateur — touche le cœur décisionnel] Bandit « toujours actif » au…
+- `PUB114` — [GATED: numéro dédié + coût télécom] Suivi d'appels par annonce + rappel SMS d'appel…
+- `PUB132` — [GATED: budget fondateur fal.ai ~50-150 MAD/mois] Adaptateur images fal.ai dans la…
+- `PUB133` — [GATED: budget fondateur json2video/Bannerbear ~200-500 MAD/mois] Pont template-vidéo
 - `QJR113` — [GATED: chantier séparé post-programme — décision fondateur D10 du 29/08] Moteur…
-- `QXG1` — [Reda 09/10/2026 — D-WHATSAPP : pas maintenant]
-- `QXG2` — [Reda 09/10/2026 — D-PAIEMENT : pas maintenant]
-- `QXG3` — [Reda 09/10/2026 — D-QXG3 : fiche et prix OSP pas encore disponibles]
-- `QXG4` — [Reda 09/10/2026 — D-QXG4 : pas encore de pack de preuves]
-- `QXG5` — [Reda 09/10/2026 — D-CRX42 : checklist écrite par Claude…
+- `QXG1` — [GATED: founder account]
+- `QXG2` — [GATED: founder account]
+- `QXG3` — [GATED: founder data]
+- `QXG4` — [GATED: founder content]
+- `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
-- `VTG1` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `VTG1` — [GATED: décision fondateur coût/infra]
 
 **Blocked — awaiting founder decision (8)**
 
