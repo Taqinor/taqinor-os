@@ -1923,3 +1923,11 @@ WHATSAPP_CLOUD_VERIFY_TOKEN = os.environ.get('WHATSAPP_CLOUD_VERIFY_TOKEN', '')
 WHATSAPP_CLOUD_APP_SECRET = os.environ.get('WHATSAPP_CLOUD_APP_SECRET', '')
 # Société ERP cible des conversations (sans elle : repli bruyant, écran inactif).
 WHATSAPP_CLOUD_COMPANY_ID = os.environ.get('WHATSAPP_CLOUD_COMPANY_ID') or None
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP36 — apps.notifications : WhatsApp Business Cloud (BSP), lus par
+# views_whatsapp_bsp._whatsapp_actif(). OFF tant que les DEUX ne sont pas posés
+# (D-ADEP-3 : absents en prod). Booléen STRICT : seuls « 1 » et « true ».
+WHATSAPP_ENABLED = (
+    os.environ.get('WHATSAPP_ENABLED', '').strip().lower() in ('1', 'true'))
+WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
