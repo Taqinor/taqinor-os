@@ -239,9 +239,33 @@ def _dispatch_relance_canal(facture, niveau, note, user=None):
                 'facture %s', facture.id)
         return {'canal': canal, 'courrier_pdf_key': ''}
 
-    # Défaut / email — comportement historique strictement inchangé.
-    send_relance_email(facture, niveau_nom=niveau_nom, message=message, user=user)
-    return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': ''}
+    # Défaut / email. AFAC45 (C-AFAC-033) — le résultat RÉEL de l'envoi est
+    # rendu : un `EmailLog` en échec (adresse absente, SMTP en panne) ne
+    # consomme pas le niveau (l'appelant reporte au prochain jour ouvré).
+    log = send_relance_email(
+        facture, niveau_nom=niveau_nom, message=message, user=user)
+    return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': '',
+            'envoye': _email_parti(log)}
+
+
+def _email_parti(log):
+    """AFAC45 — True si l'``EmailLog`` dit l'e-mail réellement parti."""
+    from .models import EmailLog
+    return log is not None and getattr(log, 'statut', None) == \
+        EmailLog.Statut.ENVOYE
+
+
+def _reporter_relance(facture, today):
+    """AFAC45 — envoi en échec : le niveau n'est PAS consommé, la relance
+    est retentée au prochain jour ouvré de la société."""
+    cible = today + timedelta(days=1)
+    try:
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
+        cible = prochain_jour_ouvre(cible, facture.company)
+    except Exception:  # noqa: BLE001 — calendrier absent → date brute
+        pass
+    facture.prochaine_relance = cible
+    facture.save(update_fields=['prochaine_relance'])
 
 
 @shared_task(name='ventes.relance_reminders')
@@ -313,7 +337,11 @@ def relance_reminders():
             company=facture.company).order_by('delai_jours', 'ordre'))
         if not levels:
             # Aucun niveau configuré : envoi générique unique, puis stop.
-            send_relance_email(facture, niveau_nom='', message='', user=None)
+            log = send_relance_email(
+                facture, niveau_nom='', message='', user=None)
+            if not _email_parti(log):  # AFAC45 — retenté, jamais consommé
+                _reporter_relance(facture, today)
+                continue
             RelanceLog.objects.create(
                 company=facture.company, facture=facture, niveau=None,
                 niveau_nom='', note='Relance automatique programmée (email).')
@@ -336,6 +364,11 @@ def relance_reminders():
         dispatch = _dispatch_relance_canal(
             facture, niveau, 'Relance automatique programmée (email).',
             user=None)
+        if not dispatch.get('envoye', True):
+            # AFAC45 — e-mail non parti : aucun RelanceLog, niveau conservé,
+            # l'EmailLog en échec reste visible sur la facture.
+            _reporter_relance(facture, today)
+            continue
         RelanceLog.objects.create(
             company=facture.company, facture=facture, niveau=niveau.ordre,
             niveau_nom=niveau.nom,
@@ -471,8 +504,11 @@ def pre_echeance_reminders():
         # Idempotence : un seul rappel par facture (le marqueur reste tant
         # que la facture n'a qu'une échéance figée — pas de doublon possible
         # même si le job tourne plusieurs fois le même jour).
+        # AFAC45 — seul un rappel réellement PARTI compte : un échec est
+        # retenté au passage suivant.
         deja_envoye = EmailLog.objects.filter(
             facture=facture, reference__endswith=f'::{PRE_ECHEANCE_MARKER}',
+            statut=EmailLog.Statut.ENVOYE,
         ).exists()
         if deja_envoye:
             continue
@@ -482,7 +518,8 @@ def pre_echeance_reminders():
         log.reference = f'{(facture.reference or "")[:70]}::' \
             f'{PRE_ECHEANCE_MARKER}'
         log.save(update_fields=['reference'])
-        sent += 1
+        if _email_parti(log):
+            sent += 1
 
     logger.info('pre_echeance_reminders: %s rappel(s) envoyé(s)', sent)
     return sent
@@ -525,8 +562,9 @@ def releve_mensuel_reminders():
 
     for client in clients:
         # Idempotence : un seul envoi par client et par mois.
+        # AFAC45 — seul un relevé réellement PARTI compte (échec retenté).
         deja_envoye = EmailLog.objects.filter(
-            client=client, reference=marker,
+            client=client, reference=marker, statut=EmailLog.Statut.ENVOYE,
         ).exists()
         if deja_envoye:
             continue
@@ -542,7 +580,8 @@ def releve_mensuel_reminders():
             continue
         log.reference = f'{marker}'[:80]
         log.save(update_fields=['reference'])
-        sent += 1
+        if _email_parti(log):
+            sent += 1
 
     logger.info('releve_mensuel_reminders: %s relevé(s) envoyé(s)', sent)
     return sent
