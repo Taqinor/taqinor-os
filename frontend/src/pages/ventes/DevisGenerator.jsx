@@ -207,6 +207,8 @@ import {
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 // EDC4 — barre d'actions collante EN TÊTE (le pied `gen-actions-sticky` reste).
 import BarreActionsDevis from './generator/BarreActionsDevis'
+// EDC5 — décision clavier du formulaire (module pur) : Entrée n'enregistre jamais.
+import { decisionTouche, champCorrespondant } from './generator/clavierDevis'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
 import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
@@ -811,6 +813,9 @@ export default function DevisGenerator({
   // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
+  // EDC5 — une ligne ajoutée par Entrée (dernière ligne) reçoit le focus sur
+  // sa DÉSIGNATION (on continue de saisir), pas sur le sélecteur produit.
+  const focusDesignationApresAjout = useRef(false)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -2561,7 +2566,13 @@ export default function DevisGenerator({
       ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
     if (row) {
       const picker = row.querySelector('button[type="button"]')
-      picker?.focus()
+      // EDC5 — ajout par Entrée : la désignation si elle est modifiable
+      // (rôle autorisé, QP2), sinon le sélecteur produit comme avant.
+      const designation = focusDesignationApresAjout.current
+        ? row.querySelector('td[data-label="Désignation"] input:not([disabled])')
+        : null
+      focusDesignationApresAjout.current = false
+      ;(designation || picker)?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
@@ -3642,6 +3653,30 @@ export default function DevisGenerator({
     }
   }
 
+  // EDC5 (fondateur 09/10/2026 — « revient d'un coup au devis ») — clavier
+  // du formulaire : la soumission IMPLICITE du navigateur (Entrée dans
+  // n'importe quel champ) enregistrait le devis et quittait l'éditeur. La
+  // décision est prise par le module pur `generator/clavierDevis.js` ; ici on
+  // l'applique. Ctrl/Cmd+S et Ctrl/Cmd+Entrée passent par `requestSubmit()` :
+  // même validation et même chemin qu'un clic sur « Enregistrer ».
+  const onKeyDownFormulaire = (e) => {
+    const decision = decisionTouche(e, e.currentTarget)
+    if (decision === 'ignorer') return
+    e.preventDefault()
+    if (decision === 'enregistrer') {
+      if (!saving) e.currentTarget.requestSubmit()
+      return
+    }
+    if (decision === 'ligne-suivante') {
+      champCorrespondant(e.target)?.focus()
+      return
+    }
+    if (decision === 'ajouter-ligne') {
+      focusDesignationApresAjout.current = true
+      addLine()
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
@@ -3932,8 +3967,11 @@ export default function DevisGenerator({
           alors toute la largeur. */}
       <div className="lg:flex lg:items-start lg:gap-6">
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
-          acceptée telle quelle (les steps ne servent qu'aux flèches). */}
-      <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+          acceptée telle quelle (les steps ne servent qu'aux flèches).
+          EDC5 — `onKeyDown` : Entrée n'enregistre JAMAIS (ligne suivante dans
+          la table) ; Ctrl/Cmd+S et Ctrl/Cmd+Entrée enregistrent. Aucune
+          validation à la frappe : la saisie numérique est inchangée. */}
+      <form id="gen-form" onSubmit={handleSubmit} noValidate onKeyDown={onKeyDownFormulaire} className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
         {editDevis?.statut === 'envoye' && (
           <div
             data-testid="devis-envoye-banner"
