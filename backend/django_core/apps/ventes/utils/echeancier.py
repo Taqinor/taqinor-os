@@ -491,29 +491,38 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
         tranches = []
     if not tranches:
         return slots
+    # AMOT70 (C-AMOT-017, volet amont) — UN ÉCHÉANCIER DU DEVIS EST COMPLET :
+    # un créneau qu'il ne porte pas vaut 0, jamais le défaut société (qui
+    # imprimait « 60 % à la réception du matériel » à côté de 45/55 — 160 %).
+    slots = {'acompte': 0, 'materiel': 0, 'solde': 0}
     if len(tranches) == 3:
         # Forme canonique (acompte / matériel / solde), nommée ou simplement
         # positionnelle : les trois créneaux suivent.
         for cle, tr in zip(('acompte', 'materiel', 'solde'), tranches):
             slots[cle] = tr['pct']
-    else:
-        par_cle = {t['key']: t['pct'] for t in tranches}
-        for cle in ('acompte', 'materiel', 'solde'):
-            if cle in par_cle:
-                slots[cle] = par_cle[cle]
+        return slots
+    from apps.ventes.utils.company_settings import CRENEAU_DU_JALON
+    if any(t.get('jalon') in JALONS_CI or t['key'] in JALONS_CI
+           for t in tranches):
         # CIQ212 — jalons C&I (4 tranches industrielles…) : somme par créneau
-        # imprimé ; sans jalon C&I, rien ne change.
-        from apps.ventes.utils.company_settings import CRENEAU_DU_JALON
-        sommes = {}
-        if any(t.get('jalon') in JALONS_CI or t['key'] in JALONS_CI
-               for t in tranches):
-            for t in tranches:
-                creneau = CRENEAU_DU_JALON.get(t.get('jalon') or t['key'])
-                if creneau is not None:
-                    sommes[creneau] = sommes.get(creneau, 0) + t['pct']
-        slots.update(sommes)
-        # La PREMIÈRE tranche EST l'acompte, quel que soit son nom.
-        slots['acompte'] = tranches[0]['pct']
+        # imprimé.
+        for t in tranches:
+            creneau = CRENEAU_DU_JALON.get(t.get('jalon') or t['key'])
+            if creneau is not None:
+                slots[creneau] = slots[creneau] + t['pct']
+    else:
+        # Tranches typées : leur créneau ; non typées : la MÊME règle que les
+        # cases (``montants_tranches`` / ``repartition_paiement``) — la
+        # première est l'acompte, la dernière le solde, celles du milieu le
+        # matériel.
+        dernier = len(tranches) - 1
+        for i, t in enumerate(tranches):
+            cle = t['key'] if t['key'] in slots else (
+                'acompte' if i == 0 else 'solde' if i == dernier
+                else 'materiel')
+            slots[cle] = slots[cle] + t['pct']
+    # La PREMIÈRE tranche non typée EST l'acompte (rang 0 ci-dessus) ; aucune
+    # réaffectation de plus — la somme des créneaux reste celle des tranches.
     return slots
 
 
