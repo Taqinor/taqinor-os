@@ -150,10 +150,9 @@ describe('InstallationDetail — CIQ637 régime et niveau de tension', () => {
     await enregistrer()
     expect(mocks.updateInstallation).toHaveBeenCalledTimes(1)
     const [, data] = mocks.updateInstallation.mock.calls[0]
-    // Même charge utile qu'à la première ouverture (le PATCH est idempotent).
-    expect(data.niveau_tension).toBe('mt')
-    expect(data.puissance_souscrite_kva).toBe('250.00')
-    expect(data.regime_8221).toBe('accord_raccordement')
+    // ACHT57 — rien de touché : le diff est vide, les valeurs stockées ne
+    // sont pas renvoyées (donc ni réécrites ni périmées).
+    expect(data).toEqual({})
   })
 })
 

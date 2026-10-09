@@ -12,6 +12,8 @@ import { useState } from 'react'
 import { CloudOff, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button, Badge } from '../../../ui'
 import { useFieldOutbox } from './useFieldOutbox'
+import { fieldOutbox } from './fieldOutbox'
+import { estConflit } from './outbox'
 
 export default function OfflineSyncIndicator() {
   const {
@@ -84,6 +86,20 @@ export default function OfflineSyncIndicator() {
                 {op.op_type} — {op.serverError}
                 {op.attempts > 1 ? ` (${op.attempts} tentatives)` : ''}
               </span>
+              {/* ACHT33 — une op en conflit se REJOUE (le terminal écrase la
+                  valeur serveur) ou s'abandonne ; jamais perdue en silence. */}
+              {estConflit(op) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    await fieldOutbox.rejouer(op.client_op_id)
+                    await flush()
+                  }}
+                >
+                  Rejouer
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
