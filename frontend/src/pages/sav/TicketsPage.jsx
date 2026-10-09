@@ -773,30 +773,27 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       setActionError(frError(err, 'Impossible de créer le devis.'))
     } finally { setDevisBusy(false) }
   }
-  const genererFacture = async () => {
+  // ASAV3 — UNE seule porte de facturation (« Facturer » → /facturer/). Un 403
+  // récidive affiche « override responsable requis » ; seul un responsable/admin
+  // peut confirmer « Facturer quand même » (renvoie override: true).
+  const [overrideRequis, setOverrideRequis] = useState(false)
+  const facturer = async (override = false) => {
     setActionError(null)
     setFactureBusy(true)
     try {
-      const r = await savApi.genererFactureTicket(id)
-      toast.success(`Facture ${r.data?.facture_reference ?? ''} générée`)
-      setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
-      loadHistorique()
-      onSaved?.()
-    } catch (err) {
-      setActionError(frError(err, 'Impossible de générer la facture.'))
-    } finally { setFactureBusy(false) }
-  }
-  const facturer = async () => {
-    setActionError(null)
-    setFactureBusy(true)
-    try {
-      const r = await savApi.facturerTicket(id)
+      const r = await savApi.facturerTicket(id, override)
+      setOverrideRequis(false)
       toast.success(`Facture ${r.data?.facture_reference ?? ''} générée (${r.data?.couverture ?? ''})`)
       setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
       loadHistorique()
       onSaved?.()
     } catch (err) {
-      setActionError(frError(err, 'Impossible de facturer ce ticket.'))
+      if (err?.response?.status === 403) {
+        setOverrideRequis(true)
+        setActionError(frError(err, 'Override responsable requis pour facturer ce ticket.'))
+      } else {
+        setActionError(frError(err, 'Impossible de facturer ce ticket.'))
+      }
     } finally { setFactureBusy(false) }
   }
 
@@ -1430,14 +1427,17 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               générique sinon. Idempotent (facture_id_ext déjà posé). */}
           {current.facture_id_ext ? (
             <Badge tone="success">Facture générée</Badge>
-          ) : current.couverture && current.couverture !== 'a_determiner' ? (
-            <Button type="button" variant="outline" loading={factureBusy} onClick={facturer}>
-              <FileText /> Facturer
-            </Button>
           ) : (
-            <Button type="button" variant="outline" loading={factureBusy} onClick={genererFacture}>
-              <FileText /> Générer facture
-            </Button>
+            <>
+              <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(false)}>
+                <FileText /> Facturer
+              </Button>
+              {overrideRequis && peutTaguer && (
+                <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(true)}>
+                  Facturer quand même
+                </Button>
+              )}
+            </>
           )}
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)

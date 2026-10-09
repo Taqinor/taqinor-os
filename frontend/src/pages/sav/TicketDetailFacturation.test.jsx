@@ -28,9 +28,6 @@ vi.mock('../../api/savApi', () => ({
     creerDevisTicket: vi.fn(() => Promise.resolve({
       data: { devis_id: 42, devis_reference: 'DEV-SAV-42' },
     })),
-    genererFactureTicket: vi.fn(() => Promise.resolve({
-      data: { facture_id: 7, facture_reference: 'FACT-SAV-7', sous_garantie: false },
-    })),
     facturerTicket: vi.fn(() => Promise.resolve({
       data: { facture_id: 8, facture_reference: 'FACT-SAV-8', couverture: 'facturable' },
     })),
@@ -106,19 +103,11 @@ describe('TicketDetail — XSAV3 création de devis de réparation', () => {
 })
 
 describe('TicketDetail — XFSM1/XCTR4 facturation', () => {
-  it('propose « Générer facture » (repli générique) tant que la couverture est à déterminer', async () => {
-    renderDetail(baseTicket)
-    const btn = await screen.findByRole('button', { name: /Générer facture/ })
-    fireEvent.click(btn)
-    await waitFor(() => expect(savApi.genererFactureTicket).toHaveBeenCalledWith(1))
-    expect(await screen.findByText('Facture générée')).toBeInTheDocument()
-  })
-
   it('propose « Facturer » (routage de couverture) une fois la couverture posée', async () => {
     renderDetail({ ...baseTicket, couverture: 'facturable' })
     const btn = await screen.findByRole('button', { name: /^Facturer$/ })
     fireEvent.click(btn)
-    await waitFor(() => expect(savApi.facturerTicket).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(savApi.facturerTicket).toHaveBeenCalledWith(1, false))
     expect(await screen.findByText('Facture générée')).toBeInTheDocument()
   })
 

@@ -85,12 +85,10 @@ const savApi = {
   // XSAV3 — devis de réparation hors garantie depuis le ticket (pré-rempli
   // depuis les pièces consommées, prix de VENTE catalogue).
   creerDevisTicket: (id, body) => api.post(`/sav/tickets/${id}/creer-devis/`, body ?? {}),
-  // XFSM1 — facture brouillon hors garantie (ou couverte à 0 DH) depuis le ticket.
-  genererFactureTicket: (id, override) =>
-    api.post(`/sav/tickets/${id}/generer-facture/`, override ? { override: true } : {}),
   // XCTR4 — facture le ticket selon le routage de couverture calculé
   // (garantie / contrat O&M / facturable).
-  facturerTicket: (id) => api.post(`/sav/tickets/${id}/facturer/`),
+  facturerTicket: (id, override) =>
+    api.post(`/sav/tickets/${id}/facturer/`, override ? { override: true } : {}),
   // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).
   getTicketPieces: (id) => api.get(`/sav/tickets/${id}/pieces/`),
   addTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces/`, body),
