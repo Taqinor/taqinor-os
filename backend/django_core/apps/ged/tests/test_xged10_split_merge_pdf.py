@@ -149,7 +149,7 @@ class FusionnerTests(XGed10Base):
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/documents/fusionner/', {
             'documents': [self.doc.pk],
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 400)
 
     def test_merge_into_existing_target_adds_version(self):

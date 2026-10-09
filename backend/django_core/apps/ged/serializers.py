@@ -1,3 +1,5 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -27,7 +29,7 @@ class DocumentTagSerializer(SameCompanyFKSerializerMixin,
     société et ne jamais créer de cycle (garde `services.validate_tag_parent`).
     """
     parent_nom = serializers.CharField(
-        source='parent.nom', read_only=True, default=None)
+        source='parent.nom', read_only=True, default=None, allow_null=True)
     chemin = serializers.SerializerMethodField()
     document_count = serializers.SerializerMethodField()
     # ERR-QAH-GED-TAG-CREATION-SLUG — le formulaire « Nouveau tag » n'envoie
@@ -48,10 +50,12 @@ class DocumentTagSerializer(SameCompanyFKSerializerMixin,
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_chemin(self, obj):
         parts = [a.nom for a in reversed(obj.ancetres())] + [obj.nom]
         return ' / '.join(parts)
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_document_count(self, obj):
         return obj.assignments.count()
 
@@ -138,7 +142,7 @@ class CoffreSerializer(SameCompanyFKSerializerMixin,
     doivent appartenir à la société courante.
     """
     proprietaire_nom = serializers.CharField(
-        source='proprietaire.username', read_only=True, default=None)
+        source='proprietaire.username', read_only=True, default=None, allow_null=True)
     document_count = serializers.SerializerMethodField()
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
@@ -152,6 +156,7 @@ class CoffreSerializer(SameCompanyFKSerializerMixin,
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_document_count(self, obj):
         return obj.documents.count()
 
@@ -181,25 +186,12 @@ class CabinetSerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'description', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
-    def validate_nom(self, value):
-        """ADOC22 — doublon (société, nom) : 400 nommé, jamais une 500."""
-        request = self.context.get('request')
-        if request is not None:
-            qs = Cabinet.objects.filter(
-                company_id=request.user.company_id, nom=value)
-            if self.instance is not None:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise serializers.ValidationError(
-                    "Une armoire de ce nom existe déjà.")
-        return value
-
 
 class FolderSerializer(SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     cabinet_nom = serializers.CharField(source='cabinet.nom', read_only=True)
     parent_nom = serializers.CharField(
-        source='parent.nom', read_only=True, default=None)
+        source='parent.nom', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('cabinet', 'parent')
@@ -268,11 +260,11 @@ class FolderSerializer(SameCompanyFKSerializerMixin,
 class DocumentVersionSerializer(SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
-        source='uploaded_by.username', read_only=True, default=None)
+        source='uploaded_by.username', read_only=True, default=None, allow_null=True)
     # GED15 — si la version est une restauration, `restored_from_version` expose
     # le numéro de version source (lisible, jamais écrit du corps de requête).
     restored_from_version = serializers.IntegerField(
-        source='restored_from.version', read_only=True, default=None)
+        source='restored_from.version', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('document',)
@@ -312,7 +304,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
                          serializers.ModelSerializer):
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
     version_count = serializers.SerializerMethodField()
     derniere_version = serializers.SerializerMethodField()
     derniere_mime = serializers.SerializerMethodField()
@@ -321,7 +313,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
     tags = serializers.SerializerMethodField()
     # GED16 — état du verrou (lecture seule, posé côté serveur).
     locked_by_nom = serializers.CharField(
-        source='locked_by.username', read_only=True, default=None)
+        source='locked_by.username', read_only=True, default=None, allow_null=True)
     is_locked = serializers.BooleanField(read_only=True)
     # GED17 — cycle de vie documentaire (lecture seule : avancé via l'action
     # `cycle-vie`, jamais muté par un PATCH direct). `transitions_autorisees`
@@ -334,7 +326,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
     # Posés/effacés côté serveur via les actions corbeille ; jamais mutés par un
     # PATCH direct. `est_dans_corbeille` est un drapeau pratique pour l'UI.
     supprime_par_nom = serializers.CharField(
-        source='supprime_par.username', read_only=True, default=None)
+        source='supprime_par.username', read_only=True, default=None, allow_null=True)
     est_dans_corbeille = serializers.BooleanField(read_only=True)
     # XGED18 — document-lien (URL externe) : `est_document_lien` en lecture
     # seule (dérivé de `url_externe`) pour que le frontend adapte l'aperçu et
@@ -342,11 +334,11 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
     est_document_lien = serializers.BooleanField(read_only=True)
     # ZGED5 — panneau d'informations : propriétaire + contact assigné.
     proprietaire_nom = serializers.CharField(
-        source='proprietaire.username', read_only=True, default=None)
+        source='proprietaire.username', read_only=True, default=None, allow_null=True)
     contact_label = serializers.SerializerMethodField()
     # ZGED9 — verrou d'avertissement (léger, distinct du check-out GED16).
     verrou_avertissement_par_nom = serializers.CharField(
-        source='verrou_avertissement_par.username', read_only=True, default=None)
+        source='verrou_avertissement_par.username', read_only=True, default=None, allow_null=True)
     est_verrouille_avertissement = serializers.BooleanField(read_only=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
@@ -390,6 +382,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
             'verrou_avertissement_motif', 'est_verrouille_avertissement',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_contact_label(self, obj):
         if not obj.contact_id:
             return None
@@ -400,6 +393,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
         from apps.crm.selectors import client_label
         return client_label(company, obj.contact_id)
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_version_count(self, obj):
         # APRF36 — annotation posée par DocumentViewSet.get_queryset ; repli
         # hors liste (action, service) = une lecture.
@@ -408,6 +402,7 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
             return annote
         return obj.versions.count()
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_derniere_version(self, obj):
         if hasattr(obj, 'derniere_version_annotee'):
             return obj.derniere_version_annotee
@@ -436,6 +431,18 @@ class DocumentSerializer(SameCompanyFKSerializerMixin,
         last = obj.versions.order_by('-version').first()
         return last.mime if last else None
 
+    @extend_schema_field({
+        'type': 'array',
+        'items': {
+            'type': 'object',
+            'properties': {
+                'id': {'type': 'integer'},
+                'nom': {'type': 'string'},
+                'slug': {'type': 'string'},
+            },
+            'required': ['id', 'nom', 'slug'],
+        },
+    })
     def get_tags(self, obj):
         # GED9 — tags de la taxonomie appliqués au document (id + nom).
         # APRF36 — lit le préchargement de la liste (`tag_assignments__tag`) ;
@@ -493,7 +500,7 @@ class DocumentLienSerializer(serializers.ModelSerializer):
     """
     document_nom = serializers.CharField(source='document.nom', read_only=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
     target_model = serializers.SerializerMethodField()
     target_id = serializers.IntegerField(source='object_id', read_only=True)
     target_label = serializers.SerializerMethodField()
@@ -506,10 +513,12 @@ class DocumentLienSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_target_model(self, obj):
         ct = obj.content_type
         return f'{ct.app_label}.{ct.model}'
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_target_label(self, obj):
         target = obj.content_object
         if target is None:
@@ -538,9 +547,9 @@ class DemandeApprobationSerializer(SameCompanyFKSerializerMixin,
     document_nom = serializers.CharField(
         source='document.nom', read_only=True)
     demandeur_nom = serializers.CharField(
-        source='demandeur.username', read_only=True, default=None)
+        source='demandeur.username', read_only=True, default=None, allow_null=True)
     approbateur_nom = serializers.CharField(
-        source='approbateur.username', read_only=True, default=None)
+        source='approbateur.username', read_only=True, default=None, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     document_statut = serializers.CharField(
@@ -581,7 +590,7 @@ class PartageGedSerializer(serializers.ModelSerializer):
     document_nom = serializers.CharField(
         source='document.nom', read_only=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
     # Mot de passe en clair, write-only : sert UNIQUEMENT à poser le hash.
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=True,
@@ -641,6 +650,7 @@ class PartageGedSerializer(serializers.ModelSerializer):
             data.pop('public_url', None)
         return data
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_public_url(self, obj):
         # Chemin public (relatif) — le jeton EST le secret d'accès.
         return f'/api/django/ged/public/{obj.token}/'
@@ -690,11 +700,11 @@ class PolitiqueRetentionSerializer(SameCompanyFKSerializerMixin,
     scope = serializers.CharField(read_only=True)
     is_destructive = serializers.BooleanField(read_only=True)
     cabinet_nom = serializers.CharField(
-        source='cabinet.nom', read_only=True, default=None)
+        source='cabinet.nom', read_only=True, default=None, allow_null=True)
     folder_nom = serializers.CharField(
-        source='folder.nom', read_only=True, default=None)
+        source='folder.nom', read_only=True, default=None, allow_null=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('cabinet', 'folder')
@@ -753,11 +763,11 @@ class ArchivageLegalSerializer(SameCompanyFKSerializerMixin,
     modifie ni ne se supprime jamais (immuable) ; tous les champs effectifs sont
     en lecture seule ici (la création passe par le service / l'action dédiée)."""
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
     archive_par_nom = serializers.CharField(
-        source='archive_par.username', read_only=True, default=None)
+        source='archive_par.username', read_only=True, default=None, allow_null=True)
     version_numero = serializers.IntegerField(
-        source='version.version', read_only=True, default=None)
+        source='version.version', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('document',)
@@ -789,11 +799,11 @@ class LegalHoldSerializer(SameCompanyFKSerializerMixin,
     (`actif`, `date_pose`, `place_par`, `date_levee`, `leve_par`) sont en
     lecture seule ici."""
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
     place_par_nom = serializers.CharField(
-        source='place_par.username', read_only=True, default=None)
+        source='place_par.username', read_only=True, default=None, allow_null=True)
     leve_par_nom = serializers.CharField(
-        source='leve_par.username', read_only=True, default=None)
+        source='leve_par.username', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('document',)
@@ -824,9 +834,9 @@ class DemandeSignatureDocumentSerializer(SameCompanyFKSerializerMixin,
     (webhook/manuel), jamais par mutation directe de l'API. Couche distincte de
     la signature des contrats (CONTRAT16) et du funnel `STAGES.py`."""
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
 
     signataires = serializers.SerializerMethodField()
     # ADOC63 — lien ABSOLU de la cérémonie (« Copier le lien de signature »).
@@ -875,6 +885,8 @@ class DemandeSignatureDocumentSerializer(SameCompanyFKSerializerMixin,
             'created_by', 'created_at', 'updated_at',
         ]
 
+    @extend_schema_field(serializers.ListField(
+        child=serializers.DictField()))
     def get_signataires(self, obj):
         return SignataireDemandeSerializer(
             obj.signataires.all(), many=True, context=self.context).data
@@ -913,6 +925,7 @@ class ChampSignatureSerializer(SameCompanyFKSerializerMixin,
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_type_champ_ref_detail(self, obj):
         t = obj.type_champ_ref
         if t is None:
@@ -1027,9 +1040,9 @@ class FavoriGedSerializer(SameCompanyFKSerializerMixin,
 
     `company`/`utilisateur` posés côté serveur — jamais lus du corps."""
     folder_nom = serializers.CharField(
-        source='folder.nom', read_only=True, default=None)
+        source='folder.nom', read_only=True, default=None, allow_null=True)
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('folder', 'document')
@@ -1076,6 +1089,7 @@ class VueGedEnregistreeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['utilisateur', 'created_at', 'updated_at']
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_est_a_moi(self, obj):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
@@ -1105,11 +1119,11 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
     HÉRITÉES du rôle référencé pour préremplir l'UI (couleur du champ de
     signature, authentification extra ZGED2)."""
     role_signataire_nom = serializers.CharField(
-        source='role_signataire.nom', read_only=True, default=None)
+        source='role_signataire.nom', read_only=True, default=None, allow_null=True)
     role_couleur = serializers.CharField(
-        source='role_signataire.couleur', read_only=True, default=None)
+        source='role_signataire.couleur', read_only=True, default=None, allow_null=True)
     role_auth_extra = serializers.CharField(
-        source='role_signataire.auth_extra', read_only=True, default=None)
+        source='role_signataire.auth_extra', read_only=True, default=None, allow_null=True)
     # ADOC63 — lien ABSOLU de la cérémonie de CE destinataire.
     lien_signature = serializers.SerializerMethodField()
 
@@ -1140,7 +1154,7 @@ class ModeleDocumentSerializer(serializers.ModelSerializer):
     `cabinet_cible`/`dossier_cible` portent la RÈGLE de classement automatique du
     document généré (le dossier peut être templaté par le contexte de fusion)."""
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = ModeleDocument
@@ -1187,9 +1201,9 @@ class JournalAccesSerializer(serializers.ModelSerializer):
     (l'écriture passe par `services.journaliser_acces`, côté serveur, au moment
     d'une lecture). Tous les champs sont en lecture seule."""
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
     utilisateur_nom = serializers.CharField(
-        source='utilisateur.username', read_only=True, default=None)
+        source='utilisateur.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = JournalAcces
@@ -1219,9 +1233,11 @@ class QuotaStockageSerializer(serializers.ModelSerializer):
         read_only_fields = ['utilise_octets', 'depasse',
                             'created_at', 'updated_at']
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_utilise_octets(self, obj):
         return services.usage_stockage_octets(obj.company)
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_depasse(self, obj):
         return services.quota_depasse(obj.company)
 
@@ -1236,7 +1252,7 @@ class DepotPublicSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, default=None, allow_null=True)
     is_expired = serializers.BooleanField(read_only=True)
     is_accessible = serializers.BooleanField(read_only=True)
 
@@ -1284,7 +1300,7 @@ class DemandeDocumentSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('folder', 'exigence', 'utilisateur')
     folder_nom = serializers.CharField(source='folder.nom', read_only=True)
     utilisateur_nom = serializers.CharField(
-        source='utilisateur.username', read_only=True, default=None)
+        source='utilisateur.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = DemandeDocument
@@ -1305,7 +1321,7 @@ class ValidationOcrDocumentSerializer(serializers.ModelSerializer):
     """XGED13 — File de validation d'extraction OCR (score de confiance)."""
     document_nom = serializers.CharField(source='document.nom', read_only=True)
     valide_par_nom = serializers.CharField(
-        source='valide_par.username', read_only=True, default=None)
+        source='valide_par.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = ValidationOcrDocument
@@ -1326,7 +1342,7 @@ class AnnotationDocumentSerializer(SameCompanyFKSerializerMixin,
     séparée — n'affecte jamais le fichier original)."""
     same_company_fields = ('version',)
     auteur_nom = serializers.CharField(
-        source='auteur.username', read_only=True, default=None)
+        source='auteur.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = AnnotationDocument
@@ -1362,7 +1378,7 @@ class ExecutionRegleDossierSerializer(serializers.ModelSerializer):
     direct (les lignes sont posées côté serveur par
     `services.appliquer_regles_dossier`)."""
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = ExecutionRegleDossier
@@ -1395,18 +1411,18 @@ class AclGedSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer
     en plus appartenir à la société de l'appelant (jamais de fuite
     cross-société via un id de dossier/document d'une autre société)."""
     utilisateur_nom = serializers.CharField(
-        source='utilisateur.username', read_only=True, default=None)
+        source='utilisateur.username', read_only=True, default=None, allow_null=True)
     role_nom = serializers.CharField(
-        source='role.nom', read_only=True, default=None)
+        source='role.nom', read_only=True, default=None, allow_null=True)
     # NTPRT13 — principal PORTAIL CLIENT (voir ``AclGed.client``) : exposé ici
     # pour que l'écran interne puisse effectivement poser un partage client
     # (sans ce champ, le modèle le permettait mais aucune API ne l'atteignait).
     client_nom = serializers.CharField(
-        source='client.nom', read_only=True, default=None)
+        source='client.nom', read_only=True, default=None, allow_null=True)
     folder_nom = serializers.CharField(
-        source='folder.nom', read_only=True, default=None)
+        source='folder.nom', read_only=True, default=None, allow_null=True)
     document_nom = serializers.CharField(
-        source='document.nom', read_only=True, default=None)
+        source='document.nom', read_only=True, default=None, allow_null=True)
     # Un id de client d'une AUTRE société ne doit jamais devenir un partage :
     # validation même-société du FK écrivable (check_fk_scoping).
     # ADOC36 — cible et principaux bornés à la société de la requête.
@@ -1465,19 +1481,6 @@ class TamponSocieteSerializer(serializers.ModelSerializer):
         fields = ['id', 'libelle', 'created_at']
         read_only_fields = ['created_at']
 
-    def validate_libelle(self, value):
-        """ADOC22 — doublon (société, libellé) : 400 nommé, jamais une 500."""
-        request = self.context.get('request')
-        if request is not None:
-            qs = TamponSociete.objects.filter(
-                company_id=request.user.company_id, libelle=value)
-            if self.instance is not None:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise serializers.ValidationError(
-                    "Un tampon de ce libellé existe déjà.")
-        return value
-
 
 class RegleAclMetadonneeSerializer(SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
@@ -1485,7 +1488,7 @@ class RegleAclMetadonneeSerializer(SameCompanyFKSerializerMixin,
     évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
     `AclGed` matérialisée)."""
     role_nom = serializers.CharField(
-        source='role.nom', read_only=True, default=None)
+        source='role.nom', read_only=True, default=None, allow_null=True)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('role',)
@@ -1502,7 +1505,7 @@ class RegleAclMetadonneeSerializer(SameCompanyFKSerializerMixin,
 class CertificatDestructionSerializer(serializers.ModelSerializer):
     """XGED23 — Certificat immuable de destruction (lecture seule)."""
     detruit_par_nom = serializers.CharField(
-        source='detruit_par.username', read_only=True, default=None)
+        source='detruit_par.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = CertificatDestruction
@@ -1520,9 +1523,9 @@ class DemandeDispositionSerializer(serializers.ModelSerializer):
     `documents` porte les ids proposés (résolus/filtrés côté serveur à la
     création — jamais lus tels quels sans validation)."""
     demandeur_nom = serializers.CharField(
-        source='demandeur.username', read_only=True, default=None)
+        source='demandeur.username', read_only=True, default=None, allow_null=True)
     approbateur_nom = serializers.CharField(
-        source='approbateur.username', read_only=True, default=None)
+        source='approbateur.username', read_only=True, default=None, allow_null=True)
     certificats = CertificatDestructionSerializer(many=True, read_only=True)
 
     class Meta:
@@ -1543,7 +1546,7 @@ class LotEnvoiSerializer(serializers.ModelSerializer):
     """XGED27 — Lot d'envoi en masse de demandes de signature (suivi groupé,
     lecture seule côté API — créé uniquement via l'action dédiée)."""
     modele_nom = serializers.CharField(
-        source='modele.nom', read_only=True, default=None)
+        source='modele.nom', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = LotEnvoi
@@ -1561,7 +1564,7 @@ class PlanificationDocumentSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('document', 'assigne_a')
     document_nom = serializers.CharField(source='document.nom', read_only=True)
     assigne_a_nom = serializers.CharField(
-        source='assigne_a.username', read_only=True, default=None)
+        source='assigne_a.username', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = PlanificationDocument
