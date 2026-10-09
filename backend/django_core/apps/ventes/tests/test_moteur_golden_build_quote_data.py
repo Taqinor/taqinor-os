@@ -55,7 +55,10 @@ INSTANT = '2026-10-01T10:00:00+01:00'
 CLES_IDS = sg.CLES_IDS_PAR_DEFAUT | {
     'produit', 'produit_id', 'client', 'client_id', 'devis', 'devis_id',
     'lead', 'lead_id', 'ligne_id', 'company', 'company_id', 'user',
-    'user_id', 'created_by', 'updated_by'}
+    'user_id', 'created_by', 'updated_by',
+    # Clé de travail interne du builder (pk de la société) : sans masque, le
+    # golden dépendait de la séquence ``authentication_company`` de la base.
+    '_company_id'}
 
 LIGNES_DEUX = [
     ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
