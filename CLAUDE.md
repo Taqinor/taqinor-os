@@ -235,7 +235,10 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
   full CI again + a woken flaky test). During an active CI wait, check every ~5 min. Skip
   preflight.ps1 on the cache-hit path (it doubles wall-clock for nothing).
 - **At every merge, report:** tasks done this batch (one line each: what it was for) + remaining
-  open counts per plan file.
+  open counts per plan file + (règle fondateur 2026-10-09) la sortie de `python scripts/audit_registre.py
+  --du` (groupes d'audit dont le `vérifie <G>` est dû à ≥ 50 % / ≥ 95 % cochées, dette d'acceptation,
+  décisions ouvertes) — tant que le script n'existe pas (AMET), le compte de tâches cochées par
+  groupe d'audit, tenu à la main.
 - **Agent hygiene:** commit-per-task (a process crash killed 7 live agents; only COMMITTED work
   survived — ~16 tasks recovered), push the accumulating batch branch to origin as backup after
   each fold, kill stale 6-8h+ agent processes at run START (never mid-run, never broadly), and on
@@ -277,6 +280,20 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
    When a same-app lane tail needs a just-built prior task, that prior must be on `origin/main`
    first (worktree agents branch from `origin/main`) — so build a lane's available head tasks,
    land them, then the tail; or split the lane across runs.
+   **Tâches d'audit (règle fondateur 2026-10-09 — mesuré sur 48 tâches cochées : 48 % corrigées en
+   un coup ; causes = clauses affirmées jamais calculées, un fichier de test par tâche, appends sur
+   fichiers-dieux).** (a) Une tâche au format v2 (id dans `scripts/taches_audit_v2.txt`) se construit
+   sur des clauses CALCULÉES, jamais sur le texte seul : `python scripts/audit_tache.py <ID>` (AMET, à
+   construire) ou, tant qu'il manque, les greps équivalents exécutés par la lane et collés dans le
+   message de commit — Appelants (dont lecteurs FRONT d'une clé servie), Assertions existantes
+   (tests/goldens/contract_samples qui portent l'ancien littéral), Listes figées, Jumeaux, module de
+   test EXISTANT ; la ligne du plan n'est pas modifiée. (b) v2 ou v3 : le test va dans le module de
+   test existant du module touché — jamais un fichier `test_<id>_*.py` par tâche sauf « Nouveau
+   fichier car : » dans la tâche ; un fichier ≥ 2 000 lignes ne grossit pas (`Code net : … lignes
+   nettes attendues ≤ N`) ; une ancre est `fichier::symbole`. (c) Une tâche dont un `@after` vise une
+   tâche d'une AUTRE lane de la même vague n'est pas commencée avant que celle-ci soit foldée sur la
+   branche d'intégration (le planner ne l'impose pas encore — AMET). (d) Une tâche « Si (a)/(b) »
+   n'est pas construite : elle est GATED jusqu'à `docs/audits/decisions.yml`.
 3. **Orchestrator reviews each lane + runs the combined local test — CACHED, not rebuilt (WOW8-local,
    2026-07-10).** As each lane returns, adversarially review its commits vs the safety rules +
    acceptance criteria, then — AT FOLD TIME, per lane — run THAT lane's new/changed test modules via
@@ -298,6 +315,21 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
    — it has caught a real bug in most runs (missing import, `clean()`-vs-`save()`, name clash,
    hard-vs-soft-delete, a silently-swallowed effect). Fix, re-run only the affected module, then the
    single gate. NOT the GitHub CI (once at the end).
+3-bis. **ACCEPTATION EN DIRECT (règle fondateur 2026-10-09 — mesuré : 0 des 19 tâches d'acceptation
+   d'audit jouées, 2 régressions d'écran mergées sous CI verte, ATOT2/ATOT9).** Une tâche taguée
+   `@acceptation` (ou « acceptation live » d'un groupe d'audit) n'est JAMAIS confiée à une lane : les
+   lanes n'ont pas de pile. L'ORCHESTRATEUR la joue lui-même — rejeu du parcours sur la pile locale
+   (`migrate` + rebuild du front d'abord), spec `frontend/e2e/acceptation/<g>.spec.js` quand elle
+   existe, sinon Playwright MCP avec les oracles qa-explorer 1-10 — AVANT le push de toute vague qui
+   coche une tâche de ce groupe, et commite l'enregistrement `docs/audits/acceptation/<G>/<date>-<sha9>.md`
+   (`couvre:` = ids cochés, `results.json`). Règle de couverture : toute tâche cochée à preuve
+   exécutable est couverte par un enregistrement ou figure dans la dette gelée du groupe (amorcée une
+   fois avec les tâches déjà cochées à la bascule, elle ne fait que rétrécir — `scripts/check_acceptation.py`,
+   job stage-names, AMET, à construire ; tant qu'il n'existe pas, la règle porte sur les tâches cochées dans la
+   PR, appliquée à la main par l'orchestrateur et dite dans le rapport ; une session sans pile locale ne coche
+   aucune tâche à preuve en direct : elle les laisse à l'orchestrateur d'une session avec pile). Ce rejeu est
+   l'EXCEPTION explicite à WOW23 « TEST ECONOMICS » : il ne double aucun job CI (#864 et #885 étaient
+   verts avec les deux régressions). Méthode : `docs/audits/METHODE.md` §C.4.
 4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each reviewed+tested
    task passes: fold its branch into the accumulating `dev`, tick it `[x]`, add one dated DONE LOG
    line, and **fast-forward LOCAL `main` to the `dev` tip — locally only: never push, never PR,
@@ -383,7 +415,9 @@ the merge gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Workflow` 
   prints the model tier per task AND per lane** (a lane's model = its highest-risk task; an explicit
   `@model:haiku|sonnet|opus` tag on a task line overrides the classifier) — a plan run reads each
   lane's `model=` off the lane plan and passes it to the Agent call; no judgment call needed for
-  the routine tiers. `fable` is deliberately not routable — it stays a session-level scalpel.
+  the routine tiers. Sur une tâche d'audit v3 le tag `@model` est OBLIGATOIRE (ses clauses
+  calculées contiennent les mots-clés du classifieur et le feraient basculer — mesuré : ACHT22
+  sonnet → opus). `fable` is deliberately not routable — it stays a session-level scalpel.
   **EVERY-PROMPT RULE (2026-07-10, founder): this routing applies to ALL of Reda's prompts, not
   only plan runs.** On ANY substantive request — bug fix, audit, research, a facture, an
   investigation — the session model acts as the ORCHESTRATOR ONLY: it thinks, decomposes, reviews
