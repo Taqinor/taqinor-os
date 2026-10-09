@@ -128,7 +128,7 @@ def _promesse_honoree(promesse, facture):
     depuis = promesse.date_creation.date() if promesse.date_creation else None
     recu = sum(
         (p.montant for p in facture.paiements.all()
-         if p.statut != Paiement.Statut.REJETE
+         if p.statut not in Paiement.STATUTS_NON_COMPTES
          and (depuis is None or p.date_paiement >= depuis)),
         Decimal('0'))
     return recu >= (promesse.montant_promis or Decimal('0')) > 0

@@ -6,7 +6,7 @@ import {
   FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, AlertTriangle, Tags,
   LayoutDashboard,
   HandCoins,
-  CreditCard, Banknote,
+  Banknote,
   Box,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -75,9 +75,6 @@ const ListesPrixPage = lazy(() => import('../../pages/ventes/ListesPrixPage'))
 // WIR104 — écran unique du cluster réglementaire / mise en service
 // (FG245, FG268-287), jusqu'ici complet côté serveur et sans consommateur.
 const DossiersReglementairesPage = lazy(() => import('../../pages/ventes/DossiersReglementairesPage'))
-// PACT43 — vue INTERNE des mandats de paiement récurrents (cartes tokenisées) :
-// lister par statut + révoquer. Aucune donnée de carte n'entre dans l'ERP.
-const MandatsPaiementPage = lazy(() => import('../../pages/ventes/MandatsPaiementPage'))
 // PACT46 — remises d'encaissement terrain (espèces/chèques) : déclaration
 // technicien, clôture responsable, écart JAMAIS masqué + bordereau PDF.
 const RemisesEncaissementPage = lazy(() => import('../../pages/ventes/RemisesEncaissementPage'))
@@ -131,9 +128,7 @@ const config = {
       { to: '/ventes/listes-prix',   label: 'Listes de prix',   k: 'nav.listes_prix', icon: navIcon(Tags),  roles: ['normal','responsable','admin'] },
       // WIR104 — dossiers réglementaires & mise en service (lecture).
       { to: '/ventes/dossiers-reglementaires', label: 'Dossiers réglementaires', k: 'nav.dossiers_reglementaires', icon: navIcon(FileText), roles: ['normal','responsable','admin'] },
-      // PACT43 — mandats de paiement récurrents (cartes tokenisées) : réservé
-      // responsable/admin, comme le viewset serveur (IsResponsableOrAdmin).
-      { to: '/ventes/mandats-paiement', label: 'Mandats de paiement', k: 'nav.mandats_paiement', icon: navIcon(CreditCard), roles: ['responsable','admin'], navGroup: 'facturation' },
+      // AFAC19 — « Mandats de paiement » (PACT43) PARQUÉ : pile sans appelant MVP.
       // PACT46 — remises d'encaissement terrain : la déclaration est ouverte à
       // tout rôle (le technicien déclare SA collecte), la clôture reste gardée
       // serveur (IsResponsableOrAdmin).
@@ -168,8 +163,6 @@ const config = {
     { path: '/ventes/listes-prix', component: ListesPrixPage },
     // WIR104 — écran consommateur du cluster réglementaire (FG245, FG268-287).
     { path: '/ventes/dossiers-reglementaires', component: DossiersReglementairesPage },
-    // PACT43 — mandats de paiement récurrents (tokenisation carte).
-    { path: '/ventes/mandats-paiement', component: MandatsPaiementPage },
     // PACT46 — remises d'encaissement terrain (écart + bordereau PDF).
     { path: '/ventes/remises-encaissement', component: RemisesEncaissementPage },
   ],

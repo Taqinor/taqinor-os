@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4816, operations: 7592, components: 2216}
+counts: {paths: 4818, operations: 7586, components: 2211}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1288,7 +1288,9 @@ operations:
 - post /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/ -> django_facturation_paiements_factures_paiement_avec_retenue_create
 - post /api/django/facturation/paiements/retenues/{retenue_id}/attestation-recue/ -> django_facturation_paiements_retenues_attestation_recue_create
 - get /api/django/facturation/paiements/{id}/ -> django_facturation_paiements_retrieve
+- post /api/django/facturation/paiements/{id}/annuler-saisie/ -> django_facturation_paiements_annuler_saisie_create
 - post /api/django/facturation/paiements/{id}/envoyer-recu/ -> django_facturation_paiements_envoyer_recu_create
+- post /api/django/facturation/paiements/{id}/reaffecter/ -> django_facturation_paiements_reaffecter_create
 - get /api/django/facturation/paiements/{id}/recu-pdf/ -> django_facturation_paiements_recu_pdf_retrieve
 - post /api/django/facturation/paiements/{id}/rejeter/ -> django_facturation_paiements_rejeter_create
 - post /api/django/facturation/paiements/{id}/ventiler/ -> django_facturation_paiements_ventiler_create
@@ -3681,13 +3683,6 @@ operations:
 - put /api/django/ventes/listes-prix/{id}/ -> django_ventes_listes_prix_update
 - post /api/django/ventes/listes-prix/{id}/lignes/ -> django_ventes_listes_prix_lignes_create
 - post /api/django/ventes/listes-prix/{id}/regles/ -> django_ventes_listes_prix_regles_create
-- get /api/django/ventes/mandats-paiement/ -> django_ventes_mandats_paiement_list
-- post /api/django/ventes/mandats-paiement/ -> django_ventes_mandats_paiement_create
-- delete /api/django/ventes/mandats-paiement/{id}/ -> django_ventes_mandats_paiement_destroy
-- get /api/django/ventes/mandats-paiement/{id}/ -> django_ventes_mandats_paiement_retrieve
-- patch /api/django/ventes/mandats-paiement/{id}/ -> django_ventes_mandats_paiement_partial_update
-- put /api/django/ventes/mandats-paiement/{id}/ -> django_ventes_mandats_paiement_update
-- post /api/django/ventes/mandats-paiement/{id}/revoquer/ -> django_ventes_mandats_paiement_revoquer_create
 - get /api/django/ventes/niveaux-relance/ -> django_ventes_niveaux_relance_list
 - post /api/django/ventes/niveaux-relance/ -> django_ventes_niveaux_relance_create
 - post /api/django/ventes/niveaux-relance/seed-defaults/ -> django_ventes_niveaux_relance_seed_defaults_create
@@ -3716,7 +3711,9 @@ operations:
 - post /api/django/ventes/paiements/import-releve/dry-run/ -> django_ventes_paiements_import_releve_dry_run_create
 - post /api/django/ventes/paiements/retenues/{retenue_id}/attestation-recue/ -> django_ventes_paiements_retenues_attestation_recue_create
 - get /api/django/ventes/paiements/{id}/ -> django_ventes_paiements_retrieve
+- post /api/django/ventes/paiements/{id}/annuler-saisie/ -> django_ventes_paiements_annuler_saisie_create
 - post /api/django/ventes/paiements/{id}/envoyer-recu/ -> django_ventes_paiements_envoyer_recu_create
+- post /api/django/ventes/paiements/{id}/reaffecter/ -> django_ventes_paiements_reaffecter_create
 - get /api/django/ventes/paiements/{id}/recu-pdf/ -> django_ventes_paiements_recu_pdf_retrieve
 - post /api/django/ventes/paiements/{id}/rejeter/ -> django_ventes_paiements_rejeter_create
 - post /api/django/ventes/paiements/{id}/ventiler/ -> django_ventes_paiements_ventiler_create
@@ -5123,7 +5120,9 @@ operations:
 - post /api/v1/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/ -> v1_facturation_paiements_factures_paiement_avec_retenue_create
 - post /api/v1/facturation/paiements/retenues/{retenue_id}/attestation-recue/ -> v1_facturation_paiements_retenues_attestation_recue_create
 - get /api/v1/facturation/paiements/{id}/ -> v1_facturation_paiements_retrieve
+- post /api/v1/facturation/paiements/{id}/annuler-saisie/ -> v1_facturation_paiements_annuler_saisie_create
 - post /api/v1/facturation/paiements/{id}/envoyer-recu/ -> v1_facturation_paiements_envoyer_recu_create
+- post /api/v1/facturation/paiements/{id}/reaffecter/ -> v1_facturation_paiements_reaffecter_create
 - get /api/v1/facturation/paiements/{id}/recu-pdf/ -> v1_facturation_paiements_recu_pdf_retrieve
 - post /api/v1/facturation/paiements/{id}/rejeter/ -> v1_facturation_paiements_rejeter_create
 - post /api/v1/facturation/paiements/{id}/ventiler/ -> v1_facturation_paiements_ventiler_create
@@ -7480,13 +7479,6 @@ operations:
 - put /api/v1/ventes/listes-prix/{id}/ -> v1_ventes_listes_prix_update
 - post /api/v1/ventes/listes-prix/{id}/lignes/ -> v1_ventes_listes_prix_lignes_create
 - post /api/v1/ventes/listes-prix/{id}/regles/ -> v1_ventes_listes_prix_regles_create
-- get /api/v1/ventes/mandats-paiement/ -> v1_ventes_mandats_paiement_list
-- post /api/v1/ventes/mandats-paiement/ -> v1_ventes_mandats_paiement_create
-- delete /api/v1/ventes/mandats-paiement/{id}/ -> v1_ventes_mandats_paiement_destroy
-- get /api/v1/ventes/mandats-paiement/{id}/ -> v1_ventes_mandats_paiement_retrieve
-- patch /api/v1/ventes/mandats-paiement/{id}/ -> v1_ventes_mandats_paiement_partial_update
-- put /api/v1/ventes/mandats-paiement/{id}/ -> v1_ventes_mandats_paiement_update
-- post /api/v1/ventes/mandats-paiement/{id}/revoquer/ -> v1_ventes_mandats_paiement_revoquer_create
 - get /api/v1/ventes/niveaux-relance/ -> v1_ventes_niveaux_relance_list
 - post /api/v1/ventes/niveaux-relance/ -> v1_ventes_niveaux_relance_create
 - post /api/v1/ventes/niveaux-relance/seed-defaults/ -> v1_ventes_niveaux_relance_seed_defaults_create
@@ -7515,7 +7507,9 @@ operations:
 - post /api/v1/ventes/paiements/import-releve/dry-run/ -> v1_ventes_paiements_import_releve_dry_run_create
 - post /api/v1/ventes/paiements/retenues/{retenue_id}/attestation-recue/ -> v1_ventes_paiements_retenues_attestation_recue_create
 - get /api/v1/ventes/paiements/{id}/ -> v1_ventes_paiements_retrieve
+- post /api/v1/ventes/paiements/{id}/annuler-saisie/ -> v1_ventes_paiements_annuler_saisie_create
 - post /api/v1/ventes/paiements/{id}/envoyer-recu/ -> v1_ventes_paiements_envoyer_recu_create
+- post /api/v1/ventes/paiements/{id}/reaffecter/ -> v1_ventes_paiements_reaffecter_create
 - get /api/v1/ventes/paiements/{id}/recu-pdf/ -> v1_ventes_paiements_recu_pdf_retrieve
 - post /api/v1/ventes/paiements/{id}/rejeter/ -> v1_ventes_paiements_rejeter_create
 - post /api/v1/ventes/paiements/{id}/ventiler/ -> v1_ventes_paiements_ventiler_create
@@ -8358,9 +8352,6 @@ components:
 - MaintenanceChecklistTemplateRequest
 - MaintenanceWindow
 - MaintenanceWindowRequest
-- MandatPaiement
-- MandatPaiementRequest
-- MandatPaiementStatutEnum
 - Marque
 - MarqueRequest
 - MaterielConsigne
@@ -8716,7 +8707,6 @@ components:
 - PaginatedLotEnvoiList
 - PaginatedLotPrelevementList
 - PaginatedMaintenanceChecklistTemplateList
-- PaginatedMandatPaiementList
 - PaginatedMarqueList
 - PaginatedMaterielConsigneList
 - PaginatedMessageAccueilList
@@ -9079,7 +9069,6 @@ components:
 - PatchedLivraisonRequest
 - PatchedLotPrelevementRequest
 - PatchedMaintenanceChecklistTemplateRequest
-- PatchedMandatPaiementRequest
 - PatchedMarqueRequest
 - PatchedMaterielConsigneRequest
 - PatchedMatriceApprobationRequest
