@@ -95,7 +95,6 @@ VIEWSETS_EXEMPTES = {
     'AttestationREViewSet': 'attestations RE (chantier).',
     'RemiseEncaissementViewSet': 'remises en banque — facturation.',
     'ListePrixViewSet': 'listes de prix de la société (catalogue).',
-    'MandatPaiementViewSet': 'mandats de paiement — facturation.',
     'PlanCommissionViewSet': 'plans de commission (paramétrage).',
     'APIRootView': 'racine navigable du routeur, aucune donnée.',
 }

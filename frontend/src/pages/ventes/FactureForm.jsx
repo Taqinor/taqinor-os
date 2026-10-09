@@ -24,7 +24,8 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, toNumber } from '../../lib/format'
+import { frenchError } from '../../lib/frenchError'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
 
@@ -61,6 +62,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [clients, setClients]           = useState([])
   const [produits, setProduits]         = useState([])
   const [bonsCommande, setBonsCommande] = useState([])
+  const [bcBusy, setBcBusy] = useState(false)
+  const [bcErreur, setBcErreur] = useState('')
+  const [factureCreee, setFactureCreee] = useState(null)
   const [saving, setSaving]             = useState(false)
   // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
   const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
@@ -138,7 +142,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
     fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
       .then(setProduits).catch(() => {})
-    ventesApi.getBonsCommande().then(r => setBonsCommande(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages((page) => ventesApi.getBonsCommande({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setBonsCommande(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
   }, [])
 
   // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + défiler.
@@ -182,39 +187,48 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   }, {})
   const totalTVA = Object.entries(tvaParTaux)
     .reduce((sum, [taux, ht]) => sum + ht * (parseFloat(taux) / 100), 0)
-  const totalTTC = totalHT + totalTVA
+
+  // AFAC68 — le chiffre DÉFINITIF est celui du serveur (FactureSerializer) tant que
+  // la facture n'a pas été modifiée ; dès qu'on touche une ligne, le bloc devient une
+  // ESTIMATION dont le TTC est toujours = HT affiché + TVA affichée (jamais un TTC JS
+  // arrondi autrement sous le libellé « Total TTC »).
+  const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
+  const totauxServeur = isEdit && !dirty && facture?.montant_ttc != null
+  const aff = totauxServeur
+    ? {
+        ht: toNumber(facture.montant_ht), tva: toNumber(facture.montant_tva),
+        ttc: toNumber(facture.montant_ttc),
+      }
+    : { ht: r2(totalHT), tva: r2(totalTVA), ttc: r2(r2(totalHT) + r2(totalTVA)) }
+  const arrondiDevis = totauxServeur ? r2(aff.ttc - aff.ht - aff.tva) : 0
   const tauxDistincts = Object.keys(tvaParTaux).filter(t => Number(t) > 0)
 
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
   const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
-  const onBcChange = async (bcId) => {
+  // AFAC67 — plus AUCUNE recopie JS devis → facture : un BC issu d'un devis se
+  // facture par la porte unique `creer-facture` (copier_devis_sur_facture), si bien
+  // que l'écran ne peut plus produire une facture différente du devis signé.
+  const onBcChange = (bcId) => {
     setField('bon_commande', bcId)
+    setBcErreur('')
     if (!bcId) return
     const bc = bonsCommande.find(b => String(b.id) === String(bcId))
     if (bc) setField('client', String(bc.client))
-    // Source unique devis → BC → facture : recopie les lignes du devis lié
-    // (produit/désignation/qté/PU/remise/taux_tva) à la création seulement,
-    // pour ne pas écraser des lignes déjà saisies en édition.
-    if (!isEdit && bc?.devis) {
-      try {
-        const res = await ventesApi.getDevisById(bc.devis)
-        const devisLignes = res.data?.lignes ?? []
-        if (devisLignes.length) {
-          setDirty(true)
-          setLines(devisLignes.map(l => ({
-            _key: newKey(),
-            id: null,
-            produit: String(l.produit),
-            designation: l.designation,
-            quantite: String(l.quantite),
-            prix_unitaire: String(l.prix_unitaire),
-            remise: String(l.remise),
-            taux_tva: l.taux_tva != null ? String(l.taux_tva) : '',
-          })))
-        }
-      } catch { /* prefill best-effort */ }
-    }
+  }
+  const bcSelectionne = bonsCommande.find(b => String(b.id) === String(fields.bon_commande))
+  const modeBcDevis = !isEdit && !!bcSelectionne?.devis
+  const creerDepuisBc = async () => {
+    if (!bcSelectionne) return
+    setBcBusy(true); setBcErreur('')
+    try {
+      const res = await ventesApi.creerFactureBC(bcSelectionne.id)
+      setFactureCreee(res.data)
+      setDirty(false)
+      onSaved?.()
+    } catch (err) {
+      setBcErreur(frenchError(err, 'Création de la facture depuis le bon de commande impossible.'))
+    } finally { setBcBusy(false) }
   }
 
   const setLine = (key, k, v) => {
@@ -454,13 +468,39 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   <SelectValue placeholder="— Aucun BC —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {bonsCommande.map(bc => (
+                  {/* AFAC67 — un BC déjà facturé (facture vivante) n'est plus proposé. */}
+                  {bonsCommande
+                    .filter(bc => !bc.facture_active || String(bc.id) === String(fields.bon_commande))
+                    .map(bc => (
                     <SelectItem key={bc.id} value={String(bc.id)}>
                       {bc.reference} — {bc.client_nom}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {modeBcDevis && (
+                <div className="mt-2 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  {factureCreee ? (
+                    <p role="status" className="m-0">
+                      Facture <strong>{factureCreee.reference}</strong> créée — Total TTC{' '}
+                      <strong>{formatMAD(factureCreee.montant_ttc)}</strong>, identique au devis signé.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="m-0 mb-2">
+                        Ce bon de commande est issu du devis {bcSelectionne.devis_reference || ''} :
+                        la facture est créée à l&apos;identique du devis signé, sans ressaisie.
+                      </p>
+                      <Button type="button" loading={bcBusy} onClick={creerDepuisBc}>
+                        Créer la facture depuis ce BC
+                      </Button>
+                    </>
+                  )}
+                  {bcErreur && (
+                    <p role="alert" className="mt-2 text-destructive">{bcErreur}</p>
+                  )}
+                </div>
+              )}
             </FormField>
 
             <FormField label="Date d'échéance" htmlFor="fc-echeance">
@@ -647,6 +687,11 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
           {/* ── Totaux ── */}
           <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            {!totauxServeur && (
+              <p data-testid="totaux-estimation" className="m-0 mb-1 text-xs font-medium text-warning">
+                Estimation — le total définitif est calculé à l&apos;enregistrement
+              </p>
+            )}
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Sous-total HT</span>
               <span className="tabular-nums">{formatMAD(subtotalHT, { withSymbol: false })} DH</span>
@@ -659,9 +704,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             )}
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Total HT</span>
-              <strong className="tabular-nums">{formatMAD(totalHT, { withSymbol: false })} DH</strong>
+              <strong className="tabular-nums">{formatMAD(aff.ht, { withSymbol: false })} DH</strong>
             </div>
-            {tauxDistincts.length > 1 ? (
+            {tauxDistincts.length > 1 && !totauxServeur ? (
               <>
                 {tauxDistincts
                   .sort((a, b) => Number(a) - Number(b))
@@ -677,18 +722,24 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   ))}
                 <div className="flex justify-between py-0.5">
                   <span className="text-muted-foreground">TVA totale</span>
-                  <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
+                  <span className="tabular-nums">{formatMAD(aff.tva, { withSymbol: false })} DH</span>
                 </div>
               </>
             ) : (
               <div className="flex justify-between py-0.5">
-                <span className="text-muted-foreground">TVA ({tva}%)</span>
-                <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
+                <span className="text-muted-foreground">{totauxServeur ? 'TVA' : `TVA (${tva}%)`}</span>
+                <span className="tabular-nums">{formatMAD(aff.tva, { withSymbol: false })} DH</span>
+              </div>
+            )}
+            {arrondiDevis !== 0 && (
+              <div className="flex justify-between py-0.5">
+                <span className="text-muted-foreground">Arrondi du devis</span>
+                <span className="tabular-nums">{formatMAD(arrondiDevis, { withSymbol: false })} DH</span>
               </div>
             )}
             <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
-              <span className="font-semibold">Total TTC</span>
-              <strong className="tabular-nums text-primary">{formatMAD(totalTTC, { withSymbol: false })} DH</strong>
+              <span className="font-semibold">{totauxServeur ? 'Total TTC' : 'Total TTC (estimation)'}</span>
+              <strong className="tabular-nums text-primary">{formatMAD(aff.ttc, { withSymbol: false })} DH</strong>
             </div>
           </div>
 
@@ -754,7 +805,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>
+            <Button type="submit" loading={saving} disabled={modeBcDevis}
+                    title={modeBcDevis ? 'Utilisez « Créer la facture depuis ce BC »' : undefined}>
               {isEdit ? 'Mettre à jour' : 'Créer la facture'}
             </Button>
           </FormActions>

@@ -68,7 +68,7 @@ def _reopen_facture_on_effet_rejete(sender, effet, paiement_id, frais,
 
     paiement = Paiement.objects.filter(
         id=paiement_id, company=company).first()
-    if paiement is None or paiement.statut == Paiement.Statut.REJETE:
+    if paiement is None or paiement.statut in Paiement.STATUTS_NON_COMPTES:
         return
     try:
         ventes_services.rejeter_paiement(

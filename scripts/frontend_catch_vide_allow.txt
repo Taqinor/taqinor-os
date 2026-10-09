@@ -188,16 +188,10 @@ frontend/src/pages/ventes/DevisGenerator.jsx::ecrireLastTva  1
 frontend/src/pages/ventes/DevisList.jsx::openVarianteModal  1
 frontend/src/pages/ventes/DevisOffresTailles.jsx::appliquer  1
 frontend/src/pages/ventes/FactureForm.jsx::handleSubmit  1
-frontend/src/pages/ventes/FactureForm.jsx::onBcChange  1
 frontend/src/pages/ventes/FactureList.jsx::poll  1
 frontend/src/pages/ventes/PaiementDialog.jsx::ecrireCreerUnAutrePaiement  1
 frontend/src/pages/ventes/PaiementDialog.jsx::ecrireDernierMode  1
-frontend/src/pages/ventes/RelancesPage.jsx::exclure  1
-frontend/src/pages/ventes/RelancesPage.jsx::openHistorique  1
 frontend/src/pages/ventes/RelancesPage.jsx::openParametrage  1
-frontend/src/pages/ventes/RelancesPage.jsx::relancer  1
-frontend/src/pages/ventes/RelancesPage.jsx::relancerSelection  1
-frontend/src/pages/ventes/RelancesPage.jsx::relancerSelectionAvecWhatsapp  1
 frontend/src/pages/ventes/ToitureDesign.jsx::marquerSceneEnregistree  1
 frontend/src/pages/ventes/ToitureDesign.jsx::rafraichirContexte  1
 frontend/src/pages/ventes/devisList/useDevisEnvoi.js::copierLienInterne  1
