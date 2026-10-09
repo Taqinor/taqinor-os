@@ -14,7 +14,11 @@ rôle (consultation), comme les autres lectures budget.
 """
 from decimal import Decimal, InvalidOperation
 
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,11 +29,33 @@ from .. import selectors
 CATEGORIES = ('materiel', 'main_oeuvre', 'sous_traitance', 'divers')
 
 
+_ControleBudgetaireSerializer = inline_serializer(
+    'ControleBudgetaireResultat', fields={
+        'controle': serializers.ChoiceField(
+            choices=['non_configure', 'ok', 'depassement']),
+        'depasse': serializers.BooleanField(),
+        'categorie': serializers.CharField(required=False),
+        'reste_categorie': serializers.FloatField(allow_null=True),
+        'reste_total': serializers.FloatField(allow_null=True),
+        'montant': serializers.FloatField(),
+    })
+
+
 class ControleBudgetaireCommandeView(APIView):
     """FG313 — contrôle budgétaire consultatif avant commande. Lecture tout
     rôle ; aucune écriture. Société posée serveur."""
     permission_classes = [IsAnyRole]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('montant', OpenApiTypes.DECIMAL,
+                             description="Montant d'achat prévu (>= 0)."),
+            OpenApiParameter('projet', OpenApiTypes.INT,
+                             description='Id du programme.'),
+            OpenApiParameter('categorie', OpenApiTypes.STR,
+                             enum=list(CATEGORIES), default='materiel'),
+        ],
+        responses={200: _ControleBudgetaireSerializer})
     def get(self, request):
         company = request.user.company
         raw_montant = request.query_params.get('montant')
