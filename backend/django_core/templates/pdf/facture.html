@@ -91,6 +91,21 @@
        n'affecte jamais la mise en page existante quand absent). */
     .footer-qr { display: flex; justify-content: center; margin-bottom: 8px; }
     .footer-qr img, .footer-qr svg { width: 64px; height: 64px; }
+    {% if langue_document == 'ar' %}
+    /* AFAC57 (C-AFAC-050) — rendu RTL : en-têtes et colonnes chiffrées
+       alignés côté RTL, bloc des totaux SANS marge automatique (elle le
+       poussait hors de la page : x1 = 598 > 595 pt, « Reste à payer »
+       rogné) et montants en segment LTR à police latine (chiffres
+       lisibles « 1200.00 MAD »). Rendu français : bloc absent, inchangé. */
+    thead th { text-align: right; }
+    .text-right { text-align: left; }
+    .company-info { text-align: left; }
+    .totaux { margin-left: 0; margin-right: 0; width: 300px; max-width: 100%; }
+    .totaux-row span:last-child, td.text-right {
+      direction: ltr; unicode-bidi: embed; white-space: nowrap;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+    {% endif %}
   </style>
 </head>
 <body>
