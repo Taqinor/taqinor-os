@@ -5998,6 +5998,7 @@ def forecast_historique_view(request):
 
 # ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
 class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
 
     """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
@@ -6537,6 +6538,7 @@ class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return Response(DealEnregistreSerializer(qs, many=True).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[sd.param('actif', OpenApiTypes.BOOL)]))
 class DefiViewSet(CompanyScopedModelViewSet):
     """NTCRM23 — Défis d'équipe (gamification) : CRUD + classement."""
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
