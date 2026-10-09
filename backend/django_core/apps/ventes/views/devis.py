@@ -100,6 +100,13 @@ class DevisViewSet(DevisEditionActionsMixin,
         'factures', 'factures__paiements', 'factures__avoirs',
         'factures__affectations_paiement__paiement', 'factures__lignes',
         'factures__avoirs__lignes',
+        # CI #890 — ``Facture.montant_du`` (lu par ``solde_devis``) passe par
+        # ``decomposition_du`` (AFAC31) qui lit AUSSI ``notes_debit_total``
+        # et ``retenues_subies_total`` : sans ces prefetch, DEUX SELECT par
+        # facture active (``ventes_notedebit`` + ``ventes_retenuesubie``
+        # WHERE facture_id = …) — N+1 sur chaque devis facturé de la liste.
+        'factures__notes_debit', 'factures__notes_debit__lignes',
+        'factures__retenues_subies', 'factures__retenues_subies__paiement',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
