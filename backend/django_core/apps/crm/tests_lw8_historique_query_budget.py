@@ -85,7 +85,10 @@ class HistoriqueQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         """
         self._seed_activites(6)
         url = f'/api/django/crm/leads/{self.lead.id}/historique/'
-        with self.assertMaxQueries(10):
+        # ALEA32 — +3 requêtes CONSTANTES par requête (``seuil_retard`` :
+        # horaires ouvrés, fériés, fermetures de la société) pour le seuil
+        # unique « en retard » ; l'invariance ci-dessus reste le garde N+1.
+        with self.assertMaxQueries(13):
             resp = self.api.get(url)
         self.assertEqual(resp.status_code, 200)
         # Jamais un compte figé : la création du lead journalise déjà sa

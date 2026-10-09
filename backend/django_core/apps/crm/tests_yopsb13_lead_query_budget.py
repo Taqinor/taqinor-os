@@ -84,6 +84,9 @@ class LeadListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         """Plafond absolu (pas seulement « ne grandit pas ») — attrape aussi
         un N+1 introduit dès la toute première ligne."""
         self._seed_leads(10)
-        with self.assertMaxQueries(15):
+        # ALEA32 — +3 requêtes CONSTANTES par requête (``seuil_retard`` :
+        # horaires ouvrés, fériés, fermetures de la société) pour le seuil
+        # unique « en retard » ; l'invariance ci-dessus reste le garde N+1.
+        with self.assertMaxQueries(18):
             resp = self.api.get(LEADS_URL)
         self.assertEqual(resp.status_code, 200)
