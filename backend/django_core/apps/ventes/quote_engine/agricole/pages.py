@@ -432,7 +432,15 @@ def page2(ctx):
                          if 1 <= serre <= 12 else None)
         except (TypeError, ValueError):
             serre_txt = None
-        legende = (f'<div class="ag-note">{_t(lg, "agr_legende_barres")}'
+        # AMOT44 (C-AMOT-056) — un besoin AGRONOMIQUE PLEIN (FAO-56) n'est
+        # pas « votre besoin » : la légende le qualifie comme la page web.
+        if bvl.get("base_besoin") == "agronomique_plein":
+            _phrase = mentions.PHRASES_PROVENANCE["agronomique"]
+            _leg = _t(lg, "agr_base_besoin_agronomique",
+                      phrase=_phrase.get(lg) or _phrase["fr"])
+        else:
+            _leg = _t(lg, "agr_legende_barres")
+        legende = (f'<div class="ag-note">{_leg}'
                    + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
                       if serre_txt else "") + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
