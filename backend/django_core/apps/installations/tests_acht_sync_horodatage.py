@@ -52,7 +52,10 @@ class SyncHorodatageTests(TestCase):
         self.ligne = ConsommationLigne.objects.create(
             company=self.company, consommation=self.cons,
             designation='Câble', quantite_prevue=Decimal('10'),
-            quantite_utilisee=Decimal('10'))
+            quantite_utilisee=Decimal('10'),
+            # Hors nomenclature : ensure_consommation (vue et synchro)
+            # retire sinon toute ligne absente de la BoM du chantier.
+            hors_nomenclature=True)
 
     def _sync(self, op_type, payload, **op):
         payload.setdefault('intervention', self.iv.id)

@@ -17,7 +17,7 @@ from authentication.models import Company
 from apps.installations.energy_report import render_energy_report_pdf
 from apps.installations.models import Installation
 from apps.parametres.models import CompanyProfile
-from apps.ventes.models import Client
+from apps.crm.models import Client
 
 
 def _texte(pdf):

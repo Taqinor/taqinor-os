@@ -18,10 +18,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.installations import field_services
-from apps.installations.models import (
-    Installation, Intervention, KitOutillage, KitOutillageItem,
-)
-from apps.outillage.models import Outillage
+from apps.installations.models import Installation, Intervention
+from apps.outillage.models import KitOutillage, KitOutillageItem, Outillage
 from apps.stock.models import EmplacementStock
 
 User = get_user_model()

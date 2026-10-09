@@ -21,10 +21,10 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.installations.models import (
-    BinLocation, Installation, Kit, LotPrelevement, OrdreSousTraitance,
-    PickList, PickListLigne,
+    BinLocation, Installation, Kit, KitComposant, LotPrelevement,
+    OrdreSousTraitance, PickList, PickListLigne,
 )
-from apps.stock.models import EmplacementStock, Fournisseur
+from apps.stock.models import EmplacementStock, Fournisseur, Produit
 
 User = get_user_model()
 BASE = '/api/django/installations'
@@ -69,6 +69,12 @@ class FkCorpsTenantTests(TestCase):
         self.ligne_a = PickListLigne.objects.create(
             pick_list=pick, designation='x', quantite_demandee=1)
         self.kit_a = Kit.objects.create(company=self.co_a, nom='Kit A')
+        # ACHT25 : un ordre d'assemblage exige une nomenclature exploitable
+        # (composant catalogue à quantité > 0).
+        produit_a = Produit.objects.create(
+            company=self.co_a, nom='Composant A', prix_vente=Decimal('1'))
+        KitComposant.objects.create(
+            kit=self.kit_a, produit=produit_a, quantite=1)
 
     def _refus(self, r, champ):
         self.assertEqual(r.status_code, 400, r.data)

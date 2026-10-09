@@ -19,7 +19,7 @@ from authentication.models import Company
 from apps.installations.models import (
     DemandeAchat, DemandeAchatLigne, Installation)
 from apps.stock.models import Fournisseur, Produit
-from apps.ventes.models import Client
+from apps.crm.models import Client
 
 User = get_user_model()
 BASE = '/api/django/installations'

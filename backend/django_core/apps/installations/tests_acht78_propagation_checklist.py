@@ -23,8 +23,10 @@ from apps.installations.services import ensure_checklist_items
 class PropagationChecklistTests(TestCase):
     def setUp(self):
         self.co = Company.objects.create(nom='ACHT78', slug='acht78-co')
+        # protege=True : `ensure_default_template` ne reconnaît comme « Défaut »
+        # que le template protégé (sinon il en crée un second, amorcé à 8).
         self.tpl = ChecklistTemplate.objects.create(
-            company=self.co, nom='Défaut')
+            company=self.co, nom='Défaut', protege=True)
         for i in range(8):
             ChecklistEtapeModele.objects.create(
                 company=self.co, template=self.tpl, cle=f'e{i}',
