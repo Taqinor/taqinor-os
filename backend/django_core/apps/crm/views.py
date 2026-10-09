@@ -2852,7 +2852,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             for campaign in campaigns:
                 grp = canal_qs.filter(utm_campaign=campaign)
                 lead_count = grp.count()
-                signed = grp.filter(stage='SIGNED')
+                # ACRM31 — prédicat « signé » unique (perdus/archivés exclus).
+                from .selectors import lead_signe_q
+                signed = grp.filter(lead_signe_q())
                 signed_count = signed.count()
                 # Somme des devis TTC des leads signés
                 signed_value = 0

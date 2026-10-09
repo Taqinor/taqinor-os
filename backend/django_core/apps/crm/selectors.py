@@ -211,6 +211,25 @@ def leads_en_portee(user):
     return leads_visibles(user)
 
 
+def lead_signe_q():
+    """ACRM31 — LE prédicat « lead signé » (filtre ORM) : étape SIGNED
+    (clé lue de ``stages``/STAGES.py, jamais un littéral — règle #2), non
+    perdu, non archivé. Toute lecture qui compte des « signés » passe par lui
+    (ou par ``est_lead_signe`` pour un objet déjà chargé) afin que tous les
+    rapports comptent pareil sur le même jeu."""
+    from django.db.models import Q
+    from . import stages as stage_mod
+    return Q(stage=stage_mod.SIGNED, perdu=False, is_archived=False)
+
+
+def est_lead_signe(lead):
+    """ACRM31 — Jumeau Python de ``lead_signe_q`` pour un lead déjà chargé."""
+    from . import stages as stage_mod
+    return (getattr(lead, 'stage', None) == stage_mod.SIGNED
+            and not getattr(lead, 'perdu', False)
+            and not getattr(lead, 'is_archived', False))
+
+
 def find_lead_id_by_phone(company, phone):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
@@ -248,12 +267,11 @@ def signed_lead_phone_keys(company):
     dur, règle #2). Lecture seule, scopée société ; ignore les numéros vides.
     Renvoie un ``set`` de clés non vides."""
     from . import services as crm_services
-    from . import stages as stage_mod
     from .models import Lead
 
     keys = set()
     for tel in (Lead.objects
-                .filter(company=company, stage=stage_mod.SIGNED)
+                .filter(lead_signe_q(), company=company)
                 .values_list('telephone', flat=True)):
         key = crm_services.normalize_phone(tel)
         if key:
@@ -276,7 +294,6 @@ def signed_leads_for_campaigns(company, utm_campaigns):
 
         {utm_campaign: {'signed_count': int, 'signed_lead_ids': [int, ...]}}
     """
-    from . import stages as stage_mod
     from .models import Lead
 
     result = {}
@@ -285,7 +302,7 @@ def signed_leads_for_campaigns(company, utm_campaigns):
             continue
         ids = list(
             Lead.objects
-            .filter(company=company, utm_campaign=key, stage=stage_mod.SIGNED)
+            .filter(lead_signe_q(), company=company, utm_campaign=key)
             .order_by('id')
             .values_list('id', flat=True))
         result[key] = {'signed_count': len(ids), 'signed_lead_ids': ids}
@@ -347,11 +364,11 @@ def attribution_lead_rows(company, qualifying_stage=None):
     qs = (Lead.objects
           .filter(company=company, is_archived=False)
           .only('id', 'meta_ad_id', 'utm_content', 'utm_campaign', 'canal',
-                'stage', 'perdu', 'motif_perte'))
+                'stage', 'perdu', 'motif_perte', 'is_archived'))
     for lead in qs:
         stage = lead.stage
         rank = _rank(stage)
-        is_signed = (stage == stage_mod.SIGNED)
+        is_signed = est_lead_signe(lead)  # ACRM31
         is_qualified = (
             stage != stage_mod.COLD and not lead.perdu
             and rank >= qual_rank)
@@ -1222,7 +1239,6 @@ def attribution_leads(company, debut=None, fin=None):
     société — jamais d'accès cross-tenant.
     """
     from decimal import Decimal
-    from . import stages as stage_mod
     from .models import Lead
 
     qs = Lead.objects.filter(company=company, is_archived=False)
@@ -1272,7 +1288,7 @@ def attribution_leads(company, debut=None, fin=None):
         })
         slot_src['nb_leads'] += 1
 
-        est_signe = lead.stage == stage_mod.SIGNED and not lead.perdu
+        est_signe = est_lead_signe(lead)  # ACRM31
         if est_signe:
             ca = _ca_signe_lead(lead)
             slot_com['nb_signes'] += 1
@@ -3608,19 +3624,18 @@ def leads_ville_rows(company):
     (jamais une ville vide fabriquée — règle checked-facts). Point d'entrée
     cross-app pour la carte chaleur ville d'``apps.adsengine.reporting``
     (jamais un import d'``apps.crm.models`` côté adsengine)."""
-    from . import stages as stage_mod
     from .models import Lead
 
     rows = []
     qs = (Lead.objects
           .filter(company=company, is_archived=False)
           .exclude(ville__isnull=True).exclude(ville__exact='')
-          .only('id', 'ville', 'stage', 'perdu'))
+          .only('id', 'ville', 'stage', 'perdu', 'is_archived'))
     for lead in qs:
         rows.append({
             'id': lead.id,
             'ville': lead.ville.strip(),
-            'signed': lead.stage == stage_mod.SIGNED and not lead.perdu,
+            'signed': est_lead_signe(lead),  # ACRM31
         })
     return rows
 
@@ -3650,6 +3665,9 @@ def revenu_attribue_campagne(company, nom_campagne):
     revenu = Decimal('0')
     for lead in leads:
         signe_pour_ce_lead = False
+        # ACRM31 — seul un lead signé (prédicat unique) porte du CA attribué.
+        if not est_lead_signe(lead):
+            continue
         for devis in lead.devis.all():
             if _devis_compte_comme_signe(devis):  # ACRM10
                 signe_pour_ce_lead = True
@@ -6530,13 +6548,11 @@ def leads_signes_sans_devis_accepte(company):
 
     Renvoie une liste de dicts ``{'id', 'stage', 'source'}`` — aucune donnée
     personnelle (le nom n'est pas lu). Scopé à ``company``."""
-    from . import stages
     from .models import Lead
     from .services import _DEVIS_STATUT_ACCEPTE
     return list(
         Lead.objects
-        .filter(company=company, stage=stages.SIGNED, perdu=False,
-                is_archived=False)
+        .filter(lead_signe_q(), company=company)
         .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
         .exclude(devis__statut=_DEVIS_STATUT_ACCEPTE)
         .order_by('pk')
