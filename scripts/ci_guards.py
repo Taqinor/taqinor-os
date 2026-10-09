@@ -638,6 +638,13 @@ GARDES = {
         ('Test the FK-scoping checker itself (AUD601)',
          'python -m unittest scripts.tests.test_check_fk_scoping -v',
          '.'),
+        # ADEP20 - toute clé de réglage lue est déclarée dans erp_agentique/settings.
+        ('Check reglages lus declares (ADEP20)',
+         'python scripts/check_settings_declares.py',
+         '.'),
+        ('Test the reglages lus declares (ADEP20) checker itself',
+         'python -m unittest scripts.tests.test_check_settings_declares -v',
+         '.'),
     ],
 }
 
