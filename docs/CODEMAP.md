@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: adbc7c3dd4761a48d3794b721e2447f1d95cd4334ebff75bfae51af0f38e8273
-Plan fingerprint: b17bde110bc7e3a5191e3014adf02edf95c201e1295ff1f96c083d5b73eeef36
+Structure fingerprint: 27c0634c6234de07ee619169e64b53b8742ba63f0be8ab44df24934443f75cc3
+Plan fingerprint: 11dceceb86992e537491f6b6014fe77195f76cad9fc8abca1fff8f5ebf586c5b
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1153)**
+**Done (1155)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1166,6 +1166,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ665` — Aller-retour EN DIRECT du parcours site MT : visite avec supplément MT → chantier MT →…
 - `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
+- `ENF13` — Gardes toujours vertes rendues bloquantes
+- `ENF14` — Exceptions permanentes signées
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1731,7 +1733,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (144)**
+**Open — to build (142)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1828,8 +1830,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
 - `ENF11` — api-fuzz bloquant
 - `ENF12` — Plus aucun masque dans les workflows
-- `ENF13` — Gardes toujours vertes rendues bloquantes
-- `ENF14` — Exceptions permanentes signées
 - `ENF15` — Dettes moyennes à zéro
 - `ENF16` — Dette on_delete (573) à zéro
 - `ENF17` — Dette fk_scoping (332) à zéro
