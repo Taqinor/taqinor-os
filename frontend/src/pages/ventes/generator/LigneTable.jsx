@@ -15,7 +15,11 @@
 //
 // AUCUNE règle métier ici : ce composant ne calcule rien, il ne fait que
 // rendre et remonter les gestes.
-import { Card, CardContent, Button, IconButton, Input, Label, Segmented } from '../../../ui'
+import {
+  Card, CardContent, Button, IconButton, Input, Label, Segmented,
+  // EDC3 — barre horizontale collante (toujours visible à chaque hauteur).
+  BarreDefilementCollante,
+} from '../../../ui'
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
 import DevisLineRow from '../DevisLineRow'
 import { GenCardHeader } from './CarteMetrique'
@@ -179,9 +183,15 @@ export default function LigneTable({
                  onChange={e => setAccessoiresOnly(e.target.checked)} />
           Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
         </label>
-        <div className="lines-table-wrap">
-          <table className="lines-table" ref={linesTableRef}>
-            <thead>
+        {/* EDC3 — deux états : « tient » ⇒ conteneur `overflow: visible` et
+            en-tête COLLANT au défileur (`lines-thead-collant`, bordures
+            `separate` pour qu'elles survivent au collage) ; « déborde » ⇒ barre
+            proxy collée au bas de l'écran, synchronisée avec la table (l'en-tête
+            ne colle plus dans cet état — dégradation acceptée). Bureau
+            seulement : sous 768 px la table reste empilée en cartes. */}
+        <BarreDefilementCollante className="lines-table-wrap">
+          <table className="lines-table lines-table-separe" ref={linesTableRef}>
+            <thead className="lines-thead-collant">
               {/* EDC2 — largeurs FIXES sur les colonnes numériques et les
                   colonnes d'action ; Désignation et Produit (min-width
                   conservés) absorbent tout le reste. `table-layout` reste
@@ -240,7 +250,7 @@ export default function LigneTable({
               ))}
             </tbody>
           </table>
-        </div>
+        </BarreDefilementCollante>
 
         {children}
       </CardContent>

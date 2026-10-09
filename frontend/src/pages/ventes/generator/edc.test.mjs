@@ -87,3 +87,61 @@ test('EDC4 : la barre est rendue HORS du formulaire et son Enregistrer vise form
   assert.match(composant, /role="toolbar"/)
   assert.match(composant, /aria-label="Actions du devis"/)
 })
+
+/** Corps d'un bloc `@media (<requête>) { … }` du texte donné (accolades appariées). */
+function blocMedia(texte, requete) {
+  const debut = texte.indexOf(`@media (${requete})`)
+  assert.ok(debut >= 0, `@media (${requete}) attendu`)
+  let profondeur = 0
+  for (let i = texte.indexOf('{', debut); i < texte.length; i++) {
+    if (texte[i] === '{') profondeur++
+    else if (texte[i] === '}') {
+      profondeur--
+      if (profondeur === 0) return texte.slice(debut, i + 1)
+    }
+  }
+  return assert.fail(`@media (${requete}) non refermé`)
+}
+
+test('EDC3 : barre proxy à piste visible, barre native masquée quand la table déborde', () => {
+  const b = blocEdc(3)
+  assert.match(b, /\.bdc-wrap \{ overflow-x: auto; \}/)
+  assert.match(b, /\.bdc-wrap\[data-deborde="true"\] \{ scrollbar-width: none; \}/)
+  assert.match(b, /\.bdc-wrap\[data-deborde="true"\]::-webkit-scrollbar \{ display: none; \}/)
+  assert.match(b, /\.bdc-proxy \{[^}]*overflow-x: auto;[^}]*scrollbar-width: auto;/)
+  assert.match(b, /\.bdc-proxy::-webkit-scrollbar \{ height: 14px; \}/)
+  // Paliers locaux dérivés du barème (garde MB3 : aucun z-index en dur).
+  assert.doesNotMatch(b, /z-index:\s*\d/)
+})
+
+test('EDC3 : en-tête collant et `separate` sur BUREAU seulement — empilement mobile intact', () => {
+  const b = blocEdc(3)
+  const bureau = blocMedia(b, 'min-width: 769px')
+  assert.match(bureau, /\.lines-table-wrap\.bdc-wrap\[data-deborde="false"\] \{ overflow: visible; \}/)
+  assert.match(bureau, /\.lines-table\.lines-table-separe \{[^}]*border-collapse: separate;[^}]*border-spacing: 0;/)
+  assert.match(bureau, /\.lines-thead-collant th \{[^}]*position: sticky;[^}]*top: var\(--gen-colle-top, 0px\);[^}]*z-index: calc\(var\(--z-base\) \+ 2\);/)
+  // Hors de la requête bureau, aucune règle du bloc ne touche la table, son
+  // en-tête ou son modèle de bordures (l'empilement mobile reste celui d'origine).
+  const horsBureau = b.replace(bureau, '')
+  assert.doesNotMatch(horsBureau, /\.lines-table(?!-wrap)[^{]*\{/)
+  assert.doesNotMatch(horsBureau, /border-collapse/)
+  // Mobile : le conteneur des lignes reste `overflow: visible` (règle mobile
+  // d'origine ré-affirmée après `.bdc-wrap`) et sans barre proxy.
+  const mobile = blocMedia(b, 'max-width: 768px')
+  assert.match(mobile, /\.lines-table-wrap\.bdc-wrap \{ overflow: visible; \}/)
+  assert.match(mobile, /\.lines-table-wrap \+ \.bdc-proxy \{ display: none; \}/)
+  // La règle mobile d'origine est toujours là, intacte.
+  assert.match(sansCommentaires(cssBrut), /\n {2}\.lines-table-wrap \{ overflow: visible; \}\n {2}\.lines-table thead \{ display: none; \}/)
+})
+
+test('EDC3 : les trois tableaux d’étude horaire passent par la barre collante (plus d’overflowX en ligne)', () => {
+  const gen = lire('../DevisGenerator.jsx')
+  assert.doesNotMatch(gen, /overflowX: 'auto'/)
+  assert.equal((gen.match(/<BarreDefilementCollante[\s>]/g) || []).length, 3)
+  const table = lire('./LigneTable.jsx')
+  assert.match(table, /<BarreDefilementCollante className="lines-table-wrap">/)
+  assert.match(table, /<table className="lines-table lines-table-separe" ref=\{linesTableRef\}>/)
+  assert.match(table, /<thead className="lines-thead-collant">/)
+  const index = lire('../../../ui/index.js')
+  assert.match(index.trimEnd().split('\n').at(-1), /^export \* from '\.\/BarreDefilementCollante'$/)
+})

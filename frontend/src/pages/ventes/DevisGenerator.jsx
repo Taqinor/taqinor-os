@@ -82,6 +82,8 @@ import {
   ScrollProgress,
   // QJR540 — compteurs factures / BC / chantier du devis rouvert (ex-DevisForm).
   RelationCounters,
+  // EDC3 — barre horizontale collante des trois tableaux d'étude horaire.
+  BarreDefilementCollante,
 } from '../../ui'
 // QJR540 — blocs issus de l'ancien modal DevisForm (supprimé) : le calepinage qui
 // pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
@@ -4684,7 +4686,9 @@ export default function DevisGenerator({
                   </ul>
                 )}
                 {etudeHoraireLignes.length > 0 && (
-                  <div style={{ overflowX: 'auto' }}>
+                  // EDC3 — barre horizontale collante (même composant que la
+                  // table des lignes) : à chaque hauteur du tableau, jamais au pied.
+                  <BarreDefilementCollante>
                     <table className="w-full border-collapse text-xs" data-testid="etude-horaire-dimensionnement">
                       <thead>
                         <tr className="border-b border-border text-left text-muted-foreground">
@@ -4778,7 +4782,8 @@ export default function DevisGenerator({
                               {stockageOuvert && paliersStockage.length > 0 && (
                                 <tr className="border-b border-border">
                                   <td colSpan={9} className="bg-muted/30 py-2 pr-3">
-                                    <div style={{ overflowX: 'auto' }}>
+                                    {/* EDC3 — barre horizontale collante. */}
+                                    <BarreDefilementCollante>
                                       <table className="w-full border-collapse text-xs"
                                              data-testid="etude-horaire-balayage-stockage">
                                         <thead>
@@ -4810,7 +4815,7 @@ export default function DevisGenerator({
                                           ))}
                                         </tbody>
                                       </table>
-                                    </div>
+                                    </BarreDefilementCollante>
                                   </td>
                                 </tr>
                               )}
@@ -4824,7 +4829,7 @@ export default function DevisGenerator({
                         {etudeHoraireDonnees.dimensionnement.motivation}
                       </p>
                     )}
-                  </div>
+                  </BarreDefilementCollante>
                 )}
                 {etudeHoraireDonnees?.etude?.saisons && (
                   <div className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="etude-horaire-saisons">
@@ -4899,7 +4904,8 @@ export default function DevisGenerator({
                     commercial voie chaque ajout compté. Omise en bloc si la clé
                     `estimation_conso` est absente du payload. */}
                 {etudeHoraireEstimationConso && (
-                  <div className="mt-3" style={{ overflowX: 'auto' }}>
+                  // EDC3 — barre horizontale collante (12 mois + poste).
+                  <BarreDefilementCollante className="mt-3">
                     <div className="mb-1 text-xs font-medium">Décomposition mensuelle de la consommation (kWh)</div>
                     <table className="w-full border-collapse text-xs" data-testid="etude-horaire-estimation-conso">
                       <thead>
@@ -4931,7 +4937,7 @@ export default function DevisGenerator({
                         </tr>
                       </tbody>
                     </table>
-                  </div>
+                  </BarreDefilementCollante>
                 )}
               </div>
             )}

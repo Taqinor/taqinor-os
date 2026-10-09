@@ -11552,3 +11552,76 @@ textarea.form-control {
   top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px));
   z-index: calc(var(--z-sticky) + 1);
 }
+
+/* ── EDC3 — Barre de défilement horizontale collante + en-tête de table collant ── */
+/* Conteneur générique (BarreDefilementCollante.jsx) : défilable par défaut ;
+   quand la table déborde, SA barre native est masquée — la barre proxy collée
+   au bas de l'écran la remplace (une seule barre visible, jamais deux). */
+.bdc-wrap { overflow-x: auto; }
+.bdc-wrap[data-deborde="true"] { scrollbar-width: none; }
+.bdc-wrap[data-deborde="true"]::-webkit-scrollbar { display: none; }
+/* Barre proxy : `position: sticky; bottom` posée en ligne par le composant.
+   Piste VISIBLE même sous les barres « overlay » de macOS : le style
+   `::-webkit-scrollbar` force une barre classique — il est ignoré si
+   `scrollbar-width`/`scrollbar-color` ne valent pas `auto`, d'où les deux
+   `auto` explicites. Palier local (au-dessus des cellules `position:
+   relative` de la table), dérivé du barème. */
+.bdc-proxy {
+  z-index: calc(var(--z-base) + 3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  background: var(--card);
+}
+.bdc-proxy[hidden] { display: none; }
+.bdc-proxy::-webkit-scrollbar { height: 14px; }
+.bdc-proxy::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: 9999px;
+}
+.bdc-proxy::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  border: 3px solid var(--muted);
+  border-radius: 9999px;
+}
+@media (hover: hover) {
+  .bdc-proxy::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+}
+/* Haut de collage de l'en-tête de table : sous la barre d'actions (EDC4) et la
+   navigation de sections (EDC9), au vrai bord haut du défileur. */
+.gen-root {
+  --gen-colle-top: calc(var(--header-h, 0px) + var(--gen-colle-decalage, 0px) + var(--gen-barre-h, 0px) + var(--gen-nav-h, 0px));
+}
+/* Bureau seulement (≥ 769 px) : sous 768 px la table des lignes est empilée en
+   cartes (thead masqué) — aucune de ces règles ne la touche. */
+@media (min-width: 769px) {
+  /* « tient » : le conteneur n'est PLUS un défileur — sinon l'en-tête collerait
+     au conteneur (mesuré : −383 px après 400 px de défilement du panneau). */
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] { overflow: visible; }
+  /* `collapse` perd les bordures d'un en-tête collé (Mozilla 1727594, WebKit
+     271984) : bordures par cellule, déjà posées sur th/td. */
+  .lines-table.lines-table-separe {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .lines-thead-collant th {
+    position: sticky;
+    top: var(--gen-colle-top, 0px);
+    z-index: calc(var(--z-base) + 2);
+  }
+  /* Le conteneur ne rogne plus ses coins arrondis : les cellules d'angle les
+     portent elles-mêmes (fond de l'en-tête, survol de la dernière ligne). */
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table thead th:first-child { border-top-left-radius: 9px; }
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table thead th:last-child { border-top-right-radius: 9px; }
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table tbody tr:last-child td:first-child { border-bottom-left-radius: 9px; }
+  .lines-table-wrap.bdc-wrap[data-deborde="false"] .lines-table tbody tr:last-child td:last-child { border-bottom-right-radius: 9px; }
+}
+/* Mobile : comportement d'empilement INCHANGÉ — le conteneur des lignes reste
+   `overflow: visible` (règle mobile d'origine, ré-affirmée ici car `.bdc-wrap`
+   vient après elle) et aucune barre proxy pour la table des lignes. */
+@media (max-width: 768px) {
+  .lines-table-wrap.bdc-wrap { overflow: visible; }
+  .lines-table-wrap + .bdc-proxy { display: none; }
+}
