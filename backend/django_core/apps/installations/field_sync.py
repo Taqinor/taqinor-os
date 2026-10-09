@@ -374,6 +374,37 @@ def _fieldop_memorise(company, op_id):
         company=company, client_op_id=op_id, ok=True).first()
 
 
+def rejeu_op_en_ligne(company, op_id, op_type):
+    """ADEP44 — idempotence d'une action EN LIGNE par `client_op_id` : renvoie
+    le résultat MÉMORISÉ (dict) si cette clé a déjà été appliquée (en ligne ou
+    par la synchro), sinon None. Une clé déjà prise par une AUTRE opération
+    lève `FieldOpError` (jamais de collision silencieuse)."""
+    op_id = (op_id or '').strip()
+    if not op_id:
+        return None
+    existant = _fieldop_memorise(company, op_id)
+    if existant is None:
+        return None
+    if existant.op_type != op_type:
+        raise FieldOpError(
+            "client_op_id déjà utilisé pour une autre opération.")
+    return existant.result
+
+
+def memoriser_op_en_ligne(company, user, op_id, op_type, cible_id, result):
+    """ADEP44 — inscrit la clé dans `FieldOp` (à appeler DANS la même
+    transaction que l'effet : l'effet et sa clé existent ensemble ou pas du
+    tout). Sans clé : no-op. Contrainte `(company, client_op_id)` : une course
+    lève `IntegrityError` (l'appelant relit le gagnant)."""
+    op_id = (op_id or '').strip()
+    if not op_id:
+        return
+    FieldOp.objects.create(
+        company=company, client_op_id=op_id, op_type=op_type,
+        target_type='intervention', target_id=cible_id, result=result,
+        ok=True, created_by=user)
+
+
 def _apply_one(company, user, op):
     """Applique UNE opération de façon idempotente. Renvoie un dict de statut :
     {client_op_id, op_type, status: applied|replayed|error, result|error}.

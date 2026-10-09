@@ -36,6 +36,7 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from .. import field_sync  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -961,6 +962,24 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from .. import swappable
         interv = self.get_object()
         company = interv.company
+        # ADEP44 — idempotence par `client_op_id` : le rejeu d'une op déjà
+        # appliquée (en ligne OU par la synchro) renvoie l'objet existant,
+        # AVANT toute autre garde (le doublon de série ne doit pas la bloquer).
+        op_id = (request.data.get('client_op_id') or '').strip()
+        try:
+            memorise = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.serial')
+        except field_sync.FieldOpError as exc:
+            return Response({'client_op_id': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        if memorise is not None:
+            existant = interv.serials.filter(
+                pk=memorise.get('serial')).first()
+            if existant is not None:
+                data = ComponentSerialSerializer(
+                    existant, context={'request': request}).data
+                data['replayed'] = True
+                return Response(data, status=status.HTTP_200_OK)
         produit = None
         produit_id = request.data.get('produit')
         if produit_id:
@@ -996,15 +1015,36 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 if extracted:
                     numero = extracted.strip()
                     serie_ocr = True
-        serial = ComponentSerial.objects.create(
-            company=company, intervention=interv, produit=produit,
-            designation=(request.data.get('designation') or '').strip(),
-            slot_cle=(request.data.get('slot') or '').strip(),
-            numero_serie=numero, plaque_attachment=plaque,
-            serie_ocr=serie_ocr, created_by=request.user)
-        return Response(ComponentSerialSerializer(
-            serial, context={'request': request}).data,
-            status=status.HTTP_201_CREATED)
+        from django.db import IntegrityError, transaction
+        try:
+            with transaction.atomic():
+                serial = ComponentSerial.objects.create(
+                    company=company, intervention=interv, produit=produit,
+                    designation=(request.data.get('designation') or '').strip(),
+                    slot_cle=(request.data.get('slot') or '').strip(),
+                    numero_serie=numero, plaque_attachment=plaque,
+                    serie_ocr=serie_ocr, created_by=request.user)
+                field_sync.memoriser_op_en_ligne(
+                    company, request.user, op_id, 'intervention.serial',
+                    interv.id, {'serial': serial.id,
+                                'numero_serie': serial.numero_serie})
+        except IntegrityError:
+            # Course sur la clé : le gagnant a déjà créé l'objet — on le rend.
+            gagnant = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.serial')
+            existant = interv.serials.filter(
+                pk=(gagnant or {}).get('serial')).first()
+            if existant is None:
+                raise
+            data = ComponentSerialSerializer(
+                existant, context={'request': request}).data
+            data['replayed'] = True
+            return Response(data, status=status.HTTP_200_OK)
+        data = ComponentSerialSerializer(
+            serial, context={'request': request}).data
+        if op_id:
+            data['replayed'] = False
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='modifier-serial',
             permission_classes=[IsResponsableOrAdmin])
@@ -1443,6 +1483,22 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         description, [assignee], [photo], [memo], [creer_suivi], [creer_ticket]."""
         interv = self.get_object()
         company = interv.company
+        # ADEP44 — idempotence par `client_op_id` (voir `ajouter_serial`).
+        op_id = (request.data.get('client_op_id') or '').strip()
+        try:
+            memorise = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.reserve')
+        except field_sync.FieldOpError as exc:
+            return Response({'client_op_id': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        if memorise is not None:
+            existante = interv.reserves.filter(
+                pk=memorise.get('reserve')).first()
+            if existante is not None:
+                data = ReserveSerializer(
+                    existante, context={'request': request}).data
+                data['replayed'] = True
+                return Response(data, status=status.HTTP_200_OK)
         assignee = None
         if request.data.get('assignee'):
             from authentication.models import CustomUser
@@ -1457,11 +1513,28 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if request.data.get('memo'):
             memo = interv.voice_memos.filter(
                 id=request.data.get('memo')).first()
-        reserve = Reserve.objects.create(
-            company=company, intervention=interv,
-            description=(request.data.get('description') or '').strip(),
-            assignee=assignee, photo=photo, memo=memo,
-            created_by=request.user)
+        from django.db import IntegrityError, transaction
+        try:
+            with transaction.atomic():
+                reserve = Reserve.objects.create(
+                    company=company, intervention=interv,
+                    description=(request.data.get('description') or '').strip(),
+                    assignee=assignee, photo=photo, memo=memo,
+                    created_by=request.user)
+                field_sync.memoriser_op_en_ligne(
+                    company, request.user, op_id, 'intervention.reserve',
+                    interv.id, {'reserve': reserve.id})
+        except IntegrityError:
+            gagnante = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.reserve')
+            existante = interv.reserves.filter(
+                pk=(gagnante or {}).get('reserve')).first()
+            if existante is None:
+                raise
+            data = ReserveSerializer(
+                existante, context={'request': request}).data
+            data['replayed'] = True
+            return Response(data, status=status.HTTP_200_OK)
         # Suivi optionnel : intervention de suivi (même chantier) et/ou ticket.
         if request.data.get('creer_suivi'):
             suivi = Intervention.objects.create(
@@ -1476,9 +1549,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             if ticket is not None:
                 reserve.ticket = ticket
                 reserve.save(update_fields=['ticket'])
-        return Response(ReserveSerializer(
-            reserve, context={'request': request}).data,
-            status=status.HTTP_201_CREATED)
+        data = ReserveSerializer(reserve, context={'request': request}).data
+        if op_id:
+            data['replayed'] = False
+        return Response(data, status=status.HTTP_201_CREATED)
 
     def _spawn_ticket_for_reserve(self, reserve, user):
         """F16 — crée un ticket SAV correctif pour une réserve, selon le design
