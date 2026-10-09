@@ -61,9 +61,12 @@ const installationsApi = {
   getEtapesChantier: (id) => api.get(`/installations/chantiers/${id}/etapes/`),
   // CH2 — avance à l'étape `cle` donnée, ou à la suivante si omise. Rejet 400
   // avec `{detail, raisons[]}` si un gate bloquant n'est pas satisfait.
-  avancerEtape: (id, cle) =>
-    api.post(`/installations/chantiers/${id}/avancer-etape/`,
-      cle ? { etape: cle } : {}),
+  avancerEtape: (id, cle, motifOverrideAcompte) =>
+    api.post(`/installations/chantiers/${id}/avancer-etape/`, {
+      ...(cle ? { etape: cle } : {}),
+      // ACHT60 — dérogation « acompte non reçu » lue par le serveur.
+      ...(motifOverrideAcompte ? { motif_override_acompte: motifOverrideAcompte } : {}),
+    }),
 
   // CH3 — fiche de recette IEC 62446-1 (mise en service structurée).
   getRecette: (id) => api.get(`/installations/chantiers/${id}/recette/`),

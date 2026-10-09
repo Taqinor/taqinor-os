@@ -30,6 +30,7 @@ import {
   INTERVENTION_TYPES,
   adjacentStatuses,
   canMoveStatus,
+  canonicalStatus,
   nextBestAction,
   REGIME_8221_LABELS,
   RACCORDEMENT_RESEAU_LABELS,
@@ -274,6 +275,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // un passage de statut (CIQ621/CIQ630) ; envoyé tel quel au prochain
   // enregistrement.
   const [motifDerogation, setMotifDerogation] = useState('')
+  // ACHT60 — dérogations lues par le serveur : acompte non reçu avant
+  // « Planifié » (`motif_override_acompte`) et réouverture d'un chantier
+  // clôturé (`motif_reouverture`, Directeur).
+  const [motifAcompte, setMotifAcompte] = useState('')
+  const [motifReouverture, setMotifReouverture] = useState('')
   // CIQ637 — réception définitive : refus serveur (liste des réserves).
   const [receptionBusy, setReceptionBusy] = useState(false)
   const [receptionRefus, setReceptionRefus] = useState(null)
@@ -545,8 +551,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           .filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(initialFields[k]))
           .map(([k, v]) => [k, nullable(v)]))
       if (motifDerogation.trim()) data.motif_derogation_8221 = motifDerogation.trim()
+      if (motifAcompte.trim()) data.motif_override_acompte = motifAcompte.trim()
+      if (motifReouverture.trim()) data.motif_reouverture = motifReouverture.trim()
       await dispatch(updateInstallation({ id, data })).unwrap()
       setMotifDerogation('')
+      setMotifAcompte('')
+      setMotifReouverture('')
       onSaved?.()
     } catch (err) {
       // CHT22 — une transition de statut refusée par les gates CH2 renvoie
@@ -1213,6 +1223,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     <Input id="ch-derogation" value={motifDerogation}
                            onChange={(e) => setMotifDerogation(e.target.value)} />
                   </label>
+                  {statutBlockedReasons.some((r) => /acompte/i.test(r)) && (
+                    <label className="mt-1 flex flex-col gap-1 text-foreground" htmlFor="ch-motif-acompte">
+                      Motif (acompte non reçu)
+                      <Input id="ch-motif-acompte" value={motifAcompte}
+                             onChange={(e) => setMotifAcompte(e.target.value)} />
+                    </label>
+                  )}
+                  {(canonicalStatus(current.statut) === 'cloture'
+                    || statutBlockedReasons.some((r) => /r[ée]ouverture/i.test(r))) && (
+                    <label className="mt-1 flex flex-col gap-1 text-foreground" htmlFor="ch-motif-reouverture">
+                      Motif de réouverture (Directeur)
+                      <Input id="ch-motif-reouverture" value={motifReouverture}
+                             onChange={(e) => setMotifReouverture(e.target.value)} />
+                    </label>
+                  )}
                 </div>
               ) : saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -1863,7 +1888,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               Annuler le chantier
             </Button>
           )}
-          {!current.annule && canMoveStatus(current.statut, 'receptionne') && (
+          {!current.annule && canonicalStatus(current.statut) === 'installe'
+            && canMoveStatus(current.statut, 'receptionne') && (
             <Button variant="success" loading={receptBusy} onClick={marquerReceptionne}>
               Marquer réceptionné
             </Button>

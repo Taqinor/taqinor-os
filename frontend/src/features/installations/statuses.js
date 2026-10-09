@@ -68,16 +68,20 @@ export function canonicalRank(key) {
 
 // Un mouvement de statut est-il AUTORISÉ ? On n'autorise qu'un pas en avant ou
 // en arrière sur l'entonnoir canonique (|Δrang| ≤ 1). Rester sur place est
-// toujours permis. Un statut hérité déjà stocké (rang −1) ne peut pas être la
+// un NON-mouvement (ACHT60). Un statut hérité déjà stocké (rang −1) ne peut pas être la
 // CIBLE d'un mouvement, mais peut en être la source (il se rabat sur sa colonne
 // canonique). Miroir conceptuel de Installation.STATUT_ORDER côté backend.
 export function canMoveStatus(from, to) {
-  if (from === to) return true
+  // ACHT60 — rester sur place n'est PAS un mouvement (ni « Marquer
+  // réceptionné » sur un réceptionné, ni un lot « 3 seront modifiés » qui
+  // compterait les chantiers déjà à ce statut).
+  if (from === to) return false
   // La CIBLE doit être un statut canonique direct (jamais un statut hérité).
   const b = INSTALLATION_STATUSES.indexOf(to)
   if (b === -1) return false
   const a = canonicalRank(from)
   if (a === -1) return false // source hors entonnoir : pas de saut direct
+  if (a === b) return false // même colonne canonique : aucun mouvement
   return Math.abs(a - b) <= 1
 }
 
