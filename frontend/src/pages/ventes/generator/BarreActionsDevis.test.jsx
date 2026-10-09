@@ -8,112 +8,36 @@
 // Run : npx vitest run src/pages/ventes/generator/BarreActionsDevis.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-import authReducer from '../../../features/auth/store/authSlice'
-import ventesReducer from '../../../features/ventes/store/ventesSlice'
+import {
+  DEVIS_INSTALLATION, renderGenerateurEdition, renderGenerateurPage,
+  preparerApisGenerateur, ouvrirEditionEtAttendreReference,
+} from '../../../test/generateurEmbarque'
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
-  },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../../api/stockApi', async () => (await import('../../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../../api/parametresApi', async () => (await import('../../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../../api/ventesApi', async () => (await import('../../../test/mocksApiDevis.js')).ventesApiMock())
 
+import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import DevisGenerator from '../DevisGenerator'
 import BarreActionsDevis from './BarreActionsDevis'
 
-const DEVIS = {
-  id: 42, reference: 'DEV-202610-0042', statut: 'envoye', date_envoi: null,
-  modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
-  lead: null, client: 9, mode_installation: 'residentiel', taux_tva: '20.00',
-  remise_globale: '0', updated_at: '2026-10-09T08:00:00Z',
-  etude_params: { scenario: 'Sans batterie' },
-  lignes: [
-    { id: 1, produit: null, designation: 'Installation', quantite: '1',
-      prix_unitaire: '1000.00', taux_tva: '20.00', ordre: 0,
-      type_ligne: 'produit', optionnelle: false },
-  ],
-}
-
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
-function renderEmbarque(props = {}) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={['/crm/leads/7']}>
-        <DevisGenerator embedded onDone={() => {}} onCancel={() => {}} {...props} />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
-
-function renderPage(route) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={[route]}>
-        <Routes>
-          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+// Devis ENVOYÉ à une ligne libre (la pleine page et l'embarqué le lisent).
+const DEVIS = { ...DEVIS_INSTALLATION, statut: 'envoye', date_envoi: null }
 
 const barre = () => screen.getByRole('toolbar', { name: 'Actions du devis' })
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  ventesApi.getDevisById.mockResolvedValue({ data: DEVIS })
-})
+beforeEach(() => preparerApisGenerateur({
+  stockApi, ventesApi, produits: [], devis: DEVIS,
+}))
 
 describe('EDC4 — barre d\'actions en tête', () => {
   it('Édition complète embarquée : référence, statut, total, Annuler / Enregistrer / Voir le PDF', async () => {
     const onVoirPdf = vi.fn()
     const onCancel = vi.fn()
-    const { container } = renderEmbarque({ editId: 42, onVoirPdf, onCancel })
+    const { container } = renderGenerateurEdition({ onVoirPdf, onCancel })
     await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     const b = within(barre())
     await waitFor(() => expect(b.getByText('DEV-202610-0042')).toBeInTheDocument())
@@ -137,7 +61,7 @@ describe('EDC4 — barre d\'actions en tête', () => {
   })
 
   it('pleine page (?edit=) : barre présente, jamais de « Voir le PDF »', async () => {
-    renderPage('/ventes/devis/nouveau?edit=42')
+    renderGenerateurPage()
     await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     const b = within(barre())
     await waitFor(() => expect(b.getByText('DEV-202610-0042')).toBeInTheDocument())
@@ -145,7 +69,8 @@ describe('EDC4 — barre d\'actions en tête', () => {
   })
 
   it('création embarquée : « Nouveau devis », bouton « Créer », pas de « Voir le PDF »', async () => {
-    renderEmbarque({ onVoirPdf: vi.fn() })
+    // Création : aucun `editId` (le défaut du banc, 42, est écrasé).
+    renderGenerateurEdition({ editId: undefined, onVoirPdf: vi.fn() })
     const b = within(barre())
     expect(b.getByText('Nouveau devis')).toBeInTheDocument()
     expect(b.getByRole('button', { name: 'Créer' })).toHaveAttribute('form', 'gen-form')
@@ -154,10 +79,9 @@ describe('EDC4 — barre d\'actions en tête', () => {
   })
 
   it('pastille « Modifications non enregistrées » : absente à l\'ouverture, présente après une frappe', async () => {
-    renderEmbarque({ editId: 42 })
-    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    renderGenerateurEdition()
     // Fenêtre QJR581 (1,5 s) : la référence « rien n'a changé » est capturée.
-    await new Promise((r) => setTimeout(r, 1700))
+    await ouvrirEditionEtAttendreReference({ designation: null })
     expect(within(barre()).queryByText('Modifications non enregistrées')).toBeNull()
     fireEvent.change(screen.getByPlaceholderText(/Conditions particulières/),
       { target: { value: 'Acompte 30 %' } })

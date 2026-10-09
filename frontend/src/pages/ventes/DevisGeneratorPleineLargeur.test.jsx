@@ -6,81 +6,24 @@
 // Écran RÉEL rendu (embarqué et pleine page), API mockées.
 // Run : npx vitest run src/pages/ventes/DevisGeneratorPleineLargeur.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
+import {
+  DEVIS_INSTALLATION, renderGenerateurEdition, renderGenerateurPage, preparerApisGenerateur,
+} from '../../test/generateurEmbarque'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
-  },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock())
 
+import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
-import DevisGenerator from './DevisGenerator'
 
-const DEVIS = {
-  id: 42, reference: 'DEV-202610-0042', statut: 'brouillon', modifiable: true,
-  raison_non_modifiable: '', revision_possible: false, is_active: true,
-  lead: null, client: 9, mode_installation: 'residentiel', taux_tva: '20.00',
-  remise_globale: '0', etude_params: { scenario: 'Sans batterie' },
-  lignes: [
-    { id: 1, produit: null, designation: 'Installation', quantite: '1',
-      prix_unitaire: '1000.00', taux_tva: '20.00', ordre: 0,
-      type_ligne: 'produit', optionnelle: false },
-  ],
-}
-
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  ventesApi.getDevisById.mockResolvedValue({ data: DEVIS })
-})
+beforeEach(() => preparerApisGenerateur({
+  stockApi, ventesApi, produits: [], devis: DEVIS_INSTALLATION,
+}))
 
 function verifierRail(container) {
   const racine = container.querySelector('.gen-root')
@@ -104,13 +47,7 @@ function verifierRail(container) {
 
 describe('EDC2 — racine gen-root, rail sans classe lg:', () => {
   it('embarqué (Édition complète du panneau) : gen-root + gen-embedded, rail piloté par container query', async () => {
-    const { container } = render(
-      <Provider store={makeStore()}>
-        <MemoryRouter initialEntries={['/crm/leads/7']}>
-          <DevisGenerator embedded editId={42} onDone={() => {}} onCancel={() => {}} />
-        </MemoryRouter>
-      </Provider>,
-    )
+    const { container } = renderGenerateurEdition()
     await waitFor(() => expect(ventesApi.getDevisById).toHaveBeenCalledWith(42))
     await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     const racine = container.querySelector('.gen-root')
@@ -119,15 +56,7 @@ describe('EDC2 — racine gen-root, rail sans classe lg:', () => {
   })
 
   it('pleine page (?edit=) : gen-root + gen-page, rail piloté par container query', async () => {
-    const { container } = render(
-      <Provider store={makeStore()}>
-        <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=42']}>
-          <Routes>
-            <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
-          </Routes>
-        </MemoryRouter>
-      </Provider>,
-    )
+    const { container } = renderGenerateurPage()
     await waitFor(() => expect(ventesApi.getDevisById).toHaveBeenCalledWith('42'))
     await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     const racine = container.querySelector('.gen-root')
@@ -136,13 +65,7 @@ describe('EDC2 — racine gen-root, rail sans classe lg:', () => {
   })
 
   it('table des lignes : largeurs fixes sur les colonnes numériques, Désignation/Produit flexibles', async () => {
-    const { container } = render(
-      <Provider store={makeStore()}>
-        <MemoryRouter initialEntries={['/crm/leads/7']}>
-          <DevisGenerator embedded editId={42} onDone={() => {}} onCancel={() => {}} />
-        </MemoryRouter>
-      </Provider>,
-    )
+    const { container } = renderGenerateurEdition()
     await screen.findByDisplayValue('Installation')
     const entetes = [...container.querySelectorAll('table.lines-table thead th')]
     const largeur = (texte) => entetes.find((th) => th.textContent.trim() === texte)?.style.width
