@@ -1628,21 +1628,12 @@ class TestNoInventedNumberGuard(TestCase):
         self.assertTrue(data["savings_estimated"])
         self.assertIn("tarif_kwh", data)
 
-    def test_builder_with_etude_params_tarif_kwh_not_estimated(self):
-        """When etude_params carries tarif_kwh, savings are not estimated."""
-        company = make_company()
-        user = make_user(company)
-        client_obj = make_client(company)
-        devis = make_devis(company, user, client_obj, [
-            ('Panneau mono 450W', '10', '1500'),
-            ('Onduleur hybride', '1', '12000'),
-        ], reference='DEV-QJ13-KWH')
-        devis.etude_params = {"tarif_kwh": 1.50}
-        devis.save(update_fields=["etude_params"])
-        from apps.ventes.quote_engine.builder import build_quote_data
-        data = build_quote_data(devis)
-        self.assertFalse(data["savings_estimated"])
-        self.assertAlmostEqual(data["tarif_kwh"], 1.50, places=2)
+    # AMOT47 (08/10/2026) — « test_builder_with_etude_params_tarif_kwh_not_
+    # estimated » retiré avec la lecture qu'il était seul à tester :
+    # ``etude_params.tarif_kwh`` est inécrivable (le schéma d'étude le refuse,
+    # aucun devis ne le porte) ; AMOT47 supprime la lecture « et les tests qui
+    # ne testent qu'eux ». Le barème vient du réglage société / de la grille
+    # nationale (tests distributeur ci-dessous).
 
     def test_builder_with_distributeur_onee_not_estimated(self):
         """etude_params distributeur='onee' → ONEE tranche table, not estimated."""

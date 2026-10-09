@@ -316,11 +316,10 @@ class DevisCalepinageActionsMixin:
         Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
         devis = self.get_object()  # borné société par get_queryset
-        # ADEV42 (C-ADEV-040) — même garde que ``layout`` (geste ETUDE), AVANT
-        # toute écriture du calepinage lié : un devis accepté répond 409
-        # ``revision_possible`` (le bon geste est « Réviser »).
-        if _refus_modifiabilite(devis, 'ETUDE'):
-            return _reponse_non_modifiable(devis, 'ETUDE')
+        # ADEV42 — la garde de ce geste est celle de la resynchro
+        # (``resynchronisation._refus_resynchro``, geste CALEPINAGE), jouée
+        # par ``_ecrire_conception`` AVANT toute écriture du calepinage lié :
+        # 409 « document clos » + ``revision_possible`` (QJR516, test_pv18).
         payload = request.data
         if isinstance(payload, dict):
             for enveloppe in ('layout', 'roof_layout'):

@@ -252,15 +252,28 @@ def empreinte_visible(devis):
     option, conception}``."""
     from apps.ventes.models import Devis, LigneDevis
 
-    lignes = [
-        tuple(str(v) if v is not None else None for v in ligne)
-        for ligne in LigneDevis.objects.filter(devis_id=devis.pk)
-        .order_by('ordre', 'id').values_list(*_CHAMPS_LIGNE_VISIBLES)
-    ]
     ligne_devis = (Devis.objects.filter(pk=devis.pk)
                    .values(*_CHAMPS_ENTETE_VISIBLES, 'note', 'etude_params',
                            'layout_hash')
                    .first()) or {}
+    # ATOT20 — une ligne sans taux (« Vide = taux global du devis ») et la
+    # même ligne réécrite avec le taux du DEVIS sont le MÊME contenu visible :
+    # le taux comparé est le taux EFFECTIF, sinon réenregistrer à l'identique
+    # une ligne ancienne d'un envoyé tracerait une fausse correction.
+    i_taux = _CHAMPS_LIGNE_VISIBLES.index('taux_tva')
+    taux_devis = ligne_devis.get('taux_tva')
+
+    def _visible(ligne):
+        valeurs = list(ligne)
+        if valeurs[i_taux] is None:
+            valeurs[i_taux] = taux_devis
+        return tuple(str(v) if v is not None else None for v in valeurs)
+
+    lignes = [
+        _visible(ligne)
+        for ligne in LigneDevis.objects.filter(devis_id=devis.pk)
+        .order_by('ordre', 'id').values_list(*_CHAMPS_LIGNE_VISIBLES)
+    ]
     etude = ligne_devis.get('etude_params') or {}
     if not isinstance(etude, dict):
         etude = {}
