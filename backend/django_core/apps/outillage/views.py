@@ -1,5 +1,6 @@
 import datetime
 
+from django.db.models import Q
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -86,10 +87,13 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         # FG80 — filtre « à calibrer » : intervalle > 0 ET date_prochaine <= aujourd'hui.
         a_calibrer = params.get('a_calibrer')
         if a_calibrer in ('1', 'true', 'True'):
+            # ACHT74 — MÊME règle que le badge `a_calibrer` : intervalle > 0 ET
+            # (jamais calibré OU échéance dépassée).
             today = datetime.date.today()
             qs = qs.filter(
-                intervalle_calibration_mois__gt=0,
-                date_prochaine_calibration__lte=today)
+                Q(date_prochaine_calibration__isnull=True)
+                | Q(date_prochaine_calibration__lte=today),
+                intervalle_calibration_mois__gt=0)
         return qs
 
     # ── FG80 — enregistrement d'une calibration ──────────────────────────────
@@ -108,15 +112,21 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         except (ValueError, TypeError):
             return Response({'date_calibration': 'Date invalide (YYYY-MM-DD).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ACHT74 — une calibration ne se date ni dans le futur ni avant la
+        # précédente.
+        if date_cal > datetime.date.today():
+            return Response(
+                {'date_calibration': 'Date de calibration dans le futur.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if (outil.date_derniere_calibration is not None
+                and date_cal < outil.date_derniere_calibration):
+            return Response(
+                {'date_calibration': (
+                    'Date antérieure à la dernière calibration '
+                    f'({outil.date_derniere_calibration}).')},
+                status=status.HTTP_400_BAD_REQUEST)
         outil.date_derniere_calibration = date_cal
-        # Recalcul de la prochaine date.
-        if outil.intervalle_calibration_mois:
-            # Ajoute n mois (approximation : 30.44 jours / mois).
-            days = int(outil.intervalle_calibration_mois * 30.44)
-            outil.date_prochaine_calibration = (
-                date_cal + datetime.timedelta(days=days))
-        else:
-            outil.date_prochaine_calibration = None
+        # `Outillage.save()` dérive `date_prochaine_calibration` (vrais mois).
         outil.save(update_fields=[
             'date_derniere_calibration', 'date_prochaine_calibration'])
         # Notification si l'outil sera de nouveau à calibrer dans moins d'un mois.
