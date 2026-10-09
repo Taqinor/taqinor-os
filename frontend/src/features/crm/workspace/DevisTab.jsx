@@ -1035,7 +1035,10 @@ export default function DevisTab({
                             className="gen-hint" title="Voir le chantier">
                         🏗 {d.chantier.reference}
                       </Link>
-                    ) : (
+                    ) : d.is_active !== false && (
+                      // ACHT5 — seule la tête de chaîne active propose la
+                      // création : une version remplacée (is_active=false)
+                      // n'a jamais de chantier à elle.
                       <Button
                         type="button" size="sm" variant="outline"
                         disabled={busyAction === `c-${d.id}`}
