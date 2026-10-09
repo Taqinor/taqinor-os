@@ -104,6 +104,10 @@ def rapport_intervention_pdf(ticket):
         'pieces': _pieces_payload(ticket),
         # ZMFG6 — section conditionnelle : None quand pas de worksheet.
         'worksheet': _worksheet_payload(ticket),
+        # APDF42 — signature : nom d'intervenant, jamais l'identifiant de
+        # connexion (username / e-mail).
+        'technicien_signature': nom_intervenant(
+            ticket.technicien_responsable, ticket.company) or '',
     })
     html = _render_html('sav_intervention.html', context)
     return _html_to_pdf(html)
