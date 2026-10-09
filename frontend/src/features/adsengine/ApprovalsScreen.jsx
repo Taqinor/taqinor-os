@@ -21,6 +21,7 @@ import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
 import SyncStatusBanner from './SyncStatusBanner'
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 
 /* ============================================================================
    PUB51 — Raccourcis clavier (« pile d'approbations traitable sans souris »).
@@ -117,15 +118,36 @@ export default function ApprovalsScreen() {
   // ADSDEEP35 — composeur EDIT_COPY (avant/après + envoi comme proposition).
   const [showComposer, setShowComposer] = useState(false)
 
+  // AACQ62 — ids retirés LOCALEMENT (rejetés / appliqués) : un tour de
+  // sondage parti avant le geste ne doit jamais les faire revenir.
+  const removedIdsRef = useRef(new Set())
+  // AACQ62 — troncature dite : `{ shown, total }` quand le serveur plafonne.
+  const [truncation, setTruncation] = useState(null)
+
   const load = useCallback(() => {
-    adsengineApi.actions.pending()
-      .then(r => {
-        const raw = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    // AACQ62 — filtre SERVEUR (`statut=en_attente` = proposee+approuvee,
+    // AACQ61) et TOUTES les pages (fetchAllPages), jamais la seule page 1.
+    let total = null
+    fetchAllPages((page) => adsengineApi.actions.pending({ page })
+      .then((r) => {
+        const data = r?.data
+        if (page === 1 && data && typeof data.count === 'number') total = data.count
+        return data
+      }), { concurrency: 3 })
+      .then(data => {
+        const raw = Array.isArray(data) ? data : (data?.results || [])
         // L'API EngineAction expose le genre dans `kind` ; les libellés / le
         // diff EDIT_COPY (adsengine.js) lisent `type`. On normalise ici (sans
         // écraser un `type` déjà présent) pour que la carte affiche le bon
         // libellé et le diff avant/après contre les vraies données.
-        commitActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
+        // AACQ62 — défense en profondeur : seules les actions DÉCIDABLES
+        // (proposée / approuvée) ; jamais une rejetée, appliquée ou échouée.
+        const decidables = raw
+          .filter(a => ['en_attente', 'approuve'].includes(actionResultKey(a)))
+          .filter(a => !removedIdsRef.current.has(a.id))
+        commitActions(decidables.map(a => ({ ...a, type: a.type ?? a.kind })))
+        setTruncation(total != null && total > raw.length
+          ? { shown: raw.length, total } : null)
         setLoadError(false)
       })
       .catch(() => setLoadError(true))
@@ -144,6 +166,7 @@ export default function ApprovalsScreen() {
   // rendu.
   const removeApplied = useCallback((ids) => {
     const set = new Set(ids)
+    ids.forEach(id => removedIdsRef.current.add(id))
     commitActions(actionsRef.current.filter(a => !set.has(a.id)))
     setSelected(sel => {
       const next = new Set(sel)
@@ -363,6 +386,13 @@ export default function ApprovalsScreen() {
       )}
 
       {err && <p data-testid="ae-approvals-err" style={{ color: '#dc2626' }}>{err}</p>}
+
+      {/* AACQ62 — le serveur a plafonné la lecture : on le DIT. */}
+      {truncation && (
+        <p data-testid="ae-approvals-truncated" role="status" style={{ color: '#b45309' }}>
+          {truncation.shown} actions sur {truncation.total} affichées — la liste est tronquée.
+        </p>
+      )}
 
       {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence sur
           l'écran le plus critique (l'approbation dépend de le voir). */}

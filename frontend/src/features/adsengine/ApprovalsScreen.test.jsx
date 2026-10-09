@@ -449,3 +449,58 @@ describe('ApprovalsScreen — PUB56 cibles tactiles ≥44×44px', () => {
     expect(parseInt(select.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
   })
 })
+
+/* AACQ62 — la boîte lit TOUTES les actions décidables (filtre serveur
+   `statut=en_attente` + toutes les pages) et dit une troncature ; jamais
+   Approuver/Rejeter sur une action rejetée, appliquée ou échouée. */
+describe('ApprovalsScreen — actions décidables, toutes les pages (AACQ62)', () => {
+  const ligne = (id, status) => ({
+    id, kind: 'pause', status, reason_fr: `Action ${id}.`, payload: {},
+  })
+  const PAGE1 = [
+    ligne(1, 'rejetee'), ligne(2, 'appliquee'), ligne(3, 'approuvee'),
+    ...Array.from({ length: 47 }, (_, i) => ligne(100 + i, 'proposee')),
+  ]
+  const PAGE2 = Array.from({ length: 9 }, (_, i) => ligne(200 + i, 'proposee'))
+
+  it("n'affiche que les actions décidables et lit la page 2", async () => {
+    mocks.pending.mockImplementation((params) => Promise.resolve({
+      data: (params?.page ?? 1) === 1
+        ? { count: 59, next: 'page2', previous: null, results: PAGE1 }
+        : { count: 59, next: null, previous: 'page1', results: PAGE2 },
+    }))
+    renderScreen()
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(57))
+    expect(mocks.pending).toHaveBeenCalledWith({ page: 2 })
+    expect(screen.queryAllByTestId(/^ae-approve-\d+$/)).toHaveLength(56)
+    expect(screen.getByTestId('ae-apply-3')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-approve-1')).toBeNull()
+    expect(screen.queryByTestId('ae-approve-2')).toBeNull()
+    expect(screen.getByTestId('ae-approve-208')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-approvals-truncated')).toBeNull()
+  })
+
+  it('dit la troncature quand le serveur plafonne', async () => {
+    mocks.pending.mockImplementation((params) => Promise.resolve({
+      data: (params?.page ?? 1) === 1
+        ? { count: 60, next: 'page2', previous: null, results: PAGE1 }
+        : { count: 60, next: null, previous: 'page1', results: [] },
+    }))
+    renderScreen()
+    expect(await screen.findByTestId('ae-approvals-truncated'))
+      .toHaveTextContent('50 actions sur 60')
+  })
+
+  it('une action rejetée localement ne revient pas au sondage suivant', async () => {
+    renderScreen()
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3))
+    fireEvent.click(screen.getByTestId('ae-reject-12'))
+    fireEvent.click(await screen.findByTestId('ae-reject-confirm-12'))
+    await waitFor(() => expect(screen.queryByTestId('ae-reject-12')).toBeNull())
+    // Le serveur (en retard) renvoie encore l'action 12 au sondage suivant.
+    fireEvent.click(screen.getByTestId('ae-approvals-refresh'))
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    expect(screen.queryByTestId('ae-reject-12')).toBeNull()
+  })
+})
