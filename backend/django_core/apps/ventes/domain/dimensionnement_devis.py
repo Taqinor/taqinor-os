@@ -494,6 +494,27 @@ def facteur_remise_du_devis(devis) -> float:
     return facteur
 
 
+def prix_client_composition(cout_catalogue, devis=None, *, facteur=None):
+    """AMOT59 (C-AMOT-035) — LE prix de VENTE d'une composition catalogue
+    proposée au client (palier du curseur batterie, échelle de paliers,
+    cartes Éco/Max) : coût catalogue × facteur de remise du devis
+    (:func:`facteur_remise_du_devis`, ou ``facteur`` déjà lu), ramené au
+    palier ``PAS_ARRONDI_DEVIS`` inférieur comme le total de tout devis
+    (ARRONDI-100). ``None`` si le coût est illisible ou nul. Une fonction,
+    trois lecteurs : un pack de plus ne fait plus « sauter » la remise."""
+    cout = _num(cout_catalogue)
+    if cout <= 0:
+        return None
+    if facteur is None:
+        facteur = facteur_remise_du_devis(devis) if devis is not None else 1.0
+    prix = cout * float(facteur or 1.0)
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    pas = float(PAS_ARRONDI_DEVIS)
+    if prix >= pas:
+        prix = math.floor(prix / pas) * pas
+    return round(prix, 2)
+
+
 def capacite_batterie_des_lignes(devis, lignes=None):
     """La capacité batterie des LIGNES RÉELLES de ce devis, ou ``None``.
 
@@ -933,7 +954,9 @@ def _echelle_paliers_batterie(devis):
         # MÊME base de prix que la carte du devis : la composition catalogue
         # est brute, le devis est remisé. Sans ce facteur, l'écart entre deux
         # pilules d'un devis remisé était faux (bases mélangées).
-        cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
+        # AMOT59 — LE prix de vente partagé (remise du devis + palier).
+        cout = prix_client_composition(vue.get('cout_ttc'),
+                                       facteur=facteur_remise) or 0.0
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
         # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :
