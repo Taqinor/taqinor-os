@@ -4,8 +4,8 @@ import {
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  actionTypeLabel, budgetDiff, actionCreative, formatMAD, REJECTION_REASONS,
-  actionWarnings, editCopyDiff, emptyGrid, actionResultKey,
+  actionTypeLabel, budgetDiff, actionCreative, formatMoney, formatNumber, REJECTION_REASONS,
+  actionWarnings, editCopyDiff, emptyGrid, actionResultKey, erreurServeur,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
 // WIR63 — grille dayparting (ADSDEEP36), montée dans ManualActionComposer.jsx
@@ -21,6 +21,7 @@ import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
 import SyncStatusBanner from './SyncStatusBanner'
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 
 /* ============================================================================
    PUB51 — Raccourcis clavier (« pile d'approbations traitable sans souris »).
@@ -117,15 +118,46 @@ export default function ApprovalsScreen() {
   // ADSDEEP35 — composeur EDIT_COPY (avant/après + envoi comme proposition).
   const [showComposer, setShowComposer] = useState(false)
 
+  // AACQ62 — ids retirés LOCALEMENT (rejetés / appliqués) : un tour de
+  // sondage parti avant le geste ne doit jamais les faire revenir.
+  const removedIdsRef = useRef(new Set())
+  // AACQ62 — troncature dite : `{ shown, total }` quand le serveur plafonne.
+  const [truncation, setTruncation] = useState(null)
+  // AACQ63 — devise RÉELLE du compte publicitaire (connexion, comme
+  // CampaignsScreen) : les montants Meta d'une action budget y sont libellés.
+  const [currency, setCurrency] = useState('MAD')
+  useEffect(() => {
+    const connGet = adsengineApi.connection?.get
+    if (!connGet) return
+    connGet()
+      .then(r => setCurrency(r?.data?.currency || 'MAD'))
+      .catch(() => {})
+  }, [])
+
   const load = useCallback(() => {
-    adsengineApi.actions.pending()
-      .then(r => {
-        const raw = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    // AACQ62 — filtre SERVEUR (`statut=en_attente` = proposee+approuvee,
+    // AACQ61) et TOUTES les pages (fetchAllPages), jamais la seule page 1.
+    let total = null
+    fetchAllPages((page) => adsengineApi.actions.pending({ page })
+      .then((r) => {
+        const data = r?.data
+        if (page === 1 && data && typeof data.count === 'number') total = data.count
+        return data
+      }), { concurrency: 3 })
+      .then(data => {
+        const raw = Array.isArray(data) ? data : (data?.results || [])
         // L'API EngineAction expose le genre dans `kind` ; les libellés / le
         // diff EDIT_COPY (adsengine.js) lisent `type`. On normalise ici (sans
         // écraser un `type` déjà présent) pour que la carte affiche le bon
         // libellé et le diff avant/après contre les vraies données.
-        commitActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
+        // AACQ62 — défense en profondeur : seules les actions DÉCIDABLES
+        // (proposée / approuvée) ; jamais une rejetée, appliquée ou échouée.
+        const decidables = raw
+          .filter(a => ['en_attente', 'approuve'].includes(actionResultKey(a)))
+          .filter(a => !removedIdsRef.current.has(a.id))
+        commitActions(decidables.map(a => ({ ...a, type: a.type ?? a.kind })))
+        setTruncation(total != null && total > raw.length
+          ? { shown: raw.length, total } : null)
         setLoadError(false)
       })
       .catch(() => setLoadError(true))
@@ -144,6 +176,7 @@ export default function ApprovalsScreen() {
   // rendu.
   const removeApplied = useCallback((ids) => {
     const set = new Set(ids)
+    ids.forEach(id => removedIdsRef.current.add(id))
     commitActions(actionsRef.current.filter(a => !set.has(a.id)))
     setSelected(sel => {
       const next = new Set(sel)
@@ -168,8 +201,10 @@ export default function ApprovalsScreen() {
       const r = await adsengineApi.actions.approve(id)
       // La carte RESTE : approuvée n'est pas appliquée (WIR208).
       mergeAction(id, r?.data)
-    } catch {
-      setErr("Approbation refusée (permission ?). L'action reste dans la boîte.")
+    } catch (e) {
+      // AACQ73 — la raison RENVOYÉE par le serveur (403 quatre yeux, 400…),
+      // jamais une cause devinée.
+      setErr(`${erreurServeur(e, 'Approbation refusée.')} L'action reste dans la boîte.`)
     } finally {
       setBusy(false)
     }
@@ -187,13 +222,14 @@ export default function ApprovalsScreen() {
       if (saved && actionResultKey(saved) === 'applique') removeApplied([id])
     } catch (e) {
       const code = e?.response?.status
-      setErr(code === 409
+      // AACQ73 — `detail` serveur s'il existe ; sinon le texte du code HTTP.
+      const repli = code === 409
         ? "Application refusée : cette action n'est plus approuvée (déjà "
-          + "appliquée ou rejetée). Elle reste dans la boîte."
+          + 'appliquée ou rejetée).'
         : code === 502
-          ? "Meta a refusé l'application : l'action est repassée « échouée ». "
-            + 'Elle reste dans la boîte.'
-          : "Application impossible. L'action reste dans la boîte.")
+          ? "Meta a refusé l'application : l'action est repassée « échouée »."
+          : 'Application impossible.'
+      setErr(`${erreurServeur(e, repli)} Elle reste dans la boîte.`)
     } finally {
       setBusy(false)
     }
@@ -276,11 +312,15 @@ export default function ApprovalsScreen() {
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
     try {
-      await adsengineApi.actions.reject(id, { reason: rejectReason })
+      // AACQ64 — le serveur lit `commentaire` (EngineActionViewSet.reject →
+      // `error` de l'action, relu au Journal) : on y envoie le LIBELLÉ du motif.
+      const motif = REJECTION_REASONS.find(r => r.value === rejectReason)
+      await adsengineApi.actions.reject(
+        id, { commentaire: motif ? motif.label : rejectReason })
       setRejectingId(null)
       removeApplied([id])
-    } catch {
-      setErr("Rejet impossible. L'action reste dans la boîte.")
+    } catch (e) {
+      setErr(`${erreurServeur(e, 'Rejet impossible.')} L'action reste dans la boîte.`)
     } finally {
       setBusy(false)
     }
@@ -307,8 +347,8 @@ export default function ApprovalsScreen() {
         ids.forEach(id => next.delete(id))
         return next
       })
-    } catch {
-      setErr("Une partie de la sélection n'a pu être approuvée.")
+    } catch (e) {
+      setErr(`Une partie de la sélection n'a pu être approuvée : ${erreurServeur(e, 'refus du serveur.')}`)
       load()
     } finally {
       setBusy(false)
@@ -363,6 +403,13 @@ export default function ApprovalsScreen() {
       )}
 
       {err && <p data-testid="ae-approvals-err" style={{ color: '#dc2626' }}>{err}</p>}
+
+      {/* AACQ62 — le serveur a plafonné la lecture : on le DIT. */}
+      {truncation && (
+        <p data-testid="ae-approvals-truncated" role="status" style={{ color: '#b45309' }}>
+          {truncation.shown} actions sur {truncation.total} affichées — la liste est tronquée.
+        </p>
+      )}
 
       {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence sur
           l'écran le plus critique (l'approbation dépend de le voir). */}
@@ -435,21 +482,35 @@ export default function ApprovalsScreen() {
                           {a.reason_fr || 'Aucune raison fournie.'}
                         </p>
 
-                        {/* Artefact réel — diff budget avant→après */}
-                        {diff && (
+                        {/* Artefact réel — diff budget avant→après (AACQ63 :
+                            clés RÉELLES du payload, devise du compte). */}
+                        {diff && diff.mode === 'plafond' && (
                           <div className="ae-artifact-budget" data-testid="ae-artifact-budget"
                             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
                               background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: 6 }}>
-                            <span>{formatMAD(diff.avant)}</span>
+                            <span>Plafond de dépense :</span>
+                            <strong>{formatMoney(diff.plafond, currency)}</strong>
+                          </div>
+                        )}
+                        {diff && diff.mode === 'budget' && (
+                          <div className="ae-artifact-budget" data-testid="ae-artifact-budget"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
+                              flexWrap: 'wrap',
+                              background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: 6 }}>
+                            <span>Budget quotidien :</span>
+                            <span>{formatNumber(diff.avant)}</span>
                             <span aria-hidden="true">→</span>
                             <strong style={{
                               color: diff.direction === 'up' ? '#b91c1c'
                                 : diff.direction === 'down' ? '#15803d' : '#334155' }}>
-                              {formatMAD(diff.apres)}
+                              {formatMoney(diff.apres, currency)}
                             </strong>
-                            <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                              ({diff.delta > 0 ? '+' : ''}{formatMAD(diff.delta)})
-                            </span>
+                            {diff.cible != null && (
+                              <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                                (cible demandée {formatNumber(diff.cible)}
+                                {diff.bornee ? ', bornée par les garde-fous' : ''})
+                              </span>
+                            )}
                           </div>
                         )}
 

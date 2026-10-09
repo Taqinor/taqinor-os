@@ -2553,7 +2553,10 @@ def _map_and_link_lead(raw, data, company):
 
     raw.lead = lead
     raw.processed = True
-    raw.save(update_fields=['lead', 'processed'])
+    # AACQ30 — un mapping réussi efface l'erreur d'un essai précédent (la ligne
+    # sort de la liste « à traiter ») ; sans effet côté vue (déjà vide).
+    raw.error = ''
+    raw.save(update_fields=['lead', 'processed', 'error'])
     if not created:
         detail = 'Lead mis à jour (même envoi < 1 min).'
     elif not dup_ids:
@@ -2566,6 +2569,19 @@ def _map_and_link_lead(raw, data, company):
                    else ' à examiner.')
     return lead, created, detail, {
         'doublons': dup_ids, 'match_fort': match_fort}
+
+
+def _mettre_en_file_devis_automatique(lead, company):
+    """AACQ30 — Suite post-création d'un lead site web (devis automatique mis
+    en file), UN seul point d'appel partagé par la vue webhook et le rejeu.
+    Best-effort : jamais bloquant pour le lead déjà enregistré."""
+    try:
+        from apps.ventes.services import planifier_devis_automatique_pour_lead
+        planifier_devis_automatique_pour_lead(lead.pk, company.pk)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+        logger.warning(
+            'website_lead_webhook: mise en file du devis automatique '
+            'échouée (lead #%s)', lead.pk, exc_info=True)
 
 
 @csrf_exempt
@@ -2692,14 +2708,7 @@ def website_lead_webhook(request):
         # la composition. Best-effort de bout en bout : le lead est déjà
         # enregistré, rien ici ne peut le remettre en cause.
         if created:
-            try:
-                from apps.ventes.services import (
-                    planifier_devis_automatique_pour_lead)
-                planifier_devis_automatique_pour_lead(lead.pk, company.pk)
-            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
-                logger.warning(
-                    'website_lead_webhook: mise en file du devis automatique '
-                    'échouée (lead #%s)', lead.pk, exc_info=True)
+            _mettre_en_file_devis_automatique(lead, company)
 
         body = {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk,
                 'client_ref': lead.client_ref}
@@ -2751,12 +2760,24 @@ def replay_website_lead_payload(raw):
     exception et la consigne sur ``raw.error`` comme le fait la vue webhook,
     pour que le rejeu reste rejouable indéfiniment (jamais une exception
     remontée casse l'appelant HTTP)."""
+    # AACQ30 — rejeu IDEMPOTENT et fidèle au webhook, à n'importe quel délai.
+    payload = raw.payload if isinstance(raw.payload, dict) else {}
+    if payload.get('event_type'):
+        return False, "Ping d'engagement : jamais rejoué en lead.", None
+    if raw.lead_id:
+        return (True, f'Déjà rattaché au lead #{raw.lead_id} — aucun nouveau '
+                      f'lead.', raw.lead)
+    if raw.processed:
+        return (False, "Événement déjà traité : la soumission d'origine a "
+                       "déjà sa fiche.", None)
     company = raw.company or _resolve_company()
     if company is None:
         return False, 'Aucune Company résolue — rejeu impossible.', None
     try:
         lead, created, detail, _extra = _map_and_link_lead(
             raw, raw.payload, company)
+        if created:
+            _mettre_en_file_devis_automatique(lead, company)
         return True, detail, lead
     except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook
         raw.error = f'{type(exc).__name__}: {exc}'

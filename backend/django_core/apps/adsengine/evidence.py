@@ -125,6 +125,21 @@ def record_experiment_outcome(experiment, *, validated, successes=1,
         idempotency_key=key)
 
 
+def recorded_experiment_verdict(experiment):
+    """AACQ65 — Verdict de clôture DÉJÀ enregistré pour ``experiment`` : ``True``
+    (confirmée), ``False`` (infirmée) ou ``None`` (jamais clôturée). Relu dans
+    le ``DecisionLog`` d'évidence (clé ``experiment:<pk>:outcome`` ;
+    ``successes`` > 0 = confirmée) — jamais déduit de la requête."""
+    from .models import DecisionLog
+    log = (DecisionLog.objects
+           .filter(company=experiment.company,
+                   inputs__evidence_key=f'experiment:{experiment.pk}:outcome')
+           .order_by('created_at', 'pk').first())
+    if log is None:
+        return None
+    return int((log.inputs or {}).get('successes') or 0) > 0
+
+
 def record_signature_evidence(node, experiment, *, signatures,
                               idempotency_key=''):
     """Signatures Odoo ATTRIBUÉES à un nœud testé = évidence positive FORTE
