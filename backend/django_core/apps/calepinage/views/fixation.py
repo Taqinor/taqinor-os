@@ -20,6 +20,9 @@ société du calepinage.
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -31,6 +34,9 @@ from ..services.fixation import (
 __all__ = ['bom_fixation', 'fixation']
 
 
+@extend_schema(parameters=[OpenApiParameter(
+    'systeme', OpenApiTypes.INT, required=False,
+    description='Système de fixation (défaut : celui du calepinage).')])
 @action(detail=True, methods=['get'], url_path='bom-fixation',
         url_name='bom-fixation', permission_classes=[PeutVoirCalepinage])
 def bom_fixation(self, request, pk=None):
@@ -46,6 +52,9 @@ def bom_fixation(self, request, pk=None):
     return Response(bom_de_fixation(calepinage, systeme, refus, source))
 
 
+@extend_schema(request=inline_serializer(
+    'CalepinageFixationRequete', {
+        'systeme_id': drf_serializers.IntegerField()}))
 @action(detail=True, methods=['post'], url_path='fixation',
         url_name='fixation', permission_classes=[PeutGererCalepinage])
 def fixation(self, request, pk=None):

@@ -27,6 +27,7 @@ ailleurs (marquer/démarquer, action de ``services.modeles``).
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -42,6 +43,7 @@ from .calepinages import CalepinageViewSet
 __all__ = ['modeles', 'marquer_modele', 'demarquer_modele', 'depuis_modele']
 
 
+@extend_schema(responses=CalepinageSerializer(many=True))
 @action(detail=False, methods=['get'], url_path='modeles',
         permission_classes=[PeutVoirCalepinage])
 def modeles(self, request):
