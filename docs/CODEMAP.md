@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 3fc4cf7f794647e5795600b6315b0ab5e7ea87fc791517d123585a9f01917ba3
+Structure fingerprint: e9fb947025e4b0e991dae20f66c6f38ee55532d5b850a945217369cb95929872
 Plan fingerprint: b17bde110bc7e3a5191e3014adf02edf95c201e1295ff1f96c083d5b73eeef36
 
 
@@ -401,6 +401,8 @@ gated on founder validation in production.
 Core routes are declared in `router/index.jsx`; every module's routes come from its
 `features/<x>/module.config.jsx`, glob-imported by `router/moduleRoutes.jsx` (no edit to
 `router/index.jsx` per module). Parked modules took their routes with them.
+Loaders share `ensureSession` (ADEP19): a `fetchMe` failure without 401/403 renders
+`router/HorsLigneDemarrage.jsx` (offline start screen) instead of redirecting to `/login`.
 
 **Core (`router/index.jsx`)** — public: `/`, `/landing`, `/login`, `/register`, `/ui`,
 `/403`, `*`; public tokenized: `/rdv/:token`, `/salle-vente/:token`,
