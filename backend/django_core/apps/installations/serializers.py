@@ -80,7 +80,10 @@ from .models import (
 )
 
 
-class ChecklistEtapeModeleSerializer(serializers.ModelSerializer):
+class ChecklistEtapeModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('template',)
+
     class Meta:
         model = ChecklistEtapeModele
         fields = ['id', 'template', 'cle', 'libelle', 'ordre', 'capture_serie',
@@ -134,7 +137,10 @@ class ChecklistTemplateSerializer(serializers.ModelSerializer):
         return value or None
 
 
-class FicheInterventionChampSerializer(serializers.ModelSerializer):
+class FicheInterventionChampSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('template',)
+
     class Meta:
         model = FicheInterventionChamp
         fields = ['id', 'template', 'cle', 'libelle', 'type_champ', 'unite',
@@ -207,9 +213,12 @@ class ChantierChecklistItemSerializer(serializers.ModelSerializer):
         return getattr(obj.fait_par, 'username', None)
 
 
-class PhotoChecklistMetaSerializer(serializers.ModelSerializer):
+class PhotoChecklistMetaSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """NTMOB11 — métadonnées d'une photo liée à une étape de checklist
     (horodatage serveur + géoloc best-effort)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('checklist_item',)
+
     class Meta:
         model = PhotoChecklistMeta
         fields = [
@@ -256,7 +265,7 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — un technicien / une équipe d'une autre société reçoit la
     # réponse d'un id absent (400), à la création comme au PATCH.
-    same_company_fields = ('technicien', 'equipe', 'equipe_ref')
+    same_company_fields = ('technicien', 'equipe', 'equipe_ref', 'installation')
     type_intervention_display = serializers.CharField(
         source='get_type_intervention_display', read_only=True)
     statut_display = serializers.CharField(
@@ -485,7 +494,7 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
 class InstallationSerializer(SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — technicien responsable d'une autre société = id absent (400).
-    same_company_fields = ('technicien_responsable',)
+    same_company_fields = ('technicien_responsable', 'etape')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     raccordement_display = serializers.CharField(
@@ -755,7 +764,9 @@ class PhotoAnnotationSerializer(serializers.ModelSerializer):
 
 
 # ── F11/F12 — réconciliation matériel consommé ───────────────────────────────
-class ConsommationLigneSerializer(serializers.ModelSerializer):
+class ConsommationLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('justification_memo',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     variance = serializers.SerializerMethodField()
@@ -823,7 +834,9 @@ class VoiceMemoSerializer(serializers.ModelSerializer):
 
 
 # ── F16 — réserve (punch-list) ────────────────────────────────────────────────
-class ReserveSerializer(serializers.ModelSerializer):
+class ReserveSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('assignee', 'memo')
     assignee_nom = serializers.SerializerMethodField()
     photo_url = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
@@ -943,9 +956,11 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
 
 # ── FG291 — Programme / Projet multi-chantiers ───────────────────────────────
 
-class ProjetChantierSerializer(serializers.ModelSerializer):
+class ProjetChantierSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG291 — rattachement d'un chantier à un programme. La société est posée
     côté serveur ; le chantier est validé tenant côté vue."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation', 'projet')
     installation_reference = serializers.CharField(
         source='installation.reference', read_only=True, default=None)
     installation_statut = serializers.CharField(
@@ -960,8 +975,10 @@ class ProjetChantierSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
-class ProjetDevisSerializer(serializers.ModelSerializer):
+class ProjetDevisSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG291 — rattachement d'un devis à un programme (string-FK, statut intact)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('projet',)
     devis_reference = serializers.CharField(
         source='devis.reference', read_only=True, default=None)
     devis_statut = serializers.CharField(
@@ -976,9 +993,11 @@ class ProjetDevisSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
-class ProjetTicketSerializer(serializers.ModelSerializer):
+class ProjetTicketSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG291 — rattachement d'un ticket SAV à un programme (string-FK, statut
     intact)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('projet',)
     ticket_reference = serializers.CharField(
         source='ticket.reference', read_only=True, default=None)
     ticket_statut = serializers.CharField(
@@ -1035,11 +1054,13 @@ class ProjetSerializer(SameCompanyFKSerializerMixin,
 
 # ── FG292 — Tâches & sous-tâches de projet avec dépendances ───────────────────
 
-class ProjetTacheSerializer(serializers.ModelSerializer):
+class ProjetTacheSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG292 — tâche/sous-tâche de programme avec dépendances. La société est
     posée côté serveur ; `projet`, `parent`, `predecesseur` et `assigne` sont
     validés tenant côté vue. Le statut est PROPRE à la tâche (jamais
     l'entonnoir commercial). Les sous-tâches sont imbriquées en lecture."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('assigne', 'projet')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     assigne_nom = serializers.SerializerMethodField()
@@ -1066,11 +1087,13 @@ class ProjetTacheSerializer(serializers.ModelSerializer):
 
 # ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
 
-class BudgetEngagementSerializer(serializers.ModelSerializer):
+class BudgetEngagementSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
     à un budget de programme, par string-FK (jamais d'import des modèles stock).
     `source`/`categorie` ventilent la dépense ; la société est posée côté
     serveur."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('budget',)
     source_display = serializers.CharField(
         source='get_source_display', read_only=True, default=None)
     categorie_display = serializers.CharField(
@@ -1112,12 +1135,14 @@ class BudgetEngagementSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class BudgetProjetSerializer(serializers.ModelSerializer):
+class BudgetProjetSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG294 — budget d'un programme (enveloppes par catégorie + seuil d'alerte).
     La société et `created_by` sont posés côté serveur ; le `projet` est validé
     tenant côté vue. Ne touche aucun statut. La synthèse vs réel (engagé/dépensé,
     dépassement) est exposée par l'action `synthese` de la vue, calculée par le
     sélecteur `budget_projet_synthese`."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('projet',)
     budget_total = serializers.SerializerMethodField()
     engagements = BudgetEngagementSerializer(many=True, read_only=True)
 
@@ -1143,11 +1168,13 @@ class BudgetProjetSerializer(serializers.ModelSerializer):
         return value
 
 
-class EquipeSerializer(serializers.ModelSerializer):
+class EquipeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """DC40 — équipe terrain CANONIQUE. La société et `created_by` sont posés
     côté serveur (jamais lus du corps) ; les `membres` (M2M → utilisateurs) et
     le `chef` doivent appartenir à la société de l'utilisateur (validé côté
     viewset). Expose les noms des membres en lecture pour l'affichage."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('chef', 'membres')
     membres_noms = serializers.SerializerMethodField()
     chef_nom = serializers.SerializerMethodField()
     nb_membres = serializers.SerializerMethodField()
@@ -1292,9 +1319,11 @@ def _retirer_estimations_achat(serializer, fields):
     return fields
 
 
-class DemandeAchatLigneSerializer(serializers.ModelSerializer):
+class DemandeAchatLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — ligne d'une demande d'achat (produit catalogue OU désignation
     libre, quantité, prix estimé INTERNE)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('demande',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     total_estime = serializers.DecimalField(
@@ -1335,13 +1364,15 @@ class DemandeAchatLigneSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class DemandeAchatSerializer(serializers.ModelSerializer):
+class DemandeAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — réquisition d'achat soumise à approbation. La référence, la
     société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
     anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
     décision avancent via les actions de cycle de vie
     (`soumettre`/`approuver`/`refuser`/`marquer_commandee`) — jamais écrits
     librement. `montant_estime` est dérivé (INTERNE)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('chantier', 'programme')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     priorite_display = serializers.CharField(
@@ -1383,10 +1414,12 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
         return value
 
 
-class RegleApprobationAchatSerializer(serializers.ModelSerializer):
+class RegleApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """NTP2P2 — règle d'approbation des demandes d'achat (seuil de montant +
     périmètre chantier/programme optionnel). La société est posée CÔTÉ
     SERVEUR (jamais lue du corps)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('chantier', 'programme')
     niveau_approbation_display = serializers.CharField(
         source='get_niveau_approbation_display', read_only=True, default=None)
 
@@ -1423,9 +1456,11 @@ class RegleApprobationAchatSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class EtapeApprobationAchatSerializer(serializers.ModelSerializer):
+class EtapeApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """NTP2P2 — étape d'approbation séquentielle (lecture seule côté API : les
     décisions passent par les actions `approuver-etape`/`rejeter-etape`)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('approbateur', 'demande', 'regle')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     approbateur_nom = serializers.CharField(
@@ -1478,9 +1513,11 @@ class ApprobationBCFSerializer(serializers.ModelSerializer):
         ]
 
 
-class CommandeCadreLigneSerializer(serializers.ModelSerializer):
+class CommandeCadreLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG314 — ligne d'un contrat-cadre (SKU, prix négocié INTERNE, volume
     engagé). `volume_consomme`/`volume_restant` sont dérivés (lecture seule)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('commande_cadre',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     volume_consomme = serializers.DecimalField(
@@ -1537,10 +1574,12 @@ class CommandeCadreSerializer(serializers.ModelSerializer):
         return value
 
 
-class AppelCommandeSerializer(serializers.ModelSerializer):
+class AppelCommandeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG314 — commande d'appel sur une ligne de contrat-cadre. La société et
     `created_by` sont posés CÔTÉ SERVEUR. `montant` est dérivé (quantité × prix
     négocié, INTERNE)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('chantier',)
     montant = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
 
@@ -1592,10 +1631,12 @@ class DossierImportSerializer(serializers.ModelSerializer):
         return value
 
 
-class FraisImportSerializer(serializers.ModelSerializer):
+class FraisImportSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG316 — frais imputé à un dossier d'import (fret/douane/TVA import/
     transit…). La société et `created_by` sont posés CÔTÉ SERVEUR. Montant
     INTERNE."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('dossier',)
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True, default=None)
 
@@ -1614,10 +1655,12 @@ class FraisImportSerializer(serializers.ModelSerializer):
         return value
 
 
-class LandedCostLigneSerializer(serializers.ModelSerializer):
+class LandedCostLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
     est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
     frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('dossier',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     cout_fob_unitaire = serializers.DecimalField(
@@ -1670,9 +1713,11 @@ class ReceptionNonFactureeSerializer(serializers.ModelSerializer):
         return value
 
 
-class ContratPrixLigneSerializer(serializers.ModelSerializer):
+class ContratPrixLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG318 — ligne de prix convenu d'un contrat fournisseur (SKU + prix
     négocié INTERNE + remise % optionnelle)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('contrat',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -1724,8 +1769,10 @@ class ContratPrixFournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
-class BinAffectationSerializer(serializers.ModelSerializer):
+class BinAffectationSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG319 — affectation produit ↔ casier (quantité indicative)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('bin',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -1738,10 +1785,12 @@ class BinAffectationSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class BinLocationSerializer(serializers.ModelSerializer):
+class BinLocationSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG319 — casier de rangement adressable sous un `EmplacementStock`. La
     societe et `created_by` sont poses COTE SERVEUR. Les affectations produit
     sont imbriquees en lecture."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('categorie',)
     emplacement_nom = serializers.CharField(
         source='emplacement.nom', read_only=True, default=None)
     categorie_nom = serializers.CharField(
@@ -1817,10 +1866,12 @@ class PickListLigneSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['pick_list', 'ordre']
 
 
-class PickListSerializer(serializers.ModelSerializer):
+class PickListSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG321 - bon de prelevement d'un chantier. La reference, la societe et
     `created_by` sont poses COTE SERVEUR ; les lignes sont generees serveur
     depuis les reservations (action `generer`) et imbriquees en lecture."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     lignes = PickListLigneSerializer(many=True, read_only=True)
@@ -1837,8 +1888,10 @@ class PickListSerializer(serializers.ModelSerializer):
         ]
 
 
-class ColisLigneSerializer(serializers.ModelSerializer):
+class ColisLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG322 - article emballe dans un colis (SKU + quantite + controle OK)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('colis',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -1860,10 +1913,12 @@ class ColisLigneSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ColisSerializer(serializers.ModelSerializer):
+class ColisSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
     `controle_par`/date). Lignes imbriquees en lecture."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     lignes = ColisLigneSerializer(many=True, read_only=True)
@@ -1881,10 +1936,12 @@ class ColisSerializer(serializers.ModelSerializer):
         ]
 
 
-class SerieEntrepotSerializer(serializers.ModelSerializer):
+class SerieEntrepotSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG323 - n0 de serie suivi en entrepot. La societe et `created_by` sont
     poses COTE SERVEUR ; le statut avance via les actions `reserver`/`sortir`
     (ou par mise a jour du `bin`)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('bin', 'installation')
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     bin_code = serializers.CharField(
@@ -2062,8 +2119,10 @@ class MaterielConsigneSerializer(serializers.ModelSerializer):
         return value
 
 
-class KitComposantSerializer(serializers.ModelSerializer):
+class KitComposantSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG328 - composant de la nomenclature d'un kit."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('kit',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2110,9 +2169,11 @@ class KitSerializer(serializers.ModelSerializer):
         return value
 
 
-class RevisionKitSerializer(serializers.ModelSerializer):
+class RevisionKitSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG18 - revision (snapshot) de la nomenclature d'un kit de
     pre-assemblage. Lecture seule : creees automatiquement cote serveur."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('user', 'kit')
     user_nom = serializers.SerializerMethodField()
 
     class Meta:
@@ -2128,10 +2189,12 @@ class RevisionKitSerializer(serializers.ModelSerializer):
         return (f'{u.first_name} {u.last_name}'.strip() or u.username)
 
 
-class OrdreAssemblageLigneSerializer(serializers.ModelSerializer):
+class OrdreAssemblageLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG6 - ligne de composant PERSONNALISABLE d'un ordre. `origine` posee
     cote serveur (kit vs ajout) ; l'editabilite (planifie uniquement) est
     controlee par la vue."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('ordre',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2159,7 +2222,7 @@ class OrdreAssemblageSerializer(SameCompanyFKSerializerMixin,
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
     # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
-    same_company_fields = ('chantier', 'ordre_sous_traitance')
+    same_company_fields = ('chantier', 'ordre_sous_traitance', 'responsable', 'kit')
     kit_nom = serializers.CharField(
         source='kit.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2229,8 +2292,10 @@ class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class SerieAssemblageSerializer(serializers.ModelSerializer):
+class SerieAssemblageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG7 - n° de série relevé à la clôture d'un ordre d'assemblage."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('ordre',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2249,9 +2314,11 @@ class SerieAssemblageSerializer(serializers.ModelSerializer):
         return value
 
 
-class OrdreDemontageLigneSerializer(serializers.ModelSerializer):
+class OrdreDemontageLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG12 - ligne de démontage : quantité attendue (BOM) vs récupérée
     (éditable ligne à ligne avant clôture)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('ordre',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2264,8 +2331,10 @@ class OrdreDemontageLigneSerializer(serializers.ModelSerializer):
         read_only_fields = ['quantite_attendue']
 
 
-class ControleQualiteItemModeleSerializer(serializers.ModelSerializer):
+class ControleQualiteItemModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG13 - item du modèle de checklist QC d'un kit."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('modele',)
 
     class Meta:
         model = ControleQualiteItemModele
@@ -2275,8 +2344,10 @@ class ControleQualiteItemModeleSerializer(serializers.ModelSerializer):
         ]
 
 
-class ControleQualiteModeleSerializer(serializers.ModelSerializer):
+class ControleQualiteModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG13 - modèle de checklist QC par kit. Société posée COTE SERVEUR."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('kit',)
     items = ControleQualiteItemModeleSerializer(many=True, read_only=True)
 
     class Meta:
@@ -2286,8 +2357,10 @@ class ControleQualiteModeleSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class ControleQualiteOrdreSerializer(serializers.ModelSerializer):
+class ControleQualiteOrdreSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG13 - exécution d'un item QC pour un ordre d'assemblage donné."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('ordre',)
     item_libelle = serializers.CharField(
         source='item_modele.libelle', read_only=True, default=None)
     valeur_min = serializers.DecimalField(
@@ -2307,9 +2380,11 @@ class ControleQualiteOrdreSerializer(serializers.ModelSerializer):
         read_only_fields = ['controle_par', 'date_controle']
 
 
-class OrdreDemontageSerializer(serializers.ModelSerializer):
+class OrdreDemontageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG12 - ordre de démontage (unbuild) : composite → composants.
     Référence/société/`created_by` posés COTE SERVEUR."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('kit',)
     kit_nom = serializers.CharField(
         source='kit.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2337,8 +2412,10 @@ class OrdreDemontageSerializer(serializers.ModelSerializer):
         return value
 
 
-class EtapeAssemblageSerializer(serializers.ModelSerializer):
+class EtapeAssemblageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG14 - étape de la gamme (mode opératoire) d'un kit."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('kit',)
 
     class Meta:
         model = EtapeAssemblage
@@ -2354,8 +2431,10 @@ class EtapeAssemblageSerializer(serializers.ModelSerializer):
         return value
 
 
-class EtapeOrdreSerializer(serializers.ModelSerializer):
+class EtapeOrdreSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG14 - étape d'exécution pour un ordre d'assemblage donné."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('ordre',)
     libelle = serializers.CharField(
         source='etape_modele.libelle', read_only=True, default=None)
     instructions = serializers.CharField(
@@ -2377,8 +2456,10 @@ class EtapeOrdreSerializer(serializers.ModelSerializer):
         read_only_fields = ['fait_par', 'fait_le']
 
 
-class LivraisonLigneSerializer(serializers.ModelSerializer):
+class LivraisonLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG329 - article d'une livraison (SKU + quantite)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('livraison',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2400,10 +2481,12 @@ class LivraisonLigneSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class LivraisonSerializer(serializers.ModelSerializer):
+class LivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG329 - livraison planifiee depot -> site. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via les actions
     `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation', 'transporteur')
     installation_reference = serializers.CharField(
         source='installation.reference', read_only=True, default=None)
     depot_nom = serializers.CharField(
@@ -2433,10 +2516,12 @@ class LivraisonSerializer(serializers.ModelSerializer):
         ]
 
 
-class PreuveLivraisonSerializer(serializers.ModelSerializer):
+class PreuveLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG330 - preuve de livraison (signature + photo + GPS horodate). La
     societe et `created_by` sont poses COTE SERVEUR. Une seule preuve par
     livraison (OneToOne)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('livraison',)
 
     class Meta:
         model = PreuveLivraison
@@ -2474,8 +2559,10 @@ class TransporteurSerializer(serializers.ModelSerializer):
         return value
 
 
-class RetourMaterielLigneSerializer(serializers.ModelSerializer):
+class RetourMaterielLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """YSTCK4 - ligne d'un retour de materiel chantier (SKU + quantite)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('retour',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2488,10 +2575,12 @@ class RetourMaterielLigneSerializer(serializers.ModelSerializer):
         read_only_fields = ['stock_applique']
 
 
-class RetourMaterielSerializer(serializers.ModelSerializer):
+class RetourMaterielSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """YSTCK4 - retour de materiel non pose, d'un chantier vers le depot.
     Societe/`created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation',)
     installation_reference = serializers.CharField(
         source='installation.reference', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2511,8 +2600,10 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
         ]
 
 
-class RetourLivraisonLigneSerializer(serializers.ModelSerializer):
+class RetourLivraisonLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK8 - ligne d'un retour de livraison (SKU, livre vs retourne)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('retour',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
 
@@ -2549,10 +2640,12 @@ class RetourLivraisonLigneSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class RetourLivraisonSerializer(serializers.ModelSerializer):
+class RetourLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK8 - retour client genere depuis une Livraison livree. Societe/
     `created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture, pre-remplies a la generation."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('livraison',)
     livraison_reference = serializers.CharField(
         source='livraison.reference', read_only=True, default=None)
     statut_display = serializers.CharField(
@@ -2592,9 +2685,11 @@ class CategorieStockageSerializer(serializers.ModelSerializer):
         return value
 
 
-class RegleRangementSerializer(serializers.ModelSerializer):
+class RegleRangementSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK9 - regle de rangement configurable (produit ou categorie produit
     -> casier cible, par priorite). Societe posee COTE SERVEUR."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('bin_cible',)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     bin_cible_code = serializers.CharField(
@@ -2672,10 +2767,12 @@ class GpsConsentRecordSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class PositionTechnicienSerializer(serializers.ModelSerializer):
+class PositionTechnicienSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XFSM23 — position GPS live d'un technicien. company/technicien posés
     côté serveur ; ``distance_site_km``/``hors_perimetre`` sont calculés par
     le service (jamais fournis par le client)."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('intervention',)
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
 
@@ -2692,11 +2789,13 @@ class PositionTechnicienSerializer(serializers.ModelSerializer):
         ]
 
 
-class GeofenceAlertSerializer(serializers.ModelSerializer):
+class GeofenceAlertSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XFSM23/NTMOB9 — franchissement du rayon attendu du chantier pendant une
     intervention active : ``sortie`` (position hors rayon) ou ``entree``
     (arrivée sur site, NTMOB9). Lecture seule côté API — généré uniquement par
     le service ``enregistrer_position``."""
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('acquittee_par',)
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
     type_franchissement_display = serializers.CharField(

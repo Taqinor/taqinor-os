@@ -2,6 +2,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     CommissioningRecord, CommissioningIVReading, HandoverPack, RecettePompage,
 )
@@ -21,7 +23,9 @@ class CommissioningIVReadingSerializer(serializers.ModelSerializer):
         read_only_fields = ['record', 'ecart_pmax_pct', 'defaut_detecte']
 
 
-class CommissioningRecordSerializer(serializers.ModelSerializer):
+class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation',)
     iv_readings = CommissioningIVReadingSerializer(many=True, read_only=True)
     resultat_display = serializers.CharField(
         source='get_resultat_display', read_only=True)
@@ -221,7 +225,10 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
         return instrument.numero_serie if instrument else None
 
 
-class HandoverPackSerializer(serializers.ModelSerializer):
+class HandoverPackSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+    # ACHT53 — FK inscriptibles bornées à la société.
+    same_company_fields = ('installation',)
+
     class Meta:
         model = HandoverPack
         fields = [

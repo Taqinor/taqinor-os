@@ -18,8 +18,8 @@ from apps.installations.models import Installation, Livraison
 
 def _texte(pdf):
     import fitz
-    brut = ''.join(p.get_text() for p in fitz.open(stream=pdf,
-                                                    filetype='pdf'))
+    doc = fitz.open(stream=pdf, filetype='pdf')
+    brut = ''.join(p.get_text() for p in doc)
     return ' '.join(brut.replace('\xa0', ' ').split())
 
 
