@@ -286,6 +286,36 @@ def _stamp_view(link):
         return False
 
 
+def _version_remplacee(devis):
+    """ACRM11 — ``None`` si ``devis`` est la version EN VIGUEUR
+    (``is_active``) ; sinon la référence de la version qui la remplace
+    (``''`` si inconnue). Les signaux de lecture d'une version remplacée
+    n'écrivent qu'une note (``crm.services.noter_version_remplacee_ouverte``)
+    — jamais touche, report, score ni notification."""
+    if devis is None or getattr(devis, 'is_active', True):
+        return None
+    suivante = getattr(devis, 'superseded_by', None)
+    return getattr(suivante, 'reference', '') or ''
+
+
+def _noter_si_version_remplacee(link):
+    """ACRM11 — vrai (et la note unique posée) si le lien ouvert porte une
+    version REMPLACÉE : l'appelant s'arrête alors là."""
+    devis = getattr(link, 'devis', None)
+    remplacee_par = _version_remplacee(devis)
+    if remplacee_par is None:
+        return False
+    try:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            from apps.crm.services import noter_version_remplacee_ouverte
+            noter_version_remplacee_ouverte(
+                devis.reference, lead, remplacee_par=remplacee_par)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+    return True
+
+
 def _notify_first_open(link, request=None):
     """QJ1 / QJ2 (b) — Sur la première ouverture, logue une note dans le
     chatter du lead lié (QJ1) ET envoie une notification in-app + Web Push
@@ -301,6 +331,8 @@ def _notify_first_open(link, request=None):
     notification dit d'OÙ vient l'ouverture (IP) et si l'appareil était DÉJÀ
     connu. IP et navigateur sont lus CÔTÉ SERVEUR dans les en-têtes, jamais
     dans un corps de requête."""
+    if link.devis_id and _noter_si_version_remplacee(link):
+        return  # ACRM11 — version remplacée : la note seule.
     try:
         if not link.devis_id:
             return
@@ -341,6 +373,8 @@ def _notifier_variante_consultee(link):
     devis = link.devis
     if devis is None or not devis.variante_de_id:
         return
+    if _version_remplacee(devis) is not None:
+        return  # ACRM11 — une version remplacée ne notifie pas.
     # CAD138 — lecture par la forme partagée (liste historique OU dict daté) :
     # l'idempotence ne change pas, mais la date d'allumage est préservée.
     from ..selectors import dates_declencheurs, marquer_declencheur
@@ -394,6 +428,8 @@ def _notify_open(link, request=None, *, is_first):
     if (precedente is not None
             and timezone.now() - precedente < REOUVERTURE_FENETRE):
         return
+    if link.devis_id and _noter_si_version_remplacee(link):
+        return  # ACRM11 — version remplacée : la note seule.
     try:
         if not link.devis_id:
             return
@@ -486,7 +522,9 @@ def _remonter_signal_lecture_au_lead(link, *, friction_section='', resume=''):
         from apps.crm.services import notifier_signal_lecture
         notifier_signal_lecture(
             getattr(devis, 'reference', '') or '', lead,
-            friction_section=friction_section, resume=resume)
+            friction_section=friction_section, resume=resume,
+            # ACRM11 — version remplacée : la note « ancienne version » seule.
+            remplacee_par=_version_remplacee(devis))
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
         pass
 

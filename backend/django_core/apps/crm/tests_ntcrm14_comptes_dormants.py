@@ -68,7 +68,8 @@ class DetecterComptesDormantsCommandTests(TestCase):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM14b', slug='taqinor-ntcrm14b')
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         self.owner = User.objects.create_user(
             username='vendeur_ntcrm14', password='x',
             company=self.company, role=self.role)
@@ -94,7 +95,8 @@ class ComptesDormantsEndpointTests(TestCase):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM14c', slug='taqinor-ntcrm14c')
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_creer'])
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
         self.user = User.objects.create_user(
             username='vendeur_ntcrm14c', password='x',
             company=self.company, role=self.role)
