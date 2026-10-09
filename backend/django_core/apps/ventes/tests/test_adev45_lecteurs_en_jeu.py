@@ -109,7 +109,15 @@ class LecteursEnJeuTests(TestCase):
                     devis=devis, produit=produit, designation=produit.nom,
                     quantite=Decimal('1'), prix_unitaire=Decimal('100'),
                     remise=Decimal('0'))
-        self.assertEqual(frequence_co_achat(self.company, a.pk), [(b.pk, 1)])
+        # ``make_devis`` pose aussi ses propres produits (onduleur, panneau)
+        # sur chaque version : seuls ceux de la V2 EN JEU comptent, une fois
+        # chacun — B compris (2 si la V1 remplacée comptait encore).
+        attendu = {pid: 1 for pid in LigneDevis.objects.filter(
+            devis=self.v2).exclude(produit=a).values_list(
+                'produit_id', flat=True)}
+        self.assertIn(b.pk, attendu)
+        self.assertEqual(dict(frequence_co_achat(self.company, a.pk)),
+                         attendu)
 
     # ── Relance d'engagement planifiée ──────────────────────────────────────
 
