@@ -5,6 +5,7 @@ paquets premium (résidentiel / commercial / industriel), qui ne peuvent pas
 importer ``generate_devis_premium`` (matplotlib au chargement).
 """
 import contextvars
+import html
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 #: Décision fondateur 08/10/2026 — vrai pendant le rendu d'un devis envoyé
@@ -94,6 +95,27 @@ def deux_prix(fmt, valeur_catalogue, valeur_remisee, cls_was="", cls_now=""):
     was = f' class="{cls_was}"' if cls_was else ''
     now = f'<span class="{cls_now}">{remise}</span>' if cls_now else remise
     return f'<s{was}>{catalogue}</s> {now}'
+
+
+def tronquer_texte(texte, limite):
+    """AMOT46 — tronque un texte du document sur son texte BRUT, au mot, avec
+    « … », PUIS l'échappe : jamais une entité HTML coupée (« l&#x2 »).
+
+    Les renderers reçoivent des textes déjà échappés (``echapper_textes_client``
+    au point de rendu) : couper la chaîne échappée tranchait les entités. Ici
+    le texte est d'abord rendu brut (``html.unescape``), coupé au dernier
+    espace avant ``limite`` (le mot en cours n'est jamais tranché, sauf un mot
+    unique plus long que la limite), puis ré-échappé comme à l'ingestion.
+    """
+    brut = html.unescape(str(texte or ""))
+    if len(brut) <= limite:
+        return html.escape(brut)
+    coupe = brut[:limite]
+    if not brut[limite].isspace():
+        espace = coupe.rfind(" ")
+        if espace > 0:
+            coupe = coupe[:espace]
+    return html.escape(coupe.rstrip(" ,;:.-—") + "…")
 
 
 def fmt_centimes_mad(v):

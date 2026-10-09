@@ -24,7 +24,7 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import deux_prix, fmt_centimes, lignes_remisees
+from ..montants import deux_prix, fmt_centimes, lignes_remisees, tronquer_texte
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
@@ -838,6 +838,8 @@ def _hypotheses_annexe(d, lg):
 def _fiches_annexe(d, lg):
     fiches = []
     # Au plus six fiches, 220 caractères chacune : l'annexe tient sur UNE page.
+    # AMOT46 — la coupe se fait sur le texte BRUT, au mot (« … »), puis le
+    # texte est ré-échappé : jamais une entité HTML tranchée.
     for it in _items(d):
         if len(fiches) >= 6:
             break
@@ -849,7 +851,7 @@ def _fiches_annexe(d, lg):
         if marque:
             titre += f" — {marque}"
         fiches.append(f'<div class="ag-li"><b>{titre}</b> : '
-                      f'{description[:220]}</div>')
+                      f'{tronquer_texte(description, 220)}</div>')
     if not fiches:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
     return "".join(fiches)
