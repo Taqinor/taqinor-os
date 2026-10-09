@@ -587,6 +587,8 @@ jobs:
         ports:
           - 6379:6379
     env:
+      # ENFP (D1) — refus des paramètres de requête non déclarés, actif pour le fuzz.
+      API_QUERY_PARAMS_STRICT: '1'
       DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
       DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
       DJANGO_DEBUG: 'True'

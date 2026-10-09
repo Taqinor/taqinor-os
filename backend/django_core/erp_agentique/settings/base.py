@@ -780,12 +780,12 @@ REST_FRAMEWORK = {
 
 # ENFP (décision fondateur D1, 09/10/2026) — un paramètre de requête NON déclaré
 # au schéma OpenAPI de l'opération est refusé (400 `unknown_query_parameter`
-# nommant le paramètre). Voir `core/parametres_requete.py`. VRAI par défaut ici :
-# tests/CI et environnement du fuzz (`settings.dev`) ; `settings.prod` le remet
-# à FAUX tant que les lanes par app n'ont pas déclaré tous leurs paramètres
-# (l'orchestrateur basculera la production). Surcharge : env
-# `API_QUERY_PARAMS_STRICT=0|1`.
-API_QUERY_PARAMS_STRICT = os.environ.get('API_QUERY_PARAMS_STRICT', '1') != '0'
+# nommant le paramètre). Voir `core/parametres_requete.py`. FAUX par défaut tant
+# que la garde « paramètres envoyés par le frontend ⊆ schéma » n'est pas verte
+# (≈50 apps hors des lanes ENF3-ENF10 non balayées) : le job api-fuzz l'allume
+# (env API_QUERY_PARAMS_STRICT=1) et les tests ENFP le forcent via
+# override_settings. Ensuite : vrai en tests/CI, puis en production.
+API_QUERY_PARAMS_STRICT = os.environ.get('API_QUERY_PARAMS_STRICT', '0') == '1'
 
 # YAPIC5 — réglages drf-spectacular. COMPONENT_SPLIT_REQUEST distingue les
 # schémas Request/Response (champs read_only exclus du corps de requête dans
