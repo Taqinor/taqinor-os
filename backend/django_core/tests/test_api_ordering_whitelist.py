@@ -277,7 +277,6 @@ ORDERING_WHITELIST_EXEMPT: set[str] = {
     "ventes.LigneDevisViewSet",
     "ventes.LigneFactureViewSet",
     "ventes.ListePrixViewSet",
-    "ventes.MandatPaiementViewSet",
     "ventes.PlanCommissionViewSet",
     "ventes.Regularisation8221ViewSet",
     "ventes.RegulatoryDossierViewSet",

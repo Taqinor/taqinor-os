@@ -224,7 +224,6 @@ frontend/src/pages/ventes/DossiersReglementairesPage.jsx::changerRessource
 frontend/src/pages/ventes/FactureList.jsx::openConsolider
 frontend/src/pages/ventes/ListesPrixPage.jsx::fetchListes
 frontend/src/pages/ventes/ListesPrixPage.jsx::reload
-frontend/src/pages/ventes/MandatsPaiementPage.jsx::charger
 frontend/src/pages/ventes/NoteDebitDialog.jsx::NoteDebitDialog
 frontend/src/pages/ventes/PaiementsPage.jsx::chargerPaiements
 frontend/src/pages/ventes/RelancesPage.jsx::loadParametrages

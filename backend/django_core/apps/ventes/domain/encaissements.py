@@ -52,8 +52,8 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     Avant ce service, NEUF chemins basculaient la facture et seuls TROIS
     émettaient ``facture_payee`` — or c'est ``facture_payee``, pas
     ``facture_paid``, qui est LE signal à consommer (``core/events.py``). Un
-    chemin d'argent encaissé ne soldait rien du tout (débit de mandat — voir
-    ``debiter_mandat_pour_facture``).
+    chemin d'argent encaissé ne soldait rien du tout (débit de mandat,
+    pile parquée par AFAC19).
 
     Le service :
 
@@ -1348,146 +1348,10 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
     return facture
 
 
-# ── XCTR22 — Encaissement récurrent automatique (tokenisation / mandat) ────
-
-def mandat_actif_pour_client(client):
-    """Renvoie le ``MandatPaiement`` ACTIF du client, ou None.
-
-    Lecture pure ; jamais d'effet de bord. Sert de garde d'entrée pour
-    ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
-    par défaut) fait strictement l'encaissement manuel actuel."""
-    from apps.ventes.models import MandatPaiement
-    if client is None:
-        return None
-    # ASEC28 — borné à la SOCIÉTÉ du client : un mandat d'une autre société
-    # ne peut jamais servir au prélèvement (signature inchangée).
-    return (
-        MandatPaiement.objects
-        .filter(client=client, company_id=client.company_id,
-                statut=MandatPaiement.Statut.ACTIF)
-        .exclude(token='')
-        .order_by('-created_at')
-        .first()
-    )
-
-
-DUNNING_RETRY_DAYS = (1, 3, 7)
-
-
-def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
-    """XCTR22 — débite le mandat actif du client de ``facture`` pour la
-    période donnée, via `payments.providers`.
-
-    Appelé APRÈS la création d'une facture de cycle récurrent
-    (`creer_facture_contrat`/`facturer_ligne_echeance` — contrats/sav restent
-    les points d'entrée existants ; ceci est un branchement ADDITIF appelé
-    depuis leurs services). Sans mandat actif → no-op silencieux (retourne
-    None, comportement actuel intact). Avec mandat :
-      - succès → crée un `Paiement` rapproché (comme un encaissement manuel)
-        + une `TentativeDebitMandat` `reussi` ; jamais deux débits RÉUSSIS
-        pour la même (mandat, periode) — idempotent.
-      - échec → `TentativeDebitMandat` `echec` avec motif + programme la
-        prochaine retentative (`DUNNING_RETRY_DAYS`, défaut J+1/J+3/J+7) et
-        notifie le client (lien de mise à jour de carte — best-effort).
-
-    AUD123 — le montant prélevé vaut ``min(montant_du, total_ttc)`` : la
-    valeur métier de la facture (``total_ttc``, jamais le champ figé
-    ``montant_ttc`` qui est NULL hors tranche), bornée au reste réellement
-    dû. Reste dû nul ou négatif → aucun débit tenté (retourne None).
-
-    Renvoie le `Paiement` créé en cas de succès, sinon None.
-    """
-    from django.db import transaction
-    from django.utils import timezone
-    from datetime import timedelta
-    from apps.ventes.models import TentativeDebitMandat, Paiement
-    from apps.ventes.payments.providers import get_provider
-    from core.money import quantize_mad
-
-    mandat = mandat_actif_pour_client(facture.client)
-    if mandat is None:
-        return None
-
-    # Jamais deux débits RÉUSSIS pour la même période — idempotence.
-    deja_reussi = TentativeDebitMandat.objects.filter(
-        mandat=mandat, periode=periode,
-        statut=TentativeDebitMandat.Statut.REUSSI).exists()
-    if deja_reussi:
-        return None
-
-    # AUD123 — le montant prélevé se lit sur ``total_ttc`` (la valeur
-    # métier), JAMAIS sur ``montant_ttc`` : ce champ est
-    # `null=True, blank=True` et n'est renseigné que pour les factures de
-    # tranche (« Montants figés à la création pour les tranches… NULL =
-    # facture classique », `facturation/models.py`). Un mandat sur une
-    # facture d'abonnement classique à lignes prélevait donc `None`. Et le
-    # montant est désormais BORNÉ au reste dû, comme tout autre chemin
-    # d'encaissement : sans cette borne, une facture déjà partiellement
-    # réglée était prélevée du TTC intégral une seconde fois.
-    montant_a_debiter = quantize_mad(
-        min(facture.montant_du, facture.total_ttc))
-    if montant_a_debiter <= 0:
-        return None
-
-    provider = get_provider(mandat.provider)
-    result = provider.charge(token=mandat.token, montant=montant_a_debiter)
-
-    with transaction.atomic():
-        if result.get('ok'):
-            paiement = Paiement.objects.create(
-                company=facture.company, facture=facture,
-                montant=montant_a_debiter,
-                date_paiement=timezone.localdate(),
-                mode=Paiement.Mode.CARTE,
-                reference=(result.get('provider_ref') or '')[:120],
-                note='Débit automatique (mandat de paiement récurrent).',
-            )
-            TentativeDebitMandat.objects.create(
-                company=facture.company, mandat=mandat, periode=periode,
-                statut=TentativeDebitMandat.Statut.REUSSI,
-                paiement=paiement,
-            )
-            # AUD102 (B9) — DÉFAUT DÉCOUVERT PAR L'ADJUDICATION : ce chemin
-            # créait un Paiement du TTC intégral et ne basculait JAMAIS la
-            # facture, qui restait ÉMISE, passait EN_RETARD et partait en
-            # relance alors qu'elle était encaissée. Il rejoint le service
-            # unique (le montant débité lui-même relève d'AUD123).
-            from core.events import paiement_enregistre
-            paiement_enregistre.send(
-                sender=Paiement, instance=paiement, company=facture.company)
-            marquer_facture_soldee(
-                facture, montant=paiement.montant, source='mandat_recurrent')
-            return paiement
-
-        tentatives_precedentes = TentativeDebitMandat.objects.filter(
-            mandat=mandat, periode=periode,
-            statut=TentativeDebitMandat.Statut.ECHEC).count()
-        idx = min(tentatives_precedentes, len(DUNNING_RETRY_DAYS) - 1)
-        prochaine = (
-            timezone.localdate() + timedelta(days=DUNNING_RETRY_DAYS[idx]))
-        TentativeDebitMandat.objects.create(
-            company=facture.company, mandat=mandat, periode=periode,
-            statut=TentativeDebitMandat.Statut.ECHEC,
-            motif_echec=(result.get('motif_echec') or '')[:255],
-            prochaine_retentative=prochaine,
-        )
-
-    try:
-        from apps.notifications.services import notify
-        client = facture.client
-        if client is not None and getattr(client, 'created_by', None):
-            notify(
-                client.created_by, 'mandat_debit_echec',
-                f'Débit automatique échoué — {facture.reference}',
-                body=(f'Le débit automatique de {facture.montant_ttc} MAD '
-                      f'a échoué pour {client.nom}. Mettez à jour la carte.'),
-                link='/ventes/factures',
-                company=facture.company,
-            )
-    except Exception:  # noqa: BLE001 — best-effort
-        pass
-
-    return None
+# AFAC19 (C-AFAC-015) — la pile XCTR22 (débit automatique sur mandat :
+# ``mandat_actif_pour_client``, ``debiter_mandat_pour_facture``,
+# ``DUNNING_RETRY_DAYS``) est PARQUÉE : aucun appelant MVP. Les modèles
+# restent ; retour éventuel par la branche d'archive.
 
 
 # ── CAD122 ── délai légal de rétractation (démarchage à domicile) ───────────
