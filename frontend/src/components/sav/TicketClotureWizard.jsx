@@ -41,7 +41,13 @@ function messageErreur(erreur, repli) {
   return repli
 }
 
-export default function TicketClotureWizard({ ticket, onTermine, onAnnuler }) {
+export default function TicketClotureWizard({
+  ticket, onTermine, onAnnuler, statutCible = 'cloture',
+}) {
+  // ASAV54 — monté sur le passage à « Résolu » OU « Clôturé » de la fiche.
+  const enRevision = statutCible === 'resolu'
+  const transition = (id) => (enRevision
+    ? savApi.resoudreTicket(id) : savApi.cloturerTicket(id))
   const [etape, setEtape] = useState(1)
   const [causes, setCauses] = useState([])
   const [remedes, setRemedes] = useState([])
@@ -92,7 +98,7 @@ export default function TicketClotureWizard({ ticket, onTermine, onAnnuler }) {
     setEnCours(true)
     setErreur('')
     try {
-      await savApi.cloturerTicket(ticket.id)
+      await transition(ticket.id)
       onTermine?.({ rapide: true })
     } catch (e) {
       setErreur(messageErreur(e, 'La clôture a échoué. Réessayez.'))
@@ -105,12 +111,14 @@ export default function TicketClotureWizard({ ticket, onTermine, onAnnuler }) {
     setEnCours(true)
     setErreur('')
     try {
+      // ASAV54/ASAV42 — la transition d'abord ; les champs seulement si elle
+      // a réussi (un refus du serveur n'écrit rien).
+      await transition(ticket.id)
       await savApi.updateTicket(ticket.id, {
         cause: Number(cause),
         remede: Number(remede),
         canal_resolution: canal,
       })
-      await savApi.cloturerTicket(ticket.id)
       let lien = ''
       if (enquete) {
         const rep = await savApi.lienClientTicket(ticket.id)
@@ -129,7 +137,7 @@ export default function TicketClotureWizard({ ticket, onTermine, onAnnuler }) {
     <section aria-label="Assistant de clôture" className="flex flex-col gap-4">
       <header className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold">
-          Clôturer {ticket?.reference || 'le ticket'} — étape {etape} sur 2
+          {enRevision ? 'Résoudre' : 'Clôturer'} {ticket?.reference || 'le ticket'} — étape {etape} sur 2
         </h2>
         <button
           type="button"
@@ -216,7 +224,7 @@ export default function TicketClotureWizard({ ticket, onTermine, onAnnuler }) {
           <div className="flex gap-2">
             <button type="button" onClick={() => setEtape(1)}>Précédent</button>
             <button type="button" onClick={terminer} disabled={enCours}>
-              Clôturer le ticket
+              {enRevision ? 'Résoudre le ticket' : 'Clôturer le ticket'}
             </button>
           </div>
         </div>

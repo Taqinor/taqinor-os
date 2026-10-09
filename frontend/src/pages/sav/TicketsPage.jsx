@@ -33,6 +33,8 @@ import { timeAgo } from '../../lib/format'
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
+import TicketClotureWizard from '../../components/sav/TicketClotureWizard'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 // PACT174 — tags de l'enregistrement (records.TaggedItem, FG9), voisin direct
 // d'AttachmentsPanel : même contrat `model`/`id`, même feuille de style
@@ -70,9 +72,7 @@ import {
   filterTickets,
   sortTickets,
   statusLabel,
-  isStatusTransitionAllowed,
   ticketAgeDays,
-  ticketSlaLevel,
   statusCounts,
 } from '../../features/sav/ticketStatuses'
 import {
@@ -95,6 +95,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   DataTable,
   toast,
@@ -111,6 +112,12 @@ const formatDateFR = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
+// ASAV51 — catalogue lu EN ENTIER (toutes les pages DRF), jamais la page 1 :
+// le 101e produit / le 51e chantier doivent se choisir.
+const lireTout = (appel) => fetchAllPages(
+  (page) => appel({ page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
 // L302/L11 — libellés FR des champs pour transformer une erreur DRF brute
@@ -147,7 +154,6 @@ export function frError(err, fallback = 'Action impossible.') {
 }
 
 // L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
-const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
 
 // VX31 — boîte de réception SAV : sur grand viewport (≥1280px, xl Tailwind),
 // le détail du ticket vit dans un panneau latéral PERSISTANT à côté de la liste
@@ -203,17 +209,84 @@ export function PrioriteBadge({ value }) {
   return <Badge tone={PRIORITE_TONES[value] ?? 'neutral'}>{TICKET_PRIORITE_LABELS[value] ?? value}</Badge>
 }
 
+/* ASAV48 — lecture UNIQUE de la réponse `actions-groupees` du serveur
+   ({traites: [id], echecs: [{id, raison}], nb_traites, nb_echecs}) partagée par
+   `bulkAction`, `bulkEditStatut` et l'annulation : plus de toast « réussi »
+   quand le serveur a répondu 200 avec des échecs. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseBulkResult(data) {
+  const traites = Array.isArray(data?.traites) ? data.traites : []
+  const echecs = Array.isArray(data?.echecs) ? data.echecs : []
+  return {
+    traites,
+    echecs,
+    nbTraites: data?.nb_traites ?? traites.length,
+    nbEchecs: data?.nb_echecs ?? echecs.length,
+  }
+}
+
+/* ASAV48 — édition de statut en masse : un seul appel atomique, puis pour
+   chaque ligne traitée on lit les `statuts_suivants` SERVIS (jamais une copie
+   du graphe) afin de ne proposer « Annuler » que si le retour est permis. */
+// eslint-disable-next-line react-refresh/only-export-components
+export async function executerEditionStatut(api, selRows, statut) {
+  const parId = new Map(selRows.map((r) => [String(r.id), r]))
+  const { data } = await api.actionsGroupeesTickets(
+    selRows.map((r) => r.id), 'statut', { statut })
+  const res = parseBulkResult(data)
+  const updated = await Promise.all(res.traites.map(async (tid) => {
+    // NTUX37 — `before` capturé AVANT l'écriture (depuis `selRows`).
+    const before = parId.get(String(tid))?.statut
+    let annulable = false
+    try {
+      const r = await api.getTicket(tid)
+      annulable = !!before && (r.data?.statuts_suivants ?? []).includes(before)
+    } catch { annulable = false }
+    return { id: tid, before, after: statut, annulable }
+  }))
+  const failed = res.echecs.map((e) => ({
+    id: e.id,
+    label: parId.get(String(e.id))?.reference,
+    reason: e.raison || 'Transition refusée.',
+  }))
+  return { updated, failed }
+}
+
+// ASAV48 — annulation : ré-applique le statut AVANT par groupe et RAPPORTE le
+// résultat serveur (traités / échecs) au lieu de présumer le succès.
+// eslint-disable-next-line react-refresh/only-export-components
+export async function annulerEditionStatut(api, rows) {
+  const idsParAvant = new Map()
+  for (const r of rows) {
+    if (!r.before) continue
+    if (!idsParAvant.has(r.before)) idsParAvant.set(r.before, [])
+    idsParAvant.get(r.before).push(r.id)
+  }
+  const reponses = await Promise.all(
+    [...idsParAvant.entries()].map(
+      ([statut, ids]) => api.actionsGroupeesTickets(ids, 'statut', { statut }),
+    ),
+  )
+  return reponses.reduce((acc, { data }) => {
+    const r = parseBulkResult(data)
+    return { nbTraites: acc.nbTraites + r.nbTraites, nbEchecs: acc.nbEchecs + r.nbEchecs }
+  }, { nbTraites: 0, nbEchecs: 0 })
+}
+
 // L298/L6 — badge SLA/âge des tickets ouverts (calculé à la lecture, sans
 // scheduler). Couleur escaladée pour les ouverts en retard. Rien sur les autres.
 export function TicketSlaBadge({ ticket }) {
   const age = ticketAgeDays(ticket)
-  const level = ticketSlaLevel(ticket)
+  // ASAV46 — le ton « en retard » vient du SEUL serveur (`sla_breach`) ; l'âge
+  // reste informatif et neutre (un ticket dans ses délais n'est jamais rouge).
+  const enRetard = !!ticket?.sla_breach
   if (age == null
       || !['nouveau', 'planifie', 'en_cours'].includes(ticket?.statut)
       || ticket?.annule) return null
   return (
-    <Badge tone={SLA_TONES[level]}>
+    <Badge tone={enRetard ? 'danger' : 'neutral'}>
       <Clock className="size-3" aria-hidden="true" /> ouvert depuis {age} j
+      {enRetard ? ' · SLA dépassé' : ''}
     </Badge>
   )
 }
@@ -370,13 +443,18 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     sous_garantie: current.sous_garantie ?? 'a_determiner',
     equipement: current.equipement ?? '',
     technicien_responsable: current.technicien_responsable ?? '',
-    date_resolution: current.date_resolution ?? '',
-    cout: current.cout ?? '',
     // WIR233 — distinct de `description` (motif signalé) et du chatter
     // (notes) : instructions D'INTERVENTION, éditables.
     instructions: current.instructions ?? '',
+    // ASAV54 — cause / remède de la panne (XSAV14), saisissables à la fiche.
+    cause: current.cause ? String(current.cause) : '',
+    remede: current.remede ? String(current.remede) : '',
   }), [current])
 
+  // ASAV54 — référentiels cause / remède + assistant de résolution/clôture.
+  const [causes, setCauses] = useState([])
+  const [remedes, setRemedes] = useState([])
+  const [clotureCible, setClotureCible] = useState(null)
   const [fields, setFields] = useState(initialFields)
   const set = (k, v) => setFields((f) => ({ ...f, [k]: v }))
   const [saving, setSaving] = useState(false)
@@ -424,8 +502,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [piecesUnifiees, setPiecesUnifiees] = useState(null)
   const [retirerForm, setRetirerForm] = useState({
     produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
-    numero_serie: '',
+    numero_serie: '', serie_neuve: '',
   })
+  const [serieNeuveError, setSerieNeuveError] = useState(null)
+  const [equipementNeuf, setEquipementNeuf] = useState(null)
   const [retirerBusy, setRetirerBusy] = useState(false)
   const [retirerError, setRetirerError] = useState(null)
 
@@ -443,24 +523,36 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     if (!retirerForm.produit) return
     setRetirerBusy(true)
     setRetirerError(null)
+    setSerieNeuveError(null)
+    setEquipementNeuf(null)
     try {
-      await savApi.retirerTicketPiece(id, {
+      const rr = await savApi.retirerTicketPiece(id, {
         produit: retirerForm.produit,
         quantite: retirerForm.quantite,
         destination: retirerForm.destination,
         operation: retirerForm.operation,
         numero_serie: retirerForm.numero_serie || undefined,
+        serie_neuve: retirerForm.serie_neuve || undefined,
       })
+      // ASAV10 — l'appareil neuf entré au parc est affiché et le parc rechargé.
+      const neuf = rr?.data?.equipement_neuf ?? null
+      setEquipementNeuf(neuf)
+      if (neuf && current.installation) {
+        lireTout((params) => savApi.getEquipements({ installation: current.installation, ...params }))
+          .then(setEquipements).catch(() => {})
+      }
       toast.success('Pièce retirée.')
       // WIR232 — 400 : le formulaire ne se vide QUE sur succès.
       setRetirerForm({
         produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
-        numero_serie: '',
+        numero_serie: '', serie_neuve: '',
       })
       loadPiecesUnifiees()
       loadHistorique()
     } catch (err) {
-      setRetirerError(frError(err, 'Retrait impossible.'))
+      const sn = err?.response?.data?.serie_neuve
+      if (sn) setSerieNeuveError(Array.isArray(sn) ? sn.join(' ') : String(sn))
+      else setRetirerError(frError(err, 'Retrait impossible.'))
     } finally {
       setRetirerBusy(false)
     }
@@ -485,8 +577,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     loadInterventions()
     loadPieces()
     loadPiecesUnifiees()
-    api.get('/stock/produits/')
-      .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    lireTout((params) => api.get('/stock/produits/', { params }))
+      .then(setProduits).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
     // d'abord dans le picker). Vide silencieusement si pas d'équipement mappé,
     // et aussi si savApi.getPiecesCompatibles est absent (mocks partiels
@@ -500,6 +592,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     }
     // Liste des techniciens — best effort (réservé admin) ; sinon dropdown vide.
     api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // ASAV54 — référentiels cause / remède (tolère les mocks partiels).
+    if (savApi.getCausesDefaillance) {
+      lireTout(savApi.getCausesDefaillance).then(setCauses).catch(() => {})
+    }
+    if (savApi.getRemedesDefaillance) {
+      lireTout(savApi.getRemedesDefaillance).then(setRemedes).catch(() => {})
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -529,8 +628,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     }
   }
 
-  // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
-  const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
+  // ASAV42 — statuts proposés = statut courant + `statuts_suivants` servi par
+  // le serveur (jamais une copie du graphe côté écran). Repli : tous, si le
+  // serveur ne sert pas la clé.
+  const statutsProposes = Array.isArray(current.statuts_suivants)
+    ? TICKET_STATUSES.filter((k) => k === current.statut || current.statuts_suivants.includes(k))
+    : TICKET_STATUSES
 
   // WIR117/XSAV25 — options du picker de pièces : compatibles d'abord (groupe
   // dédié), puis le reste du catalogue (dédupliqué des compatibles).
@@ -559,6 +662,14 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   }
 
   const save = async () => {
+    // ASAV54 — passage à Résolu / Clôturé sans cause + remède : l'assistant
+    // s'ouvre (transition d'abord, champs ensuite — ordre d'ASAV42).
+    if (fields.statut !== current.statut
+        && ['resolu', 'cloture'].includes(fields.statut)
+        && !(fields.cause && fields.remede)) {
+      setClotureCible(fields.statut)
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
@@ -570,35 +681,32 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         sous_garantie: fields.sous_garantie,
         equipement: fields.equipement === '' ? null : fields.equipement,
         technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
-        cout: nullable(fields.cout),
         // WIR233 — `instructions` (TextField blank=True) : jamais nullifiée,
         // une chaîne vide est une valeur normale (comme `description` avant
         // `nullable()`).
         instructions: fields.instructions ?? '',
+        cause: fields.cause === '' ? null : Number(fields.cause),
+        remede: fields.remede === '' ? null : Number(fields.remede),
       }
-      // date_resolution reste PATCHable directement (pas de action dédiée) ;
-      // auto-tamponnée si le statut cible est resolu/cloture et qu'elle est
-      // encore vide (comportement inchangé).
-      let dateResolution = fields.date_resolution
-      if (!dateResolution && ['resolu', 'cloture'].includes(fields.statut)) {
-        dateResolution = todayISO()
-      }
-      data.date_resolution = nullable(dateResolution)
-
-      let updated = await dispatch(updateTicket({ id, data })).unwrap()
+      // ASAV42 — l'action de statut d'abord (le serveur pose date_resolution,
+      // ASAV14) ; le PATCH des champs seulement si elle a réussi.
       if (fields.statut && fields.statut !== current.statut) {
         const action = STATUT_ACTION[fields.statut]
-        if (action) {
-          const r = await action(id)
-          updated = r.data
-        }
+        if (action) await action(id)
       }
+      const updated = await dispatch(updateTicket({ id, data })).unwrap()
       setCurrent(updated)
       loadHistorique()
       toast.success('Ticket mis à jour')
       onSaved?.()
     } catch (err) {
       setSaveError(frError(err, 'Échec de la mise à jour.'))
+      // ASAV42 — refus : rien n'a été écrit, la fiche reprend l'état serveur.
+      try {
+        const r = await savApi.getTicket(id)
+        setCurrent(r.data)
+        set('statut', r.data?.statut ?? current.statut)
+      } catch { /* silencieux */ }
     } finally {
       setSaving(false)
     }
@@ -690,18 +798,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
   const addPiece = async () => {
     if (!pieceForm.produit) return
-    // L309/L7 — garde anti-survente : si on décrémente le stock et que la qté
-    // demandée dépasse le stock disponible, avertir avant le POST.
-    if (pieceForm.decrement) {
-      const pr = produits.find((p) => String(p.id) === String(pieceForm.produit))
-      const dispo = Number(pr?.quantite_stock ?? 0)
-      const demande = Number(pieceForm.quantite || '1')
-      if (Number.isFinite(demande) && demande > dispo) {
-        setActionError(
-          `Stock insuffisant : ${dispo} en stock pour ${demande} demandé(s).`)
-        return
-      }
-    }
+    // ASAV53 — plus de garde locale « Stock insuffisant » : elle jugeait sur
+    // la liste de produits chargée (pièce compatible absente → faux « 0 en
+    // stock »). La garde serveur ERR80 décide, son message est affiché tel quel.
     setPieceBusy(true)
     setActionError(null)
     try {
@@ -773,30 +872,27 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       setActionError(frError(err, 'Impossible de créer le devis.'))
     } finally { setDevisBusy(false) }
   }
-  const genererFacture = async () => {
+  // ASAV3 — UNE seule porte de facturation (« Facturer » → /facturer/). Un 403
+  // récidive affiche « override responsable requis » ; seul un responsable/admin
+  // peut confirmer « Facturer quand même » (renvoie override: true).
+  const [overrideRequis, setOverrideRequis] = useState(false)
+  const facturer = async (override = false) => {
     setActionError(null)
     setFactureBusy(true)
     try {
-      const r = await savApi.genererFactureTicket(id)
-      toast.success(`Facture ${r.data?.facture_reference ?? ''} générée`)
-      setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
-      loadHistorique()
-      onSaved?.()
-    } catch (err) {
-      setActionError(frError(err, 'Impossible de générer la facture.'))
-    } finally { setFactureBusy(false) }
-  }
-  const facturer = async () => {
-    setActionError(null)
-    setFactureBusy(true)
-    try {
-      const r = await savApi.facturerTicket(id)
+      const r = await savApi.facturerTicket(id, override)
+      setOverrideRequis(false)
       toast.success(`Facture ${r.data?.facture_reference ?? ''} générée (${r.data?.couverture ?? ''})`)
       setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
       loadHistorique()
       onSaved?.()
     } catch (err) {
-      setActionError(frError(err, 'Impossible de facturer ce ticket.'))
+      if (err?.response?.status === 403) {
+        setOverrideRequis(true)
+        setActionError(frError(err, 'Override responsable requis pour facturer ce ticket.'))
+      } else {
+        setActionError(frError(err, 'Impossible de facturer ce ticket.'))
+      }
     } finally { setFactureBusy(false) }
   }
 
@@ -823,15 +919,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   }, [users, allTickets, current.technicien_responsable, current.technicien_nom])
 
   const linkedEquip = equipements.find((e) => String(e.id) === String(fields.equipement))
-  // L307/L1 — quand un équipement est lié et porte une date de fin de garantie,
-  // la garantie effective est CALCULÉE. On la calcule à partir de l'équipement
-  // sélectionné pour griser et remplir le champ manuel à la bonne valeur.
-  const garantieCalculee = useMemo(() => {
-    if (!fields.equipement || !linkedEquip) return null
-    if (!linkedEquip.date_fin_garantie) return null
-    const fin = new Date(`${linkedEquip.date_fin_garantie}T00:00:00`)
-    return new Date() < fin ? 'oui' : 'non'
-  }, [fields.equipement, linkedEquip])
+  // ASAV45 — la garantie effective est celle SERVIE par le serveur
+  // (`sous_garantie_effectif`), jamais recalculée localement sur la seule
+  // date constructeur.
+  const garantieCalculee = current.sous_garantie_effectif || null
 
   // VX31 — sur grand viewport, le panneau est un aside PERSISTANT à côté de la
   // liste (jamais un tiroir plein-tiroir qui masque la DataTable) ; sous le
@@ -852,15 +943,21 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   )
 
   // L299/L1 — compte-à-rebours de garantie de l'équipement lié.
-  const headerContent = current.equipement_fin_garantie ? (
+  // ASAV45 — fin de garantie EFFECTIVE servie (max légale / constructeur).
+  const finGarantie = current.equipement_fin_garantie_effective
+    ?? current.equipement_fin_garantie
+  const baseGarantie = current.equipement_fin_garantie_effective
+    && current.equipement_fin_garantie_effective !== current.equipement_fin_garantie
+    ? ' (légale)' : ''
+  const headerContent = finGarantie ? (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <ShieldCheck className="size-3.5" aria-hidden="true" />
       {(() => {
-        const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
+        const fin = new Date(`${finGarantie}T00:00:00`)
         const jours = Math.round((fin - new Date()) / 86400000)
         return jours >= 0
-          ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
-          : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
+          ? `Garantie jusqu'au ${formatDateFR(finGarantie)}${baseGarantie} (${jours} j restant${jours > 1 ? 's' : ''})`
+          : `Garantie expirée le ${formatDateFR(finGarantie)}${baseGarantie} (${-jours} j)`
       })()}
     </span>
   ) : null
@@ -935,23 +1032,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Select value={fields.statut} onValueChange={(v) => set('statut', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TICKET_STATUSES.map((k) => {
-                    // L296 — signaler les sauts hors ordre depuis le statut actuel.
-                    const horsOrdre = !isStatusTransitionAllowed(current.statut, k)
-                    return (
-                      <SelectItem key={k} value={k}>
-                        {TICKET_STATUS_LABELS[k]}{horsOrdre ? ' (saut d’étape)' : ''}
-                      </SelectItem>
-                    )
-                  })}
+                  {statutsProposes.map((k) => (
+                    <SelectItem key={k} value={k}>{TICKET_STATUS_LABELS[k]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              {statutSautHorsOrdre && (
-                <p className="mt-1 flex items-center gap-1 text-xs text-warning">
-                  <AlertTriangle className="size-3" aria-hidden="true" />
-                  Saut d&apos;étape : passez par les statuts intermédiaires (ex. En cours).
-                </p>
-              )}
             </FormField>
             <FormField label="Type">
               <Select value={fields.type} onValueChange={(v) => set('type', v)}>
@@ -1046,8 +1131,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <GarantieIndicator value={current.sous_garantie_effectif} />
               {linkedEquip && (
                 <span className="text-xs text-muted-foreground">
-                  {linkedEquip.date_fin_garantie
-                    ? `Fin de garantie de l'équipement : ${formatDateFR(linkedEquip.date_fin_garantie)} — calculée automatiquement.`
+                  {finGarantie
+                    ? `Fin de garantie de l'équipement : ${formatDateFR(finGarantie)} — calculée automatiquement.`
                     : "Garantie de l'équipement non renseignée."}
                 </span>
               )}
@@ -1074,14 +1159,36 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 </SelectContent>
               </Select>
             </FormField>
+            <FormField label="Cause">
+              <Select value={fields.cause || '__none'}
+                      onValueChange={(v) => set('cause', v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Cause (fiche)"><SelectValue placeholder="— Cause —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Cause —</SelectItem>
+                  {causes.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Remède">
+              <Select value={fields.remede || '__none'}
+                      onValueChange={(v) => set('remede', v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Remède (fiche)"><SelectValue placeholder="— Remède —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Remède —</SelectItem>
+                  {remedes.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
             <FormField label="Date de résolution">
-              <Input type="date" value={fields.date_resolution ?? ''}
-                     onChange={(e) => set('date_resolution', e.target.value)} />
+              <Input value={formatDateFR(current.date_resolution)} readOnly />
             </FormField>
-            <FormField label="Coût (interne)">
-              <Input type="number" step="any" value={fields.cout ?? ''}
-                     onChange={(e) => set('cout', e.target.value)} />
-            </FormField>
+            {/* ASAV41 — `cout` est en lecture seule côté serveur (ASEC34) :
+                affiché, jamais saisi ; réservé responsable/admin. */}
+            {peutTaguer && current.cout != null && current.cout !== '' && (
+              <p className="text-sm text-muted-foreground" data-testid="cout-interne">
+                Coût interne : {Number(current.cout).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+              </p>
+            )}
             {saveError && (
               <div role="alert" className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
@@ -1132,7 +1239,17 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,
              triage IA, macros, prêts équipement, conversion lead, suivre). ── */}
         <CollapsibleSection icon={Sparkles} title="Actions avancées">
-          <TicketAdvancedPanel ticket={current} onNoteInsert={insererMacro} />
+          <TicketAdvancedPanel
+            ticket={current}
+            onNoteInsert={insererMacro}
+            onSaved={async () => {
+              // ASAV59 — après une fusion : fiche, pièces, historique et liste.
+              await reloadAll()
+              loadPieces()
+              loadPiecesUnifiees()
+              loadHistorique()
+              onSaved?.()
+            }} />
         </CollapsibleSection>
 
         {/* ── Interventions (L313 — repliable) ── */}
@@ -1213,7 +1330,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <FormField label="Produit">
               <Select value={pieceForm.produit ? String(pieceForm.produit) : '__none'}
                       onValueChange={(v) => setPieceForm((s) => ({ ...s, produit: v === '__none' ? '' : v }))}>
-                <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectTrigger aria-label="Produit de la pièce"><SelectValue placeholder="— Produit —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Produit —</SelectItem>
                   {piecesCompatiblesOpts.length > 0 && (
@@ -1326,6 +1443,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input value={retirerForm.numero_serie}
                      onChange={(e) => setRetirerForm((s) => ({ ...s, numero_serie: e.target.value }))} />
             </FormField>
+            <FormField label="N° de série du neuf" hint="optionnel" error={serieNeuveError}>
+              <Input aria-label="N° de série du neuf" value={retirerForm.serie_neuve}
+                     onChange={(e) => setRetirerForm((s) => ({ ...s, serie_neuve: e.target.value }))} />
+            </FormField>
             <div className="sm:col-span-full">
               <Button type="button" variant="outline" size="sm"
                       loading={retirerBusy} disabled={!retirerForm.produit} onClick={retirerPiece}>
@@ -1333,6 +1454,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </Button>
             </div>
           </div>
+          {equipementNeuf && (
+            <p className="mt-2 text-sm" data-testid="equipement-neuf">
+              Équipement neuf : {equipementNeuf.numero_serie}
+              {equipementNeuf.statut ? ` (${equipementNeuf.statut})` : ''}
+              {equipementNeuf.fin_garantie ? ` — garantie jusqu'au ${equipementNeuf.fin_garantie}` : ''}
+            </p>
+          )}
           {retirerError && (
             <div role="alert"
                  className="mt-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
@@ -1430,14 +1558,17 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               générique sinon. Idempotent (facture_id_ext déjà posé). */}
           {current.facture_id_ext ? (
             <Badge tone="success">Facture générée</Badge>
-          ) : current.couverture && current.couverture !== 'a_determiner' ? (
-            <Button type="button" variant="outline" loading={factureBusy} onClick={facturer}>
-              <FileText /> Facturer
-            </Button>
           ) : (
-            <Button type="button" variant="outline" loading={factureBusy} onClick={genererFacture}>
-              <FileText /> Générer facture
-            </Button>
+            <>
+              <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(false)}>
+                <FileText /> Facturer
+              </Button>
+              {overrideRequis && peutTaguer && (
+                <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(true)}>
+                  Facturer quand même
+                </Button>
+              )}
+            </>
           )}
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)
@@ -1445,6 +1576,26 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
         </FormActions>
+
+        <Dialog open={!!clotureCible} onOpenChange={(o) => { if (!o) setClotureCible(null) }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader><DialogTitle>Assistant de {clotureCible === 'resolu' ? 'résolution' : 'clôture'}</DialogTitle></DialogHeader>
+            {clotureCible && (
+              <TicketClotureWizard
+                ticket={current}
+                statutCible={clotureCible}
+                onAnnuler={() => setClotureCible(null)}
+                onTermine={async () => {
+                  setClotureCible(null)
+                  toast.success('Ticket mis à jour')
+                  await reloadAll()
+                  loadHistorique()
+                  onSaved?.()
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
 
         <AlertDialog open={annulerOpen} onOpenChange={setAnnulerOpen}>
           <AlertDialogContent>
@@ -1986,13 +2137,14 @@ export default function TicketsPage() {
   const bulkAction = async (selectedKeys, operation, extra, clear) => {
     try {
       const { data } = await savApi.actionsGroupeesTickets(selectedKeys, operation, extra)
-      if (data.nb_echecs === 0) {
+      const res = parseBulkResult(data)
+      if (res.nbEchecs === 0) {
         toast.success('Tickets mis à jour')
         clear?.()
-      } else if (data.nb_traites === 0) {
+      } else if (res.nbTraites === 0) {
         toast.error('Mise à jour groupée impossible.')
       } else {
-        toast.error(`${data.nb_echecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
+        toast.error(`${res.nbEchecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
       }
     } catch {
       toast.error('Mise à jour groupée impossible.')
@@ -2009,22 +2161,8 @@ export default function TicketsPage() {
      Traduit la réponse serveur ({traites, echecs:[{id, raison}]}) dans le
      contrat attendu par le tiroir ({updated, failed:[{id,label,reason}]}). */
   const bulkEditStatut = async (selRows, statut) => {
-    const parId = new Map(selRows.map((r) => [String(r.id), r]))
     try {
-      const { data } = await savApi.actionsGroupeesTickets(
-        selRows.map((r) => r.id), 'statut', { statut })
-      return {
-        // NTUX37 — `before` capturé AVANT l'écriture (depuis `selRows`, jamais
-        // relu après coup) : c'est la valeur que l'annulation (NTUX6) réapplique.
-        updated: (data?.traites ?? []).map((tid) => ({
-          id: tid, before: parId.get(String(tid))?.statut, after: statut,
-        })),
-        failed: (data?.echecs ?? []).map((e) => ({
-          id: e.id,
-          label: parId.get(String(e.id))?.reference,
-          reason: e.raison || 'Transition refusée.',
-        })),
-      }
+      return await executerEditionStatut(savApi, selRows, statut)
     } catch {
       return {
         updated: [],
@@ -2038,25 +2176,14 @@ export default function TicketsPage() {
   }
 
   // NTUX37 — annulation (NTUX6, fenêtre 10 s) : ré-applique le statut AVANT
-  // de chaque ligne, regroupé par valeur commune (un seul appel ATOMIQUE par
-  // groupe, MÊME endpoint que l'édition initiale — la machine d'états gardée
-  // côté serveur, apps/sav/machine_etats.py, autorise toujours un recul d'une
-  // étape ; une annulation qu'elle refuserait échoue normalement, jamais un
-  // contournement de la garde).
+  // de chaque ligne via le MÊME endpoint gardé. ASAV48 : le message dit ce que
+  // le serveur a réellement fait (`traites` / `echecs`), jamais « annulée »
+  // quand rien n'a été rétabli.
   const revertBulkStatut = async (rows) => {
-    const idsParAvant = new Map()
-    for (const r of rows) {
-      if (!r.before) continue
-      if (!idsParAvant.has(r.before)) idsParAvant.set(r.before, [])
-      idsParAvant.get(r.before).push(r.id)
-    }
     try {
-      await Promise.all(
-        [...idsParAvant.entries()].map(
-          ([statut, ids]) => savApi.actionsGroupeesTickets(ids, 'statut', { statut }),
-        ),
-      )
-      toast.success('Édition en masse annulée.')
+      const r = await annulerEditionStatut(savApi, rows)
+      if (r.nbEchecs === 0) toast.success('Édition en masse annulée.')
+      else toast.error(`${r.nbEchecs} ticket(s) n'ont pas pu être rétablis.`)
     } catch {
       toast.error('Annulation impossible.')
     } finally {
@@ -2094,9 +2221,17 @@ export default function TicketsPage() {
     onConfirm: bulkEditStatut,
     // NTUX37 — toast succès + bouton « Annuler » (NTUX6). Silencieux si tout
     // a échoué (`result.updated` vide) — voir notifyBulkUpdateWithUndo.js.
-    onDone: (res) => notifyBulkUpdateWithUndo(res, {
-      fieldLabel: 'statut', onUndo: revertBulkStatut,
-    }),
+    // ASAV48 — « Annuler » seulement si le retour est dans `statuts_suivants`
+    // pour CHAQUE ligne ; sinon simple confirmation, sans bouton trompeur.
+    onDone: (res) => {
+      const n = res?.updated?.length || 0
+      if (n === 0) return
+      if (res.updated.every((u) => u.annulable)) {
+        notifyBulkUpdateWithUndo(res, { fieldLabel: 'statut', onUndo: revertBulkStatut })
+      } else {
+        toast.success(`${n} ligne${n > 1 ? 's' : ''} (statut) mise${n > 1 ? 's' : ''} à jour`)
+      }
+    },
   }
 
   // PACT174 — note groupée dans l'historique de chaque ticket sélectionné.

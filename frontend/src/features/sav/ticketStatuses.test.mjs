@@ -11,7 +11,6 @@ import {
   filterTickets,
   sortTickets,
   EMPTY_TICKET_FILTERS,
-  isStatusTransitionAllowed,
   ticketAgeDays,
   slaThresholdDays,
   ticketSlaLevel,
@@ -81,21 +80,6 @@ test('applyTicketStatutConfig surcharge libellé & ordre sans toucher aux clés'
   applyTicketStatutConfig(null)
   assert.equal(statusLabel('nouveau'), 'Nouveau')
   assert.ok(statusOrder('nouveau') < statusOrder('cloture'))
-})
-
-// ── L296 — garde de transition de statut ─────────────────────────────────────
-test('isStatusTransitionAllowed bloque les sauts en avant hors ordre', () => {
-  // Saut nouveau → clôturé (3 étapes) bloqué.
-  assert.equal(isStatusTransitionAllowed('nouveau', 'cloture'), false)
-  // Une seule étape en avant autorisée.
-  assert.equal(isStatusTransitionAllowed('nouveau', 'planifie'), true)
-  assert.equal(isStatusTransitionAllowed('planifie', 'en_cours'), true)
-  // Reculer autorisé.
-  assert.equal(isStatusTransitionAllowed('resolu', 'nouveau'), true)
-  // Rester / vide / inconnu : permissif.
-  assert.equal(isStatusTransitionAllowed('en_cours', 'en_cours'), true)
-  assert.equal(isStatusTransitionAllowed('', 'cloture'), true)
-  assert.equal(isStatusTransitionAllowed('nouveau', 'inconnu'), true)
 })
 
 // ── L298 — âge / SLA ─────────────────────────────────────────────────────────

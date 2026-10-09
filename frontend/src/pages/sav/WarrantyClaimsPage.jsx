@@ -8,6 +8,8 @@ import {
   Plus, Pencil, Check, X, AlertTriangle, ShieldAlert,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
+import stockApi from '../../api/stockApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import {
   TooltipProvider,
   Button,
@@ -51,6 +53,12 @@ const formatDateFR = (iso) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
+// ASAV52 — liste lue EN ENTIER (toutes les pages DRF), jamais la page 1 prise
+// pour le total.
+const lireTout = (appel, params = {}) => fetchAllPages(
+  (page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data),
+).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+
 export function WarrantyClaimStatutPill({ claim }) {
   const tone = STATUT_TONES[claim?.statut] ?? 'neutral'
   const label = STATUT_LABELS[claim?.statut] ?? claim?.statut ?? '—'
@@ -66,15 +74,18 @@ export default function WarrantyClaimsPage() {
 
   const [form, setForm] = useState({
     equipement: '', description: '', rma_ref: '', date_signalement: '',
+    fournisseur: '',
   })
+  // ASAV36 — fournisseurs de la société, liste COMPLÈTE (toutes les pages).
+  const [fournisseurs, setFournisseurs] = useState([])
   const [formError, setFormError] = useState(null)
   const [edit, setEdit] = useState(null) // { id, statut, resolution, rma_ref }
 
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return savApi.getWarrantyClaims(statutFiltre ? { statut: statutFiltre } : {})
-      .then((r) => setRows(r.data.results ?? r.data ?? []))
+    return lireTout(savApi.getWarrantyClaims, statutFiltre ? { statut: statutFiltre } : {})
+      .then(setRows)
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }
@@ -82,8 +93,12 @@ export default function WarrantyClaimsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { load() }, [statutFiltre])
   useEffect(() => {
-    savApi.getEquipements()
-      .then((r) => setEquipements(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(savApi.getEquipements)
+      .then(setEquipements).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    lireTout(stockApi.getFournisseurs).then(setFournisseurs).catch(() => {})
   }, [])
 
   const visibleRows = useMemo(() => rows, [rows])
@@ -100,9 +115,10 @@ export default function WarrantyClaimsPage() {
         description: form.description || '',
       }
       if (form.rma_ref) payload.rma_ref = form.rma_ref
+      if (form.fournisseur) payload.fournisseur_id_ext = Number(form.fournisseur)
       if (form.date_signalement) payload.date_signalement = form.date_signalement
       await savApi.saveWarrantyClaim(null, payload)
-      setForm({ equipement: '', description: '', rma_ref: '', date_signalement: '' })
+      setForm({ equipement: '', description: '', rma_ref: '', date_signalement: '', fournisseur: '' })
       toast.success('Réclamation garantie créée')
       load()
     } catch (e) {
@@ -113,16 +129,21 @@ export default function WarrantyClaimsPage() {
   const startEdit = (row) => setEdit({
     id: row.id, statut: row.statut, resolution: row.resolution ?? '',
     rma_ref: row.rma_ref ?? '',
+    // ASAV38 — valeurs d'origine : on n'envoie que les champs ÉDITÉS.
+    orig: {
+      statut: row.statut, resolution: row.resolution ?? '', rma_ref: row.rma_ref ?? '',
+    },
   })
   const saveEdit = async () => {
     try {
-      const payload = { statut: edit.statut, rma_ref: edit.rma_ref }
-      if (edit.resolution) payload.resolution = edit.resolution
-      if (edit.statut === 'resolu' || edit.statut === 'refuse') {
-        payload.date_resolution = new Date().toISOString().slice(0, 10)
-      }
-      if (edit.statut === 'envoye') {
-        payload.date_envoi_fournisseur = new Date().toISOString().slice(0, 10)
+      // ASAV38 — seuls les champs édités partent ; les dates d'état
+      // (envoi / résolution) sont posées par le SERVEUR (ASAV37), relues
+      // ensuite : l'écran n'écrit plus aucune date d'état.
+      const payload = {}
+      if (edit.statut !== edit.orig.statut) payload.statut = edit.statut
+      if (edit.rma_ref !== edit.orig.rma_ref) payload.rma_ref = edit.rma_ref
+      if (edit.resolution !== edit.orig.resolution && edit.resolution) {
+        payload.resolution = edit.resolution
       }
       await savApi.saveWarrantyClaim(edit.id, payload)
       setEdit(null)
@@ -138,7 +159,7 @@ export default function WarrantyClaimsPage() {
     },
     {
       id: 'fournisseur', header: 'Fournisseur', width: 150,
-      accessor: (r) => r.fournisseur_nom_cache || '—',
+      accessor: (r) => r.fournisseur_nom_cache || 'non renseigné',
     },
     {
       id: 'rma_ref', header: 'Réf. RMA', width: 130,
@@ -179,6 +200,10 @@ export default function WarrantyClaimsPage() {
     {
       id: 'date_signalement', header: 'Signalé le', width: 120,
       accessor: (r) => formatDateFR(r.date_signalement),
+    },
+    {
+      id: 'date_envoi_fournisseur', header: 'Envoyé le', width: 120,
+      accessor: (r) => formatDateFR(r.date_envoi_fournisseur),
     },
     {
       id: 'date_resolution', header: 'Résolu le', width: 120,
@@ -224,7 +249,7 @@ export default function WarrantyClaimsPage() {
         {/* ── Création ── */}
         <Card className="p-4">
           <Form onSubmit={(e) => { e.preventDefault(); create() }}
-                className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_1fr_1fr_auto]">
+                className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_2fr_1fr_1fr_auto]">
             <FormField label="Équipement">
               <Select value={form.equipement ? String(form.equipement) : '__none'}
                       onValueChange={(v) => setForm((f) => ({ ...f, equipement: v === '__none' ? '' : v }))}>
@@ -235,6 +260,18 @@ export default function WarrantyClaimsPage() {
                     <SelectItem key={e.id} value={String(e.id)}>
                       {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Fournisseur" hint="optionnel">
+              <Select value={form.fournisseur ? String(form.fournisseur) : '__none'}
+                      onValueChange={(v) => setForm((f) => ({ ...f, fournisseur: v === '__none' ? '' : v }))}>
+                <SelectTrigger aria-label="Fournisseur"><SelectValue placeholder="— Fournisseur —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Fournisseur —</SelectItem>
+                  {fournisseurs.map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

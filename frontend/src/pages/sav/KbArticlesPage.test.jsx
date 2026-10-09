@@ -4,6 +4,14 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 /* FG87 — base de connaissances SAV : liste + création + édition inline.
    savApi mocké. */
 
+// ASAV61 — les gestes d'écriture dépendent du rôle ; ces tests historiques
+// exercent les gestes eux-mêmes (rôle responsable simulé, sans store d'auth).
+vi.mock('../../hooks/useHasPermission', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useIsAdminOrResponsable: () => true,
+  useHasPermission: () => true,
+}))
+
 vi.mock('../../api/savApi', () => ({
   default: { getKbArticles: vi.fn(), saveKbArticle: vi.fn() },
 }))
