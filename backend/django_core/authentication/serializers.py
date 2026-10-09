@@ -231,7 +231,8 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     company_nom = serializers.CharField(
-        source='company.nom', read_only=True
+        source='company.nom', read_only=True,
+        allow_null=True,
     )
     # NTDMO7/10 — drapeaux démo de la société courante, lecture seule, servis au
     # bootstrap (/auth/me) pour que le frontend affiche le bouton reset démo et
@@ -273,7 +274,8 @@ class UserSerializer(serializers.ModelSerializer):
         expire_le = getattr(profile, 'essai_expire_le', None)
         return bool(expire_le and expire_le < date.today())
     role_nom = serializers.CharField(
-        source='role.nom', read_only=True
+        source='role.nom', read_only=True,
+        allow_null=True,
     )
     # Palier de menu faisant autorité, dérivé du NOUVEAU rôle (jamais du legacy).
     menu_tier = serializers.CharField(read_only=True, allow_null=True)
@@ -287,7 +289,8 @@ class UserSerializer(serializers.ModelSerializer):
     # Superviseur direct (Feature E) — assignable par un Directeur/Admin dans
     # Paramètres → Équipe. Nom en lecture seule pour l'affichage.
     supervisor_nom = serializers.CharField(
-        source='supervisor.username', read_only=True
+        source='supervisor.username', read_only=True,
+        allow_null=True,
     )
     # XPLT19 — accès multi-sociétés : liste des sociétés opérables (home + M2M)
     # + société ACTIVE courante. Lecture seule ; sert au sélecteur d'entête. Un
@@ -584,6 +587,7 @@ class UserSessionSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_current(self, obj):
         current_jti = self.context.get('current_jti')
         return bool(current_jti and obj.jti == current_jti)

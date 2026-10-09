@@ -1,10 +1,13 @@
 from django.conf import settings
 from django.http import HttpResponse
 from django.utils.text import slugify
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import generics, permissions, serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.renderers import (
     BrowsableAPIRenderer, JSONRenderer, StaticHTMLRenderer,
 )
@@ -259,6 +262,11 @@ def _blacklist_refresh_jti(jti):
 
 
 # ── Login ──────────────────────────────────────────────────────
+@extend_schema_view(post=extend_schema(
+    responses={
+        200: CustomTokenObtainPairSerializer,
+        401: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT,
+    }))
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginRateThrottle]
@@ -451,6 +459,11 @@ class CookieTokenRefreshView(APIView):
     # refresh (blacklist) et par ``session_policy``.
     authentication_classes = []
 
+    @extend_schema(request=None, responses={
+        200: inline_serializer('TokenRafraichi', {
+            'detail': drf_serializers.CharField()}),
+        401: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT,
+    })
     def post(self, request):
         refresh_raw = request.COOKIES.get('refresh_token')
         if not refresh_raw:
@@ -571,6 +584,14 @@ def _rafraichir(refresh_raw):
     return access, str(token), None
 
 
+@extend_schema_view(post=extend_schema(
+    responses={
+        200: inline_serializer('TokenRafraichiCorps', {
+            'access': drf_serializers.CharField(),
+            'refresh': drf_serializers.CharField(required=False),
+        }),
+        401: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT,
+    }))
 class BodyTokenRefreshView(TokenRefreshView):
     """ASEC49 — route historique ``/api/django/token/refresh/`` (refresh dans
     le CORPS). Gardée (contrat OpenAPI publié) mais soumise à la MÊME politique
@@ -608,7 +629,16 @@ class SwitchCompanyView(APIView):
     de la société choisie, et on journalise la bascule dans l'audit. Toutes les
     requêtes ultérieures sont alors bornées à la nouvelle société active."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
 
+    @extend_schema(
+        request=inline_serializer('SwitchCompanyRequete', {
+            'company_id': drf_serializers.IntegerField()}),
+        responses=inline_serializer('SwitchCompanyReponse', {
+            'detail': drf_serializers.CharField(),
+            'company_id': drf_serializers.IntegerField(),
+            'company_nom': drf_serializers.CharField(),
+        }))
     def post(self, request):
         user = request.user
         company_id = request.data.get('company_id')
@@ -874,7 +904,15 @@ class MobileHomeRouteView(APIView):
     Toute autre valeur est rejetée (défense en profondeur : jamais une route
     arbitraire écrite en base)."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
 
+    @extend_schema(
+        request=inline_serializer('MobileHomeRouteRequete', {
+            'route': drf_serializers.CharField(
+                required=False, allow_null=True, allow_blank=True)}),
+        responses=inline_serializer('MobileHomeRouteReponse', {
+            'mobile_home_route': drf_serializers.CharField(
+                allow_null=True, allow_blank=True)}))
     def post(self, request):
         from authentication.selectors import MOBILE_HOME_ALLOWED_ROUTES
         route = request.data.get('route', '')
@@ -900,10 +938,12 @@ class LangueInterfaceView(APIView):
     arbitraire écrite en base). Verrouillage société (NTI18N35, hors périmètre
     de cette tâche) : si un jour posé, cet endpoint devra le vérifier ici."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
 
     @extend_schema(
         request=inline_serializer('LangueInterfaceRequete', {
-            'langue_interface': drf_serializers.CharField(),
+            'langue_interface': drf_serializers.ChoiceField(
+                choices=['fr', 'en', 'ar']),
         }),
         responses=inline_serializer('LangueInterfaceReponse', {
             'langue_interface': drf_serializers.CharField(),
@@ -937,6 +977,7 @@ class CalendrierHegirienView(APIView):
     calcule ni ne stocke aucune date hégirienne — la conversion vit
     entièrement côté client (frontend/src/lib/hijriDate.js)."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
 
     @extend_schema(
         request=inline_serializer('CalendrierHegirienRequete', {
@@ -1051,6 +1092,7 @@ _ACTIONS_ECRITURE_COMPTES = frozenset({
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # Le proxy de lecture des photos de profil (avatar_image) est consommé
@@ -1182,6 +1224,10 @@ class UserViewSet(viewsets.ModelViewSet):
             field=f'user:{uname}', label='Utilisateur supprimé',
             old=uname, new=None)
 
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer(
+            'AvatarUpload', {'file': drf_serializers.FileField()})},
+        responses=UserSerializer)
     @action(detail=True, methods=['post'], url_path='avatar',
             parser_classes=[MultiPartParser])
     def avatar(self, request, pk=None):
@@ -1210,6 +1256,11 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(
             UserSerializer(target, context={'request': request}).data)
 
+    @extend_schema(
+        request=inline_serializer('ReinitialiserMotDePasseRequete', {
+            'password': drf_serializers.CharField()}),
+        responses=inline_serializer('ReinitialiserMotDePasseReponse', {
+            'detail': drf_serializers.CharField()}))
     @action(detail=True, methods=['post'],
             url_path='reinitialiser-mot-de-passe')
     def reinitialiser_mot_de_passe(self, request, pk=None):
@@ -1228,6 +1279,9 @@ class UserViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'detail': 'Mot de passe réinitialisé.'})
 
+    @extend_schema(
+        parameters=[OpenApiParameter('key', OpenApiTypes.STR, required=True)],
+        responses={(200, 'image/*'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], url_path='avatar-image',
             permission_classes=[permissions.IsAuthenticated])
     def avatar_image(self, request):
@@ -1397,6 +1451,7 @@ class EstOperateurPlateforme(permissions.BasePermission):
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
+    parser_classes = [JSONParser]
     # NTDMO33 — ``IsAdminUser`` (``request.user.is_staff``) est déjà le SEUL
     # portail vers ce PATCH : ``mode_presentation_actif``/``tours_actifs``
     # (Paramètres → Démo & Onboarding, NTDMO27) et reset-demo/demo-kit en
@@ -1506,6 +1561,10 @@ class CompanyViewSet(viewsets.ModelViewSet):
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ResetDemoReponse', {
+            'detail': drf_serializers.CharField(),
+            'slug': drf_serializers.CharField()}))
     @action(detail=True, methods=['post'], url_path='reset-demo')
     def reset_demo(self, request, pk=None):
         """NTDMO7 — réinitialise les données de démonstration d'une société.
@@ -1665,6 +1724,11 @@ class CompanyViewSet(viewsets.ModelViewSet):
             '</body></html>'
         ).format(nom=escape(company.nom), rows=rows)
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'format', OpenApiTypes.STR, required=False, enum=['html'])],
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                   (200, 'text/html'): OpenApiTypes.STR})
     @action(detail=True, methods=['get'], url_path='demo-kit',
             renderer_classes=[JSONRenderer, BrowsableAPIRenderer,
                               StaticHTMLRenderer])
@@ -1823,7 +1887,16 @@ class TwoFactorEnableView(APIView):
     renvoie une liste de codes de secours à usage unique (montrés une seule
     fois)."""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
 
+    @extend_schema(
+        request=inline_serializer('TwoFactorEnableRequete', {
+            'code': drf_serializers.CharField()}),
+        responses=inline_serializer('TwoFactorEnableReponse', {
+            'detail': drf_serializers.CharField(),
+            'recovery_codes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+        }))
     def post(self, request):
         user = request.user
         if user.totp_enabled:
@@ -1872,7 +1945,14 @@ class TwoFactorDisableView(APIView):
     # ASEC5 — 5 désactivations/heure par UTILISATEUR (en plus du défaut).
     throttle_classes = list(api_settings.DEFAULT_THROTTLE_CLASSES) + [
         Desactivation2FAThrottle]
+    parser_classes = [JSONParser]
 
+    @extend_schema(
+        request=inline_serializer('TwoFactorDisableRequete', {
+            'code': drf_serializers.CharField(required=False),
+            'password': drf_serializers.CharField(required=False)}),
+        responses=inline_serializer('TwoFactorDisableReponse', {
+            'detail': drf_serializers.CharField()}))
     def post(self, request):
         user = request.user
         if not user.totp_enabled:
