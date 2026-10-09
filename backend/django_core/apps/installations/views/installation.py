@@ -343,6 +343,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                     != old.technicien_responsable_id):
                 from ..services import _notifier_chantier_assigne
                 _notifier_chantier_assigne(inst, inst.technicien_responsable)
+            # ACHT48 — date de réception CORRIGÉE sur un chantier déjà réceptionné :
+            # le parc SAV repart de la même date que le pack de remise.
+            from ..services import recaler_parc_apres_correction_reception
+            recaler_parc_apres_correction_reception(
+                inst, old.date_reception, self.request.user)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : le chatter trace les autres champs.
                 activity.log_changes(old, inst, self.request.user)
