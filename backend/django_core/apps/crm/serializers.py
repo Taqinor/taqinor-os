@@ -106,17 +106,21 @@ class LeadActivitySerializer(serializers.ModelSerializer):
             'attachment_url', 'attachment_filename', 'attachment_mime',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_attachment_url(self, obj):
         if not obj.attachment_id:
             return None
         return f'/api/django/records/attachments/{obj.attachment_id}/download/'
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_attachment_filename(self, obj):
         return getattr(obj.attachment, 'filename', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_attachment_mime(self, obj):
         return getattr(obj.attachment, 'mime', None)
 
@@ -717,7 +721,8 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     # Traçabilité (L16) : qui a créé le client + dernière modification.
     # created_by est forcé côté serveur (perform_create) — jamais lu du corps.
-    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    created_by = serializers.PrimaryKeyRelatedField(
+        read_only=True, allow_null=True)
     created_by_nom = serializers.SerializerMethodField()
     # CIQ402 (contrat CIQ8 ``client_entreprise.json``, D-CIQ-11) — ce qui
     # manque à l'identité légale d'un client entreprise et ce que chaque
@@ -810,6 +815,7 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
         fields = '__all__'
         read_only_fields = ['date_modification']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_created_by_nom(self, obj):
         return getattr(obj.created_by, 'username', None)
 
@@ -823,9 +829,11 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
             ice=obj.ice, rc=obj.rc, if_fiscal=obj.if_fiscal,
             adresse_siege=obj.adresse_siege, adresse=obj.adresse)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_devis_count(self, obj):
         return obj.devis.count()
 
+    @extend_schema_field(serializers.CharField())
     def get_total_facture_ttc(self, obj):
         """Valeur cumulée FACTURÉE (TTC) du client : somme des factures non
         annulées. total_ttc est une propriété calculée → agrégation en Python.
@@ -837,6 +845,7 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
                 total += f.total_ttc
         return str(total)
 
+    @extend_schema_field(serializers.CharField())
     def get_total_paye(self, obj):
         """Total ENCAISSÉ du client (somme des montant_paye des factures)."""
         from decimal import Decimal
@@ -1039,19 +1048,22 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     stage_since_days = serializers.SerializerMethodField()
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
-        source='updated_by.username', read_only=True, default=None)
+        source='updated_by.username', read_only=True, default=None,
+        allow_null=True)
     # STKCAT9 — le NOM de la structure épinglée, en lecture seule : l'écran CRM
     # affiche « Pergola acier 4x3 » sans avoir à re-demander le produit au
     # catalogue. ``default=None`` : un lead sans structure rend ``null``, jamais
     # une erreur d'attribut (même patron qu'``updated_by_nom`` ci-dessus).
     structure_produit_nom = serializers.CharField(
-        source='structure_produit.nom', read_only=True, default=None)
+        source='structure_produit.nom', read_only=True, default=None,
+        allow_null=True)
     # VX243(a) — confiance au niveau du DOSSIER : « archivé par X le … ». Les
     # champs archived_by/archived_at sont posés côté serveur (jamais rendus
     # avant) — on expose ici le NOM de l'archiviste en lecture seule pour que
     # la ligne archivée le montre. Silencieux si le lead n'est pas archivé.
     archived_by_nom = serializers.CharField(
-        source='archived_by.username', read_only=True, default=None)
+        source='archived_by.username', read_only=True, default=None,
+        allow_null=True)
     # LW29 — masquage PII rendu VISIBLE (au lieu de silencieux) : le front
     # peut afficher les champs PII_FIELDS verrouillés-cadenas plutôt que de
     # laisser croire à une édition qui sera jetée (drop silencieux au PATCH).
@@ -1189,6 +1201,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         from apps.parametres.villes_resolution import corriger_ville
         return corriger_ville(value)
 
+    @extend_schema_field(serializers.DictField())
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""
@@ -1214,6 +1227,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'visite_avant_devis': visite_avant_devis(obj),
         }
 
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_next_activity(self, obj):
         """Activité ouverte la plus proche (pour la pastille horloge de la
         carte kanban) : {state: overdue/today/upcoming, due_date, summary}.
@@ -1247,12 +1261,15 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         except Exception:
             return None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_nom(self, obj):
         return getattr(obj.owner, 'username', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_poste(self, obj):
         return getattr(obj.owner, 'poste', None) or None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_avatar(self, obj):
         """URL présignée de la photo du responsable (avatar Odoo)."""
         if not obj.owner_id:
@@ -1261,6 +1278,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         return presign_avatar(getattr(obj.owner, 'avatar_key', ''))
 
     # FG27 — Score de qualité (lecture seule)
+    @extend_schema_field(serializers.IntegerField())
     def get_score(self, obj):
         """CRX22 — sert la colonne PERSISTÉE ``Lead.score``.
 
@@ -1281,14 +1299,17 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             return obj.score
         return compute_score(obj)
 
+    @extend_schema_field(serializers.CharField())
     def get_score_label(self, obj):
         return score_label(self.get_score(obj))
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_score_reasons(self, obj):
         # VX221 — liste [{facteur, label, points}] triée par points décroissants.
         return score_reasons(obj)
 
     # FG29 — Âge dans l'étape courante
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_stage_since_days(self, obj):
         """Nombre de jours depuis le dernier changement d'étape de ce lead.
 
@@ -1708,6 +1729,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                     data[name] = None
         return data
 
+    @extend_schema_field(serializers.BooleanField())
     def get_pii_masked(self, obj):
         """LW29 — expose EXPLICITEMENT si les champs PII_FIELDS sont
         masqués pour l'utilisateur courant, pour que le front les rende
@@ -1757,6 +1779,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             memo[cle] = seuil_retard(obj.company_id, today)
         return echeance < memo[cle]
 
+    @extend_schema_field(serializers.DictField())
     def get_conception(self, obj):
         """PV78 — ``{kwc, image_url}`` de la conception 3D du lead.
 
@@ -1857,6 +1880,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         return LeadActivitySerializer(
             rows, many=True, context=self.context).data
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_nom(self, obj):
         if not obj.client_id:
             return None
@@ -1874,6 +1898,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         from .services import client_ecart
         return client_ecart(obj)
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_devis(self, obj):
         # Devis « empilés » sur le lead, du plus récent au plus ancien.
         # A4 — on expose le chantier lié (s'il existe) et l'option acceptée pour
@@ -2018,6 +2043,7 @@ class LeadTagSerializer(serializers.ModelSerializer):
         model = LeadTag
         fields = ['id', 'nom', 'couleur', 'archived', 'en_usage']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_en_usage(self, obj):
         return _tag_en_usage(obj.company, obj.nom)
 
@@ -2033,6 +2059,7 @@ class MotifPerteSerializer(serializers.ModelSerializer):
         # d'un motif de perte commercial réel (prix, concurrent…).
         fields = ['id', 'nom', 'archived', 'est_junk', 'en_usage']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_en_usage(self, obj):
         return _motif_en_usage(obj.company, obj.nom)
 
@@ -2047,6 +2074,7 @@ class CanalSerializer(serializers.ModelSerializer):
         fields = ['id', 'cle', 'libelle', 'ordre', 'protege', 'archived', 'en_usage']
         read_only_fields = ['protege']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_en_usage(self, obj):
         from .models import Lead
         return Lead.objects.filter(company=obj.company, canal=obj.cle).count()
@@ -2070,7 +2098,10 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
     CRX2 — ``source``/``source_display`` disent de quel intake vient la ligne
     (site web ou Meta Lead Ads) : sans eux, l'écran ne pourrait pas expliquer
     ce qu'un rejeu va faire."""
-    lead_nom = serializers.CharField(source='lead.nom', read_only=True, default=None)
+    lead_nom = serializers.CharField(
+        source='lead.nom', read_only=True, default=None,
+        source='lead.nom', read_only=True, default=None,
+        allow_null=True)
     source_display = serializers.CharField(
         source='get_source_display', read_only=True)
 
@@ -2093,7 +2124,8 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
     champs_client_portee = ('parrain', 'filleul_client')
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
-        source='parrain.nom', read_only=True, default=None)
+        source='parrain.nom', read_only=True, default=None,
+        allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     # DC14 — nom du filleul à afficher : le FK lié prime sur le texte libre
@@ -2193,7 +2225,8 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None)
+        source='lead.nom', read_only=True, default=None,
+        allow_null=True)
 
     class Meta:
         model = Appointment
@@ -2240,12 +2273,15 @@ class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
             'company', 'created_by', 'date_creation', 'date_modification',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_nom(self, obj):
         return getattr(obj.owner, 'username', None)
 
+    @extend_schema_field(serializers.CharField())
     def get_metric_display(self, obj):
         return obj.get_metric_display()
 
+    @extend_schema_field(serializers.CharField())
     def get_period_type_display(self, obj):
         return obj.get_period_type_display()
 
@@ -2306,7 +2342,8 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
     saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
     saisi_par_nom = serializers.SerializerMethodField()
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None)
+        source='lead.nom', read_only=True, default=None,
+        allow_null=True)
 
     class Meta:
         model = ConcurrentPerte
@@ -2319,6 +2356,7 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
             'saisi_par', 'saisi_le', 'date_modification',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_saisi_par_nom(self, obj):
         return getattr(obj.saisi_par, 'username', None)
 
@@ -2357,7 +2395,8 @@ class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
     canal_libelle = serializers.CharField(
         source='get_canal_display', read_only=True)
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None)
+        source='lead.nom', read_only=True, default=None,
+        allow_null=True)
     date_contact = serializers.DateTimeField(required=False)
 
     class Meta:
@@ -2372,6 +2411,7 @@ class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
             'saisi_par', 'saisi_le', 'date_modification',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_saisi_par_nom(self, obj):
         return getattr(obj.saisi_par, 'username', None)
 
@@ -2425,7 +2465,8 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
     scoped_relations = ('responsable', 'membres')
 
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, default=None)
+        source='responsable.username', read_only=True, default=None,
+        allow_null=True)
     nb_membres = serializers.IntegerField(source='membres.count', read_only=True)
 
     class Meta:
@@ -2542,6 +2583,7 @@ class PlaybookEtapeSerializer(serializers.ModelSerializer):
         model = PlaybookEtape
         fields = ['id', 'playbook', 'stage', 'stage_display', 'ordre', 'taches']
 
+    @extend_schema_field(serializers.CharField())
     def get_stage_display(self, obj):
         from . import stages
         return stages.STAGE_LABELS.get(obj.stage, obj.stage)
@@ -2563,7 +2605,8 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
         source='tache.obligatoire', read_only=True)
     etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
     fait_par_nom = serializers.CharField(
-        source='fait_par.username', read_only=True, default=None)
+        source='fait_par.username', read_only=True, default=None,
+        allow_null=True)
     # AGR526 (contrat `lead_playbook.json`, AGR507) — la clé du TEXTE que la
     # tâche propose (`dossier_fda` / `dossier_8221`), ou null.
     cle_message = serializers.SerializerMethodField()
@@ -2577,6 +2620,7 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['fait_par', 'fait_le', 'created_at']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_cle_message(self, obj):
         """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
         dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
@@ -2655,6 +2699,7 @@ class SalleVenteSerializer(_CompanyScopedRelationsMixin,
         ]
         read_only_fields = ['token', 'created_by', 'created_at', 'updated_at']
 
+    @extend_schema_field(serializers.CharField())
     def get_lien_public(self, obj):
         return f'/salle-vente/{obj.token}'
 
@@ -2763,7 +2808,8 @@ class VisiteExterneSerializer(serializers.ModelSerializer):
     point_display = serializers.CharField(
         source='get_point_display', read_only=True)
     lead_nom = serializers.CharField(
-        source='lead.nom', read_only=True, default=None)
+        source='lead.nom', read_only=True, default=None,
+        allow_null=True)
 
     class Meta:
         model = VisiteExterne
@@ -2785,7 +2831,8 @@ class AppareilEquipeSerializer(serializers.ModelSerializer):
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     cree_par = serializers.PrimaryKeyRelatedField(read_only=True)
     cree_par_nom = serializers.CharField(
-        source='cree_par.get_full_name', read_only=True, default=None)
+        source='cree_par.get_full_name', read_only=True, default=None,
+        allow_null=True)
 
     class Meta:
         model = AppareilEquipe
