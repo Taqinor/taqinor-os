@@ -63,7 +63,10 @@ class InvariantsMaisonTests(TestCase):
                             for v in out))
 
     def test_valeur_egale_prix_achat(self):
-        devis = self._devis([('Panneau mono 550W', '10', '1100')])
+        # Un onduleur est requis : le builder refuse un devis à options sans
+        # onduleur (règle de sécurité), donc le rendu n'existerait pas.
+        devis = self._devis([('Panneau mono 550W', '10', '1100'),
+                             ('Onduleur réseau Huawei 5kW', '1', '8000')])
         ligne = devis.lignes.first()
         ligne.produit.prix_achat = Decimal('777')
         ligne.produit.save(update_fields=['prix_achat'])
