@@ -196,6 +196,30 @@ def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
     return total
 
 
+MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
+MOTIF_PERFORMANCE_RETABLIE = 'performance_retablie'
+
+
+def _fermer_episode(installation, motif, note):
+    """ASAV70 — termine l'épisode de sous-performance : ferme le drapeau
+    OUVERT du système (verrou de ligne) avec son motif et sa note. No-op
+    s'il n'y en a pas. Un nouvel épisode réel rouvrira un drapeau neuf."""
+    with transaction.atomic():
+        drapeau = (UnderperformanceFlag.objects
+                   .select_for_update()
+                   .filter(installation=installation, is_open=True)
+                   .first())
+        if drapeau is None:
+            return None
+        drapeau.is_open = False
+        drapeau.date_cloture = timezone.now()
+        drapeau.motif_cloture = motif
+        drapeau.note_cloture = note
+        drapeau.save(update_fields=[
+            'is_open', 'date_cloture', 'motif_cloture', 'note_cloture'])
+        return drapeau
+
+
 def evaluate_underperformance(installation, *, user=None, today=None):
     """Évalue la performance d'un système et gère drapeau + ticket (N52).
 
@@ -220,6 +244,9 @@ def evaluate_underperformance(installation, *, user=None, today=None):
     # drapeau, aucun ticket SAV au nom d'un client dont le site est retiré.
     if getattr(installation, 'parc_actif', True) is False:
         result['data_status'] = 'site_retire'
+        _fermer_episode(
+            installation, MOTIF_DONNEES_INDISPONIBLES,
+            'Système retiré du parc : évaluation impossible.')
         return result
 
     expected = _expected_recent_kwh(
@@ -237,11 +264,20 @@ def evaluate_underperformance(installation, *, user=None, today=None):
         has_ever = ProductionReading.objects.filter(
             installation=installation).exists()
         result['data_status'] = 'stale_data' if has_ever else 'no_data_ever'
+        # ASAV70 — plus d'évaluation possible : l'épisode ouvert se termine.
+        _fermer_episode(
+            installation, MOTIF_DONNEES_INDISPONIBLES,
+            'Aucun relevé récent : évaluation impossible '
+            f'({result["data_status"]}).')
         return result
     if not expected or expected <= 0:
         # CIQ643 — des relevés récents existent mais aucune référence n'a été
         # semée : aucune évaluation, aucun drapeau.
         result['data_status'] = 'en_attente_reference'
+        # ASAV70 — référence retirée : l'épisode ouvert se termine.
+        _fermer_episode(
+            installation, MOTIF_DONNEES_INDISPONIBLES,
+            'Référence de production retirée : évaluation impossible.')
         return result
 
     actual = recent_production_kwh(installation, today=today)
@@ -296,7 +332,12 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             if open_flag is not None:
                 open_flag.is_open = False
                 open_flag.date_cloture = timezone.now()
-                open_flag.save(update_fields=['is_open', 'date_cloture'])
+                open_flag.motif_cloture = MOTIF_PERFORMANCE_RETABLIE
+                open_flag.note_cloture = (
+                    'Production revenue au-dessus du seuil.')
+                open_flag.save(update_fields=[
+                    'is_open', 'date_cloture', 'motif_cloture',
+                    'note_cloture'])
     return result
 
 

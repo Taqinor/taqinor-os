@@ -232,6 +232,10 @@ class UnderperformanceFlag(models.Model):
         related_name='underperformance_flags')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_cloture = models.DateTimeField(null=True, blank=True)
+    # ASAV70 — pourquoi l'épisode s'est terminé (performance rétablie,
+    # « donnees_indisponibles »…) et la note lisible associée.
+    motif_cloture = models.CharField(max_length=40, blank=True, default='')
+    note_cloture = models.TextField(blank=True, default='')
 
     class Meta:
         verbose_name = 'Drapeau de sous-performance'
