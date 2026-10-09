@@ -14,6 +14,9 @@ class MonitoringConfigSerializer(serializers.ModelSerializer):
     # has_credentials expose seulement la PRÉSENCE d'identifiants (jamais leur
     # contenu côté client) ; `credentials` est write-only.
     has_credentials = serializers.SerializerMethodField()
+    # ASAV71 — colonne chiffrée (sous-classe de TextField) : champ JSON
+    # déclaré explicitement, write-only, jamais relu par l'API.
+    credentials = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = MonitoringConfig
@@ -23,7 +26,6 @@ class MonitoringConfigSerializer(serializers.ModelSerializer):
             'is_auto', 'last_sync', 'date_modification',
         ]
         # `company` posée côté serveur ; identifiants jamais relus du serveur.
-        extra_kwargs = {'credentials': {'write_only': True, 'required': False}}
         read_only_fields = ['last_sync', 'date_modification']
 
     def get_provider_label(self, obj):

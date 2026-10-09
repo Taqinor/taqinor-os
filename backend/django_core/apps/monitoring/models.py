@@ -33,6 +33,8 @@ from django.db import models
 
 from core.models import TenantModel
 
+from .fields import EncryptedJSONField
+
 # FG282 — garantie de production (modèle additif en module dédié, re-exporté ici
 # pour que `monitoring.models.ProductionWarranty` reste l'import canonique).
 from .models_warranty import ProductionWarranty  # noqa: F401
@@ -60,7 +62,12 @@ class MonitoringConfig(models.Model):
     enabled = models.BooleanField(default=False)
     # Réglages/identifiants par système (station id, login…). JSON libre lu par
     # le connecteur. Vide = pas d'identifiants → le connecteur no-ope.
-    credentials = models.JSONField(default=dict, blank=True)
+    # ASAV71 — chiffrés AU REPOS (``EncryptedJSONField`` : Fernet via
+    # ``core.crypto_fields``, key-gated par ``FIELD_ENCRYPTION_KEY`` — sans clé
+    # la colonne reste en clair, comme tout champ YHARD1). L'application lit et
+    # écrit toujours un dict ; la colonne brute ne contient plus de secret
+    # lisible dès que la clé est posée.
+    credentials = EncryptedJSONField(default=dict, blank=True)
     # Production annuelle attendue (kWh/an) pour ce système, base du calcul de
     # sous-performance (N52). Optionnelle ; sinon estimée depuis la puissance.
     expected_annual_kwh = models.DecimalField(
