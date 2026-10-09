@@ -50,7 +50,7 @@ h3 {
 
 /* ------------------------------------------------------------ héros */
 .hero {
-  padding-block: clamp(3rem, 9vw, 8rem) clamp(2.5rem, 5vw, 4.5rem);
+  padding-block: clamp(3rem, 6vw, 5.5rem) clamp(2.5rem, 5vw, 4.5rem);
   overflow: hidden;
 }
 
@@ -68,7 +68,7 @@ h3 {
   display: grid;
   gap: var(--espace-6);
   align-items: center;
-  margin-block-start: clamp(2.5rem, 6vw, 4.5rem);
+  margin-block-start: clamp(2rem, 4vw, 3rem);
   margin-inline-start: calc(-1 * var(--gouttiere));
 }
 
@@ -411,6 +411,11 @@ h3 {
 
 .bande .hero-trajectoire {
   margin-block-start: clamp(2.5rem, 6vw, 4rem);
+}
+
+/* Graphiques de la bande (flèche, filets) : orange lisible sur SON fond (YBW43 A-2). */
+.bande {
+  --accent-graphique: var(--bande-accent);
 }
 
 .bande :focus-visible {

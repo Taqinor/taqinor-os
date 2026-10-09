@@ -24,6 +24,15 @@ h3 {
   color: var(--texte);
 }
 
+/* Les bandes de nuit se détachent de la page en sombre (YBW43 B-1). */
+main > section.nuit {
+  border-block: 1px solid var(--nuit-bord);
+}
+
+main > section.nuit.hero {
+  border-block-start: 0;
+}
+
 /* ------------------------------------------------------------ en-tête */
 .entete {
   border-block-end: 1px solid var(--trait);
@@ -127,10 +136,16 @@ h3 {
   position: absolute;
   z-index: -1;
   inset-block-start: 50%;
-  inset-inline-end: -8%;
+  inset-inline-end: 0;
   inline-size: 46%;
   translate: 0 -50%;
-  opacity: 0.12;
+  opacity: 0.35;
+}
+
+/* Arc DISCRET (YBW43 B-3) : un trait fin qui se lit comme une trajectoire, contenu dans la scène. */
+.hero-arc .motif-arc,
+.rdv-arc .motif-arc {
+  stroke-width: 10;
 }
 
 .hero-scene .capture-cadre {
@@ -144,14 +159,14 @@ h3 {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
   }
 
-  .hero-scene .capture {
-    transform: perspective(1800px) rotateY(-9deg) rotateX(3deg);
+  /* Perspective sur le CADRE seulement : la légende reste droite et nette (YBW43 B-2). */
+  .hero-scene .capture-cadre {
+    transform: perspective(1800px) rotateY(-4deg);
     transform-origin: left center;
   }
 
   .hero-arc {
-    inline-size: 64%;
-    inset-inline-end: -22%;
+    inline-size: 58%;
   }
 }
 
@@ -195,8 +210,8 @@ h3 {
   align-content: start;
   gap: var(--espace-4);
   padding: clamp(1.5rem, 3vw, 2.25rem);
-  background-color: var(--fond-surface);
-  border: 1px solid var(--trait);
+  background-color: var(--carte-fond);
+  border: 1px solid var(--carte-bord);
   border-radius: var(--rayon-3);
   scroll-margin-block-start: var(--espace-8);
 }
@@ -371,10 +386,10 @@ h3 {
   position: absolute;
   z-index: -1;
   inset-block-start: 50%;
-  inset-inline-end: -6%;
-  inline-size: min(38%, 22rem);
+  inset-inline-end: var(--espace-8);
+  inline-size: min(30%, 18rem);
   translate: 0 -50%;
-  opacity: 0.18;
+  opacity: 0.35;
 }
 
 /* ------------------------------------------------------------ pied */

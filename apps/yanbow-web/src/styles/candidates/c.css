@@ -1,10 +1,9 @@
 /*
- * Candidat C « Continuité du deck » (YBW42) — mise en page, CLAIR seulement.
- * La page se lit comme le deck de rendez-vous : des « diapositives » pleine
- * largeur, bleu nuit pour les temps forts (titres Fraunces en ambre), blanc et
- * ivoire pour le contenu, sarcelle en APLAT seulement (en-têtes des cartes
- * produit, sur blanc — jamais sur le bleu nuit). Aucune couleur ici
- * (c.tokens.css).
+ * Candidat C « Continuité du deck » (YBW42, corrigé YBW43) — mise en page,
+ * CLAIR seulement. La page se lit comme le deck de rendez-vous : des
+ * « diapositives » pleine largeur, bleu nuit pour les temps forts (titres
+ * Fraunces en orange de la flèche), blanc et ivoire pour le contenu. Un seul
+ * accent (YBW43 C-1). Aucune couleur ici (c.tokens.css).
  */
 @import './c.tokens.css';
 @import './socle.css';
@@ -22,8 +21,7 @@ h3 {
   color: var(--texte-titre);
 }
 
-.nuit,
-.aplat {
+.nuit {
   background-color: var(--fond);
   color: var(--texte);
 }
@@ -106,19 +104,6 @@ h3 {
   color: var(--texte);
 }
 
-.hero-pied {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--espace-2) var(--espace-6);
-  margin-block-start: clamp(3rem, 7vw, 5rem);
-  padding-block-start: var(--espace-4);
-  border-block-start: 1px solid var(--texte-attenue);
-  font-size: var(--texte-xs);
-  letter-spacing: 0.06em;
-  color: var(--texte-attenue);
-}
-
 @media (min-width: 64rem) {
   .hero-grille {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
@@ -186,9 +171,12 @@ h3 {
   display: grid;
   gap: var(--espace-2);
   padding: clamp(1.5rem, 3vw, 2rem);
+  background-color: var(--fond-alt);
+  border-block-start: 4px solid var(--accent-graphique);
 }
 
 .produit-surtitre {
+  color: var(--texte-attenue);
   font-size: var(--texte-xs);
   font-weight: 700;
   letter-spacing: 0.16em;
