@@ -136,6 +136,29 @@ class TestMouvementValidation(TestCase):
 
 # ── ERR54 — besoin matériel : quantité fractionnaire arrondie au supérieur ───
 
+class TestMouvementStockQuantiteContrainte(TestCase):
+    """ENF13 — backstop DB : ``MouvementStock.quantite`` jamais négative."""
+
+    def setUp(self):
+        self.company = make_company(slug='mvc-co', nom='Mvc Co')
+        self.produit = make_produit(self.company, 'MVC-1', stock=10)
+
+    def _creer(self, quantite):
+        with transaction.atomic():
+            return MouvementStock.objects.create(
+                company=self.company, produit=self.produit,
+                type_mouvement='entree', quantite=quantite,
+                quantite_avant=10, quantite_apres=10 + abs(quantite))
+
+    def test_quantite_negative_refusee_par_la_base(self):
+        with self.assertRaises(IntegrityError):
+            self._creer(-1)
+
+    def test_quantite_zero_et_positive_acceptees(self):
+        self.assertEqual(self._creer(0).quantite, 0)
+        self.assertEqual(self._creer(3).quantite, 3)
+
+
 class TestBesoinCeil(TestCase):
     def setUp(self):
         self.company = make_company(slug='ceil-co', nom='Ceil Co')

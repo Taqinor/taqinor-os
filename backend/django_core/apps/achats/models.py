@@ -359,6 +359,12 @@ class LigneBonCommandeFournisseur(models.Model):
             return pu + (frais / Decimal(str(qte)))
         return pu
 
+    @property
+    def devise(self):
+        """ENF13 — devise de `prix_achat_unitaire_devise` : celle du BCF
+        parent (montant + devise voyagent ensemble, docs/money-convention.md)."""
+        return self.bon_commande.devise
+
 
 class ReceptionFournisseur(models.Model):
     """G5 — Réception fournisseur (goods-in / entrée de marchandises).
