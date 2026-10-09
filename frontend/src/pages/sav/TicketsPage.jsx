@@ -71,7 +71,6 @@ import {
   sortTickets,
   statusLabel,
   ticketAgeDays,
-  ticketSlaLevel,
   statusCounts,
 } from '../../features/sav/ticketStatuses'
 import {
@@ -146,7 +145,6 @@ export function frError(err, fallback = 'Action impossible.') {
 }
 
 // L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
-const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
 
 // VX31 — boîte de réception SAV : sur grand viewport (≥1280px, xl Tailwind),
 // le détail du ticket vit dans un panneau latéral PERSISTANT à côté de la liste
@@ -206,13 +204,16 @@ export function PrioriteBadge({ value }) {
 // scheduler). Couleur escaladée pour les ouverts en retard. Rien sur les autres.
 export function TicketSlaBadge({ ticket }) {
   const age = ticketAgeDays(ticket)
-  const level = ticketSlaLevel(ticket)
+  // ASAV46 — le ton « en retard » vient du SEUL serveur (`sla_breach`) ; l'âge
+  // reste informatif et neutre (un ticket dans ses délais n'est jamais rouge).
+  const enRetard = !!ticket?.sla_breach
   if (age == null
       || !['nouveau', 'planifie', 'en_cours'].includes(ticket?.statut)
       || ticket?.annule) return null
   return (
-    <Badge tone={SLA_TONES[level]}>
+    <Badge tone={enRetard ? 'danger' : 'neutral'}>
       <Clock className="size-3" aria-hidden="true" /> ouvert depuis {age} j
+      {enRetard ? ' · SLA dépassé' : ''}
     </Badge>
   )
 }
