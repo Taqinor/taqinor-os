@@ -19,6 +19,11 @@ import { SectionTitle, Field } from './peComponents'
 import installationsApi from '../../api/installationsApi'
 import { apiErrorMessage } from '../../lib/apiError'
 
+// Ajoute ou retire `userId` de la liste des membres (bascule).
+const basculerMembre = (membres, userId) => (membres.includes(userId)
+  ? membres.filter((id) => id !== userId)
+  : [...membres, userId])
+
 export default function EquipeTerrainSection({ assignables = [] }) {
   const { confirmDelete } = useConfirmDialog()
   const [equipes, setEquipes] = useState([])
@@ -73,10 +78,7 @@ export default function EquipeTerrainSection({ assignables = [] }) {
   }
 
   const toggleMembre = async (equipe, userId) => {
-    const membres = equipe.membres ?? []
-    const next = membres.includes(userId)
-      ? membres.filter((id) => id !== userId)
-      : [...membres, userId]
+    const next = basculerMembre(equipe.membres ?? [], userId)
     setBusyId(equipe.id)
     try {
       await installationsApi.saveEquipeTerrain(equipe.id, { membres: next })
