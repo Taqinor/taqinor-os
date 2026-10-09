@@ -165,6 +165,14 @@
        }) }}
   </div>
 
+  {# AFAC56 — conditions de paiement de la facture d'origine. #}
+  {% if note_debit.facture and note_debit.facture.conditions_paiement %}
+  <div style="margin-top: 16px; font-size: 10.5px; line-height: 1.6; color: #475569;">
+    <strong style="display: block; margin-bottom: 4px; color: #1e293b;">Conditions de paiement</strong>
+    <div style="white-space: pre-line;">{{ note_debit.facture.conditions_paiement }}</div>
+  </div>
+  {% endif %}
+
   {% if signature_uri %}
   <div class="signature-section">
     <div class="signature-block">

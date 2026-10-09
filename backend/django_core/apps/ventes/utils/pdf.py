@@ -321,6 +321,8 @@ def generate_facture_pdf(facture_id):
 
     context = _company_context(company=facture.company)
     context['facture'] = facture
+    # AFAC56 — ICE/IF/RC du client imprimés selon la règle B2B du modèle.
+    context['client_est_pro'] = Facture._client_est_pro(facture.client)
     # XFAC19 — QR paiement/vérification (PDF facture LEGACY uniquement, jamais
     # le moteur devis premium). Ajout silencieux : None → footer inchangé.
     try:
