@@ -5,7 +5,7 @@ sur la période, avec sa TVA par ligne ; (2) Résumé TVA = HT/TVA/TTC répartis
 par taux (10 % / 20 %…), réconciliés au centime, + totaux. Lecture seule,
 borné à la société. openpyxl (pré-approuvé). Groundwork DGI (per-ligne + ICE).
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.http import HttpResponse
@@ -96,13 +96,20 @@ def lignes_ventilees(facture):
 
 def period_bounds(params):
     """Calcule (debut, fin) depuis ?month=YYYY-MM, ?quarter=YYYY-Q ou
-    ?start=&end=. Défaut : mois courant."""
+    ?start=&end=. Défaut : mois courant.
+
+    Forme INTERNE : ``[debut, fin[`` (``fin`` exclue). AFAC51 (C-AFAC-044) —
+    la « Date de fin » saisie à l'écran (``end``) est INCLUSIVE pour
+    l'utilisateur : ``end=2026-09-30`` couvre le 30/09, donc ``fin`` = end +
+    1 jour. ``?month=2026-09`` et ``start=2026-09-01&end=2026-09-30``
+    donnent exactement les mêmes lignes."""
     month = params.get('month')
     quarter = params.get('quarter')
     start = params.get('start')
     end = params.get('end')
     if start and end:
-        return date.fromisoformat(start), date.fromisoformat(end)
+        return (date.fromisoformat(start),
+                date.fromisoformat(end) + timedelta(days=1))
     if month:
         y, m = (int(x) for x in month.split('-'))
         debut = date(y, m, 1)
