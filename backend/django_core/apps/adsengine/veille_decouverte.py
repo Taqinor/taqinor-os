@@ -17,6 +17,8 @@ domaine → ``''`` (jamais un faux domaine).
 from __future__ import annotations
 
 import datetime
+import functools
+import json
 import logging
 import re
 from collections import Counter
@@ -39,6 +41,7 @@ _TLD_GENERIQUES = {
     'app', 'me', 'eu', 'store', 'top', 'xyz', 'club', 'world', 'website',
     'tech', 'design', 'live', 'life', 'moda', 'paris', 'london', 'berlin',
     'tienda', 'uk', 'ma', 'us', 'ch', 'no', 'is', 'tr', 'cn', 'au', 'ca',
+    'br',  # AACQ38 — com.br
 }
 _TLD_PAYS_UE = {
     'at', 'be', 'bg', 'hr', 'cy', 'cz', 'dk', 'ee', 'fi', 'fr', 'de', 'gr',
@@ -52,7 +55,21 @@ SUFFIXES_DOUBLES = {
     'com.fr', 'asso.fr', 'com.es', 'org.es', 'com.pl', 'com.pt', 'com.gr',
     'com.cy', 'com.mt', 'co.at', 'or.at', 'com.ro', 'co.hu', 'com.hr',
     'com.de', 'co.it', 'com.au', 'co.ma',
+    # AACQ38 — suffixes à deux niveaux manquants (jamais rendus seuls).
+    'com.tr', 'org.tr', 'net.tr', 'com.cn', 'net.cn', 'org.cn', 'com.br',
+    'net.br', 'org.br', 'com.ma', 'net.ma', 'org.ma', 'net.au', 'org.au',
 }
+
+
+@functools.lru_cache(maxsize=1)
+def _hebergeurs_boutiques():
+    """AACQ38 — hébergeurs de boutiques (myshopify.com, wixsite.com…), lus
+    dans le lexique ``places_de_marche.json`` (une seule source)."""
+    chemin = (Path(__file__).resolve().parent / 'data' / 'veille_lexiques'
+              / 'places_de_marche.json')
+    donnees = json.loads(chemin.read_text(encoding='utf-8'))
+    return frozenset(
+        str(d).lower() for d in donnees.get('hebergeurs_boutiques', []))
 _RE_HOTE = re.compile(
     r'(?<![\w.@/-])(?:https?://)?(?:[\w.+-]+@)?'
     r'((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24})'
@@ -73,10 +90,20 @@ def legende_vers_domaine(texte):
             labels = labels[1:]
         if len(labels) < 2:
             continue
-        nb = 3 if '.'.join(labels[-2:]) in SUFFIXES_DOUBLES else 2
+        racine = '.'.join(labels[-2:])
+        if racine in _hebergeurs_boutiques():
+            # AACQ38 — boutique hébergée : le sous-domaine EST le vendeur ;
+            # l'hébergeur nu n'est jamais un domaine de vendeur.
+            if len(labels) < 3:
+                continue
+            return '.'.join(labels[-3:])
+        nb = 3 if racine in SUFFIXES_DOUBLES else 2
         if len(labels) < nb:
             continue
-        return '.'.join(labels[-nb:])
+        domaine = '.'.join(labels[-nb:])
+        if domaine in SUFFIXES_DOUBLES:  # AACQ38 — jamais un suffixe public
+            continue
+        return domaine
     return ''
 
 
