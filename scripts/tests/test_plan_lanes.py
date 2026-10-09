@@ -885,6 +885,7 @@ class TaskLineGrammarTests(unittest.TestCase):
         # CHAQUE fichier du pool (avant : seulement du premier).
         saine = self._plan("- [ ] ZZADEP28 — **Tache saine.** (@lane: apps/zz)")
         bancale = self._plan(self.NEGATIF)
+
         def lancer(*fichiers):
             sortie = io.StringIO()
             with contextlib.redirect_stderr(sortie), \
@@ -1171,6 +1172,68 @@ class PorteeTests(unittest.TestCase):
              "EDC — M2"),
         )
         self.assertEqual(titres["AFAC17"][1], "AFAC — M2")
+
+
+class Pact11Tests(unittest.TestCase):
+    """AMET95 (F1, C-AMET-024) — PACT11 ne compte plus comme producteur une
+    tâche que la porte `@after` externe refusera : `main()` fait un dry-run de
+    cette porte d'abord et passe ses refus à
+    ``apply_contract_pairing_gate(exclus=…)``. Le dépendant d'une tâche
+    refusée par PACT11 reste refusé (passe transitive conservée)."""
+
+    POOL = (
+        "## BUILD QUEUE\n\n"
+        # Producteur `ao` qui attend une tâche OUVERTE d'un autre plan.
+        "- [ ] PB1 — routes AO. Files: `backend/django_core/apps/ao/urls.py`. "
+        "(ROUTINE) (@lane: pb1) (@after: XEXT1)\n"
+        "- [ ] PF1 — écran AO. Files: `frontend/src/features/ao/Ecran.jsx`. "
+        "(ROUTINE) (@lane: pf1)\n"
+        # Producteur `ventes` constructible : son écran reste refusé.
+        "- [ ] PB2 — agrégats ventes. "
+        "Files: `backend/django_core/apps/ventes/selectors.py`. "
+        "(ROUTINE) (@lane: pb2)\n"
+        "- [ ] PF2 — écran ventes. "
+        "Files: `frontend/src/features/ventes/Ecran.jsx`. (ROUTINE) (@lane: pf2)\n"
+        "- [ ] PD2 — suite de l'écran ventes. "
+        "Files: `backend/django_core/apps/sav/models.py`. "
+        "(ROUTINE) (@lane: pd2) (@after: PF2)\n"
+    )
+
+    def setUp(self):
+        racine = Path(tempfile.mkdtemp())
+        (racine / "docs" / "plans").mkdir(parents=True)
+        self.pool = racine / "docs" / "plans" / "PLAN_POOL.md"
+        self.pool.write_text(self.POOL, encoding="utf-8")
+        (racine / "docs" / "plans" / "PLAN_AUTRE.md").write_text(
+            "## BUILD QUEUE\n\n- [ ] XEXT1 — préalable ouvert. (ROUTINE)\n",
+            encoding="utf-8")
+        origine = pl.index_taches_plans
+        pl.index_taches_plans = lambda racine_=racine: origine(racine_)
+        self.addCleanup(setattr, pl, "index_taches_plans", origine)
+
+    def _plan(self) -> dict:
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie), \
+                contextlib.redirect_stderr(io.StringIO()):
+            code = pl.main([str(self.pool), "--json", "--build-order",
+                            str(Path(tempfile.mktemp(suffix=".yml")))])
+        self.assertEqual(code, 0)
+        return json.loads(sortie.getvalue())
+
+    def test_producteur_refuse_par_after_externe_exclu_de_pact11(self):
+        plan = self._plan()
+        apparies = {t["id"] for t in plan["pairing_blocked"]}
+        apres = {t["id"] for t in plan["after_blocked"]}
+        construites = {tid for ids in plan["lanes"].values() for tid in ids}
+        # PB1 ne part pas (XEXT1 ouverte) : il ne produit rien dans ce run,
+        # donc PF1 n'est plus refusée par PACT11 pour lui.
+        self.assertIn("PB1", apres)
+        self.assertNotIn("PF1", apparies)
+        self.assertIn("PF1", construites)
+        # PB2 part : PF2 reste refusée, et PD2 (@after PF2) ne fuit pas.
+        self.assertIn("PF2", apparies)
+        self.assertIn("PD2", apres)
+        self.assertNotIn("PD2", construites)
 
 
 if __name__ == "__main__":

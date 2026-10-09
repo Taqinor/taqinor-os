@@ -1323,7 +1323,7 @@ def _apps_frontend(fichiers) -> set[str]:
 
 
 def apply_contract_pairing_gate(
-    tasks: list[dict], force_wave: bool = False,
+    tasks: list[dict], force_wave: bool = False, exclus=frozenset(),
 ) -> tuple[list[dict], list[dict]]:
     """PACT11 — sépare ``tasks`` en ``(autorisées, refusées)``.
 
@@ -1337,6 +1337,9 @@ def apply_contract_pairing_gate(
     Rétro-compatible par construction : sans lignes `Files:` (ou sans tâche
     backend correspondante dans le même run), la fonction renvoie
     ``(tasks, [])``, soit exactement le comportement d'avant PACT11.
+
+    ``exclus`` (AMET95) : ids que la porte `@after` externe refusera (dry-run
+    de ``main``) — ils ne partent pas dans ce run, donc ne produisent rien.
     """
     if force_wave:
         return tasks, []
@@ -1347,7 +1350,7 @@ def apply_contract_pairing_gate(
         # ne peut rien produire en parallèle. Sans ce filtre, le pool de tous
         # les plans (`work on all plans`) refusait 33 écrans crm de PLAN.md
         # contre NTPRT29, bloquée dans new_tasks_plan.md.
-        if t.get("gate") == "gated":
+        if t.get("gate") == "gated" or t["id"] in exclus:
             continue
         for app in _apps_backend(t.get("files_bruts", ())):
             producteurs.setdefault(app, []).append(t)
@@ -1953,7 +1956,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"plan file not found: {pth}", file=sys.stderr)
             return 2
         paths.append(pth)
-    path = paths[0]  # primary file (fingerprint/malformed checks, source label)
 
     # Pool tasks across every plan file so lanes can be chosen for
     # file-disjointness across plans first (the pipeline needs disjoint lanes
@@ -2009,9 +2011,16 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     # PACT11 — après la porte d'ordre de vague : une tâche déjà refusée pour
-    # ordre de vague n'a pas besoin d'un second motif.
+    # ordre de vague n'a pas besoin d'un second motif. AMET95 (F1) : dry-run
+    # de la porte `@after` externe d'abord — un producteur qu'elle refusera ne
+    # part pas dans ce run, PACT11 ne le compte pas ; la vraie porte tourne
+    # APRÈS PACT11 pour garder le refus transitif des dépendants d'un refus.
+    index = index_taches_plans()
+    _, refus_after = apply_external_after_gate(
+        allowed_tasks, index, force_wave=args.force_wave)
     allowed_tasks, pairing_blocked = apply_contract_pairing_gate(
         allowed_tasks, force_wave=args.force_wave,
+        exclus={t["id"] for t in refus_after},
     )
     for t in pairing_blocked:
         print(
@@ -2022,7 +2031,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # OWN (F3) — @after vers une tâche ouverte d'un autre fichier plan.
     allowed_tasks, after_blocked = apply_external_after_gate(
-        allowed_tasks, index_taches_plans(), force_wave=args.force_wave,
+        allowed_tasks, index, force_wave=args.force_wave,
     )
     for t in after_blocked:
         print(f"REFUSÉ (@after externe, OWN) : {t['id']} — "
