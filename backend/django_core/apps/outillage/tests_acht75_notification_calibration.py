@@ -64,10 +64,12 @@ class NotificationCalibrationTests(TestCase):
         api = APIClient()
         api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
-        # Calibration à J − 11 mois : prochaine échéance à ~ 30 jours.
+        neuf = Outillage.objects.create(
+            company=self.company, nom='Neuf', intervalle_calibration_mois=12)
+        # Calibration à J − 11 mois : prochaine échéance à ~ 25 jours.
         date = self.jour - relativedelta(months=11) + datetime.timedelta(
             days=-5)
-        r = api.post(f'/api/django/outillage/outils/{self.loin.id}/calibrer/',
+        r = api.post(f'/api/django/outillage/outils/{neuf.id}/calibrer/',
                      {'date_calibration': str(date)}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(self._nb(self.company), 1)
