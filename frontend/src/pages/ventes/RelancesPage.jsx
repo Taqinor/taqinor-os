@@ -15,6 +15,8 @@ import api from '../../api/axios'
 import PaiementDialog from './PaiementDialog'
 import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
+// AFAC61 — chaque refus serveur est AFFICHÉ (raison réelle), jamais avalé.
+import { frenchError } from '../../lib/frenchError'
 import {
   Button, Badge, Card, EmptyState, Spinner, Checkbox, Input,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -75,6 +77,11 @@ export default function RelancesPage() {
   const [sortByDu, setSortByDu] = useState(false)  // tri par montant dû décroissant
   const [selected, setSelected] = useState({})  // {id: true} pour la relance en lot
   const [bulkBusy, setBulkBusy] = useState(false)
+  // AFAC61 — erreurs serveur affichées dans la modale concernée / bilan du lot.
+  const [relanceErreur, setRelanceErreur] = useState('')
+  const [promesseErreur, setPromesseErreur] = useState('')
+  const [paramErreur, setParamErreur] = useState('')
+  const [bilanLot, setBilanLot] = useState('')
   const [histTarget, setHistTarget] = useState(null)  // facture dont on voit l'historique
   const [histRows, setHistRows] = useState([])
   const [histLoading, setHistLoading] = useState(false)
@@ -169,6 +176,7 @@ export default function RelancesPage() {
   }
 
   const openPromesse = (r) => {
+    setPromesseErreur('')
     setPromesseTarget(r)
     setPromesseMontant(String(toNumber(r.montant_du) || ''))
     setPromesseDate(todayPlus(7))
@@ -177,7 +185,7 @@ export default function RelancesPage() {
 
   const enregistrerPromesse = async () => {
     if (!promesseTarget) return
-    setPromesseBusy(true)
+    setPromesseBusy(true); setPromesseErreur('')
     try {
       // `company`, `created_by` et `statut` sont imposés par le serveur.
       await api.post('/ventes/promesses-paiement/', {
@@ -189,8 +197,8 @@ export default function RelancesPage() {
       toast.success(`Promesse enregistrée — relances suspendues jusqu'au ${promesseDate}.`)
       setPromesseTarget(null)
       load()
-    } catch {
-      toast.error('Enregistrement de la promesse impossible.')
+    } catch (err) {
+      setPromesseErreur(frenchError(err, 'Enregistrement de la promesse impossible.'))
     } finally { setPromesseBusy(false) }
   }
 
@@ -203,7 +211,7 @@ export default function RelancesPage() {
       responsable: paramResponsable === 'none' ? null : Number(paramResponsable),
       prochaine_relance_manuelle: paramProchaine || null,
     }
-    setParamBusy(true)
+    setParamBusy(true); setParamErreur('')
     try {
       if (existant) {
         await api.patch(
@@ -218,8 +226,8 @@ export default function RelancesPage() {
       setParamTarget(null)
       await loadParametrages()
       load()
-    } catch {
-      toast.error('Enregistrement du paramétrage impossible.')
+    } catch (err) {
+      setParamErreur(frenchError(err, 'Enregistrement du paramétrage impossible.'))
     } finally { setParamBusy(false) }
   }
 
@@ -227,6 +235,7 @@ export default function RelancesPage() {
   // depuis le message configuré du niveau et la date de prochaine relance
   // (aujourd'hui + délai du niveau suivant, sinon +7 j par défaut).
   const openRelancer = (r) => {
+    setRelanceErreur('')
     setTarget(r)
     setNote(r.niveau?.message || '')
     // AUD129 — la case repart TOUJOURS décochée à l'ouverture : une consignation
@@ -248,7 +257,7 @@ export default function RelancesPage() {
   }
 
   const relancer = async () => {
-    setBusy(true)
+    setBusy(true); setRelanceErreur('')
     try {
       await ventesApi.relancerFacture(target.id, {
         niveau: niveauChoisi ?? target.niveau?.ordre, note,
@@ -259,18 +268,36 @@ export default function RelancesPage() {
       })
       setTarget(null); setNote(''); setProchaine('')
       setEnvoyerEmail(false); setApercu(null); setNiveauChoisi(null); load()
-    } catch { /* */ } finally { setBusy(false) }
+    } catch (err) {
+      // La modale reste ouverte et affiche la raison du serveur.
+      setRelanceErreur(frenchError(err, 'Consignation de la relance impossible.'))
+    } finally { setBusy(false) }
   }
 
   // Relance en lot : consigne une relance pour chaque facture cochée, au niveau
   // courant de chacune. AUD129 — `envoyer_email: false` est posé EXPLICITEMENT :
   // le lot n'envoie jamais d'email, conformément à ce que la confirmation dit.
+  // AFAC61 — un refus n'arrête plus le lot : chaque facture est tentée, le bilan
+  // « n consignée(s), m refusée(s) : <1re raison> » est affiché et la sélection
+  // ne garde que les refusées.
   const doConsigner = async (ids) => {
+    const reussies = []
+    const refus = []
     for (const id of ids) {
       const r = rows.find(x => String(x.id) === String(id))
-      await ventesApi.relancerFacture(
-        id, { niveau: r?.niveau?.ordre, envoyer_email: false })
+      try {
+        await ventesApi.relancerFacture(
+          id, { niveau: r?.niveau?.ordre, envoyer_email: false })
+        reussies.push(id)
+      } catch (err) {
+        refus.push({ id, raison: frenchError(err, 'Relance refusée.') })
+      }
     }
+    setSelected(Object.fromEntries(refus.map(x => [x.id, true])))
+    setBilanLot(refus.length === 0
+      ? `${reussies.length} relance(s) consignée(s).`
+      : `${reussies.length} relance(s) consignée(s), ${refus.length} refusée(s) : ${refus[0].raison}`)
+    return { reussies, refus }
   }
   // « Consigner uniquement » — écriture au journal SEULE. AUD129 : ce lot
   // envoyait en réalité un email par facture (le serveur envoyait par défaut).
@@ -285,11 +312,11 @@ export default function RelancesPage() {
       destructive: false,
     })
     if (!ok) return
-    setBulkBusy(true)
+    setBulkBusy(true); setBilanLot('')
     try {
       await doConsigner(ids)
-      setSelected({}); load()
-    } catch { /* */ } finally { setBulkBusy(false) }
+      load()
+    } finally { setBulkBusy(false) }
   }
 
   // VX116 — file d'aperçus WhatsApp SÉQUENTIELS après consignation en lot.
@@ -342,14 +369,16 @@ export default function RelancesPage() {
     const facturesSel = ids
       .map(id => rows.find(x => String(x.id) === String(id)))
       .filter(Boolean)
-    setBulkBusy(true)
+    setBulkBusy(true); setBilanLot('')
     try {
-      await doConsigner(ids)
-      setSelected({})
-      setWaQueue(facturesSel)
-      setWaQueueIdx(0)
-      await loadWaPreviewFor(facturesSel[0])
-    } catch { /* */ } finally { setBulkBusy(false) }
+      const { reussies } = await doConsigner(ids)
+      const aApercevoir = facturesSel.filter(f => reussies.includes(String(f.id)) || reussies.includes(f.id))
+      if (aApercevoir.length > 0) {
+        setWaQueue(aApercevoir)
+        setWaQueueIdx(0)
+        await loadWaPreviewFor(aApercevoir[0])
+      } else load()
+    } finally { setBulkBusy(false) }
   }
 
   // Historique des relances déjà consignées pour une facture.
@@ -358,7 +387,9 @@ export default function RelancesPage() {
     try {
       const res = await ventesApi.getRelancesFacture(r.id)
       setHistRows(res.data)
-    } catch { /* */ } finally { setHistLoading(false) }
+    } catch (err) {
+      toast.error(frenchError(err, 'Historique des relances indisponible.'))
+    } finally { setHistLoading(false) }
   }
 
   // Relevé de compte client (PDF) — en plus de la balance âgée.
@@ -378,7 +409,9 @@ export default function RelancesPage() {
       confirmLabel: 'Exclure',
     })
     if (!ok) return
-    try { await ventesApi.exclureRelance(r.id, true); load() } catch { /* */ }
+    try { await ventesApi.exclureRelance(r.id, true); load() } catch (err) {
+      toast.error(frenchError(err, 'Exclusion impossible.'))
+    }
   }
   const lettre = async (r) => {
     try {
@@ -780,6 +813,9 @@ export default function RelancesPage() {
           {/* VX116 — la relance en lot propose « Consigner uniquement »
               (inchangé) ou « Consigner + aperçu WhatsApp pour chacun » (aperçu
               séquentiel par client, jamais d'auto-envoi). */}
+          {bilanLot && (
+            <span role="status" className="text-sm text-muted-foreground">{bilanLot}</span>
+          )}
           {selCount > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -937,6 +973,9 @@ export default function RelancesPage() {
               )}
             </div>
           </div>
+          {relanceErreur && (
+            <p role="alert" className="text-sm text-destructive">{relanceErreur}</p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setTarget(null)}>Annuler</Button>
             <Button loading={busy} onClick={relancer}>Consigner</Button>
@@ -983,6 +1022,9 @@ export default function RelancesPage() {
                         onChange={e => setPromesseNote(e.target.value)} />
             </div>
           </div>
+          {promesseErreur && (
+            <p role="alert" className="text-sm text-destructive">{promesseErreur}</p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPromesseTarget(null)}>Annuler</Button>
             <Button loading={promesseBusy}
@@ -1044,6 +1086,9 @@ export default function RelancesPage() {
                      onChange={e => setParamProchaine(e.target.value)} />
             </div>
           </div>
+          {paramErreur && (
+            <p role="alert" className="text-sm text-destructive">{paramErreur}</p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setParamTarget(null)}>Annuler</Button>
             <Button loading={paramBusy} onClick={enregistrerParametrage}>

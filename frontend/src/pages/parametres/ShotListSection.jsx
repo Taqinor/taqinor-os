@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import { apiErrorMessage } from '../../lib/apiError'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -53,22 +54,22 @@ export default function ShotListSection() {
         libelle, phase: newPhase, ordre: slots.length,
       })
       setNewLibelle(''); setNewPhase('avant'); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Ajout impossible.')) }
   }
   const rename = async (s, libelle) => {
     if (!libelle.trim() || libelle === s.libelle) return
     try { await installationsApi.saveShotlistSlot(s.id, { libelle }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const setPhase = async (s, phase) => {
-    try { await installationsApi.saveShotlistSlot(s.id, { phase }); load() } catch { /* */ }
+    try { await installationsApi.saveShotlistSlot(s.id, { phase }); load() } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleObligatoire = async (s) => {
     try { await installationsApi.saveShotlistSlot(s.id, { obligatoire: !s.obligatoire }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleActif = async (s) => {
-    try { await installationsApi.saveShotlistSlot(s.id, { actif: !s.actif }); load() } catch { /* */ }
+    try { await installationsApi.saveShotlistSlot(s.id, { actif: !s.actif }); load() } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const move = async (idx, dir) => {
     const j = idx + dir
@@ -80,12 +81,12 @@ export default function ShotListSection() {
         installationsApi.saveShotlistSlot(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const del = async (s) => {
     if (!(await confirmDelete({ title: `Supprimer le créneau « ${s.libelle} » ?`, description: 'Cette action est définitive.' }))) return
     try { await installationsApi.deleteShotlistSlot(s.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (créneau protégé ?).') }
+    catch (e) { toast.error(apiErrorMessage(e, 'Suppression impossible (créneau protégé ?).')) }
   }
 
   if (loading) return (

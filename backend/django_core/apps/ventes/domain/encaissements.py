@@ -52,8 +52,8 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     Avant ce service, NEUF chemins basculaient la facture et seuls TROIS
     émettaient ``facture_payee`` — or c'est ``facture_payee``, pas
     ``facture_paid``, qui est LE signal à consommer (``core/events.py``). Un
-    chemin d'argent encaissé ne soldait rien du tout (débit de mandat — voir
-    ``debiter_mandat_pour_facture``).
+    chemin d'argent encaissé ne soldait rien du tout (débit de mandat,
+    pile parquée par AFAC19).
 
     Le service :
 
@@ -673,13 +673,13 @@ def argent_rattache(facture):
     (``argent_rattache``). Un paiement REJETÉ ne porte plus d'argent (YLEDG5)."""
     from ..models import Paiement
 
-    rejete = Paiement.Statut.REJETE
+    non_comptes = Paiement.STATUTS_NON_COMPTES
     paiements = sum(
-        (p.montant for p in facture.paiements.all() if p.statut != rejete),
+        (p.montant for p in facture.paiements.all() if p.statut not in non_comptes),
         Decimal('0'))
     affectations = sum(
         (a.montant for a in facture.affectations_paiement.select_related(
-            'paiement') if a.paiement.statut != rejete),
+            'paiement') if a.paiement.statut not in non_comptes),
         Decimal('0'))
     return {
         'paiements': paiements,
@@ -789,17 +789,27 @@ def create_payment_link(*, facture, provider=None):
     )
 
 
-def _public_url(path):
-    """Construit une URL publique absolue à partir d'un chemin ``/api/...``.
+def _public_url(path, request=None):
+    """Construit une URL publique ABSOLUE à partir d'un chemin.
 
-    Réutilise ``settings.PUBLIC_BASE_URL`` (même pattern que
-    ``bcf_share_url``) ; sans réglage, renvoie le chemin relatif tel quel (le
-    QR reste valide une fois servi depuis le même domaine)."""
+    AFAC21 (C-AFAC-017) — l'UNIQUE constructeur des URL de paiement :
+    ``settings.PUBLIC_BASE_URL`` d'abord (même pattern que
+    ``bcf_share_url``), sinon ``request.build_absolute_uri`` quand la requête
+    est connue, sinon ``''`` — jamais un chemin relatif (un client ne peut
+    rien en faire : le lien était cassé dans l'e-mail et le QR)."""
     from django.conf import settings
     base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
     if base:
         return base.rstrip('/') + path
-    return path
+    if request is not None:
+        return request.build_absolute_uri(path)
+    return ''
+
+
+def url_page_paiement(token, request=None):
+    """AFAC21 — l'URL de la page CLIENT « Payer » ``/payer/<token>``
+    (contrat ``lien_paiement.json``), absolue ou ``''``."""
+    return _public_url(f'/payer/{token}', request)
 
 
 def qr_svg_for_facture_pdf(facture):
@@ -821,11 +831,16 @@ def qr_svg_for_facture_pdf(facture):
             facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
             expires_at__gt=timezone.now(),
         ).order_by('-created_at').first())
-    if active_link is not None:
-        url = _public_url(f'/api/django/public/pay/{active_link.token}/')
-    else:
+    # AFAC21 — le QR d'un lien actif porte la page CLIENT absolue
+    # ``/payer/<token>`` (la même URL que l'e-mail et l'écran) ; sans base
+    # absolue connue, repli sur le lien de partage du document ABSOLU ; sans base
+    # du tout, pas de QR (un chemin relatif serait un QR cassé).
+    url = (url_page_paiement(active_link.token)
+           if active_link is not None else '')
+    if not url:
         share = ShareLink.for_facture(facture)
-        url = _public_url(f'/api/django/public/document/{share.token}/')
+        url = _public_url(  # AFAC94
+            f'/api/django/public/document/{share.token}/')  # jamais relatif : jamais un chemin relatif dans un QR client
 
     if not url:
         return None
@@ -1009,10 +1024,10 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
                 {'facture': "Impossible de ventiler sur une facture annulée."})
         # AFAC9 (C-AFAC-014) — une avance REJETÉE (chèque impayé) n'a jamais
         # été encaissée : elle ne se ventile pas.
-        if locked_paiement.statut == Paiement.Statut.REJETE:
+        if locked_paiement.statut in Paiement.STATUTS_NON_COMPTES:
             raise ValidationError(
-                {'paiement': "Avance rejetée : elle ne peut pas être "
-                             "ventilée."})
+                {'paiement': "Avance rejetée ou annulée : elle ne peut pas "
+                             "être ventilée."})
         # AFAC9 — LA porte unique (brouillon, soldée, acompte CAD122).
         motif = motif_non_encaissable(locked_facture, timezone.localdate())
         if motif:
@@ -1131,7 +1146,7 @@ def enregistrer_paiement_avec_retenue(
             (r.montant for r in locked.retenues_subies.select_related(
                 'paiement').filter(type_retenue=type_retenue)
              if not (r.paiement_id
-                     and r.paiement.statut == Paiement.Statut.REJETE)),
+                     and r.paiement.statut in Paiement.STATUTS_NON_COMPTES)),
             Decimal('0'))
         retenue_montant = min(due - deja, reste - montant)
         if retenue_montant < 0:
@@ -1333,146 +1348,10 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
     return facture
 
 
-# ── XCTR22 — Encaissement récurrent automatique (tokenisation / mandat) ────
-
-def mandat_actif_pour_client(client):
-    """Renvoie le ``MandatPaiement`` ACTIF du client, ou None.
-
-    Lecture pure ; jamais d'effet de bord. Sert de garde d'entrée pour
-    ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
-    par défaut) fait strictement l'encaissement manuel actuel."""
-    from apps.ventes.models import MandatPaiement
-    if client is None:
-        return None
-    # ASEC28 — borné à la SOCIÉTÉ du client : un mandat d'une autre société
-    # ne peut jamais servir au prélèvement (signature inchangée).
-    return (
-        MandatPaiement.objects
-        .filter(client=client, company_id=client.company_id,
-                statut=MandatPaiement.Statut.ACTIF)
-        .exclude(token='')
-        .order_by('-created_at')
-        .first()
-    )
-
-
-DUNNING_RETRY_DAYS = (1, 3, 7)
-
-
-def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
-    """XCTR22 — débite le mandat actif du client de ``facture`` pour la
-    période donnée, via `payments.providers`.
-
-    Appelé APRÈS la création d'une facture de cycle récurrent
-    (`creer_facture_contrat`/`facturer_ligne_echeance` — contrats/sav restent
-    les points d'entrée existants ; ceci est un branchement ADDITIF appelé
-    depuis leurs services). Sans mandat actif → no-op silencieux (retourne
-    None, comportement actuel intact). Avec mandat :
-      - succès → crée un `Paiement` rapproché (comme un encaissement manuel)
-        + une `TentativeDebitMandat` `reussi` ; jamais deux débits RÉUSSIS
-        pour la même (mandat, periode) — idempotent.
-      - échec → `TentativeDebitMandat` `echec` avec motif + programme la
-        prochaine retentative (`DUNNING_RETRY_DAYS`, défaut J+1/J+3/J+7) et
-        notifie le client (lien de mise à jour de carte — best-effort).
-
-    AUD123 — le montant prélevé vaut ``min(montant_du, total_ttc)`` : la
-    valeur métier de la facture (``total_ttc``, jamais le champ figé
-    ``montant_ttc`` qui est NULL hors tranche), bornée au reste réellement
-    dû. Reste dû nul ou négatif → aucun débit tenté (retourne None).
-
-    Renvoie le `Paiement` créé en cas de succès, sinon None.
-    """
-    from django.db import transaction
-    from django.utils import timezone
-    from datetime import timedelta
-    from apps.ventes.models import TentativeDebitMandat, Paiement
-    from apps.ventes.payments.providers import get_provider
-    from core.money import quantize_mad
-
-    mandat = mandat_actif_pour_client(facture.client)
-    if mandat is None:
-        return None
-
-    # Jamais deux débits RÉUSSIS pour la même période — idempotence.
-    deja_reussi = TentativeDebitMandat.objects.filter(
-        mandat=mandat, periode=periode,
-        statut=TentativeDebitMandat.Statut.REUSSI).exists()
-    if deja_reussi:
-        return None
-
-    # AUD123 — le montant prélevé se lit sur ``total_ttc`` (la valeur
-    # métier), JAMAIS sur ``montant_ttc`` : ce champ est
-    # `null=True, blank=True` et n'est renseigné que pour les factures de
-    # tranche (« Montants figés à la création pour les tranches… NULL =
-    # facture classique », `facturation/models.py`). Un mandat sur une
-    # facture d'abonnement classique à lignes prélevait donc `None`. Et le
-    # montant est désormais BORNÉ au reste dû, comme tout autre chemin
-    # d'encaissement : sans cette borne, une facture déjà partiellement
-    # réglée était prélevée du TTC intégral une seconde fois.
-    montant_a_debiter = quantize_mad(
-        min(facture.montant_du, facture.total_ttc))
-    if montant_a_debiter <= 0:
-        return None
-
-    provider = get_provider(mandat.provider)
-    result = provider.charge(token=mandat.token, montant=montant_a_debiter)
-
-    with transaction.atomic():
-        if result.get('ok'):
-            paiement = Paiement.objects.create(
-                company=facture.company, facture=facture,
-                montant=montant_a_debiter,
-                date_paiement=timezone.localdate(),
-                mode=Paiement.Mode.CARTE,
-                reference=(result.get('provider_ref') or '')[:120],
-                note='Débit automatique (mandat de paiement récurrent).',
-            )
-            TentativeDebitMandat.objects.create(
-                company=facture.company, mandat=mandat, periode=periode,
-                statut=TentativeDebitMandat.Statut.REUSSI,
-                paiement=paiement,
-            )
-            # AUD102 (B9) — DÉFAUT DÉCOUVERT PAR L'ADJUDICATION : ce chemin
-            # créait un Paiement du TTC intégral et ne basculait JAMAIS la
-            # facture, qui restait ÉMISE, passait EN_RETARD et partait en
-            # relance alors qu'elle était encaissée. Il rejoint le service
-            # unique (le montant débité lui-même relève d'AUD123).
-            from core.events import paiement_enregistre
-            paiement_enregistre.send(
-                sender=Paiement, instance=paiement, company=facture.company)
-            marquer_facture_soldee(
-                facture, montant=paiement.montant, source='mandat_recurrent')
-            return paiement
-
-        tentatives_precedentes = TentativeDebitMandat.objects.filter(
-            mandat=mandat, periode=periode,
-            statut=TentativeDebitMandat.Statut.ECHEC).count()
-        idx = min(tentatives_precedentes, len(DUNNING_RETRY_DAYS) - 1)
-        prochaine = (
-            timezone.localdate() + timedelta(days=DUNNING_RETRY_DAYS[idx]))
-        TentativeDebitMandat.objects.create(
-            company=facture.company, mandat=mandat, periode=periode,
-            statut=TentativeDebitMandat.Statut.ECHEC,
-            motif_echec=(result.get('motif_echec') or '')[:255],
-            prochaine_retentative=prochaine,
-        )
-
-    try:
-        from apps.notifications.services import notify
-        client = facture.client
-        if client is not None and getattr(client, 'created_by', None):
-            notify(
-                client.created_by, 'mandat_debit_echec',
-                f'Débit automatique échoué — {facture.reference}',
-                body=(f'Le débit automatique de {facture.montant_ttc} MAD '
-                      f'a échoué pour {client.nom}. Mettez à jour la carte.'),
-                link='/ventes/factures',
-                company=facture.company,
-            )
-    except Exception:  # noqa: BLE001 — best-effort
-        pass
-
-    return None
+# AFAC19 (C-AFAC-015) — la pile XCTR22 (débit automatique sur mandat :
+# ``mandat_actif_pour_client``, ``debiter_mandat_pour_facture``,
+# ``DUNNING_RETRY_DAYS``) est PARQUÉE : aucun appelant MVP. Les modèles
+# restent ; retour éventuel par la branche d'archive.
 
 
 # ── CAD122 ── délai légal de rétractation (démarchage à domicile) ───────────
@@ -1511,3 +1390,173 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
 # module, donc un import croisé ne peut jamais lire un module à moitié
 # construit, quel que soit celui qui est chargé le premier.
 from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E402,F401
+
+
+# ── AFAC17 (C-AFAC-013, D-AFAC-C2 a) — corriger un paiement mal saisi ──────
+class CorrectionPaiementRefusee(Exception):
+    """AFAC17 — refus d'une correction de paiement (``code`` + ``detail`` FR,
+    contrats ``paiement_annuler_saisie.json`` / ``paiement_reaffecter.json``).
+    ``conflit`` : l'état du paiement interdit le geste (409)."""
+
+    def __init__(self, code, detail, conflit=False):
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
+        self.conflit = conflit
+
+
+def _remise_du_paiement(paiement):
+    """La remise d'encaissement qui porte ``paiement``, ou ``None``."""
+    from apps.ventes.models import LigneRemiseEncaissement
+    ligne = (LigneRemiseEncaissement.objects.select_related('remise')
+             .filter(paiement=paiement).first())
+    return ligne.remise if ligne is not None else None
+
+
+def _refus_si_remis(paiement, geste):
+    remise = _remise_du_paiement(paiement)
+    if remise is not None:
+        raise CorrectionPaiementRefusee(
+            'paiement_remis_en_banque',
+            f'Ce paiement est déjà porté par la remise '
+            f'{remise.reference or remise.pk} : retirez-le de la remise '
+            f'avant {geste}.')
+
+
+def _note_facture(facture, user, field, label, body, ancien='', nouveau=''):
+    """Ligne de chatter facture (FactureActivity) d'une correction."""
+    from apps.ventes.models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION, field=field,
+        field_label=label, old_value=str(ancien), new_value=str(nouveau),
+        body=body)
+
+
+def _rattacher_paiement(paiement, cible):
+    """Déplace ``paiement`` sur ``cible`` (sans garde) : le seul geste de
+    déplacement, partagé par ``reaffecter_paiement`` et le transfert
+    d'acompte de l'annulation de facture."""
+    paiement.facture = cible
+    paiement.save(update_fields=['facture'])
+
+
+def reaffecter_paiement(*, paiement, facture_cible, user=None):
+    """AFAC17 — réaffecte un paiement rapproché sur la MAUVAISE facture vers
+    ``facture_cible`` (même société, même client, encaissable — porte AFAC9),
+    sous verrou des deux factures (ordre des pk : jamais d'interblocage).
+    Les deux statuts sont redérivés (``recalculer_statut_paiement``, ATOT8)
+    et le chatter des deux factures dit ancien → nouveau. Lève
+    ``CorrectionPaiementRefusee``. Renvoie ``(paiement, source, cible)``."""
+    from django.db import transaction
+
+    from apps.ventes.models import Facture, Paiement
+
+    with transaction.atomic():
+        p = Paiement.objects.select_for_update().get(pk=paiement.pk)
+        if p.statut in Paiement.STATUTS_NON_COMPTES:
+            raise CorrectionPaiementRefusee(
+                'paiement_non_compte',
+                f'Paiement {p.get_statut_display().lower()} : il ne se '
+                'réaffecte pas.', conflit=True)
+        if p.facture_id is None:
+            raise CorrectionPaiementRefusee(
+                'paiement_sans_facture',
+                "Avance non rattachée : utilisez la ventilation.")
+        if facture_cible is None or facture_cible.pk == p.facture_id:
+            raise CorrectionPaiementRefusee(
+                'cible_invalide',
+                'Choisissez une autre facture que celle du paiement.')
+        _refus_si_remis(p, 'de le réaffecter')
+        ids = sorted([p.facture_id, facture_cible.pk])
+        verrous = {f.pk: f for f in
+                   Facture.objects.select_for_update().filter(pk__in=ids)
+                   .order_by('pk')}
+        source, cible = verrous[p.facture_id], verrous.get(facture_cible.pk)
+        if cible is None or cible.company_id != source.company_id:
+            raise CorrectionPaiementRefusee(
+                'cible_invalide', 'Facture cible inconnue.')
+        if cible.client_id != source.client_id:
+            raise CorrectionPaiementRefusee(
+                'facture_autre_client',
+                "La facture cible appartient à un autre client : un paiement "
+                "ne se réaffecte qu'entre factures du même client.")
+        motif = motif_non_encaissable(cible, p.date_paiement)
+        if motif:
+            raise CorrectionPaiementRefusee('cible_non_encaissable', motif)
+        total = Decimal(str(p.montant)) + Decimal(
+            str(p.escompte_montant or 0))
+        if total - cible.montant_du > Decimal('0.01'):
+            raise CorrectionPaiementRefusee(
+                'depasse_reste_cible',
+                f'Le paiement ({total:.2f} MAD) dépasse le reste à payer de '
+                f'la facture cible ({cible.montant_du:.2f} MAD).')
+        _rattacher_paiement(p, cible)
+        texte = (f'Paiement de {p.montant} MAD du {p.date_paiement} '
+                 f'réaffecté : {source.reference} → {cible.reference}.')
+        _note_facture(source, user, 'paiement_reaffecte',
+                      'Paiement réaffecté', texte, source.reference,
+                      cible.reference)
+        _note_facture(cible, user, 'paiement_reaffecte',
+                      'Paiement réaffecté', texte, source.reference,
+                      cible.reference)
+        recalculer_statut_paiement(source, user=user,
+                                   source='reaffectation_paiement')
+        recalculer_statut_paiement(cible, user=user,
+                                   source='reaffectation_paiement')
+    paiement.refresh_from_db()
+    source.refresh_from_db()
+    cible.refresh_from_db()
+    return paiement, source, cible
+
+
+def annuler_saisie_paiement(*, paiement, motif, user=None):
+    """AFAC17 — annule une saisie de paiement ERRONÉE : statut
+    ``annule_saisie`` daté (``annule_le``), motif obligatoire, auteur tracé.
+    Le paiement sort du payé (``Paiement.STATUTS_NON_COMPTES``), la ou les
+    factures touchées sont redérivées (ATOT8) ; ce n'est PAS un rejet
+    bancaire : aucun ``paiement_rejete`` émis, aucun impayé compté. Jamais
+    une suppression (le journal garde la ligne). Lève
+    ``CorrectionPaiementRefusee``."""
+    from django.db import transaction
+    from django.utils import timezone
+
+    from apps.ventes.models import Paiement
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise CorrectionPaiementRefusee(
+            'motif_requis',
+            'Motif obligatoire pour annuler une saisie de paiement.')
+    with transaction.atomic():
+        p = Paiement.objects.select_for_update().get(pk=paiement.pk)
+        if p.statut in Paiement.STATUTS_NON_COMPTES:
+            raise CorrectionPaiementRefusee(
+                'paiement_non_compte',
+                f'Paiement déjà {p.get_statut_display().lower()}.',
+                conflit=True)
+        _refus_si_remis(p, "d'annuler la saisie")
+        p.statut = Paiement.Statut.ANNULE_SAISIE
+        p.annule_le = timezone.now()
+        p.annule_par = user if getattr(user, 'is_authenticated', False) \
+            else None
+        p.motif_annulation = motif[:255]
+        p.save(update_fields=['statut', 'annule_le', 'annule_par',
+                              'motif_annulation'])
+        touchees = []
+        if p.facture_id:
+            touchees.append(p.facture)
+        touchees.extend(a.facture for a in
+                        p.affectations.select_related('facture')
+                        if a.facture is not None)
+        for facture in touchees:
+            _note_facture(
+                facture, user, 'paiement_annule_saisie',
+                'Saisie de paiement annulée',
+                f'Saisie de paiement annulée : {p.montant} MAD du '
+                f'{p.date_paiement} — motif : {p.motif_annulation}.',
+                Paiement.Statut.ENCAISSE, Paiement.Statut.ANNULE_SAISIE)
+            recalculer_statut_paiement(facture, user=user,
+                                       source='annulation_saisie_paiement')
+    paiement.refresh_from_db()
+    return paiement

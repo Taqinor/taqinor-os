@@ -191,6 +191,9 @@ def pay_page(request, token):
         'statut': statut,
         'paye': link.statut == PaymentLink.Statut.PAYE,
         'expire': not link.is_valid and link.statut != PaymentLink.Statut.PAYE,
+        # AFAC21 — clé du contrat ``paiement_public.json`` : le RIB de la
+        # société émettrice (null si aucun n'est paramétré).
+        'rib': _company_rib(facture.company) or None,
     }))
 
 

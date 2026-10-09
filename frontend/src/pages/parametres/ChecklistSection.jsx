@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import installationsApi from '../../api/installationsApi'
+import { apiErrorMessage } from '../../lib/apiError'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -69,23 +70,23 @@ export default function ChecklistSection() {
         ordre: templates.length,
       })
       setNewTemplate(''); setNewType('__none__'); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Ajout impossible.')) }
   }
   const renameTemplate = async (t, nom) => {
     if (!nom.trim() || nom === t.nom) return
     try { await installationsApi.saveChecklistTemplate(t.id, { nom }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const setTemplateType = async (t, type) => {
     try {
       await installationsApi.saveChecklistTemplate(t.id, {
         type_installation: type === '__none__' ? null : type })
       load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Type impossible à changer.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Type impossible à changer.')) }
   }
   const toggleTemplateActif = async (t) => {
     try { await installationsApi.saveChecklistTemplate(t.id, { actif: !t.actif }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const moveTemplate = async (idx, dir) => {
     const j = idx + dir
@@ -97,7 +98,7 @@ export default function ChecklistSection() {
         installationsApi.saveChecklistTemplate(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const delTemplate = (t) => setPendingDeleteTemplate(t)
 
@@ -109,7 +110,7 @@ export default function ChecklistSection() {
       setPendingDeleteTemplate(null)
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Suppression impossible (modèle protégé ?).')
+      toast.error(apiErrorMessage(e, 'Suppression impossible (modèle protégé ?).'))
     } finally {
       setDeletingTemplate(false)
     }
@@ -125,20 +126,20 @@ export default function ChecklistSection() {
         libelle, ordre: (t.etapes ?? []).length,
       })
       setNewEtape(p => ({ ...p, [t.id]: '' })); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Ajout impossible.')) }
   }
   const renameEtape = async (et, libelle) => {
     if (!libelle.trim() || libelle === et.libelle) return
     try { await installationsApi.saveChecklistEtape(et.id, { libelle }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleEtapeActif = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { actif: !et.actif }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleCaptureSerie = async (et) => {
     try { await installationsApi.saveChecklistEtape(et.id, { capture_serie: !et.capture_serie }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const moveEtape = async (t, idx, dir) => {
     const etapes = t.etapes ?? []
@@ -151,12 +152,12 @@ export default function ChecklistSection() {
         installationsApi.saveChecklistEtape(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const delEtape = async (et) => {
     if (!(await confirmDelete({ title: `Supprimer l'étape « ${et.libelle} » ?`, description: 'Cette action est définitive.' }))) return
     try { await installationsApi.deleteChecklistEtape(et.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
+    catch (e) { toast.error(apiErrorMessage(e, 'Suppression impossible (étape protégée ?).')) }
   }
 
   if (loading) return (

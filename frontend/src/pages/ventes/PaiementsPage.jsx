@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Ban, Upload, Wallet } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Skeleton, EmptyState, Input, Button, Badge, Label,
@@ -27,7 +28,17 @@ const STATUTS_RELEVE = {
   deja_regle: { label: 'Déjà réglée', tone: 'info' },
   surpaiement: { label: 'Sur-paiement', tone: 'warning' },
   montant_invalide: { label: 'Montant invalide', tone: 'danger' },
+  // AFAC7 — les 4 statuts de revue/idempotence (contrat releve_import_dry_run.json).
+  ambigu: { label: 'Plusieurs factures possibles', tone: 'warning' },
+  client_non_identifie: { label: 'Donneur d’ordre inconnu', tone: 'warning' },
+  doublon_import: { label: 'Déjà importée', tone: 'info' },
+  date_invalide: { label: 'Date illisible', tone: 'danger' },
+  // Statuts propres au bilan du commit (contrat releve_import_commit.json).
+  non_selectionnee: { label: 'Non sélectionnée', tone: 'neutral' },
+  created: { label: 'Créée', tone: 'success' },
+  erreur: { label: 'Erreur', tone: 'danger' },
 }
+const LIGNES_PAR_PAGE = 50
 
 // Modes de paiement. Le modele vit dans `facturation` (pas `ventes`) ;
 // `all` est la sentinelle du FILTRE, jamais un mode enregistre.
@@ -72,8 +83,8 @@ export default function PaiementsPage() {
     }, { replace: true })
   }
 
-  const chargerPaiements = () => ventesApi.getPaiements({ ordering: '-date_paiement' })
-    .then(r => setRows(r.data.results ?? r.data))
+  const chargerPaiements = () => fetchAllPages((page) => ventesApi.getPaiements({ ordering: '-date_paiement', page, page_size: 200 }).then((r) => r.data))
+    .then((res) => setRows(Array.isArray(res) ? res : (res?.results ?? [])))
     .catch(() => setError('Impossible de charger les encaissements. Réessayez.'))
     .finally(() => setLoading(false))
 
@@ -97,10 +108,16 @@ export default function PaiementsPage() {
   const [apercu, setApercu] = useState(null)
   const [bilan, setBilan] = useState(null)
   const [importBusy, setImportBusy] = useState(false)
+  // AFAC7 — sélection des lignes (numéros cochés), candidat choisi par ligne
+  // ambiguë ({ligne: facture_reference}) et page courante de l'aperçu.
+  const [cochees, setCochees] = useState(() => new Set())
+  const [choix, setChoix] = useState({})
+  const [pageApercu, setPageApercu] = useState(1)
   const [importErreur, setImportErreur] = useState('')
 
   const fermerImport = () => {
     setFichier(null); setApercu(null); setBilan(null); setImportErreur('')
+    setCochees(new Set()); setChoix({}); setPageApercu(1)
     navigate('/ventes/paiements', { replace: true })
   }
 
@@ -117,6 +134,11 @@ export default function PaiementsPage() {
     try {
       const r = await ventesApi.importReleveDryRun(fichier)
       setApercu(r.data)
+      // Seules les lignes que le serveur dit importables sont cochées d'office :
+      // une ligne `doublon_import` (ou en revue) reste décochée.
+      setCochees(new Set((r.data?.preview || [])
+        .filter((l) => l.statut === 'a_importer').map((l) => l.ligne)))
+      setChoix({}); setPageApercu(1)
     } catch (err) {
       // Le serveur nomme la cause (fichier trop gros, format illisible,
       // colonnes absentes) : on l'affiche TEL QUEL.
@@ -130,7 +152,14 @@ export default function PaiementsPage() {
     if (!apercu?.token) return
     setImportBusy(true); setImportErreur('')
     try {
-      const r = await ventesApi.importReleveCommit(apercu.token)
+      // Les lignes cochées partent par numéro ; une ligne ambiguë résolue part
+      // en `{ligne, facture_reference}` (contrat releve_import_commit.json).
+      const lignes = (apercu.preview || [])
+        .filter((l) => cochees.has(l.ligne))
+        .map((l) => (choix[l.ligne]
+          ? { ligne: l.ligne, facture_reference: choix[l.ligne] }
+          : l.ligne))
+      const r = await ventesApi.importReleveCommit(apercu.token, lignes)
       setBilan(r.data)
       // Les paiements créés doivent être VISIBLES sans recharger la page.
       setLoading(true)
@@ -138,6 +167,20 @@ export default function PaiementsPage() {
     } catch (err) {
       setImportErreur(err?.response?.data?.detail || "L'import a échoué.")
     } finally { setImportBusy(false) }
+  }
+
+  const basculerLigne = (ligne) => setCochees((prev) => {
+    const n = new Set(prev)
+    if (n.has(ligne)) n.delete(ligne); else n.add(ligne)
+    return n
+  })
+  const choisirCandidat = (ligne, ref) => {
+    setChoix((prev) => ({ ...prev, [ligne]: ref }))
+    setCochees((prev) => {
+      const n = new Set(prev)
+      if (ref) n.add(ligne); else n.delete(ligne)
+      return n
+    })
   }
 
   const filtered = useMemo(() => {
@@ -250,6 +293,11 @@ export default function PaiementsPage() {
             {/* ── Étape 1 : l'aperçu (aucune écriture) ─────────────────── */}
             {apercu && (
               <div className="grid gap-3">
+                {apercu.deja_importe && (
+                  <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                    Ce fichier a déjà été importé : le serveur refusera un nouvel import.
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3 text-sm">
                   <span><strong>{apercu.total_rows}</strong> ligne(s) lue(s)</span>
                   <span><strong>{apercu.matched}</strong> rapprochée(s)</span>
@@ -278,6 +326,17 @@ export default function PaiementsPage() {
                 </div>
                 {(apercu.preview || []).length > 0 && (
                   <div className="overflow-x-auto">
+                    {apercu.preview.length > LIGNES_PAR_PAGE && (
+                      <div className="mt-2 flex items-center gap-2 text-sm">
+                        <Button type="button" size="sm" variant="outline"
+                                disabled={pageApercu <= 1}
+                                onClick={() => setPageApercu((p) => p - 1)}>Précédent</Button>
+                        <span>Page {pageApercu} / {Math.ceil(apercu.preview.length / LIGNES_PAR_PAGE)}</span>
+                        <Button type="button" size="sm" variant="outline"
+                                disabled={pageApercu >= Math.ceil(apercu.preview.length / LIGNES_PAR_PAGE)}
+                                onClick={() => setPageApercu((p) => p + 1)}>Suivant</Button>
+                      </div>
+                    )}
                     <table className="w-full border-collapse text-sm"
                            aria-label="Aperçu du relevé bancaire">
                       <thead>
@@ -287,11 +346,15 @@ export default function PaiementsPage() {
                           <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Référence</th>
                           <th className="px-2 py-1 text-right text-xs uppercase text-muted-foreground">Montant</th>
                           <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Facture</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Importer</th>
+                          <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Imputer à</th>
                           <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Statut</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {apercu.preview.map((l) => (
+                        {apercu.preview
+                          .slice((pageApercu - 1) * LIGNES_PAR_PAGE, pageApercu * LIGNES_PAR_PAGE)
+                          .map((l) => (
                           <tr key={l.ligne} className="border-b border-border/60 last:border-b-0">
                             <td className="px-2 py-1 tabular-nums">{l.ligne}</td>
                             <td className="px-2 py-1">{l.date || '—'}</td>
@@ -300,6 +363,24 @@ export default function PaiementsPage() {
                               {l.montant != null ? dh(l.montant) : '—'}
                             </td>
                             <td className="px-2 py-1">{l.facture_reference || '—'}</td>
+                            <td className="px-2 py-1">
+                              <input type="checkbox"
+                                     aria-label={`Importer la ligne ${l.ligne}`}
+                                     checked={cochees.has(l.ligne)}
+                                     disabled={l.statut === 'ambigu' ? !choix[l.ligne] : l.statut !== 'a_importer'}
+                                     onChange={() => basculerLigne(l.ligne)} />
+                            </td>
+                            <td className="px-2 py-1">
+                              {l.statut === 'ambigu' && (l.candidats || []).length > 0 ? (
+                                <select aria-label={`Facture de la ligne ${l.ligne}`}
+                                        className="rounded border border-border bg-background px-1 py-0.5 text-sm"
+                                        value={choix[l.ligne] || ''}
+                                        onChange={(e) => choisirCandidat(l.ligne, e.target.value)}>
+                                  <option value="">Choisir la facture…</option>
+                                  {l.candidats.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              ) : null}
+                            </td>
                             <td className="px-2 py-1">
                               <Badge tone={STATUTS_RELEVE[l.statut]?.tone ?? 'neutral'}>
                                 {STATUTS_RELEVE[l.statut]?.label ?? l.statut}
@@ -325,6 +406,16 @@ export default function PaiementsPage() {
                 <p className="m-0 mt-1 text-muted-foreground">
                   La liste ci-dessous a été rechargée.
                 </p>
+                {(bilan.results || []).filter((x) => x.statut !== 'created').length > 0 && (
+                  <ul aria-label="Lignes ignorées" className="mt-2 list-disc pl-5">
+                    {bilan.results.filter((x) => x.statut !== 'created').map((x) => (
+                      <li key={x.ligne}>
+                        Ligne {x.ligne} : {STATUTS_RELEVE[x.statut]?.label ?? x.statut}
+                        {x.detail ? ` — ${x.detail}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </div>
@@ -343,7 +434,7 @@ export default function PaiementsPage() {
             {!bilan && (
               // L'import n'est possible qu'APRÈS l'aperçu : jamais d'écriture
               // à l'aveugle sur un fichier qu'on n'a pas regardé.
-              <Button type="button" disabled={!apercu} loading={importBusy && !!apercu}
+              <Button type="button" disabled={!apercu || cochees.size === 0} loading={importBusy && !!apercu}
                       onClick={lancerImport}>
                 Importer
               </Button>

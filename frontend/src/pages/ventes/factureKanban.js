@@ -8,6 +8,7 @@
 // en retard tombe dans « En retard », jamais dans « Émise » ET « En retard »
 // à la fois (une seule colonne par facture, comme un seul onglet).
 import { toNumber } from '../../lib/format.js'
+import { isPartiallyPaid, isOverdue } from './factureList/factureHelpers.js'
 
 export const KANBAN_COLUMNS = [
   { key: 'brouillon', label: 'Brouillon' },
@@ -17,22 +18,13 @@ export const KANBAN_COLUMNS = [
   { key: 'payee', label: 'Payée' },
 ]
 
-// Facture à solde partiel : un acompte encaissé mais reste dû > 0 (miroir de
-// `isPartiallyPaid` dans FactureList.jsx).
-export function isPartiallyPaid(f) {
-  return toNumber(f?.montant_paye) > 0 && toNumber(f?.montant_du) > 0 && f?.statut !== 'annulee'
-}
-
-// Miroir de `isOverdue` dans FactureList.jsx — `today` est injecté (pas
-// `new Date()` local) pour rester déterministe en test.
-export function isOverdue(f, today) {
-  return !!(f?.is_overdue
-    || (f?.statut === 'emise' && f?.date_echeance && f.date_echeance < today))
-}
+// AFAC72 — UNE seule définition des prédicats : ceux de la liste (factureHelpers),
+// jamais une copie locale qui diverge des onglets (`today` reste injectable).
+export { isPartiallyPaid, isOverdue }
 
 // Colonne kanban d'UNE facture — même priorité que les onglets : brouillon,
-// puis en_retard (émise + en retard), puis émise, puis partielle, puis
-// payée. `annulee` n'a délibérément AUCUNE colonne (comme l'onglet
+// puis en_retard (émise + en retard, ou statut en_retard), puis partielle,
+// puis émise, puis payée. `annulee` n'a délibérément AUCUNE colonne (comme l'onglet
 // « Annulées » existant reste une vue à part, jamais affichée dans le
 // pipeline visuel qui ne montre que le flux actif) — une facture annulée est
 // omise du kanban plutôt que forcée dans une colonne trompeuse.
@@ -41,8 +33,10 @@ export function columnForFacture(f, today) {
   if (f.statut === 'annulee') return null
   if (f.statut === 'brouillon') return 'brouillon'
   if (isOverdue(f, today)) return 'en_retard'
-  if (f.statut === 'emise') return 'emise'
+  // AFAC72 — « partielle » AVANT « émise » : une émise à solde partiel est
+  // « Partiellement payée » (onglet homonyme), pas « Émise ».
   if (isPartiallyPaid(f)) return 'partielle'
+  if (f.statut === 'emise') return 'emise'
   if (f.statut === 'payee') return 'payee'
   return null
 }

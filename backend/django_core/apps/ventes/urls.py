@@ -27,7 +27,6 @@ from .views import (
     TestPerformanceReceptionViewSet,  # FG278
     AttestationREViewSet,  # FG287
     RemiseEncaissementViewSet,  # XFSM19
-    MandatPaiementViewSet,  # XCTR22
     ListePrixViewSet,  # XSAL1-2
     prix_applicable_view,  # XSAL3
     ParametresGammesView,  # PVMRQ
@@ -134,10 +133,10 @@ router.register(r'attestations-re', AttestationREViewSet,
 # XFSM19 — rapprochement des encaissements terrain par technicien.
 router.register(r'remises-encaissement', RemiseEncaissementViewSet,
                 basename='remise-encaissement')
-# XCTR22 — mandats de paiement récurrent (tokenisation carte).
 router.register(r'listes-prix', ListePrixViewSet, basename='liste-prix')  # XSAL1-2
-router.register(r'mandats-paiement', MandatPaiementViewSet,
-                basename='mandat-paiement')
+# AFAC19 (C-AFAC-015, D-AFAC-82) — la route `mandats-paiement` (XCTR22) est
+# PARQUÉE : aucun appelant MVP. Modèles MandatPaiement / TentativeDebitMandat
+# et leurs lignes conservés ; retour éventuel par la branche d'archive.
 # WIR281/XSAL6 — plans de commission (CRUD + action `resoudre`). Endpoint
 # ENTIER gate `prix_achat_voir` : GARDE MARGE (cf. views/plan_commission.py).
 router.register(r'plans-commission', PlanCommissionViewSet,

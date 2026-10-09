@@ -74,7 +74,6 @@ SURFACE_PUBLIQUE = (
     "CompositionLignes",
     "CreditHoldError",
     "DRAPEAU_MOTEUR_CALEPINAGE",
-    "DUNNING_RETRY_DAYS",
     "EmissionRefusee",
     "GAMME_ENVOIS",
     "GAMME_ENVOI_DEFAUT",
@@ -177,7 +176,6 @@ SURFACE_PUBLIQUE = (
     # la règle est SERVIE par `services`, pour que le PDF et le message J9
     # citent la même date (CAD59).
     "date_validite_credit",
-    "debiter_mandat_pour_facture",
     "diff_configurations_devis",
     "dupliquer_devis",
     "emettre_facture",
@@ -216,7 +214,6 @@ SURFACE_PUBLIQUE = (
     "lire_image_toiture",
     "log_supplier_email",
     "logger",
-    "mandat_actif_pour_client",
     "mark_devis_sent",
     "marque_preferee",
     "marquer_facture_soldee",

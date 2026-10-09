@@ -47,6 +47,9 @@ const TELEDECLARATION_TONE = {
 function nextBestAction(f) {
   if (f.statut === 'brouillon') return 'emettre'
   if (f.statut === 'annulee' || f.statut === 'payee') return null
+  // AFAC10 — « Encaisser » n'est jamais recommandé sur une facture que le serveur
+  // déclare non encaissable (champ `encaissable`, porte unique AFAC9).
+  if (f.encaissable === false) return null
   if (isOverdue(f)) return 'relancer'
   if (toNumber(f.montant_paye) > 0 && toNumber(f.montant_du) > 0) return 'encaisser'
   return null
@@ -274,7 +277,7 @@ export default function FactureRow({ f, ctx }) {
           {nba === 'emettre' && (
             <Button size="sm" variant="default" loading={busy}
                     onClick={() => doAction(emettreFacture, f.id)}
-                    title="Action recommandée">
+                    title={f.motif_non_encaissable || 'Action recommandée'}>
               <Zap className="size-3.5" aria-hidden="true" /> Émettre
             </Button>
           )}
@@ -291,7 +294,8 @@ export default function FactureRow({ f, ctx }) {
           )}
           {f.statut === 'brouillon' && nba !== 'emettre' && (
             <Button size="sm" variant="outline"
-                    loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
+                    loading={busy} onClick={() => doAction(emettreFacture, f.id)}
+                    title={f.motif_non_encaissable || undefined}>
               Émettre
             </Button>
           )}
@@ -304,14 +308,14 @@ export default function FactureRow({ f, ctx }) {
               l'unique action rapide — avec, DANS son dialogue, l'option
               « paiement simple (sans détail) » pour qui veut vraiment aller
               vite sans rien détruire. */}
-          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && nba !== 'encaisser' && (
+          {f.encaissable !== false && nba !== 'encaisser' && (
             <Button size="sm" variant="default"
                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
               <Zap className="size-3.5" aria-hidden="true" /> Encaisser
             </Button>
           )}
           {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
-          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+          {f.encaissable !== false && (
             <Button size="sm" variant="outline" loading={isPayLinkBusy}
                     onClick={() => handleLienPaiement(f)} title="Créer/copier le lien de paiement en ligne">
               <CreditCard /> Payer en ligne
@@ -396,7 +400,7 @@ export default function FactureRow({ f, ctx }) {
                 {/* PACT121 — demande de paiement carte au client (CMI/Payzone).
                     Libellé distinct du bouton « Payer en ligne » (lien FG53)
                     pour qu'aucune action n'ait deux fois le même nom. */}
-                {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+                {f.encaissable !== false && (
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPaiementEnLigne(f) }}>
                     <CreditCard /> Demander un paiement carte
                   </DropdownMenuItem>

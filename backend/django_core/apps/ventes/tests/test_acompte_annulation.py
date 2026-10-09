@@ -281,14 +281,20 @@ class FG50AcompteAnnulation(TestCase):
         self.assertEqual(Paiement.objects.filter(facture=source).count(), 0)
 
     def test_plain_cancel_with_deposit_leaves_paiements_untouched(self):
-        # Annulation SANS directive : statut bascule, paiements inchangés
-        # (comportement strictement historique — l'acompte n'est pas traité).
+        # AFAC12 (C-AFAC-002) — RÉÉCRIT explicitement : ce test FIGEAIT le
+        # défaut (annulation sans directive = 200, acompte coincé sur une
+        # facture morte). Désormais : 400 ``directive_acompte_requise``,
+        # facture et paiement inchangés.
         source = self._facture()
         self._pay(source, '2000')
+        statut_avant = Facture.objects.get(pk=source.pk).statut
         r = self._annuler(source)
-        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['code'], 'directive_acompte_requise')
+        self.assertEqual(r.data['argent_rattache']['paiements'], '2000.00')
         source.refresh_from_db()
-        self.assertEqual(source.statut, Facture.Statut.ANNULEE)
+        self.assertEqual(source.statut, statut_avant)
+        self.assertNotEqual(source.statut, Facture.Statut.ANNULEE)
         self.assertEqual(
             Paiement.objects.filter(facture=source).count(), 1)
 
