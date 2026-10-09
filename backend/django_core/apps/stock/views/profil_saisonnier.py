@@ -6,12 +6,16 @@ de réappro FG54/FG65/FG326) mais aucun ViewSet/serializer/URL n'exposait la
 CRÉATION/lecture d'un profil à un Acheteur — capacité inaccessible hors
 tests. Ce module ferme ce trou, sans dupliquer la validation de chevauchement
 calendaire (déjà posée par ``services.creer_profil_saisonnier``)."""
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.serializers import CompanyScopedRelationsMixin
+from ..openapi_helpers import (  # noqa: F401
+    BOOL, INT, P,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ProfilSaisonnier
@@ -34,6 +38,7 @@ class ProfilSaisonnierSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['date_creation', 'date_modification']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('produit', INT), P('categorie', INT), P('actif', BOOL)]))
 class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
     """XSTK17 — profils saisonniers de seuils min/max/cible (produit XOR
     catégorie). Lecture tout rôle (un Acheteur doit voir la saison en

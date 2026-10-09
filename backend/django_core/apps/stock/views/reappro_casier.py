@@ -1,5 +1,5 @@
 """NTWMS40 — casiers picking dus, seuils, et tâches de réappro interne."""
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -8,6 +8,9 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
+from ..openapi_helpers import (  # noqa: F401
+    INT, P, STR,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import SeuilReapproCasier, TacheReapproInterne
@@ -45,6 +48,7 @@ class TacheReapproInterneSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['statut', 'note', 'created_at']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('bin', INT)]))
 class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
     """Seuils de réappro par casier de picking. Poser un seuil, c'est
     DÉCLARER le casier comme casier de prélèvement."""
@@ -69,6 +73,7 @@ class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
         return qs
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
 class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
     """Ordres de réappro interne (magasin → casier picking).
 

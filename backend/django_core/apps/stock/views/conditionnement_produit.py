@@ -1,4 +1,8 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from core.viewsets import CompanyScopedModelViewSet
+from ..openapi_helpers import (  # noqa: F401
+    INT, P,
+)
 from ..models import ConditionnementProduit
 from ..serializers import ConditionnementProduitSerializer
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
@@ -10,6 +14,7 @@ from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 READ_ACTIONS = ['list', 'retrieve']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]))
 class ConditionnementProduitViewSet(CompanyScopedModelViewSet):
     """XSTK15 — conditionnements d'achat (touret/carton…) d'un produit,
     convertis vers `Produit.unite_stock` à la réception."""
