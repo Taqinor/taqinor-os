@@ -492,7 +492,7 @@ class Facture(TotauxDocumentMixin, models.Model):
         l'affectation — une requête, jamais un N+1 par ligne."""
         from decimal import Decimal
         actifs = [p for p in self.paiements.all()
-                  if p.statut != Paiement.Statut.REJETE]
+                  if p.statut not in Paiement.STATUTS_NON_COMPTES]
         direct = sum((p.montant for p in actifs), Decimal('0'))
         escomptes = sum(
             (p.escompte_montant or Decimal('0') for p in actifs),
@@ -511,7 +511,7 @@ class Facture(TotauxDocumentMixin, models.Model):
             affectations = self.affectations_paiement.select_related('paiement')
         via_affectation = sum(
             (a.montant for a in affectations
-             if a.paiement.statut != Paiement.Statut.REJETE),
+             if a.paiement.statut not in Paiement.STATUTS_NON_COMPTES),
             Decimal('0'))
         return direct + escomptes + via_affectation
 
@@ -548,7 +548,9 @@ class Facture(TotauxDocumentMixin, models.Model):
         perte. AFAC30 : la RAS d'un paiement REJETÉ ne compte plus."""
         from decimal import Decimal
         return sum((r.montant for r in self.retenues_subies.all() if not (
-            r.paiement_id and r.paiement.statut == 'rejete')), Decimal('0'))
+            r.paiement_id
+            and r.paiement.statut in Paiement.STATUTS_NON_COMPTES)),
+            Decimal('0'))
 
     @property
     def montant_paye_avec_retenues(self):
@@ -820,6 +822,16 @@ class Paiement(models.Model):
     class Statut(models.TextChoices):
         ENCAISSE = 'encaisse', 'Encaissé'
         REJETE = 'rejete', 'Rejeté'
+        # AFAC17 (C-AFAC-013, D-AFAC-C2 a) — saisie ERRONÉE annulée (mauvais
+        # montant, mauvais rapprochement) : un fait INTERNE, daté, motivé,
+        # signé — jamais un rejet bancaire (aucun ``paiement_rejete``, pas un
+        # impayé), jamais une suppression.
+        ANNULE_SAISIE = 'annule_saisie', 'Annulé (erreur de saisie)'
+
+    #: AFAC17 — LA constante des statuts qui ne portent plus d'argent : lue
+    #: par chaque lecteur qui excluait ``REJETE`` (payé, dû, ventilation,
+    #: relances, PDF, remises).
+    STATUTS_NON_COMPTES = (Statut.REJETE, Statut.ANNULE_SAISIE)
 
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.ENCAISSE)
@@ -829,6 +841,13 @@ class Paiement(models.Model):
         help_text='Frais bancaires optionnels liés au rejet (ex. frais de '
                   'chèque impayé), informatif.')
     date_rejet = models.DateField(null=True, blank=True)
+    # AFAC17 — trace de l'annulation d'une saisie erronée (datée, motivée,
+    # signée) ; vide pour tout autre paiement.
+    annule_le = models.DateTimeField(null=True, blank=True)
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='paiements_annules_saisie')
+    motif_annulation = models.CharField(max_length=255, blank=True, default='')
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -982,7 +1001,7 @@ class Paiement(models.Model):
     def montant_disponible(self):
         """Solde de l'avance encore disponible pour ventilation."""
         from decimal import Decimal
-        if (self.facture_id and not self.affectations.exists()) or self.statut == self.Statut.REJETE:  # AFAC9 : avance rejetée
+        if (self.facture_id and not self.affectations.exists()) or self.statut in self.STATUTS_NON_COMPTES:  # AFAC9/AFAC17 : avance rejetée ou annulée
             return Decimal('0')
         montant = self.montant if isinstance(self.montant, Decimal) \
             else Decimal(str(self.montant))

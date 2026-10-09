@@ -51,10 +51,10 @@ with no rate column at all — mono-MAD in practice.
 | crm | ForecastSnapshot | `apps/crm/models.py:4057` | montant_total |
 | crm | DealEnregistre | `apps/crm/models.py:4572` | montant_commission_du, montant_commission_estime |
 | dataimport | ImportJob | `apps/dataimport/models.py:76` | total_lignes |
-| facturation | LigneFacture | `apps/facturation/models.py:721` | prix_unitaire, remise, taux_tva |
-| facturation | Paiement | `apps/facturation/models.py:787` | escompte_montant, montant |
-| facturation | Avoir | `apps/facturation/models.py:993` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| facturation | LigneAvoir | `apps/facturation/models.py:1098` | prix_unitaire, remise, taux_tva |
+| facturation | LigneFacture | `apps/facturation/models.py:723` | prix_unitaire, remise, taux_tva |
+| facturation | Paiement | `apps/facturation/models.py:789` | escompte_montant, montant |
+| facturation | Avoir | `apps/facturation/models.py:1012` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| facturation | LigneAvoir | `apps/facturation/models.py:1117` | prix_unitaire, remise, taux_tva |
 | ged | ModeleDocument | `apps/ged/models.py:2328` | corps_html |
 | ged | LotEnvoi | `apps/ged/models.py:3240` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |

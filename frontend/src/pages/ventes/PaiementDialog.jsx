@@ -23,6 +23,8 @@ import { formatMAD, formatDateTime } from '../../lib/format'
 // VX155 — jalon « facture payée » : un cran au-dessus du toast succès plat.
 import { toastMilestone } from '../../lib/toast'
 import { MODES_PAIEMENT } from '../../features/ventes/modesPaiement'
+// AFAC61 — l'erreur du serveur s'affiche SOUS le champ concerné, jamais un texte fixe.
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
@@ -64,9 +66,33 @@ function ecrireDernierMode(v) {
   }
 }
 
+// AFAC65 — enveloppe : la facture est RELUE (GET /ventes/factures/<id>/) à l'ouverture
+// et après chaque paiement ; l'en-tête Payé/Dû, la liste des paiements et le montant
+// prérempli viennent de la facture fraîche, quelle que soit la forme passée par
+// l'appelant (la ligne Relances n'a ni `montant_paye` ni `paiements`).
 export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
+  const [fraiche, setFraiche] = useState(null)
+  const relireFacture = async (id) => {
+    try {
+      const res = await Promise.resolve().then(() => ventesApi.getFacture(id))
+      if (res?.data) setFraiche(res.data)
+      return res?.data ?? null
+    } catch {
+      return null // l'instantané de l'appelant reste affiché
+    }
+  }
+  const factureLue = facture && fraiche?.id === facture.id ? { ...facture, ...fraiche } : facture
+  return (
+    <CorpsPaiementDialog facture={factureLue} relireFacture={relireFacture}
+                         onOpenChange={onOpenChange} onSaved={onSaved} />
+  )
+}
+
+function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) {
   const [paySaving, setPaySaving] = useState(false)
-  const [payMontant, setPayMontant] = useState('')
+  const [payMontant, setPayMontantBrut] = useState('')
+  const { errors: erreursSrv, setFromResponse, clearField, clearAll } = useServerFieldErrors()
+  const setPayMontant = (v) => { setPayMontantBrut(v); clearField('montant') }
   const [payDate, setPayDate] = useState(todayIso)
   const [payMode, setPayMode] = useState(lireDernierMode)  // VX93 — dernier mode utilisé
   // VX249(b) — payMode : 1 des 4 champs VX93 « suggérés ». « Suggéré » tant que
@@ -96,6 +122,12 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
     if (!facture) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)init form on facture change
     setPayMontant(facture.montant_du ?? '')
+    relireFacture(facture.id).then((fr) => {
+      // Prérempli = dû de la facture fraîche, sauf si l'utilisateur a déjà tapé.
+      if (fr?.montant_du != null) {
+        setPayMontantBrut((cur) => (String(cur) === String(facture.montant_du ?? '') ? fr.montant_du : cur))
+      }
+    })
     setPayDate(todayIso())
     setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé
     setPayModeTouched(false)  // VX249(b) — nouveau paiement → « suggéré » redevient vrai
@@ -129,6 +161,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
     e.preventDefault()
     if (!facture) return
     setPaySaving(true)
+    clearAll()
     try {
       const res = await ventesApi.enregistrerPaiement(facture.id, {
         montant: parseFloat(payMontant),
@@ -149,6 +182,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
         toast.success('Paiement enregistré.')
       }
       onSaved?.()
+      relireFacture(facture.id)
       // VX92 — « Créer un autre » : on vide les champs (sauf la facture ciblée,
       // inchangée) et on refocalise le montant au lieu de fermer.
       if (payCreerUnAutre) {
@@ -163,7 +197,8 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
         onOpenChange?.(false)
       }
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Enregistrement du paiement impossible.')
+      // La saisie est conservée ; le message serveur nomme le champ fautif.
+      setFromResponse(err?.response?.data, { fallback: 'Enregistrement du paiement impossible.' })
     } finally {
       setPaySaving(false)
     }
@@ -187,12 +222,15 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
           </DialogDescription>
         </DialogHeader>
         <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
-          <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth>
+          {erreursSrv.submit && (
+            <p role="alert" className="text-sm text-destructive">{erreursSrv.submit}</p>
+          )}
+          <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth error={erreursSrv.montant}>
             <Input id="pay-montant" ref={payMontantRef} type="number" min="0" step="any" required
                    autoFocus
                    value={payMontant} onChange={e => setPayMontant(e.target.value)} />
           </FormField>
-          <FormField label="Date de paiement" required htmlFor="pay-date">
+          <FormField label="Date de paiement" required htmlFor="pay-date" error={erreursSrv.date_paiement}>
             <Input id="pay-date" type="date" required
                    value={payDate} onChange={e => setPayDate(e.target.value)} />
           </FormField>
@@ -233,7 +271,7 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
               </Button>
             </div>
           )}
-          <FormField label="Référence (optionnel)" htmlFor="pay-ref" fullWidth>
+          <FormField label="Référence (optionnel)" htmlFor="pay-ref" fullWidth error={erreursSrv.reference}>
             <Input id="pay-ref" type="text"
                    value={payReference} onChange={e => setPayReference(e.target.value)} />
           </FormField>

@@ -93,3 +93,32 @@ test('kanbanSummary : compte + total par colonne, cohérent avec groupByColumn',
   assert.equal(payee.count, 1)
   assert.equal(payee.total, 500)
 })
+
+// ── AFAC72 — mêmes prédicats que les onglets de la liste ────────────────────
+test('partielle avant émise : une émise à solde partiel va en « Partiellement payée »', () => {
+  const f = { statut: 'emise', montant_paye: 100, montant_du: 200, date_echeance: '2099-01-01' }
+  assert.equal(columnForFacture(f, TODAY), 'partielle')
+})
+
+test('en_retard dû 0 visible : une facture au statut en_retard n\'est plus omise', () => {
+  const f = { statut: 'en_retard', montant_paye: 0, montant_du: 0 }
+  assert.equal(columnForFacture(f, TODAY), 'en_retard')
+})
+
+test('parité colonnes/onglets : chaque colonne compte autant que l\'onglet homonyme', async () => {
+  const { isOverdue: ovl, isPartiallyPaid: part } = await import('./factureList/factureHelpers.js')
+  const corpus = [
+    { id: 1, statut: 'brouillon' },
+    { id: 2, statut: 'emise', date_echeance: '2099-01-01', montant_paye: 0, montant_du: 300 },
+    { id: 3, statut: 'emise', date_echeance: '2099-01-01', montant_paye: 100, montant_du: 200 },
+    { id: 4, statut: 'en_retard', montant_du: 0 },
+    { id: 5, statut: 'emise', date_echeance: '2020-01-01', montant_paye: 0, montant_du: 300 },
+    { id: 6, statut: 'payee', montant_paye: 300, montant_du: 0 },
+    { id: 7, statut: 'annulee' },
+  ]
+  const g = groupByColumn(corpus, TODAY)
+  assert.equal(g.en_retard.length, corpus.filter((f) => ovl(f, TODAY)).length)
+  assert.equal(g.partielle.length, corpus.filter(part).length)
+  assert.equal(g.emise.length, corpus.filter((f) => f.statut === 'emise' && !ovl(f, TODAY) && !part(f)).length)
+  assert.equal(g.payee.length, corpus.filter((f) => f.statut === 'payee').length)
+})
