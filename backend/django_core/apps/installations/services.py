@@ -2299,7 +2299,7 @@ def enregistrer_series_lot(installation, lignes, user=None):
     from django.db import transaction
     from django.utils import timezone
 
-    from apps.sav.services import creer_equipement_import
+    from apps.sav.services import assurer_equipement_chantier
     from apps.stock.selectors import get_produit_scoped
 
     resultats = []
@@ -2323,20 +2323,27 @@ def enregistrer_series_lot(installation, lignes, user=None):
                 resultat['statut'] = 'autre_societe'
                 resultat['message'] = "Produit inconnu de cette société."
                 continue
-            champs = {
-                'numero_serie': serie or None,
-                'date_pose': (installation.date_pose_reelle
-                              or timezone.localdate()),
-            }
-            if chaine:
-                champs['note'] = f"Chaîne : {chaine}"
-            statut, message = creer_equipement_import(
-                installation.company, champs, produit=produit,
-                installation=installation, user=user)
-            resultat['statut'] = statut
-            resultat['message'] = message
-            if statut == 'doublon':
+            # ACHT47 — MÊME écrivain unique du parc que la poussée des
+            # relevés d'intervention : date de pose = date de réception.
+            from . import field_capture
+            statut_parc, equip = assurer_equipement_chantier(
+                company=installation.company, installation=installation,
+                produit=produit, numero_serie=serie or None,
+                quantite_ligne=field_capture._quantites_bom_par_produit(
+                    installation).get(produit.id, 1),
+                date_pose=(installation.date_reception
+                           or installation.date_pose_reelle
+                           or timezone.localdate()),
+                created_by=user)
+            if statut_parc == 'doublon':
+                resultat['statut'] = 'doublon'
                 resultat['message'] = "Numéro de série déjà enregistré."
+                continue
+            if chaine and equip is not None:
+                equip.note = f"Chaîne : {chaine}"
+                equip.save(update_fields=['note'])
+            resultat['statut'] = 'cree'
+            resultat['message'] = None
     return resultats
 
 
