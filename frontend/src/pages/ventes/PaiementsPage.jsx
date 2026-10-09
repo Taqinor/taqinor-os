@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Ban, Upload, Wallet } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Skeleton, EmptyState, Input, Button, Badge, Label,
@@ -72,8 +73,8 @@ export default function PaiementsPage() {
     }, { replace: true })
   }
 
-  const chargerPaiements = () => ventesApi.getPaiements({ ordering: '-date_paiement' })
-    .then(r => setRows(r.data.results ?? r.data))
+  const chargerPaiements = () => fetchAllPages((page) => ventesApi.getPaiements({ ordering: '-date_paiement', page, page_size: 200 }).then((r) => r.data))
+    .then((res) => setRows(Array.isArray(res) ? res : (res?.results ?? [])))
     .catch(() => setError('Impossible de charger les encaissements. Réessayez.'))
     .finally(() => setLoading(false))
 

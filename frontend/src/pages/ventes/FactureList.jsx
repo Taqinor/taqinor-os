@@ -15,6 +15,7 @@ import {
   genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import parametresApi from '../../api/parametresApi'
 import api from '../../api/axios'
 import importApi from '../../api/importApi'
@@ -299,8 +300,9 @@ export default function FactureList() {
     setConsoliderSel([])
     setConsoliderOpen(true)
     try {
-      const res = await ventesApi.getDevis({ statut: 'accepte' })
-      setConsoliderDevis(res.data.results ?? res.data ?? [])
+      // ADEV70 — TOUTES les pages (jamais les 50 premiers devis acceptés).
+      const res = await fetchAllPages((page) => ventesApi.getDevis({ statut: 'accepte', page, page_size: 200 }).then((r) => r.data))
+      setConsoliderDevis(Array.isArray(res) ? res : (res?.results ?? []))
     } catch {
       setConsoliderDevis([])
     }

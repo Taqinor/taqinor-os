@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import { FileX2, FileText, Search } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner, Input,
@@ -34,8 +35,8 @@ export default function AvoirsPage() {
 
   const load = () => {
     setLoading(true)
-    ventesApi.getAvoirs()
-      .then(r => setAvoirs(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages((page) => ventesApi.getAvoirs({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setAvoirs(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
       .finally(() => setLoading(false))
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect

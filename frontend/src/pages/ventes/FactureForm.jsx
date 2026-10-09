@@ -138,7 +138,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
     fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
       .then(setProduits).catch(() => {})
-    ventesApi.getBonsCommande().then(r => setBonsCommande(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages((page) => ventesApi.getBonsCommande({ page, page_size: 200 }).then((r) => r.data))
+      .then((res) => setBonsCommande(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
   }, [])
 
   // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + défiler.
