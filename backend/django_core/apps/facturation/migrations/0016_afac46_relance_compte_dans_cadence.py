@@ -12,10 +12,21 @@ NOTE_RESOLUE = (
     'Relance automatique programmée (email). [résolue — facture soldée]')
 
 
+BATCH_SIZE = 1000
+
+
 def neutraliser_resolues(apps, schema_editor):
+    # YOPSB4 — mise à jour par lots bornés (jamais un UPDATE global qui
+    # verrouille la table des relances le temps de tout réécrire).
     RelanceLog = apps.get_model('facturation', 'RelanceLog')
-    RelanceLog.objects.filter(note=NOTE_RESOLUE).update(
-        compte_dans_cadence=False)
+    a_traiter = RelanceLog.objects.filter(
+        note=NOTE_RESOLUE, compte_dans_cadence=True).order_by('pk')
+    while True:
+        batch_ids = list(a_traiter.values_list('pk', flat=True)[:BATCH_SIZE])
+        if not batch_ids:
+            break
+        RelanceLog.objects.filter(pk__in=batch_ids).update(
+            compte_dans_cadence=False)
 
 
 class Migration(migrations.Migration):
