@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 6af0bd50a403476372276029014a76579a031c4e3732e0b3fa16a18bcf34a019
-Plan fingerprint: d0f9802588ab465ed9fefded528d3630164ca569c302f65a5c86fffb34b09bcf
+Structure fingerprint: cf10074450d9df52d55f1f0f92279bac8b8f721c8fd348755111ea754761dea3
+Plan fingerprint: e799e3800c5026f828168c580be10647a02e11e997c2396e1600725a6ef403e7
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1158)**
+**Done (1160)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1168,9 +1168,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
 - `ENF1` — Harnais api-fuzz
 - `ENF2` — Plateforme API (causes C2-C6)
+- `ENF12` — Plus aucun masque dans les workflows
 - `ENF13` — Gardes toujours vertes rendues bloquantes
 - `ENF14` — Exceptions permanentes signées
 - `ENF16` — Dette on_delete (573) à zéro
+- `ENF24` — Seuil de couverture
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1736,7 +1738,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (139)**
+**Open — to build (137)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1830,7 +1832,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF9` — Schéma OpenAPI exact — sav + calepinage + outillage
 - `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
 - `ENF11` — api-fuzz bloquant
-- `ENF12` — Plus aucun masque dans les workflows
 - `ENF15` — Dettes moyennes à zéro
 - `ENF17` — Dette fk_scoping (332) à zéro
 - `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
@@ -1839,7 +1840,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF21` — flake8 E501 bloquant
 - `ENF22` — `# noqa` (2 435) et `eslint-disable` (432) à zéro
 - `ENF23` — Tests sautés (178) à zéro
-- `ENF24` — Seuil de couverture
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
