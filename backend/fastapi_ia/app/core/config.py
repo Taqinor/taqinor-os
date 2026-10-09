@@ -28,6 +28,35 @@ SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "llama-3.3-70b-versatile")
 DJANGO_INTERNAL_URL = os.environ.get(
     "DJANGO_INTERNAL_URL", "http://django_core:8000")
 
+
+def resolve_internal_host() -> str:
+    """Hote a presenter a Django dans les appels internes (AANA52).
+
+    Django valide l'en-tete Host contre DJANGO_ALLOWED_HOSTS ; l'URL interne
+    `http://django_core:8000` envoie `Host: django_core:8000` => 400
+    DisallowedHost en prod. On envoie donc un hote autorise : DJANGO_INTERNAL_HOST
+    explicite, sinon la premiere entree utilisable de DJANGO_ALLOWED_HOSTS
+    (ni vide, ni `*`, ni sous-domaine `.exemple`). Vide => aucun override.
+    Lu a l'appel (pas a l'import) pour suivre l'environnement."""
+    explicit = os.environ.get("DJANGO_INTERNAL_HOST", "").strip()
+    if explicit:
+        return explicit
+    for entry in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(","):
+        entry = entry.strip()
+        if entry and "*" not in entry and not entry.startswith("."):
+            return entry
+    return ""
+
+
+DJANGO_INTERNAL_HOST = resolve_internal_host()
+
+
+def internal_headers() -> dict:
+    """En-tetes communs a tout appel FastAPI -> Django interne (Host autorise)."""
+    host = resolve_internal_host()
+    return {"Host": host} if host else {}
+
+
 # Transcription audio (chat vocal) — Whisper auto-heberge via faster-whisper.
 # OFF par defaut : quand desactive, l'endpoint /transcribe repond "disabled"
 # (degradation gracieuse, pas une erreur) et le modele n'est JAMAIS telecharge
