@@ -16,6 +16,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm.exports import build_xlsx_response
 from apps.crm import stages as stage_mod
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co(user):
@@ -104,6 +106,16 @@ def _compare_kpi(current, previous):
     return {'current': c, 'previous': p, 'delta_pct': delta}
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('compare', OpenApiTypes.STR, required=False),
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx', 'pdf']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/pdf'): OpenApiTypes.BINARY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sales_report(request):
@@ -229,6 +241,15 @@ def sales_report(request):
     })
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx', 'pdf']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/pdf'): OpenApiTypes.BINARY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def stock_report(request):
@@ -325,6 +346,15 @@ def stock_report(request):
     })
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx', 'pdf']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/pdf'): OpenApiTypes.BINARY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def service_report(request):
@@ -425,6 +455,11 @@ def service_report(request):
 
 # ── ARC40 — KPI fédérés pilotés par le registre plateforme ───────────────────
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('vue', OpenApiTypes.STR, required=False, enum=['badges']),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def kpi_federes(request):

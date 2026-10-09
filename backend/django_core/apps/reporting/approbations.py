@@ -36,6 +36,9 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.permissions import IsAnyRole
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
 
 
 def _co(user):
@@ -290,6 +293,14 @@ def _trier_items(items, trier):
     return items
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('source', OpenApiTypes.STR, required=False),
+        OpenApiParameter('categorie', OpenApiTypes.STR, required=False),
+        OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
+        OpenApiParameter('trier', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def approbations_en_attente(request):
@@ -425,6 +436,31 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
     return 200, {'detail': 'Décision enregistrée.'}
 
 
+class DeciderApprobationSerializer(drf_serializers.Serializer):
+    source = drf_serializers.ChoiceField(choices=sorted(_SOURCE_LOADERS))
+    id = drf_serializers.IntegerField()
+    decision = drf_serializers.ChoiceField(choices=['approuver', 'refuser'])
+    motif = drf_serializers.CharField(required=False, allow_blank=True)
+
+
+class _ItemDecisionSerializer(drf_serializers.Serializer):
+    source = drf_serializers.ChoiceField(choices=sorted(_SOURCE_LOADERS))
+    id = drf_serializers.IntegerField()
+
+
+class DeciderEnMasseSerializer(drf_serializers.Serializer):
+    items = _ItemDecisionSerializer(many=True)
+    decision = drf_serializers.ChoiceField(choices=['approuver', 'refuser'])
+    motif = drf_serializers.CharField(required=False, allow_blank=True)
+
+
+class DeciderPushSerializer(drf_serializers.Serializer):
+    token = drf_serializers.CharField()
+
+
+@extend_schema(
+    request=DeciderApprobationSerializer,
+    responses={200: OpenApiTypes.ANY})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_approbation(request):
@@ -517,6 +553,9 @@ def _approuver_en_masse_workflow(company, user, workflow_items, motif):
     return resultats
 
 
+@extend_schema(
+    request=DeciderEnMasseSerializer,
+    responses={200: OpenApiTypes.ANY})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_en_masse(request):
@@ -605,6 +644,9 @@ class DecisionPushThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(
+    request=DeciderPushSerializer,
+    responses={200: OpenApiTypes.ANY})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([DecisionPushThrottle])

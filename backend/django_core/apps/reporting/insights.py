@@ -22,6 +22,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from apps.crm.exports import build_xlsx_response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co(user):
@@ -62,6 +64,12 @@ def _monthly_factor(periodicite):
     return Decimal('1') / Decimal(months)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def recurring_revenue(request):
@@ -179,6 +187,14 @@ def _username(user):
     return getattr(user, 'username', '') if user else ''
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('limit', OpenApiTypes.INT, required=False),
+        OpenApiParameter('since', OpenApiTypes.STR, required=False),
+        OpenApiParameter('type', OpenApiTypes.STR, required=False),
+        OpenApiParameter('user', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def audit_log(request):
@@ -349,6 +365,8 @@ def _marge_devis(devis):
     return {'ca_ht': ca_ht, 'cout': cout, 'marge': marge}
 
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def job_costing(request):
@@ -460,6 +478,8 @@ def _days_between(d1, d2):
     return (d2 - d1).days
 
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analytics(request):
@@ -539,6 +559,12 @@ def analytics(request):
     })
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def commissions(request):
@@ -691,6 +717,12 @@ def commissions(request):
 
 
 # ── FG93 — Classement commerciaux ───────────────────────────────────────────
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sales_leaderboard(request):
@@ -748,6 +780,12 @@ def sales_leaderboard(request):
 
 
 # ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
+@extend_schema(
+    parameters=[
+        OpenApiParameter('module', OpenApiTypes.STR, required=True),
+        OpenApiParameter('code', OpenApiTypes.STR, required=True),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def cf_group_by(request):
@@ -839,6 +877,13 @@ def _cf_module_model(module):
 
 # ── FG98 — Analyse cohortes / saisonnalité ────────────────────────────────────
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('group_by', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def cohorts(request):
@@ -956,6 +1001,13 @@ def cohorts(request):
 
 # ── FG99 — Rentabilité par segment ───────────────────────────────────────────
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('segment', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def profitability(request):

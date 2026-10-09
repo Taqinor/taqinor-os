@@ -21,6 +21,8 @@ from apps.crm.models import Client
 from apps.ventes.models import Devis, Facture, Avoir, BonCommande
 from apps.installations.models import Installation
 from apps.records.xlsx import build_xlsx_response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 # Libellés FR des types de document (miroir de archiveDocs.js côté front).
 TYPE_LABELS = {
@@ -139,6 +141,12 @@ def _chantier_post_sale_docs(installation):
     ]
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def archive_client(request, pk):
@@ -171,6 +179,12 @@ def archive_client(request, pk):
     })
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def archive_chantier(request, pk):

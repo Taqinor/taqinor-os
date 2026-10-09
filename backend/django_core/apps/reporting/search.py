@@ -30,6 +30,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core import platform
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co_filter(user):
@@ -324,6 +326,11 @@ _SEARCH_SPECS = [
 ]
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('q', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def global_search(request):
@@ -389,6 +396,8 @@ def global_search(request):
     return Response({'query': q, 'groups': groups})
 
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def notifications(request):

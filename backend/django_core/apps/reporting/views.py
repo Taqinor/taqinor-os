@@ -10,6 +10,8 @@ from apps.stock.models import Produit
 from apps.crm.models import Client
 from authentication.permissions import IsResponsableOrAdmin
 from core.analytics_db import analytics_queryset
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co(user):
@@ -74,6 +76,15 @@ def _qdate(value):
         return None
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('compare', OpenApiTypes.STR, required=False),
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def dashboard(request):

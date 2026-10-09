@@ -6,8 +6,12 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 
 from .integrity import controle_integrite, total_anomalies
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def integrite_insight(request):

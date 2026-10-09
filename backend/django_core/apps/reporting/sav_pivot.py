@@ -10,6 +10,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co(user):
@@ -18,6 +20,14 @@ def _co(user):
     return None
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('rows', OpenApiTypes.STR, required=False),
+        OpenApiParameter('columns', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_tickets_pivot(request):
@@ -69,6 +79,8 @@ def sav_tickets_pivot(request):
     return Response(pivot)
 
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_tickets_cout_moyen(request):
@@ -97,6 +109,12 @@ def sav_tickets_cout_moyen(request):
     return Response({'rows': rows})
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('date_debut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('date_fin', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_taux_attache(request):

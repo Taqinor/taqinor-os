@@ -27,6 +27,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 # Types de points exposés par la carte. Le front affiche un filtre par type.
 TYPE_LEAD = 'lead'
@@ -55,6 +57,12 @@ def _point(coord):
     return float(coord) if coord is not None else None
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('types', OpenApiTypes.STR, required=False),
+        OpenApiParameter('statuts', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def geo_points(request):

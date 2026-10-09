@@ -13,6 +13,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import WebVitalMetric
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 class WebVitalMetricSerializer(serializers.ModelSerializer):
@@ -28,6 +30,9 @@ class WebVitalMetricSerializer(serializers.ModelSerializer):
         return (value or '')[:255]
 
 
+@extend_schema(
+    request=WebVitalMetricSerializer,
+    responses={201: None})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def collect_vital(request):
@@ -49,6 +54,11 @@ def _percentile_75(values):
     return ordered[idx]
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('route', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def vitals_p75(request):

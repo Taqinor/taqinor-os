@@ -18,6 +18,8 @@ from core.win_probability import (
     base_probability_for_stage,
     win_probability,
 )
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 
 
 def _co_filter(user):
@@ -230,6 +232,8 @@ def _lead_forecast_value(lead):
     return Decimal('0')
 
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def pipeline(request):
@@ -321,6 +325,8 @@ def pipeline(request):
 
 # FG29 — Vélocité du funnel (jours moyens par étape) ─────────────────────────
 
+@extend_schema(
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def funnel_velocity(request):

@@ -31,6 +31,8 @@ from apps.crm import stages as stage_mod
 from apps.reporting.pipeline import (
     _lead_value, durees_par_etape, leads_avec_devis_totaux,
 )
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co(user):
@@ -56,6 +58,12 @@ def _username(user):
 
 # ── QJ18 — Tableau de bord commercial ────────────────────────────────────────
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def commercial_dashboard(request):
@@ -243,6 +251,12 @@ def _time_to_first_touch(co, leads, start, end, LeadActivity):
 
 # ── QJ19 — Win/loss par source et motifs de perte ────────────────────────────
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: OpenApiTypes.ANY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def win_loss_by_source(request):

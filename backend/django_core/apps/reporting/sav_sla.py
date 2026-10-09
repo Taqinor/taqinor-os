@@ -16,6 +16,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm.exports import build_xlsx_response
 from core.dates import aujourd_hui_local, maintenant_local
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 
 def _co(user):
@@ -45,6 +47,16 @@ def _avg_days(values):
     return round(sum(vals) / len(vals), 1)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('technicien', OpenApiTypes.INT, required=False),
+        OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False, enum=['xlsx']),
+    ],
+    responses={(200, 'application/json'): OpenApiTypes.ANY,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_sla_insight(request):
