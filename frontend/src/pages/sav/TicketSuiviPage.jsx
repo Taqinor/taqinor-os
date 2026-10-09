@@ -76,7 +76,15 @@ export default function TicketSuiviPage() {
       {status === 'valid' && ticket && (
         <div className="flex flex-col gap-3">
           <p><strong>Référence :</strong> {ticket.reference}</p>
-          <p><strong>Statut :</strong> {ticket.statut_display || ticket.statut}</p>
+          {ticket.fusionne_dans_reference ? (
+            <p role="status">
+              <strong>Fusionné dans {ticket.fusionne_dans_reference}</strong>
+            </p>
+          ) : ticket.annule ? (
+            <p role="status"><strong>Annulé</strong></p>
+          ) : (
+            <p><strong>Statut :</strong> {ticket.statut_display || ticket.statut}</p>
+          )}
           {ticket.date_modification && (
             <p className="text-sm text-muted-foreground">
               Dernière mise à jour :{' '}
@@ -84,7 +92,8 @@ export default function TicketSuiviPage() {
             </p>
           )}
 
-          {RESOLU_STATUTS.includes(ticket.statut) && csatState !== 'sent' && (
+          {!ticket.annule && !ticket.fusionne_dans_reference
+            && RESOLU_STATUTS.includes(ticket.statut) && csatState !== 'sent' && (
             <form onSubmit={submitCsat} className="flex flex-col gap-2" noValidate>
               <p className="font-medium">Votre ticket est résolu — êtes-vous satisfait(e) ?</p>
               <div className="flex gap-1" role="radiogroup" aria-label="Note de satisfaction">
