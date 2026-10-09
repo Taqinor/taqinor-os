@@ -44,6 +44,13 @@ test('AGNR38 — le champ date ne présente jamais « aujourd’hui » comme une
 })
 
 test('AGNR38 — la date du jour est celle de Casablanca', () => {
-  // 23 h 30 UTC le 07/10 = 00 h 30 le 08/10 à Casablanca (UTC+1).
-  assert.equal(aujourdhuiCasablanca(new Date('2026-10-07T23:30:00Z')), '2026-10-08')
+  // 23 h 30 UTC le 07/10 = 00 h 30 le 08/10 à Casablanca (UTC+1). Comme
+  // lib/dateLocale.test.mjs (ADEV73) : le décalage suit la base tz du runtime
+  // (celle du runner CI donne GMT+00:00 pour cette date), jamais une constante.
+  const t = new Date('2026-10-07T23:30:00Z')
+  const off = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Casablanca', timeZoneName: 'longOffset' })
+    .formatToParts(t).find((p) => p.type === 'timeZoneName').value
+  assert.equal(aujourdhuiCasablanca(t), off === 'GMT+01:00' ? '2026-10-08' : '2026-10-07')
+  // Midi UTC : même date partout, quelle que soit la base tz.
+  assert.equal(aujourdhuiCasablanca(new Date('2026-10-08T12:00:00Z')), '2026-10-08')
 })
