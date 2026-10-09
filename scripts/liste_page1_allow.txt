@@ -12,7 +12,6 @@ frontend/src/features/adminops/SandboxPage.jsx::load
 frontend/src/features/adsengine/ActionsLogScreen.jsx::ActionsLogScreen
 frontend/src/features/adsengine/AdsCockpitScreen.jsx::AdsCockpitScreen
 frontend/src/features/adsengine/AlertCenter.jsx::AlertCenter
-frontend/src/features/adsengine/BacklogScreen.jsx::BacklogScreen
 frontend/src/features/adsengine/BrandKitScreen.jsx::BrandKitScreen
 frontend/src/features/adsengine/CampaignsScreen.jsx::toggleBreakdown
 frontend/src/features/adsengine/CommentsInboxScreen.jsx::CommentsInboxScreen
@@ -87,7 +86,6 @@ frontend/src/pages/crm/SiteProfilePage.jsx::SiteProfilePage
 frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils
 frontend/src/pages/crm/VisiteursPage.jsx::chargerEquipe
 frontend/src/pages/crm/VisiteursPage.jsx::toggleDetail
-frontend/src/pages/crm/WebsiteLeadPayloadsPage.jsx::load
 frontend/src/pages/crm/comptes/PlanComptePage.jsx::PlanComptePage
 frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget
 frontend/src/pages/crm/defis/DefisPage.jsx::DefisPage

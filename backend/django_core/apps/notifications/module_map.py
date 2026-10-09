@@ -58,6 +58,8 @@ EVENT_TYPE_MODULE = {
     'feedback_starred': 'innovation',
     # ACHT75 — module « outillage » (manifeste d'app).
     'outillage_calibration_proche': 'outillage',
+    # APAR58 — alertes du moteur de publicité.
+    'adsengine_alert': 'adsengine',
 }
 
 
