@@ -2841,42 +2841,47 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if canal_filter:
             qs = qs.filter(canal=canal_filter)
 
-        # Grouper par canal puis par campagne
+        # APRF19 — AGRÉGATS : comptes par (canal, campagne) en UNE requête
+        # (prédicat « signé » unique d'ACRM31, clé d'étape lue de STAGES.py),
+        # valeur signée sur les devis retenus par ACRM10, préchargés AVEC
+        # leurs totaux — nombre de requêtes indépendant du nombre de
+        # campagnes et de leads signés.
+        from django.db.models import Count
+        from apps.reporting.pipeline import leads_avec_devis_totaux
+        from .selectors import _devis_compte_comme_signe, lead_signe_q
+
+        base = Lead.objects.filter(pk__in=qs.values('pk'))
+        groupes = list(
+            base.order_by().values('canal', 'utm_campaign')
+            .annotate(lead_count=Count('pk', distinct=True),
+                      signed_count=Count('pk', filter=lead_signe_q(),
+                                         distinct=True))
+            .order_by('canal', 'utm_campaign'))
+        valeurs = {}
+        for lead in leads_avec_devis_totaux(base.filter(lead_signe_q())):
+            cle = (lead.canal, lead.utm_campaign)
+            for d in lead.devis.all():
+                # ACRM10 — la V2 seule d'une révision acceptée.
+                if not _devis_compte_comme_signe(d):
+                    continue
+                try:
+                    valeurs[cle] = valeurs.get(cle, 0) + float(d.total_ttc)
+                except Exception:
+                    pass
         result = []
-        for canal_key in (qs.values_list('canal', flat=True)
-                          .order_by('canal').distinct()):
-            canal_qs = qs.filter(canal=canal_key)
-            # Par campagne UTM (None = pas de campagne)
-            campaigns = (canal_qs.values_list('utm_campaign', flat=True)
-                         .order_by('utm_campaign').distinct())
-            for campaign in campaigns:
-                grp = canal_qs.filter(utm_campaign=campaign)
-                lead_count = grp.count()
-                # ACRM31 — prédicat « signé » unique (perdus/archivés exclus).
-                from .selectors import lead_signe_q
-                signed = grp.filter(lead_signe_q())
-                signed_count = signed.count()
-                # Somme des devis TTC des leads signés
-                signed_value = 0
-                from .selectors import _devis_compte_comme_signe
-                for lead in signed.prefetch_related('devis'):
-                    # ACRM10 — la V2 seule d'une révision acceptée.
-                    for d in lead.devis.all():
-                        if not _devis_compte_comme_signe(d):
-                            continue
-                        try:
-                            signed_value += float(d.total_ttc)
-                        except Exception:
-                            pass
-                result.append({
-                    'canal': canal_key,
-                    'utm_campaign': campaign,
-                    'lead_count': lead_count,
-                    'signed_count': signed_count,
-                    'win_rate': round(signed_count / lead_count * 100, 1)
-                              if lead_count else 0,
-                              'signed_value_ttc': round(signed_value, 2),
-                              })
+        for grp in groupes:
+            lead_count = grp['lead_count']
+            signed_count = grp['signed_count']
+            signed_value = valeurs.get((grp['canal'], grp['utm_campaign']), 0)
+            result.append({
+                'canal': grp['canal'],
+                'utm_campaign': grp['utm_campaign'],
+                'lead_count': lead_count,
+                'signed_count': signed_count,
+                'win_rate': round(signed_count / lead_count * 100, 1)
+                if lead_count else 0,
+                'signed_value_ttc': round(signed_value, 2),
+            })
         return Response(result)
 
     # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────
