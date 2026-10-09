@@ -117,22 +117,42 @@ def sync_system(installation, *, user=None):
     return imported, config.provider
 
 
-def debut_couverture(installation, debut):
+_NON_FOURNI = object()
+
+
+def premiers_releves(installation_ids):
+    """ASAV62 — ``{installation_id: date du premier relevé}`` en UNE requête
+    (les listes du parc la passent à ``attendu_periode`` : pas de N+1)."""
+    from django.db.models import Min
+    return dict(ProductionReading.objects
+                .filter(installation_id__in=list(installation_ids))
+                .values('installation')
+                .annotate(premier=Min('date'))
+                .values_list('installation', 'premier'))
+
+
+def debut_couverture(installation, debut, premier_releve=_NON_FOURNI):
     """ASAV62 — premier jour réellement couvert de la période démarrant à
-    ``debut`` : pas avant la mise en service ni avant le premier relevé."""
+    ``debut`` : pas avant la mise en service ni avant le premier relevé
+    (``premier_releve`` : date déjà connue de l'appelant, ``None`` = aucun
+    relevé ; non fourni = lu en base)."""
     debut_effectif = debut
     mise_en_service = getattr(installation, 'date_mise_en_service', None)
     if mise_en_service and mise_en_service > debut_effectif:
         debut_effectif = mise_en_service
-    premier = (ProductionReading.objects
-               .filter(installation=installation)
-               .order_by('date').values_list('date', flat=True).first())
+    if premier_releve is _NON_FOURNI:
+        premier = (ProductionReading.objects
+                   .filter(installation=installation)
+                   .order_by('date').values_list('date', flat=True).first())
+    else:
+        premier = premier_releve
     if premier and premier > debut_effectif:
         debut_effectif = premier
     return debut_effectif
 
 
-def attendu_periode(installation, config, debut, fin):
+def attendu_periode(installation, config, debut, fin,
+                    premier_releve=_NON_FOURNI):
     """ASAV62 — production attendue (kWh) sur la période RÉELLEMENT couverte
     de ``[debut, fin]`` : bornée par la mise en service et par le premier
     relevé du système (un système neuf n'est pas jugé sur 365 jours dont il
@@ -143,7 +163,7 @@ def attendu_periode(installation, config, debut, fin):
     if annual is None:
         # CIQ643 — pas de repli inventé : « en attente de référence ».
         return None
-    debut_effectif = debut_couverture(installation, debut)
+    debut_effectif = debut_couverture(installation, debut, premier_releve)
     if debut_effectif == debut:
         jours = (fin - debut).days  # fenêtre entière (comportement d'origine)
     else:
@@ -153,12 +173,14 @@ def attendu_periode(installation, config, debut, fin):
     return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
 
 
-def _expected_recent_kwh(installation, config, window_days, today=None):
+def _expected_recent_kwh(installation, config, window_days, today=None,
+                         premier_releve=_NON_FOURNI):
     """Production attendue (kWh) sur la fenêtre récente — voir
     ``attendu_periode``. None si inconnaissable."""
     today = today or timezone.localdate()
     return attendu_periode(
-        installation, config, today - timedelta(days=window_days), today)
+        installation, config, today - timedelta(days=window_days), today,
+        premier_releve)
 
 
 def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
