@@ -9,13 +9,30 @@ from django.db.models import DateTimeField
 from django.db.models.functions import Cast, Now
 
 
+def _par_tranches(qs, **valeurs):
+    """Batching (garde check_safe_migrations) : mise à jour par tranches de
+    pks via .iterator() — un update global non borné verrouillerait toute la
+    table le temps de la transaction."""
+    Modele = qs.model
+    batch = []
+    for pk in qs.values_list('pk', flat=True).iterator(chunk_size=500):
+        batch.append(pk)
+        if len(batch) >= 500:
+            Modele.objects.filter(pk__in=batch).update(**valeurs)
+            batch = []
+    if batch:
+        Modele.objects.filter(pk__in=batch).update(**valeurs)
+
+
 def remplir_deja_terminees(apps, schema_editor):
     Intervention = apps.get_model('installations', 'Intervention')
     terminees = Intervention.objects.filter(
         statut__in=['terminee', 'validee'], cloturee_notifiee_le__isnull=True)
-    terminees.filter(date_realisee__isnull=False).update(
+    _par_tranches(
+        terminees.filter(date_realisee__isnull=False),
         cloturee_notifiee_le=Cast('date_realisee', DateTimeField()))
-    terminees.filter(date_realisee__isnull=True).update(
+    _par_tranches(
+        terminees.filter(date_realisee__isnull=True),
         cloturee_notifiee_le=Now())
 
 
