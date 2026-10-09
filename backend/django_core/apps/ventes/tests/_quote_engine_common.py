@@ -90,12 +90,18 @@ def make_devis(company, user, client, lignes, remise_globale='0',
         remise_globale=Decimal(remise_globale), created_by=user,
         etude_params=etude_params,
     )
-    for ligne in lignes:
+    skus = set()
+    for i, ligne in enumerate(lignes):
         # (desig, qty, pu) historique ou (desig, qty, pu, taux_tva) réforme
         desig, qty, pu = ligne[:3]
         taux = Decimal(ligne[3]) if len(ligne) > 3 else None
-        # SKU unique par devis pour éviter les collisions (company, sku)
+        # SKU unique par devis pour éviter les collisions (company, sku) —
+        # deux désignations au même préfixe de 13 caractères (« Panneau mono
+        # 550W » / « Panneau mono 710W ») reçoivent le rang de la ligne.
         sku = f"{reference[-6:]}-{desig[:13]}"
+        if sku in skus:
+            sku = f"{reference[-6:]}-{i}-{desig[:13]}"
+        skus.add(sku)
         LigneDevis.objects.create(
             devis=devis, produit=make_produit(company, desig, sku, pu),
             designation=desig, quantite=Decimal(qty),

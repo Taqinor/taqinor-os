@@ -41,7 +41,12 @@ class RecommandeTests(TestCase):
 
     def _data(self, reco):
         self.n += 1
-        etude = dict(DEUX_OPTIONS)
+        # Devis ANCRÉ (distributeur + consommation saisie, comme
+        # ``test_builder_with_distributeur_onee_not_estimated``) : sans
+        # ancrage réel (Z2, ``renderer.ancrage_reel_absent``) la couche
+        # économique — dont le gain net 25 ans et son libellé d'option — est
+        # omise, et les « chiffres vedettes » ne seraient pas testés.
+        etude = dict(DEUX_OPTIONS, distributeur='onee', conso_annuelle=18000)
         if reco:
             etude['recommended_option'] = reco
         devis = make_devis(self.company, self.user, self.client_obj, _LIGNES,
