@@ -1,6 +1,7 @@
 import { useReducer, useRef, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
 import { toast } from '../../../ui'
+import { useConfirmDialog } from '../../../ui/confirm'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
 import {
   reducer, initState, getField, isDirty, dirtyKeys, isSuggested, signatureCharge,
@@ -97,6 +98,8 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   const onSavedRef = useRef(onSaved)
   const onFieldErrorsRef = useRef(onFieldErrors)
   const onFieldsSavedRef = useRef(onFieldsSaved)
+  const { confirm: confirmerAbandon } = useConfirmDialog()
+  const confirmRef = useRef(confirmerAbandon)
   // Rafraîchis en EFFET (jamais pendant le rendu — react-hooks/refs, lint CI).
   // Les lecteurs (debounce, leaveGuard, timers) tournent tous APRÈS commit,
   // donc voient toujours la dernière valeur committée.
@@ -106,6 +109,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     onSavedRef.current = onSaved
     onFieldErrorsRef.current = onFieldErrors
     onFieldsSavedRef.current = onFieldsSaved
+    confirmRef.current = confirmerAbandon
   })
   // Fraîcheur VX243c : `date_modification` connu à l'ouverture (ou après notre
   // dernière écriture réussie).
@@ -235,7 +239,14 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       return false
     }
     // Le flush a échoué → l'utilisateur tranche : abandonner ou rester.
-    if (window.confirm("L'enregistrement a échoué. Quitter en abandonnant les modifications non enregistrées ?")) {
+    const abandonner = await confirmRef.current({
+      title: 'Abandonner les modifications ?',
+      description: "L'enregistrement a échoué. Quitter en abandonnant les modifications non enregistrées ?",
+      confirmLabel: 'Abandonner',
+      cancelLabel: 'Rester',
+      destructive: true,
+    })
+    if (abandonner) {
       action?.()
       return true
     }
