@@ -225,7 +225,7 @@
     },
     "incidents_qualite_fournisseur": {
       "endpoint": "GET /api/django/stock/incidents-qualite-fournisseur/?fournisseur=<id>&produit=<id>&gravite=<mineure|majeure|critique>&resolu=<true|false>",
-      "pourquoi": "NTSCM9 — incidents qualité (IncidentQualiteFournisseurSerializer, views/fournisseur_scm.py). Lecture ET écriture Responsable/Admin (le coût d'impact est INTERNE : `cout_impact_mad` n'apparaît jamais pour un autre rôle car la route lui est fermée), suppression Admin. `type_incident` ∈ non_conforme|endommage|erreur_reference|…|autre ; `declare_par` posé côté serveur.",
+      "pourquoi": "NTSCM9 — incidents qualité (IncidentQualiteFournisseurSerializer, views/fournisseur_scm.py). Lecture ET écriture Responsable/Admin (le coût d'impact est INTERNE : `cout_impact_mad` n'apparaît jamais pour un autre rôle car la route lui est fermée), suppression Admin. `type_incident` ∈ non_conforme|endommage|erreur_reference|…|autre ; `declare_par` posé côté serveur ; `resolu_par` + `date_resolution` posés PAR LE SERVEUR à la bascule `resolu=true` (utilisateur connecté, date serveur — valeurs du client ignorées, ERR-ASTK226).",
       "exemple": {
         "count": 1,
         "next": null,
@@ -245,6 +245,7 @@
             "date_incident": "2026-10-10",
             "resolu": false,
             "date_resolution": null,
+            "resolu_par": null,
             "cout_impact_mad": "1200.00",
             "declare_par": 1,
             "est_bloquant": false,
@@ -272,6 +273,7 @@
         "date_incident": "2026-10-10",
         "resolu": false,
         "date_resolution": null,
+        "resolu_par": null,
         "cout_impact_mad": "1200.00",
         "declare_par": 1,
         "est_bloquant": false,
