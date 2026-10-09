@@ -1897,3 +1897,20 @@ EINVOICE_SIGNATURE_PROVIDER = os.environ.get(
 # ``en_attente``) et n'émet AUCUNE requête sortante.
 DGI_TRANSMISSION_ENABLED = os.environ.get('DGI_TRANSMISSION_ENABLED', '0') == '1'
 DGI_TRANSMISSION_URL = os.environ.get('DGI_TRANSMISSION_URL', '')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP32 — réglages de sécurité LUS par le code mais jamais déclarés
+# (C-ADEP-004, D-ADEP-3 : aucune de ces clés n'est posée en prod → rien ne
+# s'active au déploiement). Absentes = comportement inchangé.
+#
+# apps.identity (anomaly._geolocate) — chemin de la base GeoLite2 City. Vide =
+# repli sur GEOIP2_CITY_DB puis géolocalisation inerte.
+GEOIP_PATH = os.environ.get('GEOIP_PATH', '')
+# core.search_backend — URL du cluster OpenSearch. Vide = Postgres FTS.
+OPENSEARCH_URL = os.environ.get('OPENSEARCH_URL', '')
+# core.throttling (ip_de_requete) — n'honorer l'en-tête CF-Connecting-IP que si
+# Cloudflare est déclaré proxy de confiance. Booléen STRICT : seuls « 1 » et
+# « true » l'activent ; toute autre valeur ou absente = faux.
+CF_CONNECTING_IP_TRUSTED = (
+    os.environ.get('CF_CONNECTING_IP_TRUSTED', '').strip().lower()
+    in ('1', 'true'))
