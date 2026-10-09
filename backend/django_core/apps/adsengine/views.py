@@ -1887,11 +1887,12 @@ class EngineActionViewSet(AdsengineViewSet):
         # ICI le même contrôle avant ``save`` (jamais une action inapplicable).
         try:
             validate_manual_payload(kind, payload)
-        except ActionPayloadInvalid:
+        except ActionPayloadInvalid as exc:
             logger.warning('PUB22: payload manuel invalide (kind=%s)', kind,
                            exc_info=True)
-            raise drf_serializers.ValidationError(
-                {'payload': "Données de l'action invalides."})
+            # AACQ72 — la cause PRÉCISE (message FR d'``ActionPayloadInvalid``,
+            # destiné à l'utilisateur, sans donnée interne) sous ``payload``.
+            raise drf_serializers.ValidationError({'payload': str(exc)})
         # PUB103 — proposeur posé côté serveur (support du garde-fou quatre yeux).
         # ``serializer.save(company=…)`` force la société exactement comme
         # ``TenantMixin.perform_create`` ; on ajoute seulement ``proposed_by``.
