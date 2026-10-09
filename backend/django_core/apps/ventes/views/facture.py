@@ -653,8 +653,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             remboursement (l'acompte n'est plus « coincé » sur une facture
             morte).
 
-        Sans directive (ou sur une facture sans acompte) : comportement
-        historique strictement inchangé — on bascule seulement le statut.
+        AFAC12 — sans directive, une facture qui porte de l'argent est
+        REFUSÉE (400 ``directive_acompte_requise``) ; une facture sous avoir
+        actif aussi (400 ``avoir_actif``). Sans argent rattaché : on bascule
+        seulement le statut. Les avances ventilées suivent le transfert.
         """
         from decimal import Decimal
         facture = self.get_object()
@@ -681,6 +683,20 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     + ') : annulez-la d\'abord (avoir de note de débit).'
                 ),
                  'code': 'note_debit_active'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # AFAC12 (C-AFAC-002) — jamais une facture annulée sous un avoir
+        # ACTIF : l'avoir crédite une facture vivante ; il s'annule d'abord.
+        avoirs_actifs = [a for a in facture.avoirs.all()
+                         if a.statut != 'annulee']
+        if avoirs_actifs:
+            return Response(
+                {'detail': (
+                    'Cette facture porte un avoir actif ('
+                    + ', '.join(a.reference for a in avoirs_actifs)
+                    + ") : annulez-le d'abord."
+                ),
+                 'code': 'avoir_actif'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         directive = request.data.get('acompte') or {}
@@ -807,6 +823,16 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 for p in paiements:
                     p.facture = cible
                     p.save(update_fields=['facture'])
+                # AFAC12 — les avances VENTILÉES suivent aussi : le net
+                # transféré (``montant_paye``) les comptait déjà, mais elles
+                # restaient sur la facture morte (la cible recevait moins).
+                for a in locked.affectations_paiement.select_related(
+                        'paiement'):
+                    if a.paiement.statut == Paiement.Statut.REJETE:
+                        continue
+                    a.facture = cible
+                    a.save(update_fields=['facture'])
+                    nb += 1
                 locked.statut = Facture.Statut.ANNULEE
                 locked.save(update_fields=['statut'])
                 activity.log_facture_acompte_transfere_sortie(
@@ -864,7 +890,30 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             else:
-                # Comportement historique : simple bascule de statut.
+                # AFAC12 (C-AFAC-002, D-AFAC-C5 a) — une facture qui porte de
+                # l'argent (paiements valides, avances ventilées, escomptes)
+                # ne s'annule JAMAIS sans dire où il va : l'argent restait
+                # sur une facture morte et la porte suivante re-facturait
+                # 100 % (contrat ``facture_annulation.json``).
+                if net_acompte > 0:
+                    from ..domain.encaissements import (
+                        argent_rattache, decrire_argent_rattache,
+                    )
+                    argent = argent_rattache(locked)
+                    return Response(
+                        {'code': 'directive_acompte_requise',
+                         'detail': (
+                             "Cette facture porte de l'argent ("
+                             + decrire_argent_rattache(argent)
+                             + ') : choisissez de le transférer vers une '
+                             'autre facture du devis ou de le rembourser '
+                             "avant d'annuler."),
+                         'argent_rattache': {
+                             cle: f'{Decimal(str(v or 0)):.2f}'
+                             for cle, v in argent.items()}},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # Sans argent rattaché : simple bascule de statut.
                 locked.statut = Facture.Statut.ANNULEE
                 locked.save(update_fields=['statut'])
                 facture = locked
