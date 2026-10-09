@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 2609458ae3eaeafb4e4aac90c73f03517b4d7c8574ac7a2027cf1b081fdb4c3d
+Structure fingerprint: e49f4f52ac352e95c4f7dc48f36af5fd43717026a4bd0a72f23e7a16a2eca4ba
 Plan fingerprint: 68f484446f744265167fb76ea2f5e6f233b283bc7d2c6731256f58021e1d6e06
 
 
@@ -461,8 +461,8 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 ### Pages (`frontend/src/pages`) — 22 folders
 
-`crm/` (ClientList, LeadsPage, ParrainagePage + `leads/`), `ventes/` (DevisList,
-DevisGenerator, FactureList, FactureForm, AvoirsPage, RelancesPage,
+`crm/` (ClientList, LeadsPage, ParrainagePage + `leads/` — `LeadDevisPanel.jsx` = the lead's quote panel, EDC : phase `chargement`, protected exits via `gesteHorsPanneau.js`), `ventes/` (DevisList,
+DevisGenerator — EDC (09/10/2026) : `generator/BarreActionsDevis.jsx` sticky top action bar, `generator/NavigationSections.jsx` section chips, `generator/clavierDevis.js` pure keyboard decisions (Enter never submits), `generator/cartesRepliees.js` per-user collapsed cards, `generator/LigneTable.jsx` wrapped in `ui/BarreDefilementCollante.jsx` (sticky horizontal proxy bar) —, FactureList, FactureForm, AvoirsPage, RelancesPage,
 BonCommandeList), `stock/`, `installations/`, `interventions/`, `outillage/`, `sav/`,
 `monitoring/`, `ged/`, `reporting/`, `approbations/`, `activities/`, `admin/`,
 `parametres/`, `preferences/`, `onboarding/`, `aide/`, `tiers/`, `visites/`, `ia/`,
