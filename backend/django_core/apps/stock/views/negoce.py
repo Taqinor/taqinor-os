@@ -274,9 +274,18 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         entetes = ['Client', 'Produit', 'SKU', 'Site', 'Déposé', 'Consommé',
                    'Restant', 'Dernière déclaration', 'Statut']
         lignes, total_restant = [], 0
-        for depot in depots.select_related('client', 'produit'):
-            derniere = depot.declarations.order_by(
-                '-date_declaration', '-id').first()
+        # APRF35 — la dernière déclaration de chaque dépôt est lue dans la
+        # MÊME requête (sous-requête, même tri ``-date_declaration, -id``) :
+        # avant, une requête par dépôt.
+        from django.db.models import OuterRef, Subquery
+        from ..models_consignation import DeclarationConsommation
+        derniere_date = Subquery(
+            DeclarationConsommation.objects.filter(depot=OuterRef('pk'))
+            .order_by('-date_declaration', '-id')
+            .values('date_declaration')[:1])
+        for depot in depots.select_related('client', 'produit').annotate(
+                derniere_declaration_date=derniere_date):
+            derniere = depot.derniere_declaration_date
             total_restant += depot.quantite_restante
             # ASTK7 — défense en profondeur : un dépôt hérité qui pointe un
             # client d'une AUTRE société n'imprime jamais son nom.
@@ -290,7 +299,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
                 depot.quantite_deposee,
                 depot.quantite_consommee_declaree,
                 depot.quantite_restante,
-                (derniere.date_declaration.isoformat() if derniere else ''),
+                (derniere.isoformat() if derniere else ''),
                 depot.get_statut_display(),
             ])
         lignes.append(['TOTAL', '', '', '', '', '', total_restant, '', ''])

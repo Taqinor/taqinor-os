@@ -483,3 +483,66 @@ def liberer_vagues_planifiees_task():
                        exc_info=True)
         return 0
     return len(resultat.get('liberees', []))
+
+
+#: APRF34 — durée de validité de l'URL présignée de la notification (24 h).
+EXPORT_MOUVEMENTS_URL_TTL = 24 * 3600
+
+
+@shared_task(name='stock.export_mouvements_xlsx')
+def export_mouvements_xlsx_task(job_id=None, company_id=None,
+                                mouvement_ids=None):
+    """APRF34 — export xlsx des mouvements au-delà du seuil NTPLT30, en tâche
+    de fond (dispatché par ``core.jobs.submit`` : ``job_id`` + ``company_id``
+    EXPLICITES, jamais lus d'une requête). Construit le MÊME fichier que la voie
+    synchrone (``export_mouvements_xlsx_bytes``), le dépose dans MinIO
+    (``exports/<société>/<job>.xlsx``), termine le ``BackgroundJob`` et notifie
+    le demandeur « export prêt » avec une URL présignée. Lecture seule : aucun
+    mouvement n'est modifié."""
+    from core.models import BackgroundJob
+    from apps.records.storage import (
+        presign_export_result, store_export_result,
+    )
+    from apps.records.xlsx import XLSX_CONTENT_TYPE
+    from .services import export_mouvements_xlsx_bytes
+
+    job = BackgroundJob.objects.filter(
+        pk=job_id, company_id=company_id).first()
+    if job is None:
+        logger.warning('stock.export_mouvements_xlsx: job %s introuvable '
+                       '(société %s)', job_id, company_id)
+        return None
+    ids = list(mouvement_ids or [])
+    try:
+        job.marquer_progression(10)
+        data = export_mouvements_xlsx_bytes(company_id, ids)
+        job.marquer_progression(80)
+        key = store_export_result(
+            data, company_id=company_id, job_id=job.pk, ext='xlsx',
+            content_type=XLSX_CONTENT_TYPE)
+    except Exception as exc:  # noqa: BLE001 — le job porte l'échec
+        logger.exception('stock.export_mouvements_xlsx: échec job %s', job_id)
+        job.marquer_echec(f'Export des mouvements impossible : {exc}')
+        return None
+    job.marquer_termine(result_file_key=key)
+
+    # Notification « export prêt » (best-effort : le livrable reste suivi par
+    # ``core/jobs-status/<id>/`` même si la notification échoue). L'URL
+    # présignée va dans le corps (TextField) ; le lien (512 car. max) ne la
+    # porte que si elle y tient entière — jamais une URL tronquée.
+    url = presign_export_result(key, expires=EXPORT_MOUVEMENTS_URL_TTL) or ''
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.types_evenements import EventType
+        corps = (f'{len(ids)} mouvement(s) — fichier mouvements-stock.xlsx '
+                 '(lien valable 24 h).')
+        if url:
+            corps += f'\n{url}'
+        notify(
+            job.user, EventType.EXPORT_REVERSIBILITE_PRET,
+            title='Export des mouvements de stock prêt', body=corps,
+            link=url if len(url) <= 512 else '', company=job.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('stock.export_mouvements_xlsx: notification échouée '
+                       '(job %s)', job_id, exc_info=True)
+    return key

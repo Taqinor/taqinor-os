@@ -113,8 +113,12 @@ CATALOGUE = [
     ('Wifi Dongle',                'WIFI-DON',  'Accessoires', 1200, 700, 500, 5),
     ('Accessoires',                'ACC-CAT',   'Accessoires', 2000, 2000, 999, 0),
     ('Tableau De Protection AC/DC', 'TAB-PROT', 'Accessoires', 2000, 1500, 999, 0),
-    ('Installation',               'INST-CAT',  'Accessoires', 4800, 4000, 999, 0),
-    ('Transport',                  'TRANS-CAT', 'Accessoires', 1000, 800, 999, 0),
+    # APDF44 (D-APDF-4) — prestations : rangées en « Services & prestations »
+    # (type ``service``) par ``classify_categorie`` à la création ET par la
+    # passe taxonomie à chaque run (seul ``categorie`` bouge — ni prix ni
+    # quantités). La colonne ci-dessous le dit aussi, au lieu de « Accessoires ».
+    ('Installation',               'INST-CAT',  'Services & prestations', 4800, 4000, 999, 0),
+    ('Transport',                  'TRANS-CAT', 'Services & prestations', 1000, 800, 999, 0),
     ('Suivi journalier, maintenance chaque 12 mois pendant 2 ans',
      'SUIVI-2A', 'Accessoires', 5000, 4000, 999, 0),
 ]
