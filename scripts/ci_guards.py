@@ -477,6 +477,13 @@ GARDES = {
         ('Test the clés du document roof_layout_v2 (exemple + écrivain, ACAL343) checker itself',
          'python -m unittest scripts.tests.test_check_calepinage_cles_document -v',
          '.'),
+        # ACAL348 - chaque route GET du calepinage est décrite par un contract_samples.
+        ('Check routes GET calepinage sous contrat (ACAL348)',
+         'python scripts/check_calepinage_routes_sous_contrat.py',
+         '.'),
+        ('Test the routes GET calepinage sous contrat (ACAL348) checker itself',
+         'python -m unittest scripts.tests.test_check_calepinage_routes_sous_contrat -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
