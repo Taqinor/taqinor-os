@@ -27,6 +27,8 @@ import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/down
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
+// EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
+import { estGesteHorsPanneau } from './gesteHorsPanneau'
 import {
   Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
@@ -85,6 +87,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const { confirm } = useConfirmDialog()
   // Une seule confirmation à la fois (double clic, Échap martelé).
   const confirmationEnCoursRef = useRef(false)
+  // EDC6 (suite) — le nœud du panneau, pour distinguer un clic sur le voile
+  // d'un clic dans une AUTRE couche Radix (confirmation, dialogue, popover).
+  const contenuRef = useRef(null)
   const [discount, setDiscount] = useState('0')
   const [errorMsg, setErrorMsg] = useState(null)
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
@@ -331,6 +336,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // Un toast (« Modifications enregistrées. ») vit hors du panneau : cliquer
     // dessus pour le fermer ne doit pas renvoyer l'ouvrier à l'aperçu.
     if (e.target?.closest?.('[data-sonner-toaster], [data-sonner-toast]')) return
+    // EDC6 (suite, mesuré en direct le 09/10/2026) — Radix DIFFÈRE le rappel
+    // « pointeur hors panneau » (setTimeout 0, `deferPointerDownOutside`). Un
+    // clic sur « Rester » DANS la boîte de confirmation la ferme d'abord ; le
+    // rappel différé arrive ensuite, alors que cette couche a disparu et que le
+    // panneau est redevenu la plus haute : il prenait ce clic pour un clic sur
+    // le voile et REDEMANDAIT la confirmation — le dialogue ne se fermait
+    // jamais. Une cible déjà décrochée du document, ou qui vit dans une autre
+    // couche (confirmation, dialogue, popover), n'est jamais un geste de sortie.
+    if (!estGesteHorsPanneau(e.detail?.originalEvent?.target ?? e.target, contenuRef.current)) return
     sortirDeLEdition('retour')
   }
   // Fermeture demandée par Radix par une autre voie : en édition, elle passe
@@ -394,7 +408,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
     // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
     <Sheet open onOpenChange={onOpenChange}>
-      <SheetContent side="right" showClose={false}
+      <SheetContent side="right" showClose={false} ref={contenuRef}
                     onEscapeKeyDown={onEscapeKeyDown}
                     onInteractOutside={onInteractOutside}
                     className={`${phase === 'edit' ? LARGEUR_EDITION : LARGEUR_STANDARD} gap-0 p-0 sm:max-w-none`}>
