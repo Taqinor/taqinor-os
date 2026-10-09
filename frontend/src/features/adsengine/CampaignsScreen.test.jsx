@@ -60,7 +60,7 @@ beforeEach(() => {
         budget_quotidien_mad: 40, depense_mad: 320, nb_leads: 5, ads: [] },
     ],
   } })
-  mocks.syncNow.mockResolvedValue({ data: {} })
+  mocks.syncNow.mockResolvedValue({ data: { synced: true } })
   mocks.fullBackfill.mockResolvedValue({ data: {} })
   mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.ranking.mockResolvedValue({ data: [
@@ -93,6 +93,21 @@ describe('CampaignsScreen (ENG24)', () => {
     expect(screen.getAllByTestId('ae-camp-row')).toHaveLength(2)
   })
 
+  it('AACQ68 — toutes les pages de campagnes sont lues (période courante et précédente)', async () => {
+    mocks.list.mockImplementation((params = {}) => {
+      const p = params.page || 1
+      return Promise.resolve({ data: {
+        count: 4, next: p === 1 ? 'p2' : null,
+        results: [
+          { id: p * 10, nom: `Camp page ${p} A`, statut_display: 'Actif', depense_mad: 100 },
+          { id: p * 10 + 1, nom: `Camp page ${p} B`, statut_display: 'Actif', depense_mad: 100 },
+        ],
+      } })
+    })
+    renderScreen()
+    expect(await screen.findByText('Camp page 2 B')).toBeInTheDocument()
+  })
+
   it('le bouton Synchroniser appelle syncNow puis recharge', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
@@ -100,6 +115,25 @@ describe('CampaignsScreen (ENG24)', () => {
     await waitFor(() => expect(mocks.syncNow).toHaveBeenCalled())
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
     expect(await screen.findByTestId('ae-camp-msg')).toHaveTextContent('Synchronisation lancée')
+  })
+
+  it('AACQ70 — synced:false affiche le détail serveur, jamais « lancée »', async () => {
+    mocks.syncNow.mockResolvedValue({ data: {
+      synced: false, detail: 'Connexion Meta non active — synchronisation impossible.' } })
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByTestId('ae-camp-sync'))
+    const msg = await screen.findByTestId('ae-camp-msg')
+    expect(msg).toHaveTextContent('Connexion Meta non active')
+    expect(msg).not.toHaveTextContent('Synchronisation lancée')
+  })
+
+  it('AACQ70 — un 502 affiche le détail renvoyé', async () => {
+    mocks.syncNow.mockRejectedValue({ response: { status: 502, data: { detail: 'Meta injoignable' } } })
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByTestId('ae-camp-sync'))
+    expect(await screen.findByTestId('ae-camp-msg')).toHaveTextContent('Meta injoignable')
   })
 
   // ── FIXPUB3 — Récupérer tout l'historique ────────────────────────────────

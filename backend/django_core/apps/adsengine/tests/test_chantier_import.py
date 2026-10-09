@@ -31,6 +31,11 @@ def make_consent(company, client_id=42, photo=True, **kw):
 
 class ChantierImportTests(TestCase):
     def setUp(self):
+        _p = mock.patch(
+            'apps.installations.selectors.chantier_client_id',
+            return_value=42)
+        _p.start()
+        self.addCleanup(_p.stop)
         self.company = Company.objects.create(nom='Chantier Co', slug='chan-co')
 
     def _import(self, **kw):
@@ -99,6 +104,11 @@ class ImportChantierPhotoViewIdsTests(TestCase):
     ``client_id='g'``, relevé par le marcheur aléatoire) mais un 400 FR."""
 
     def setUp(self):
+        _p = mock.patch(
+            'apps.installations.selectors.chantier_client_id',
+            return_value=42)
+        _p.start()
+        self.addCleanup(_p.stop)
         from django.contrib.auth import get_user_model
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.tokens import AccessToken
