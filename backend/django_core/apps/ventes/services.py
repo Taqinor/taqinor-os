@@ -115,9 +115,6 @@ enregistrer_avance = _encaissements.enregistrer_avance
 ventiler_avance = _encaissements.ventiler_avance
 enregistrer_paiement_avec_retenue = _encaissements.enregistrer_paiement_avec_retenue
 consolider_factures = _encaissements.consolider_factures
-mandat_actif_pour_client = _encaissements.mandat_actif_pour_client
-DUNNING_RETRY_DAYS = _encaissements.DUNNING_RETRY_DAYS
-debiter_mandat_pour_facture = _encaissements.debiter_mandat_pour_facture
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -509,7 +506,6 @@ __all__ = [
     'CompositionLignes',
     'CreditHoldError',
     'DRAPEAU_MOTEUR_CALEPINAGE',
-    'DUNNING_RETRY_DAYS',
     'GAMME_ENVOIS',
     'GAMME_ENVOI_DEFAUT',
     'GAMME_ENVOI_LES_DEUX',
@@ -600,7 +596,6 @@ __all__ = [
     'creer_facture_import',
     'creer_facture_regie',
     'creer_variante_gamme',
-    'debiter_mandat_pour_facture',
     'diff_configurations_devis',
     'dupliquer_devis',
     'enregistrer_avance',
@@ -627,7 +622,6 @@ __all__ = [
     'lignes_de_variante',
     'log_supplier_email',
     'logger',
-    'mandat_actif_pour_client',
     'mark_devis_sent',
     'marque_preferee',
     'metre_cable_dc',

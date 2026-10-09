@@ -22,7 +22,7 @@ from django.utils import timezone
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
-from apps.ventes.models import Facture, LigneFacture, MandatPaiement, Paiement
+from apps.ventes.models import Facture, LigneFacture, Paiement
 from authentication.models import Company
 from core.events import facture_payee
 
@@ -92,34 +92,6 @@ class _BaseSolde(TestCase):
             facture=facture, produit=produit, designation='Ligne',
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         return facture
-
-
-class TestDeuxDefautsDecouverts(_BaseSolde):
-    """Les deux chemins qui encaissaient sans jamais solder — rouges avant."""
-
-    def test_debit_de_mandat_solde_la_facture(self):
-        from apps.ventes.domain.encaissements import (
-            debiter_mandat_pour_facture,
-        )
-
-        facture = self._facture(Decimal('1200'))
-        # Le fournisseur ``noop`` (défaut) est FAIL-CLOSED par conception
-        # (QX3) : son ``charge()`` renvoie toujours ``ok: False`` — aucun
-        # débit n'est jamais simulé, donc aucun Paiement. Le débit de mandat
-        # se prouve avec ``mock_tokenized``, le fournisseur de TEST prévu
-        # pour ça (cf. ``test_xctr22_mandat_paiement``), sans réseau.
-        MandatPaiement.objects.create(
-            company=self.company, client=self.client_obj,
-            provider='mock_tokenized', token='TOK-AUD102',
-            statut=MandatPaiement.Statut.ACTIF)
-        with _CompteurPayee() as compteur:
-            paiement = debiter_mandat_pour_facture(
-                facture=facture, periode='2026-09')
-        self.assertIsNotNone(paiement)
-        facture.refresh_from_db()
-        self.assertEqual(facture.montant_du, Decimal('0.00'))
-        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
-        self.assertEqual(len(compteur.pour(facture)), 1)
 
 
 class TestNeufCheminsEmettentFacturePayee(_BaseSolde):

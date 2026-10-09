@@ -1,7 +1,6 @@
 {
   "endpoint": "POST /api/django/ventes/paiements/<int:pk>/reaffecter/",
   "forme_serveur": "partielle",
-  "forme_serveur_provisoire": "Route pas encore servie : la tâche backend AFAC17 la produit (D-AFAC-C2, option a) et remet `forme_serveur: complete` ; l'écran AFAC18 l'appelle.",
   "pourquoi": "AFAC4 (C-AFAC-013, D-AFAC-C2 option a) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Un paiement rapproché sur la mauvaise facture (ligne de relevé visant B rapprochée sur A) est RÉAFFECTÉ à la bonne facture du MÊME client : la facture source et la facture cible voient leur reste dû et leur statut recalculés, la trace (auteur, date) est conservée — jamais une suppression. La cible doit être encaissable (porte AFAC9). Montants en texte décimal.",
   "requete": {
     "facture_cible": 121

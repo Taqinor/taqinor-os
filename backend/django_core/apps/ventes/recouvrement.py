@@ -608,7 +608,7 @@ def _releve_data(client, user=None):
         # lignes égale donc `totaux.paye`, sur l'écran interne, le PDF et le
         # portail client (tous trois alimentés par ce même dict).
         for p in f.paiements.all():
-            if p.statut == Paiement.Statut.REJETE:
+            if p.statut in Paiement.STATUTS_NON_COMPTES:
                 continue
             date_p = (p.date_paiement.isoformat()
                       if p.date_paiement else None)
@@ -634,7 +634,7 @@ def _releve_data(client, user=None):
         # APRF11 — préchargé (avec le paiement source) par le helper.
         for a in f.affectations_paiement.all():
             source = a.paiement
-            if source.statut == Paiement.Statut.REJETE:
+            if source.statut in Paiement.STATUTS_NON_COMPTES:
                 continue
             paiements.append({
                 'facture': f.reference,

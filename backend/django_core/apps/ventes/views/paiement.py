@@ -50,6 +50,12 @@ def _refus_si_rejete(paiement):
     Un règlement rejeté (chèque impayé, virement retourné) n'a plus d'existence
     monétaire : aucune quittance ne doit l'attester, ni en PDF ni par email.
     """
+    if paiement.statut == Paiement.Statut.ANNULE_SAISIE:
+        # AFAC17 — une saisie annulée n'atteste plus aucun règlement.
+        return Response(
+            {'detail': ('Saisie annulée : aucune quittance ne peut être '
+                        'émise.')},
+            status=status.HTTP_409_CONFLICT)
     if paiement.statut == Paiement.Statut.REJETE:
         motif = (paiement.motif_rejet or '').strip()
         detail = 'Règlement rejeté : aucune quittance ne peut être émise.'
@@ -120,7 +126,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         # gestes d'argent : code ``encaisser`` (seule source).
         if self.action in ('enregistrer_avance', 'ventiler'):
             return [HasPermissionOrLegacy('encaisser')()]
-        if self.action == 'rejeter':
+        if self.action in ('rejeter', 'annuler_saisie', 'reaffecter'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
@@ -150,6 +156,65 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                     else status.HTTP_400_BAD_REQUEST)
             return Response({'detail': exc.message}, status=code)
         return Response(PaiementSerializer(paiement).data)
+
+    @action(detail=True, methods=['post'], url_path='annuler-saisie')
+    def annuler_saisie(self, request, pk=None):
+        """AFAC17 — annule une saisie de paiement ERRONÉE (motif obligatoire,
+        datée, signée) ; contrat ``paiement_annuler_saisie.json``."""
+        from ..domain.encaissements import (
+            CorrectionPaiementRefusee, annuler_saisie_paiement,
+        )
+        paiement = self.get_object()
+        try:
+            annuler_saisie_paiement(
+                paiement=paiement, motif=request.data.get('motif'),
+                user=request.user)
+        except CorrectionPaiementRefusee as exc:
+            return Response(
+                {'code': exc.code, 'detail': exc.detail},
+                status=(status.HTTP_409_CONFLICT if exc.conflit
+                        else status.HTTP_400_BAD_REQUEST))
+        paiement.refresh_from_db()
+        return Response(PaiementSerializer(paiement).data)
+
+    @action(detail=True, methods=['post'], url_path='reaffecter')
+    def reaffecter(self, request, pk=None):
+        """AFAC17 — réaffecte le paiement à une autre facture du MÊME client
+        (encaissable) ; contrat ``paiement_reaffecter.json``."""
+        from ..domain.encaissements import (
+            CorrectionPaiementRefusee, reaffecter_paiement,
+        )
+        paiement = self.get_object()
+        cible_id = request.data.get('facture_cible')
+        try:
+            cible_id = int(cible_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'code': 'cible_invalide',
+                 'detail': 'La facture cible est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        cible = self._facture_visible(cible_id)
+        if cible is None:
+            return Response(
+                {'code': 'cible_invalide', 'detail': 'Facture cible inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            paiement, source, cible = reaffecter_paiement(
+                paiement=paiement, facture_cible=cible, user=request.user)
+        except CorrectionPaiementRefusee as exc:
+            return Response(
+                {'code': exc.code, 'detail': exc.detail},
+                status=(status.HTTP_409_CONFLICT if exc.conflit
+                        else status.HTTP_400_BAD_REQUEST))
+
+        def _facture(f):
+            return {'id': f.id, 'reference': f.reference,
+                    'montant_du': f'{f.montant_du:.2f}', 'statut': f.statut}
+        return Response({
+            'paiement': PaiementSerializer(paiement).data,
+            'facture_source': _facture(source),
+            'facture_cible': _facture(cible),
+        })
 
     @action(detail=False, methods=['get'], url_path='avances-non-affectees')
     def avances_non_affectees(self, request):

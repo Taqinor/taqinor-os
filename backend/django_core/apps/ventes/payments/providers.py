@@ -88,9 +88,13 @@ class NoOpProvider(PaymentProvider):
     label = 'Paiement manuel (aucune passerelle)'
 
     def create_session(self, link):
-        # URL relative de la page publique interne — pas d'hôte externe.
+        # AFAC21 (C-AFAC-017) — l'URL ABSOLUE de la page CLIENT
+        # ``/payer/<token>`` (jamais le chemin ``/api/…`` relatif, qui
+        # servait du JSON DRF au client) ; sans base absolue connue (ni
+        # ``PUBLIC_BASE_URL`` ni requête), AUCUN lien plutôt qu'un lien cassé.
+        from ..domain.encaissements import url_page_paiement
         return {
-            'pay_url': f'/api/django/public/pay/{link.token}/',
+            'pay_url': url_page_paiement(link.token),
             'provider_ref': '',
         }
 
@@ -251,11 +255,21 @@ class MockTokenizedProvider(PaymentProvider):
 
 
 # ── Registre des fournisseurs (swappable, comme le monitoring) ───────────────
+# AFAC21 (C-AFAC-020) — ``MockTokenizedProvider`` n'est PLUS au registre de
+# production : il n'est ajouté que sous ``manage.py test``
+# (``settings.TESTING``), où il prouve le câblage mandat → débit.
 _REGISTRY = {
     NoOpProvider.key: NoOpProvider,
     HostedGatewayProvider.key: HostedGatewayProvider,
-    MockTokenizedProvider.key: MockTokenizedProvider,
 }
+
+
+def _registre():
+    from django.conf import settings
+    reg = dict(_REGISTRY)
+    if getattr(settings, 'TESTING', False):
+        reg.setdefault(MockTokenizedProvider.key, MockTokenizedProvider)
+    return reg
 
 
 def register_provider(cls):
@@ -266,10 +280,20 @@ def register_provider(cls):
 
 def available_providers():
     """Liste [(clé, libellé)] des fournisseurs pour l'UI/les choix."""
-    return [(cls.key, cls.label) for cls in _REGISTRY.values()]
+    return [(cls.key, cls.label) for cls in _registre().values()]
+
+
+def providers_lien_actifs():
+    """AFAC21 — clés des fournisseurs qui savent ouvrir un lien « Payer en
+    ligne » (``create_session`` réellement implémentée) : la LISTE BLANCHE
+    de ``factures/<id>/lien-paiement/``. Un fournisseur sans session (test
+    de tokenisation) répondait 500 ``NotImplementedError`` en laissant un
+    lien orphelin."""
+    return [key for key, cls in _registre().items()
+            if cls.create_session is not PaymentProvider.create_session]
 
 
 def get_provider(key):
     """Instancie le fournisseur de la clé donnée ; NoOp si inconnu (sûr)."""
-    cls = _REGISTRY.get(key or 'noop', NoOpProvider)
+    cls = _registre().get(key or 'noop', NoOpProvider)
     return cls()
