@@ -1,4 +1,4 @@
-"""YDATA15 — advisory sweep: `get_or_create`/`update_or_create` lookup keys
+"""YDATA15 — bloquant (ENF13): `get_or_create`/`update_or_create` lookup keys
 should be backed by a `UniqueConstraint` (Django's documented race).
 
 DB-free, AST-only (mirrors ``scripts/check_on_delete.py``). Scans every

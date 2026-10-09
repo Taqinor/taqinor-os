@@ -1370,6 +1370,15 @@ class MouvementStock(models.Model):
         verbose_name = "Mouvement de Stock"
         verbose_name_plural = "Mouvements de Stock"
         ordering = ['-date']
+        constraints = [
+            # ENF13 — ``quantite`` est TOUJOURS une valeur absolue (le sens
+            # vient de ``type_mouvement`` et de quantite_avant/apres, y compris
+            # pour un ajustement : ``abs(écart)``). Backstop DB contre
+            # bulk_create / update / SQL brut.
+            models.CheckConstraint(
+                check=models.Q(quantite__gte=0),
+                name='mouvementstock_quantite_non_negative'),
+        ]
 
     def __str__(self):
         return f"{self.type_mouvement} | {self.produit.nom} | {self.quantite}"

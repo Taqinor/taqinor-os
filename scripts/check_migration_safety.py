@@ -20,7 +20,7 @@ the two YDATA20 checks, DB-free via ``ast`` over
       ARE mirrored in ``models.py`` pass silently (explicit names are fine).
 
 v1: existing (historical) migrations that match are recorded in
-``scripts/migration_safety_allow.txt`` (baseline); only a NEW migration with an
+``scripts/exceptions_permanentes.yml (migration_safety)`` (baseline); only a NEW migration with an
 un-allowlisted finding fails CI.
 
 Usage:
@@ -34,10 +34,12 @@ import re
 import sys
 from pathlib import Path
 
+import _exceptions_permanentes  # ENF14 — exceptions permanentes signées
+
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"
-ALLOWLIST_PATH = ROOT / "scripts" / "migration_safety_allow.txt"
+ALLOWLIST_PATH = ROOT / "scripts" / "exceptions_permanentes.yml"
 
 MIGRATION_ROOTS = [
     DJANGO_CORE / "core" / "migrations",
@@ -184,14 +186,7 @@ def _rel(path: Path) -> str:
 
 
 def _load_allowlist():
-    if not ALLOWLIST_PATH.exists():
-        return set()
-    out = set()
-    for line in ALLOWLIST_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            out.add(line)
-    return out
+    return _exceptions_permanentes.charger("migration_safety", ALLOWLIST_PATH)
 
 
 def _call_name(node):
@@ -332,14 +327,14 @@ def main(argv):
 
     if offenders:
         print("check_migration_safety: unsafe/ambiguous migration(s) "
-              "(not in scripts/migration_safety_allow.txt):")
+              "(not in scripts/exceptions_permanentes.yml (migration_safety)):")
         for line in offenders:
             print(f"  - {line}")
         print(
             "\nSplit a constraint-on-populated-table into a 3-step migration, "
             "and let Django name indexes/constraints (or mirror the explicit "
             "name verbatim in models.py Meta). A REVIEWED historical migration "
-            "may be added to scripts/migration_safety_allow.txt."
+            "may be added to scripts/exceptions_permanentes.yml (migration_safety)."
         )
         return 1
 

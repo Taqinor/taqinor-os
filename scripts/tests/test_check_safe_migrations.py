@@ -156,10 +156,12 @@ class CheckSafeMigrationsTests(unittest.TestCase):
             bad_path = app_migrations / "0001_bad.py"
             bad_path.write_text(NEW_RENAME_FIELD, encoding="utf-8")
 
-            allow_path = fake_root / "scripts" / "safe_migrations_allow.txt"
+            allow_path = fake_root / "scripts" / "exceptions_permanentes.yml"
             allow_path.parent.mkdir(parents=True, exist_ok=True)
             rel = "backend/django_core/apps/demoapp/migrations/0001_bad.py"
-            allow_path.write_text(rel + "\n", encoding="utf-8")
+            allow_path.write_text(
+                'safe_migrations:\n  entrees:\n    - "' + rel + '"\n',
+                encoding="utf-8")
 
             import importlib
             orig_root = csm.ROOT

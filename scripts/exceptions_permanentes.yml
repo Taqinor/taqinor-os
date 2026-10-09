@@ -1,0 +1,362 @@
+# ENF14 — exceptions PERMANENTES signées (règle fondateur 09/10/2026).
+# Fichier UNIQUE : seules les catégories ci-dessous sont des exceptions approuvées nommément;
+# toute autre allowlist / base de dette de scripts/ est de la dette à ramener à zéro (groupe ENF).
+# Ne jamais AJOUTER une entrée pour faire passer une garde : corriger la cause.
+# Chargeur : scripts/_exceptions_permanentes.py (garde de forme : scripts/tests/test_exceptions_permanentes.py).
+
+migration_safety:
+  raison: migrations historiques déjà appliquées en production — immuables, ne jamais les réécrire (check_migration_safety.py)
+  entrees:
+    # YDATA20 — migration-safety baseline allowlist (historical migrations).
+    # One migration path per line. check_migration_safety.py only fails on a NEW
+    # migration (not listed here) that adds a unique/not-null constraint to a
+    # populated table in one step, or names an index/constraint that no models.py
+    # Meta declares. Baseline captured 2026-07-13 — all pre-existing migrations.
+    # 2026-07-19 (batch-2 PUB): adsengine/0032 named constraint
+    # 'uniq_adseng_factentry_table_cle', LEGITIMATELY superseded by 0045_pub85_
+    # factentry_region (RemoveConstraint + AddConstraint 'uniq_adseng_factentry_
+    # table_cle_region', which is what models.py Meta now declares). Historical
+    # migration, no drift — reviewed and allowlisted.
+    # REVUE 03/09/2026 — ck_paiement_montant_positif posée par 0005 puis RETIRÉE par 0006
+    # (FG50 : contre-passation négative VOULUE) ; nom absent de Meta par construction.
+    # REVUE 20/09/2026 — ged_acl_principal_required posée par 0013 puis REMPLACÉE par
+    # 0049 (NTPRT13 : ged_acl_principal_required_v2 inclut le principal client) ;
+    # l'ancien nom est absent de Meta par construction, la v2 y est déclarée.
+    # REVUE 21/09/2026 (SOLMVP-sweep) — stock_stockvehicule_co_actif_produit_uniq
+    # posée par 0115 sur un champ retiré depuis (SOLMVP12 : RemoveField des FK
+    # flotte.ActifFlotte/flotte.Vehicule hors du MVP solaire) ; models.py ne
+    # décrit plus ce champ donc ne peut plus mirroiter le nom — migration figée,
+    # aucune dérive réelle (le champ lui-même a disparu, pas juste son index).
+    # REVUE 21/09/2026 (SOLMVP-sweep) — idx_budgdep_co_dept posé par 0117 sur le
+    # champ ``departement`` de BudgetDepartement, retiré par SOLMVP12 (la
+    # distinction par département référençait rh.Departement, hors du MVP
+    # solaire : une seule enveloppe par société et par période désormais) ;
+    # migration figée, même motif que ci-dessus.
+    # 2026-10-01 (QJR647) : ventes/0037 nommait l index ventes_roof_co_dev_idx de
+    # ventes.RoofLayout, modele retire par 0120_qjr647_retrait_rooflayout (DeleteModel) :
+    # plus aucun Meta ne peut le declarer. Migration historique, revue.
+    # 2026-10-07 (AANA10) : dataimport/0001 nommait uniq_dataimport_external_ref,
+    # remplacee par uniq_dataimport_external_ref_ct (0005_externalref_unique_content_type,
+    # AddConstraint puis RemoveConstraint) : le Meta ne peut plus declarer l'ancien nom.
+    # Migration historique, revue.
+    # 2026-10-07 (ACAL267) : calepinage/0009 nommait uniq_pose_reelle_par_pan,
+    # remplacee par uniq_pose_reelle_par_zone (0028_acal267_pose_reelle_zone_id,
+    # RemoveConstraint puis AddConstraint) : le Meta ne peut plus declarer l'ancien nom.
+    # Migration historique, revue.
+    - "backend/django_core/apps/adsengine/migrations/0032_creativegenerationbatch_claim_verdicts_and_more.py"
+    - "backend/django_core/apps/automation/migrations/0003_approvalrequesttype_approvalrequest.py"
+    - "backend/django_core/apps/automation/migrations/0004_approvaldelegation_decided_on_behalf_of.py"
+    - "backend/django_core/apps/automation/migrations/0005_incomingwebhooktrigger.py"
+    - "backend/django_core/apps/automation/migrations/0006_zctr7_min_approbations_approvaldecision.py"
+    - "backend/django_core/apps/chat/migrations/0002_threadfollow.py"
+    - "backend/django_core/apps/chat/migrations/0004_userchatstatus.py"
+    - "backend/django_core/apps/chat/migrations/0005_scheduled_reminders_bookmarks.py"
+    - "backend/django_core/apps/chat/migrations/0006_cannedresponse.py"
+    - "backend/django_core/apps/chat/migrations/0007_poll.py"
+    - "backend/django_core/apps/chat/migrations/0008_retention.py"
+    - "backend/django_core/apps/compta/migrations/0021_budget_budgetligne.py"
+    - "backend/django_core/apps/compta/migrations/0065_immobilisation_capitalisation_facture_fournisseur.py"
+    - "backend/django_core/apps/crm/migrations/0053_qx35_client_code_parrainage.py"
+    - "backend/django_core/apps/flotte/migrations/0042_charte_vehicule.py"
+    - "backend/django_core/apps/flotte/migrations/0043_budgetflotte.py"
+    - "backend/django_core/apps/ged/migrations/0024_xged1_signature_ceremony.py"
+    - "backend/django_core/apps/installations/migrations/0014_fg297_document_projet_revision.py"
+    - "backend/django_core/apps/installations/migrations/0015_fieldop.py"
+    - "backend/django_core/apps/installations/migrations/0016_fg291_projet_programme.py"
+    - "backend/django_core/apps/installations/migrations/0017_fg292_projet_tache.py"
+    - "backend/django_core/apps/installations/migrations/0018_fg294_budget_projet.py"
+    - "backend/django_core/apps/installations/migrations/0019_fg302_indisponibilite_ressource.py"
+    - "backend/django_core/apps/installations/migrations/0020_fg304_sous_traitant.py"
+    - "backend/django_core/apps/installations/migrations/0021_fg305_ordre_sous_traitance.py"
+    - "backend/django_core/apps/installations/migrations/0022_fg306_facture_soustraitant.py"
+    - "backend/django_core/apps/installations/migrations/0023_fg307_attestation_soustraitant.py"
+    - "backend/django_core/apps/installations/migrations/0024_fg308_evaluation_soustraitant.py"
+    - "backend/django_core/apps/installations/migrations/0025_fg309_retenue_garantie.py"
+    - "backend/django_core/apps/installations/migrations/0026_fg310_demande_achat.py"
+    - "backend/django_core/apps/installations/migrations/0027_fg311_rfq.py"
+    - "backend/django_core/apps/installations/migrations/0028_fg312_approbation_bcf.py"
+    - "backend/django_core/apps/installations/migrations/0029_fg314_commande_cadre.py"
+    - "backend/django_core/apps/installations/migrations/0030_fg315_dossier_import.py"
+    - "backend/django_core/apps/installations/migrations/0031_fg316_landed_cost.py"
+    - "backend/django_core/apps/installations/migrations/0032_fg317_gr_ir.py"
+    - "backend/django_core/apps/installations/migrations/0033_fg318_contrat_prix.py"
+    - "backend/django_core/apps/installations/migrations/0034_binlocation_binaffectation_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0036_picklist_picklistligne_picklist_idx_pick_co_statut_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0037_colis_colisligne_colis_idx_colis_co_statut_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0039_sessioncomptage_comptageligne_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0043_kit_kitcomposant_ordreassemblage_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0044_livraison_livraisonligne_livraison_idx_liv_co_statut_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0046_livraison_cout_transport_transporteur_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0048_dc40_equipe_canonique.py"
+    - "backend/django_core/apps/installations/migrations/0054_xmfg2_reservationassemblage.py"
+    - "backend/django_core/apps/installations/migrations/0055_xmfg3_ato_devis_chantier.py"
+    - "backend/django_core/apps/installations/migrations/0056_xmfg4_lifecycle_chatter.py"
+    - "backend/django_core/apps/installations/migrations/0057_xmfg6_ordreassemblageligne.py"
+    - "backend/django_core/apps/installations/migrations/0058_xmfg7_serieassemblage.py"
+    - "backend/django_core/apps/installations/migrations/0060_xmfg12_ordredemontage.py"
+    - "backend/django_core/apps/installations/migrations/0061_xmfg13_controle_qualite.py"
+    - "backend/django_core/apps/installations/migrations/0062_xmfg14_gamme_etapes.py"
+    - "backend/django_core/apps/installations/migrations/0063_xpur20_rfq_consultation.py"
+    - "backend/django_core/apps/installations/migrations/0068_xfsm7_lien_client_token.py"
+    - "backend/django_core/apps/installations/migrations/0070_xfsm10_astreinte.py"
+    - "backend/django_core/apps/installations/migrations/0079_ystck4_retour_materiel.py"
+    - "backend/django_core/apps/installations/migrations/0081_zstk8_retour_livraison.py"
+    - "backend/django_core/apps/installations/migrations/0082_zstk9_storage_categories_putaway_rules.py"
+    - "backend/django_core/apps/installations/migrations/0086_zfsm2_lien_rapport_token.py"
+    - "backend/django_core/apps/installations/migrations/0087_zfsm3_recurrence_intervention.py"
+    - "backend/django_core/apps/installations/migrations/0091_xfsm23_gps_tracking.py"
+    - "backend/django_core/apps/kb/migrations/0002_kbarticleversion.py"
+    - "backend/django_core/apps/parametres/migrations/0027_approvalpolicy.py"
+    - "backend/django_core/apps/records/migrations/0005_tag_taggeditem.py"
+    - "backend/django_core/apps/rh/migrations/0041_checklist_integration.py"
+    - "backend/django_core/apps/sav/migrations/0009_fg86_ticket_share_token.py"
+    - "backend/django_core/apps/sav/migrations/0018_xsav10_ticketsatisfaction.py"
+    - "backend/django_core/apps/sav/migrations/0024_xsav19_equipement_public_token.py"
+    - "backend/django_core/apps/ventes/migrations/0039_fg268_regulatory_dossier.py"
+    - "backend/django_core/apps/ventes/migrations/0040_fg269_dossier_exchange.py"
+    - "backend/django_core/apps/ventes/migrations/0041_fg270_subvention_dossier.py"
+    - "backend/django_core/apps/ventes/migrations/0042_fg271_regularisation8221.py"
+    - "backend/django_core/apps/ventes/migrations/0043_fg274_commissioning_test.py"
+    - "backend/django_core/apps/ventes/migrations/0044_fg275_iv_curve.py"
+    - "backend/django_core/core/migrations/0006_webhooksubscription.py"
+    - "backend/django_core/core/migrations/0035_ydata12_processedwebhookevent.py"
+    - "backend/django_core/core/migrations/0036_yapic9_idempotencyrecord.py"
+    - "backend/django_core/core/migrations/0037_ntsec21_sharingrule.py"
+    - "backend/django_core/core/migrations/0038_ntsec23_fieldpermissionrule.py"
+    - "backend/django_core/apps/facturation/migrations/0005_aud188_contraintes_argent.py"
+    - "backend/django_core/apps/ged/migrations/0013_aclged.py"
+    - "backend/django_core/apps/stock/migrations/0115_ntdst14_stock_vehicule.py"
+    - "backend/django_core/apps/stock/migrations/0117_ntp2p4_budget_departement.py"
+    - "backend/django_core/apps/ventes/migrations/0037_fg245_rooflayout.py"
+    - "backend/django_core/apps/dataimport/migrations/0001_initial.py"
+    - "backend/django_core/apps/calepinage/migrations/0009_cal212_pose_reelle.py"
+
+safe_migrations:
+  raison: migrations historiques déjà appliquées en production — immuables (check_safe_migrations.py)
+  entrees:
+    # YOPSB4 — allowlist of HISTORICAL migrations already merged to main that trip
+    # scripts/check_safe_migrations.py's heuristics. Each was reviewed and is safe
+    # in its actual context (e.g. RunPython using .all() without an explicit
+    # .iterator()/batch marker on a table that was empty/small at migration time,
+    # or an AddIndex predating the concurrent-index convention — YOPSB6). A NEW
+    # migration is NOT added here: it must fix the flagged pattern instead.
+    #
+    # One relative repo path per line (forward slashes).
+    # WIR95 — conversion des 8 références opaques `*_id` du module portail en
+    # vraies FK string-référencées (5 modèles). Signalements : 8 RemoveField,
+    # 8 RenameField, 1 RunPython `.update()` non batché. Ils sont INHÉRENTS au
+    # patron entier -> FK (il n'existe pas de variante « corrigée » sans
+    # RemoveField/RenameField), d'où l'exception à la règle d'en-tête, et non un
+    # contournement : la revue a d'abord CORRIGÉ un vrai défaut avant d'autoriser
+    # le fichier. Audit opération par opération (docstring en tête de la
+    # migration) :
+    #   - ALLER sans perte : la copie des ids (passe 3) précède TOUS les
+    #     RemoveField (passe 4) ; le renommage (passe 5) ramène chaque colonne à
+    #     son nom d'origine `<champ>_id`, donc `.filter(x_id=)/.create(x_id=)`
+    #     continuent de fonctionner. `MigrationAutodetector` : 0 écart vs les
+    #     modèles réels.
+    #   - RETOUR corrigé pendant cette revue : le reverse était un `pass`, qui
+    #     recréait les colonnes entières VIDES puis supprimait les `*_tmp_id`
+    #     porteuses de la donnée => perte silencieuse des 8 références. Corrigé
+    #     par (a) une passe 1 rendant nullables les 5 anciens entiers NOT NULL
+    #     (sinon le ADD COLUMN du rollback est refusé sur table peuplée) et
+    #     (b) un reverse qui RECOPIE `*_tmp_id -> *_id`. Rollback vérifié sans
+    #     perte ; il échoue bruyamment (jamais silencieusement) si une ligne
+    #     créée après coup porte une référence NULL.
+    #   - `.update()` global assumé : tables `compta_*portail` à faible volume.
+    # U3-900 (fondateur 29/08/2026) — RemoveField reviewed as part of the founder
+    # order itself: `panneaux_par_900mad` fed the sizing rule `estimerPanneaux`,
+    # which was deleted from the whole product this week (backend + generator
+    # screen, PR #577/027d83eb); the column had no remaining reader anywhere in
+    # the codebase (sweep verified). Reversible via migration reversal (restores
+    # the column with its default of 8) — no companion data plan needed.
+    # CRX35 (audit L3 CRM du 02/09/2026) — RemoveField reviewed: `Playbook.bloquant`
+    # promised a hard block on stage changes with unchecked mandatory tasks, but NO
+    # code ever read the column (verified twice by the audit, and again by a repo
+    # sweep here: only the model declaration and the serializer field list). A UI
+    # promise with no enforcement is worse than no feature. Reversible via migration
+    # reversal (restores the column with its default of False) — no companion data
+    # plan needed, the column carried no decision anywhere.
+    # NTGRC3 (12/09/2026) — index (company, date_echeance) sur core.DataSubjectRequest :
+    # table DSR quasi vide en production (quelques demandes), la construction de
+    # l'index est instantanee — le verrou d'un AddIndex nu y est negligeable, et une
+    # migration concurrent separee recreerait une collision de numerotation inter-lots.
+    # SOLMVP12 (20/09/2026) — RemoveField reviewed as part of the founder-decided
+    # Groupe SOLMVP detachment itself (docs/PLAN.md, "coquille de migrations" —
+    # stock detaches from the parked flotte/qhse/rh apps): 4 kept->parked link
+    # columns (StockVehicule.actif_flotte, PlanChargement.vehicule,
+    # BlocageQualite.non_conformite, BudgetDepartement.departement), destructive
+    # but explicitly revertable — restoring the parked app's folder + `migrate
+    # stock <n-1>` recreates the column via Django's reverse RemoveField; only the
+    # link VALUES are lost (standard RemoveField behaviour), noted at the DONE LOG
+    # per the Groupe SOLMVP preamble. No table dropped, no django_migrations row
+    # touched.
+    # SOLMVP30b (20/09/2026) — same Groupe SOLMVP detachment: `CustomUser.poste_ref`
+    # was the last kept->parked FK on `authentication` (nullable SET_NULL to
+    # 'rh.Poste', rh now parked). Only the link column goes; `rh_poste` table and
+    # rows are untouched (rh's shell is database_operations=[]), and the free-text
+    # `CustomUser.poste` (the readable label) is unaffected — no job title lost.
+    # Revertable: `migrate authentication 0032` recreates the (empty) column, then
+    # `authentication.poste_sync.backfill_poste_ref` re-links it (return recipe:
+    # docs/parked-modules.md).
+    # SOLMVP14 (20/09/2026) — same Groupe SOLMVP detachment: sav drops its 3
+    # link/feature columns to the parked rh app (`CategorieTicket.competences_
+    # requises`/`niveau_competence_min`, `SavSlaSettings.affectation_par_
+    # competence` — the "RH-required skills per category" feature retired with
+    # rh.Competence). No SAV business table dropped, no django_migrations row
+    # touched; destructive-revertable per the Groupe SOLMVP recipe.
+    # AGR208 (Groupe AGR, 02/10/2026) — `agricole_prix_bonbonne` /
+    # `agricole_cout_reel_bonbonne` (Q4, lus par aucun calcul depuis QJR236)
+    # retirés APRÈS recopie de leurs valeurs dans le JSON
+    # `reperes_energie_agricole` (RunPython réversible : le retour restaure les
+    # deux colonnes et leurs valeurs). Destructive-revertable, revue humaine via
+    # la tâche AGR208 (modèle opus).
+    # AGR401 (02/10/2026) — RenameField pompe_cv -> pompe_actuelle_cv (Lead +
+    # SiteProfile) : données conservées (elles décrivent déjà la pompe existante),
+    # réversible (rename inverse), colonnes décimales identiques. Revue humaine.
+    # AGR104 — RunPython .update() borné : une ligne de catalogue par SKU nommé
+    # (≈40 SKU, filtre role_pompage='' ; jamais un update global de table),
+    # réversible (retirer_roles). Pas de verrou long possible.
+    # ACAL320 (C-ACAL-065, D-ACAL decision) — RemoveField de la section JSON
+    # ParametresCalepinage.gabarits_dossier, jumelle dormante du modele
+    # GabaritDossierReglementaire (aucune lecture hors serialisation). Reversible
+    # (colonne recreee, defaut {}). Dry-run en lecture avant deploiement. Revue.
+    - "backend/django_core/authentication/migrations/0004_customuser_role_legacy.py"
+    - "backend/django_core/authentication/migrations/0007_mark_owner_protected.py"
+    - "backend/django_core/authentication/migrations/0013_customuser_poste_ref.py"
+    - "backend/django_core/apps/chat/migrations/0003_notification_level.py"
+    - "backend/django_core/apps/compta/migrations/0043_dc32_compte_portail_client_fk.py"
+    - "backend/django_core/apps/contrats/migrations/0037_zctr6_ordre_location_devis.py"
+    - "backend/django_core/apps/crm/migrations/0011_client_type_from_ice.py"
+    - "backend/django_core/apps/crm/migrations/0026_lead_score.py"
+    - "backend/django_core/apps/ged/migrations/0006_document_search_vector_document_texte_ocr_and_more.py"
+    - "backend/django_core/apps/ged/migrations/0009_document_locked_by_locked_at.py"
+    - "backend/django_core/apps/ged/migrations/0011_document_statut.py"
+    - "backend/django_core/apps/ged/migrations/0036_zged5_document_proprietaire_contact.py"
+    - "backend/django_core/apps/gestion_projet/migrations/0023_timesheet_workflow_periode_verrouillee.py"
+    - "backend/django_core/apps/installations/migrations/0006_checklisttemplate_and_more.py"
+    - "backend/django_core/apps/installations/migrations/0052_dc34_soustraitant_fournisseur.py"
+    - "backend/django_core/apps/installations/migrations/0055_xmfg3_ato_devis_chantier.py"
+    - "backend/django_core/apps/kb/migrations/0008_kbarticle_parent_ordre.py"
+    - "backend/django_core/apps/kb/migrations/0017_kbarticle_langue_traduction.py"
+    - "backend/django_core/apps/notifications/migrations/0013_xmkt25_whatsapptemplate_approval.py"
+    - "backend/django_core/apps/paie/migrations/0037_zpai7_saisiearret_lot_reference.py"
+    - "backend/django_core/apps/rh/migrations/0019_epi_peremption_controle.py"
+    - "backend/django_core/apps/sav/migrations/0007_fg81_fg82_fg83_fg85_fg87.py"
+    - "backend/django_core/apps/stock/migrations/0013_backfill_garantie_onduleurs.py"
+    - "backend/django_core/apps/facturation/migrations/0002_odx17_rename_stale_contenttypes.py"
+    - "backend/django_core/apps/adsengine/migrations/0012_adseng4_guardian_treasury.py"
+    - "backend/django_core/apps/crm/migrations/0061_adseng1_lead_meta_ids.py"
+    - "backend/django_core/apps/qhse/migrations/0056_wir128_permis_valideur_fk.py"
+    - "backend/django_core/apps/portail/migrations/0003_wir95_fk_references.py"
+    - "backend/django_core/apps/parametres/migrations/0080_remove_companyprofile_panneaux_par_900mad.py"
+    - "backend/django_core/apps/crm/migrations/0088_crx35_retrait_playbook_bloquant.py"
+    - "backend/django_core/core/migrations/0056_ntgrc3_dsr_echeance.py"
+    - "backend/django_core/apps/stock/migrations/0159_solmvp12_detacher_flotte_qhse_rh.py"
+    - "backend/django_core/authentication/migrations/0033_solmvp30b_customuser_sans_poste_ref.py"
+    - "backend/django_core/apps/sav/migrations/0064_solmvp14_detacher_apps_parquees.py"
+    - "backend/django_core/apps/parametres/migrations/0113_agr208_reperes_energie_agricole.py"
+    - "backend/django_core/apps/crm/migrations/0119_agr401_pompe_actuelle_cv.py"
+    - "backend/django_core/apps/stock/migrations/0162_agr104_roles_pompage.py"
+    - "backend/django_core/apps/calepinage/migrations/0031_acal320_retrait_gabarits_dossier.py"
+
+tenant_exempt_models:
+  raison: modèles globaux/inter-sociétés PAR CONCEPTION, sans société propriétaire (check_company_fk.py)
+  entrees:
+    # YDATA4 — models exempt from the company-scope guard (scripts/check_company_fk.py).
+    # One 'app.Model' per line. Generated from the current repo state: after the
+    # TextChoices/Exception classes living in models*.py were filtered out (they
+    # are not Django models at all), exactly one genuine model remains global by
+    # design — reviewed, not a gap to fix here.
+    # XPLT20 inter-société group config — inherently cross-company (societe_a/
+    # societe_b), ships inert/founder-gated (docs/decisions/XPLT20-inter-societes.md);
+    # scope decided when the founder configures a pair. No single owning company.
+    # YOPSB11 — cold-storage archive tables (append-only chatter/runs/webhooks). By
+    # design they DENORMALISE their FKs to plain integer ids (company_id/lead_id/…) so
+    # an archive never couples to the live table's lifecycle; company_id is retained so
+    # per-company aggregate counts survive, but there is no company FK / TenantModel base.
+    # NTEXT13 — global extension-marketplace CATALOGUE (shared, read-only reference
+    # table of installable package templates). Not tenant business data: catalogue
+    # rows are global gabarits any tenant browses before installing. Per-tenant
+    # materialisation/installation (which IS company-scoped) is a separate brick
+    # (NTEXT14, unbuilt). Reviewed global-by-design 2026-07-16.
+    # NTADM18 — référentiel PLATEFORME des annonces produit de l'éditeur (« Quoi de
+    # neuf » de l'ERP) + leurs accusés de lecture. Global par conception : une
+    # nouveauté produit est publiée UNE fois par l'éditeur et concerne toutes les
+    # sociétés — aucune n'en est propriétaire, ce n'est pas de la donnée métier de
+    # tenant. La société du lecteur reste portée par `utilisateur.company`. Les
+    # annonces INTERNES d'un tenant à ses équipes restent, elles, scopées société
+    # (`notifications.Annonce`). Publication réservée à l'éditeur (superuser /
+    # is_taqinor_support) : un Administrateur de tenant ne peut jamais diffuser
+    # vers les autres sociétés. Reviewed global-by-design 2026-08-05.
+    # N101 — demande d'inscription self-service (installateurs pilotes). Global par
+    # conception : au moment du dépôt, la société N'EXISTE PAS ENCORE — c'est
+    # justement ce que le fondateur va décider de créer. La rattacher à un tenant
+    # serait un contresens. L'endpoint public ne crée jamais de compte ni de
+    # société ; il est de plus PARQUÉ par défaut (TENANT_SIGNUP_ENABLED, 404 quand
+    # éteint). Reviewed global-by-design 2026-08-05.
+    # NTOBS15 — abonné PUBLIC de la page de statut (e-mail + jeton opaque, double
+    # opt-in). S'abonne aux incidents SYSTÈME (company=None) : aucun tenant
+    # propriétaire par conception — l'e-mail est l'identité, le jeton est l'accès.
+    - "notifications.VapidKeyPair"
+    - "compta.RegleInterSociete"
+    - "compta.EcritureLiaisonInterSociete"
+    - "automation.AutomationRunArchive"
+    - "crm.LeadActivityArchive"
+    - "publicapi.WebhookDeliveryArchive"
+    - "extensions.ExtensionPackage"
+    - "adminops.AnnonceProduit"
+    - "adminops.LectureAnnonce"
+    - "adminops.DemandeInscription"
+    - "adminops.PlanLicence"
+    - "statuspage.StatusSubscriber"
+
+dockerignore_racine:
+  raison: motifs .dockerignore racine-seul voulus (contexte de build explicite), clé fichier::motif (check_dockerignore.py)
+  entrees:
+    # ADEP4 - base DECROISSANTE des motifs .dockerignore racine-seul (une ligne =
+    # `fichier::motif`). Ne jamais AJOUTER : ancrer le motif (`**/motif`) ou l'ecrire
+    # `/motif` si la racine est voulue. Les lignes backend/fastapi_ia/ sont retirees par ADEP41
+    # (propriete analyse). Racine / frontend : chemins de contexte explicites, voulus.
+    - ".dockerignore::.git"
+    - ".dockerignore::.github"
+    - ".dockerignore::.claude"
+    - ".dockerignore::.venv"
+    - ".dockerignore::*.md"
+    - ".dockerignore::docs"
+    - ".dockerignore::backend"
+    - ".dockerignore::.env"
+    - ".dockerignore::frontend/parked"
+    - ".dockerignore::backend/parked"
+    - "frontend/.dockerignore::node_modules"
+    - "frontend/.dockerignore::.git"
+    - "frontend/.dockerignore::dist"
+    - "frontend/.dockerignore::parked"
+    # Réintroduites par main (09/10) avec le nouveau backend/fastapi_ia/.dockerignore : DETTE, pas une exception
+    # signée — à ancrer en `**/motif` puis retirer (ENF15).
+    - "backend/fastapi_ia/.dockerignore::__pycache__/"
+    - "backend/fastapi_ia/.dockerignore::*.py[cod]"
+    - "backend/fastapi_ia/.dockerignore::*.egg-info/"
+    - "backend/fastapi_ia/.dockerignore::.pytest_cache/"
+    - "backend/fastapi_ia/.dockerignore::.mypy_cache/"
+    - "backend/fastapi_ia/.dockerignore::.ruff_cache/"
+    - "backend/fastapi_ia/.dockerignore::.venv/"
+    - "backend/fastapi_ia/.dockerignore::venv/"
+    - "backend/fastapi_ia/.dockerignore::*.log"
+    - "backend/fastapi_ia/.dockerignore::.coverage"
+    - "backend/fastapi_ia/.dockerignore::.cache/"
+    - "backend/fastapi_ia/.dockerignore::models/"
+    - "backend/fastapi_ia/.dockerignore::.env"
+    - "backend/fastapi_ia/.dockerignore::.env.*"
+
+money_decimal_places:
+  raison: colonnes dont decimal_places hors {2,4} est l'unité même (coût unitaire, taux par unité), clé fichier::Classe.champ (check_money_fields.py)
+  entrees:
+    # ASTK44 — MouvementStock.cout_unitaire : coût UNITAIRE interne, 4 décimales pour ne pas créer/détruire de valeur à l'arrondi.
+    - "backend/django_core/apps/stock/models.py::MouvementStock.cout_unitaire"
+    # Produit.prix_par_panneau_ht : barème 156,25 x 1,30 = 203,125/panneau (L-FORFAIT, fondateur 24/08/2026).
+    - "backend/django_core/apps/stock/models.py::Produit.prix_par_panneau_ht"
+
+tests_sautes_environnement:
+  critere: un test n'est sauté QUE si un binaire ou service externe est absent de l'environnement (ex. pg_dump, soffice, Chrome headless), jamais pour cause de bug ou de dette; chaque saut porte condition et raison en ligne
+  entrees: []
