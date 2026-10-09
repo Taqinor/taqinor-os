@@ -24,8 +24,13 @@ from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
-from rest_framework import status, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -51,6 +56,15 @@ from .services import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+_PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
+_WINDOW = OpenApiParameter(
+    'window_days', OpenApiTypes.INT, required=False, default=365)
+_SINCE = OpenApiParameter('since', OpenApiTypes.DATE, required=False)
+_UNTIL = OpenApiParameter('until', OpenApiTypes.DATE, required=False)
+_CLIENT_REQ = OpenApiParameter('client', OpenApiTypes.INT, required=True)
+_FILTRE_INSTALLATION = [OpenApiParameter(
+    'installation', OpenApiTypes.INT, required=False)]
 
 # ── CIQ645 — import CSV des relevés ─────────────────────────────────────────
 _COLONNES_RELEVES = {
@@ -143,11 +157,14 @@ def _lire_csv_releves(texte):
     return lignes, erreurs
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """Config de supervision par système installé (N50). Lecture tout rôle ;
     écriture responsable/admin. ?installation= pour filtrer."""
     queryset = MonitoringConfig.objects.select_related('installation').all()
     serializer_class = MonitoringConfigSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'providers':
@@ -161,6 +178,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=inst)
         return qs
 
+    @extend_schema(responses=inline_serializer('MonitoringProvider', {
+        'key': serializers.CharField(),
+        'label': serializers.CharField(),
+    }, many=True))
     @action(detail=False, methods=['get'], url_path='providers')
     def providers(self, request):
         """Liste des fournisseurs disponibles (registre swappable)."""
@@ -168,6 +189,15 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             {'key': k, 'label': lbl} for k, lbl in available_providers()
         ])
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'MonitoringSyncNow', {
+            'ok': serializers.BooleanField(),
+            'imported': serializers.IntegerField(),
+            'provider': serializers.CharField(allow_null=True),
+            'underperforming': serializers.BooleanField(),
+            'ratio_pct': serializers.FloatField(allow_null=True),
+            'ticket': serializers.IntegerField(allow_null=True),
+        }))
     @action(detail=True, methods=['post'], url_path='sync-now',
             permission_classes=[IsResponsableOrAdmin])
     def sync_now(self, request, pk=None):
@@ -189,8 +219,24 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'ticket': evald['ticket'].id if evald.get('ticket') else None,
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request={
+            'multipart/form-data': inline_serializer(
+                'MonitoringImportRelevesFichier', {
+                    'fichier': serializers.FileField()}),
+            'application/json': inline_serializer(
+                'MonitoringImportRelevesCsv', {
+                    'csv': serializers.CharField()}),
+        },
+        responses=inline_serializer('MonitoringImportReleves', {
+            'crees': serializers.IntegerField(),
+            'doublons': serializers.IntegerField(),
+            'erreurs': serializers.ListField(
+                child=serializers.DictField()),
+        }))
     @action(detail=True, methods=['post'], url_path='import-releves',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin],
+            parser_classes=[MultiPartParser, JSONParser])
     def import_releves(self, request, pk=None):
         """CIQ645 (D-CIQ-18) — import CSV des relevés de production d'un site.
 
@@ -241,6 +287,25 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'erreurs': erreurs,
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('months', OpenApiTypes.INT, required=False,
+                             default=12),
+            OpenApiParameter('export', OpenApiTypes.STR, required=False,
+                             enum=['csv']),
+        ],
+        responses={
+            (200, 'application/json'): inline_serializer(
+                'MonitoringHistory', {
+                    'installation': serializers.IntegerField(),
+                    'months': serializers.IntegerField(),
+                    'expected_annual_kwh': serializers.FloatField(
+                        allow_null=True),
+                    'data': serializers.ListField(
+                        child=serializers.DictField()),
+                }),
+            (200, 'text/csv'): OpenApiTypes.STR,
+        })
     @action(detail=True, methods=['get'], url_path='history',
             permission_classes=[IsAnyRole])
     def history(self, request, pk=None):
@@ -320,6 +385,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'data': rows,
         })
 
+    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], url_path='fleet',
             permission_classes=[IsAnyRole])
     def fleet(self, request):
@@ -334,6 +400,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(fleet_overview(company, window_days=window))
 
+    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], url_path='benchmark',
             permission_classes=[IsAnyRole])
     def benchmark(self, request):
@@ -347,6 +414,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(benchmark_parc(company, window_days=window))
 
+    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='om-metrics',
             permission_classes=[IsAnyRole])
     def om_metrics(self, request, pk=None):
@@ -358,6 +426,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(om_metrics(config.installation, window_days=window))
 
+    @extend_schema(parameters=[_CLIENT_REQ], responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], url_path='client-portal',
             permission_classes=[IsAnyRole])
     def client_portal(self, request):
@@ -372,6 +441,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(client_environmental_dashboard(company, client_id))
 
+    @extend_schema(parameters=[_SINCE, _UNTIL], responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='co2',
             permission_classes=[IsAnyRole])
     def co2(self, request, pk=None):
@@ -384,6 +454,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(co2_for_installation(
             config.installation, since=since, until=until))
 
+    @extend_schema(parameters=[_SINCE, _UNTIL], responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], url_path='co2-fleet',
             permission_classes=[IsAnyRole])
     def co2_fleet(self, request):
@@ -396,6 +467,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         until = date_iso(request, 'until')
         return Response(co2_fleet(company, since=since, until=until))
 
+    @extend_schema(parameters=[_WINDOW], responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='soiling',
             permission_classes=[IsAnyRole])
     def soiling(self, request, pk=None):
@@ -407,6 +479,15 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             soiling_assessment(config.installation, window_days=window))
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('period', OpenApiTypes.STR, required=False,
+                             enum=['monthly', 'quarterly']),
+            OpenApiParameter('format', OpenApiTypes.STR, required=False,
+                             enum=['pdf']),
+        ],
+        responses={(200, 'application/json'): OpenApiTypes.OBJECT,
+                   (200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='om-report',
             permission_classes=[IsAnyRole])
     def om_report(self, request, pk=None):
@@ -425,6 +506,12 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             build_om_report_data(config.installation, period=period))
 
+    @extend_schema(
+        request=inline_serializer('MonitoringEmailOmReport', {
+            'period': serializers.CharField(required=False),
+            'recipient': serializers.CharField(required=False)}),
+        responses=inline_serializer('MonitoringEmailOmReportReponse', {
+            'sent': serializers.BooleanField()}))
     @action(detail=True, methods=['post'], url_path='email-om-report',
             permission_classes=[IsResponsableOrAdmin])
     def email_om_report(self, request, pk=None):
@@ -444,6 +531,9 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY)
         return Response({'sent': sent})
 
+    @extend_schema(
+        parameters=[OpenApiParameter('annee', OpenApiTypes.INT, required=False)],
+        responses=_PDF)
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
             permission_classes=[IsAnyRole])
     def rapport_garantie_pdf(self, request, pk=None):
@@ -477,6 +567,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             f'attachment; filename="rapport-garantie-{ref}.pdf"')
         return resp
 
+    @extend_schema(parameters=[_SINCE, _UNTIL], responses=_PDF)
     @action(detail=True, methods=['get'], url_path='attestation-carbone-pdf',
             permission_classes=[IsAnyRole])
     def attestation_carbone_pdf(self, request, pk=None):
@@ -497,6 +588,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             f'attachment; filename="attestation-carbone-{ref}.pdf"')
         return resp
 
+    @extend_schema(parameters=[_CLIENT_REQ, _SINCE, _UNTIL], responses=_PDF)
     @action(detail=False, methods=['get'], url_path='attestation-carbone-client-pdf',
             permission_classes=[IsAnyRole])
     def attestation_carbone_client_pdf(self, request):
@@ -520,12 +612,15 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         return resp
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
 class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
     Lecture tout rôle (filtrable par ?installation=) ; écriture
     responsable/admin. `company` et `created_by` posés côté serveur."""
     queryset = CleaningEvent.objects.select_related('installation').all()
     serializer_class = CleaningEventSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -545,11 +640,14 @@ class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
             created_by=self.request.user)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
     """Relevés de production (N51). Lecture tout rôle (filtrable par
     ?installation=) ; saisie manuelle (POST) responsable/admin."""
     queryset = ProductionReading.objects.select_related('installation').all()
     serializer_class = ProductionReadingSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -575,12 +673,15 @@ class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
         evaluate_underperformance(installation, user=self.request.user)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
 class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG282 — garantie de production par système. Lecture tout rôle
     (filtrable par ?installation=) ; écriture responsable/admin. Action
     `status` : production réelle vs garanti dégradé → manque/compensation."""
     queryset = ProductionWarranty.objects.select_related('installation').all()
     serializer_class = ProductionWarrantySerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action in ('status', 'curve'):
@@ -594,6 +695,9 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=inst)
         return qs
 
+    @extend_schema(
+        parameters=[OpenApiParameter('year', OpenApiTypes.INT, required=False)],
+        responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='status',
             permission_classes=[IsAnyRole])
     def status(self, request, pk=None):
@@ -605,6 +709,13 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
             warranty.installation, year=year)
         return Response(result)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('years', OpenApiTypes.INT, required=False),
+            OpenApiParameter('drift_threshold_pct', OpenApiTypes.NUMBER,
+                             required=False),
+        ],
+        responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get'], url_path='curve',
             permission_classes=[IsAnyRole])
     def curve(self, request, pk=None):
@@ -625,12 +736,15 @@ class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
     `list` renvoie l'unique enregistrement ; écriture responsable/admin."""
     queryset = MonitoringSettings.objects.all()
     serializer_class = MonitoringSettingsSerializer
+    parser_classes = [JSONParser]
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    @extend_schema(responses=MonitoringSettingsSerializer)
     def list(self, request, *args, **kwargs):
         """Renvoie le réglage unique de la société (créé à défaut)."""
         company = request.user.company
@@ -639,6 +753,8 @@ class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
         obj = MonitoringSettings.get(company)
         return Response(self.get_serializer(obj).data)
 
+    @extend_schema(request=MonitoringSettingsSerializer,
+                   responses={200: MonitoringSettingsSerializer})
     def create(self, request, *args, **kwargs):
         """Upsert du singleton société (PATCH-like via POST)."""
         company = request.user.company
