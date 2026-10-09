@@ -249,7 +249,8 @@ class ReplayAACQ30Tests(TestCase):
     def _ids_liste(self):
         r = self.api.get('/api/django/crm/website-lead-payloads/')
         self.assertEqual(r.status_code, 200, r.data)
-        return [p['id'] for p in (r.data.get('results') or r.data)]
+        lignes = r.data['results'] if isinstance(r.data, dict) else r.data
+        return [p['id'] for p in lignes]
 
     def test_rejeu_reussi_efface_erreur_et_sort_de_la_liste(self):
         from unittest.mock import patch
