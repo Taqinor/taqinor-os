@@ -47,4 +47,6 @@ class TestFormateurUnique(SimpleTestCase):
             elif isinstance(node, ast.ImportFrom):
                 mods.add((node.module or "").split(".")[0])
         # AMOT26 — contextvars (stdlib) porte le drapeau « règles d'origine ».
-        self.assertEqual(mods - {"decimal", "contextvars"}, set())
+        # AMOT46 — html (stdlib) : troncature sur le texte BRUT
+        # (``html.unescape`` puis ``html.escape``, ``tronquer_texte``).
+        self.assertEqual(mods - {"decimal", "contextvars", "html"}, set())
