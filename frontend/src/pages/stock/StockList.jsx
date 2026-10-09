@@ -961,7 +961,7 @@ export default function StockList() {
   const onAjusterStock = async (p, value) => {
     await stockApi.inventaire({
       motif: 'Correction depuis le catalogue',
-      lignes: [{ produit: p.id, quantite_comptee: parseInt(value, 10) }],
+      lignes: [{ produit: p.id, quantite_comptee: Number(value) }],
     })
     await dispatch(fetchProduits())
   }

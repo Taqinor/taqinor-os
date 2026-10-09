@@ -158,8 +158,15 @@ class FournisseurSerializer(CompanyScopedRelationsMixin,
     # XPUR5 — contacts multiples (lecture) + catégorie affichée + doublon ICE
     # (warning non bloquant, ajouté dynamiquement à la réponse par la vue).
     contacts = ContactFournisseurSerializer(many=True, read_only=True)
-    categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True, default=None)
+    # ERR-ASTK163 — champ TOUJOURS servi (null sans catégorie) : un
+    # `source='categorie.nom'` pouvait être omis de la réponse PATCH, et le
+    # contrat fournisseur_conformite.json l'annonce.
+    categorie_nom = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_categorie_nom(self, obj):
+        categorie = getattr(obj, 'categorie', None)
+        return categorie.nom if categorie is not None else None
 
     class Meta:
         model = Fournisseur

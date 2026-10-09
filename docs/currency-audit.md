@@ -36,9 +36,9 @@ with no rate column at all — mono-MAD in practice.
 | --- | --- | --- | --- |
 | achats | PrixFournisseur | `apps/achats/models.py:37` | prix_achat |
 | achats | LigneBonCommandeFournisseur | `apps/achats/models.py:269` | prix_achat_unitaire, prix_achat_unitaire_devise |
-| achats | ImputationAcompteFournisseur | `apps/achats/models.py:624` | montant |
-| achats | LigneFactureFournisseur | `apps/achats/models.py:658` | prix_unitaire_ht, taux_tva |
-| achats | PaiementFournisseur | `apps/achats/models.py:707` | montant, montant_ras_tva |
+| achats | ImputationAcompteFournisseur | `apps/achats/models.py:631` | montant |
+| achats | LigneFactureFournisseur | `apps/achats/models.py:665` | prix_unitaire_ht, taux_tva |
+| achats | PaiementFournisseur | `apps/achats/models.py:714` | montant, montant_ras_tva |
 | adminops | FactureLicence | `apps/adminops/models.py:289` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:984` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2310` | quota_total |

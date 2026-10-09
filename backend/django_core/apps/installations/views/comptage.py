@@ -4,7 +4,8 @@
 serveur ; action ``ajouter-ligne`` qui ajoute un SKU avec sa quantité théorique
 SNAPSHOTÉE serveur (lue via ``stock.selectors`` — jamais d'import du modèle
 stock) ; cycle ``demarrer`` / ``terminer``. ``ComptageLigneViewSet`` : saisie de
-la quantité comptée (cochage `compte`). Lecture tout rôle, écriture
+la quantité comptée (cochage `compte`) — le théorique est re-snapshoté à la
+saisie (ERR-ASTK39, « stock à la saisie »). Lecture tout rôle, écriture
 responsable/admin. Multi-tenant via ``TenantMixin``.
 """
 from rest_framework import viewsets, status
@@ -184,10 +185,30 @@ class ComptageLigneViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 {'session': 'Session inconnue pour cette société.'})
 
+    def _theorique_a_la_saisie(self, serializer):
+        """ERR-ASTK39 — règle D-ASTK « stock à la saisie » : quand la quantité
+        comptée est saisie, le théorique est RE-SNAPSHOTÉ serveur au stock
+        live du produit (``stock.services.theorique_a_la_saisie``, même règle
+        que la session d'inventaire). Sinon un mouvement survenu entre
+        ``ajouter-ligne`` et la saisie (ex. sortie de 20) était compté une
+        seconde fois dans l'écart posté par ``terminer`` (stock faux).
+        Renvoie les kwargs à passer à ``save()`` ({} si pas de saisie)."""
+        data = serializer.validated_data
+        if data.get('quantite_comptee') is None:
+            return {}
+        instance = getattr(serializer, 'instance', None)
+        produit = data.get('produit') or getattr(instance, 'produit', None)
+        session = data.get('session') or getattr(instance, 'session', None)
+        if produit is None or session is None:
+            return {}
+        from apps.stock.services import theorique_a_la_saisie
+        return {'quantite_theorique': theorique_a_la_saisie(
+            session.company, getattr(produit, 'pk', produit))}
+
     def perform_create(self, serializer):
         self._check_parent(serializer)
-        serializer.save()
+        serializer.save(**self._theorique_a_la_saisie(serializer))
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
-        serializer.save()
+        serializer.save(**self._theorique_a_la_saisie(serializer))

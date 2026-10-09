@@ -506,6 +506,13 @@ class FactureFournisseur(models.Model):
     bon_commande = models.ForeignKey(
         BonCommandeFournisseur, on_delete=models.SET_NULL, null=True,
         blank=True, related_name='factures_fournisseur')
+    # ERR-ASTK54 — réception d'origine d'une facture issue de
+    # `facturer_reception` (avant : lien porté par la seule note
+    # « Facture réception <REF> »). Sert de garde à l'annulation d'une
+    # réception facturée. Additif, nullable, SET_NULL.
+    reception = models.ForeignKey(
+        ReceptionFournisseur, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='factures_issues')
     # Référence du document chez le fournisseur (numéro de sa facture).
     ref_fournisseur = models.CharField(max_length=100, blank=True, null=True)
     type_achat = models.CharField(

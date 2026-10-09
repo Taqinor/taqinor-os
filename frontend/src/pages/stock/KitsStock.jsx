@@ -133,7 +133,7 @@ export default function KitsStock() {
   const voirRevisions = async (kit) => {
     try {
       const { data } = await kitsApi.revisions(kit.id)
-      setRevisions((r) => ({ ...r, [kit.id]: data?.revisions ?? [] }))
+      setRevisions((r) => ({ ...r, [kit.id]: Array.isArray(data) ? data : (data?.revisions ?? []) }))
     } catch (err) { setErreur(messageServeur(err, 'Révisions indisponibles.')) }
   }
 
