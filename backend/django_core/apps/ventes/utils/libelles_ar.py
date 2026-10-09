@@ -41,6 +41,23 @@ LIBELLES = {
         'note': 'Note',
         'coordonnees_bancaires': 'Coordonnées bancaires',
         'signature_cachet': 'Signature & Cachet',
+        # AFAC58 (C-AFAC-050) — libellés ajoutés après XSAL13.
+        'deja_paye': 'Déjà payé',
+        'total_deja_paye': 'Total déjà payé',
+        'facture_soldee': 'Facture soldée',
+        'reste_a_payer': 'Reste à payer',
+        'arrondi_commercial': 'Arrondi commercial',
+        'base_ht': 'Base HT',
+        'arrondi_especes': 'Arrondi espèces',
+        'periode_service': 'Période de service',
+        'votre_commande': 'Votre commande',
+        'tel': 'Tél',
+        'instructions_paiement': 'Instructions de paiement',
+        'conditions_generales': 'Conditions générales',
+        'conditions_paiement': 'Conditions de paiement',
+        'facture_generee_le': 'Facture générée automatiquement le',
+        'note_debit': 'Note de débit',
+        'voir_ventilation': 'voir ventilation',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -61,15 +78,77 @@ LIBELLES = {
         'note': 'ملاحظة',
         'coordonnees_bancaires': 'المعلومات البنكية',
         'signature_cachet': 'التوقيع والختم',
+        'deja_paye': 'المبالغ المدفوعة',
+        'total_deja_paye': 'مجموع المبالغ المدفوعة',
+        'facture_soldee': 'فاتورة مسددة بالكامل',
+        'reste_a_payer': 'المبلغ المتبقي للأداء',
+        'arrondi_commercial': 'التقريب التجاري',
+        'base_ht': 'الأساس (خ.ض)',
+        'arrondi_especes': 'تقريب الأداء نقدا',
+        'periode_service': 'فترة الخدمة',
+        'votre_commande': 'طلبيتكم',
+        'tel': 'الهاتف',
+        'instructions_paiement': 'تعليمات الأداء',
+        'conditions_generales': 'الشروط العامة',
+        'conditions_paiement': 'شروط الأداء',
+        'facture_generee_le': 'فاتورة مُنشأة تلقائيا بتاريخ',
+        'note_debit': 'إشعار مدين',
+        'voir_ventilation': 'انظر التفصيل',
     },
 }
+
+
+#: AFAC58 — textes DYNAMIQUES du PDF facture (libellés d'affichage des
+#: statuts et des modes de paiement, lignes du bloc « Déjà payé ») : la clé
+#: est le texte français lui-même ; hors arabe, ``libelle`` le rend tel quel.
+TEXTES_AR = {
+    'Brouillon': 'مسودة',
+    'Émise': 'صادرة',
+    'Payée': 'مؤداة',
+    'En retard': 'متأخرة',
+    'Annulée': 'ملغاة',
+    'Espèces': 'نقدا',
+    'Virement': 'تحويل بنكي',
+    'Chèque': 'شيك',
+    'Carte bancaire': 'بطاقة بنكية',
+    'Prélèvement': 'اقتطاع بنكي',
+    'Autre': 'أخرى',
+    'Escompte pour règlement anticipé': 'خصم الأداء المسبق',
+    'Avoir': 'إشعار دائن',
+    'Abandon de créance': 'التخلي عن الدين',
+    'Arrondi espèces': 'تقريب الأداء نقدا',
+}
+
+_SUFFIXE_AVANCE = ' (avance)'
+_PREFIXE_RETENUE = 'Retenue à la source ('
+
+
+def _texte_ar(texte):
+    """Traduction arabe d'un texte d'affichage dynamique, ou ``None``."""
+    if texte in TEXTES_AR:
+        return TEXTES_AR[texte]
+    if texte.endswith(_SUFFIXE_AVANCE):
+        base = _texte_ar(texte[:-len(_SUFFIXE_AVANCE)])
+        if base:
+            return f'{base} (تسبيق)'
+    if texte.startswith(_PREFIXE_RETENUE):
+        return 'اقتطاع من المنبع (' + texte[len(_PREFIXE_RETENUE):]
+    return None
 
 
 def libelle(cle, langue='fr'):
     """Traduction d'une clé de libellé. FR par défaut (comportement inchangé
     quand `langue` n'est pas 'ar' ou que la clé est absente du dictionnaire
-    AR — retombe alors sur le FR, jamais une clé brute affichée au client)."""
+    AR — retombe alors sur le FR, jamais une clé brute affichée au client).
+
+    AFAC58 — une clé qui est un TEXTE d'affichage dynamique (statut, mode de
+    paiement) est traduite par ``TEXTES_AR`` en arabe et rendue telle quelle
+    sinon."""
     table = LIBELLES.get(langue) or LIBELLES['fr']
+    if langue == 'ar' and cle not in table and isinstance(cle, str):
+        traduit = _texte_ar(cle)
+        if traduit:
+            return traduit
     return table.get(cle) or LIBELLES['fr'].get(cle, cle)
 
 
