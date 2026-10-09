@@ -24,6 +24,8 @@ export default function EquipementSignalerPage() {
   const [status, setStatus] = useState('form') // form | submitting | done | error
   const [error, setError] = useState(null)
   const [reference, setReference] = useState(null)
+  const [photoError, setPhotoError] = useState(null)
+  const [replay, setReplay] = useState(false)
 
   // VX169 — garde de navigation IN-APP (clic lien pendant la saisie).
   const dirty = status !== 'done' && Boolean(description || telephone || photo)
@@ -34,6 +36,7 @@ export default function EquipementSignalerPage() {
     if (!description.trim()) return
     setStatus('submitting')
     setError(null)
+    setPhotoError(null)
     try {
       const form = new FormData()
       form.append('description', description)
@@ -44,8 +47,18 @@ export default function EquipementSignalerPage() {
         `/public/sav/equipement/${token}/signaler/`, form,
         { headers: { 'Content-Type': 'multipart/form-data' } })
       setReference(res.data?.reference || null)
+      // ASAV29 — le serveur répond 200 (et non 201) à un rejeu déjà accepté.
+      setReplay(res.status === 200)
       setStatus('done')
     } catch (err) {
+      // ASAV29 — refus de la photo (400 `photo`) : message du serveur sous le
+      // champ, formulaire conservé.
+      const photoMsg = err?.response?.data?.photo
+      if (err?.response?.status === 400 && photoMsg) {
+        setPhotoError(Array.isArray(photoMsg) ? photoMsg.join(' ') : String(photoMsg))
+        setStatus('error')
+        return
+      }
       setError(
         err?.response?.data?.detail
         || "Impossible d'envoyer votre signalement — réessayez.")
@@ -64,7 +77,13 @@ export default function EquipementSignalerPage() {
         </p>
       )}
 
-      {status === 'done' && (
+      {status === 'done' && replay && (
+        <p role="status">
+          Signalement déjà enregistré : {reference}
+        </p>
+      )}
+
+      {status === 'done' && !replay && (
         <p role="status">
           Merci, votre signalement a bien été enregistré
           {reference ? ` (référence ${reference})` : ''}. Notre équipe SAV va
@@ -112,6 +131,7 @@ export default function EquipementSignalerPage() {
             className="form-control"
             onChange={(e) => setPhoto(e.target.files?.[0] || null)}
           />
+          {photoError && <p role="alert" className="page-error">{photoError}</p>}
 
           {/* Honeypot anti-spam — champ caché, invisible pour un humain. */}
           <input

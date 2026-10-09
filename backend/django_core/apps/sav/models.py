@@ -1154,7 +1154,19 @@ class Ticket(models.Model):
         if not self.en_attente_client or not self.attente_depuis:
             return 0
         today = today or timezone.localdate()
+        if self._sla_jours_ouvres():
+            # ASAV16 — sous ``sla_jours_ouvres`` la pause compte des jours
+            # OUVRÉS écoulés (week-ends et fériés exclus).
+            from core.calendar import count_working_days
+            if today <= self.attente_depuis:
+                return 0
+            return count_working_days(
+                self.attente_depuis, today - timezone.timedelta(days=1))
         return max(0, (today - self.attente_depuis).days)
+
+    def _sla_jours_ouvres(self):
+        """ASAV16 — le réglage société « SLA en jours ouvrés » est-il actif ?"""
+        return bool(SavSlaSettings.get(self.company).sla_jours_ouvres)
 
     def sla_due_at_effectif(self, today=None):
         """XSAV5 — échéance SLA décalée du temps déjà passé en pause.
@@ -1169,6 +1181,9 @@ class Ticket(models.Model):
         total_pause = self.jours_pause + self._pause_en_cours_jours(today=today)
         if total_pause <= 0:
             return self.sla_due_at
+        if self._sla_jours_ouvres():
+            from core.calendar import add_working_days
+            return add_working_days(self.sla_due_at, total_pause)
         return self.sla_due_at + timezone.timedelta(days=total_pause)
 
     def mettre_en_attente_client(self, today=None):

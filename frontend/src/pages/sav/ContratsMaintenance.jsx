@@ -46,6 +46,12 @@ const PERIODE_LABELS = Object.fromEntries(PERIODES.map((p) => [p.value, p.label]
 // L323 — nombre de visites par an, par périodicité (pour le revenu récurrent).
 const PERIODE_PAR_AN = { mensuel: 12, trimestriel: 4, semestriel: 2, annuel: 1 }
 
+// ASAV50 — lit TOUTES les pages d'une liste DRF (jamais la page 1 seule) ;
+// tolère une réponse non paginée (tableau brut).
+const lireTout = (appel, params = {}) =>
+  fetchAllPages((page) => appel({ ...params, page, page_size: 200 }).then((r) => r.data))
+    .then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
+
 const formatDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`)
@@ -235,7 +241,7 @@ export function Component() {
   // WIR120 — valeurs par défaut des champs « Avancé » (tous optionnels ;
   // vides = comportement historique inchangé côté serveur).
   const ADVANCED_DEFAULTS = {
-    facturation_active: false, sla_response_days: '', sla_resolution_days: '',
+    sla_response_days: '', sla_resolution_days: '',
     visites_incluses_an: '', deplacements_inclus_an: '', pieces_couvertes_pct: '',
     equipements: [],
   }
@@ -332,8 +338,8 @@ export function Component() {
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return savApi.getContrats(dueOnly ? { due: 1 } : {})
-      .then((r) => setRows(r.data.results ?? r.data))
+    return lireTout(savApi.getContrats, dueOnly ? { due: 1 } : {})
+      .then((liste) => setRows(liste))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }
@@ -344,14 +350,14 @@ export function Component() {
     // ALEA33 — TOUTES les pages (jamais les 50 premiers clients seulement).
     fetchAllPages((page) => crmApi.getClients({ page, page_size: 200 }).then((r) => r.data))
       .then((res) => setClients(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
-    installationsApi.getInstallations()
-      .then((r) => setInstallations(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(installationsApi.getInstallations)
+      .then((liste) => setInstallations(liste)).catch(() => {})
     // L327 — tickets préventifs pour compter les visites générées par contrat.
-    savApi.getTickets({ type: 'preventif', ouvert: 'tous' })
-      .then((r) => setPreventifs(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(savApi.getTickets, { type: 'preventif', ouvert: 'tous' })
+      .then((liste) => setPreventifs(liste)).catch(() => {})
     // WIR120 — parc d'équipements pour le registre de couverture du contrat.
-    savApi.getEquipements()
-      .then((r) => setEquipements(r.data.results ?? r.data ?? [])).catch(() => {})
+    lireTout(savApi.getEquipements)
+      .then((liste) => setEquipements(liste)).catch(() => {})
   }, [])
 
   // L327 — compte de tickets préventifs par client (et installation si fixée).
@@ -390,9 +396,8 @@ export function Component() {
       if (form.prix !== '') payload.prix = form.prix
       if (form.installation) payload.installation = form.installation
       if (form.duree_mois !== '') payload.duree_mois = form.duree_mois
-      // WIR120 — champs « Avancé » : facturation récurrente, overrides SLA,
+      // WIR120 — champs « Avancé » : overrides SLA (D-ASAV-3 : plus de facturation récurrente),
       // registre d'équipements couverts, quotas visites/déplacements/pièces.
-      payload.facturation_active = form.facturation_active
       if (form.sla_response_days !== '') payload.sla_response_days = form.sla_response_days
       if (form.sla_resolution_days !== '') payload.sla_resolution_days = form.sla_resolution_days
       if (form.visites_incluses_an !== '') payload.visites_incluses_an = form.visites_incluses_an
@@ -454,8 +459,8 @@ export function Component() {
       // L328 — confirmer le compte généré et recharger sans race.
       toast.success(`${data.tickets_generes} ticket(s) de maintenance généré(s).`)
       await load()
-      savApi.getTickets({ type: 'preventif', ouvert: 'tous' })
-        .then((r) => setPreventifs(r.data.results ?? r.data ?? [])).catch(() => {})
+      lireTout(savApi.getTickets, { type: 'preventif', ouvert: 'tous' })
+        .then((liste) => setPreventifs(liste)).catch(() => {})
     } catch { toast.error('Génération impossible.') }
   }
 
@@ -711,15 +716,9 @@ export function Component() {
               Tous optionnels ; vides = comportement historique inchangé. */}
           <details className="mt-3 rounded-lg border border-border">
             <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
-              Avancé — facturation, SLA, couverture &amp; quotas
+              Avancé — SLA, couverture &amp; quotas
             </summary>
             <div className="flex flex-col gap-4 border-t border-border p-3">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.facturation_active}
-                          onCheckedChange={(v) => setForm((f) => ({ ...f, facturation_active: !!v }))} />
-                Facturation récurrente active
-              </label>
-
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <FormField label="SLA réponse (jours, override)" hint="vide = SLA société">
                   <Input type="number" min="0" step="1" value={form.sla_response_days}

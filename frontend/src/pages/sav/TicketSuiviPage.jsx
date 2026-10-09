@@ -16,6 +16,13 @@ import NoIndex from '../../components/NoIndex'
 
 const RESOLU_STATUTS = ['resolu', 'cloture']
 
+// ASAV32 — sous-notes optionnelles (clés fermées côté serveur, NTSRV23).
+const SOUS_NOTES = [
+  { cle: 'rapidite', libelle: 'Rapidité' },
+  { cle: 'courtoisie', libelle: 'Courtoisie' },
+  { cle: 'resolution', libelle: 'Résolution' },
+]
+
 export default function TicketSuiviPage() {
   const { token } = useParams()
   const [status, setStatus] = useState('loading') // loading | valid | invalid
@@ -24,6 +31,7 @@ export default function TicketSuiviPage() {
 
   const [note, setNote] = useState(0)
   const [commentaire, setCommentaire] = useState('')
+  const [sousNotes, setSousNotes] = useState({})
   const [csatState, setCsatState] = useState('idle') // idle | sending | sent | error
   const [csatError, setCsatError] = useState(null)
 
@@ -51,9 +59,13 @@ export default function TicketSuiviPage() {
     setCsatState('sending')
     setCsatError(null)
     try {
-      await api.post(`/public/sav/ticket/${token}/satisfaction/`, {
-        note, commentaire: commentaire.trim() || undefined,
-      })
+      const corps = { note, commentaire: commentaire.trim() || undefined }
+      if (ticket?.csat_detaille_actif) {
+        const remplies = Object.fromEntries(
+          Object.entries(sousNotes).filter(([, v]) => Number(v) >= 1))
+        if (Object.keys(remplies).length) corps.sous_notes = remplies
+      }
+      await api.post(`/public/sav/ticket/${token}/satisfaction/`, corps)
       setCsatState('sent')
     } catch (err) {
       const detail = err?.response?.data?.detail
@@ -76,7 +88,15 @@ export default function TicketSuiviPage() {
       {status === 'valid' && ticket && (
         <div className="flex flex-col gap-3">
           <p><strong>Référence :</strong> {ticket.reference}</p>
-          <p><strong>Statut :</strong> {ticket.statut_display || ticket.statut}</p>
+          {ticket.fusionne_dans_reference ? (
+            <p role="status">
+              <strong>Fusionné dans {ticket.fusionne_dans_reference}</strong>
+            </p>
+          ) : ticket.annule ? (
+            <p role="status"><strong>Annulé</strong></p>
+          ) : (
+            <p><strong>Statut :</strong> {ticket.statut_display || ticket.statut}</p>
+          )}
           {ticket.date_modification && (
             <p className="text-sm text-muted-foreground">
               Dernière mise à jour :{' '}
@@ -84,7 +104,8 @@ export default function TicketSuiviPage() {
             </p>
           )}
 
-          {RESOLU_STATUTS.includes(ticket.statut) && csatState !== 'sent' && (
+          {!ticket.annule && !ticket.fusionne_dans_reference
+            && RESOLU_STATUTS.includes(ticket.statut) && csatState !== 'sent' && (
             <form onSubmit={submitCsat} className="flex flex-col gap-2" noValidate>
               <p className="font-medium">Votre ticket est résolu — êtes-vous satisfait(e) ?</p>
               <div className="flex gap-1" role="radiogroup" aria-label="Note de satisfaction">
@@ -105,6 +126,21 @@ export default function TicketSuiviPage() {
                   </button>
                 ))}
               </div>
+              {ticket.csat_detaille_actif && SOUS_NOTES.map(({ cle, libelle }) => (
+                <label key={cle} className="flex items-center gap-2 text-sm">
+                  <span>{libelle} (optionnel)</span>
+                  <select
+                    aria-label={`${libelle} (optionnel)`}
+                    value={sousNotes[cle] ?? ''}
+                    onChange={(e) => setSousNotes((prev) => ({
+                      ...prev, [cle]: e.target.value ? Number(e.target.value) : undefined,
+                    }))}
+                  >
+                    <option value="">—</option>
+                    {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              ))}
               <Textarea
                 placeholder="Commentaire (optionnel)"
                 value={commentaire}
