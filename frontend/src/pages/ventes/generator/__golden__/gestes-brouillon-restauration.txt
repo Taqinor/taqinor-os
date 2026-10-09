@@ -1,0 +1,339 @@
+== TEXTE ==
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à 09:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead (point de départ)*
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-lead">
+— Sélectionner un lead —
+Khalid Golden — 3000 MAD/mois
+Téléphone
+…ou choisir un client directement (sans lead)
+— Sélectionner un client —
+Nouveau client
+Adresse
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+span]:line-clamp-1 [&amp;>span]:text-left w-24">
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+—
+Type de Structure
+Acier galvanisé
+Aluminium
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Smart Meter
+HT : 1 200 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+TVA appliquée : 20 % (catalogue : 10 %)
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Structures acier
+HT : 375 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Total SANS batterie
+0 MAD
+Total AVEC batterie ⭐
+0 MAD
+Réduction
+%
+TVA : par ligne (voir la table)
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+0 MAD
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Pose sous quinzaine.
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+0 MAD
+Total avec batterie · TTC
+0 MAD
+Option recommandée
+Écart batterie : 0 MAD
+Marge indicative (interne)
+0 MAD
+Système
+— kWc
+Créer le devis
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Les deux (Sans + Avec)
+#3=on [ ]
+#4=Auto
+gen-validite=
+#6=
+gen-tel=
+gen-adresse=
+gen-hiver=
+gen-ete=
+#11=500
+#12=450
+#13=400
+#14=380
+#15=360
+#16=500
+#17=700
+#18=680
+#19=580
+#20=480
+#21=430
+#22=480
+#23=onee
+gen-realbill=
+#25=mad
+gen-kwc-cible=
+gen-nbpanneaux=
+gen-panelw=710
+#29=on [ ]
+#30=Onduleur réseau
+line-qty=1
+#32=0
+#33=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#35=Onduleur hybride
+line-qty=1
+#37=0
+#38=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#40=Smart Meter
+line-qty=0
+#42=1440
+#43=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#45=Wifi Dongle
+line-qty=0
+#47=0
+#48=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#50=Panneaux
+line-qty=0
+#52=0
+#53=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#55=Batterie
+line-qty=1
+#57=0
+#58=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#60=Batterie
+line-qty=0
+#62=0
+#63=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#65=Structures acier
+line-qty=0
+#67=450
+#68=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#70=Structures aluminium
+line-qty=0
+#72=0
+#73=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#75=Socles
+line-qty=0
+#77=0
+#78=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#80=Accessoires
+line-qty=1
+#82=0
+#83=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#85=Tableau De Protection AC/DC
+line-qty=1
+#87=0
+#88=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#90=Installation
+line-qty=1
+#92=0
+#93=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#95=Transport
+line-qty=1
+#97=0
+#98=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#100=Suivi journalier, maintenance chaque 12 mois pendant 2 ans
+line-qty=1
+#102=0
+#103=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#105=0
+#106=
+#107=Pose sous quinzaine.
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.getLeads": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    []
+  ],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ]
+  ]
+}

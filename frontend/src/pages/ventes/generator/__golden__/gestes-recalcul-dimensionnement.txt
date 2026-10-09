@@ -1,0 +1,477 @@
+== TEXTE ==
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à 09:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead (point de départ)*
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-lead">
+Khalid Golden — 3000 MAD/mois
+Khalid Golden — 3000 MAD/mois
+Téléphone
+✓ Client du devis : Khalid Golden (sera créé automatiquement depuis le lead) · factures remplies depuis le lead (3000 MAD/mois)
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+span]:line-clamp-1 [&amp;>span]:text-left w-24">
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+8,52 kWp
+Les lignes portent 8 panneaux, la cible en vise 12 — recomposer ? (Auto-remplir)
+Type de Structure
+Acier galvanisé
+Aluminium
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
+Dimensionnement en cours de calcul — réessayez dans un instant.
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Calcul du moteur horaire en cours…
+Facture réelle ONEE ≈ 36 001 MAD/an sans solaire → avec solaire ≈ 20 298 MAD/an — économie calculée par tranche (barème ONEE), pas une estimation.
+Production annuelle
+13 085
+kWh / an
+Sans batterie
+Économies
+12 741
+MAD / an
+ROI
+4 ans
+retour sur invest.
+Coût
+50 800
+MAD TTC
+Avec batterie★ Recommandé
+Économies
+15 703
+MAD / an
+ROI
+4.6 ans
+retour sur invest.
+Coût
+70 000
+MAD TTC
+Économies mensuelles estimées (MAD / mois)
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT : 14 000 MAD
+16 800 MADHT : 14 000 MAD
+— Produit —
+HT : 17 000 MAD
+20 400 MADHT : 17 000 MAD
+— Produit —
+HT : 1 800 MAD
+2 160 MADHT : 1 800 MAD
+— Produit —
+HT : 1 200 MAD
+1 440 MADHT : 1 200 MAD
+— Produit —
+HT : 1 450 MAD
+TVA appliquée : 20 % (catalogue : 10 %)
+13 920 MADHT : 11 600 MAD
+— Produit —
+HT : 16 000 MAD
+19 200 MADHT : 16 000 MAD
+— Produit —
+HT : 500 MAD
+4 800 MADHT : 4 000 MAD
+— Produit —
+HT : 80 MAD
+1 536 MADHT : 1 280 MAD
+— Produit —
+HT : 14 MAD
+1 037 MADHT : 864 MAD
+— Produit —
+HT : 14 MAD
+691 MADHT : 576 MAD
+— Produit —
+HT : 417 MAD
+500 MADHT : 417 MAD
+— Produit —
+HT : 1 625 MAD
+1 950 MADHT : 1 625 MAD
+— Produit —
+HT : 4 000 MAD
+4 800 MADHT : 4 000 MAD
+— Produit —
+HT : 1 000 MAD
+1 200 MADHT : 1 000 MAD
+Total SANS batterie
+50 800 MAD
+Total AVEC batterie ⭐
+70 000 MAD
+Réduction
+%
+TVA : par ligne (voir la table)
+Arrondi commercial SANS batterie
+-34 MAD
+Arrondi commercial AVEC batterie
+-34 MAD
+Prix / kWc
+12 324 MAD/kWc
+Prix cible / kWc
+Appliquer via remise
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+70 000 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+50 800 MAD
+Total avec batterie · TTC
+70 000 MAD
+Option recommandée
+Écart batterie : 19 200 MAD (+38 %)
+Système
+8,52 kWc · 12 panneaux
+Créer le devis
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Les deux (Sans + Avec)
+#3=on [ ]
+#4=Auto
+gen-validite=
+#6=77
+gen-tel=0600000000
+gen-hiver=3000
+gen-ete=
+#10=3000
+#11=3000
+#12=3000
+#13=3000
+#14=3000
+#15=3000
+#16=3000
+#17=3000
+#18=3000
+#19=3000
+#20=3000
+#21=3000
+#22=onee
+gen-realbill=
+#24=mad
+gen-kwc-cible=8.52
+gen-nbpanneaux=12
+gen-panelw=710
+#28=on [ ]
+#29=Onduleur réseau Huawei 5kW Monophasé
+line-qty=1
+#31=16800.00
+#32=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#34=Onduleur hybride Deye 5kW Monophasé
+line-qty=1
+#36=20400.00
+#37=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#39=Smart Meter
+line-qty=1
+#41=2160.00
+#42=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#44=Wifi Dongle
+line-qty=1
+#46=1440.00
+#47=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#49=Panneau Canadien Solar 710W
+line-qty=8
+#51=1740.00
+#52=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#54=Batterie Dyness 5 kWh
+line-qty=1
+#56=19200.00
+#57=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#59=Structures acier
+line-qty=8
+#61=600.00
+#62=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#64=Socles
+line-qty=16
+#66=96.00
+#67=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#69=Câble solaire Nexans 6 mm² (au mètre)
+line-qty=60
+#71=17.28
+#72=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#74=Câble de terre Nexans 6 mm² (au mètre)
+line-qty=40
+#76=17.28
+#77=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#79=Accessoires
+line-qty=1
+#81=500.00
+#82=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#84=Tableau De Protection AC/DC
+line-qty=1
+#86=1950.00
+#87=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#89=Installation
+line-qty=1
+#91=4800.00
+#92=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#94=Transport
+line-qty=1
+#96=1200.00
+#97=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#99=0
+#100=
+#101=
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.getLeads": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    []
+  ],
+  "ventesApi.composerDevis": [
+    [
+      {
+        "kwc": 5.68,
+        "panel_watt": 710,
+        "structure_type": "acier",
+        "lead": 77
+      }
+    ]
+  ],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "41",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "42",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "51",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "52",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "12",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "61",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "71",
+        "quantite": "8"
+      }
+    ],
+    [
+      {
+        "produit": "72",
+        "quantite": "16"
+      }
+    ],
+    [
+      {
+        "produit": "81",
+        "quantite": "60"
+      }
+    ],
+    [
+      {
+        "produit": "82",
+        "quantite": "40"
+      }
+    ],
+    [
+      {
+        "produit": "91",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "92",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "93",
+        "quantite": "1"
+      }
+    ],
+    [
+      {
+        "produit": "94",
+        "quantite": "1"
+      }
+    ]
+  ],
+  "ventesApi.postEtudeHorairePreview": [
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia",
+        "kwc": 5.68,
+        "batterie_kwh": 5
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ]
+}

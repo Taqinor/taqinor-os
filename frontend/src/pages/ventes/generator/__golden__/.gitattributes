@@ -1,0 +1,2 @@
+# Goldens SPL40/SPL41 : comparés octet pour octet, jamais convertis en CRLF.
+* text eol=lf

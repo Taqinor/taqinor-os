@@ -1,0 +1,1417 @@
+<div class="page gen-page">
+<div aria-hidden="true" class="scroll-progress-bar">
+</div>
+<header class="mb-6 app-accent-rail" style="--module-accent: var(--module-accent-brass);">
+<div class="flex flex-wrap items-start justify-between gap-4">
+<div class="min-w-0">
+<h2 class="flex items-center gap-2 font-display text-xl font-semibold leading-tight tracking-tight text-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text size-5 shrink-0 text-muted-foreground" aria-hidden="true">
+<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z">
+</path>
+<path d="M14 2v5a1 1 0 0 0 1 1h5">
+</path>
+<path d="M10 9H8">
+</path>
+<path d="M16 13H8">
+</path>
+<path d="M16 17H8">
+</path>
+</svg>Générateur de Devis Solaire</h2>
+<p class="mt-1 text-sm text-muted-foreground">Édition — DEV-202610-032</p>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left" aria-hidden="true">
+<path d="m12 19-7-7 7-7">
+</path>
+<path d="M19 12H5">
+</path>
+</svg> Retour aux devis</button>
+</div>
+</div>
+</header>
+<div class="lg:flex lg:items-start lg:gap-6">
+<form id="gen-form" novalidate="" class="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target size-4 text-primary" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<circle cx="12" cy="12" r="6">
+</circle>
+<circle cx="12" cy="12" r="2">
+</circle>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Marché / Mode d'installation</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5 flex-wrap">
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">🏠 Résidentiel</button>
+<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">🏭 Industriel</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">🏪 Commercial</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">🌾 Agricole (pompage)</button>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list size-4 text-primary" aria-hidden="true">
+<rect width="8" height="4" x="8" y="2" rx="1" ry="1">
+</rect>
+<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2">
+</path>
+<path d="M12 11h4">
+</path>
+<path d="M12 16h4">
+</path>
+<path d="M8 11h.01">
+</path>
+<path d="M8 16h.01">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Informations du document</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-num">N° de Devis</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-num" disabled="" type="text" value="Généré automatiquement">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-raccordement">Raccordement</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+<span style="pointer-events: none;">Raccordé au réseau</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="reseau" selected="">Raccordé au réseau</option>
+<option value="hors_reseau">Hors réseau (site isolé)</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-scenario">Scénario</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+<span style="pointer-events: none;">Sans batterie seulement</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="Les deux (Sans + Avec)" selected="">Les deux (Sans + Avec batterie)</option>
+<option value="Sans batterie">Sans batterie seulement</option>
+<option value="Avec batterie">Avec batterie seulement</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-composition-libre">Composition</label>
+<label for="gen-composition-libre" class="flex h-10 items-center gap-2.5 text-sm text-foreground cursor-pointer">
+<button type="button" role="switch" aria-checked="false" data-state="unchecked" value="on" class="group peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors focus-ring duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" id="gen-composition-libre">
+<span data-state="unchecked" class="pointer-events-none block size-4 rounded-full bg-card shadow-ui-sm ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0.5 duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] [@media(hover:hover)]:group-active:scale-x-90">
+</span>
+</button>
+<input aria-hidden="true" tabindex="-1" style="position: absolute; pointer-events: none; opacity: 0; margin: 0px; transform: translateX(-100%); width: 0px; height: 0px;" type="checkbox" value="on">Composition libre (aucun panneau/onduleur imposé)</label>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-reco">Option Recommandée</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+<span style="pointer-events: none;">Auto (défaut)</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="Auto" selected="">Auto (défaut)</option>
+<option value="Aucune recommandation">Aucune recommandation</option>
+<option value="Sans batterie">Sans batterie</option>
+<option value="Avec batterie">Avec batterie</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-validite">Date de validité</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-validite" type="date" value="2026-11-07">
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user size-4 text-primary" aria-hidden="true">
+<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2">
+</path>
+<circle cx="12" cy="7" r="4">
+</circle>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Lead &amp; Client</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Lead / client du devis</label>
+<div class="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm" data-testid="gen-lead-lecture-seule">
+<strong>…</strong>
+<p class="mt-0.5 text-xs text-muted-foreground">Changer de client = créer un nouveau devis.</p>
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tel">Téléphone</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-tel" disabled="" placeholder="—" type="text" value="">
+</div>
+</div>
+<div class="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
+<span>🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.</span>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">Concevoir en 3D</button>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-4 text-primary" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Profil de consommation du site</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div class="mt-3.5 grid gap-4" data-testid="ci-profil">
+<fieldset class="grid gap-2">
+<legend class="text-sm font-semibold">Consommation du site</legend>
+<div class="flex flex-wrap gap-3 text-sm" role="radiogroup" aria-label="Forme de la consommation">
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="ci-saisie-mensuel" type="radio" value="mensuel" checked="" name="ci-saisie-conso">12 mois (kWh)</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="ci-saisie-annuel" type="radio" value="annuel" name="ci-saisie-conso">Total annuel (kWh)</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="ci-saisie-factures" type="radio" value="factures" name="ci-saisie-conso">Factures (MAD)</label>
+</div>
+<div class="gen-monthly-grid">
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-0">Jan</label>
+<input id="gen-ci-kwh-0" min="0" step="any" class="form-control form-control-sm" type="number" value="9000">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-1">Fév</label>
+<input id="gen-ci-kwh-1" min="0" step="any" class="form-control form-control-sm" type="number" value="8800">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-2">Mar</label>
+<input id="gen-ci-kwh-2" min="0" step="any" class="form-control form-control-sm" type="number" value="9100">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-3">Avr</label>
+<input id="gen-ci-kwh-3" min="0" step="any" class="form-control form-control-sm" type="number" value="9500">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-4">Mai</label>
+<input id="gen-ci-kwh-4" min="0" step="any" class="form-control form-control-sm" type="number" value="9900">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-5">Juin</label>
+<input id="gen-ci-kwh-5" min="0" step="any" class="form-control form-control-sm" type="number" value="10400">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-6">Juil</label>
+<input id="gen-ci-kwh-6" min="0" step="any" class="form-control form-control-sm" type="number" value="11000">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-7">Août</label>
+<input id="gen-ci-kwh-7" min="0" step="any" class="form-control form-control-sm" type="number" value="11200">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-8">Sep</label>
+<input id="gen-ci-kwh-8" min="0" step="any" class="form-control form-control-sm" type="number" value="10100">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-9">Oct</label>
+<input id="gen-ci-kwh-9" min="0" step="any" class="form-control form-control-sm" type="number" value="9600">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-10">Nov</label>
+<input id="gen-ci-kwh-10" min="0" step="any" class="form-control form-control-sm" type="number" value="9200">
+</div>
+<div class="gen-month">
+<label class="gen-month-label" for="gen-ci-kwh-11">Déc</label>
+<input id="gen-ci-kwh-11" min="0" step="any" class="form-control form-control-sm" type="number" value="9000">
+</div>
+</div>
+</fieldset>
+<fieldset class="grid gap-2">
+<legend class="text-sm font-semibold">Calendrier d'activité</legend>
+<div class="flex flex-wrap gap-3 text-sm">
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-0" type="checkbox" checked="">Lun</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-1" type="checkbox" checked="">Mar</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-2" type="checkbox" checked="">Mer</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-3" type="checkbox" checked="">Jeu</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-4" type="checkbox" checked="">Ven</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-5" type="checkbox" checked="">Sam</label>
+<label class="flex items-center gap-1.5 cursor-pointer">
+<input data-testid="gen-ci-jour-6" type="checkbox">Dim</label>
+</div>
+<div class="grid gap-3 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Jours ouvrés — heures (début / fin)</label>
+<div class="flex gap-2">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Jours ouvrés début" data-testid="gen-ci-plage-ouvre-debut" placeholder="ex: 8" type="number" value="7">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Jours ouvrés fin" data-testid="gen-ci-plage-ouvre-fin" placeholder="ex: 18" type="number" value="19">
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Samedi — heures (début / fin)</label>
+<div class="flex gap-2">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Samedi début" data-testid="gen-ci-plage-samedi-debut" placeholder="ex: 8" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Samedi fin" data-testid="gen-ci-plage-samedi-fin" placeholder="ex: 18" type="number" value="">
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Dimanche — heures (début / fin)</label>
+<div class="flex gap-2">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Dimanche début" data-testid="gen-ci-plage-dimanche-debut" placeholder="ex: 8" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Dimanche fin" data-testid="gen-ci-plage-dimanche-fin" placeholder="ex: 18" type="number" value="">
+</div>
+</div>
+</div>
+<div class="grid gap-2" data-testid="ci-fermetures">
+<div>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">Ajouter une fermeture</button>
+</div>
+</div>
+<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-talon">Talon de consommation (kW)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-talon" min="0" step="any" type="number" value="12">
+<label class="flex items-center gap-2 text-xs cursor-pointer">
+<input data-testid="gen-ci-talon-inconnu" type="checkbox">Je ne sais pas</label>
+</div>
+</div>
+</fieldset>
+<fieldset class="grid gap-4 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Toit</legend>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-type-pose">Type de pose</label>
+<select id="gen-ci-type-pose" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="toiture_inclinee">Toiture inclinée</option>
+<option value="bac_acier">Bac acier</option>
+<option value="toit_plat_leste">Toit plat lesté</option>
+<option value="toit_plat_fixe">Toit plat fixé</option>
+<option value="ombriere">Ombrière</option>
+<option value="sol">Au sol</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-surface">Surface utile (m²)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-surface" min="0" step="any" data-testid="gen-ci-surface" type="number" value="1200">
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-couverture">Couverture</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-couverture" placeholder="ex: béton, bac acier…" type="text" value="tôle">
+</div>
+</fieldset>
+<fieldset class="grid gap-4 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Raccordement</legend>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-tension">Tension</label>
+<select id="gen-ci-tension" data-testid="gen-tension" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="bt">Basse tension (BT)</option>
+<option value="mt">Moyenne tension (MT)</option>
+<option value="inconnue">Inconnue</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-phases">Phases</label>
+<select id="gen-ci-phases" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="mono">Monophasé</option>
+<option value="tri">Triphasé</option>
+<option value="inconnu">Inconnu</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-puissance">Puissance souscrite (kVA)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-puissance" min="0" step="any" data-testid="gen-ci-puissance" type="number" value="250">
+</div>
+</div>
+<div class="grid gap-1.5 sm:col-span-2">
+<label class="flex items-center gap-2 text-sm cursor-pointer">
+<input data-testid="gen-ci-revente" type="checkbox">Revente du surplus (MT, plafond légal 20 %, tarif ANRE 04/26 HT)</label>
+</div>
+<div class="grid gap-1.5">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc, optionnelle)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
+</div>
+</div>
+</fieldset>
+</div>
+<fieldset class="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
+<legend class="text-sm font-semibold">Tarif de la facture</legend>
+<div class="grid gap-4 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-contrat">Contrat</label>
+<select id="gen-tarif-contrat" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="bt_domestique">BT domestique</option>
+<option value="bt_patente">BT patenté</option>
+<option value="bt_force_motrice">BT force motrice</option>
+<option value="mt_general">MT (Tarif Général)</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-base">Prix imprimés</label>
+<select id="gen-tarif-base" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="ht">HT</option>
+<option value="ttc">TTC</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-provenance">Source des prix</label>
+<select id="gen-tarif-provenance" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="facture">Lus sur la facture</option>
+<option value="oral">Déclarés oralement</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-date">Date de la facture</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-tarif-date" type="date" value="">
+</div>
+</div>
+<p class="text-xs text-muted-foreground" data-testid="ci-tarif-repli">Aucun tarif saisi : la grille ONEE officielle sert en repli (Tarif Général MT).</p>
+</fieldset>
+<p class="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul du moteur C&amp;I…</p>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-gauge size-4 text-primary" aria-hidden="true">
+<path d="m12 14 4-4">
+</path>
+<path d="M3.34 19a10 10 0 1 1 17.32 0">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Équipes, registres MT et courbe mesurée</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4 grid gap-4" data-testid="ci-industriel-mt">
+<fieldset class="grid gap-4 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Équipes</legend>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-equipes">Équipes de travail</label>
+<select id="gen-ci-equipes" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="1x8">1 × 8 h (journée)</option>
+<option value="2x8">2 × 8 h</option>
+<option value="3x8">3 × 8 h</option>
+<option value="continu">Continu 24 h / 24</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-debut-equipe">Heure de début (h)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-debut-equipe" min="0" step="any" placeholder="ex: 6" type="number" value="7">
+</div>
+</fieldset>
+<fieldset class="grid gap-2">
+<legend class="text-sm font-semibold">Registres de la facture MT (12 mois)</legend>
+<div class="overflow-x-auto">
+<table class="w-full text-xs" data-testid="ci-registres-mt">
+<thead>
+<tr>
+<th class="text-left">Mois</th>
+<th>Pointe (kWh)</th>
+<th>Pleines (kWh)</th>
+<th>Creuses (kWh)</th>
+<th>Puissance atteinte (kW)</th>
+<th>Réactif (kvarh)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Jan</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Jan" data-testid="gen-ci-reg-0-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Jan" data-testid="gen-ci-reg-0-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Jan" data-testid="gen-ci-reg-0-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Jan" data-testid="gen-ci-reg-0-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Jan" data-testid="gen-ci-reg-0-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Fév</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Fév" data-testid="gen-ci-reg-1-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Fév" data-testid="gen-ci-reg-1-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Fév" data-testid="gen-ci-reg-1-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Fév" data-testid="gen-ci-reg-1-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Fév" data-testid="gen-ci-reg-1-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Mar</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Mar" data-testid="gen-ci-reg-2-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Mar" data-testid="gen-ci-reg-2-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Mar" data-testid="gen-ci-reg-2-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Mar" data-testid="gen-ci-reg-2-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Mar" data-testid="gen-ci-reg-2-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Avr</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Avr" data-testid="gen-ci-reg-3-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Avr" data-testid="gen-ci-reg-3-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Avr" data-testid="gen-ci-reg-3-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Avr" data-testid="gen-ci-reg-3-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Avr" data-testid="gen-ci-reg-3-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Mai</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Mai" data-testid="gen-ci-reg-4-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Mai" data-testid="gen-ci-reg-4-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Mai" data-testid="gen-ci-reg-4-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Mai" data-testid="gen-ci-reg-4-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Mai" data-testid="gen-ci-reg-4-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Juin</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Juin" data-testid="gen-ci-reg-5-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Juin" data-testid="gen-ci-reg-5-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Juin" data-testid="gen-ci-reg-5-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Juin" data-testid="gen-ci-reg-5-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Juin" data-testid="gen-ci-reg-5-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Juil</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Juil" data-testid="gen-ci-reg-6-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Juil" data-testid="gen-ci-reg-6-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Juil" data-testid="gen-ci-reg-6-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Juil" data-testid="gen-ci-reg-6-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Juil" data-testid="gen-ci-reg-6-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Août</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Août" data-testid="gen-ci-reg-7-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Août" data-testid="gen-ci-reg-7-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Août" data-testid="gen-ci-reg-7-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Août" data-testid="gen-ci-reg-7-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Août" data-testid="gen-ci-reg-7-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Sep</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Sep" data-testid="gen-ci-reg-8-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Sep" data-testid="gen-ci-reg-8-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Sep" data-testid="gen-ci-reg-8-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Sep" data-testid="gen-ci-reg-8-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Sep" data-testid="gen-ci-reg-8-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Oct</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Oct" data-testid="gen-ci-reg-9-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Oct" data-testid="gen-ci-reg-9-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Oct" data-testid="gen-ci-reg-9-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Oct" data-testid="gen-ci-reg-9-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Oct" data-testid="gen-ci-reg-9-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Nov</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Nov" data-testid="gen-ci-reg-10-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Nov" data-testid="gen-ci-reg-10-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Nov" data-testid="gen-ci-reg-10-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Nov" data-testid="gen-ci-reg-10-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Nov" data-testid="gen-ci-reg-10-kvarh" type="number" value="">
+</td>
+</tr>
+<tr>
+<td>Déc</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pointe (kWh) Déc" data-testid="gen-ci-reg-11-pointe" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Pleines (kWh) Déc" data-testid="gen-ci-reg-11-pleines" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Creuses (kWh) Déc" data-testid="gen-ci-reg-11-creuses" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Puissance atteinte (kW) Déc" data-testid="gen-ci-reg-11-puissance" type="number" value="">
+</td>
+<td>
+<input min="0" step="any" class="form-control form-control-sm" aria-label="Réactif (kvarh) Déc" data-testid="gen-ci-reg-11-kvarh" type="number" value="">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="grid gap-4 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-cos-phi">cos φ connu</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-cos-phi" min="0" step="any" placeholder="ex: 0.85" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-cos-phi-prov">Source du cos φ</label>
+<select id="gen-ci-cos-phi-prov" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="facture">Lu sur la facture</option>
+<option value="mesure">Mesuré en visite</option>
+<option value="declare">Déclaré par le client</option>
+</select>
+</div>
+</div>
+</fieldset>
+<fieldset class="grid gap-2">
+<legend class="text-sm font-semibold">Courbe de charge mesurée (CSV)</legend>
+<input accept=".csv,.txt,.tsv,.xls,.xlsx" data-testid="gen-ci-courbe-fichier" aria-label="Importer une courbe de charge" type="file">
+</fieldset>
+</div>
+</div>
+<div class="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="eco-ci">
+<p class="font-display text-sm font-semibold">Économies (moteur serveur)</p>
+<div class="grid gap-3 sm:grid-cols-3" data-testid="eco-ci-saisies">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-eco-tva">TVA récupérable par le client</label>
+<select id="gen-eco-tva" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="oui">Oui</option>
+<option value="non">Non</option>
+<option value="inconnu">Inconnu</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-eco-taux">Taux d'actualisation déclaré par le client (%)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-eco-taux" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-eco-taux-source">Source du taux</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-eco-taux-source" placeholder="ex: déclaré par le DAF" type="text" value="">
+</div>
+</div>
+<details class="rounded-md border border-warning/40 p-2 text-xs" data-testid="eco-ci-volet-interne">
+<summary class="cursor-pointer font-semibold">Vendeur seulement — financement et offre concurrente</summary>
+<div class="mt-2 grid gap-3">
+<fieldset class="grid gap-2">
+<legend class="font-semibold">Offre écrite de financement</legend>
+<div class="grid gap-1.5 sm:w-1/3">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-nature">Nature</label>
+<select id="gen-offre_financement-nature" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="credit">Crédit</option>
+<option value="credit_bail">Location (crédit-bail)</option>
+</select>
+<select aria-label="Base de l'échéance" class="form-control form-control-sm">
+<option value="">Base de l'échéance —</option>
+<option value="ht">HT</option>
+<option value="ttc">TTC</option>
+</select>
+</div>
+<div class="grid gap-3 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-preteur">Prêteur / bailleur</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-preteur" type="text" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-reference_offre">Référence de l'offre</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-reference_offre" type="text" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-date_offre">Date de l'offre</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-date_offre" type="date" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-montant_finance_mad">Montant financé (MAD)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-montant_finance_mad" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-apport_mad">Apport (MAD)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-apport_mad" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-duree_mois">Durée (mois)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-duree_mois" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-echeance_mad">Échéance (MAD)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-echeance_mad" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-frais_mad">Frais (MAD)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-frais_mad" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-taux_annuel_pct">Taux annuel (%) — seulement s'il est écrit</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-taux_annuel_pct" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-valeur_residuelle_mad">Valeur résiduelle (MAD)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-valeur_residuelle_mad" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_financement-source">Source (offre écrite)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_financement-source" type="text" value="">
+</div>
+</div>
+</fieldset>
+<fieldset class="grid gap-2">
+<legend class="font-semibold">Offre CSE concurrente</legend>
+<div class="grid gap-3 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_cse_concurrente-tarif_kwh_ht">Tarif CSE (MAD/kWh HT)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_cse_concurrente-tarif_kwh_ht" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_cse_concurrente-duree_ans">Durée (ans)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_cse_concurrente-duree_ans" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_cse_concurrente-indexation_pct_an">Indexation (%/an) — seulement si écrite</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_cse_concurrente-indexation_pct_an" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-offre_cse_concurrente-source">Source (offre écrite)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-offre_cse_concurrente-source" type="text" value="">
+</div>
+</div>
+</fieldset>
+</div>
+</details>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-4 text-primary" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Paramètres Techniques</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-kwc-cible">Puissance cible (kWc)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-kwc-cible" min="0" step="any" placeholder="ex: 3" data-testid="gen-kwc-cible" type="number" value="100.1">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-nbpanneaux">Nombre de panneaux<span class="ml-0.5 text-destructive" aria-hidden="true">*</span>
+</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-nbpanneaux" min="1" max="500" step="any" placeholder="ex: 14" type="number" value="140">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-panelw">Puissance Panneau (W)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-panelw" min="100" max="1000" step="any" type="number" value="715">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Puissance PV (kWp) — calculée</label>
+<div class="gen-kwp">100,10 kWp</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Type de Structure</label>
+<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
+<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">Acier galvanisé</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">Aluminium</button>
+</div>
+</div>
+</div>
+<div class="mt-3 flex flex-wrap items-center justify-end gap-3">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" disabled="" type="button" data-testid="btn-recalculer-dimensionnement">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw" aria-hidden="true">
+<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
+</path>
+<path d="M21 3v5h-5">
+</path>
+<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
+</path>
+<path d="M8 16H3v5">
+</path>
+</svg> Recalculer le dimensionnement</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4 bg-brass-400 text-nuit hover:bg-brass-500" type="button" data-testid="btn-auto-remplir">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg> Auto-remplir depuis le stock</button>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-column size-4 text-primary" aria-hidden="true">
+<path d="M3 3v16a2 2 0 0 0 2 2h16">
+</path>
+<path d="M18 17V9">
+</path>
+<path d="M13 17V5">
+</path>
+<path d="M8 17v-3">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Aperçu de la Simulation</span>
+<div class="ml-auto flex items-center gap-2">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 gen-preview-toggle" type="button">Replier</button>
+</div>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4">
+<p class="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">Économies C&amp;I : voir la carte « Économies » (moteur serveur).</p>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-cart size-4 text-primary" aria-hidden="true">
+<circle cx="8" cy="21" r="1">
+</circle>
+<circle cx="19" cy="21" r="1">
+</circle>
+<path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Lignes de Produits</span>
+<div class="ml-auto flex items-center gap-2">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button" title="Ajouter un intertitre de section (sans prix)">+ Section</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button" title="Ajouter une note (texte sans prix)">+ Note</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true">
+<path d="M5 12h14">
+</path>
+<path d="M12 5v14">
+</path>
+</svg> Ajouter ligne</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button" title="Enregistre l'ordre actuel des lignes comme ordre par défaut pour les prochains devis">Enregistrer cet ordre comme ordre par défaut</button>
+</div>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 px-0 pt-0">
+<details class="mx-4 mt-4 rounded-lg border border-border bg-muted/30 sm:mx-5" open="">
+<summary class="cursor-pointer select-none px-3 py-3 font-display text-sm font-semibold tracking-tight sm:px-4">Plusieurs propriétés ?</summary>
+<div class="border-t border-border p-3 sm:p-4">
+<div class="flex flex-wrap items-center gap-3">
+<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5 flex-wrap">
+<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">Une seule</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">× N identiques</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">+ Villas différentes</button>
+</div>
+</div>
+</div>
+</details>
+<label class="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+<input type="checkbox">Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)</label>
+<div class="lines-table-wrap">
+<table class="lines-table">
+<thead>
+<tr>
+<th style="min-width: 160px;">Désignation</th>
+<th style="min-width: 170px;">Produit (stock)</th>
+<th class="col-num">Qté</th>
+<th class="col-num">Prix Unit. TTC</th>
+<th class="col-num" style="width: 64px;" title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
+<th class="col-num">Total TTC</th>
+<th style="width: 56px;" title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
+<th class="col-ordre" title="Réordonner la ligne">Ordre</th>
+<th class="col-del">
+</th>
+</tr>
+</thead>
+<tbody>
+<tr data-line-key="1">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Panneau Canadien Solar 715W">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="truncate">Panneau Canadien Solar 715W</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="140">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="1320">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 1 200 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="10">
+</td>
+<td class="line-total" data-label="Total TTC">184 800 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 168 000 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="2">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Onduleur réseau 50kW Triphasé">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="truncate">Onduleur réseau 50kW Triphasé</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="2">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="62400">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 52 000 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">124 800 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 104 000 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="3">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Structures acier">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="truncate">Structures acier</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="140">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="450">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 375 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">63 000 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 52 500 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="gen-totals-row gen-tier-1">
+<div class="gen-total-item">
+<span class="gen-total-label">Total SANS batterie ⭐</span>
+<span class="gen-total-value">372 600 MAD</span>
+</div>
+</div>
+<div class="gen-totals-row gen-discount-row">
+<div class="gen-total-item gen-total-inline gen-tier-2">
+<span class="gen-total-label">Réduction</span>
+<input min="0" max="100" step="any" class="gen-discount-input" type="number" value="0">
+<span style="font-weight: 700;">%</span>
+</div>
+<div class="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
+<span class="gen-total-label">TVA : par ligne (voir la table)</span>
+</div>
+</div>
+<div class="gen-totals-row gen-discount-row">
+<div class="gen-total-item">
+<span class="gen-total-label">Prix / kWc</span>
+<span class="gen-total-value ">3 722 MAD/kWc</span>
+</div>
+<div class="gen-total-item gen-total-inline">
+<span class="gen-total-label">Prix cible / kWc</span>
+<input min="0" step="any" class="gen-discount-input" style="width: 100px;" placeholder="ex: 9000" type="number" value="">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button">Appliquer via remise</button>
+</div>
+<div class="gen-total-item">
+<span class="gen-total-label text-success">Marge indicative (interne)</span>
+<span class="gen-total-value text-success">111 696 MAD (30 %)</span>
+</div>
+</div>
+</div>
+</div>
+<div class="rounded-lg border border-border bg-card text-card-foreground shadow-sm">
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+                   hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open size-4 text-primary" aria-hidden="true">
+<path d="M12 7v14">
+</path>
+<path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z">
+</path>
+</svg>
+<span>Modèles de devis</span>
+<span class="ml-auto text-muted-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</span>
+</button>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" data-testid="devis-edition-blocs">
+<div class="p-4 sm:p-5 sm:pt-0 pt-4 space-y-3">
+<div class="space-y-1" data-testid="ajouter-boq-electrique">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cable size-4" aria-hidden="true">
+<path d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z">
+</path>
+<path d="M17 21v-2">
+</path>
+<path d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10">
+</path>
+<path d="M21 21v-2">
+</path>
+<path d="M3 5V3">
+</path>
+<path d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z">
+</path>
+<path d="M7 5V3">
+</path>
+</svg> Ajouter le BOQ électrique</button>
+<p class="text-xs text-muted-foreground">Reporte le bordereau de la conception électrique en lignes du devis. Enregistrez d’abord vos modifications en cours : l’écran est rechargé.</p>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" data-testid="lots-multi-sites">
+<div class="p-4 sm:p-5 sm:pt-0 pt-4 space-y-3">
+<div class="flex items-center gap-2">
+<p class="flex items-center gap-2 text-sm font-semibold text-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building2 lucide-building-2 size-4" aria-hidden="true">
+<path d="M10 12h4">
+</path>
+<path d="M10 8h4">
+</path>
+<path d="M14 21v-3a2 2 0 0 0-4 0v3">
+</path>
+<path d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2">
+</path>
+<path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16">
+</path>
+</svg> Lots / multi-sites</p>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 ml-auto" type="button" aria-expanded="false">Afficher</button>
+</div>
+</div>
+</div>
+<div>
+<p class="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
+<div class="flex flex-col gap-3">
+<div class="flex items-center gap-2 text-sm font-medium text-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paperclip size-4 text-muted-foreground" aria-hidden="true">
+<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551">
+</path>
+</svg>0 pièce(s) jointe(s)</div>
+<div>
+<input id=":id0:" accept="application/pdf,image/png,image/jpeg,image/webp" multiple="" class="sr-only" type="file">
+<div role="button" tabindex="0" aria-controls=":id0:" class="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors focus-ring border-border bg-muted/40 hover:border-primary/50 hover:bg-accent cursor-pointer">
+<span class="grid size-12 place-items-center rounded-full bg-background text-muted-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload size-6" aria-hidden="true">
+<path d="M12 13v8">
+</path>
+<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242">
+</path>
+<path d="m8 17 4-4 4 4">
+</path>
+</svg>
+</span>
+<div>
+<p class="text-sm font-medium text-foreground">Glissez un fichier ici ou <span class="text-primary underline">cliquez pour choisir</span>
+</p>
+<p class="mt-1 text-xs text-muted-foreground">PDF · PNG · JPEG · WEBP — max 10,0 Mo · PDF/PNG/JPEG/WebP — 10 Mo max</p>
+</div>
+</div>
+</div>
+<p class="text-xs text-muted-foreground">PDF/PNG/JPEG/WebP — 10 Mo max</p>
+<div class="flex flex-col gap-1.5">
+<p class="text-sm text-muted-foreground">Aucune pièce jointe.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" data-testid="carte-echeancier">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-clock size-4 text-primary" aria-hidden="true">
+<path d="M16 14v2.2l1.6 1">
+</path>
+<path d="M16 2v4">
+</path>
+<path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5">
+</path>
+<path d="M3 10h5">
+</path>
+<path d="M8 2v4">
+</path>
+<circle cx="16" cy="16" r="6">
+</circle>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Échéancier de paiement</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4 grid gap-3">
+<div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+<span>Ce devis suit l'échéancier de la société (Paramètres → Devis).</span>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">Personnaliser l'échéancier</button>
+</div>
+<fieldset class="grid gap-3 border-t border-border pt-3" data-testid="conditions-contractuelles">
+<legend class="text-sm font-semibold">Conditions demandées par le client</legend>
+<label class="flex items-center gap-2 text-sm cursor-pointer">
+<input data-testid="gen-cond-retenue" type="checkbox">Le client demande une retenue de garantie (libérée à la réception définitive)</label>
+<div class="grid gap-3 sm:grid-cols-3">
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-penaliteTaux">Pénalités de retard (% par semaine)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-penaliteTaux" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-penalitePlafond">Plafond des pénalités (%)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-penalitePlafond" min="0" step="any" type="number" value="">
+</div>
+</div>
+<div class="grid gap-3 sm:grid-cols-3">
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionNature">Caution (nature)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionNature" placeholder="ex: caution de bonne exécution" type="text" value="">
+</div>
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionMontant">Caution : montant ou %</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionMontant" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionPlafond">Caution : plafond</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionPlafond" min="0" step="any" type="number" value="">
+</div>
+</div>
+<div class="grid gap-3 sm:grid-cols-3">
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-referenceCommande">Référence de commande du client</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-referenceCommande" maxlength="60" type="text" value="">
+</div>
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-tiersPayeur">Organisme financeur</label>
+<select id="gen-cond-tiersPayeur" class="h-9 rounded-md border border-input bg-background px-2 text-sm">
+<option value="">— aucun —</option>
+<option value="9">Client Golden</option>
+</select>
+</div>
+<div class="grid gap-1">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-acompte-financeur">Acompte client (%)</label>
+<div class="flex gap-2">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-acompte-financeur" min="0" step="any" type="number" value="">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button" data-testid="btn-echeancier-financeur">Échéancier organisme financeur</button>
+</div>
+</div>
+</div>
+</fieldset>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticky-note size-4 text-primary" aria-hidden="true">
+<path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z">
+</path>
+<path d="M15 3v5a1 1 0 0 0 1 1h5">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Texte pour le client (imprimé sur le devis)</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<textarea class="flex min-h-20 w-full rounded-md border border-input bg-card px-3 py-2 text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm" rows="3" placeholder="Conditions particulières, précisions pour le client…">
+</textarea>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text size-4 text-primary" aria-hidden="true">
+<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z">
+</path>
+<path d="M14 2v5a1 1 0 0 0 1 1h5">
+</path>
+<path d="M10 9H8">
+</path>
+<path d="M16 13H8">
+</path>
+<path d="M16 17H8">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Modification du devis DEV-202610-032</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<p class="text-sm text-muted-foreground">Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).</p>
+<div class="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
+<div class="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+<span class="text-muted-foreground">Total TTC</span>
+<strong class="tabular-nums text-base font-semibold text-foreground">372 600 MAD</strong>
+</div>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button" title="Envoyer une notification à mon supérieur avec le lien de ce devis">Contacter mon supérieur</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw" aria-hidden="true">
+<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8">
+</path>
+<path d="M3 3v5h5">
+</path>
+</svg> Réinitialiser</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">Annuler</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="submit">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
+<circle cx="12" cy="12" r="4">
+</circle>
+<path d="M12 2v2">
+</path>
+<path d="M12 20v2">
+</path>
+<path d="m4.93 4.93 1.41 1.41">
+</path>
+<path d="m17.66 17.66 1.41 1.41">
+</path>
+<path d="M2 12h2">
+</path>
+<path d="M20 12h2">
+</path>
+<path d="m6.34 17.66-1.41 1.41">
+</path>
+<path d="m19.07 4.93-1.41 1.41">
+</path>
+</svg> Enregistrer les modifications</button>
+</div>
+</div>
+</div>
+</form>
+<aside class="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3" style="top: var(--header-h, 64px);">
+<div class="rounded-xl border text-card-foreground shadow-card p-4 sm:p-5 border-primary/40 bg-primary/[0.06]" data-testid="gen-rail-total">
+<div class="flex items-start justify-between gap-3">
+<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total sans batterie · TTC</span>
+</div>
+<div class="num mt-2 text-2xl font-semibold leading-none stat-value-solidify">372 600 MAD</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="p-4 sm:p-5 sm:pt-0 pt-4 flex flex-col gap-3">
+<div>
+<div class="text-xs uppercase tracking-wide text-muted-foreground">Marge indicative (interne)</div>
+<div class="text-sm font-semibold text-success">111 696 MAD (30 %)</div>
+</div>
+<div class="border-t border-border pt-3">
+<div class="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
+<div class="text-sm text-foreground">100,10 kWc · 140 panneaux</div>
+</div>
+<div class="flex flex-col gap-2 pt-1">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="submit" form="gen-form">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
+<circle cx="12" cy="12" r="4">
+</circle>
+<path d="M12 2v2">
+</path>
+<path d="M12 20v2">
+</path>
+<path d="m4.93 4.93 1.41 1.41">
+</path>
+<path d="m17.66 17.66 1.41 1.41">
+</path>
+<path d="M2 12h2">
+</path>
+<path d="M20 12h2">
+</path>
+<path d="m6.34 17.66-1.41 1.41">
+</path>
+<path d="m19.07 4.93-1.41 1.41">
+</path>
+</svg> Enregistrer</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">Annuler</button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>

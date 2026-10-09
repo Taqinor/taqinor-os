@@ -19,13 +19,13 @@
 // Run : node --test src/pages/ventes/DevisGeneratorProductibleSociete.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { productibleForCity } from '../../features/ventes/solar.js'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 
 test('QJR39 — quoteLogic.productible est initialisé à null (surcharge société absente par défaut)', () => {
   assert.match(DG, /const \[quoteLogic, setQuoteLogic\] = useState\(\{[\s\S]{0,700}productible: null,/)

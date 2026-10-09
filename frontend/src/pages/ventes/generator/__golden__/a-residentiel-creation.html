@@ -1,0 +1,1516 @@
+<div class="page gen-page">
+<div aria-hidden="true" class="scroll-progress-bar">
+</div>
+<header class="mb-6 app-accent-rail" style="--module-accent: var(--module-accent-brass);">
+<div class="flex flex-wrap items-start justify-between gap-4">
+<div class="min-w-0">
+<h2 class="flex items-center gap-2 font-display text-xl font-semibold leading-tight tracking-tight text-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text size-5 shrink-0 text-muted-foreground" aria-hidden="true">
+<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z">
+</path>
+<path d="M14 2v5a1 1 0 0 0 1 1h5">
+</path>
+<path d="M10 9H8">
+</path>
+<path d="M16 13H8">
+</path>
+<path d="M16 17H8">
+</path>
+</svg>Générateur de Devis Solaire</h2>
+<p class="mt-1 text-sm text-muted-foreground">Nouveau devis · tout est en TTC</p>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left" aria-hidden="true">
+<path d="m12 19-7-7 7-7">
+</path>
+<path d="M19 12H5">
+</path>
+</svg> Retour aux devis</button>
+</div>
+</div>
+</header>
+<div class="lg:flex lg:items-start lg:gap-6">
+<form id="gen-form" novalidate="" class="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+<p data-testid="draft-saved-indicator" class="text-xs text-muted-foreground" role="status">Brouillon enregistré à 09:00</p>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target size-4 text-primary" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<circle cx="12" cy="12" r="6">
+</circle>
+<circle cx="12" cy="12" r="2">
+</circle>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Marché / Mode d'installation</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5 flex-wrap">
+<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">🏠 Résidentiel</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">🏭 Industriel</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">🏪 Commercial</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">🌾 Agricole (pompage)</button>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list size-4 text-primary" aria-hidden="true">
+<rect width="8" height="4" x="8" y="2" rx="1" ry="1">
+</rect>
+<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2">
+</path>
+<path d="M12 11h4">
+</path>
+<path d="M12 16h4">
+</path>
+<path d="M8 11h.01">
+</path>
+<path d="M8 16h.01">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Informations du document</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-num">N° de Devis</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-num" disabled="" type="text" value="Généré automatiquement">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-raccordement">Raccordement</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+<span style="pointer-events: none;">Raccordé au réseau</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="reseau" selected="">Raccordé au réseau</option>
+<option value="hors_reseau">Hors réseau (site isolé)</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-scenario">Scénario</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+<span style="pointer-events: none;">Les deux (Sans + Avec batterie)</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="Les deux (Sans + Avec)" selected="">Les deux (Sans + Avec batterie)</option>
+<option value="Sans batterie">Sans batterie seulement</option>
+<option value="Avec batterie">Avec batterie seulement</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-composition-libre">Composition</label>
+<label for="gen-composition-libre" class="flex h-10 items-center gap-2.5 text-sm text-foreground cursor-pointer">
+<button type="button" role="switch" aria-checked="false" data-state="unchecked" value="on" class="group peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors focus-ring duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" id="gen-composition-libre">
+<span data-state="unchecked" class="pointer-events-none block size-4 rounded-full bg-card shadow-ui-sm ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0.5 duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] [@media(hover:hover)]:group-active:scale-x-90">
+</span>
+</button>
+<input aria-hidden="true" tabindex="-1" style="position: absolute; pointer-events: none; opacity: 0; margin: 0px; transform: translateX(-100%); width: 0px; height: 0px;" type="checkbox" value="on">Composition libre (aucun panneau/onduleur imposé)</label>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-reco">Option Recommandée</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+<span style="pointer-events: none;">Auto (défaut)</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="Auto" selected="">Auto (défaut)</option>
+<option value="Aucune recommandation">Aucune recommandation</option>
+<option value="Sans batterie">Sans batterie</option>
+<option value="Avec batterie">Avec batterie</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-validite">Date de validité</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-validite" type="date" value="">
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user size-4 text-primary" aria-hidden="true">
+<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2">
+</path>
+<circle cx="12" cy="7" r="4">
+</circle>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Lead &amp; Client</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-lead">Lead (point de départ)<span class="ml-0.5 text-destructive" aria-hidden="true">*</span>
+</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" data-placeholder="" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-lead">
+<span style="pointer-events: none;">— Sélectionner un lead —</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="" selected="">
+</option>
+<option value="77">Khalid Golden — 3000 MAD/mois</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tel">Téléphone</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-tel" disabled="" placeholder="—" type="text" value="">
+</div>
+</div>
+<div class="mt-3 grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-client">…ou choisir un client directement (sans lead)</label>
+<div class="flex gap-2">
+<div class="flex-1">
+<div class="relative">
+<button type="button" id="gen-client" role="combobox" aria-expanded="false" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-muted-foreground" aria-haspopup="dialog" data-state="closed">
+<span class="line-clamp-1 flex-1 text-left">— Sélectionner un client —</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-up-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m7 15 5 5 5-5">
+</path>
+<path d="m7 9 5-5 5 5">
+</path>
+</svg>
+</button>
+</div>
+</div>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true">
+<path d="M5 12h14">
+</path>
+<path d="M12 5v14">
+</path>
+</svg> Nouveau client</button>
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-adresse">Adresse</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-adresse" disabled="" placeholder="—" type="text" value="">
+</div>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-4 text-primary" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Factures Électriques</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<p class="text-sm text-muted-foreground">Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.</p>
+<div class="mt-3 grid items-end gap-4 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-hiver">Facture Hiver moy. (MAD/mois)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-hiver" min="0" step="any" placeholder="ex: 600" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ete">Facture Été moy. (MAD/mois)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ete" min="0" step="any" placeholder="ex: 400" type="number" value="">
+</div>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-column" aria-hidden="true">
+<path d="M3 3v16a2 2 0 0 0 2 2h16">
+</path>
+<path d="M18 17V9">
+</path>
+<path d="M13 17V5">
+</path>
+<path d="M8 17v-3">
+</path>
+</svg> Estimer 12 mois</button>
+</div>
+<div class="gen-monthly-grid">
+<div class="gen-month">
+<span class="gen-month-label">Jan</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="500">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Fév</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="450">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Mar</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="400">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Avr</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="380">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Mai</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="360">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Juin</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="500">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Juil</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="700">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Août</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="680">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Sep</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="580">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Oct</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="480">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Nov</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="430">
+</div>
+<div class="gen-month">
+<span class="gen-month-label">Déc</span>
+<input min="0" step="any" class="form-control form-control-sm" type="number" value="480">
+</div>
+</div>
+<div class="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4">
+<div class="flex flex-wrap items-center gap-2">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-4 text-info" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg>
+<span class="font-display text-sm font-semibold tracking-tight">Facture réelle du client (recommandé)</span>
+<button type="button" aria-label="Aide — distributeur et tranches" title="Aide — distributeur et tranches" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+<span class="text-xs text-muted-foreground">affine les économies avec le barème par tranche du distributeur</span>
+</div>
+<div class="mt-3 grid gap-4 sm:grid-cols-3">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-distributeur">Distributeur</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+<span style="pointer-events: none;">ONEE</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="onee" selected="">ONEE</option>
+<option value="lydec">Lydec (Casablanca)</option>
+<option value="redal">Redal (Rabat-Salé-Kénitra)</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-realbill">Facture réelle (MAD/mois)</label>
+<div class="flex gap-2">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0 flex-1" id="gen-realbill" min="0" step="any" placeholder="ex: 850" type="number" value="">
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left w-24">
+<span style="pointer-events: none;">MAD</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="mad" selected="">MAD</option>
+<option value="kwh">kWh</option>
+</select>
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Consommation annuelle dérivée</label>
+<div class="gen-kwp">—</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-4 text-primary" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Paramètres Techniques</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-kwc-cible">Puissance cible (kWc)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-kwc-cible" min="0" step="any" placeholder="ex: 3" data-testid="gen-kwc-cible" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-nbpanneaux">Nombre de panneaux<span class="ml-0.5 text-destructive" aria-hidden="true">*</span>
+</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-nbpanneaux" min="1" max="500" step="any" placeholder="ex: 14" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-panelw">Puissance Panneau (W)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-panelw" min="100" max="1000" step="any" type="number" value="710">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Puissance PV (kWp) — calculée</label>
+<div class="gen-kwp">—</div>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Type de Structure</label>
+<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
+<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">Acier galvanisé</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">Aluminium</button>
+</div>
+</div>
+</div>
+<div class="mt-2 text-xs text-muted-foreground" data-testid="part-diurne-defaut">Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).</div>
+<div class="mt-3 flex flex-wrap items-center justify-end gap-3">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" disabled="" type="button" data-testid="btn-recalculer-dimensionnement">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw" aria-hidden="true">
+<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
+</path>
+<path d="M21 3v5h-5">
+</path>
+<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
+</path>
+<path d="M8 16H3v5">
+</path>
+</svg> Recalculer le dimensionnement</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4 bg-brass-400 text-nuit hover:bg-brass-500" type="button" data-testid="btn-auto-remplir">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap" aria-hidden="true">
+<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
+</path>
+</svg> Auto-remplir depuis le stock</button>
+</div>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-column size-4 text-primary" aria-hidden="true">
+<path d="M3 3v16a2 2 0 0 0 2 2h16">
+</path>
+<path d="M18 17V9">
+</path>
+<path d="M13 17V5">
+</path>
+<path d="M8 17v-3">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Aperçu de la Simulation</span>
+<div class="ml-auto flex items-center gap-2">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 gen-preview-toggle" type="button">Replier</button>
+</div>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4">
+<p class="text-center text-sm text-muted-foreground">Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.</p>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-cart size-4 text-primary" aria-hidden="true">
+<circle cx="8" cy="21" r="1">
+</circle>
+<circle cx="19" cy="21" r="1">
+</circle>
+<path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Lignes de Produits</span>
+<div class="ml-auto flex items-center gap-2">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button" title="Ajouter un intertitre de section (sans prix)">+ Section</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button" title="Ajouter une note (texte sans prix)">+ Note</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true">
+<path d="M5 12h14">
+</path>
+<path d="M12 5v14">
+</path>
+</svg> Ajouter ligne</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button" title="Enregistre l'ordre actuel des lignes comme ordre par défaut pour les prochains devis">Enregistrer cet ordre comme ordre par défaut</button>
+</div>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 px-0 pt-0">
+<details class="mx-4 mt-4 rounded-lg border border-border bg-muted/30 sm:mx-5" open="">
+<summary class="cursor-pointer select-none px-3 py-3 font-display text-sm font-semibold tracking-tight sm:px-4">Plusieurs propriétés ?</summary>
+<div class="border-t border-border p-3 sm:p-4">
+<div class="flex flex-wrap items-center gap-3">
+<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5 flex-wrap">
+<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">Une seule</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">× N identiques</button>
+<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">+ Villas différentes</button>
+</div>
+</div>
+</div>
+</details>
+<label class="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+<input type="checkbox">Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)</label>
+<div class="lines-table-wrap">
+<table class="lines-table">
+<thead>
+<tr>
+<th style="min-width: 160px;">Désignation</th>
+<th style="min-width: 170px;">Produit (stock)</th>
+<th class="col-num">Qté</th>
+<th class="col-num">Prix Unit. TTC</th>
+<th class="col-num" style="width: 64px;" title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
+<th class="col-num">Total TTC</th>
+<th style="width: 56px;" title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
+<th class="col-ordre" title="Réordonner la ligne">Ordre</th>
+<th class="col-del">
+</th>
+</tr>
+</thead>
+<tbody>
+<tr data-line-key="1">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Onduleur réseau">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="2">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Onduleur hybride">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="3">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Smart Meter">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="truncate">Smart Meter</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="1440">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 1 200 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="4">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Wifi Dongle">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="5">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Panneaux">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+<div class="mt-0.5 text-xs text-warning">TVA appliquée : 20 % (catalogue : 10 %)</div>
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="6">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Batterie">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="7">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Batterie">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="8">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Structures acier">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="truncate">Structures acier</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="450">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 375 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="9">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Structures aluminium">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="10">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Socles">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="0">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="11">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Accessoires">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="12">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Tableau De Protection AC/DC">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="13">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Installation">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="14">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Transport">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+<tr data-line-key="15">
+<td data-label="Désignation">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)]" readonly="" disabled="" title="Renommer une ligne est réservé au Directeur et au Commercial responsable" placeholder="Désignation" type="text" value="Suivi journalier, maintenance chaque 12 mois pendant 2 ans">
+</td>
+<td data-label="Produit (stock)">
+<button type="button" class="flex h-[var(--control-h-sm)] w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-foreground shadow-ui-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<span class="text-muted-foreground">— Produit —</span>
+</button>
+</td>
+<td data-label="Qté">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+</td>
+<td data-label="Prix unit. TTC">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="0">
+<div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 0 MAD</div>
+</td>
+<td data-label="TVA %">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+</td>
+<td class="line-total" data-label="Total TTC">0 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 0 MAD</div>
+</td>
+<td data-label="Option" class="ta-center">
+<input aria-label="Ligne optionnelle (add-on hors total)" title="Add-on proposé au client hors total (activable avant signature)" type="checkbox">
+</td>
+<td data-label="Ordre" class="ta-center">
+<div class="line-reorder-buttons">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" aria-label="Monter la ligne" title="Monter la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" aria-hidden="true">
+<path d="m18 15-6-6-6 6">
+</path>
+</svg>
+</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" aria-label="Descendre la ligne" title="Descendre la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+</div>
+</td>
+<td>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5 text-destructive hover:bg-destructive/10" aria-label="Supprimer la ligne" title="Supprimer la ligne" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2 lucide-trash-2" aria-hidden="true">
+<path d="M10 11v6">
+</path>
+<path d="M14 11v6">
+</path>
+<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6">
+</path>
+<path d="M3 6h18">
+</path>
+<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+</path>
+</svg>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="gen-totals-row gen-tier-1">
+<div class="gen-total-item">
+<span class="gen-total-label">Total SANS batterie</span>
+<span class="gen-total-value">0 MAD</span>
+</div>
+<div class="gen-total-item">
+<span class="gen-total-label">Total AVEC batterie ⭐</span>
+<span class="gen-total-value orange">0 MAD</span>
+</div>
+</div>
+<div class="gen-totals-row gen-discount-row">
+<div class="gen-total-item gen-total-inline gen-tier-2">
+<span class="gen-total-label">Réduction</span>
+<input min="0" max="100" step="any" class="gen-discount-input" type="number" value="0">
+<span style="font-weight: 700;">%</span>
+</div>
+<div class="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
+<span class="gen-total-label">TVA : par ligne (voir la table)</span>
+</div>
+</div>
+<div class="gen-totals-row gen-discount-row">
+<div class="gen-total-item gen-total-inline">
+<span class="gen-total-label">Prix cible / kWc</span>
+<input min="0" step="any" class="gen-discount-input" style="width: 100px;" placeholder="ex: 9000" type="number" value="">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button">Appliquer via remise</button>
+</div>
+<div class="gen-total-item">
+<span class="gen-total-label text-success">Marge indicative (interne)</span>
+<span class="gen-total-value text-success">0 MAD</span>
+</div>
+</div>
+</div>
+</div>
+<div class="rounded-lg border border-border bg-card text-card-foreground shadow-sm">
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+                   hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open size-4 text-primary" aria-hidden="true">
+<path d="M12 7v14">
+</path>
+<path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z">
+</path>
+</svg>
+<span>Modèles de devis</span>
+<span class="ml-auto text-muted-foreground">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</span>
+</button>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticky-note size-4 text-primary" aria-hidden="true">
+<path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z">
+</path>
+<path d="M15 3v5a1 1 0 0 0 1 1h5">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Texte pour le client (imprimé sur le devis)</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<textarea class="flex min-h-20 w-full rounded-md border border-input bg-card px-3 py-2 text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm" rows="3" placeholder="Conditions particulières, précisions pour le client…">
+</textarea>
+</div>
+</div>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text size-4 text-primary" aria-hidden="true">
+<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z">
+</path>
+<path d="M14 2v5a1 1 0 0 0 1 1h5">
+</path>
+<path d="M10 9H8">
+</path>
+<path d="M16 13H8">
+</path>
+<path d="M16 17H8">
+</path>
+</svg>
+<span class="font-display text-base font-semibold tracking-tight">Création du Devis</span>
+</div>
+<div class="p-4 sm:p-5 sm:pt-0 pt-4">
+<p class="text-sm text-muted-foreground">Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).</p>
+<div class="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
+<div class="mr-auto flex items-baseline gap-1.5 text-sm lg:hidden">
+<span class="text-muted-foreground">Total TTC</span>
+<strong class="tabular-nums text-base font-semibold text-foreground">0 MAD</strong>
+</div>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw" aria-hidden="true">
+<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8">
+</path>
+<path d="M3 3v5h5">
+</path>
+</svg> Réinitialiser</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">Annuler</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="submit">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
+<circle cx="12" cy="12" r="4">
+</circle>
+<path d="M12 2v2">
+</path>
+<path d="M12 20v2">
+</path>
+<path d="m4.93 4.93 1.41 1.41">
+</path>
+<path d="m17.66 17.66 1.41 1.41">
+</path>
+<path d="M2 12h2">
+</path>
+<path d="M20 12h2">
+</path>
+<path d="m6.34 17.66-1.41 1.41">
+</path>
+<path d="m19.07 4.93-1.41 1.41">
+</path>
+</svg> Créer le devis</button>
+</div>
+</div>
+</div>
+</form>
+<aside class="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3" style="top: var(--header-h, 64px);">
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card p-4 sm:p-5" data-testid="gen-rail-total-sans" data-figure="total_ttc" data-figure-option="sans">
+<div class="flex items-start justify-between gap-3">
+<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total sans batterie · TTC</span>
+</div>
+<div class="num mt-2 text-2xl font-semibold leading-none stat-value-solidify">0 MAD</div>
+</div>
+<div class="rounded-xl border text-card-foreground shadow-card p-4 sm:p-5 border-primary/40 bg-primary/[0.06]" data-testid="gen-rail-total" data-figure="total_ttc" data-figure-option="avec">
+<div class="flex items-start justify-between gap-3">
+<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total avec batterie · TTC</span>
+</div>
+<div class="num mt-2 text-2xl font-semibold leading-none stat-value-solidify">0 MAD</div>
+<div class="mt-1.5 flex items-center gap-2 text-xs">
+<span class="text-muted-foreground">Option recommandée</span>
+</div>
+</div>
+<p class="num text-xs text-muted-foreground" data-testid="gen-rail-ecart">Écart batterie : 0 MAD</p>
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
+<div class="p-4 sm:p-5 sm:pt-0 pt-4 flex flex-col gap-3">
+<div>
+<div class="text-xs uppercase tracking-wide text-muted-foreground">Marge indicative (interne)</div>
+<div class="text-sm font-semibold text-success">0 MAD</div>
+</div>
+<div class="border-t border-border pt-3">
+<div class="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
+<div class="text-sm text-foreground">— kWc</div>
+</div>
+<div class="flex flex-col gap-2 pt-1">
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="submit" form="gen-form">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun" aria-hidden="true">
+<circle cx="12" cy="12" r="4">
+</circle>
+<path d="M12 2v2">
+</path>
+<path d="M12 20v2">
+</path>
+<path d="m4.93 4.93 1.41 1.41">
+</path>
+<path d="m17.66 17.66 1.41 1.41">
+</path>
+<path d="M2 12h2">
+</path>
+<path d="M20 12h2">
+</path>
+<path d="m6.34 17.66-1.41 1.41">
+</path>
+<path d="m19.07 4.93-1.41 1.41">
+</path>
+</svg> Créer le devis</button>
+<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">Annuler</button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>

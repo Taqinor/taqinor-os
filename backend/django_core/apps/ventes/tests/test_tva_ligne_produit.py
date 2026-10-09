@@ -91,11 +91,12 @@ class CreerLignePrendLaTvaDuProduit(_Base):
         ligne.refresh_from_db()
         self.assertEqual(ligne.taux_tva, Decimal('20.00'))
 
-    def test_produit_sans_taux_garde_null(self):
-        # Pas de fiche ⇒ comportement d'hier (le taux du devis s'applique).
+    def test_produit_sans_taux_prend_celui_du_devis(self):
+        # ATOT20 — pas de fiche ⇒ le taux du DEVIS est POSÉ (celui qui
+        # s'appliquait déjà) : plus aucune ligne produit NULL.
         ligne = self._ligne(self.sans_taux)
         ligne.refresh_from_db()
-        self.assertIsNone(ligne.taux_tva)
+        self.assertEqual(ligne.taux_tva, Decimal('20.00'))
         self.assertEqual(ligne.taux_tva_effectif, Decimal('20.00'))
 
     def test_section_reste_sans_taux(self):

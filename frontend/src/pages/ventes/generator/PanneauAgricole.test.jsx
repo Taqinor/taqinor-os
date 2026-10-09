@@ -58,7 +58,7 @@ const PROPS_VIDES = {
   pompeCv: '', setPompeCv: vi.fn(),
   pompeType: '', setPompeType: vi.fn(), pompeAlim: '', dispatchSizing: vi.fn(),
   pompeHmt: '', setPompeHmt: vi.fn(), pompeDebit: '', setPompeDebit: vi.fn(),
-  pompeHeures: '', setPompeHeures: vi.fn(), pompeProfondeur: '',
+  pompeProfondeur: '',
   setPompeProfondeur: vi.fn(), pompeDistance: '', setPompeDistance: vi.fn(),
   farmSurfaceHa: '', setFarmSurfaceHa: vi.fn(), farmCrop: '', setFarmCrop: vi.fn(),
   farmRegion: '', setFarmRegion: vi.fn(), farmIrrigation: '',

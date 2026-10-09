@@ -1,0 +1,458 @@
+== TEXTE ==
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à 09:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Option « avec batterie » indisponible pour ce système : aucun onduleur hybride dans la liste. Le PDF sera un document à option unique (sans batterie) — jamais une option partielle silencieuse.
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead (point de départ)*
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-lead">
+— Sélectionner un lead —
+Khalid Golden — 3000 MAD/mois
+Téléphone
+…ou choisir un client directement (sans lead)
+— Sélectionner un client —
+Nouveau client
+Adresse
+Pompage solaire
+Cas de pompe
+Pompe neuve
+Pompe existante conservée
+Type de pompe
+Immergée
+Surface
+Alimentation
+Mono 220V
+Tri 380V
+Besoin en eau
+Volume déclaré
+Pompe actuelle
+Cultures
+Volume par jour (m³/jour)
+Mois de pointe
+Non renseigné
+Janvier
+Février
+Mars
+Avril
+Mai
+Juin
+Juillet
+Août
+Septembre
+Octobre
+Novembre
+Décembre
+Débit d'exploitation du forage (m³/h)
+Origine du débit
+Non renseigné
+Essai de pompage
+Donné par le foreur
+Estimation du client
+Mesuré en visite
+Date du débit
+Débit autorisé ABH (m³/h)
+Volume annuel autorisé ABH (m³)
+Compteur d'eau
+Non renseigné
+Oui
+Non
+Niveau dynamique (m)
+Diamètre de tubage (mm)
+Profondeur de calage (m)
+Réservoir (m³)
+HMT saisie (m) — surcharge
+HMT retenue par le serveur : 58,7 m (calculée)
+Débit souhaité (m³/h)
+Profondeur forage (m) — optionnel
+Distance champ → coffret (m)
+Détailler la HMT (dénivelé, conduite, pression)
+Votre exploitation
+recommandé — affine le devis avec les données réelles du fermier
+Surface irriguée (ha)
+Culture
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-farm-crop">
+Non renseignée
+Agrumes
+Maraîchage
+Olivier
+Dattier (palmier)
+Céréales
+Luzerne / fourrage
+Arganier
+Région
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-farm-region">
+Non renseignée
+Souss-Massa (Agadir)
+Doukkala (El Jadida)
+Tadla (Béni Mellal)
+Saïss (Fès-Meknès)
+Oriental (Berkane)
+Drâa-Tafilalet
+Gharb-Loukkos
+Haouz (Marrakech)
+Mode d'irrigation
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-farm-irrigation">
+Non renseigné
+Goutte-à-goutte
+Aspersion
+Gravitaire
+Niveau statique de l'eau (m) — optionnel
+Rabattement en pompage (m) — optionnel
+Énergie actuelle et dépense déclarée
+Énergie actuelle
+Non renseignée
+Aucune (nouveau forage)
+Butane
+Gasoil
+Réseau électrique
+Date de déclaration (vide = aujourd'hui)
+Entretien et réparations payés (MAD / an)
+Mois d'irrigation
+Jan
+Fév
+Mar
+Avr
+Mai
+Jui
+Jui
+Aoû
+Sep
+Oct
+Nov
+Déc
+Mois confirmés avec le client
+Les dépenses que le client DÉCLARE (datées) alimentent le bloc économies du document 3 pages ; sans déclaration, le bloc est omis. Le une-page n’imprime aucune économie.
+Économie déclarée
+Déclarez l'énergie actuelle et la dépense pour voir l'économie.
+Interne — jamais sur un document client (jamais imprimé)
+Le client atteste l’usage exclusivement agricole
+Date de l’attestation
+Signataire
+Pompe proposée : Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V) · puissance retenue 7,5 kW (10,2 CV)
+Variateur : VARIATEUR VEICHI SI23 7.5KW 380V
+Champ 9,94 kWc (14 panneaux) — chaînes vérifiées
+Mois
+Production (m³/j)
+Besoin (m³/j)
+Couverture
+Janvier
+140,3
+135
+104 %
+Février
+161,7
+135
+120 %
+Mars
+186
+135
+138 %
+Avril
+207,4
+135
+154 %
+Mai
+219,6
+135
+163 %
+Juin
+225,7
+135
+167 %
+Juillet
+228,8
+135
+169 %
+Août
+222,7
+135
+165 %
+Septembre
+201,3
+135
+149 %
+Octobre
+173,8
+135
+129 %
+Novembre
+146,4
+135
+108 %
+Décembre (mois critique)
+134,2
+135
+99 %
+Hectares irrigables : besoin déclaré en volume : aucun besoin par hectare connu (hectares calculés seulement sur un besoin agronomique)
+Autonomie du réservoir : aucun réservoir déclaré
+Recommandée
+Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)
+9,94 kWc · 14 panneaux
+Couverture au mois critique : 99 %
+Supérieure
+Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3", 380V)
+12,78 kWc · 18 panneaux
+Couverture au mois critique : 121 %
+Inférieure : aucun palier de pompe chiffrable sous la recommandée au catalogue
+Options du kit
+Afficheur du variateur
+Protections DC/AC — prix à renseigner
+Sonde de niveau (marche à sec) — aucun produit au catalogue
+Compteur d'eau — aucun produit au catalogue — mention : exigé par la loi 36-15 et le dossier FDA 2024
+Câble de descente — marge de câble non réglée : quantité à saisir
+Non inclus : forage, génie civil
+Hypothèses (3)
+energie_hydraulique_wh_par_m3_m = 2.725 — ρ·g/3600 (ρ = 1000 kg/m³, g = 9,81 m/s²)
+hazen_williams_c_pvc_pehd = 150 — bulletin IPEX mis en ligne 08/2022 ; AWWA M23
+pertes_pvgis_comprises_pct = 14 — backend/django_core/apps/parametres/pvgis_profils.py:128 (PVGIS_LOSS_PCT) — déjà comprises : AUCUN derate supplémentaire (les 0,82-0,90 de Water Mission sont refusés : double comptage)
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+9,94 kWp
+Type de Structure
+Acier galvanisé
+Aluminium
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Auto-remplissage effectué (kit calculé par le serveur) — champ PV 9.94 kWc (14 panneaux).
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+TVA appliquée : 20 % (catalogue : 10 %)
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Total SANS batterie
+0 MAD
+Total AVEC batterie ⭐
+0 MAD
+Réduction
+%
+TVA : par ligne (voir la table)
+Prix cible / kWc
+Appliquer via remise
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+0 MAD
+Total avec batterie · TTC
+0 MAD
+Option recommandée
+Écart batterie : 0 MAD
+Système
+9,94 kWc · 14 panneaux
+Créer le devis
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Les deux (Sans + Avec)
+#3=on [ ]
+#4=Auto
+gen-validite=
+#6=
+gen-tel=
+gen-adresse=
+gen-besoin-volume=120
+gen-besoin-mois-pointe=
+gen-source-debit=
+gen-source-debit-origine=
+gen-source-debit-date=
+gen-source-debit-autorise=
+gen-source-volume-autorise=
+gen-source-compteur=
+gen-source-niveau-dynamique=
+gen-source-tubage=
+gen-source-calage=
+gen-source-reservoir=
+gen-hmt=60
+gen-debit=
+gen-profondeur=
+gen-distance=
+hmt-detail=on [ ]
+gen-farm-surface=
+#27=
+#28=
+#29=
+gen-farm-static=
+gen-farm-drawdown=
+gen-farm-fuel=
+gen-eco-date=
+gen-eco-entretien=
+mois-irr-1=on [ ]
+mois-irr-2=on [ ]
+mois-irr-3=on [ ]
+mois-irr-4=on [ ]
+mois-irr-5=on [ ]
+mois-irr-6=on [ ]
+mois-irr-7=on [ ]
+mois-irr-8=on [ ]
+mois-irr-9=on [ ]
+mois-irr-10=on [ ]
+mois-irr-11=on [ ]
+mois-irr-12=on [ ]
+#47=on [ ]
+gen-attestation-agricole=on [ ]
+gen-attestation-le=
+gen-attestation-signataire=
+option-afficheur_variateur=on [ ]
+option-protection_dc=on [ ]
+option-sonde_niveau=on [ ]
+option-compteur_eau=on [ ]
+option-cable_descente=on [ ]
+gen-kwc-cible=9.94
+gen-nbpanneaux=14
+gen-panelw=710
+#59=on [ ]
+#60=Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)
+line-qty=1
+#62=0
+#63=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#65=VARIATEUR VEICHI SI23 7.5KW 380V
+line-qty=1
+#67=0
+#68=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#70=Panneau 710W
+line-qty=14
+#72=0
+#73=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#75=Structure au sol
+line-qty=14
+#77=0
+#78=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#80=Installation pompage
+line-qty=1
+#82=0
+#83=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#85=Afficheur du variateur — prix à renseigner
+line-qty=1
+#87=0
+#88=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#90=Protections DC/AC — prix à renseigner
+line-qty=1
+#92=0
+#93=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#95=0
+#96=
+#97=
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.getLeads": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    []
+  ],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ]
+  ]
+}

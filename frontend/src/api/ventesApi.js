@@ -56,7 +56,11 @@ const ventesApi = {
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
   // de brouillons orphelins/partiels si la connexion est coupée en cours de
   // sauvegarde. `data` porte le devis + une clé `lignes: [...]`.
-  createDevisAtomic: (data) => api.post('/ventes/devis/atomic/', data),
+  // AGNR40 — `idempotencyKey` (une par session de création de l'écran) part
+  // en en-tête `Idempotency-Key` : un 2ᵉ envoi après une coupure rejoue le
+  // premier devis côté serveur au lieu d'en créer un second.
+  createDevisAtomic: (data, { idempotencyKey } = {}) => api.post('/ventes/devis/atomic/', data,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
   // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
   // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
   // échec préserve les lignes existantes (jamais un devis à zéro ligne).

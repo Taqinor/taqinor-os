@@ -1,0 +1,355 @@
+== TEXTE ==
+Générateur de Devis Solaire
+Nouveau devis · tout est en TTC
+Retour aux devis
+Brouillon enregistré à 09:00
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Les deux (Sans + Avec batterie)
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead (point de départ)*
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-lead">
+Khalid Golden — 3000 MAD/mois
+Khalid Golden — 3000 MAD/mois
+Téléphone
+✓ Client du devis : Khalid Golden (sera créé automatiquement depuis le lead) · factures remplies depuis le lead (3000 MAD/mois)
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+span]:line-clamp-1 [&amp;>span]:text-left w-24">
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+—
+Type de Structure
+Acier galvanisé
+Aluminium
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Calcul du moteur horaire en cours…
+Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Smart Meter
+HT : 1 200 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+TVA appliquée : 20 % (catalogue : 10 %)
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Structures acier
+HT : 375 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+— Produit —
+HT : 0 MAD
+0 MADHT : 0 MAD
+Total SANS batterie
+0 MAD
+Total AVEC batterie ⭐
+0 MAD
+Réduction
+%
+TVA : par ligne (voir la table)
+Prix cible / kWc
+Appliquer via remise
+Marge indicative (interne)
+0 MAD
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Texte pour le client (imprimé sur le devis)
+Création du Devis
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Réinitialiser
+Annuler
+Créer le devis
+Total sans batterie · TTC
+0 MAD
+Total avec batterie · TTC
+0 MAD
+Option recommandée
+Écart batterie : 0 MAD
+Marge indicative (interne)
+0 MAD
+Système
+— kWc
+Créer le devis
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Les deux (Sans + Avec)
+#3=on [ ]
+#4=Auto
+gen-validite=
+#6=77
+gen-tel=0600000000
+gen-hiver=3000
+gen-ete=
+#10=3000
+#11=3000
+#12=3000
+#13=3000
+#14=3000
+#15=3000
+#16=3000
+#17=3000
+#18=3000
+#19=3000
+#20=3000
+#21=3000
+#22=onee
+gen-realbill=
+#24=mad
+gen-kwc-cible=
+gen-nbpanneaux=
+gen-panelw=710
+#28=on [ ]
+#29=Onduleur réseau
+line-qty=1
+#31=0
+#32=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#34=Onduleur hybride
+line-qty=1
+#36=0
+#37=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#39=Smart Meter
+line-qty=0
+#41=1440
+#42=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#44=Wifi Dongle
+line-qty=0
+#46=0
+#47=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#49=Panneaux
+line-qty=0
+#51=0
+#52=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#54=Batterie
+line-qty=1
+#56=0
+#57=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#59=Batterie
+line-qty=0
+#61=0
+#62=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#64=Structures acier
+line-qty=0
+#66=450
+#67=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#69=Structures aluminium
+line-qty=0
+#71=0
+#72=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#74=Socles
+line-qty=0
+#76=0
+#77=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#79=Accessoires
+line-qty=1
+#81=0
+#82=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#84=Tableau De Protection AC/DC
+line-qty=1
+#86=0
+#87=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#89=Installation
+line-qty=1
+#91=0
+#92=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#94=Transport
+line-qty=1
+#96=0
+#97=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#99=Suivi journalier, maintenance chaque 12 mois pendant 2 ans
+line-qty=1
+#101=0
+#102=20
+Ligne optionnelle (add-on hors total)=on [ ]
+#104=0
+#105=
+#106=
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.getLeads": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.searchClients": [
+    [
+      "Golden"
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    []
+  ],
+  "ventesApi.getPrixApplicable": [
+    [
+      {
+        "produit": "106",
+        "quantite": "0"
+      }
+    ],
+    [
+      {
+        "produit": "105",
+        "quantite": "0"
+      }
+    ]
+  ],
+  "ventesApi.postEtudeHorairePreview": [
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ]
+}

@@ -12,9 +12,10 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+const gen = lireSourceGenerateur()
 const panel = readFileSync(path.join(__dirname, 'DevisPresetPanel.jsx'), 'utf8')
 
 test('le rail montre les DEUX totaux quand le scénario est double', () => {

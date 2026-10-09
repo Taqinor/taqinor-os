@@ -30,7 +30,7 @@ export default function CarteFacturesElectriques({
   onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
-  onRealBillPaste, consoAnnuelleReelle,
+  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis = [], avisFactures = null,
   children,
 }) {
   return (
@@ -61,6 +61,10 @@ export default function CarteFacturesElectriques({
           </Button>
         </div>
         {errors.bills && <p className="mt-1 text-xs text-destructive">{errors.bills}</p>}
+        {/* AGNR17 — un pré-remplissage refusé est DIT (non bloquant). */}
+        {avisFactures && (
+          <p className="mt-1 text-xs text-info" data-testid="avis-factures">{avisFactures}</p>
+        )}
         <div className="gen-monthly-grid">
           {MONTHS_FR.map((m, i) => (
             <div key={m} className="gen-month">
@@ -71,6 +75,14 @@ export default function CarteFacturesElectriques({
             </div>
           ))}
         </div>
+        {/* AGNR13 — des mois tapés, d'autres encore d'EXEMPLE : la série ne
+            part pas tant que les mois nommés ici ne sont pas saisis. */}
+        {moisNonSaisis.length > 0 && (
+          <p className="mt-1 text-xs text-warning" data-testid="mois-non-saisis">
+            Mois non saisis (valeurs d'exemple, non enregistrées) : {moisNonSaisis.join(', ')}.
+            Saisissez les 12 mois pour enregistrer les factures réelles.
+          </p>
+        )}
 
         {/* QF4 — distributeur réel + facture/consommation réelle : nourrit
             le calcul « deux factures » par tranche (backend QF2) avec les

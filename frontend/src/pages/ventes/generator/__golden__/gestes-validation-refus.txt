@@ -1,0 +1,317 @@
+== client absent ==
+*
+Sélectionnez un lead ou un client
+*
+Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0
+== industriel sans consommation ==
+Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
+*
+Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
+*
+Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0
+== kWh déclaré incohérent ==
+kWh déclarés incohérents avec les factures — corriger la fiche du lead
+*
+*
+Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0
+== aucune ligne exploitable ==
+*
+Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0
+
+== TEXTE ==
+Générateur de Devis Solaire
+Édition — DEV-202610-036
+Retour aux devis
+Marché / Mode d'installation
+🏠 Résidentiel
+🏭 Industriel
+🏪 Commercial
+🌾 Agricole (pompage)
+Informations du document
+N° de Devis
+Raccordement
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
+Raccordé au réseau
+Raccordé au réseau
+Hors réseau (site isolé)
+Scénario
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
+Sans batterie seulement
+Les deux (Sans + Avec batterie)
+Sans batterie seulement
+Avec batterie seulement
+Composition
+Composition libre (aucun panneau/onduleur imposé)
+Option Recommandée
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-reco">
+Auto (défaut)
+Auto (défaut)
+Aucune recommandation
+Sans batterie
+Avec batterie
+Date de validité
+Lead &amp; Client
+Lead / client du devis
+…
+Changer de client = créer un nouveau devis.
+Téléphone
+🛰️ Concevez la toiture en 3D — le devis est d'abord enregistré en brouillon.
+Concevoir en 3D
+Factures Électriques
+Renseignez vos factures mensuelles (MAD) ou estimez-les via les montants hiver/été. Ces valeurs servent au calcul ROI dans le devis.
+Facture Hiver moy. (MAD/mois)
+Facture Été moy. (MAD/mois)
+Estimer 12 mois
+Jan
+Fév
+Mar
+Avr
+Mai
+Juin
+Juil
+Août
+Sep
+Oct
+Nov
+Déc
+Facture réelle du client (recommandé)
+affine les économies avec le barème par tranche du distributeur
+Distributeur
+span]:line-clamp-1 [&amp;>span]:text-left" id="gen-distributeur">
+ONEE
+ONEE
+Lydec (Casablanca)
+Redal (Rabat-Salé-Kénitra)
+Facture réelle (MAD/mois)
+span]:line-clamp-1 [&amp;>span]:text-left w-24">
+MAD
+MAD
+kWh
+Consommation annuelle dérivée
+—
+Paramètres Techniques
+Puissance cible (kWc)
+Nombre de panneaux*
+Puissance Panneau (W)
+Puissance PV (kWp) — calculée
+5,72 kWp
+Type de Structure
+Acier galvanisé
+Aluminium
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
+Recalculer le dimensionnement
+Auto-remplir depuis le stock
+Aperçu de la Simulation
+Replier
+Calcul du moteur horaire en cours…
+Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
+Production annuelle
+8 785
+kWh / an
+Sans batterie★ Recommandé
+Économies
+9 224estimation d'exemple
+MAD / an
+ROI
+N/Aestimation d'exemple
+retour sur invest.
+Coût
+0
+MAD TTC
+Économies mensuelles estimées (MAD / mois)
+Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
+Tailles Éco / Recommandé / Max
+Les tailles ne sont pas encore disponibles pour ce devis.
+Lignes de Produits
++ Section
++ Note
+Ajouter ligne
+Enregistrer cet ordre comme ordre par défaut
+Plusieurs propriétés ?
+Une seule
+× N identiques
++ Villas différentes
+Au moins une ligne avec un produit et une quantité &gt; 0
+Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
+Désignation
+Produit (stock)
+Qté
+Prix Unit. TTC
+TVA %
+Total TTC
+Option
+Ordre
+Total SANS batterie ⭐
+0 MAD
+Réduction
+%
+TVA : par ligne (voir la table)
+Prix cible / kWc
+Appliquer via remise
+<button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
+hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
+Modèles de devis
+Ajouter le BOQ électrique
+Reporte le bordereau de la conception électrique en lignes du devis. Enregistrez d’abord vos modifications en cours : l’écran est rechargé.
+Lots / multi-sites
+Afficher
+Pièces jointes
+0 pièce(s) jointe(s)
+Glissez un fichier ici ou cliquez pour choisir
+PDF · PNG · JPEG · WEBP — max 10,0 Mo · PDF/PNG/JPEG/WebP — 10 Mo max
+PDF/PNG/JPEG/WebP — 10 Mo max
+Aucune pièce jointe.
+Échéancier de paiement
+Ce devis suit l'échéancier de la société (Paramètres → Devis).
+Personnaliser l'échéancier
+Conditions demandées par le client
+Le client demande une retenue de garantie (libérée à la réception définitive)
+Pénalités de retard (% par semaine)
+Plafond des pénalités (%)
+Caution (nature)
+Caution : montant ou %
+Caution : plafond
+Référence de commande du client
+Organisme financeur
+— aucun —
+Client Golden
+Acompte client (%)
+Échéancier organisme financeur
+Texte pour le client (imprimé sur le devis)
+Au moins une ligne avec un produit et une quantité &gt; 0
+Modification du devis DEV-202610-036
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Total TTC
+0 MAD
+Contacter mon supérieur
+Réinitialiser
+Annuler
+Enregistrer les modifications
+Total sans batterie · TTC
+0 MAD
+Système
+5,72 kWc · 8 panneaux
+Enregistrer
+Annuler
+== CHAMPS ==
+gen-num=Généré automatiquement
+#1=reseau
+#2=Sans batterie
+#3=on [ ]
+#4=Auto
+gen-validite=2026-11-07
+gen-tel=
+gen-hiver=
+gen-ete=
+#9=500
+#10=450
+#11=400
+#12=380
+#13=360
+#14=500
+#15=700
+#16=680
+#17=580
+#18=480
+#19=430
+#20=480
+#21=onee
+gen-realbill=
+#23=mad
+gen-kwc-cible=5.72
+gen-nbpanneaux=8
+gen-panelw=715
+#27=on [ ]
+#28=0
+#29=
+:id0:=
+gen-cond-retenue=on [ ]
+gen-cond-penaliteTaux=
+gen-cond-penalitePlafond=
+gen-cond-cautionNature=
+gen-cond-cautionMontant=
+gen-cond-cautionPlafond=
+gen-cond-referenceCommande=
+gen-cond-tiersPayeur=
+gen-cond-acompte-financeur=
+#40=
+== APPELS ==
+{
+  "crmApi.getClients": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "crmApi.getLeads": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "stockApi.getProduits": [
+    [
+      {
+        "page": 1
+      }
+    ]
+  ],
+  "parametresApi.getProfile": [
+    []
+  ],
+  "ventesApi.getDevisById": [
+    [
+      "36"
+    ],
+    [
+      36
+    ]
+  ],
+  "ventesApi.getHistoriqueConfigurationDevis": [
+    [
+      36
+    ]
+  ],
+  "ventesApi.getOffresTaillesDevis": [
+    [
+      "36"
+    ]
+  ],
+  "ventesApi.getPrefillSite": [
+    [
+      "9"
+    ]
+  ],
+  "ventesApi.lireOverrides": [
+    [
+      36
+    ]
+  ],
+  "ventesApi.postEtudeHorairePreview": [
+    [
+      {
+        "dimensionner": true,
+        "devis": 36
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "devis": 36,
+        "kwc": 5.72
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ]
+}

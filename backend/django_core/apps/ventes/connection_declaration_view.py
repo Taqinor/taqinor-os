@@ -38,6 +38,10 @@ def declaration_raccordement(request, pk):
                             ['created_by'])
     elif not user.is_superuser:
         qs = qs.none()
+    # ADEV41 — portée équipe (mêmes ``owner_fields`` que ADEV21) : un devis
+    # hors portée répond 404, comme sur ``DevisViewSet``.
+    from core.scoping import scope_queryset
+    qs = scope_queryset(qs, user, ['created_by'])
     try:
         devis = qs.prefetch_related('lignes').get(pk=pk)
     except Devis.DoesNotExist:

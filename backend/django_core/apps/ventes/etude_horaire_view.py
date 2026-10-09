@@ -111,6 +111,10 @@ def _devis_de_la_societe(request, devis_id):
                             ['created_by'])
     elif not user.is_superuser:
         return None
+    # ADEV41 — bornée aussi à la portée équipe (mêmes ``owner_fields`` que
+    # ADEV21) : un devis hors portée se traite comme introuvable.
+    from core.scoping import scope_queryset
+    qs = scope_queryset(qs, user, ['created_by'])
     return qs.filter(pk=devis_id).first()
 
 

@@ -39,8 +39,9 @@ function extraireBlocFacturesReelles() {
   assert.ok(debut > 0, 'branche résidentielle introuvable')
   const m = src.slice(debut).match(/\n( *)if \(hiver > 0\) \{([\s\S]*?)\n\1\}/)
   assert.ok(m, 'bloc `if (hiver > 0)` introuvable dans la branche résidentielle')
+  // AGNR35 — le bloc lit aussi le barème société (`bareme`, ici national).
   return new Function('lead', 'hiver', 'etudeExtra', 'estimerMois',
-    'consoAnnuelleDepuisFactures', m[2])
+    'consoAnnuelleDepuisFactures', 'bareme', m[2])
 }
 const blocFacturesReelles = extraireBlocFacturesReelles()
 
@@ -49,7 +50,7 @@ function seedFacturesReellesLikeAutoQuote(lead) {
   if (!(hiver > 0)) return null
   const etudeExtra = {}
   blocFacturesReelles(lead, hiver, etudeExtra, estimerMois,
-    consoAnnuelleDepuisFactures)
+    consoAnnuelleDepuisFactures, null)
   return etudeExtra
 }
 
