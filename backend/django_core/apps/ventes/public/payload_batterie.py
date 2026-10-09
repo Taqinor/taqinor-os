@@ -239,7 +239,7 @@ def _balayage_stockage_publique(dimensionnement, devis=None):
             cout_ttc = prix_client_composition(cout_ttc, devis)
             payback = payback_publiable(
                 cout_ttc, _nombre_positif_ou_none(palier.get('economie_mad')),
-                stockage=True)['payback_annees']
+                stockage=True)['payback_years']
         paliers_public.append({
             'nb_packs': nb_packs,
             'capacite_kwh': capacite,

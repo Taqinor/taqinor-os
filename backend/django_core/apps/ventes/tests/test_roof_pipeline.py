@@ -226,6 +226,13 @@ class TestQ5BuilderGuard(TestCase):
         constante roofPro). Les LIGNES sont la source unique : le calepinage
         garde sa modélisation de site (production, économies), recalée sur la
         taille réellement vendue.
+
+        AMOT15 (D-ACAL-6, « la production montrée au client = celle du moteur
+        devis ») — la PRODUCTION du calepinage, même recalée, n'est plus
+        imprimée : ``prod_kwh`` reste celle du moteur devis, avant comme après
+        le calepinage. Ce que le calepinage apporte encore au document, c'est
+        son ÉCONOMIE annuelle, recalée sur la taille vendue et passée à LA
+        chaîne de calcul (``economie_imposee``).
         """
         from apps.ventes.quote_engine.builder import build_quote_data
         before = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
@@ -242,10 +249,18 @@ class TestQ5BuilderGuard(TestCase):
         self.assertEqual(
             round(after['puissance_kwc'] * 1000),
             after['nb_panneaux'] * after['watt_par_panneau'])
-        # Le calepinage, lui, apporte bien quelque chose : sa production
-        # annuelle, RECALÉE de 9,9 kWc à 6,6 (15 000 × 6,6 / 9,9 = 10 000).
-        self.assertEqual(after['prod_kwh'], 10000)
-        self.assertNotEqual(before['prod_kwh'], after['prod_kwh'])
+        # AMOT15 (D-ACAL-6) — la production imprimée est celle du MOTEUR
+        # DEVIS : identique avant et après le calepinage, jamais sa production
+        # recalée (15 000 × 6,6 / 9,9 = 10 000) ni brute (15 000).
+        recalee = int(round(15000 * 6.6 / 9.9))
+        self.assertEqual(after['prod_kwh'], before['prod_kwh'])
+        self.assertNotEqual(after['prod_kwh'], 15000)
+        if before['prod_kwh'] != recalee:
+            self.assertNotEqual(after['prod_kwh'], recalee)
+        # Le calepinage, lui, apporte bien quelque chose : son économie
+        # annuelle, RECALÉE de 9,9 kWc à 6,6 (12 000 × 6,6 / 9,9 = 8 000).
+        self.assertEqual(after['eco_s_ann'], 8000)
+        self.assertNotEqual(before['eco_s_ann'], after['eco_s_ann'])
         self.assertEqual(after['roof_image_key'], 'roofs/1/DEV-Q5-0001.png')
         # 12 panneaux au calepinage, 12 sur les lignes : rien de périmé.
         self.assertFalse(after['layout_stale'])
