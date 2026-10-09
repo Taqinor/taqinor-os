@@ -261,22 +261,32 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
               .annotate(actual_kwh=Sum('energy_kwh'))
               .order_by('month'))
 
-        # Production attendue mensuelle (kWh/mois ≈ annual / 12).
+        # ASAV63 — production attendue de chaque mois sur ses jours
+        # réellement couverts (annuel × jours / 365) : le premier et le
+        # dernier mois partiels sont normalisés (même règle que les PR
+        # mensuels de l'analytique O&M).
+        from .analytics import jours_couverts_mois
+        from .services import debut_couverture
+
+        today = timezone.localdate()
         expected_annual = config.expected_annual_kwh
-        expected_monthly = (
-            float(expected_annual) / 12 if expected_annual else None)
+        debut_eff = debut_couverture(config.installation, since)
 
         rows = []
         for row in qs:
             actual = float(row['actual_kwh'])
             ratio_pct = None
-            if expected_monthly and expected_monthly > 0:
-                ratio_pct = round(actual / expected_monthly * 100, 1)
+            expected_month = None
+            couverts = jours_couverts_mois(row['month'], debut_eff, today)
+            if expected_annual and couverts > 0:
+                expected_month = float(expected_annual) * couverts / 365
+            if expected_month and expected_month > 0:
+                ratio_pct = round(actual / expected_month * 100, 1)
             rows.append({
                 'month': row['month'].strftime('%Y-%m'),
                 'actual_kwh': round(actual, 2),
                 'expected_kwh': (
-                    round(expected_monthly, 2) if expected_monthly else None),
+                    round(expected_month, 2) if expected_month else None),
                 'ratio_pct': ratio_pct,
             })
 

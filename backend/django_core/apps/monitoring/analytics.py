@@ -20,7 +20,8 @@ d'attendu du service N52 sans la dupliquer.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+import calendar
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Q, Sum
@@ -30,7 +31,9 @@ from django.utils import timezone
 from core.analytics_db import analytics_queryset
 
 from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
-from .services import _expected_recent_kwh, get_or_create_config
+from .services import (
+    _expected_recent_kwh, debut_couverture, get_or_create_config,
+)
 
 # Fenêtre par défaut (jours) d'analyse O&M.
 DEFAULT_WINDOW_DAYS = 365
@@ -57,6 +60,16 @@ def _monthly_series(installation, since, today):
           .annotate(total=Sum('energy_kwh'))
           .order_by('month'))
     return [(row['month'], Decimal(str(row['total'] or 0))) for row in qs]
+
+
+def jours_couverts_mois(mois, debut_effectif, today):
+    """ASAV63 — nombre de jours du mois ``mois`` (1er du mois) réellement
+    couverts : ni avant ``debut_effectif`` (mise en service / premier relevé /
+    début de fenêtre), ni après ``today``. Sert à normaliser le PR du premier
+    et du dernier mois PARTIELS."""
+    dernier = date(mois.year, mois.month,
+                   calendar.monthrange(mois.year, mois.month)[1])
+    return max((min(dernier, today) - max(mois, debut_effectif)).days + 1, 0)
 
 
 def _linear_slope(points):
@@ -109,18 +122,20 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
 
     # PR mensuel pour soiling + dégradation.
     monthly = _monthly_series(installation, since, today)
-    expected_monthly = (Decimal(str(config.expected_annual_kwh)) / Decimal('12')
-                        if config.expected_annual_kwh else None)
-    if expected_monthly is None and expected and expected > 0:
-        # Estimé : attendu fenêtre ramené au mois.
-        expected_monthly = expected / (Decimal(window_days) / Decimal('30'))
+    # ASAV63 — attendu de CHAQUE mois sur ses jours réellement couverts
+    # (annuel × jours / 365) : le premier et le dernier mois partiels sont
+    # normalisés, plus jamais comparés à un mois plein.
+    annual = config.expected_annual_kwh
+    debut_eff = debut_couverture(installation, since)
 
     monthly_pr = []
     pr_points = []
     for idx, (month, kwh) in enumerate(monthly):
         ratio = None
-        if expected_monthly and expected_monthly > 0:
-            ratio = (kwh / expected_monthly) * Decimal('100')
+        couverts = jours_couverts_mois(month, debut_eff, today)
+        if annual and couverts > 0:
+            attendu_mois = Decimal(str(annual)) * couverts / Decimal('365')
+            ratio = (kwh / attendu_mois) * Decimal('100')
             pr_points.append((idx, float(ratio)))
         monthly_pr.append({
             'month': month.strftime('%Y-%m'),

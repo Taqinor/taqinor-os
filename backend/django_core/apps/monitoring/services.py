@@ -117,6 +117,21 @@ def sync_system(installation, *, user=None):
     return imported, config.provider
 
 
+def debut_couverture(installation, debut):
+    """ASAV62 — premier jour réellement couvert de la période démarrant à
+    ``debut`` : pas avant la mise en service ni avant le premier relevé."""
+    debut_effectif = debut
+    mise_en_service = getattr(installation, 'date_mise_en_service', None)
+    if mise_en_service and mise_en_service > debut_effectif:
+        debut_effectif = mise_en_service
+    premier = (ProductionReading.objects
+               .filter(installation=installation)
+               .order_by('date').values_list('date', flat=True).first())
+    if premier and premier > debut_effectif:
+        debut_effectif = premier
+    return debut_effectif
+
+
 def attendu_periode(installation, config, debut, fin):
     """ASAV62 — production attendue (kWh) sur la période RÉELLEMENT couverte
     de ``[debut, fin]`` : bornée par la mise en service et par le premier
@@ -128,15 +143,7 @@ def attendu_periode(installation, config, debut, fin):
     if annual is None:
         # CIQ643 — pas de repli inventé : « en attente de référence ».
         return None
-    debut_effectif = debut
-    mise_en_service = getattr(installation, 'date_mise_en_service', None)
-    if mise_en_service and mise_en_service > debut_effectif:
-        debut_effectif = mise_en_service
-    premier = (ProductionReading.objects
-               .filter(installation=installation)
-               .order_by('date').values_list('date', flat=True).first())
-    if premier and premier > debut_effectif:
-        debut_effectif = premier
+    debut_effectif = debut_couverture(installation, debut)
     if debut_effectif == debut:
         jours = (fin - debut).days  # fenêtre entière (comportement d'origine)
     else:
