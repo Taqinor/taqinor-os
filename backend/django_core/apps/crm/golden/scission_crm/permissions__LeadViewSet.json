@@ -1,0 +1,532 @@
+[
+ {
+  "action": "__action_absente__",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "__action_absente__",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "appliquer_plan",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "archiver",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "arreter_relance",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "bulk",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "check_duplicates",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "client_match",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "convertir_client",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "create",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "desepingler",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "destroy",
+  "methode": "DELETE",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAdminRole"
+   }
+  ]
+ },
+ {
+  "action": "devis_auto",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "doublons",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "duplicates",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "epingler",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "export_xlsx",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "historique",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "initialiser_relance",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "jalons_devis",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "kpi_cadences",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "kpi_premier_contact",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "list",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "locataire",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "locataire",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "log_interaction",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "merge",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "message_visite",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "message_visite_ouvert",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "mesure_cadence",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "noter",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "panneau_appel",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "partial_update",
+  "methode": "PATCH",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "placement_cadences",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "planifier_visite",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_modifier"
+   }
+  ]
+ },
+ {
+  "action": "points_contact",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "questionnaire_lien",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "references_proches",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "relances",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "resoudre_gps",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "restaurer",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "resume_associe",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "retrieve",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "roi_sources",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "salle_vente_analytics_view",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "scan_carte",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "sla_breach",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "synchroniser_client",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "update",
+  "methode": "PUT",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "ville_statut",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "visites",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "HasPermissionOrLegacy_crm_voir"
+   }
+  ]
+ },
+ {
+  "action": "whatsapp_devis",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ },
+ {
+  "action": "whatsapp_devis_apercu",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   }
+  ]
+ }
+]

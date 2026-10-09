@@ -1,0 +1,288 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "relance_etapes",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "relance_etapes",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "contact",
+    "max_length": 20,
+    "verbose_name": "Cadence"
+   },
+   "nom": "cadence",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {},
+   "nom": "due_date",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "db_index": true,
+    "null": true,
+    "verbose_name": "Échéance (heure)"
+   },
+   "nom": "due_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "appel",
+      "Appel"
+     ],
+     [
+      "whatsapp",
+      "WhatsApp"
+     ],
+     [
+      "email",
+      "E-mail"
+     ],
+     [
+      "visite",
+      "Visite"
+     ]
+    ],
+    "max_length": 20
+   },
+   "nom": "canal",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 150
+   },
+   "nom": "libelle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 40,
+    "verbose_name": "Clé du gabarit de message"
+   },
+   "nom": "template_cle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "relance_etapes",
+    "to": "ventes.devis",
+    "verbose_name": "Devis suivi"
+   },
+   "nom": "devis",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Départ de la cadence"
+   },
+   "nom": "cadence_depart",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "a_faire",
+      "À faire"
+     ],
+     [
+      "fait",
+      "Fait"
+     ],
+     [
+      "sautee",
+      "Sautée"
+     ],
+     [
+      "annulee",
+      "Annulée (moteur)"
+     ]
+    ],
+    "default": "a_faire",
+    "max_length": 10
+   },
+   "nom": "statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": ""
+   },
+   "nom": "note",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "",
+      "—"
+     ],
+     [
+      "joint",
+      "Joint"
+     ],
+     [
+      "non_joint",
+      "Non joint"
+     ],
+     [
+      "rappel",
+      "À rappeler"
+     ],
+     [
+      "refuse",
+      "Refus"
+     ],
+     [
+      "interesse",
+      "Intéressé"
+     ],
+     [
+      "visite_acceptee",
+      "Visite acceptée"
+     ]
+    ],
+    "default": "",
+    "help_text": "Ce que la touche a donné : le client a-t-il été joint ?",
+    "max_length": 20,
+    "verbose_name": "Issue de la touche"
+   },
+   "nom": "outcome",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "relance_etapes_traitees",
+    "to": "authentication.customuser"
+   },
+   "nom": "traite_par",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "traite_le",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 40,
+    "verbose_name": "Clé moteur"
+   },
+   "nom": "cle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Échéance d'origine"
+   },
+   "nom": "due_initial_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0,
+    "verbose_name": "Reports humains"
+   },
+   "nom": "nb_reports",
+   "type": "PositiveSmallIntegerField"
+  }
+ ],
+ "db_table": "crm_relanceetape",
+ "label": "crm.RelanceEtape",
+ "relations_inverses": []
+}

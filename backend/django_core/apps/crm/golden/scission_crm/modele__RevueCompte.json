@@ -1,0 +1,91 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "revues",
+    "to": "crm.plancompte"
+   },
+   "nom": "plan",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {},
+   "nom": "date_revue",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": ""
+   },
+   "nom": "participants",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": ""
+   },
+   "nom": "decisions",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 255
+   },
+   "nom": "prochaine_action",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "prochaine_action_date",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "revues_compte_creees",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_revuecompte",
+ "label": "crm.RevueCompte",
+ "relations_inverses": []
+}

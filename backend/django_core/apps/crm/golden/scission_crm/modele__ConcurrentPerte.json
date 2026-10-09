@@ -1,0 +1,133 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "concurrents_perte",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "concurrents_perte",
+    "to": "crm.lead",
+    "verbose_name": "Lead perdu"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 200,
+    "verbose_name": "Concurrent gagnant"
+   },
+   "nom": "concurrent_nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Prix proposé par le concurrent. Vide si inconnu.",
+    "max_digits": 12,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       0
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     }
+    ],
+    "verbose_name": "Prix du concurrent"
+   },
+   "nom": "concurrent_prix",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "MAD",
+    "max_length": 8,
+    "verbose_name": "Devise"
+   },
+   "nom": "devise",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 255,
+    "null": true,
+    "verbose_name": "Motif de la perte"
+   },
+   "nom": "motif",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Notes"
+   },
+   "nom": "notes",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "concurrents_perte_saisis",
+    "to": "authentication.customuser",
+    "verbose_name": "Saisi par"
+   },
+   "nom": "saisi_par",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "saisi_le",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_concurrentperte",
+ "label": "crm.ConcurrentPerte",
+ "relations_inverses": []
+}

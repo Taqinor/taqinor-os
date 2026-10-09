@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "vues",
+    "to": "crm.sallevente"
+   },
+   "nom": "salle",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 64
+   },
+   "nom": "ip_hash",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_salleventevue",
+ "label": "crm.SalleVenteVue",
+ "relations_inverses": []
+}

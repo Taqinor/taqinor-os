@@ -1,0 +1,563 @@
+"""SPL70 — golden STATIQUE de la scission de `apps/crm` (capture seule).
+
+Aucun filet ne prouvait qu'un déplacement de la famille SPL74-SPL95 garde la
+sortie à l'identique. Ce module écrit UN json PAR SURFACE sous
+`golden/scission_crm/` (jamais un json unique : une tâche qui ajoute un champ
+ou une @action re-capture SES seuls fichiers) :
+
+1. `routes__<ViewSet>.json` — motif, nom, classe de vue et actions_map de
+   chaque route de `apps.crm.urls` (vues simples : `routes__vues_simples`).
+2. `permissions__<ViewSet>.json` — pour chaque viewset du routeur x (actions
+   standard + `get_extra_actions()`) x méthode HTTP : la liste des
+   permissions (classe + code fin) rendue par `get_permissions()` ; y compris
+   `__action_absente__`, qui prouve le repli final.
+3. `serialiseur__<Classe>.json` — champs dans l'ordre (nom, classe de champ,
+   read_only, required) de chaque sérialiseur crm.
+4. `modele__<Modele>.json` — label, db_table, `deconstruct()` ordonné des
+   champs directs, relations inverses (ENSEMBLE) ; plus
+   `makemigrations crm --check --dry-run` sans changement.
+5. `recepteurs.json` — pour chaque signal, la liste ORDONNÉE des
+   `dispatch_uid` `crm_*` ; plus une assertion AST : aucun `@receiver` dans
+   apps/crm hors `receivers.py` et `tiers_bridge.py`.
+6. `facade__selectors.json`, `facade__models.json` — noms exposés (privés
+   compris) avec leur `__qualname__` ; callables référencés par les
+   migrations.
+7. `ast__<fichier_origine>.json` — sha256 de `ast.dump` de chaque symbole de
+   premier niveau (et chaque méthode de LeadViewSet / RelanceEtapeViewSet)
+   des fichiers d'origine, retrouvé PAR NOM dans tout module `apps.crm.*`.
+   Les `ImportFrom` relatifs sont réduits à leurs noms importés ; pour les
+   récepteurs, le nom du `def` et les décorateurs sont exclus ;
+   `LeadViewSet.get_permissions` est exclu (la matrice 2 est son filet).
+
+Aucun json ne contient de `__module__` : tout est identifié par nom de
+classe, `__qualname__` ou dispatch_uid, pour qu'un déplacement fidèle reste
+vert sans y toucher.
+
+Règle : une tâche NON-SPL qui change légitimement une surface capturée
+re-capture ses seuls fichiers (`UPDATE_GOLDEN=1`) et le dit dans son commit ;
+une tâche SPL ne re-capture JAMAIS. Une surface NOUVELLE (absente de
+`_index.json`) n'est pas protégée tant qu'elle n'est pas capturée ; une
+surface capturée qui DISPARAÎT fait échouer le test.
+
+Capture : `UPDATE_GOLDEN=1 python manage.py test apps.crm.tests_scission_golden`
+(le test d'index échoue tant que les json manquent).
+"""
+import ast
+import copy
+import datetime
+import decimal
+import enum
+import hashlib
+import importlib
+import inspect
+import json
+import os
+import pathlib
+import re
+import uuid
+from io import StringIO
+
+from django.apps import apps as django_apps
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.test import TestCase
+from rest_framework import serializers as drf_serializers
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
+
+from authentication.models import Company
+
+User = get_user_model()
+
+_ICI = pathlib.Path(__file__).resolve().parent
+_GOLDEN = _ICI / 'golden' / 'scission_crm'
+_FICHIERS_ORIGINE = ('views', 'selectors', 'serializers', 'models',
+                     'receivers')
+_METHODES_UNE_A_UNE = ('LeadViewSet', 'RelanceEtapeViewSet')
+_RECEPTEURS_HORS_FICHIER = ('receivers.py', 'tiers_bridge.py')
+_METHODES_STANDARD = (('list', 'GET'), ('create', 'POST'),
+                      ('retrieve', 'GET'), ('update', 'PUT'),
+                      ('partial_update', 'PATCH'), ('destroy', 'DELETE'))
+_CAPTURE = os.environ.get('UPDATE_GOLDEN') == '1'
+
+
+# --------------------------------------------------------------------------
+# Normalisation JSON
+# --------------------------------------------------------------------------
+def norm(v):
+    """Valeur -> JSON stable (aucune adresse mémoire, aucun __module__)."""
+    if v is None or isinstance(v, (bool, int, float)):
+        return v
+    if isinstance(v, str):
+        return str(v)
+    if isinstance(v, decimal.Decimal):
+        return f'Decimal({v})'
+    if isinstance(v, (datetime.date, datetime.time, datetime.timedelta)):
+        return repr(v)
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, enum.Enum):
+        return f'{type(v).__name__}.{v.name}'
+    if isinstance(v, dict):
+        return {str(k): norm(x) for k, x in sorted(
+            v.items(), key=lambda kv: str(kv[0]))}
+    if isinstance(v, (list, tuple)):
+        return [norm(x) for x in v]
+    if isinstance(v, (set, frozenset)):
+        return sorted((norm(x) for x in v), key=json.dumps)
+    if inspect.isclass(v):
+        return f'classe:{v.__qualname__}'
+    if callable(v) and hasattr(v, '__qualname__'):
+        return f'callable:{v.__qualname__}'
+    if hasattr(v, 'deconstruct'):
+        try:
+            _chemin, args, kwargs = v.deconstruct()[-3:]
+            return {'objet': type(v).__qualname__, 'args': norm(args),
+                    'kwargs': norm(kwargs)}
+        except Exception:  # noqa: BLE001
+            pass
+    if hasattr(v, '_proxy____cast'):          # chaîne paresseuse
+        return str(v)
+    return f'objet:{type(v).__qualname__}'
+
+
+def ecrire(nom, contenu):
+    _GOLDEN.mkdir(parents=True, exist_ok=True)
+    with open(_GOLDEN / nom, 'w', encoding='utf-8') as f:
+        json.dump(contenu, f, indent=1, ensure_ascii=False, sort_keys=True)
+        f.write('\n')
+
+
+def lire(nom):
+    with open(_GOLDEN / nom, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def nom_fichier(prefixe, nom):
+    return f'{prefixe}__{re.sub(r"[^0-9A-Za-z_.-]", "_", nom)}.json'
+
+
+# --------------------------------------------------------------------------
+# Surfaces (calculées sur l'arbre courant)
+# --------------------------------------------------------------------------
+def _routes():
+    """{viewset: [route]} — vues simples sous la clé `vues_simples`."""
+    from apps.crm import urls as crm_urls
+    from django.urls import URLPattern, URLResolver
+    out = {}
+
+    def visite(patterns, prefixe):
+        for p in patterns:
+            motif = prefixe + str(p.pattern)
+            if isinstance(p, URLResolver):
+                visite(p.url_patterns, motif)
+            elif isinstance(p, URLPattern):
+                cb = p.callback
+                cls = getattr(cb, 'cls', None)
+                actions = getattr(cb, 'actions', None)
+                cle = (cls.__name__ if cls is not None and actions is not None
+                       else 'vues_simples')
+                out.setdefault(cle, []).append({
+                    'motif': motif, 'nom': p.name,
+                    'vue': (cls.__name__ if cls is not None
+                            else getattr(cb, '__name__', type(cb).__name__)),
+                    'actions_map': norm(actions) if actions else None})
+    visite(crm_urls.urlpatterns, '')
+    return {k: sorted(v, key=lambda r: (r['motif'], str(r['nom'])))
+            for k, v in out.items()}
+
+
+def _viewsets():
+    from apps.crm import urls as crm_urls
+    out = {}
+    for p in crm_urls.router.registry:
+        out[p[1].__name__] = p[1]
+    return dict(sorted(out.items()))
+
+
+def _rendre_permission(p):
+    if hasattr(p, 'op1') and hasattr(p, 'op2'):
+        return {'classe': type(p).__name__, 'op1': _rendre_permission(p.op1),
+                'op2': _rendre_permission(p.op2)}
+    if hasattr(p, 'op1'):
+        return {'classe': type(p).__name__, 'op1': _rendre_permission(p.op1)}
+    attrs = {k: norm(v) for k, v in sorted(vars(p).items())
+             if not k.startswith('__') and not callable(v)}
+    return {'classe': type(p).__name__, 'attrs': attrs}
+
+
+def _permissions(cls, user):
+    factory = APIRequestFactory()
+    lignes = []
+    cas = list(_METHODES_STANDARD)
+    for extra in cls.get_extra_actions():
+        mapping = getattr(extra, 'mapping', None) or {}
+        for methode in sorted(mapping) or ['get']:
+            cas.append((extra.__name__, methode.upper()))
+    cas.append(('__action_absente__', 'GET'))
+    cas.append(('__action_absente__', 'POST'))
+    for action, methode in sorted(set(cas)):
+        vue = cls()
+        vue.action = action
+        vue.args, vue.kwargs, vue.format_kwarg = (), {}, None
+        requete = Request(factory.generic(methode, '/'))
+        requete.user = user
+        vue.request = requete
+        try:
+            perms = [_rendre_permission(p) for p in vue.get_permissions()]
+        except Exception as exc:  # noqa: BLE001 — l'erreur EST la valeur
+            perms = [{'erreur': type(exc).__name__}]
+        lignes.append({'action': action, 'methode': methode,
+                       'permissions': perms})
+    return lignes
+
+
+def _serialiseurs():
+    mod = importlib.import_module('apps.crm.serializers')
+    out = {}
+    for nom, obj in vars(mod).items():
+        if (inspect.isclass(obj)
+                and issubclass(obj, drf_serializers.BaseSerializer)
+                and obj.__module__.startswith('apps.crm')
+                and obj.__name__ == nom):
+            out[nom] = obj
+    return dict(sorted(out.items()))
+
+
+def _champs_serialiseur(cls, requete):
+    try:
+        champs = cls(context={'request': requete}).fields
+    except Exception as exc:  # noqa: BLE001
+        return {'erreur': type(exc).__name__}
+    return {'champs': [{'nom': n, 'classe': type(f).__name__,
+                        'read_only': bool(f.read_only),
+                        'required': bool(f.required)}
+                       for n, f in champs.items()]}
+
+
+def _modeles():
+    return {m.__name__: m for m in sorted(
+        django_apps.get_app_config('crm').get_models(),
+        key=lambda m: m.__name__)}
+
+
+def _empreinte_modele(m):
+    champs = []
+    for f in m._meta.local_fields + m._meta.local_many_to_many:
+        _nom, chemin, args, kwargs = f.deconstruct()
+        champs.append({'nom': f.name, 'type': chemin.rsplit('.', 1)[-1],
+                       'args': norm(args), 'kwargs': norm(kwargs)})
+    return {
+        'label': m._meta.label, 'db_table': m._meta.db_table,
+        'champs': champs,
+        'relations_inverses': sorted(
+            r.get_accessor_name() or '' for r in m._meta.related_objects),
+    }
+
+
+def _recepteurs():
+    """{nom du signal: [dispatch_uid `crm_*` dans l'ordre de connexion]}.
+
+    Les signaux sont nommés d'après leurs décorateurs `@receiver(<signal>)`
+    de `receivers.py` / `tiers_bridge.py` (le nom ne dépend donc pas des
+    modules déjà chargés) ; l'ordre vient du registre RÉEL du signal."""
+    out = {}
+    for nom_mod in ('receivers', 'tiers_bridge'):
+        mod = importlib.import_module(f'apps.crm.{nom_mod}')
+        arbre = ast.parse(pathlib.Path(mod.__file__).read_text(
+            encoding='utf-8'))
+        for n in ast.walk(arbre):
+            if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for d in n.decorator_list:
+                if not (isinstance(d, ast.Call) and isinstance(
+                        d.func, ast.Name) and d.func.id == 'receiver'
+                        and d.args and isinstance(d.args[0], ast.Name)):
+                    continue
+                nom = d.args[0].id
+                signal = getattr(mod, nom)
+                uids = []
+                for entree in signal.receivers:
+                    cle = entree[0]
+                    uid = cle[0] if isinstance(cle, tuple) else cle
+                    if isinstance(uid, str) and uid.startswith('crm_'):
+                        uids.append(uid)
+                out[nom] = uids
+    return dict(sorted(out.items()))
+
+
+def _receivers_hors_fichiers():
+    """Fichiers apps/crm (hors tests, golden, migrations) qui portent un
+    décorateur `@receiver`, hors `receivers.py` et `tiers_bridge.py`."""
+    trouves = []
+    for chemin in _modules_source():
+        if chemin.name in _RECEPTEURS_HORS_FICHIER:
+            continue
+        for n in ast.walk(ast.parse(chemin.read_text(encoding='utf-8'))):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for d in n.decorator_list:
+                    cible = d.func if isinstance(d, ast.Call) else d
+                    nom = (cible.id if isinstance(cible, ast.Name)
+                           else getattr(cible, 'attr', ''))
+                    if nom == 'receiver':
+                        trouves.append(f'{chemin.name}:{n.name}')
+    return sorted(trouves)
+
+
+def _facade(module):
+    mod = importlib.import_module(f'apps.crm.{module}')
+    out = {}
+    for nom, v in sorted(vars(mod).items()):
+        if nom.startswith('__') and nom.endswith('__'):
+            continue
+        if inspect.ismodule(v):
+            out[nom] = 'module'
+        else:
+            out[nom] = getattr(v, '__qualname__', type(v).__qualname__)
+    return out
+
+
+def _refs_migrations():
+    noms = set()
+    for chemin in (_ICI / 'migrations').glob('*.py'):
+        noms.update(re.findall(
+            r'crm\.models\.(\w+)', chemin.read_text(encoding='utf-8')))
+    return sorted(noms)
+
+
+# --------------------------------------------------------------------------
+# Empreintes AST
+# --------------------------------------------------------------------------
+class _Normalise(ast.NodeTransformer):
+    def __init__(self, recepteur):
+        self.recepteur = recepteur
+
+    def visit_ImportFrom(self, node):
+        if node.level:
+            return ast.ImportFrom(module=None, names=node.names, level=0)
+        return node
+
+    def visit_FunctionDef(self, node):
+        self.generic_visit(node)
+        if self.recepteur:
+            node.name = '_'
+            node.decorator_list = []
+        return node
+
+
+def empreinte(noeud, recepteur=False):
+    copie = _Normalise(recepteur).visit(copy.deepcopy(noeud))
+    return hashlib.sha256(ast.dump(copie).encode('utf-8')).hexdigest()
+
+
+def _modules_source():
+    for chemin in sorted(_ICI.rglob('*.py')):
+        rel = chemin.relative_to(_ICI).parts
+        if (rel[0] in ('migrations', 'golden', 'management', '__pycache__')
+                or chemin.name.startswith(('test_', 'tests'))
+                or chemin.name in ('__init__.py',)):
+            continue
+        yield chemin
+
+
+def _noms_noeud(n):
+    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return [n.name]
+    if isinstance(n, ast.Assign):
+        return [x.id for t in n.targets for x in ast.walk(t)
+                if isinstance(x, ast.Name)]
+    if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+        return [n.target.id]
+    return []
+
+
+def _symboles(chemin, recepteur):
+    """{cle: sha} des symboles de premier niveau (méthodes de LeadViewSet et
+    RelanceEtapeViewSet une à une) d'un fichier."""
+    out = {}
+    for n in ast.parse(chemin.read_text(encoding='utf-8')).body:
+        if isinstance(n, ast.ClassDef) and n.name in _METHODES_UNE_A_UNE:
+            for m in n.body:
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if (n.name, m.name) == ('LeadViewSet', 'get_permissions'):
+                        continue
+                    out[f'{n.name}.{m.name}'] = empreinte(m)
+            continue
+        for nom in _noms_noeud(n):
+            out.setdefault(nom, empreinte(n, recepteur))
+    return out
+
+
+def _index_courant():
+    """{nom ou Classe.methode: set(sha)} sur tous les modules crm ; une
+    variante 'récepteur' (nom/décorateurs exclus) est indexée à part."""
+    normal, recepteur = {}, {}
+    for chemin in _modules_source():
+        for n in ast.parse(chemin.read_text(encoding='utf-8')).body:
+            if isinstance(n, ast.ClassDef):
+                for m in n.body:
+                    if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        normal.setdefault(f'{n.name}.{m.name}', set()).add(
+                            empreinte(m))
+                        normal.setdefault(f'*.{m.name}', set()).add(
+                            empreinte(m))
+            for nom in _noms_noeud(n):
+                normal.setdefault(nom, set()).add(empreinte(n))
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    recepteur.setdefault(nom, set()).add(
+                        empreinte(n, recepteur=True))
+    return normal, recepteur
+
+
+# --------------------------------------------------------------------------
+# Capture
+# --------------------------------------------------------------------------
+class _Base(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(
+            nom='Scission Golden', slug='scission-golden')
+        cls.user = User.objects.create_user(
+            username='scission-resp', password='x',
+            role_legacy='responsable', company=cls.company)
+
+
+class CaptureTests(_Base):
+
+    def test_capture_si_demandee(self):
+        if not _CAPTURE:
+            self.skipTest('UPDATE_GOLDEN=1 requis')
+        index = {'routes': [], 'permissions': [], 'serialiseurs': [],
+                 'modeles': [], 'ast': []}
+        for nom, routes in _routes().items():
+            ecrire(nom_fichier('routes', nom), routes)
+            index['routes'].append(nom)
+        for nom, cls in _viewsets().items():
+            ecrire(nom_fichier('permissions', nom),
+                   _permissions(cls, self.user))
+            index['permissions'].append(nom)
+        requete = Request(APIRequestFactory().get('/'))
+        requete.user = self.user
+        for nom, cls in _serialiseurs().items():
+            ecrire(nom_fichier('serialiseur', nom),
+                   _champs_serialiseur(cls, requete))
+            index['serialiseurs'].append(nom)
+        for nom, m in _modeles().items():
+            ecrire(nom_fichier('modele', nom), _empreinte_modele(m))
+            index['modeles'].append(nom)
+        ecrire('recepteurs.json', {
+            'par_signal': _recepteurs(),
+            'hors_fichiers': _receivers_hors_fichiers()})
+        ecrire('facade__selectors.json', {'noms': _facade('selectors')})
+        ecrire('facade__models.json', {
+            'noms': _facade('models'), 'refs_migrations': _refs_migrations()})
+        for fichier in _FICHIERS_ORIGINE:
+            symboles = _symboles(_ICI / f'{fichier}.py',
+                                 fichier == 'receivers')
+            ecrire(f'ast__{fichier}.py.json', {
+                'recepteur': fichier == 'receivers', 'symboles': symboles})
+            index['ast'].append(fichier)
+        ecrire('_index.json', index)
+
+
+# --------------------------------------------------------------------------
+# Vérification
+# --------------------------------------------------------------------------
+class ScissionGoldenTests(_Base):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.index = lire('_index.json')       # absent = échec (rouge d'abord)
+
+    def _comparer(self, nom_json, courant):
+        self.assertEqual(
+            courant, lire(nom_json), msg=f'{nom_json} a changé')
+
+    def test_routes(self):
+        courant = _routes()
+        for nom in self.index['routes']:
+            self.assertIn(nom, courant, f'surface routes {nom} disparue')
+            self._comparer(nom_fichier('routes', nom), courant[nom])
+
+    def test_permissions(self):
+        courant = _viewsets()
+        for nom in self.index['permissions']:
+            self.assertIn(nom, courant, f'viewset {nom} disparu')
+            self._comparer(nom_fichier('permissions', nom),
+                           _permissions(courant[nom], self.user))
+
+    def test_repli_final_isadminrole_capture(self):
+        """Le repli `[IsAdminRole()]` d'une action absente est dans le golden
+        d'au moins un viewset (la matrice 2 est le filet de SPL75)."""
+        vu = False
+        for nom in self.index['permissions']:
+            for ligne in lire(nom_fichier('permissions', nom)):
+                if ligne['action'] == '__action_absente__' and any(
+                        p.get('classe') == 'IsAdminRole'
+                        for p in ligne['permissions']):
+                    vu = True
+        self.assertTrue(vu)
+
+    def test_serialiseurs(self):
+        courant = _serialiseurs()
+        requete = Request(APIRequestFactory().get('/'))
+        requete.user = self.user
+        for nom in self.index['serialiseurs']:
+            self.assertIn(nom, courant, f'sérialiseur {nom} disparu')
+            self._comparer(nom_fichier('serialiseur', nom),
+                           _champs_serialiseur(courant[nom], requete))
+
+    def test_modeles(self):
+        courant = _modeles()
+        for nom in self.index['modeles']:
+            self.assertIn(nom, courant, f'modèle {nom} disparu')
+            self._comparer(nom_fichier('modele', nom),
+                           _empreinte_modele(courant[nom]))
+
+    def test_aucune_migration_en_attente(self):
+        sortie = StringIO()
+        try:
+            call_command('makemigrations', 'crm', '--check', '--dry-run',
+                         stdout=sortie, stderr=sortie)
+        except SystemExit:
+            self.fail(f'migrations crm en attente :\n{sortie.getvalue()}')
+
+    def test_recepteurs(self):
+        attendu = lire('recepteurs.json')
+        self.assertEqual(_recepteurs(), attendu['par_signal'])
+        self.assertEqual(_receivers_hors_fichiers(),
+                         attendu['hors_fichiers'])
+        self.assertEqual(_receivers_hors_fichiers(), [])
+        total = sum(len(v) for v in attendu['par_signal'].values())
+        self.assertEqual(total, 26)             # 25 + crm_client_mirror_tiers
+
+    def test_facades(self):
+        for module in ('selectors', 'models'):
+            attendu = lire(f'facade__{module}.json')
+            courant = _facade(module)
+            for nom, qualname in attendu['noms'].items():
+                self.assertIn(nom, courant,
+                              f'{module}.{nom} n\'est plus exposé')
+                self.assertEqual(courant[nom], qualname, f'{module}.{nom}')
+        models = importlib.import_module('apps.crm.models')
+        for nom in lire('facade__models.json')['refs_migrations']:
+            self.assertTrue(hasattr(models, nom),
+                            f'models.{nom} référencé par une migration')
+
+    def test_empreintes_ast(self):
+        normal, recepteur = _index_courant()
+        erreurs = []
+        for fichier in self.index['ast']:
+            golden = lire(f'ast__{fichier}.py.json')
+            index = recepteur if golden['recepteur'] else normal
+            for cle, sha in golden['symboles'].items():
+                candidats = index.get(cle) or (
+                    normal.get(cle) if golden['recepteur'] else None)
+                if candidats is None and '.' in cle:
+                    candidats = normal.get('*.' + cle.split('.', 1)[1])
+                if not candidats:
+                    erreurs.append(f'{fichier}: {cle} introuvable')
+                elif sha not in candidats:
+                    erreurs.append(f'{fichier}: {cle} corps modifié')
+        self.assertEqual(erreurs, [])

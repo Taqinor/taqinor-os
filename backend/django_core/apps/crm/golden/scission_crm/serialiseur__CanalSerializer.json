@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "cle",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "libelle",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "protege",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "archived",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "en_usage",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

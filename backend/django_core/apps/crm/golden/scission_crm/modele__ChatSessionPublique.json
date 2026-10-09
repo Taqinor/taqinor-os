@@ -1,0 +1,99 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "chat_sessions_publiques",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_chat_token",
+    "editable": false,
+    "max_length": 64,
+    "unique": true
+   },
+   "nom": "token",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:list"
+   },
+   "nom": "transcript",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "active",
+      "Active"
+     ],
+     [
+      "qualifiee",
+      "Qualifiée"
+     ],
+     [
+      "fermee",
+      "Fermée"
+     ]
+    ],
+    "default": "active",
+    "max_length": 10
+   },
+   "nom": "statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "chat_sessions_publiques",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "last_message_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_chatsessionpublique",
+ "label": "crm.ChatSessionPublique",
+ "relations_inverses": []
+}

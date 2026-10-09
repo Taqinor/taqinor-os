@@ -1,0 +1,146 @@
+[
+ {
+  "actions_map": null,
+  "motif": "",
+  "nom": "api-root",
+  "vue": "APIRootView"
+ },
+ {
+  "actions_map": null,
+  "motif": "<drf_format_suffix:format>",
+  "nom": "api-root",
+  "vue": "APIRootView"
+ },
+ {
+  "actions_map": null,
+  "motif": "apporteur-portail/<str:token>/mes-deals/",
+  "nom": "public-apporteur-mes-deals",
+  "vue": "public_apporteur_mes_deals"
+ },
+ {
+  "actions_map": null,
+  "motif": "assignable-users/",
+  "nom": "assignable-users",
+  "vue": "assignable_users"
+ },
+ {
+  "actions_map": null,
+  "motif": "equipes/statistiques/",
+  "nom": "equipes-statistiques",
+  "vue": "equipes_statistiques"
+ },
+ {
+  "actions_map": null,
+  "motif": "forecast/historique/",
+  "nom": "forecast-historique",
+  "vue": "forecast_historique_view"
+ },
+ {
+  "actions_map": null,
+  "motif": "forecast/rollup/",
+  "nom": "forecast-rollup",
+  "vue": "forecast_rollup_view"
+ },
+ {
+  "actions_map": null,
+  "motif": "leads/<int:lead_id>/photo-toit/",
+  "nom": "lead-photo-toit",
+  "vue": "lead_photo_toit"
+ },
+ {
+  "actions_map": null,
+  "motif": "leads/<int:lead_id>/playbook/",
+  "nom": "lead-playbook",
+  "vue": "lead_playbook_view"
+ },
+ {
+  "actions_map": null,
+  "motif": "leads/<int:lead_id>/roof-footprint/",
+  "nom": "lead-roof-footprint",
+  "vue": "lead_roof_footprint"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/booking/<str:token>/",
+  "nom": "public-booking-status",
+  "vue": "public_booking_status"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/booking/<str:token>/reserve/",
+  "nom": "public-booking-reserve",
+  "vue": "public_booking_reserve"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/chat/sessions/",
+  "nom": "public-chat-open",
+  "vue": "open_chat_session"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/chat/sessions/<str:token>/",
+  "nom": "public-chat-get",
+  "vue": "get_chat_session"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/chat/sessions/<str:token>/messages/",
+  "nom": "public-chat-post",
+  "vue": "post_chat_message"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/lead-affiner/<str:idempotency_key>/",
+  "nom": "public-lead-affiner",
+  "vue": "lead_affiner_pro"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/lead-ref/<str:idempotency_key>/",
+  "nom": "public-lead-ref-lookup",
+  "vue": "lead_ref_lookup"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/questionnaire/<str:token>/",
+  "nom": "public-questionnaire",
+  "vue": "public_questionnaire"
+ },
+ {
+  "actions_map": null,
+  "motif": "public/visite/",
+  "nom": "public-visite",
+  "vue": "public_visite"
+ },
+ {
+  "actions_map": null,
+  "motif": "rapports/attribution/",
+  "nom": "rapport-attribution",
+  "vue": "rapport_attribution"
+ },
+ {
+  "actions_map": null,
+  "motif": "salle-vente/<str:token>/",
+  "nom": "public-salle-vente",
+  "vue": "public_salle_vente"
+ },
+ {
+  "actions_map": null,
+  "motif": "webhooks/demande-rdv/",
+  "nom": "demande-rdv-webhook",
+  "vue": "demande_rdv_webhook"
+ },
+ {
+  "actions_map": null,
+  "motif": "webhooks/meta-lead-ads/",
+  "nom": "meta-lead-ads-webhook",
+  "vue": "meta_lead_ads_webhook"
+ },
+ {
+  "actions_map": null,
+  "motif": "webhooks/website-leads/",
+  "nom": "website-lead-webhook",
+  "vue": "website_lead_webhook"
+ }
+]
