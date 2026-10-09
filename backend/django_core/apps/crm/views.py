@@ -1154,10 +1154,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `SerializerMethodField` qui interrogerait la base par lead.
         """
         from django.db.models import (
-            Count, DateTimeField, Exists, F, OuterRef, Q, Subquery)
+            Count, DateTimeField, F, OuterRef, Q, Subquery)
 
-        from core.dates import aujourd_hui_local
-        from .controle_suivi import seuil_retard
         from .models import LeadActivity, RelanceEtape
 
         ouvertes = RelanceEtape.objects.filter(
@@ -1171,10 +1169,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             prochaine_touche_canal=Subquery(
                 prochaines.values('canal')[:1]),
             # ALEA32 — « en retard » = au moins un jour COMPTÉ (calendrier
-            # de la société) depuis l'échéance : le seuil unique des filtres.
-            touche_en_retard_flag=Exists(
-                ouvertes.filter(due_date__lt=seuil_retard(
-                    company, aujourd_hui_local()))),
+            # de la société) depuis l'échéance. Le queryset ne porte que la
+            # PLUS ANCIENNE échéance ouverte (même requête) ; le sérialiseur
+            # la compare au seuil unique ``seuil_retard``, lu UNE fois par
+            # requête et SEULEMENT si une échéance est déjà passée :
+            # « ∃ échéance < seuil » ⇔ « min(échéances) < seuil ». Une action
+            # qui ne sérialise pas le lead (historique…) ne lit plus le
+            # calendrier pour rien.
+            plus_ancienne_touche_ouverte=Subquery(
+                ouvertes.filter(due_date__isnull=False)
+                .order_by('due_date').values('due_date')[:1]),
             # MRY20 — combien de fois a-t-on VRAIMENT essayé ? Seules les
             # tentatives HUMAINES comptent (appel / WhatsApp / e-mail avec un
             # auteur) : compter les lignes système gonflerait le chiffre
