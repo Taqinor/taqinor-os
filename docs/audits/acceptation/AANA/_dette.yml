@@ -1,0 +1,48 @@
+# Dette d'acceptation GELÉE du groupe AANA (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: AANA
+amorce: 9812e275c
+ids:
+  - AANA2
+  - AANA3
+  - AANA4
+  - AANA5
+  - AANA6
+  - AANA7
+  - AANA8
+  - AANA9
+  - AANA10
+  - AANA11
+  - AANA12
+  - AANA13
+  - AANA14
+  - AANA15
+  - AANA16
+  - AANA17
+  - AANA18
+  - AANA19
+  - AANA20
+  - AANA21
+  - AANA22
+  - AANA23
+  - AANA24
+  - AANA25
+  - AANA26
+  - AANA27
+  - AANA28
+  - AANA29
+  - AANA30
+  - AANA31
+  - AANA32
+  - AANA33
+  - AANA34
+  - AANA35
+  - AANA36
+  - AANA37
+  - AANA38
+  - AANA39
+  - AANA41
+  - AANA43
+  - AANA49

@@ -1,0 +1,39 @@
+# Dette d'acceptation GELÉE du groupe APRF (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: APRF
+amorce: 9812e275c
+ids:
+  - APRF1
+  - APRF2
+  - APRF3
+  - APRF4
+  - APRF5
+  - APRF6
+  - APRF7
+  - APRF10
+  - APRF11
+  - APRF12
+  - APRF13
+  - APRF14
+  - APRF15
+  - APRF16
+  - APRF17
+  - APRF18
+  - APRF19
+  - APRF20
+  - APRF21
+  - APRF22
+  - APRF23
+  - APRF26
+  - APRF27
+  - APRF28
+  - APRF30
+  - APRF31
+  - APRF32
+  - APRF33
+  - APRF34
+  - APRF35
+  - APRF36
+  - APRF38

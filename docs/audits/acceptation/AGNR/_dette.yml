@@ -1,0 +1,11 @@
+# Dette d'acceptation GELÉE du groupe AGNR (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: AGNR
+amorce: 9812e275c
+ids:
+  - AGNR9
+  - AGNR10
+  - AGNR11
+  - AGNR12

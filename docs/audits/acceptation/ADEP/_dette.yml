@@ -1,0 +1,46 @@
+# Dette d'acceptation GELÉE du groupe ADEP (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: ADEP
+amorce: 9812e275c
+ids:
+  - ADEP1
+  - ADEP2
+  - ADEP3
+  - ADEP4
+  - ADEP5
+  - ADEP6
+  - ADEP7
+  - ADEP8
+  - ADEP9
+  - ADEP10
+  - ADEP11
+  - ADEP12
+  - ADEP13
+  - ADEP14
+  - ADEP15
+  - ADEP16
+  - ADEP17
+  - ADEP18
+  - ADEP19
+  - ADEP20
+  - ADEP21
+  - ADEP22
+  - ADEP23
+  - ADEP24
+  - ADEP25
+  - ADEP26
+  - ADEP27
+  - ADEP28
+  - ADEP29
+  - ADEP30
+  - ADEP31
+  - ADEP33
+  - ADEP34
+  - ADEP40
+  - ADEP41
+  - ADEP42
+  - ADEP44
+  - ADEP45
+  - ADEP46

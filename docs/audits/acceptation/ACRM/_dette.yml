@@ -1,0 +1,53 @@
+# Dette d'acceptation GELÉE du groupe ACRM (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: ACRM
+amorce: 9812e275c
+ids:
+  - ACRM3
+  - ACRM4
+  - ACRM5
+  - ACRM6
+  - ACRM7
+  - ACRM8
+  - ACRM9
+  - ACRM10
+  - ACRM11
+  - ACRM12
+  - ACRM13
+  - ACRM14
+  - ACRM15
+  - ACRM16
+  - ACRM17
+  - ACRM18
+  - ACRM19
+  - ACRM20
+  - ACRM21
+  - ACRM22
+  - ACRM23
+  - ACRM24
+  - ACRM25
+  - ACRM26
+  - ACRM27
+  - ACRM28
+  - ACRM29
+  - ACRM30
+  - ACRM31
+  - ACRM32
+  - ACRM33
+  - ACRM34
+  - ACRM35
+  - ACRM36
+  - ACRM37
+  - ACRM38
+  - ACRM39
+  - ACRM40
+  - ACRM41
+  - ACRM42
+  - ACRM43
+  - ACRM45
+  - ACRM46
+  - ACRM47
+  - ACRM58
+  - ACRM59

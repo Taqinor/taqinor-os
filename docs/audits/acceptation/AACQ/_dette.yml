@@ -1,0 +1,57 @@
+# Dette d'acceptation GELÉE du groupe AACQ (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: AACQ
+amorce: 9812e275c
+ids:
+  - AACQ1
+  - AACQ2
+  - AACQ3
+  - AACQ4
+  - AACQ6
+  - AACQ7
+  - AACQ8
+  - AACQ9
+  - AACQ12
+  - AACQ13
+  - AACQ14
+  - AACQ15
+  - AACQ16
+  - AACQ17
+  - AACQ18
+  - AACQ19
+  - AACQ21
+  - AACQ22
+  - AACQ23
+  - AACQ24
+  - AACQ25
+  - AACQ26
+  - AACQ30
+  - AACQ31
+  - AACQ32
+  - AACQ33
+  - AACQ35
+  - AACQ36
+  - AACQ37
+  - AACQ38
+  - AACQ39
+  - AACQ40
+  - AACQ60
+  - AACQ61
+  - AACQ62
+  - AACQ63
+  - AACQ64
+  - AACQ65
+  - AACQ66
+  - AACQ67
+  - AACQ68
+  - AACQ69
+  - AACQ70
+  - AACQ71
+  - AACQ72
+  - AACQ73
+  - AACQ74
+  - AACQ75
+  - AACQ76
+  - AACQ79
