@@ -8,14 +8,14 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 
-const { installationsApiMock } = vi.hoisted(() => ({
-  installationsApiMock: { getChecklist: vi.fn(), cocherChecklist: vi.fn() },
+const { apiChecklist } = vi.hoisted(() => ({
+  apiChecklist: { cocherChecklist: vi.fn(), getChecklist: vi.fn() },
 }))
-vi.mock('../../api/installationsApi', () => ({ default: installationsApiMock }))
-vi.mock('../../api/recordsApi', () => ({ default: { uploadAttachment: vi.fn() } }))
 vi.mock('../preferences/prefs', () => ({
   compressPhotoForUpload: vi.fn((f) => Promise.resolve(f)),
 }))
+vi.mock('../../api/installationsApi', () => ({ default: apiChecklist }))
+vi.mock('../../api/recordsApi', () => ({ default: { envoyer: vi.fn(), uploadAttachment: vi.fn() } }))
 vi.mock('../../features/pwa/CameraCapture', () => ({ default: () => null }))
 vi.mock('../../components/ProduitPicker', () => ({
   default: ({ onChange }) => (
@@ -47,13 +47,13 @@ beforeEach(async () => {
   vi.clearAllMocks()
   await fieldOutbox.clear()
   // Coupure réseau : pas de `response` sur l'erreur.
-  installationsApiMock.cocherChecklist.mockRejectedValue(new Error('Network Error'))
+  apiChecklist.cocherChecklist.mockRejectedValue(new Error('Network Error'))
 })
 afterEach(() => cleanup())
 
 describe('ChantierChecklist — ACHT71', () => {
   it('hors-ligne, l’op filée porte la série saisie (forme du contrat)', async () => {
-    installationsApiMock.getChecklist.mockResolvedValue({
+    apiChecklist.getChecklist.mockResolvedValue({
       data: { items: [item('pose_onduleur', 'Pose onduleur', true)], completion: 0 },
     })
     const user = userEvent.setup()
@@ -84,7 +84,7 @@ describe('ChantierChecklist — ACHT71', () => {
   })
 
   it('un échec de chargement n’affiche pas « Aucune étape modèle »', async () => {
-    installationsApiMock.getChecklist.mockRejectedValueOnce(new Error('boom'))
+    apiChecklist.getChecklist.mockRejectedValueOnce(new Error('boom'))
     rendre()
     expect(await screen.findByText(/Checklist indisponible/)).toBeInTheDocument()
     expect(screen.queryByText(/Aucune étape modèle/)).toBeNull()
@@ -93,7 +93,7 @@ describe('ChantierChecklist — ACHT71', () => {
 })
 
 function installationsApi_item(cle, libelle) {
-  installationsApiMock.getChecklist.mockResolvedValue({
+  apiChecklist.getChecklist.mockResolvedValue({
     data: { items: [item(cle, libelle, false)], completion: 0 },
   })
 }

@@ -18,28 +18,9 @@ beforeAll(() => {
   }
 })
 
-vi.mock('../../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children }) => {
-      const kids = Array.isArray(children) ? children : [children]
-      const label = kids.find((c) => c && c.props && c.props['aria-label'])?.props?.['aria-label']
-      return (
-        <select role="combobox" aria-label={label} value={value ?? ''}
-                onChange={(e) => onValueChange(e.target.value)}>
-          <option value="" />
-          {children}
-        </select>
-      )
-    },
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../../ui', async (importActual) => (
+  (await import('../../../test/selectNatif')).avecSelectNatif(await importActual())
+))
 
 const RAISON = 'Planification refusée : l’acompte n’a pas été reçu.'
 const serveur = vi.hoisted(() => ({ lectures: 0, patchs: [] }))

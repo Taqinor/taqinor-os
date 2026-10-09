@@ -1,82 +1,29 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderInstallationDetail as rendre } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* ACHT3 — l'écran du chantier masque les gestes que le serveur refuse :
    « Enregistrer la mise en service » seulement depuis « Installé » et hors
    chantier annulé ; sélecteur de statut désactivé sur un chantier annulé. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, disabled }) => {
-      const kids = Array.isArray(children) ? children : [children]
-      const id = kids.find((c) => c && c.props && c.props.id)?.props?.id
-      return (
-        <select role="combobox" id={id} value={value ?? ''} disabled={disabled}
-                onChange={(e) => onValueChange(e.target.value)}>
-          <option value="" />
-          {children}
-        </select>
-      )
-    },
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
-vi.mock('./ChantierGateTimeline', () => ({ default: () => null }))
-vi.mock('./ChantierChecklist', () => ({ default: () => null }))
-vi.mock('../../features/installations/offline/OfflineSyncIndicator', () => ({
-  default: () => null,
-}))
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../ui', async (importActual) => (
+  (await import('../../test/selectNatif')).avecSelectNatif(await importActual())
+))
+vi.mock('./ChantierGateTimeline', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('../../features/installations/offline/OfflineSyncIndicator', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('../../api/installationsApi', async () => ({
   default: {
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
   },
 }))
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
-vi.mock('../../api/crmApi', () => ({
-  default: { getAssignableUsers: () => Promise.resolve({ data: [] }) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
-    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
-  },
-}))
-
-import InstallationDetail from './InstallationDetail'
-
-const rendre = (row) => render(
-  <Provider store={configureStore({ reducer: { stock: (s = { produits: [] }) => s } })}>
-    <MemoryRouter initialEntries={['/chantiers']}>
-      <ThemeProvider>
-        <InstallationDetail installation={row} onClose={() => {}} onSaved={() => {}} />
-      </ThemeProvider>
-    </MemoryRouter>
-  </Provider>,
-)
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
 
 const ouvrirJalons = async (user) => {
   await user.click(await screen.findByRole('tab', { name: /Jalons/ }))

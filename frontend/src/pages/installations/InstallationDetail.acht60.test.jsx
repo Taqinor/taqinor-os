@@ -1,57 +1,23 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderInstallationDetail } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* ACHT60 — dérogations émises depuis la fiche chantier : « Motif (acompte non
    reçu) » → motif_override_acompte, « Motif de réouverture » → motif_reouverture,
    et « Marquer réceptionné » seulement depuis « Installé ». Faux serveur en
    mémoire qui applique les règles réelles (400 sans motif, 200 avec). */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, disabled }) => {
-      const kids = Array.isArray(children) ? children : [children]
-      const id = kids.find((c) => c && c.props && c.props.id)?.props?.id
-      return (
-        <select role="combobox" id={id} value={value ?? ''} disabled={disabled}
-                onChange={(e) => onValueChange(e.target.value)}>
-          <option value="" />
-          {children}
-        </select>
-      )
-    },
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
-
-vi.mock('./ChantierGateTimeline', () => ({ default: () => null }))
-vi.mock('./ChantierChecklist', () => ({ default: () => null }))
-vi.mock('../../features/installations/offline/OfflineSyncIndicator', () => ({
-  default: () => null,
-}))
-
+vi.mock('../../ui', async (importActual) => (
+  (await import('../../test/selectNatif')).avecSelectNatif(await importActual())
+))
 const db = {}
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
-    getInstallation: (id) => Promise.resolve({ data: { ...db[id] } }),
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
     updateInstallation: (id, body) => {
       const row = db[id]
       if (body.statut && body.statut !== row.statut) {
@@ -67,36 +33,18 @@ vi.mock('../../api/installationsApi', () => ({
       }
       return Promise.resolve({ data: { ...row } })
     },
+    getInstallation: (id) => Promise.resolve({ data: { ...db[id] } }),
   },
 }))
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
-vi.mock('../../api/crmApi', () => ({
-  default: { getAssignableUsers: () => Promise.resolve({ data: [] }) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
-    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
-  },
-}))
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
 
-import InstallationDetail from './InstallationDetail'
+vi.mock('./ChantierGateTimeline', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('../../features/installations/offline/OfflineSyncIndicator', async () => (await import('../../test/selectNatif')).composantNul)
 
-const rendre = (row) => render(
-  <Provider store={configureStore({ reducer: { stock: (s = { produits: [] }) => s } })}>
-    <MemoryRouter initialEntries={['/chantiers']}>
-      <ThemeProvider>
-        <InstallationDetail installation={{ ...row }} onClose={() => {}} onSaved={() => {}} />
-      </ThemeProvider>
-    </MemoryRouter>
-  </Provider>,
-)
+const rendre = (row) => renderInstallationDetail({ ...row })
 
 beforeEach(() => {
   db[1] = { id: 1, reference: 'CH-1', statut: 'materiel_commande', annule: false }

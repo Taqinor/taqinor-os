@@ -22,8 +22,10 @@ export function avecSelectNatif(actual) {
     Select: ({ value, onValueChange, children, disabled }) => {
       const kids = Array.isArray(children) ? children : [children]
       const id = kids.find((c) => c && c.props && c.props.id)?.props?.id
+      // `aria-label` du SelectTrigger reporté aussi (écrans sans <label htmlFor>).
+      const label = kids.find((c) => c && c.props && c.props['aria-label'])?.props?.['aria-label']
       return (
-        <select role="combobox" id={id} value={value ?? ''} disabled={disabled}
+        <select role="combobox" id={id} aria-label={label} value={value ?? ''} disabled={disabled}
                 onChange={(e) => onValueChange(e.target.value)}>
           <option value="" />
           {children}
@@ -46,3 +48,19 @@ export const savApiMock = {
 export const crmApiMock = {
   default: { getAssignableUsers: vide },
 }
+
+export const ventesApiMock = {
+  default: {
+    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
+    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
+  },
+}
+
+// Lectures de fond que la fiche chantier lance toujours au montage.
+export const installationsLecturesVides = {
+  getHistorique: vide,
+  getTypesIntervention: vide,
+}
+
+// Stubs des trois blocs de l'onglet « Jalons & gates » (hors périmètre).
+export const composantNul = { default: () => null }

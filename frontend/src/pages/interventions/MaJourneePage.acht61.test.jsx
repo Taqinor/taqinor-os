@@ -14,61 +14,25 @@ import { raisonRefusStatut } from '../../features/installations/statuses'
 const RAISON = 'Confirmez « Tout est chargé » dans la liste de préparation avant de quitter « À préparer ».'
 const CORPS_REEL = { statut: [RAISON], error: { code: 'invalid', message: 'Validation' } }
 
-const { rejected } = vi.hoisted(() => ({
-  rejected: () => Promise.reject(new Error('non mocké')),
-}))
-const toastMock = vi.hoisted(() => ({
-  success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn(),
-}))
-vi.mock('../../ui/Toaster', () => ({
-  toast: toastMock,
-  Toaster: () => null,
-  default: () => null,
-}))
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../ui/Toaster', async () => (await import('../../test/mocksMaJournee')).toasterMock)
+vi.mock('../../api/installationsApi', async () => ({
   default: {
+    ...(await import('../../test/mocksMaJournee')).panneauxRejetes(),
     getMaTournee: vi.fn(),
     updateIntervention: vi.fn((id, data, config) => {
       const err = { response: { status: 400, data: CORPS_REEL } }
       if (!config?.suppressErrorToast) toastMock.error('Requête invalide.') // pont axios
       return Promise.reject(err)
     }),
-    getInterventions: vi.fn(rejected),
-    getPreparation: vi.fn(rejected),
-    getPhotos: vi.fn(rejected),
-    getSerials: vi.fn(rejected),
-    getConsommation: vi.fn(rejected),
-    getMemos: vi.fn(rejected),
-    getReserves: vi.fn(rejected),
-    getSafety: vi.fn(rejected),
-    getToolReturn: vi.fn(rejected),
-    getCode: vi.fn(rejected),
-    compteRenduUrl: vi.fn(() => ''),
+    getInterventions: vi.fn(() => Promise.reject(new Error('non mocké'))),
   },
 }))
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, disabled }) => {
-      const kids = Array.isArray(children) ? children : [children]
-      const label = kids.find((c) => c && c.props && c.props['aria-label'])?.props?.['aria-label']
-      return (
-        <select role="combobox" aria-label={label} value={value ?? ''} disabled={disabled}
-                onChange={(e) => onValueChange(e.target.value)}>
-          {children}
-        </select>
-      )
-    },
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (
+  (await import('../../test/selectNatif')).avecSelectNatif(await importActual())
+))
 
 import installationsApi from '../../api/installationsApi'
+import { toastMock } from '../../test/mocksMaJournee'
 import MaJourneePage from './MaJourneePage'
 
 const todayISO = () => {

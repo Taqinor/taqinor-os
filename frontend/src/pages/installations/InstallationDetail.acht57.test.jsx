@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderInstallationDetail } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* ACHT57 — « Mettre à jour » n'envoie que le DIFF des champs modifiés, le
    formulaire se resynchronise après chaque rafraîchissement, et les champs
@@ -12,11 +10,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    serveur en mémoire applique le corps reçu au chantier (il pose les dates à
    l'avancée et refuse le champ gelé d'un chantier clôturé), puis relecture. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const db = {}
 const fakeServer = vi.hoisted(() => ({ advance: null }))
@@ -30,15 +24,12 @@ vi.mock('./ChantierGateTimeline', () => ({
   ),
 }))
 
-vi.mock('./ChantierChecklist', () => ({ default: () => null }))
-vi.mock('../../features/installations/offline/OfflineSyncIndicator', () => ({
-  default: () => null,
-}))
+vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('../../features/installations/offline/OfflineSyncIndicator', async () => (await import('../../test/selectNatif')).composantNul)
 
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
     getInstallation: (id) => Promise.resolve({ data: { ...db[id] } }),
     updateInstallation: (id, body) => {
       const row = db[id]
@@ -50,40 +41,11 @@ vi.mock('../../api/installationsApi', () => ({
     },
   },
 }))
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
-vi.mock('../../api/crmApi', () => ({
-  default: { getAssignableUsers: () => Promise.resolve({ data: [] }) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
-    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
-  },
-}))
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
 
-import InstallationDetail from './InstallationDetail'
-
-const store = () => configureStore({
-  reducer: { stock: (s = { produits: [] }) => s },
-})
-
-function renderDetail(row) {
-  return render(
-    <Provider store={store()}>
-      <MemoryRouter initialEntries={['/chantiers']}>
-        <ThemeProvider>
-          <InstallationDetail installation={{ ...row }} onClose={() => {}} onSaved={() => {}} />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderDetail = (row) => renderInstallationDetail({ ...row })
 
 beforeEach(() => {
   db[1] = { id: 1, reference: 'CH-1', statut: 'materiel_commande', annule: false, notes: '' }

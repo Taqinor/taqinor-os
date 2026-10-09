@@ -1,62 +1,28 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderInstallationDetail as rendre } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* ADOC73 — deux attestations distinctes (installation / fin de travaux) qui
    transmettent leur type, soumises à pvReady comme PV/BL/dossier, et le motif
    d'un 409 serveur affiché au lieu d'un aperçu vide. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const docs = vi.hoisted(() => ({ attestation: vi.fn() }))
 vi.mock('../../api/documentsApi', () => ({ default: docs }))
-vi.mock('./ChantierGateTimeline', () => ({ default: () => null }))
-vi.mock('./ChantierChecklist', () => ({ default: () => null }))
-vi.mock('../../features/installations/offline/OfflineSyncIndicator', () => ({
-  default: () => null,
-}))
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
+vi.mock('../../api/installationsApi', async () => ({
   default: {
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
   },
 }))
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
-vi.mock('../../api/crmApi', () => ({
-  default: { getAssignableUsers: () => Promise.resolve({ data: [] }) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
-    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
-  },
-}))
-
-import InstallationDetail from './InstallationDetail'
-
-const rendre = (row) => render(
-  <Provider store={configureStore({ reducer: { stock: (s = { produits: [] }) => s } })}>
-    <MemoryRouter initialEntries={['/chantiers']}>
-      <ThemeProvider>
-        <InstallationDetail installation={row} onClose={() => {}} onSaved={() => {}} />
-      </ThemeProvider>
-    </MemoryRouter>
-  </Provider>,
-)
+vi.mock('./ChantierGateTimeline', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
+vi.mock('../../features/installations/offline/OfflineSyncIndicator', async () => (await import('../../test/selectNatif')).composantNul)
 
 const ouvrirDocuments = async (user) => {
   await user.click(await screen.findByRole('tab', { name: /Documents/ }))
