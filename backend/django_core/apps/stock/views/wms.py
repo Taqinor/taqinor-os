@@ -5,6 +5,7 @@ Toutes les vues héritent de ``CompanyScopedModelViewSet`` (scoping société +
 ``perform_create`` côté serveur) — jamais un ``ModelViewSet`` nu.
 """
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -75,6 +76,8 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
     ).select_related('cree_par').all()
     serializer_class = VaguePickingSerializer
     ordering = ['-created_at']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
@@ -178,6 +181,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
     ).select_related('parent', 'vague', 'scelle_par').all()
     serializer_class = UniteLogistiqueSerializer
     ordering = ['-created_at']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['etiquette_pdf', 'export_asn']:
@@ -416,6 +421,8 @@ class QuaiViewSet(CompanyScopedModelViewSet):
     serializer_class = QuaiSerializer
     ordering = ['nom']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['planning']:
             return [IsAnyRole()]
@@ -462,6 +469,8 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
         'quai', 'transporteur', 'fournisseur', 'bon_commande').all()
     serializer_class = RendezVousTransporteurSerializer
     ordering = ['date_heure_debut', 'id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -527,6 +536,8 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
         'unite_logistique', 'transporteur').all()
     serializer_class = ExpeditionTransporteurSerializer
     ordering = ['-created_at']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # NTWMS43 — la lettre de voiture est une LECTURE (elle n'écrit rien
@@ -652,6 +663,8 @@ class AlerteRappelViewSet(CompanyScopedModelViewSet):
     serializer_class = AlerteRappelSerializer
     ordering = ['-date_declenchement', '-id']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['impact']:
             return [IsAnyRole()]
@@ -727,6 +740,8 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
     queryset = PlanComptageTournant.objects.all()
     serializer_class = PlanComptageTournantSerializer
     ordering = ['classe_abc']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -857,6 +872,8 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
     serializer_class = PlanChargementSerializer
     ordering = ['-created_at']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['verifier_capacite']:
             return [IsAnyRole()]
@@ -955,6 +972,8 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
     ordering = ['-created_at']
     http_method_names = ['get', 'post', 'head', 'options']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
@@ -1006,6 +1025,8 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
             'lignes__produit', 'lignes__bin').all()
     serializer_class = RetourClientSerializer
     ordering = ['-created_at']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -1091,6 +1112,8 @@ class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
     queryset = PortailTiersToken.objects.select_related('cree_par').all()
     serializer_class = PortailTiersTokenSerializer
     ordering = ['-created_at']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         return [IsAdminRole()]

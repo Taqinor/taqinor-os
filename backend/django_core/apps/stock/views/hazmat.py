@@ -1,5 +1,6 @@
 """NTWMS38 — référentiel des compatibilités casier ↔ matière dangereuse."""
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers
 
 from authentication.permissions import (
@@ -49,6 +50,8 @@ class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
     queryset = CompatibiliteHazmatCasier.objects.select_related('bin').all()
     serializer_class = CompatibiliteHazmatCasierSerializer
     ordering = ['bin_id', 'classe_danger']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

@@ -73,6 +73,8 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['prix_achat', 'date_dernier_achat']
     ordering = ['prix_achat']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx', 'effectif']:
             # AUD213 — la ressource EST le prix d'achat : même gate que le

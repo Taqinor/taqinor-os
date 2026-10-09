@@ -19,6 +19,7 @@ prix d'achat, lui, est la donnée utile au demandeur pour estimer sa réquisitio
 """
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema, extend_schema_field, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -97,6 +98,8 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAnyRole]
     queryset = Produit.objects.select_related(
         'categorie', 'fournisseur').filter(is_archived=False)
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()

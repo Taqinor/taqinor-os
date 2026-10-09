@@ -2,6 +2,7 @@ from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -68,6 +69,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     search_fields = ['reference', 'fournisseur__nom', 'note']
     ordering_fields = ['date_creation', 'date_commande', 'statut', 'reference']
     ordering = ['-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         # ASTK178 — `?fournisseur=<id>` filtré côté serveur (fiche 360).

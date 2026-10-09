@@ -74,6 +74,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     ]
     ordering = ['-date_creation']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in ('comptes_a_payer', 'en_exception'):
             # ASTK11 (D-ASTK-2) — files dont l'objet est un montant d'achat :

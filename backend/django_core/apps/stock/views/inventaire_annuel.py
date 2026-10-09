@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -23,6 +24,8 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = InventaireAnnuelSerializer
     permission_classes = [IsAdminRole]
     ordering = ['-exercice']
+
+    parser_classes = [JSONParser]
 
     @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=S.IntegerField()), responses={201: InventaireAnnuelSerializer})
     @action(detail=False, methods=['post'], url_path='figer')

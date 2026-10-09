@@ -11,6 +11,7 @@ Toutes ces valeurs sont INTERNES (prix d'achat, coûts) : gardées
 responsable/admin, jamais dans une sortie client-facing.
 """
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -68,6 +69,8 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
         'fournisseur', 'produit').all()
     serializer_class = IncidentQualiteFournisseurSerializer
     ordering = ['-date_incident', '-id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + WRITE_ACTIONS:

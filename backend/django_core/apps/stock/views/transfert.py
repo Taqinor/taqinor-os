@@ -2,6 +2,7 @@ from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -61,6 +62,8 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
     search_fields = ['produit__nom', 'note']
     ordering_fields = ['date', 'quantite']
     ordering = ['-date']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # `get_permissions` prime sur le `permission_classes` d'une @action :

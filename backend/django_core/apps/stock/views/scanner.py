@@ -19,7 +19,8 @@ comptage (`inventaire-sessions/`).
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, P, S, STR, corps  # noqa: F401
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import JSONParser
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
@@ -79,6 +80,7 @@ def scanner_resoudre_view(request):
     }),
 })
 @api_view(['POST'])
+@parser_classes([JSONParser])
 @permission_classes([HasPermissionOrLegacy('stock_modifier')])
 def scanner_mouvement_view(request):
     """Pose un mouvement de stock SCANNÉ, casiers tracés.

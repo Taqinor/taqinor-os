@@ -89,6 +89,8 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
         'fournisseur', 'valide_par').prefetch_related('documents').all()
     serializer_class = DossierOnboardingFournisseurSerializer
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         # NTP2P36 — `valider-dossier` exige EN PLUS le code fin
         # `valider_dossier_fournisseur` (ce viewset a son propre

@@ -6,6 +6,7 @@ magasinier doit savoir ce qu'il devra contrôler), écriture responsable/admin.
 from drf_spectacular.utils import (
     extend_schema, extend_schema_serializer, inline_serializer,
 )
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -72,6 +73,8 @@ class PlanEchantillonnageViewSet(CompanyScopedModelViewSet):
     queryset = PlanEchantillonnage.objects.select_related('categorie').all()
     serializer_class = PlanEchantillonnageSerializer
     ordering = ['categorie_id', 'id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # `get_permissions` prime sur le `permission_classes` d'une @action :

@@ -7,6 +7,7 @@ CRÉATION/lecture d'un profil à un Acheteur — capacité inaccessible hors
 tests. Ce module ferme ce trou, sans dupliquer la validation de chevauchement
 calendaire (déjà posée par ``services.creer_profil_saisonnier``)."""
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -49,6 +50,8 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
         'produit', 'categorie', 'created_by').all()
     serializer_class = ProfilSaisonnierSerializer
     ordering = ['mois_debut']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):

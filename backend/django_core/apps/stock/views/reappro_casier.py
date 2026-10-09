@@ -1,5 +1,6 @@
 """NTWMS40 — casiers picking dus, seuils, et tâches de réappro interne."""
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -56,6 +57,8 @@ class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
         'bin', 'produit').all()
     serializer_class = SeuilReapproCasierSerializer
     ordering = ['bin_id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

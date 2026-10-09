@@ -11,6 +11,7 @@ au client.
 """
 from django.db import transaction  # noqa: F401
 from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -43,6 +44,8 @@ class InventaireSessionViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     search_fields = ['reference', 'motif']
     ordering_fields = ['date_creation', 'statut', 'reference']
     ordering = ['-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         return [IsAdminRole()]

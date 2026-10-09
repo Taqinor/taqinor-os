@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema
+from rest_framework.parsers import JSONParser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -35,6 +36,8 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     queryset = ModeleBonCommandeFournisseur.objects.select_related(
         'fournisseur').prefetch_related('lignes__produit').all()
     serializer_class = ModeleBonCommandeFournisseurSerializer
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

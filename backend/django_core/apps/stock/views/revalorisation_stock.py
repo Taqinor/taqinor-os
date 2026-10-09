@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,6 +25,8 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
     serializer_class = RevalorisationStockSerializer
     permission_classes = [IsAdminRole]
     ordering = ['-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()

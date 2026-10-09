@@ -6,6 +6,7 @@ en lignes composant avec prix/TVA/marque LUS sur chaque ``Produit`` au vol.
 Multi-tenant : querysets filtrés par société + ``company`` forcée côté serveur
 (TenantMixin)."""
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -37,6 +38,8 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
     ordering = ['nom']
     # YAPIC2 — whitelist explicite (jamais '__all__').
     ordering_fields = ['nom', 'sku']
+
+    parser_classes = [JSONParser]
 
     def get_serializer_context(self):
         # ZMFG9 — `?avec_disponibilite=1` sur la liste/fiche enrichit chaque

@@ -1,5 +1,6 @@
 from django.db import transaction  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -39,6 +40,8 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_expiration', 'date_creation', 'type_document']
     ordering = ['fournisseur_id', 'type_document']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -123,6 +126,8 @@ class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):
         'categorie').all()
     serializer_class = ToleranceRapprochementCategorieSerializer
     ordering = ['categorie__nom']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

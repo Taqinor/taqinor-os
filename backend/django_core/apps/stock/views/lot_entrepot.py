@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -31,6 +32,8 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     search_fields = ['numero_lot', 'produit__nom', 'reference_reception']
     ordering_fields = ['date_peremption', 'date_creation', 'quantite_restante']
     ordering = ['date_peremption', '-date_creation']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['fefo']:

@@ -8,11 +8,12 @@ autres : c'est une fonctionnalité DÉSACTIVÉE, pas un droit manquant.
 from drf_spectacular.utils import (
     extend_schema, extend_schema_field, extend_schema_view, inline_serializer,
 )
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
@@ -118,6 +119,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         'produit', 'client').prefetch_related('declarations').all()
     serializer_class = DepotConsignationSerializer
     ordering = ['-date_depot', '-id']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
@@ -365,6 +368,8 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
     serializer_class = AccordRFAFournisseurSerializer
     ordering = ['-periode_debut', '-id']
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action == 'generer_avoir':
             # ASTK19 (D-ASTK-3) — émettre l'avoir RFA = « payer ».
@@ -545,6 +550,7 @@ class ParametresNegoceSerializer(CompanyScopedRelationsMixin,
 
 @extend_schema(request=None, responses={200: ParametresNegoceSerializer})
 @api_view(['GET', 'PATCH'])
+@parser_classes([JSONParser])
 @permission_classes([IsResponsableOrAdmin])
 def parametres_negoce_view(request):
     """NTDST30 — réglages négoce de LA société (singleton, créé à la demande).

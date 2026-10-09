@@ -2,6 +2,7 @@ from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
@@ -66,6 +67,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
     search_fields = ['produit__nom', 'reference', 'note']
     ordering_fields = ['date', 'type_mouvement', 'quantite']
     ordering = ['-date']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx', 'agregation']:

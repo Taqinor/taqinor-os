@@ -11,6 +11,7 @@ référençait le module RH, détaché de stock) : une seule enveloppe par
 société et par période.
 """
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -85,6 +86,8 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     queryset = BudgetDepartement.objects.all()
     serializer_class = BudgetDepartementSerializer
 
+    parser_classes = [JSONParser]
+
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'consommation', 'disponible'):
             return [IsAnyRole()]
@@ -147,6 +150,8 @@ class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     queryset = EngagementBudget.objects.all()
     serializer_class = EngagementBudgetSerializer
     permission_classes = [IsAnyRole]
+
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()

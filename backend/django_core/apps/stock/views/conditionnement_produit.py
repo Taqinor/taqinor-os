@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from core.viewsets import CompanyScopedModelViewSet
 from ..openapi_helpers import (  # noqa: F401
     INT, P,
@@ -20,6 +21,8 @@ class ConditionnementProduitViewSet(CompanyScopedModelViewSet):
     convertis vers `Produit.unite_stock` à la réception."""
     queryset = ConditionnementProduit.objects.select_related('produit').all()
     serializer_class = ConditionnementProduitSerializer
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
