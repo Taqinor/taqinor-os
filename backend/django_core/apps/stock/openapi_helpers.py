@@ -35,9 +35,9 @@ def P(name, typ=STR, required=False, desc='', enum=None):
         required=required, description=desc or name, enum=enum)
 
 
-def corps(nom, **champs):
+def corps(_nom, /, **champs):
     """Corps de requête / réponse inline. ``champs`` : ``nom=serializers.X``."""
-    return inline_serializer(name=nom, fields=champs)
+    return inline_serializer(name=_nom, fields=champs)
 
 
 def detail_reponse(nom='DetailReponse'):
