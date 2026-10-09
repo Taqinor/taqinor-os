@@ -13,7 +13,7 @@ import logging
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -158,6 +158,7 @@ def _opts_quote_data_public(link):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def public_document(request, token):
@@ -275,6 +276,7 @@ def public_document(request, token):
 # autres liens publics.
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def public_bcf_document(request, token):
@@ -981,6 +983,7 @@ def _vider_economies_residentielles(data):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_data(request, token):
@@ -1740,6 +1743,7 @@ _TAILLE_DETAIL_RESPONSE = inline_serializer('PublicTailleDetail', {
 
 @extend_schema(responses={200: _TAILLE_DETAIL_RESPONSE})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_taille_detail(request, token, cle):
@@ -1850,6 +1854,7 @@ def _octets_pdf_signe(devis):
 
 @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_roof_image(request, token):
@@ -1880,6 +1885,7 @@ def proposal_roof_image(request, token):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_pdf(request, token):
@@ -1951,6 +1957,7 @@ def proposal_pdf(request, token):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def suivi_public(request, token):

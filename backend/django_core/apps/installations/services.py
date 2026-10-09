@@ -103,10 +103,23 @@ def ensure_default_template(company):
             company=company, type_installation=None,
             nom=DEFAULT_TEMPLATE_NOM, ordre=0, protege=True, actif=True)
     # Rattache les étapes historiques (sans template) au template « Défaut ».
+    # ENF2 — une à une, en sautant toute clé DÉJÀ portée par le « Défaut » :
+    # l'unicité est (company, template, cle) et NULL ≠ NULL, donc plusieurs
+    # orphelines peuvent partager une clé (ou reprendre celle d'une étape
+    # système). Le `update()` en bloc d'avant violait alors la contrainte et
+    # CHAQUE lecture (liste des modèles/étapes, checklist et étapes d'un
+    # chantier) répondait 500 (fuzz api du 07/10). Une orpheline en doublon
+    # reste orpheline — jamais supprimée, jamais rattachée.
     orphelines = ChecklistEtapeModele.objects.filter(
-        company=company, template__isnull=True)
+        company=company, template__isnull=True).order_by('ordre', 'id')
     if orphelines.exists():
-        orphelines.update(template=template)
+        cles = set(template.etapes.values_list('cle', flat=True))
+        for etape in orphelines:
+            if etape.cle in cles:
+                continue
+            etape.template = template
+            etape.save(update_fields=['template'])
+            cles.add(etape.cle)
     # Aucune étape sous le Défaut (ni rattachée ni amorcée) → on amorce les
     # étapes système par défaut. Idempotent : ne touche rien si déjà présent.
     if not template.etapes.exists():
@@ -406,6 +419,9 @@ def ensure_checklist_items(installation):
         modeles = modeles.filter(template=template)
     for m in modeles:
         if m.cle not in existing:
+            # ENF2 — deux modèles de même clé (orphelins, sans template)
+            # ne créent qu'UN item : unicité (installation, cle).
+            existing.add(m.cle)
             ChantierChecklistItem.objects.create(
                 company=company, installation=installation, cle=m.cle,
                 libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie,

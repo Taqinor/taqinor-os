@@ -14,7 +14,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -112,6 +112,7 @@ _PUBLIC_FIELDS = ('reference', 'statut', 'date_modification')
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
 def ticket_public_status(request, token):
@@ -149,6 +150,7 @@ _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
 def ticket_public_satisfaction(request, token):
@@ -221,6 +223,7 @@ def ticket_public_satisfaction(request, token):
 # ── XSAV19 — Page publique « Signaler un problème » via QR équipement ────────
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([SavPublicThrottle])
 def equipement_public_signaler(request, token):

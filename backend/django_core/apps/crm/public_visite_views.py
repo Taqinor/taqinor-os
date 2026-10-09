@@ -20,7 +20,7 @@ faire apparaître une erreur dans la console d'un visiteur.
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -83,6 +83,7 @@ class PublicVisiteRateThrottle(SimpleRateThrottle):
     })},
 )
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicVisiteRateThrottle])
 def public_visite(request):

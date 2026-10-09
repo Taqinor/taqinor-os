@@ -157,6 +157,10 @@ class ComptageLigneViewSet(viewsets.ModelViewSet):
     responsable/admin (saisie de `quantite_comptee` / `compte`)."""
     queryset = ComptageLigne.objects.select_related('session', 'produit').all()
     serializer_class = ComptageLigneSerializer
+    # ENF2 — lignes GÉNÉRÉES serveur (action `generer-lignes` de la session),
+    # `session` en lecture seule : un POST ne pouvait QUE violer le NOT NULL
+    # du parent (500 au fuzz du 07/10). Pas de création directe : 405.
+    http_method_names = ['get', 'put', 'patch', 'delete', 'head', 'options']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

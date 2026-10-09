@@ -33,7 +33,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
 from core.serializers import CompanyScopedRelationsMixin  # noqa: E402
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import (
+    api_view, authentication_classes, permission_classes, throttle_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
@@ -294,6 +296,7 @@ class ExportReversibiliteHistoriqueView(generics.ListAPIView):
 
 @extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicExportThrottle])
 def telecharger_export_reversibilite(request, token):

@@ -22,7 +22,7 @@ réarme pas le compteur, ce qui est précisément l'abus visé.
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes)
+    authentication_classes, api_view, permission_classes, throttle_classes)
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -64,6 +64,7 @@ class ThemePortailPublicThrottle(SimpleRateThrottle):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([ThemePortailPublicThrottle])
 def theme_portail_public(request):
@@ -97,6 +98,7 @@ class AccepterInvitationPortailThrottle(SimpleRateThrottle):
 @extend_schema(request=ACCEPTER_INVITATION_PORTAIL_REQUEST,
                responses=ACCEPTER_INVITATION_PORTAIL_RESPONSE)
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([AccepterInvitationPortailThrottle])
 def accepter_invitation_portail_public(request):
@@ -202,6 +204,7 @@ def _resoudre_compte_par_token(token):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([RelevePortailThrottle])
 def portail_mon_releve(request, token):

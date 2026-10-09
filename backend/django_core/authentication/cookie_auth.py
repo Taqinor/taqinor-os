@@ -51,13 +51,26 @@ class CookieJWTAuthentication(BaseAuthentication):
 
     def authenticate(self, request):
         # 1. Cookie httpOnly (prioritaire — inaccessible au JavaScript)
-        token = request.COOKIES.get('access_token')
+        cookie_present = 'access_token' in request.COOKIES
+        token = (request.COOKIES.get('access_token') or '').strip()
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
 
-        # 2. Fallback Bearer token (backward compat)
-        if not token:
-            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        # ENF2 (C4) — un cookie `access_token` PRÉSENT MAIS VIDE est un
+        # justificatif invalide, pas une absence : il ne doit JAMAIS être
+        # remplacé en silence par l'en-tête Bearer de la même requête (le fuzz
+        # du 07/10 : « API accepts invalid authentication », ~800 cas — un
+        # cookie forgé vide + un Bearer valide passait). Seul, sans autre
+        # justificatif, il équivaut à aucun cookie (anonyme, inchangé : un
+        # navigateur qui vient de recevoir `delete_cookie` ne casse pas les
+        # routes publiques) ; c'est le REPLI qui est refusé.
+        if cookie_present and not token and auth_header.startswith('Bearer '):
+            raise AuthenticationFailed(
+                'Cookie access_token vide : justificatif invalide.')
+
+        # 2. Fallback Bearer token (backward compat) — seulement sans cookie.
+        if not token and not cookie_present:
             if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ', 1)[1]
+                token = auth_header.split(' ', 1)[1].strip()
 
         if not token:
             return None
@@ -165,18 +178,40 @@ class CookieJWTAuthenticationScheme(OpenApiAuthenticationExtension):
     """
 
     target_class = 'authentication.cookie_auth.CookieJWTAuthentication'
-    name = 'cookieJWT'
+    # ENF2 (C4) — DEUX schémas, en alternative (OU) : le cookie httpOnly
+    # `access_token` (porteur primaire du navigateur) ET l'en-tête
+    # `Authorization: Bearer <jwt>` (scripts, intégrations, CI api-fuzz), tous
+    # deux acceptés par `authenticate()`. Ne déclarer que le cookie laissait le
+    # Bearer hors contrat : un outil de contrôle (Schemathesis) ne savait pas
+    # que l'en-tête ÉTAIT un justificatif et concluait « accepte les requêtes
+    # sans authentification » sur chaque route protégée.
+    name = ['cookieJWT', 'bearerJWT']
+
+    def get_security_requirement(self, auto_schema):
+        # Liste de requirements = alternative OU (un dict à deux clés serait un
+        # ET : « cookie ET Bearer exigés », faux).
+        return [{'cookieJWT': []}, {'bearerJWT': []}]
 
     def get_security_definition(self, auto_schema):
-        # Le porteur PRIMAIRE est le cookie httpOnly `access_token` ; le repli
-        # `Authorization: Bearer <jwt>` reste accepté par `authenticate()`
-        # (compat scripts/tests) et est décrit dans la description.
-        return {
-            'type': 'apiKey',
-            'in': 'cookie',
-            'name': 'access_token',
-            'description': (
-                "JWT d'accès porté par le cookie httpOnly `access_token`. "
-                "Repli accepté : en-tête `Authorization: Bearer <jwt>`."
-            ),
-        }
+        return [
+            {
+                'type': 'apiKey',
+                'in': 'cookie',
+                'name': 'access_token',
+                'description': (
+                    "JWT d'accès porté par le cookie httpOnly `access_token` "
+                    "(prioritaire). Un cookie présent mais vide accompagné "
+                    "d'un Bearer est refusé (401) — jamais de repli silencieux."
+                ),
+            },
+            {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+                'description': (
+                    "Même JWT d'accès dans l'en-tête "
+                    "`Authorization: Bearer <jwt>` (scripts, intégrations), "
+                    "lu seulement en l'absence de cookie `access_token`."
+                ),
+            },
+        ]

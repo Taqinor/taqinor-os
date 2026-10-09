@@ -104,6 +104,11 @@ class PickListLigneViewSet(viewsets.ModelViewSet):
     queryset = PickListLigne.objects.select_related(
         'pick_list', 'produit', 'bin').all()
     serializer_class = PickListLigneSerializer
+    # ENF2 — les lignes sont GÉNÉRÉES serveur (action `generer` du bon) et
+    # `pick_list` est en lecture seule : un POST ne pouvait QUE violer le
+    # NOT NULL du parent (500 au fuzz du 07/10). Pas de création directe :
+    # 405, et l'opération disparaît du contrat OpenAPI.
+    http_method_names = ['get', 'put', 'patch', 'delete', 'head', 'options']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
