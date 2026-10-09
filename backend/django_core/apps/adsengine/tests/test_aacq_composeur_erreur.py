@@ -48,7 +48,10 @@ class ComposeurErreurTests(TestCase):
         resp = self._post({'spend_cap': 100})
         self.assertEqual(resp.status_code, 400, resp.data)
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
-        self.assertEqual(set(resp.data), set(contrat['exemple']))
+        # L'enveloppe machine additive YAPIC3 (clé ``error``) s'ajoute à la forme
+        # DRF native ; le contrat (forme « partielle ») ne décrit que celle-ci.
+        self.assertEqual(
+            set(resp.data) - {'error'}, set(contrat['exemple']))
         self.assertEqual(str(resp.data['payload']),
                          contrat['exemple']['payload'])
         self.assertFalse(

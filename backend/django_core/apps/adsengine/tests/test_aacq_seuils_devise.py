@@ -106,6 +106,8 @@ class SeuilsDeviseTests(TestCase):
         self.assertIn(INVITE, f['blocked_fr'])
         # Règle saisie en USD : un changement de devise du compte la rebascule
         # en « non applicable » (aucun taux appliqué).
+        # Une seule règle par (société, template) : l'ancienne est remplacée.
+        ancienne.delete()
         nouvelle = self._regle_api(api, {'params': {'threshold_mad': 30}})
         self.assertTrue(self._eval(company, nouvelle)[0]['fired'])
         conn.currency = 'EUR'
