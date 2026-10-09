@@ -31,6 +31,8 @@ MODELES = [
     'TentativeDebitMandat', 'LivraisonBC', 'LigneLivraisonBC',
     # AFAC34 — enregistrement d'abandon de créance (golden régénéré).
     'AbandonCreance',
+    # AFAC50 — liaison facture d'origine / facture de pénalités.
+    'FacturePenalite',
 ]
 
 MODULE_CIBLE = 'apps.ventes.models_facturation'
@@ -88,7 +90,7 @@ class GoldenModelsFacturationTests(SimpleTestCase):
         cls.capture = _capturer()
 
     def test_non_vacuite(self):
-        self.assertEqual(len(self.capture['modeles']), 18)
+        self.assertEqual(len(self.capture['modeles']), 19)
         for nom, d in self.capture['modeles'].items():
             self.assertTrue(d['fields'], nom)
             self.assertEqual(d['app_label'], 'ventes', nom)

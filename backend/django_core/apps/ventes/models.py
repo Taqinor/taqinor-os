@@ -2535,6 +2535,7 @@ from .models_facturation import (  # noqa: E402,F401
     AffectationPaiement,
     BonCommande,
     FactureActivity,
+    FacturePenalite,
     FactureSource,
     LigneLivraisonBC,
     LigneNoteDebit,

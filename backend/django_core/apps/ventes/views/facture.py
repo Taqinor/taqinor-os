@@ -1772,19 +1772,60 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # au grand livre, et sans consulter le blocage crédit du client.
         from ..domain.facturation_ops import EmissionRefusee, emettre_facture
         from ..domain.recouvrement import CreditHoldError
+        from ..models import FacturePenalite
+        from django.db import IntegrityError
+
+        def _deja_facturee(liaison):
+            return Response(
+                {'detail': (
+                    'Pénalités déjà facturées pour ce niveau : '
+                    f'{liaison.facture_penalite.reference}.')},
+                status=status.HTTP_409_CONFLICT)
+
         try:
             with transaction.atomic():
+                # AFAC50 (C-AFAC-040 a) — idempotent par (facture, niveau) :
+                # verrou sur la facture d'origine, puis liaison durable lue
+                # AVANT toute numérotation (un double clic ne consomme aucun
+                # numéro et n'émet rien).
+                Facture.objects.select_for_update().get(pk=facture.pk)
+                liaison = (FacturePenalite.objects.select_for_update()
+                           .select_related('facture_penalite')
+                           .filter(facture_origine=facture,
+                                   niveau=niveau['ordre']).first())
+                if liaison is not None and \
+                        liaison.facture_penalite.statut != \
+                        Facture.Statut.ANNULEE:
+                    return _deja_facturee(liaison)
                 facture_penalite = create_numbered(
                     Facture, facture.company, 'facture', _create)
                 emettre_facture(
                     facture_penalite, user=request.user,
                     source='penalites_retard')
+                if liaison is not None:
+                    # Facture de pénalités ANNULÉE : la liaison pointe la
+                    # nouvelle.
+                    liaison.facture_penalite = facture_penalite
+                    liaison.save(update_fields=['facture_penalite'])
+                else:
+                    FacturePenalite.objects.create(
+                        company=facture.company, facture_origine=facture,
+                        niveau=niveau['ordre'],
+                        facture_penalite=facture_penalite)
         except EmissionRefusee as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)
+        except IntegrityError:
+            # Course perdue contre un appel concurrent (contrainte d'unicité).
+            liaison = FacturePenalite.objects.select_related(
+                'facture_penalite').filter(
+                    facture_origine=facture, niveau=niveau['ordre']).first()
+            if liaison is None:
+                raise
+            return _deja_facturee(liaison)
         from .. import activity
         activity.log_facture_penalite_facturee(
             facture, request.user, facture_penalite, penalite)

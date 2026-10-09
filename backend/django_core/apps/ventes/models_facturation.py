@@ -1031,3 +1031,34 @@ class LigneLivraisonBC(models.Model):
 
     def __str__(self):
         return f'{self.livraison_id} / ligne {self.ligne_devis_id} = {self.quantite_livree}'
+
+
+class FacturePenalite(models.Model):
+    """AFAC50 (C-AFAC-040 a) — liaison DURABLE entre une facture d'origine et
+    LA facture de pénalités de retard émise pour un niveau de relance :
+    ``facturer-penalites`` est idempotent par (facture, niveau). Une facture
+    de pénalités ANNULÉE libère le niveau (la liaison est re-pointée sur la
+    nouvelle) ; un niveau supérieur ouvre une nouvelle liaison."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='factures_penalite')
+    facture_origine = models.ForeignKey(
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: liaison sans objet si facture d'origine supprimée
+        related_name='liaisons_penalite')
+    niveau = models.PositiveIntegerField()
+    facture_penalite = models.ForeignKey(
+        'facturation.Facture', on_delete=models.PROTECT,
+        related_name='liaisons_penalite_source')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Facture de pénalités'
+        verbose_name_plural = 'Factures de pénalités'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['facture_origine', 'niveau'],
+                name='uniq_facture_penalite_par_niveau'),
+        ]
+
+    def __str__(self):
+        return f'Pénalités {self.facture_origine_id} / niveau {self.niveau}'
