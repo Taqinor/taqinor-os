@@ -4755,16 +4755,22 @@ def lead_capi_identifiers(company, lead_id):
     JAMAIS de donnée interne (aucun prix_achat n'existe côté lead)."""
     if not lead_id:
         return None
+    from .dsr_provider import LEAD_NOM_ANONYMISE
     from .models import Lead
     lead = (Lead.objects
             .filter(pk=lead_id, company=company)
             .only('id', 'external_system', 'external_id', 'telephone', 'email',
-                  'fbclid', 'canal', 'source')
+                  'fbclid', 'canal', 'source', 'nom')
             .first())
     if lead is None:
         return None
+    # AACQ20 — un lead EFFACÉ (DSR/rétention) ne fournit plus aucun
+    # identifiant publicitaire : ``external_id`` est gardé en base pour la
+    # dédup anti-résurrection, jamais renvoyé ici.
+    is_erased = lead.nom == LEAD_NOM_ANONYMISE
     leadgen_id = ''
-    if lead.external_system == _META_LEAD_ADS_SYSTEM and lead.external_id:
+    if (not is_erased and lead.external_system == _META_LEAD_ADS_SYSTEM
+            and lead.external_id):
         leadgen_id = str(lead.external_id)
     meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
     is_meta_origin = (
@@ -4776,8 +4782,9 @@ def lead_capi_identifiers(company, lead_id):
         'leadgen_id': leadgen_id,
         'phone': lead.telephone or '',
         'email': lead.email or '',
-        'fbclid': lead.fbclid or '',
+        'fbclid': '' if is_erased else (lead.fbclid or ''),
         'is_meta_origin': is_meta_origin,
+        'is_erased': is_erased,
     }
 
 
@@ -4791,10 +4798,14 @@ def meta_lead_match_coverage(company):
     Le score EMQ réel (0-10) exige l'API Dataset Quality de Meta (séparée) ; ce
     proxy local rend « visible » la qualité de match côté ERP en attendant.
     Renvoie ``{'meta_leads', 'with_leadgen_id', 'with_phone', 'strong_match'}``."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
     from .models import Lead
     meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
-    qs = Lead.objects.filter(company=company, is_archived=False).only(
-        'external_system', 'external_id', 'telephone', 'canal', 'source')
+    # AACQ20 — un lead effacé ne compte plus dans la couverture de match.
+    qs = (Lead.objects.filter(company=company, is_archived=False)
+          .exclude(nom=LEAD_NOM_ANONYMISE)
+          .only('external_system', 'external_id', 'telephone', 'canal',
+                'source'))
     meta_leads = with_leadgen = with_phone = strong = 0
     for lead in qs:
         is_meta = (lead.canal in meta_canaux

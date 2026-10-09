@@ -246,13 +246,19 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # ClientViewSet le purgeait déjà ; le chemin DSR — le seul qui réponde
     # à une demande LÉGALE d'effacement — l'oubliait des deux côtés.
     le.custom_data = None
+    # AACQ20 — les identifiants de CLIC publicitaire partent aussi : un lead
+    # effacé ne doit plus rien fournir au CAPI. ``external_id`` reste (dédup
+    # anti-résurrection au rejeu webhook) — le sélecteur CAPI ne le renvoie
+    # plus pour un lead effacé.
+    le.fbclid = ''
+    le.gclid = ''
     # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
     # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
     # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
     # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
     le.save(update_fields=[
         'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
-        'appareil_id', 'custom_data',
+        'appareil_id', 'custom_data', 'fbclid', 'gclid',
         'email_normalise', 'phone_normalise'])
     # Les traces de traçage du lead perdent leurs identifiants (IP,
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
