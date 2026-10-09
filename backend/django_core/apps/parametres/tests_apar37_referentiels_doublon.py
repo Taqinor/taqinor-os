@@ -49,7 +49,7 @@ class ReferentielsDoublonTests(TestCase):
             ConditionPaiement.objects.filter(company=self.company).count(),
             avant)
 
-    def test_code_doublon_400(self):
+    def test_code_doublon_409(self):
         for route, corps in (
                 ('taux-tva/', {'code': 'apar37', 'libelle': 'T', 'taux': '7'}),
                 ('unites-mesure/', {'code': 'apar37', 'libelle': 'U'})):
@@ -57,8 +57,12 @@ class ReferentielsDoublonTests(TestCase):
                 r1 = self.api.post(BASE + route, corps, format='json')
                 self.assertEqual(r1.status_code, 201, r1.data)
                 r2 = self.api.post(BASE + route, corps, format='json')
-                self.assertEqual(r2.status_code, 400, r2.data)
-                self.assertIn('code', r2.data)
+                # ENF2 (décision fondateur 09/10) : un doublon par société
+                # répond 409 `unique_conflict` (exigé par l'api-fuzz), le
+                # champ fautif toujours nommé dans l'enveloppe d'erreur.
+                self.assertEqual(r2.status_code, 409, r2.data)
+                self.assertEqual(r2.data['error']['code'], 'unique_conflict')
+                self.assertIn('code', str(r2.data['error'].get('fields')))
 
     def test_introspection_tout_referentiel_a_contrainte_est_garde(self):
         for nom in dir(sr):
