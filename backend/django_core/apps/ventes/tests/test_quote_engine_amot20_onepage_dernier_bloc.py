@@ -11,7 +11,7 @@ seul (retirer ``_bas_bloc_fin`` de ``_mesure_onepage``) ⇒
 """
 import unittest
 
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from apps.ventes.models import Devis
 from apps.ventes.quote_engine import generate_devis_premium as G
@@ -28,6 +28,7 @@ except Exception:  # noqa: BLE001
 
 
 @unittest.skipUnless(_WEASY, "WeasyPrint absent : mesure impossible")
+@tag('pdf')
 class OnepageDernierBlocTests(TestCase):
     def setUp(self):
         self.company = make_company(slug='amot20-co', nom='AMOT20')

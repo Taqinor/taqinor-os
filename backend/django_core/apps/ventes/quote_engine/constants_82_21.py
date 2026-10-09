@@ -11,7 +11,7 @@ seuils et ``regime_8221_suggere`` sont des RÉ-EXPORTS du noyau
 ``core.reglementaire.regime_8221`` (CIQ612, seule source).
 
 QXMT (18/08/2026) : ce module porte AUSSI le barème MOYENNE TENSION ONEE
-(``TARIF_MT_ONEE``) utilisé par l'étude industrielle/commerciale quand le
+(``_officiels.MT_GENERAL``) utilisé par l'étude industrielle/commerciale quand le
 dossier est raccordé en MT.
 """
 from __future__ import annotations
@@ -122,10 +122,8 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
 # ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
 # CIQ202 : UNE seule source — ``apps/parametres/tarifs_officiels.py`` (module
 # PUR de fondation, chaque valeur avec {source_url, page_audience, releve_le,
-# inchange_depuis}). Ce dict LIT ce module : aucune valeur recopiée ici.
-# Miroir JS : ``TARIF_MT_ONEE`` de frontend/src/features/ventes/solar.js
-# (parité testée dans tests/test_qx50_injection_82_21.py ; le miroir disparaît
-# avec CIQ228).
+# inchange_depuis}). Aucune valeur n'est recopiée ici.
+# (Le miroir JS a disparu avec CIQ228.)
 #
 # RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, D-CIQ-4). Les prix sont
 # TTC TELS QUE PUBLIÉS : la page ONEE garde un libellé « TVA 18 % » périmé
@@ -140,19 +138,9 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
 # NB nomenclature : « C1 / C2 » n'existe PAS comme option tarifaire MT chez
 # l'ONEE — la MT n'a qu'un « Tarif Général (MT) » ; les options TLU/MU/CU/TCU
 # et « Super Pointe » sont réservées à la HT/THT.
-TARIF_MT_ONEE = {
-    # Redevance de consommation par poste horaire, DH/kWh TTC publié.
-    "POINTE": _officiels.MT_GENERAL['pointe']['valeur'],
-    "PLEINES": _officiels.MT_GENERAL['pleines']['valeur'],
-    "CREUSES": _officiels.MT_GENERAL['creuses']['valeur'],
-    # Prime fixe, DH par kVA souscrit et par an. DÉLIBÉRÉMENT NON déduite des
-    # économies : le solaire ne réduit pas la puissance souscrite.
-    "PRIME_PUISSANCE_DH_KVA_AN":
-        _officiels.MT_GENERAL['prime_fixe_kva_an']['valeur'],
-    # Plages horaires PUBLIÉES (heure GMT, intervalles [de_h, a_h)) : schéma
-    # one.org.ma/images/horr.jpg, page bi-horaire ; décision ANRE 04/26 art. 7.
-    "PLAGES_H": _officiels.POSTES_MT,
-}
+# AMOT75 : le dict ``TARIF_MT_ONEE`` (jumeau sans lecteur de production) est
+# retiré ; les valeurs se lisent directement dans ``_officiels.MT_GENERAL`` /
+# ``_officiels.POSTES_MT`` (seule source).
 
 # Mention affichée avec TOUT chiffre issu du barème MT (jamais un chiffre nu).
 MENTION_MT = (

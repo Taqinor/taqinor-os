@@ -105,30 +105,42 @@ class TestRegimeReexporte(SimpleTestCase):
 class TestTarifMtSource(SimpleTestCase):
     """QXMT — barème ONEE « Tarif Général (MT) » (one.org.ma, 18/08/2026)."""
 
+    def setUp(self):
+        from apps.parametres import tarifs_officiels as t
+        mt = t.MT_GENERAL
+        self.tarif = {
+            'POINTE': mt['pointe']['valeur'],
+            'PLEINES': mt['pleines']['valeur'],
+            'CREUSES': mt['creuses']['valeur'],
+            'PRIME_PUISSANCE_DH_KVA_AN': mt['prime_fixe_kva_an']['valeur'],
+            'PLAGES_H': t.POSTES_MT,
+        }
+
     def test_postes_horaires_sources(self):
-        self.assertAlmostEqual(c.TARIF_MT_ONEE['POINTE'], 1.4157, places=4)
-        self.assertAlmostEqual(c.TARIF_MT_ONEE['PLEINES'], 1.0101, places=4)
-        self.assertAlmostEqual(c.TARIF_MT_ONEE['CREUSES'], 0.7398, places=4)
+        self.assertAlmostEqual(self.tarif['POINTE'], 1.4157, places=4)
+        self.assertAlmostEqual(self.tarif['PLEINES'], 1.0101, places=4)
+        self.assertAlmostEqual(self.tarif['CREUSES'], 0.7398, places=4)
 
     def test_ordre_des_postes(self):
         # Garde-fou métier : pointe > pleines > creuses, toujours.
-        self.assertGreater(c.TARIF_MT_ONEE['POINTE'], c.TARIF_MT_ONEE['PLEINES'])
-        self.assertGreater(c.TARIF_MT_ONEE['PLEINES'], c.TARIF_MT_ONEE['CREUSES'])
+        self.assertGreater(self.tarif['POINTE'], self.tarif['PLEINES'])
+        self.assertGreater(self.tarif['PLEINES'], self.tarif['CREUSES'])
 
     def test_prime_puissance_sourcee(self):
         self.assertAlmostEqual(
-            c.TARIF_MT_ONEE['PRIME_PUISSANCE_DH_KVA_AN'], 512.62, places=2)
+            self.tarif['PRIME_PUISSANCE_DH_KVA_AN'], 512.62, places=2)
 
     def test_tva_libelle_page_n_est_plus_une_cle(self):
         # CIQ202 : le libellé « TVA 18 % » de la page est périmé (taux légal
         # 2026 : 20 %) ; il n'est plus une clé du barème.
-        self.assertNotIn('TVA_INCLUSE_PCT', c.TARIF_MT_ONEE)
+        self.assertNotIn('TVA_INCLUSE_PCT', self.tarif)
+        self.assertFalse(hasattr(c, 'TARIF_MT_ONEE'))
         self.assertIn('taux légal 2026 : 20 %', c.MENTION_MT)
 
     def test_plages_horaires_sourcees(self):
         # CIQ202 : les plages sont PUBLIÉES (schéma one.org.ma/images/horr.jpg,
         # page bi-horaire, décision ANRE 04/26 art. 7) — plus jamais ``None``.
-        plages = _plages_py(c.TARIF_MT_ONEE['PLAGES_H'])
+        plages = _plages_py(self.tarif['PLAGES_H'])
         self.assertIn(('hiver', 'pointe', 17, 22), plages)
         self.assertIn(('ete', 'pointe', 18, 23), plages)
         self.assertEqual(c.poste_horaire(12, 18), 'pointe')
@@ -144,15 +156,6 @@ class TestTarifMtSansJumeauJs(SimpleTestCase):
     Le miroir JS (`TARIF_MT_ONEE`, `tarifMtMoyen`, `netTarif8221`,
     `INJECTION_82_21`) est SUPPRIMÉ de solar.js : la parité est remplacée par
     la preuve de son ABSENCE (la valeur vient d'`economie_ci`)."""
-
-    def test_constants_lit_la_fondation(self):
-        from apps.parametres import tarifs_officiels as t
-        self.assertEqual(c.TARIF_MT_ONEE['POINTE'], t.MT_GENERAL['pointe']['valeur'])
-        self.assertEqual(c.TARIF_MT_ONEE['PLEINES'], t.MT_GENERAL['pleines']['valeur'])
-        self.assertEqual(c.TARIF_MT_ONEE['CREUSES'], t.MT_GENERAL['creuses']['valeur'])
-        self.assertEqual(c.TARIF_MT_ONEE['PRIME_PUISSANCE_DH_KVA_AN'],
-                         t.MT_GENERAL['prime_fixe_kva_an']['valeur'])
-        self.assertIs(c.TARIF_MT_ONEE['PLAGES_H'], t.POSTES_MT)
 
     def test_solar_js_sans_symboles_de_valorisation_ci(self):
         with open(SOLAR_JS, encoding='utf-8') as fh:
