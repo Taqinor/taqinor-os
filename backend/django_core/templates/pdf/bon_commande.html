@@ -50,6 +50,24 @@
 
     .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
     .footer .footer-legal { font-size: 9.5px; color: #b0bec5; margin-top: 4px; }
+    /* APDF28 (C-APDF-010) — règle @page commune (facture, avoir, note de
+       débit, bon de commande) : CHAQUE page porte l'émetteur, son ICE, la
+       référence du document et « Page i / N » — une page isolée reste
+       rattachable à son document. */
+    @page {
+      @top-left {
+        content: "{{ (entreprise_nom or '')|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}{% if entreprise_ice %} — ICE {{ entreprise_ice|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}{% endif %}";
+        font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
+      }
+      @top-right {
+        content: "{{ (bc.reference or '')|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}";
+        font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " / " counter(pages);
+        font-size: 8px; color: #64748b;
+      }
+    }
   </style>
 </head>
 <body>

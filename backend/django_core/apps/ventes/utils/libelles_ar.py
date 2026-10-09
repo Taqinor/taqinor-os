@@ -60,6 +60,8 @@ LIBELLES = {
         'voir_ventilation': 'voir ventilation',
         # APDF26 (C-APDF-008) — date de livraison / prestation.
         'date_livraison': 'Date de livraison / prestation',
+        # APDF28 — numérotation des pages.
+        'page': 'Page',
     },
     'ar': {
         'facture': 'فاتورة',
@@ -97,6 +99,7 @@ LIBELLES = {
         'note_debit': 'إشعار مدين',
         'voir_ventilation': 'انظر التفصيل',
         'date_livraison': 'تاريخ التسليم / الخدمة',
+        'page': 'صفحة',
     },
 }
 
