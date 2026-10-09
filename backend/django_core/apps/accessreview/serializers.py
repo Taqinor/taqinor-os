@@ -1,7 +1,16 @@
 """Sérialiseurs de la gouvernance des accès (NTSEC19/20)."""
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.roles.permissions_registre import ALL_PERMISSIONS
+
 from .models import AccessReviewCampaign, AccessReviewItem, SodRule
+
+
+@extend_schema_field({'type': 'string', 'enum': list(ALL_PERMISSIONS)})
+class PermissionCodeField(serializers.CharField):
+    """Code de permission du catalogue ``roles.ALL_PERMISSIONS`` (ENF10 :
+    le schéma déclare l'énum que ``_valider_code`` impose côté serveur)."""
 
 
 class AccessReviewItemSerializer(serializers.ModelSerializer):
@@ -28,6 +37,9 @@ class AccessReviewCampaignSerializer(serializers.ModelSerializer):
 
 
 class SodRuleSerializer(serializers.ModelSerializer):
+    permission_a = PermissionCodeField(max_length=100)
+    permission_b = PermissionCodeField(max_length=100)
+
     class Meta:
         model = SodRule
         fields = [
