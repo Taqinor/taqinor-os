@@ -1303,10 +1303,30 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     }
 
 
-# Clé solaire saisonnière FIXE (somme = 1,000) : forme d'une économie annuelle
+# Clé solaire saisonnière (somme = 1) : forme d'une économie annuelle
 # répartie sur douze mois quand aucun moteur n'a calculé les mois un par un.
-CLE_SOLAIRE_MENSUELLE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                         0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
+# AMOT27 (C-AMOT-027) — DÉRIVÉE des poids GHI sourcés
+# (``constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS``, table verrouillée DC9) : la
+# MÊME forme que la production imprimée ; plus aucun littéral recopié.
+from .constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS as _POIDS_GHI  # noqa: E402
+
+CLE_SOLAIRE_MENSUELLE = tuple(_POIDS_GHI)
+
+
+def repartir_mensuel(total, cle=CLE_SOLAIRE_MENSUELLE):
+    """AMOT27 — ``total`` (MAD/an) réparti sur 12 mois ∝ ``cle``, au dirham,
+    Σ des mois = ``round(total)`` exactement (plus forts restes)."""
+    cible = int(round(float(total or 0)))
+    poids = [float(p) for p in cle]
+    somme = sum(poids) or 1.0
+    bruts = [cible * p / somme for p in poids]
+    mois = [int(b) for b in bruts]
+    reste = cible - sum(mois)
+    ordre = sorted(range(len(bruts)), key=lambda i: bruts[i] - mois[i],
+                   reverse=True)
+    for i in ordre[:max(0, reste)]:
+        mois[i] += 1
+    return mois
 
 
 def repartir_economie_plafonnee(economie_annuelle, factures_mensuelles,
@@ -1723,9 +1743,9 @@ def calculate_savings_roi(
     if eco_monthly_reel:
         eco_s_monthly, eco_a_monthly = eco_monthly_reel
     else:
-        _SF = CLE_SOLAIRE_MENSUELLE
-        eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
-        eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
+        # AMOT27 — la forme GHI de la production, Σ = annuel au dirham.
+        eco_s_monthly = repartir_mensuel(economie_opt1)
+        eco_a_monthly = repartir_mensuel(economie_opt2)
 
     return {
         "prod_kwh":         production_annuelle,
