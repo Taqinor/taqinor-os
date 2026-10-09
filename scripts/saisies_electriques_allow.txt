@@ -1,0 +1,8 @@
+# Base de reference de check_saisies_electriques_branchees.py (ACAL322).
+# Une ligne = une cle admise par le serveur SANS ecran (ecrivain) ou SANS
+# lecteur backend. DETTE : ne peut que RETRECIR (--write-baseline refuse
+# d'ajouter).
+entree::derogations::ecran  # ACAL322 saisie non branchée
+registre::electrique_societe.borne_usuelle_dc_ac::lecteur  # ACAL322 saisie non branchée
+registre::electrique_societe.seuil_alerte_dc_ac::lecteur  # ACAL322 saisie non branchée
+registre::electrique_societe.seuil_bas_dc_ac::lecteur  # ACAL322 saisie non branchée

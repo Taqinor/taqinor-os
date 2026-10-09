@@ -67,6 +67,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend" / "django_core"
 
+
+def _rel_parts(path, base=BACKEND):
+    """ADEP27 - parties du chemin RELATIVES a la racine du depot : un depot
+    range sous un dossier nomme `build/`, `dist/` ou `tests/` doit donner le
+    meme verdict (jamais tester les dossiers du chemin absolu)."""
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return path.parts
+
+
 # ── Methodes de LECTURE de l'API Odoo (jamais un rouge) ────────────────────
 METHODES_LECTURE = frozenset({
     'search_read', 'search', 'search_count', 'read', 'read_group',
@@ -135,7 +146,7 @@ def _est_test(rel: str) -> bool:
 def _fichiers_python():
     for path in sorted(BACKEND.rglob('*.py')):
         rel = path.relative_to(BACKEND).as_posix()
-        if any(part in DOSSIERS_IGNORES for part in path.parts):
+        if any(part in DOSSIERS_IGNORES for part in _rel_parts(path)):
             continue
         yield rel, path
 

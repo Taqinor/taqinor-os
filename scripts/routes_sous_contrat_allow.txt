@@ -1,0 +1,11 @@
+# Base de reference de check_calepinage_routes_sous_contrat.py (ACAL348).
+# Une ligne = une route GET du module calepinage qu'AUCUN contract_samples
+# ne cite. DETTE : ne peut que RETRECIR (--write-baseline refuse d'ajouter).
+GET~calepinages/<>/apercu-document  # ACAL348 route sans contrat
+GET~calepinages/<>/export-layout  # ACAL348 route sans contrat
+GET~calepinages/<>/variantes  # ACAL348 route sans contrat
+GET~calepinages/<>/variantes/<>  # ACAL348 route sans contrat
+GET~calepinages/<>/versions  # ACAL348 route sans contrat
+GET~calepinages/modeles  # ACAL348 route sans contrat
+GET~parametres/profils-types  # ACAL348 route sans contrat
+GET~parametres/suggestion-pente  # ACAL348 route sans contrat

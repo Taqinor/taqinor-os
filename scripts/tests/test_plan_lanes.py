@@ -879,6 +879,21 @@ class TaskLineGrammarTests(unittest.TestCase):
             0,
         )
 
+    def test_check_pool_compte_chaque_fichier(self):
+        # ADEP28 : `a.md b.md --check` doit compter les lignes mal formees de
+        # CHAQUE fichier du pool (avant : seulement du premier).
+        saine = self._plan("- [ ] ZZADEP28 — **Tache saine.** (@lane: apps/zz)")
+        bancale = self._plan(self.NEGATIF)
+        def lancer(*fichiers):
+            sortie = io.StringIO()
+            with contextlib.redirect_stderr(sortie), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                return pl.main([*map(str, fichiers), "--check"])
+        self.assertEqual(lancer(saine), 0)
+        self.assertEqual(lancer(bancale), 1)
+        self.assertEqual(lancer(saine, bancale), 1)
+        self.assertEqual(lancer(bancale, saine), 1)
+
     # --- contrôle négatif ---------------------------------------------------
     def test_NEGATIF_un_mot_de_prose_n_est_pas_un_identifiant(self):
         self.assertIsNone(pl._TASK_LIST_RE.match(self.NEGATIF))

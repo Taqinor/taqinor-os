@@ -1912,7 +1912,9 @@ def main(argv: list[str] | None = None) -> int:
         check_failed = True
 
     if args.check:
-        malformed = count_malformed(path)
+        # ADEP28 : CHAQUE fichier du pool, pas seulement le premier — une ligne
+        # mal formee du 2e fichier d'un pool « work on all plans » rendait 0.
+        malformed = sum(count_malformed(pth) for pth in paths)
         if malformed:
             print(
                 f"\n{malformed} line(s) look like a checklist task "
