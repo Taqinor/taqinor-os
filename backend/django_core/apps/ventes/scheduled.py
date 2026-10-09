@@ -120,6 +120,20 @@ def check_overdue_factures():
     return flipped
 
 
+def _promesse_honoree(promesse, facture):
+    """AFAC49 — Σ des encaissements VALIDES (paiements non rejetés) reçus
+    depuis la création de la promesse ≥ ``montant_promis``."""
+    from decimal import Decimal
+    from .models import Paiement
+    depuis = promesse.date_creation.date() if promesse.date_creation else None
+    recu = sum(
+        (p.montant for p in facture.paiements.all()
+         if p.statut != Paiement.Statut.REJETE
+         and (depuis is None or p.date_paiement >= depuis)),
+        Decimal('0'))
+    return recu >= (promesse.montant_promis or Decimal('0')) > 0
+
+
 def _check_promesses_expirees(today):
     """XFAC5 — marque ``rompue`` toute promesse ``en_cours`` dont la date est
     dépassée SANS encaissement suffisant, et libère la suspension de relance
@@ -143,7 +157,11 @@ def _check_promesses_expirees(today):
         'facture__retenues_subies', 'facture__affectations_paiement')
     for promesse in en_cours:
         facture = promesse.facture
-        if facture.montant_exigible <= 0:  # CIQ214 — exigible réglé
+        if facture.montant_exigible <= 0 \
+                or _promesse_honoree(promesse, facture):
+            # CIQ214 — exigible réglé ; AFAC49 (D-AFAC-C10, option a) — ou le
+            # client a payé AU MOINS le montant promis depuis la promesse,
+            # même si un solde reste dû : la promesse est TENUE.
             promesse.statut = PromessePaiement.Statut.TENUE
             promesse.save(update_fields=['statut'])
             continue
