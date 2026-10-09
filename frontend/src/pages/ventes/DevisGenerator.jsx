@@ -91,7 +91,7 @@ import {
   // `COMMERCIAL_CATEGORIES` sont partis avec les panneaux de marché qui les
   // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
   // supprimée : le moteur serveur C&I est la seule source.
-  DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
+  DEFAULT_MONTHLY_BILLS,
   formatMoney, estimerMois, htFromTtc,
   comptePanneauxOption,
   kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
@@ -532,7 +532,9 @@ export default function DevisGenerator({
     motifMoteur: sizingServeurMessage,
     compositionSeq: recalcDimTick,
   } = sizing
-  const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
+  // AGNR44 / D-AGNR-2 (a) — plus de curseur : la part diurne du repli local
+  // est l'hypothèse PAR DÉFAUT du marché (jamais enregistrée ni imprimée).
+  const dayUsage = partDiurneParDefaut(modeInstallation)
 
   // ── Lignes (prix TTC, comme le simulateur) & remise ──
   const [lines, setLines] = useState([])
@@ -715,7 +717,7 @@ export default function DevisGenerator({
   } = useBrouillonEcran({
     editId, leadId, clientId, dateValidite, scenario, recommendedChoice, note, fHiver, fEte,
     monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh, realBillSaisi,
-    distributeurChoisi, nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines,
+    distributeurChoisi, nbPanneaux, panelW, structureType, structureProduitId, lines,
     tauxTva, discountPct, multiMode, nombreProprietes, villaGroups, modeInstallation,
     consoMensuelle, categorieCommerciale, commercialAnswers, tensionRaccordement, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched, pompeCv, pompeType,
@@ -725,7 +727,7 @@ export default function DevisGenerator({
     editDevis, setLeadId, setClientId, setDateValidite, dispatchSizing, setRecommendedChoice,
     setNote, setFHiver, setFEte, setMonthly, setConditions, setEcheancierSaisie, setTarifSaisie,
     setEcoCi, setProvenanceMois, setDistributeur, setRealBillMode, setRealBillMad, setRealBillKwh,
-    setRealBillSaisi, setDistributeurChoisi, setDayUsage, setLines, linesInitialized, setTauxTva,
+    setRealBillSaisi, setDistributeurChoisi, setLines, linesInitialized, setTauxTva,
     setDiscountPct, setMultiMode, setNombreProprietes, setVillaGroups, setConsoMensuelle,
     setCategorieCommerciale, setCommercialAnswers, setProfilCi, setPrixCible, setRemiseMax,
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
@@ -925,11 +927,6 @@ export default function DevisGenerator({
     sizing, dispatchSizing, produits,
   })
 
-  // ── QJR641 — Marché → autoconsommation diurne par défaut (simulateur) ──
-  const appliquerPartDiurneDuMarche = (mode) => {
-    setDayUsage(partDiurneParDefaut(mode))
-  }
-
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
   // APX17 — la confirmation QX23 vit maintenant dans `onModeChangeUi` (le SEUL
   // chemin où l'utilisateur choisit lui-même un marché). `appliquerMarcheEcran`
@@ -947,7 +944,6 @@ export default function DevisGenerator({
   const appliquerMarcheEcran = (m, origine) => {
     if (m === modeInstallation) return
     dispatchSizing({ type: 'MARCHE_CHANGE', mode: m, origine })
-    appliquerPartDiurneDuMarche(m)
   }
   // Chemins PROGRAMMATIQUES (pré-remplissage lead/payload, rechargement d'un
   // brouillon) : ils appellent `appliquerMarcheEcran(m, 'programme')`
@@ -1132,7 +1128,7 @@ export default function DevisGenerator({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
-    appliquerPartDiurneDuMarche, appliquerEntreesPompage,
+    appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
     pompeCv, pompeHmt, pompeDebit, baremeSociete,
   })
@@ -1146,13 +1142,13 @@ export default function DevisGenerator({
     setClientId, setDateValidite, setNote, setEcheancierSaisieBrut, echeancierAEnvoyer,
     setConditions, conditionsServies, setFHiver, setFEte, setMonthly: poserMoisRelus, setDistributeur,
     setRealBillMode, setRealBillKwh, setDistributeurChoisi, consoStockee, modeInstallation,
-    setDayUsage, setLines, setLeadValeursModifiees, setTauxTva, setDiscountPct, linesInitialized,
+    setLines, setLeadValeursModifiees, setTauxTva, setDiscountPct, linesInitialized,
     setMultiMode, setNombreProprietes, setVillaGroups, setConsoMensuelle, setProfilCi,
     setTarifSaisie, setEcoCi, setCategorieCommerciale, setCommercialAnswers, setPrixCible,
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
     setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
     setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
-    setFarmHmtDrawdown, setPompageSaisie, clear, appliquerPartDiurneDuMarche, baremeSociete,
+    setFarmHmtDrawdown, setPompageSaisie, clear, baremeSociete,
   })
 
   // ── Réglages entreprise (Paramètres) → valeurs par défaut du générateur ──
@@ -1913,7 +1909,7 @@ export default function DevisGenerator({
           structureProduitId={structureProduitId} structureType={structureType}
           sizingInfo={sizingInfo} modeInstallation={modeInstallation} showSans={showSans}
           deuxValeursDim={deuxValeursDim} showAvec={showAvec}
-          sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage} setDayUsage={setDayUsage}
+          sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage}
           errors={errors} pompageManquants={pompageManquants} autoFillLoading={autoFillLoading}
           marcheCi={marcheCi} apercuCi={apercuCi} fHiver={fHiver}
           recalculerDimensionnement={recalculerDimensionnement}

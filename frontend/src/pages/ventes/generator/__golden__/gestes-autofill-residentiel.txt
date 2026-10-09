@@ -81,8 +81,7 @@ Puissance PV (kWp) — calculée
 Type de Structure
 Acier galvanisé
 Aluminium
-Consommation diurne (%)
-60%
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
@@ -239,81 +238,80 @@ gen-realbill=
 gen-kwc-cible=5.68
 gen-nbpanneaux=8
 gen-panelw=710
-#28=60
-#29=on [ ]
-#30=Onduleur réseau Huawei 5kW Monophasé
+#28=on [ ]
+#29=Onduleur réseau Huawei 5kW Monophasé
 line-qty=1
-#32=16800.00
-#33=20
+#31=16800.00
+#32=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#35=Onduleur hybride Deye 5kW Monophasé
+#34=Onduleur hybride Deye 5kW Monophasé
 line-qty=1
-#37=20400.00
-#38=20
+#36=20400.00
+#37=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#40=Smart Meter
+#39=Smart Meter
 line-qty=1
-#42=2160.00
-#43=20
+#41=2160.00
+#42=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#45=Wifi Dongle
+#44=Wifi Dongle
 line-qty=1
-#47=1440.00
-#48=20
+#46=1440.00
+#47=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#50=Panneau Canadien Solar 710W
+#49=Panneau Canadien Solar 710W
 line-qty=8
-#52=1740.00
-#53=20
+#51=1740.00
+#52=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#55=Batterie Dyness 5 kWh
+#54=Batterie Dyness 5 kWh
 line-qty=1
-#57=19200.00
-#58=20
+#56=19200.00
+#57=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#60=Structures acier
+#59=Structures acier
 line-qty=8
-#62=600.00
-#63=20
+#61=600.00
+#62=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#65=Socles
+#64=Socles
 line-qty=16
-#67=96.00
-#68=20
+#66=96.00
+#67=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#70=Câble solaire Nexans 6 mm² (au mètre)
+#69=Câble solaire Nexans 6 mm² (au mètre)
 line-qty=60
-#72=17.28
-#73=20
+#71=17.28
+#72=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#75=Câble de terre Nexans 6 mm² (au mètre)
+#74=Câble de terre Nexans 6 mm² (au mètre)
 line-qty=40
-#77=17.28
-#78=20
+#76=17.28
+#77=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#80=Accessoires
+#79=Accessoires
 line-qty=1
-#82=500.00
-#83=20
+#81=500.00
+#82=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#85=Tableau De Protection AC/DC
+#84=Tableau De Protection AC/DC
 line-qty=1
-#87=1950.00
-#88=20
+#86=1950.00
+#87=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#90=Installation
+#89=Installation
 line-qty=1
-#92=4800.00
-#93=20
+#91=4800.00
+#92=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#95=Transport
+#94=Transport
 line-qty=1
-#97=1200.00
-#98=20
+#96=1200.00
+#97=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#100=0
+#99=0
+#100=
 #101=
-#102=
 == APPELS ==
 {
   "crmApi.getClients": [

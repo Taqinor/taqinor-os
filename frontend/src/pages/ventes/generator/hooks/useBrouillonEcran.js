@@ -16,7 +16,7 @@ export function useBrouillonEcran(ctx) {
   const {
     editId, leadId, clientId, dateValidite, scenario, recommendedChoice, note, fHiver, fEte,
     monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh, realBillSaisi,
-    distributeurChoisi, nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines,
+    distributeurChoisi, nbPanneaux, panelW, structureType, structureProduitId, lines,
     tauxTva, discountPct, multiMode, nombreProprietes, villaGroups, modeInstallation,
     consoMensuelle, categorieCommerciale, commercialAnswers, tensionRaccordement, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched, pompeCv, pompeType,
@@ -26,7 +26,7 @@ export function useBrouillonEcran(ctx) {
     editDevis, setLeadId, setClientId, setDateValidite, dispatchSizing, setRecommendedChoice,
     setNote, setFHiver, setFEte, setMonthly, setConditions, setEcheancierSaisie, setTarifSaisie,
     setEcoCi, setProvenanceMois, setDistributeur, setRealBillMode, setRealBillMad, setRealBillKwh,
-    setRealBillSaisi, setDistributeurChoisi, setDayUsage, setLines, linesInitialized, setTauxTva,
+    setRealBillSaisi, setDistributeurChoisi, setLines, linesInitialized, setTauxTva,
     setDiscountPct, setMultiMode, setNombreProprietes, setVillaGroups, setConsoMensuelle,
     setCategorieCommerciale, setCommercialAnswers, setProfilCi, setPrixCible, setRemiseMax,
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
@@ -50,7 +50,7 @@ export function useBrouillonEcran(ctx) {
     leadId, clientId, dateValidite, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
     realBillSaisi, distributeurChoisi,
-    nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
+    nbPanneaux, panelW, structureType, structureProduitId, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers,
     tensionRaccordement, profilCi,
@@ -66,7 +66,7 @@ export function useBrouillonEcran(ctx) {
     leadId, clientId, dateValidite, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
     realBillSaisi, distributeurChoisi,
-    nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
+    nbPanneaux, panelW, structureType, structureProduitId, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers,
     tensionRaccordement, profilCi,
@@ -190,7 +190,7 @@ export function useBrouillonEcran(ctx) {
     if (d.structureProduitId != null) {
       dispatchSizing({ type: 'SAISI', champ: 'structureProduit', valeur: d.structureProduitId })
     }
-    if (d.dayUsage != null) setDayUsage(d.dayUsage)
+    // AGNR44 — un ancien brouillon peut porter `dayUsage` : ignoré (plus de curseur).
     // eslint-disable-next-line react-hooks/immutability -- linesInitialized : useRef de la coquille reçu du ctx
     if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
     if (d.tauxTva != null) setTauxTva(d.tauxTva)

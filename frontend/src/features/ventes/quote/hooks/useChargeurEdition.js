@@ -20,14 +20,14 @@ export function useChargeurEdition(ctx) {
     captureReferenceJusqua, rechargeEdit, setRechargeEdit, setRecommendedChoice, setLeadId,
     setClientId, setDateValidite, setNote, setEcheancierSaisieBrut, echeancierAEnvoyer,
     setConditions, conditionsServies, setFHiver, setFEte, setMonthly, setDistributeur,
-    setRealBillMode, setRealBillKwh, setDistributeurChoisi, consoStockee, modeInstallation,
-    setDayUsage, setLines, setLeadValeursModifiees, setTauxTva, setDiscountPct, linesInitialized,
+    setRealBillMode, setRealBillKwh, setDistributeurChoisi, consoStockee,
+    setLines, setLeadValeursModifiees, setTauxTva, setDiscountPct, linesInitialized,
     setMultiMode, setNombreProprietes, setVillaGroups, setConsoMensuelle, setProfilCi,
     setTarifSaisie, setEcoCi, setCategorieCommerciale, setCommercialAnswers, setPrixCible,
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
     setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
     setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
-    setFarmHmtDrawdown, setPompageSaisie, clear, appliquerPartDiurneDuMarche, baremeSociete,
+    setFarmHmtDrawdown, setPompageSaisie, clear, baremeSociete,
   } = ctx
 
   // QJR548 — le chargeur `?edit=` se relance quand le devis a été recomposé
@@ -81,8 +81,6 @@ export function useChargeurEdition(ctx) {
       // servi et rend l'état d'écran ; ici on ne fait que le POSER.
       const etat = devisVersEtat(d, { bareme: baremeSociete })
       const pose = (valeur, setter) => { if (valeur !== undefined) setter(valeur) }
-      // Défaut de part diurne du marché (QJR641), avant la valeur persistée.
-      if (etat.mode && etat.mode !== modeInstallation) appliquerPartDiurneDuMarche(etat.mode)
       if (d.lead) {
         setLeadId(etat.leadId)
         // ERR-QAH-VENTES-EDITION-PERD-LEAD — relit le lead par son id et repose
@@ -136,7 +134,6 @@ export function useChargeurEdition(ctx) {
       pose(etat.nombreProprietes, setNombreProprietes)
       pose(etat.villaGroups, setVillaGroups)
       if (etat.tension === 'mt') dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
-      pose(etat.partDiurne, setDayUsage)
       pose(etat.categorieCommerciale, setCategorieCommerciale)
       pose(etat.commercialAnswers, setCommercialAnswers)
       pose(etat.pompe.cv, setPompeCv)

@@ -18,8 +18,8 @@ export const villeEffectiveLead = (lead) => (lead?.ville_effective ?? lead?.vill
 // QJR641 — le Marché est la SEULE source : le sélecteur « Type d'installation »
 // (qui doublonnait le marché sans jamais le changer) est supprimé ; le défaut
 // de la part diurne se DÉRIVE du marché (libellés du simulateur →
-// `DAY_USAGE_DEFAULTS`). La valeur persistée `part_diurne_pct` (QJR528) prime
-// à la réouverture.
+// `DAY_USAGE_DEFAULTS`). AGNR44 / D-AGNR-2 (a) : plus de curseur ni de valeur
+// persistée — le repli local prend toujours ce défaut et le dit.
 export const INST_TYPE_PAR_MODE = {
   residentiel: 'Résidentielle',
   agricole: 'Agricole',

@@ -11,10 +11,10 @@ import { useEffect, useRef } from 'react'
 
 export function useLeadClientEcran(ctx) {
   const {
-    leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
-    setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly, modeInstallation,
+    leads, structuresCatalogue, setSaving, setErrors, dispatchSizing, finish, leadId,
+    setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly,
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
-    appliquerPartDiurneDuMarche, appliquerEntreesPompage,
+    appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
     pompeCv, pompeHmt, pompeDebit, baremeSociete,
   } = ctx
@@ -39,13 +39,6 @@ export function useLeadClientEcran(ctx) {
     // d'installation (autoconsommation par défaut), les champs pompe, la
     // consommation, les factures affichées, et la RÉSOLUTION du balayage local
     // — un reducer pur ne va jamais chercher un chiffre au catalogue.
-    const modeLead = !sizing.touche.mode && lead.type_installation
-      ? LEAD_TYPE_TO_MODE[lead.type_installation] : null
-    // Mode RÉELLEMENT visé par ce pré-remplissage (miroir EXACT du calcul que
-    // fait le reducer) : il décide du type d'installation et du dimensionneur.
-    if (modeLead && modeLead !== modeInstallation) {
-      appliquerPartDiurneDuMarche(modeLead)
-    }
     // Lead agricole : les ENTRÉES de pompage déclarées ou mesurées
     // (`entrees_pompage`, AGR404) — l'alimentation, elle, suit le
     // raccordement DANS la transition ci-dessous. Rien n'est inventé.
@@ -109,12 +102,6 @@ export function useLeadClientEcran(ctx) {
     // ici comme dans le reducer (et non lu sur le rendu précédent) : c'est ce
     // bug-là qui faisait armer au résidentiel une attente que le moteur
     // résidentiel-only ne satisferait jamais pour un profil industriel.
-    const modeLead = !sizing.touche.mode
-        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]
-      ? LEAD_TYPE_TO_MODE[p.type_installation] : null
-    if (modeLead && modeLead !== modeInstallation) {
-      appliquerPartDiurneDuMarche(modeLead)
-    }
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
       // AGR420 — la pompe du profil est la pompe ACTUELLE (information).
       // AGNR17 — un pré-remplissage n'écrase jamais une valeur déjà saisie.

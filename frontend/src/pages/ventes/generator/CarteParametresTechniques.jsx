@@ -17,7 +17,7 @@ import { GenCardHeader } from './CarteMetrique'
 export default function CarteParametresTechniques({
   kwcCible, onKwcCibleChange, nbPanneaux, onNbPanneauxChange, panelW, dispatchSizing, kwp,
   panneauxLignes, produits, structureProduitId, structureType, sizingInfo, modeInstallation,
-  showSans, deuxValeursDim, showAvec, sizingServeurMessage, dayUsage, setDayUsage, errors,
+  showSans, deuxValeursDim, showAvec, sizingServeurMessage, dayUsage, errors,
   pompageManquants, autoFillLoading, marcheCi, apercuCi, fHiver, recalculerDimensionnement,
   avecQuantitesFigees, handleAutoFill, compositionErreur, editDevis, leadValeursModifiees,
   setLeadValeursModifiees, clear, setRechargeEdit, onduleursIncomplets, pompageAutoFilled,
@@ -179,14 +179,13 @@ export default function CarteParametresTechniques({
             {sizingServeurMessage}
           </div>
         )}
-        {/* QJR641 / CIQ126 — curseur du RÉSIDENTIEL seulement : en C&I le
-            profil de charge est celui déclaré au moteur serveur. */}
+        {/* AGNR44 / D-AGNR-2 (a) — plus de curseur : il ne changeait que
+            l'aperçu local (ni enregistré, ni relu, ni imprimé). Le repli
+            local prend la part diurne par défaut du marché et le DIT. */}
         {modeInstallation === 'residentiel' && (
-          <div className="gen-slider-row" data-testid="curseur-part-diurne">
-            <span className="gen-slider-label">Consommation diurne (%)</span>
-            <input type="range" min="10" max="100" step="5" value={dayUsage}
-                   onChange={e => setDayUsage(e.target.value)} />
-            <span className="gen-slider-value">{dayUsage}%</span>
+          <div className="mt-2 text-xs text-muted-foreground" data-testid="part-diurne-defaut">
+            Part de consommation diurne de l'aperçu : {dayUsage} % — hypothèse par défaut
+            (non réglable, non imprimée sur le devis).
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center justify-end gap-3">

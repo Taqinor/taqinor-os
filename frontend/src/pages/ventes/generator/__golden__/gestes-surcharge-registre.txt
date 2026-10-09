@@ -79,8 +79,7 @@ Puissance PV (kWp) — calculée
 Type de Structure
 Acier galvanisé
 Aluminium
-Consommation diurne (%)
-60%
+Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
@@ -234,20 +233,19 @@ gen-realbill=
 gen-kwc-cible=5.72
 gen-nbpanneaux=8
 gen-panelw=715
-#27=60
-#28=on [ ]
-#29=Panneau Canadien Solar 715W
+#27=on [ ]
+#28=Panneau Canadien Solar 715W
 line-qty=8
-#31=1320
-#32=10
+#30=1320
+#31=10
 Ligne optionnelle (add-on hors total)=on [ ]
-#34=Onduleur réseau 5kW Monophasé
+#33=Onduleur réseau 5kW Monophasé
 line-qty=1
-#36=10800
-#37=20
+#35=10800
+#36=20
 Ligne optionnelle (add-on hors total)=on [ ]
-#39=0
-#40=
+#38=0
+#39=
 :id0:=
 overrides-chemin=scenario
 overrides-valeur=
@@ -260,7 +258,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#53=
+#52=
 == APPELS ==
 {
   "crmApi.getClients": [
