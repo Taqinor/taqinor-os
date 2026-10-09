@@ -95,12 +95,14 @@ def cash_flow_forecast(request):
     # AFAC54 (C-AFAC-048) — portée de `FactureViewSet` (créées par soi /
     # l'équipe) : un rôle restreint ne voit pas l'encours des autres.
     from authentication.scoping import scope_queryset
-    open_factures = scope_queryset(
+    # APRF11 — toutes les relations lues par `montant_du`/`montant_exigible`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    open_factures = factures_avec_montant_du(scope_queryset(
         Facture.objects
         .filter(company=company, statut__in=('emise', 'en_retard'))
-        .prefetch_related('paiements', 'avoirs', 'client'),
+        .select_related('client'),
         request.user, ['created_by'],
-    ).order_by('date_echeance')
+    )).order_by('date_echeance')
 
     # Compteurs par bucket.
     buckets = {k: {'montant': Decimal('0'), 'count': 0} for k in [

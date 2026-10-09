@@ -388,11 +388,12 @@ def _facture_due_rows(user):
     """
     from authentication.scoping import scope_queryset
     from django.db.models import Prefetch
+    # APRF11 — les relations de `montant_du` viennent du helper partagé
+    # (`facturation.selectors.factures_avec_montant_du`, survivant unique).
+    from apps.facturation.selectors import factures_avec_montant_du
     qs = _scope(
-        Facture.objects.select_related('client').prefetch_related(
-            'lignes', 'paiements', 'avoirs',
-            'notes_debit', 'retenues_subies',
-            'affectations_paiement__paiement',
+        factures_avec_montant_du(
+            Facture.objects.select_related('client')).prefetch_related(
             'relances',
             Prefetch(
                 'promesses_paiement',
@@ -554,10 +555,11 @@ def _releve_data(client, user=None):
     if user is not None:
         from authentication.scoping import scope_queryset
         qs = scope_queryset(qs, user, ['created_by'])
+    # APRF11 — toutes les relations lues par `montant_du` (helper partagé),
+    # + le détail des paiements imprimé (escomptes / avances ventilées).
+    from apps.facturation.selectors import factures_avec_montant_du
     factures = list(
-        qs.prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
-                            'retenues_subies')
-        .order_by('date_emission'))
+        factures_avec_montant_du(qs).order_by('date_emission'))
     lignes = []
     paiements = []
     avoirs = []
@@ -629,7 +631,8 @@ def _releve_data(client, user=None):
                     'libelle': 'Escompte de règlement',
                 })
         # Avances ventilées SUR cette facture (le paiement source vit ailleurs).
-        for a in f.affectations_paiement.select_related('paiement'):
+        # APRF11 — préchargé (avec le paiement source) par le helper.
+        for a in f.affectations_paiement.all():
             source = a.paiement
             if source.statut == Paiement.Statut.REJETE:
                 continue

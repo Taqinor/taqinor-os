@@ -65,6 +65,10 @@ def releve_client_portail(client):
     qs = (Facture.objects
           .filter(client=client)
           .exclude(statut__in=[Facture.Statut.PAYEE, *STATUTS_HORS_RELEVE]))
+    # APRF11 — toutes les relations lues par `montant_du` (plus de requête
+    # par facture sur le relevé du portail).
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -310,12 +314,11 @@ def encours_clients_par_tiers(company):
           .filter(company=company)
           .exclude(statut=Facture.Statut.ANNULEE)
           .select_related('client')
-          # AUD158 — EXACTEMENT les relations que `montant_du` lit. Sans
-          # elles, ce point d'entrée cross-app (compta ET credit) posait
-          # SIX requêtes par facture ouverte du portefeuille.
-          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
-                            'retenues_subies',
-                            'affectations_paiement__paiement'))
+          # AUD158 / APRF11 — EXACTEMENT les relations que `montant_du` lit
+          # (UNE liste : `facturation.selectors.factures_avec_montant_du`).
+          )
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -352,12 +355,11 @@ def encours_ouvert_par_tiers(company):
           .filter(company=company)
           .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE])
           .select_related('client')
-          # AUD158 — EXACTEMENT les relations que `montant_du` lit (voir
-          # `encours_clients_par_tiers`). AUD153 va solliciter davantage
-          # encore ce sélecteur en branchant le credit-hold.
-          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
-                            'retenues_subies',
-                            'affectations_paiement__paiement'))
+          # AUD158 / APRF11 — EXACTEMENT les relations que `montant_du` lit
+          # (voir `encours_clients_par_tiers`).
+          )
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -388,8 +390,10 @@ def reste_du_factures_brouillon(company, client_id):
     total = Decimal('0')
     qs = (Facture.objects
           .filter(company=company, client_id=client_id,
-                  statut=Facture.Statut.BROUILLON)
-          .prefetch_related('paiements', 'avoirs'))
+                  statut=Facture.Statut.BROUILLON))
+    # APRF11 — toutes les relations lues par `montant_du`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if du:
@@ -493,8 +497,10 @@ def etat_recouvrement_client(company, client_id):
         Facture.objects
         .filter(company=company, client_id=client_id)
         .exclude(statut=Facture.Statut.ANNULEE)
-        .prefetch_related('paiements', 'avoirs')
     )
+    # APRF11 — toutes les relations lues par `montant_du`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    factures = factures_avec_montant_du(factures)
 
     retard_max = 0
     encours_echu = Decimal('0')

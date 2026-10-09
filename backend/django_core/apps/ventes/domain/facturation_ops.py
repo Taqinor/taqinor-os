@@ -1246,7 +1246,10 @@ def facturables_pour_devis(*, company, query=''):
         statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
     if query:
         qs = qs.filter(reference__icontains=query)
-    return [f for f in qs.select_related('client', 'devis') if f.montant_du > 0]
+    # APRF11 — toutes les relations lues par `montant_du`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    return [f for f in factures_avec_montant_du(
+        qs.select_related('client', 'devis')) if f.montant_du > 0]
 
 
 # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────────
