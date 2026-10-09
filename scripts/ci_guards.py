@@ -242,6 +242,7 @@ GARDES = {
         ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
          'python scripts/check_adsengine_ecrans.py',
          '.'),
+        # ANCRE-A1-generateur : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the adsengine-screens checker itself (AACQ77)',
          'python -m unittest scripts.tests.test_check_adsengine_ecrans -v',
          '.'),
@@ -275,6 +276,7 @@ GARDES = {
         ('Check services appelés (aucun service livré sans appelant)',
          'python scripts/check_services_appeles.py',
          '.'),
+        # ANCRE-A2-acceptation : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the orphan-service checker itself (CALX57)',
          'python -m unittest scripts.tests.test_check_services_appeles -v',
          '.'),
@@ -313,6 +315,7 @@ GARDES = {
         ('Check propriété des fichiers (OWN — un propriétaire par fichier, tâches routées)',
          'python scripts/check_ownership.py',
          '.'),
+        # ANCRE-A4a-registre : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the file-ownership checker itself (OWN)',
          'python -m unittest scripts.tests.test_check_ownership -v',
          '.'),
@@ -346,6 +349,7 @@ GARDES = {
         ('Check CODEMAP structural fingerprint',
          'python scripts/codemap_fingerprint.py --check',
          '.'),
+        # ANCRE-A4b-dossier : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Check for unsafe migration DDL patterns (YOPSB4)',
          'python scripts/check_safe_migrations.py',
          '.'),
@@ -381,6 +385,7 @@ GARDES = {
          '(ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES)',
          'python -m unittest scripts.tests.test_check_frontend_test_runner_coverage -v',
          '.'),
+        # ANCRE-A5-sondes : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)',
          'python -m unittest scripts.tests.test_ci_changes_filter -v',
          '.'),
@@ -419,6 +424,7 @@ GARDES = {
         ('Check onglets calepinage testés (un onglet du rail arrive avec son test, CALX383)',
          'python scripts/check_onglets_calepinage_testes.py',
          '.'),
+        # ANCRE-A6-decisions : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the onglets-tested checker itself (CALX383)',
          'python -m unittest scripts.tests.test_check_onglets_calepinage_testes -v',
          '.'),
@@ -451,6 +457,7 @@ GARDES = {
         ('Check frontière calepinage (aucun import neuf ao/ged/visites.models, CALX372)',
          'python scripts/check_frontiere_calepinage.py',
          '.'),
+        # ANCRE-A9-gardes-taches : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the calepinage-frontier checker itself (CALX372)',
          'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
          '.'),
@@ -484,6 +491,7 @@ GARDES = {
         ('Check écrivains du layout calepinage (aucun écran hors atelier, ACAL317)',
          'python scripts/check_calepinage_ecrivains_layout.py',
          '.'),
+        # ANCRE-A10-forme-code : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the écrivains du layout calepinage (aucun écran hors atelier, ACAL317) checker itself',
          'python -m unittest scripts.tests.test_check_calepinage_ecrivains_layout -v',
          '.'),
@@ -519,6 +527,7 @@ GARDES = {
         ('Check routes GET calepinage sous contrat (ACAL348)',
          'python scripts/check_calepinage_routes_sous_contrat.py',
          '.'),
+        # ANCRE-A11-parcours : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the routes GET calepinage sous contrat (ACAL348) checker itself',
          'python -m unittest scripts.tests.test_check_calepinage_routes_sous_contrat -v',
          '.'),
@@ -556,6 +565,7 @@ GARDES = {
         ('Check page_size front sous le plafond serveur (APAR65)',
          'python scripts/check_page_size_front.py',
          '.'),
+        # ANCRE-A12-reserve : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
         ('Test the page_size front sous le plafond serveur (APAR65) checker itself',
          'python -m unittest scripts.tests.test_check_page_size_front -v',
          '.'),
