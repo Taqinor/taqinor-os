@@ -21,6 +21,10 @@ from .serializers import (
     TYPES_FAVORISABLES, FavoriUtilisateurSerializer, SavedViewSerializer,
     UxParametresSerializer, cible_du_favori,
 )
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,8 @@ def _identifiant_metier(instance):
     return None, None
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter('ecran', OpenApiTypes.STR, required=False)]))
 class SavedViewViewSet(CompanyScopedModelViewSet):
     """NTUX1/2 — CRUD des vues sauvegardées, filtré par `?ecran=`. Une vue est
     visible si l'appelant en est le propriétaire, OU si elle est partagée à
@@ -77,6 +83,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
     l'appelant a le droit de la définir — cf. `IsResponsableOrAdmin`)."""
     queryset = SavedView.objects.select_related('owner', 'role').all()
     serializer_class = SavedViewSerializer
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -255,6 +262,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             logger.exception('saved_view_shared: envoi du signal échoué (%s)',
                              instance.pk)
 
+    @extend_schema(
+        request=inline_serializer('VueDefautRoleRequete', {
+            'role': drf_serializers.IntegerField(required=False)}),
+        responses=SavedViewSerializer)
     @action(detail=True, methods=['post'], url_path='definir-par-defaut-role')
     def definir_par_defaut_role(self, request, pk=None):
         """NTUX2 — Directeur/Admin uniquement. Définit CETTE vue comme vue par
@@ -317,6 +328,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 f'« {instance.ecran} » : « {instance.nom} ».'))
         return Response(SavedViewSerializer(instance).data)
 
+    @extend_schema(responses=SavedViewSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='toutes-company')
     def toutes_company(self, request):
         """NTUX23 — Rapport « configuration des vues actives » : liste ADMIN
@@ -329,6 +341,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         ).select_related('owner', 'role').order_by('ecran', 'nom')
         return Response(SavedViewSerializer(views, many=True).data)
 
+    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], url_path='export-xlsx')
     def export_xlsx(self, request):
         """NTUX23 — export .xlsx du même rapport de gouvernance (colonnes :
@@ -361,6 +374,10 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         return build_xlsx_response(
             'vues-sauvegardees.xlsx', headers, rows, sheet_title='Vues sauvegardées')
 
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer('SavedViewImportRequete', {
+            'fichier': drf_serializers.FileField()})},
+        responses=OpenApiTypes.ANY)
     @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
     def importer(self, request):
         """NTUX34 — import CSV/XLSX de `SavedView` entre environnements (ex.
@@ -440,6 +457,7 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
 
     queryset = FavoriUtilisateur.objects.select_related('content_type').all()
     serializer_class = FavoriUtilisateurSerializer
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # Une garde déclarée par l'@action PRIME (sinon le `permission_classes=`
@@ -492,6 +510,10 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                    .order_by('-ordre').values_list('ordre', flat=True).first())
         return 0 if dernier is None else dernier + 1
 
+    @extend_schema(
+        request=inline_serializer('FavoriReordonnerRequete', {
+            'ordre': drf_serializers.IntegerField()}),
+        responses=OpenApiTypes.ANY)
     @action(detail=True, methods=['post'], url_path='reordonner',
             permission_classes=[IsAnyRole])
     def reordonner(self, request, pk=None):
@@ -517,6 +539,7 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         return Response(
             FavoriUtilisateurSerializer(self.get_queryset(), many=True).data)
 
+    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.STR})
     @action(detail=False, methods=['get'], url_path='export-csv')
     def export_csv(self, request):
         """NTUX35 — export CSV de MES favoris (jamais ceux d'un collègue, cf.
@@ -545,6 +568,10 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
             ])
         return response
 
+    @extend_schema(
+        request={'multipart/form-data': inline_serializer('FavoriImportRequete', {
+            'fichier': drf_serializers.FileField()})},
+        responses=OpenApiTypes.ANY)
     @action(detail=False, methods=['post'], url_path='importer', parser_classes=[MultiPartParser])
     def importer(self, request):
         """NTUX35 — import CSV/XLSX des favoris d'un utilisateur qui change de
@@ -626,6 +653,7 @@ class UxParametresView(generics.RetrieveUpdateAPIView):
     """
 
     serializer_class = UxParametresSerializer
+    parser_classes = [JSONParser]
     # Pas de PUT : un réglage se modifie champ par champ (PATCH), jamais par
     # remplacement complet (qui réinitialiserait silencieusement les autres).
     http_method_names = ['get', 'patch', 'head', 'options']

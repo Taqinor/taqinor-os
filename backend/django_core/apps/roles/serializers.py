@@ -6,6 +6,7 @@ from .permissions_registre import (
     codes_non_octroyables,
     est_permission_app,
 )
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -24,9 +25,13 @@ class RoleSerializer(serializers.ModelSerializer):
             'perimetre': {'required': False},
         }
 
+    @extend_schema_field(serializers.IntegerField())
     def get_users_count(self, obj):
         return obj.users.count()
 
+    @extend_schema_field(inline_serializer('RoleUtilisateur', {
+        'id': serializers.IntegerField(),
+        'username': serializers.CharField()}, many=True))
     def get_users(self, obj):
         return [
             {'id': u.id, 'username': u.username}
