@@ -496,6 +496,10 @@ GARDES = {
         ('Test the dockerfiles construits (ADEP6) checker itself',
          'python -m unittest scripts.tests.test_dockerfiles_construits -v',
          '.'),
+        # ADEP29 - check_get_or_create en lecture seule, cles de contenu.
+        ('Test the get_or_create en lecture seule (ADEP29) checker itself',
+         'python -m unittest scripts.tests.test_check_get_or_create -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
