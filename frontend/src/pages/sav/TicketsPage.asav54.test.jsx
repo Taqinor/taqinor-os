@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 
 // ASAV54 — l'assistant de résolution/clôture s'ouvre au passage à « Résolu »
@@ -28,56 +27,35 @@ const regroupements = () => {
   return Object.values(par).filter((n) => n >= 3)
 }
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, updateTicket: ({ id, data }) => {
-    serveur.journal.push(`PATCH ${id}`)
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ id, data }) => {
+  serveur.journal.push(`PATCH ${id}`)
+  serveur.tickets[id] = { ...serveur.tickets[id], ...data }
+  return serveur.tickets[id]
+}))
+vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
+  getTicket: vi.fn((id) => Promise.resolve({ data: serveur.tickets[id] })),
+  getCausesDefaillance: vi.fn(() => Promise.resolve({ data: [{ id: 11, nom: 'Surchauffe' }] })),
+  getRemedesDefaillance: vi.fn(() => Promise.resolve({ data: [{ id: 21, nom: 'Remplacement ventilateur' }] })),
+  resoudreTicket: vi.fn((id) => {
+    serveur.journal.push(`POST resoudre ${id}`)
+    serveur.tickets[id] = { ...serveur.tickets[id], statut: 'resolu' }
+    return Promise.resolve({ data: serveur.tickets[id] })
+  }),
+  updateTicket: vi.fn((id, data) => {
+    serveur.journal.push(`PATCH-wizard ${id}`)
     serveur.tickets[id] = { ...serveur.tickets[id], ...data }
-    const action = { type: 'sav/updateTicket/noop' }
-    action.unwrap = () => Promise.resolve(serveur.tickets[id])
-    return action
-  } }
-})
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicket: vi.fn((id) => Promise.resolve({ data: serveur.tickets[id] })),
-    getCausesDefaillance: vi.fn(() => Promise.resolve({ data: [{ id: 11, nom: 'Surchauffe' }] })),
-    getRemedesDefaillance: vi.fn(() => Promise.resolve({ data: [{ id: 21, nom: 'Remplacement ventilateur' }] })),
-    resoudreTicket: vi.fn((id) => {
-      serveur.journal.push(`POST resoudre ${id}`)
-      serveur.tickets[id] = { ...serveur.tickets[id], statut: 'resolu' }
-      return Promise.resolve({ data: serveur.tickets[id] })
-    }),
-    updateTicket: vi.fn((id, data) => {
-      serveur.journal.push(`PATCH-wizard ${id}`)
-      serveur.tickets[id] = { ...serveur.tickets[id], ...data }
-      return Promise.resolve({ data: serveur.tickets[id] })
-    }),
-    lienClientTicket: vi.fn(() => Promise.resolve({ data: { url: 'https://x.test/s' } })),
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+    return Promise.resolve({ data: serveur.tickets[id] })
+  }),
+  lienClientTicket: vi.fn(() => Promise.resolve({ data: { url: 'https://x.test/s' } })),
 }))
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })) } }))
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
+import { ticketStore } from './__testutils__/ticketDetailMocks.js'
 
 function rendre(id) {
-  const store = configureStore({ reducer: {
-    tickets: (state = { items: [] }) => state,
-    auth: (state = { role: 'responsable', permissions: [] }) => state,
-  } })
-  return render(<Provider store={store}><MemoryRouter>
+  return render(<Provider store={ticketStore('responsable')}><MemoryRouter>
     <TicketDetail ticket={{ ...serveur.tickets[id], type: 'correctif', priorite: 'normale',
       sous_garantie: 'non', sous_garantie_effectif: 'non', couverture: 'a_determiner',
       devis_id_ext: null, facture_id_ext: null, instructions: '' }}

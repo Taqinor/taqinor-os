@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 
 // ASAV41 — plus de champ « Coût (interne) » saisissable : le serveur (ASEC34)
@@ -16,46 +15,24 @@ const serveur = vi.hoisted(() => ({
   patchs: [],
 }))
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, updateTicket: ({ data }) => {
-    serveur.patchs.push(data)
-    const { cout: _ignore, ...modifiable } = data // read_only_fields : cout jeté
-    serveur.ticket = { ...serveur.ticket, ...modifiable }
-    const action = { type: 'sav/updateTicket/noop' }
-    action.unwrap = () => Promise.resolve(serveur.ticket)
-    return action
-  } }
-})
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io(), ({ data }) => {
+  serveur.patchs.push(data)
+  const { cout: _ignore, ...modifiable } = data // read_only_fields : cout jeté
+  serveur.ticket = { ...serveur.ticket, ...modifiable }
+  return serveur.ticket
+}))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })) } }))
-vi.mock('../../api/installationsApi', () => ({
-  default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../api/savApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).savApiMock())
+vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
+import { ticketStore } from './__testutils__/ticketDetailMocks.js'
 
 afterEach(() => { cleanup(); serveur.patchs.length = 0 })
 
 function renderDetail(role) {
-  const store = configureStore({ reducer: {
-    tickets: (state = { items: [] }) => state,
-    auth: (state = { role, permissions: [] }) => state,
-  } })
-  return render(<Provider store={store}><MemoryRouter>
+  return render(<Provider store={ticketStore(role)}><MemoryRouter>
     <TicketDetail ticket={serveur.ticket} onClose={() => {}} onSaved={() => {}} />
   </MemoryRouter></Provider>)
 }

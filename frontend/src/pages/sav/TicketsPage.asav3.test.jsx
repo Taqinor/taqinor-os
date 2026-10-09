@@ -1,27 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 
 // ASAV3 — une seule porte de facturation sur la fiche ticket. Faux serveur en
 // mémoire qui applique la décision d'ASAV2 (couvert → 0 MAD, récidive → 403
 // sans override d'un responsable) ; aucune assertion sur les arguments d'appel.
 
-vi.mock('../../features/sav/store/ticketsSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    updateTicket: () => {
-      const action = { type: 'sav/updateTicket/noop' }
-      action.unwrap = () => Promise.resolve({})
-      return action
-    },
-  }
-})
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => (await import('./__testutils__/ticketDetailMocks.js')).ticketsSliceMock(await io()))
 
 const serveur = vi.hoisted(() => ({ factures: [] }))
 
-vi.mock('../../api/savApi', () => {
+vi.mock('../../api/savApi', async () => {
   const facturer = (nonFacturable, override) => {
     if (nonFacturable && !override) {
       return Promise.reject({ response: { status: 403, data: {
@@ -31,39 +20,25 @@ vi.mock('../../api/savApi', () => {
     serveur.factures.push(f)
     return Promise.resolve({ data: f })
   }
-  return { default: {
-    getTicketHistorique: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketPieces: vi.fn(() => Promise.resolve({ data: [] })),
-    getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
+  return (await import('./__testutils__/ticketDetailMocks.js')).savApiMock({
     facturerTicket: vi.fn((id, override) => facturer(id === 2, !!override)),
     rapportPdf: vi.fn(() => Promise.resolve({ data: new Blob() })),
-    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
-    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
-    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
-    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
-    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
-  } }
+  })
 })
-vi.mock('../../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })) } }))
-vi.mock('../../api/installationsApi', () => ({ default: { getInterventions: vi.fn(() => Promise.resolve({ data: [] })) } }))
+vi.mock('../../api/axios', async () => (await import('./__testutils__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__testutils__/ticketDetailMocks.js')).installationsApiMock())
 
 import { TicketDetail } from './TicketsPage'
+import { ticketStore, TICKET_BASE } from './__testutils__/ticketDetailMocks.js'
 
 afterEach(() => { cleanup(); serveur.factures.length = 0 })
 
 function renderDetail(ticket, role) {
-  const store = configureStore({ reducer: {
-    tickets: (state = { items: [] }) => state,
-    auth: (state = { role, permissions: [] }) => state,
-  } })
-  return render(<Provider store={store}>
+  return render(<Provider store={ticketStore(role)}>
     <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} />
   </Provider>)
 }
-const base = (id) => ({ id, reference: 'SAV-' + id, statut: 'en_cours', type: 'correctif',
-  priorite: 'normale', sous_garantie: 'non', sous_garantie_effectif: 'non',
-  couverture: 'a_determiner', devis_id_ext: null, facture_id_ext: null })
+const base = (id) => ({ ...TICKET_BASE, id, reference: 'SAV-' + id })
 
 describe('TicketDetail — ASAV3 une seule porte de facture', () => {
   it('rend un seul bouton de facturation, jamais « Générer facture »', async () => {

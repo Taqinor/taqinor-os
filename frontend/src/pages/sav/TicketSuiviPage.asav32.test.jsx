@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 /* ASAV32 — sous-notes CSAT sur la page publique quand csat_detaille_actif. */
 
@@ -9,15 +8,9 @@ vi.mock('../../api/axios', () => ({
 }))
 
 import api from '../../api/axios'
-import TicketSuiviPage from './TicketSuiviPage'
+import { renderSuiviPage as renderPage } from './__testutils__/renderSuiviPage.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-const renderPage = () => render(
-  <MemoryRouter initialEntries={['/suivi/tok']}>
-    <Routes><Route path="/suivi/:token" element={<TicketSuiviPage />} /></Routes>
-  </MemoryRouter>,
-)
 
 const ticket = (actif) => ({
   data: {

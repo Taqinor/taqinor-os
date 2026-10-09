@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { screen, cleanup } from '@testing-library/react'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ASAV31 — la page publique de suivi dit l'état réel : « Annulé » /
@@ -12,15 +11,9 @@ vi.mock('../../api/axios', () => ({
 }))
 
 import api from '../../api/axios'
-import TicketSuiviPage from './TicketSuiviPage'
+import { renderSuiviPage as renderPage } from './__testutils__/renderSuiviPage.jsx'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-const renderPage = () => render(
-  <MemoryRouter initialEntries={['/suivi/tok']}>
-    <Routes><Route path="/suivi/:token" element={<TicketSuiviPage />} /></Routes>
-  </MemoryRouter>,
-)
 
 describe('TicketSuiviPage ASAV31', () => {
   it('ticket annulé : bandeau « Annulé », pas de « Nouveau », pas de formulaire', async () => {
