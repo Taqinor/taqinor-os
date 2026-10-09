@@ -29,12 +29,13 @@ test('un refus serveur ne produit JAMAIS un toast rouge', () => {
     'le chemin automatique alerte en rouge sur un refus')
   assert.match(derive, /setIndiceStatut\(/)
   // …et l'indice affiché est le message DU SERVEUR (aucune règle dupliquée).
-  assert.match(derive, /data\?\.transition_block_reason/)
+  // ACHT61 : lu par la fonction partagée `raisonRefusStatut` (forme réelle).
+  assert.match(derive, /raisonRefusStatut\(err\)/)
 })
 
 test('la transition automatique passe par le PATCH existant + undo 6 s', () => {
   const derive = bloc('const onFieldChanged', '// VX226(b) — `load()`')
-  assert.match(derive, /installationsApi\.updateIntervention\(apres\.id, \{ statut: cible \}\)/)
+  assert.match(derive, /installationsApi\.updateIntervention\(\s*apres\.id, \{ statut: cible \}, \{ suppressErrorToast: true \},?\s*\)/)
   assert.match(derive, /toastWithUndo\(\{/)
   // Undo = appel INVERSE (le recul est autorisé serveur), pas un commit différé.
   assert.match(derive, /onUndo: \(\) => \{[\s\S]*statut: ancien/)

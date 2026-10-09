@@ -468,3 +468,19 @@ export const RECETTE_RESULTATS = [
   { value: 'reserves', label: 'Conforme avec réserves' },
   { value: 'non_conforme', label: 'Non conforme' },
 ]
+
+// ACHT61 — raison d'un refus de changement de statut d'INTERVENTION, lue dans
+// sa forme réelle (DRF : `{statut: [raisons], error: {…}}` ; `transition_block_
+// reason` et `detail` en repli). Une seule lecture partagée par « Ma journée »,
+// la fiche et le kanban. Renvoie `null` quand le corps n'en porte aucune.
+export function raisonRefusStatut(err) {
+  const data = err?.response?.data
+  if (!data || typeof data !== 'object') return null
+  const nonVide = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const statut = data.statut
+  if (Array.isArray(statut)) {
+    const t = statut.map(nonVide).filter(Boolean).join(' ')
+    if (t) return t
+  }
+  return nonVide(statut) ?? nonVide(data.transition_block_reason) ?? nonVide(data.detail)
+}

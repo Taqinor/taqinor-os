@@ -146,7 +146,7 @@ const installationsApi = {
   // Interventions (sorties chantier) — F3/F4
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),
-  updateIntervention: (id, data) => api.patch(`/installations/interventions/${id}/`, data),
+  updateIntervention: (id, data, config) => api.patch(`/installations/interventions/${id}/`, data, config),
   deleteIntervention: (id) => api.delete(`/installations/interventions/${id}/`),
   getInterventionHistorique: (id) =>
     api.get(`/installations/interventions/${id}/historique/`),
