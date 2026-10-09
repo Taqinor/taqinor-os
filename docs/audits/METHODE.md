@@ -190,7 +190,7 @@ N emplacements. Le préfixe du C-id désigne son dossier (`C-AMET-…` → `2026
 ### C.2 La tâche v3 (une ligne physique ; `plan_lanes.py` ne lit que la première ligne)
 
 Forme : `- [ ] <ID> — **<Verbe + objet + fin bornée>** : ` puis les 14 clauses enchaînées, chacune ouverte par son libellé exact,
-`Files:` en DERNIER puis `(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST) (@after: …) (@lane: …) (@model: …)`. Cible ≤ 1 800 caractères.
+`Files:` en DERNIER puis `(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST) (@after: …) (@lane: …) (@model: …)`. Cible ≤ 2 400 caractères (les 57 premières tâches v3 font 2 300-3 100 : le générateur ramène les clauses calculées à leur forme compacte).
 
 | # | Libellé | Contenu exigé | Auteur |
 |---|---|---|---|
@@ -323,14 +323,14 @@ Gabarit d'un `PLAN_AUDIT_<UNITE>.md` : contrat de propriété (écrit seulement 
 `selectors.py` / `services.py` / FK chaîne ; `DB_NAME=erp_audit_<unite>` ; branche `dev-audit_<unite>` ; hors surface du
 plan-fingerprint ; leçons QJR5 = critères d'acceptation), puis les groupes, puis `## DONE LOG`.
 
-### D.4 Fiches d'unité : champ `fiche:` de `docs/audits/unites.yml` (coutures et pièges vérifiés par unité).
+### D.4 Fiches d'unité : à migrer dans `docs/audits/unites.yml` (champ `fiche:`, tâche AMET91) ; jusque-là `git show 1d08a5bd9:docs/audits/METHODE.md` §D.6.
 
 ### D.5 Claim et sélection
 `audit_registre.py claim <id>` : depuis `origin/main`, branche `audit-<id>` + commit vide poussé (une branche vivante non
 ancêtre de `main` = unité prise ; push refusé = prise ailleurs) ; le merge `--delete-branch` libère ; claim périmé > 48 h
 signalé ; seul `continue audit` reprend un claim. Sélection : `vérifie` dû, puis plus petit rang « à auditer » non réclamé.
 
-### D.6 Fiches §D.6 v2 : déplacées dans `unites.yml` (`fiche:`) ; `git show 1d08a5bd9:docs/audits/METHODE.md` pour le texte d'origine.
+### D.6 Fiches §D.6 v2 : texte d'origine `git show 1d08a5bd9:docs/audits/METHODE.md` (106 lignes, 7 dossiers le citent) ; destination `unites.yml` `fiche:` (AMET91).
 
 ---
 

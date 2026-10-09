@@ -19,7 +19,7 @@ construit rien : dossier (`docs/audits/GABARIT_DOSSIER.md`) + sondes + tâches v
 | `audit status` | `python scripts/audit_registre.py status` (lecture seule ; tant qu'il manque : tableau à la main, statut = dossier / % cochées / acceptation / vérifie) |
 | `audit <mot> [Ln] [précisions]` | l'unité nommée, hors ordre ; les précisions priment (périmètre, `anon`, persona, décision) |
 | `audit parcours <PA>` | un parcours de METHODE §D.1 (PA1 contact→visite … PA7 monitoring ; PF1-PF3 plateformes) |
-| `vérifie <G>` | contre-visite d'un groupe (§6) |
+| `vérifie <G>` | contre-visite d'un groupe (§5) |
 Mots v1 (`leads`, `fiche`, `cadence`, `clients`, `visites`, `ged`, `portail`) → l'unité v2 correspondante (acquisition / lead / documents) ;
 mot inconnu → `AskUserQuestion`, option recommandée d'abord.
 

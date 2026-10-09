@@ -323,9 +323,11 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
    existe, sinon Playwright MCP avec les oracles qa-explorer 1-10 — AVANT le push de toute vague qui
    coche une tâche de ce groupe, et commite l'enregistrement `docs/audits/acceptation/<G>/<date>-<sha9>.md`
    (`couvre:` = ids cochés, `results.json`). Règle de couverture : toute tâche cochée à preuve
-   exécutable est couverte par un enregistrement ou figure dans la dette gelée du groupe, qui ne fait
-   que rétrécir (`scripts/check_acceptation.py`, job stage-names — AMET, à construire ; tant qu'il
-   n'existe pas, l'orchestrateur applique la règle à la main et le dit dans le rapport). Ce rejeu est
+   exécutable est couverte par un enregistrement ou figure dans la dette gelée du groupe (amorcée une
+   fois avec les tâches déjà cochées à la bascule, elle ne fait que rétrécir — `scripts/check_acceptation.py`,
+   job stage-names, AMET, à construire ; tant qu'il n'existe pas, la règle porte sur les tâches cochées dans la
+   PR, appliquée à la main par l'orchestrateur et dite dans le rapport ; une session sans pile locale ne coche
+   aucune tâche à preuve en direct : elle les laisse à l'orchestrateur d'une session avec pile). Ce rejeu est
    l'EXCEPTION explicite à WOW23 « TEST ECONOMICS » : il ne double aucun job CI (#864 et #885 étaient
    verts avec les deux régressions). Méthode : `docs/audits/METHODE.md` §C.4.
 4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each reviewed+tested

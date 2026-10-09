@@ -23,7 +23,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 (AskUserQuestion) ; constat C-AMET-003, sonde R3_V1"
-    taches: []
+    taches: [AMET1, AMET2, AMET3, AMET25, AMET102]
 
   - id: D-ATOT5
     question: "Un avoir émis avant la dernière échéance est refacturé dans cette échéance (avoir commercial 6 000 → solde +6 000) : quelle règle ?"
@@ -33,7 +33,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; constat C-AMET-004 ; test_solde_net_des_avoirs à réécrire"
-    taches: []
+    taches: [ATOT36]
 
   - id: D-SIGN-AUTO
     question: "À la signature, rien n'est créé en aval (ni BC ni facture) : que doit déclencher l'acceptation ?"
@@ -44,7 +44,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; constat C-AMET-007"
-    taches: []
+    taches: [AMET4, AMET102]
 
   - id: D-OWN-FUSION
     question: "Fusionner les propriétaires crm→lead et générateur→devis, déplacer 111 tâches TRANSVERSE verbatim, scinder 43 tâches multi-propriétaires, ordre correctifs-d'abord, TRANSVERSE = SPL atomiques seulement (casse l'append-only une fois) ?"
@@ -55,7 +55,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; R2_4 + R3_V6 ; constat C-AMET-024"
-    taches: []
+    taches: [AMET96, AMET101]
 
   - id: D-FORMAT-V3
     question: "Format de tâche v3 (14 clauses calculées) obligatoire pour toute tâche nouvelle ; tâches v2 ouvertes gelées par id ?"
@@ -64,7 +64,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; constat C-AMET-021"
-    taches: []
+    taches: [AMET80, AMET81, AMET82, AMET83, AMET84]
 
   - id: D-SCOPE-0910
     question: "Que livre la session du 09/10 ?"
@@ -75,7 +75,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09"
-    taches: []
+    taches: [AMET80, AMET88, AMET91, AMET92]
 
   - id: D-CLAUDEMD
     question: "Qui édite CLAUDE.md pour les quatre règles de plan-run (acceptation, rapport de merge, générateur sur v2, @after inter-lanes) ?"
@@ -94,7 +94,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "routine orchestrateur ; R2_3 + R3_V5 ; critère C16"
-    taches: []
+    taches: [AMET22, AMET23, AMET19, AMET20, AMET21]
 
   - id: D-SPL-ATOMIQUE
     question: "Où vivent les déplacements SPL atomiques multi-propriétaires ?"
@@ -104,7 +104,7 @@ decisions:
     reponse: a
     date: "2026-10-09"
     source: "routine orchestrateur ; R2_4 + R3_V6"
-    taches: []
+    taches: [AMET96, AMET101]
 
   - id: ADEP92
     question: "Variables d'environnement e-mail en prod : lecture des noms réels avant toute dérivation (ADEP91 (b) : Reda pose EMAIL_BACKEND lui-même)"
