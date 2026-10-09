@@ -26,7 +26,7 @@ import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
-import { toast } from '../../../ui/confirm'
+import { toast, useConfirmDialog } from '../../../ui/confirm'
 import {
   Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
@@ -74,6 +74,17 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // Vrai tant que la lecture qui doit trancher entre `edit` et `preview` n'est
   // pas revenue (une seule décision, jamais rejouée par une relecture).
   const ouvertureEnAttenteRef = useRef(!!existingDevisId && mode === 'edit')
+  // EDC11 — l'éditeur a-t-il des modifications NON enregistrées ? Poussé par le
+  // générateur (`onDirtyChange`), remis à false à chaque sortie de l'édition et
+  // à chaque enregistrement réussi.
+  const [dirty, setDirty] = useState(false)
+  // EDC11 — enregistrer ne quitte plus l'éditeur : on relit le devis (statut,
+  // référence, droits, dérive lead) pour que l'en-tête et l'aperçu ne montrent
+  // jamais un `devisRecord` périmé.
+  const [rechargeTick, setRechargeTick] = useState(0)
+  const { confirm } = useConfirmDialog()
+  // Une seule confirmation à la fois (double clic, Échap martelé).
+  const confirmationEnCoursRef = useRef(false)
   const [discount, setDiscount] = useState('0')
   const [errorMsg, setErrorMsg] = useState(null)
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
@@ -218,11 +229,54 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         setPhase('error')
       })
     return () => { annule = true }
-  }, [devisId])
+  }, [devisId, rechargeTick])
 
+  // EDC11 — UNE confirmation à la fois ; renvoie true si l'ouvrier confirme.
+  const demanderConfirmation = async (options) => {
+    if (confirmationEnCoursRef.current) return false
+    confirmationEnCoursRef.current = true
+    try {
+      return (await confirm(options)) === true
+    } finally {
+      confirmationEnCoursRef.current = false
+    }
+  }
+
+  // CRÉATION embarquée terminée (`onDone`) : le devis existe désormais, on
+  // passe à l'aperçu comme avant.
   const onEditDone = (id) => {
     if (id) setDevisId(id)
+    setDirty(false)
     onDevisChanged?.()
+    setPhase('preview')
+  }
+
+  // EDC11 — enregistrement d'un devis EXISTANT (`onEnregistre`) : l'ouvrier
+  // RESTE dans l'éditeur. Avant, chaque enregistrement le renvoyait à l'aperçu
+  // PDF (réentrer = tout recharger) : le « retour d'un coup au devis ».
+  const onEnregistre = (id) => {
+    if (id) setDevisId(id)
+    setDirty(false)
+    setRechargeTick((t) => t + 1)
+    onDevisChanged?.()
+  }
+
+  // EDC11 — « Voir le PDF » est un geste EXPLICITE (bouton de la barre
+  // d'actions du générateur). L'aperçu remplace l'éditeur : avec des
+  // modifications non enregistrées, on le dit avant de les abandonner.
+  const onVoirPdf = async () => {
+    if (dirty) {
+      const ok = await demanderConfirmation({
+        title: 'Voir le PDF sans enregistrer ?',
+        description: 'Le PDF montre la dernière version enregistrée du devis : '
+          + 'vos modifications en cours seront abandonnées.',
+        confirmLabel: 'Voir sans enregistrer',
+        cancelLabel: 'Rester',
+        destructive: false,
+      })
+      if (!ok) return
+    }
+    setDirty(false)
     setPhase('preview')
   }
 
@@ -361,7 +415,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   leadId={lead.id}
                   editId={devisId || null}
                   onDone={onEditDone}
-                  onCancel={() => (devisId ? setPhase('preview') : onClose())}
+                  onEnregistre={onEnregistre}
+                  onVoirPdf={onVoirPdf}
+                  onDirtyChange={setDirty}
+                  onCancel={() => { setDirty(false); if (devisId) setPhase('preview'); else onClose() }}
                 />
               </div>
             </div>
