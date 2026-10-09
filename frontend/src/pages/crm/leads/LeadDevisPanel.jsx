@@ -17,7 +17,9 @@ import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
 import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
 import DevisGenerator from '../../ventes/DevisGenerator'
-import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devisStatuts'
+import {
+  peutEditerDevis, peutReviserDevis, libelleStatutDevis,
+} from '../../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 // QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
@@ -25,7 +27,7 @@ import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/down
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import {
-  Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent,
+  Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
 
 // L'aperçu PDF vient de usePdfPreview + PdfPreviewBody (le même moteur que
@@ -41,6 +43,13 @@ const TITLES = {
   edit: 'Édition complète du devis',
   view: 'Devis',
 }
+
+// EDC1 — largeur du panneau : l'Édition complète prend jusqu'à 1 800 px (la
+// table des lignes tient sans défilement horizontal), les autres phases gardent
+// 1 500 px. Classes écrites EN ENTIER (Tailwind ne devine pas une chaîne
+// recomposée).
+const LARGEUR_STANDARD = 'w-[min(1500px,100%)]'
+const LARGEUR_EDITION = 'w-[min(1800px,100%)]'
 
 // EZ5 — `targetKwc` : puissance cible (kWc) demandée pour CE devis depuis la
 // fiche lead (« Devis automatique »). Optionnelle ; vide = comportement
@@ -231,11 +240,20 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
     // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" showClose={false} className="w-[min(1500px,100%)] gap-0 p-0 sm:max-w-none">
+      <SheetContent side="right" showClose={false}
+                    className={`${phase === 'edit' ? LARGEUR_EDITION : LARGEUR_STANDARD} gap-0 p-0 sm:max-w-none`}>
         <div className="ldp-header">
           <h3 className="ldp-title">
             {TITLES[mode] || 'Devis'} — {lead.nom} {lead.prenom || ''}
             {devisRef && <span className="ldp-ref">{devisRef}</span>}
+            {/* EDC1 — le statut du devis CHARGÉ (libellés de devisStatuts.js,
+                jamais une clé de STAGES.py) : l'ouvrier sait sur quelle
+                version il travaille sans quitter l'éditeur. */}
+            {devisRecord?.statut && (
+              <StatusPill status={devisRecord.statut}
+                          label={libelleStatutDevis(devisRecord.statut)}
+                          data-testid="ldp-statut" />
+            )}
           </h3>
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
@@ -292,13 +310,18 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'edit' && (
             <div className="ldp-edit">
-              <DevisGenerator
-                embedded
-                leadId={lead.id}
-                editId={devisId || null}
-                onDone={onEditDone}
-                onCancel={() => (devisId ? setPhase('preview') : onClose())}
-              />
+              {/* EDC1 — le défileur `.ldp-edit` n'a PLUS de padding (sinon tout
+                  `top: 0` collant du générateur se décale de 16 px) : le
+                  retrait vit sur ce conteneur intérieur. */}
+              <div className="ldp-edit-inner">
+                <DevisGenerator
+                  embedded
+                  leadId={lead.id}
+                  editId={devisId || null}
+                  onDone={onEditDone}
+                  onCancel={() => (devisId ? setPhase('preview') : onClose())}
+                />
+              </div>
             </div>
           )}
 

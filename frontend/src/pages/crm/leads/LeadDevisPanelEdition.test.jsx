@@ -116,3 +116,54 @@ describe('CIQ127 — LeadDevisPanel : devis automatique C&I par le serveur', () 
     expect(await screen.findByText(detail)).toBeInTheDocument()
   })
 })
+
+// EDC1 — panneau d'Édition complète pleine largeur : la classe large n'existe
+// qu'en phase `edit`, le générateur vit dans `.ldp-edit-inner` (le défileur
+// `.ldp-edit` n'a plus de padding) et l'en-tête dit la référence + le statut.
+describe("EDC1 — LeadDevisPanel : panneau d'Édition complète pleine largeur", () => {
+  const envoye = () => ({
+    data: exempleContrat('ventes', 'devis_modifiabilite', 'exemple_envoye'),
+  })
+
+  it('phase edit : SheetContent large (1 800 px) et générateur dans .ldp-edit-inner', async () => {
+    ventesApi.getDevisById.mockResolvedValue(envoye())
+    rendre({ existingDevisId: 413 })
+    await userEvent.click(await screen.findByRole('button', { name: /Édition complète/ }))
+    const generateur = await screen.findByTestId('generateur-monte')
+    const panneau = screen.getByRole('dialog')
+    expect(panneau.className).toContain('w-[min(1800px,100%)]')
+    expect(panneau.className).not.toContain('w-[min(1500px,100%)]')
+    const interieur = generateur.closest('.ldp-edit-inner')
+    expect(interieur).not.toBeNull()
+    // Le défileur est le parent direct : c'est lui qui perd son padding (CSS),
+    // le retrait de 16 px vit sur l'intérieur.
+    expect(interieur.parentElement).toHaveClass('ldp-edit')
+    expect(interieur.parentElement.parentElement).toHaveClass('ldp-body')
+  })
+
+  it('phase preview : le panneau garde sa largeur de 1 500 px, pas la classe large', async () => {
+    ventesApi.getDevisById.mockResolvedValue(envoye())
+    rendre({ existingDevisId: 413 })
+    await screen.findByRole('button', { name: /Édition complète/ })
+    const panneau = screen.getByRole('dialog')
+    expect(panneau.className).toContain('w-[min(1500px,100%)]')
+    expect(panneau.className).not.toContain('w-[min(1800px,100%)]')
+    expect(screen.queryByTestId('generateur-monte')).toBeNull()
+  })
+
+  it("l'en-tête montre la référence et le badge de statut du devis chargé", async () => {
+    ventesApi.getDevisById.mockResolvedValue(envoye())
+    rendre({ existingDevisId: 413 })
+    const badge = await screen.findByTestId('ldp-statut')
+    expect(badge).toHaveTextContent('Envoyé')
+    expect(screen.getByText('DEV-202609-0012')).toBeInTheDocument()
+  })
+
+  it('un devis accepté porte le libellé « Accepté » (libellés de devisStatuts.js)', async () => {
+    ventesApi.getDevisById.mockResolvedValue({
+      data: exempleContrat('ventes', 'devis_modifiabilite', 'exemple_accepte'),
+    })
+    rendre({ existingDevisId: 414 })
+    expect(await screen.findByTestId('ldp-statut')).toHaveTextContent('Accepté')
+  })
+})
