@@ -1154,7 +1154,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `SerializerMethodField` qui interrogerait la base par lead.
         """
         from django.db.models import (
-            Count, DateTimeField, F, OuterRef, Q, Subquery)
+            Count, DateTimeField, F, IntegerField, OuterRef, Subquery)
+        from django.db.models.functions import Coalesce
 
         from .models import LeadActivity, RelanceEtape
 
@@ -1184,14 +1185,24 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # auteur) : compter les lignes système gonflerait le chiffre
             # jusqu'à le rendre inutilisable, et c'est lui qui décide quand
             # un dossier a été assez travaillé pour être classé.
-            nb_tentatives=Count(
-                'activites',
-                filter=Q(activites__kind__in=[
-                    LeadActivity.Kind.APPEL,
-                    LeadActivity.Kind.WHATSAPP,
-                    LeadActivity.Kind.EMAIL,
-                ], activites__user__isnull=False),
-                distinct=True),
+            # APRF20 — sous-requête CORRÉLÉE (et non un ``Count`` joint) : la
+            # page de leads ne joint plus ``crm_leadactivity`` au niveau
+            # principal, le tri/limite ne porte plus sur leads × activités.
+            nb_tentatives=Coalesce(
+                Subquery(
+                    LeadActivity.objects
+                    .filter(lead=OuterRef('pk'), user__isnull=False,
+                            kind__in=[
+                                LeadActivity.Kind.APPEL,
+                                LeadActivity.Kind.WHATSAPP,
+                                LeadActivity.Kind.EMAIL,
+                            ])
+                    .order_by()
+                    .values('lead')
+                    .annotate(n=Count('pk'))
+                    .values('n')[:1],
+                    output_field=IntegerField()),
+                0),
         )
 
     def perform_create(self, serializer):
