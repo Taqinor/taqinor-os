@@ -14,6 +14,19 @@
       },
       "tient": true
     },
+    "marketingbow.fr": {
+      "fichier": "marketingbow-fr-b82f31d42d.png",
+      "titre": "MarketingBow — campagnes publicitaires validées par une personne",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 213
+      },
+      "tient": true
+    },
     "surMesure.fr": {
       "fichier": "surMesure-fr-282ae3c275.png",
       "titre": "Logiciel sur mesure — YanBow",

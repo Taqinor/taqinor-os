@@ -118,6 +118,46 @@ describe('YBW62 — SolarBow', () => {
   });
 });
 
+/** Ce que la page MarketingBow ne doit JAMAIS dire (D-YBW-7, faits établis, YBW92). */
+const NON_PUBLIABLES_MB =
+  /veille|biblioth[èe]que|concurren|en service|en production|r[ée]sultats?|\bCPL\b|co[ûu]t par|\bIA\b|intelligence artificielle|images?\b|vid[ée]os?|partenaire (meta|officiel)|certifi[ée]|s[ée]curit[ée]|isolation|rempla(cer|ce)/i;
+
+describe('YBW63 — MarketingBow', () => {
+  const p = pageRendue(PAGES.marketingbow.fr);
+  it('moteur de campagnes seulement, quatre modules et la procédure depuis le registre', () => {
+    expect(p.document.querySelector('h1')?.textContent).toBe(texteAffirmation('MB-POUR-QUI', 'fr'));
+    expect(modulesDe(p.document)).toEqual(['pause', 'approbation', 'garde-fous', 'textes']);
+    expect(affirmationsDe(p)).toEqual([
+      'MB-POUR-QUI',
+      'MB-OPTION',
+      'MB-CREATION-EN-PAUSE',
+      'MB-PROPOSE-APPROUVE',
+      'MB-PERMISSIONS',
+      'MB-COUPE-CIRCUIT',
+      'MB-CHIFFRES-CITES',
+      'MB-PROPRIETE',
+      'YB-REPONSE-HUMAINE',
+    ]);
+  });
+
+  it('la propriété du compte est une PROCÉDURE (section « Notre façon de travailler »), pas un module logiciel', () => {
+    const procedure = p.document.querySelector('[data-procedure]');
+    expect(procedure?.querySelector('[data-affirmation="MB-PROPRIETE"]')).not.toBeNull();
+    expect(p.document.querySelector('[data-module] [data-affirmation="MB-PROPRIETE"]')).toBeNull();
+  });
+
+  it('jamais : veille, « en service », résultats, CPL, IA, image/vidéo, « partenaire/certifié » Meta, sécurité, remplacer', () => {
+    expect(texte(p)).not.toMatch(NON_PUBLIABLES_MB);
+    expect(p.document.querySelectorAll('main img[alt*="Meta" i], main svg[aria-label*="Meta" i]')).toHaveLength(0);
+    expect(NON_PUBLIABLES_MB.test('MarketingBow est en service')).toBe(true);
+  });
+
+  it('appels avec produit=marketingbow', () => {
+    for (const l of appels(p)) expect(l).toBe('/rendez-vous/?produit=marketingbow');
+    expect(appels(p).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('YBW66 — Rendez-vous', () => {
   const p = pageRendue(PAGES.rendezVous.fr);
   it('le formulaire YBW55, aucun champ hors registre', () => {
