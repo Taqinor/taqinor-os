@@ -9,6 +9,12 @@ DEBUG = False
 
 # En production, SECRET_KEY et ALLOWED_HOSTS DOIVENT être fournis via variables d'env
 
+# ENFP (D1) — refus des paramètres de requête non déclarés : ÉTEINT en
+# production pour l'instant (défaut base.py = allumé). L'orchestrateur le
+# rallume une fois les lanes par app repliées ; env API_QUERY_PARAMS_STRICT=1
+# l'active dès maintenant.
+API_QUERY_PARAMS_STRICT = os.environ.get('API_QUERY_PARAMS_STRICT', '0') == '1'
+
 # Headers de sécurité
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

@@ -52,6 +52,8 @@ from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 from rest_framework.views import set_rollback
 
+from core.parametres_requete import MESSAGE_CHAMP as MESSAGE_PARAMETRE_INCONNU
+from core.parametres_requete import ParametresRequeteInconnus
 from core.unicite import ConflitUnicite, decrire_contrainte, message_conflit
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,8 @@ _CODE_BY_EXCEPTION = (
     (Http404, 'not_found'),
     (DjangoPermissionDenied, 'permission_denied'),
     (ConflitUnicite, 'unique_conflict'),
+    # ENFP (D1) — paramètre de requête non déclaré au schéma OpenAPI.
+    (ParametresRequeteInconnus, 'unknown_query_parameter'),
     (drf_exceptions.ValidationError, 'validation_error'),
     (drf_exceptions.AuthenticationFailed, 'not_authenticated'),
     (drf_exceptions.NotAuthenticated, 'not_authenticated'),
@@ -115,11 +119,15 @@ def _message_for(exc, code: str) -> str:
 
 
 def _fields_for(exc, code: str):
-    """`fields` pour les 400 de validation avec un detail field-keyed (dict)
-    et pour les 409 ``unique_conflict`` (champs de la contrainte) — jamais
-    pour les autres codes."""
+    """`fields` pour les 400 de validation avec un detail field-keyed (dict),
+    pour les 409 ``unique_conflict`` (champs de la contrainte) et pour les 400
+    ``unknown_query_parameter`` (paramètres refusés) — jamais pour les autres
+    codes."""
     if code == 'unique_conflict':
         return _champs_conflit(getattr(exc, 'champs', None))
+    if code == 'unknown_query_parameter':
+        return {nom: [MESSAGE_PARAMETRE_INCONNU]
+                for nom in getattr(exc, 'parametres', [])} or None
     if code != 'validation_error':
         return None
     detail = getattr(exc, 'detail', None)
