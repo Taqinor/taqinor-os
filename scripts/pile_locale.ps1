@@ -4,7 +4,7 @@
 # scripts/setup-nightly-qa.ps1 (qui l'appelle - survivant unique de ces etapes).
 # Chaque etape imprime son verdict ; un prerequis manquant est NOMME avec
 # l'action a faire (jamais installe en silence) ; seed_demo n'est JAMAIS lance
-# avec --force.
+# avec le drapeau de forcage.
 #
 # Usage :
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pile_locale.ps1
@@ -134,7 +134,7 @@ if (-not $Build) {
     if ($code -ne 0) { Fail 'docker compose up -d --build frontend.' }
 }
 
-# ---- 4. Societes demo (jamais --force) ------------------------------------------
+# ---- 4. Societes demo (jamais de forcage) ------------------------------------------
 $probe = "from authentication.models import Company; print('DEMO_STATE=' + ','.join(s + ':' + ('SEEDED' if Company.objects.filter(slug=s, produits__isnull=False).exists() else 'EMPTY') for s in ('taqinor-demo', 'taqinor-demo-full')))"
 if ($DryRun) {
     Say '> sonde des societes demo ; seed_demo puis seed_demo_company si vides [dry-run] non execute.'

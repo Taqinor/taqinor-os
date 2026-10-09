@@ -222,7 +222,7 @@ if (($null -ne $debugLine) -and ($debugLine -notmatch '=\s*(True|true|1)\s*$')) 
 }
 
 # ---- 4-5. Pile locale : stack, migrations, societes demo ------------------------
-# Survivant unique de ces etapes : scripts/pile_locale.ps1 (jamais de --force).
+# Survivant unique de ces etapes : scripts/pile_locale.ps1 (jamais de forcage).
 & (Join-Path $RepoRoot 'scripts\pile_locale.ps1') -Build
 if ($LASTEXITCODE -ne 0) { Fail 'scripts/pile_locale.ps1 (voir la ligne ACTION / ECHEC ci-dessus).' }
 
