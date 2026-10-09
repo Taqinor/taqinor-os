@@ -1352,8 +1352,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # rendait l'étape de visite comme « plan déjà en cours » et aucun suivi
     # de proposition ne démarrait.
     ouvertes_deja = list(
-        deja.filter(statut=RelanceEtape.Statut.A_FAIRE)
-        .exclude(q_visite())
+        deja.filter(q_plan_ouvert())  # ACRM46 — prédicat partagé
         .order_by('ordre', 'due_date'))
     if ouvertes_deja:
         return ouvertes_deja
@@ -2623,6 +2622,17 @@ def est_etape_de_visite(etape):
 def q_visite():
     """``est_etape_de_visite`` en requête."""
     return q_etape(*CLES_VISITE)
+
+
+def q_plan_ouvert():
+    """ACRM46 — LE prédicat « plan ouvert » (TREADMILL-1538) : une touche
+    de cadence À FAIRE qui n'est pas un geste de visite. Partagé par
+    ``initialiser_plan_relance`` (idempotence) et le placement des anciens
+    leads (``deja_en_cadence``) : des touches toutes closes ne tiennent plus
+    un lead."""
+    from django.db.models import Q
+
+    return Q(statut=RelanceEtape.Statut.A_FAIRE) & ~q_visite()
 
 
 def q_filet():
@@ -10580,8 +10590,12 @@ def _decider_placements(company, maintenant, gabarits=None,
     ids = [lead.pk for lead in candidats]
     # Le moteur TIENT déjà ces dossiers : une seconde cadence dessus, ce sont
     # deux séries de messages parallèles à la même personne.
+    # ACRM46 — seul un plan OUVERT (touche À FAIRE, prédicat partagé avec
+    # ``initialiser_plan_relance``) tient le lead : des touches toutes closes
+    # (faites/sautées/annulées) le rendent candidat au placement.
     deja = set(RelanceEtape.objects.filter(
-        company=company, lead_id__in=ids).values_list('lead_id', flat=True))
+        q_plan_ouvert(), company=company, lead_id__in=ids)
+        .values_list('lead_id', flat=True))
     acceptes, envoyes = _placement_devis_du_lot(company, ids)
 
     humaines = _placement_derniers_par_lead(
