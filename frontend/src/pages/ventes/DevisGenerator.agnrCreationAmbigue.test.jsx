@@ -5,51 +5,22 @@
 // délai, 5xx sans corps) est DIT comme tel — jamais « vérifiez les champs ».
 //
 // Harnais du golden (seules les quatre API sont mockées, jamais l'écran).
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { cycleEcran } from '../../test/cycleEcran'
+import { act, fireEvent, waitFor } from '@testing-library/react'
 
-import { DATE_FIGEE, LEAD, monter, attendreStable } from './DevisGeneratorGoldenHarnais'
+import { DATE_FIGEE, LEAD, monter, attendreStable, autoRemplirAvecPanneaux } from './DevisGeneratorGoldenHarnais'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
-const { apiAuto } = vi.hoisted(() => ({
-  apiAuto: () => {
-    const fns = {}
-    return {
-      default: new Proxy(fns, {
-        get(cible, cle) {
-          if (typeof cle !== 'string' || cle === 'then' || cle === '__esModule') return undefined
-          if (!cible[cle]) cible[cle] = vi.fn(() => Promise.resolve({ data: {} }))
-          return cible[cle]
-        },
-      }),
-    }
-  },
-}))
-vi.mock('../../api/crmApi', () => apiAuto())
-vi.mock('../../api/stockApi', () => apiAuto())
-vi.mock('../../api/parametresApi', () => apiAuto())
-vi.mock('../../api/ventesApi', () => apiAuto())
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 
 const COUPURE = Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' })
 const MESSAGE = /connexion a été interrompue — vérifiez la liste des devis avant de recréer/
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(DATE_FIGEE)
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
-afterEach(() => { cleanup(); vi.useRealTimers() })
+cycleEcran({ date: DATE_FIGEE })
 
 const cliquerCreer = async () => {
   const b = [...document.querySelectorAll('button')].find((x) => /Créer le devis/.test(x.textContent || ''))
@@ -68,10 +39,7 @@ describe('AGNR40 — création à issue inconnue', () => {
       },
     })
     await attendreStable(vue.container, act)
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: '8' } })
-    })
-    await act(async () => { fireEvent.click(screen.getByTestId('btn-auto-remplir')) })
+    await autoRemplirAvecPanneaux('8')
     await waitFor(() => expect(vue.ventesApi.composerDevis).toHaveBeenCalled())
     await attendreStable(vue.container, act)
 

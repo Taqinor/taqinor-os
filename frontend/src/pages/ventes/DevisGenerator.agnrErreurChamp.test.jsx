@@ -3,51 +3,18 @@
 // AGNR8 normalisera est dite sous son champ (« 12,345 → 12,35 »).
 //
 // Run : npx vitest run src/pages/ventes/DevisGenerator.agnrErreurChamp.test.jsx
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { cycleEcran } from '../../test/cycleEcran'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 
 import { DATE_FIGEE, monter, attendreStable, DEVIS_REGISTRE } from './DevisGeneratorGoldenHarnais'
 
-const { apiAuto } = vi.hoisted(() => ({
-  apiAuto: () => {
-    const fns = {}
-    return {
-      default: new Proxy(fns, {
-        get(cible, cle) {
-          if (typeof cle !== 'string' || cle === 'then' || cle === '__esModule') return undefined
-          if (!cible[cle]) cible[cle] = vi.fn(() => Promise.resolve({ data: {} }))
-          return cible[cle]
-        },
-      }),
-    }
-  },
-}))
-vi.mock('../../api/crmApi', () => apiAuto())
-vi.mock('../../api/stockApi', () => apiAuto())
-vi.mock('../../api/parametresApi', () => apiAuto())
-vi.mock('../../api/ventesApi', () => apiAuto())
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(DATE_FIGEE)
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
-
-afterEach(() => {
-  cleanup()
-  vi.useRealTimers()
-})
+cycleEcran({ date: DATE_FIGEE })
 
 const MESSAGE = "Assurez-vous qu'il n'y a pas plus de 2 chiffres après la virgule."
 const remise = () => document.querySelector('.gen-discount-input')

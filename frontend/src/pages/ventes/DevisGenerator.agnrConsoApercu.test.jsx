@@ -5,52 +5,19 @@
 // est celle des 12 factures au barème (5 880 kWh).
 //
 // Run : npx vitest run src/pages/ventes/DevisGenerator.agnrConsoApercu.test.jsx
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { cycleEcran } from '../../test/cycleEcran'
+import { act, fireEvent, waitFor } from '@testing-library/react'
 
 import { DATE_FIGEE, monter, attendreStable, DEVIS_REGISTRE } from './DevisGeneratorGoldenHarnais'
 import { consoAnnuelleDepuisFactures } from '../../features/ventes/solar'
 
-const { apiAuto } = vi.hoisted(() => ({
-  apiAuto: () => {
-    const fns = {}
-    return {
-      default: new Proxy(fns, {
-        get(cible, cle) {
-          if (typeof cle !== 'string' || cle === 'then' || cle === '__esModule') return undefined
-          if (!cible[cle]) cible[cle] = vi.fn(() => Promise.resolve({ data: {} }))
-          return cible[cle]
-        },
-      }),
-    }
-  },
-}))
-vi.mock('../../api/crmApi', () => apiAuto())
-vi.mock('../../api/stockApi', () => apiAuto())
-vi.mock('../../api/parametresApi', () => apiAuto())
-vi.mock('../../api/ventesApi', () => apiAuto())
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(DATE_FIGEE)
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
-
-afterEach(() => {
-  cleanup()
-  vi.useRealTimers()
-})
+cycleEcran({ date: DATE_FIGEE })
 
 describe('AGNR24 — la conso de l’aperçu est celle du corps enregistré', () => {
   it('12 × 800 MAD sans facture réelle ⇒ modèle « factures », conso 5 880 enregistrée', async () => {

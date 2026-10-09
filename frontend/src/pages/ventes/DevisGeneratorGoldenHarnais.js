@@ -11,7 +11,7 @@
 // tout ce qui irait plus loin masquerait une vraie dérive.
 import { createElement as h } from 'react'
 import { vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -103,7 +103,8 @@ export const DEVIS_INDUSTRIEL_MT = devisBase(32, 'industriel', {
   tension: 'mt', phases: 'tri', puissance_souscrite_kva: 250,
   consommation: {
     kwh_mensuels: [9000, 8800, 9100, 9500, 9900, 10400, 11000, 11200, 10100, 9600, 9200, 9000],
-    kwh_annuel: null, factures_mad: [], registres_mt: null,
+    kwh_annuel: null,
+    factures_mad: [], registres_mt: null,
   },
   rythme: {
     jours_ouverts: [true, true, true, true, true, true, false],
@@ -340,4 +341,22 @@ export function instantaneGeste(container, apis) {
   // Les `id` générés par `useId` (React 19 : `_r_N_`) dépendent des rendus
   // précédents du fichier : normalisés comme dans le DOM.
   return `== TEXTE ==\n${sansCr(texte.join('\n'))}\n== CHAMPS ==\n${normalise(champs.join('\n'))}\n== APPELS ==\n${json}\n`
+}
+
+/** Reprend le brouillon local proposé à l'ouverture, puis attend l'écran stable. */
+export async function reprendreBrouillon(vue) {
+  await attendreStable(vue.container, act)
+  const reprendre = [...document.querySelectorAll('button')]
+    .find((b) => /Reprendre le brouillon/.test(b.textContent || ''))
+  if (!reprendre) throw new Error('bouton « Reprendre le brouillon » introuvable')
+  await act(async () => { fireEvent.click(reprendre) })
+  await attendreStable(vue.container, act)
+}
+
+/** Tape un nombre de panneaux puis clique « Auto-remplir ». */
+export async function autoRemplirAvecPanneaux(nombre) {
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: nombre } })
+  })
+  await act(async () => { fireEvent.click(screen.getByTestId('btn-auto-remplir')) })
 }

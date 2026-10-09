@@ -6,31 +6,18 @@
 //
 // Harnais du golden ; serveur factice qui applique la fusion d'`ecrire` sur
 // une copie du devis (une clé à null est RETIRÉE) puis la resert au chargeur.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, waitFor, fireEvent, cleanup, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { cycleEcran } from '../../test/cycleEcran'
+import { act, waitFor, fireEvent, screen } from '@testing-library/react'
 
 import { monter, attendreStable, DEVIS_REGISTRE } from './DevisGeneratorGoldenHarnais'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { toast } from '../../ui/confirm'
 
-const { apiAuto } = vi.hoisted(() => ({
-  apiAuto: () => {
-    const fns = {}
-    return {
-      default: new Proxy(fns, {
-        get(cible, cle) {
-          if (typeof cle !== 'string' || cle === 'then' || cle === '__esModule') return undefined
-          if (!cible[cle]) cible[cle] = vi.fn(() => Promise.resolve({ data: {} }))
-          return cible[cle]
-        },
-      }),
-    }
-  },
-}))
-vi.mock('../../api/crmApi', () => apiAuto())
-vi.mock('../../api/stockApi', () => apiAuto())
-vi.mock('../../api/parametresApi', () => apiAuto())
-vi.mock('../../api/ventesApi', () => apiAuto())
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 
 // Le devis passé à ×4 (et enregistré) depuis sa V1 mono.
 const DEVIS_X4 = {
@@ -66,22 +53,7 @@ function serveur(apis) {
   })
 }
 
-beforeEach(() => {
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
-})
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+cycleEcran({ confirmer: true })
 
 const totalRail = (container) => container.querySelector('[data-testid="gen-rail-total"]')?.textContent || ''
 

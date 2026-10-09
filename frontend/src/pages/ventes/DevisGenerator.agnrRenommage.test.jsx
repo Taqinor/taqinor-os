@@ -5,42 +5,21 @@
 //
 // Run : npx vitest run src/pages/ventes/DevisGenerator.agnrRenommage.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
+import { installerShimsJsdom } from '../../test/shimsEcran'
+import { renderGenerateurRole } from '../../test/generateurEmbarque'
 
-// APIs mockées (aucun appel réseau réel au montage).
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-  },
+// APIs mockées (aucun appel réseau réel au montage) : fabriques partagées.
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock({
+  dupliquerProduit: vi.fn(),
 }))
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduits: vi.fn(() => Promise.resolve({ data: [] })),
-    dupliquerProduit: vi.fn(),
-  },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    // PVMRQ — DevisGenerator interroge ce singleton au montage (best-effort) ;
-    // sans lui, l'effet lève sur un mock partiel avant même le premier rendu.
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock())
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
-import DevisGenerator from './DevisGenerator'
 
 // Un catalogue minimal : le Smart Meter devient une ligne à produit lié dans la
 // table par défaut (defaultProductLines), donc renommable.
@@ -48,46 +27,18 @@ const PRODUITS = [
   { id: 10, nom: 'Smart Meter Huawei DTSU666', prix_vente: 1500, tva: 20, is_archived: false, prix_achat: 900 },
 ]
 
-function makeStore({ role_nom, permissions }) {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom, permissions,
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
 function renderGenerator(authState) {
   crmApi.getClients.mockResolvedValue({ data: [] })
   crmApi.getLeads.mockResolvedValue({ data: [] })
   stockApi.getProduits.mockResolvedValue({ data: PRODUITS })
-  return render(
-    <Provider store={makeStore(authState)}>
-      <MemoryRouter>
-        <DevisGenerator />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderGenerateurRole(authState)
 }
 
 // jsdom : shims requis par le générateur (scrollIntoView, matchMedia,
 // ResizeObserver via recharts).
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
+  installerShimsJsdom()
 })
 
 // Trouve l'input de désignation du Smart Meter (ligne à produit lié).
