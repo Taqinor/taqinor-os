@@ -129,23 +129,14 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         # `Outillage.save()` dérive `date_prochaine_calibration` (vrais mois).
         outil.save(update_fields=[
             'date_derniere_calibration', 'date_prochaine_calibration'])
-        # Notification si l'outil sera de nouveau à calibrer dans moins d'un mois.
+        # ACHT75 — notification réelle (type d'événement déclaré, erreurs
+        # journalisées) si la prochaine échéance est à 30 jours ou moins ; le
+        # helper est partagé avec la tâche quotidienne (aucun doublon).
         if (outil.date_prochaine_calibration and
                 outil.date_prochaine_calibration
                 <= datetime.date.today() + datetime.timedelta(days=30)):
-            try:
-                from apps.notifications.services import notify
-                # Notifie l'utilisateur courant (responsable qui a enregistré).
-                notify(
-                    user=request.user,
-                    event_type='outillage_calibration_proche',
-                    title=f"Calibration proche : {outil.nom}",
-                    body=(f"Prochaine calibration le "
-                          f"{outil.date_prochaine_calibration}."),
-                    company=outil.company,
-                )
-            except Exception:
-                pass  # La notification est un bonus — ne fait jamais échouer la vue.
+            from .tasks import notifier_calibration_proche
+            notifier_calibration_proche(outil, [request.user])
         return Response(OutillageSerializer(outil).data)
 
 
