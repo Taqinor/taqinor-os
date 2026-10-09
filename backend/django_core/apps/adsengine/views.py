@@ -1826,7 +1826,37 @@ class EngineActionViewSet(AdsengineViewSet):
             qs = qs.filter(created_at__date__gte=debut)
         if fin is not None:
             qs = qs.filter(created_at__date__lte=fin)
+        # AACQ61 — filtre serveur ``?statut=`` (liste à virgules ; alias
+        # ``en_attente`` = proposee+approuvee ; inconnu → 400). Sans paramètre,
+        # la liste (Journal d'actions, PUB40) est inchangée.
+        brut = self.request.query_params.get('statut')
+        if brut is not None and getattr(self, 'action', None) == 'list':
+            qs = qs.filter(status__in=self._statuts_demandes(brut))
         return qs
+
+    _STATUT_ALIAS = {
+        'en_attente': (EngineAction.Statut.PROPOSEE,
+                       EngineAction.Statut.APPROUVEE),
+    }
+
+    @classmethod
+    def _statuts_demandes(cls, brut):
+        from rest_framework.exceptions import ParseError
+        connus = set(EngineAction.Statut.values)
+        statuts = set()
+        for valeur in str(brut).split(','):
+            valeur = valeur.strip()
+            if not valeur:
+                continue
+            if valeur in cls._STATUT_ALIAS:
+                statuts.update(cls._STATUT_ALIAS[valeur])
+            elif valeur in connus:
+                statuts.add(valeur)
+            else:
+                raise ParseError(f'Statut inconnu : {valeur}')
+        if not statuts:
+            raise ParseError(f'Statut inconnu : {brut}')
+        return sorted(statuts)
 
     def perform_create(self, serializer):
         """ENGFIX2 — Garde policy créative sur le chemin de création API.
