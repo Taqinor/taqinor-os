@@ -89,6 +89,48 @@ from authentication.scoping import scope_queryset  # noqa: E402
 from core.mixins import company_qs  # noqa: E402
 
 
+# CAD177 — bornes des colonnes des lignes d'avoir / de note de débit
+# (DecimalField max_digits=10, decimal_places=2 → |x| < 10^8 ; remise et
+# taux TVA max_digits=5 et bornés 0..100 par contrainte). Hors bornes
+# (1e12, NaN, Infinity, remise 1000), l'INSERT levait DataError « numeric
+# field overflow » → 500 (marcheur aléatoire, nocturne 37792898726).
+_MAX_MONTANT_LIGNE = 10 ** 8
+
+
+def _montants_ligne_corrective(i, ligne):
+    """Valide quantité / prix unitaire / remise / taux TVA d'une ligne saisie
+    (avoir ou note de débit). Rend ``((qte, pu, remise, taux_tva), None)`` ou
+    ``(None, message)`` — message 400 nommant la ligne, jamais un 500."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        qte = Decimal(str(ligne.get('quantite')))
+        pu = Decimal(str(ligne.get('prix_unitaire')))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, (f'Ligne {i} : quantité et prix unitaire '
+                      'numériques requis.')
+    if not qte.is_finite() or not pu.is_finite() or qte <= 0 or pu < 0:
+        return None, f'Ligne {i} : quantité > 0 et prix unitaire ≥ 0 requis.'
+    if qte >= _MAX_MONTANT_LIGNE or pu >= _MAX_MONTANT_LIGNE:
+        return None, (f'Ligne {i} : quantité et prix unitaire doivent rester '
+                      'sous 100 000 000.')
+    try:
+        remise = Decimal(str(ligne.get('remise') or 0))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f'Ligne {i} : remise invalide.'
+    if not remise.is_finite() or not 0 <= remise <= 100:
+        return None, f'Ligne {i} : remise entre 0 et 100 % requise.'
+    taux_tva = ligne.get('taux_tva')
+    if taux_tva in (None, ''):
+        return (qte, pu, remise, None), None
+    try:
+        taux_tva = Decimal(str(taux_tva))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f'Ligne {i} : taux TVA invalide.'
+    if not taux_tva.is_finite() or not 0 <= taux_tva <= 100:
+        return None, f'Ligne {i} : taux TVA invalide.'
+    return (qte, pu, remise, taux_tva), None
+
+
 class IsSuperuserOnly(BasePermission):
     """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
 
@@ -1238,7 +1280,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # bloc atomique plus bas) : le lire ici, hors transaction, laissait
         # deux requêtes concurrentes lire chacune l'ancien reste et passer
         # toutes deux la garde.
-        from decimal import Decimal, InvalidOperation
 
         # ERR34 — valider les lignes fournies AVANT toute création, et échouer
         # bruyamment (400) au lieu de les avaler en silence (l'ancien
@@ -1259,35 +1300,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     return Response(
                         {'detail': f'Ligne {i} : désignation requise.'},
                         status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    qte = Decimal(str(ligne.get('quantite')))
-                    pu = Decimal(str(ligne.get('prix_unitaire')))
-                except (InvalidOperation, TypeError, ValueError):
+                montants, erreur = _montants_ligne_corrective(i, ligne)
+                if erreur:
                     return Response(
-                        {'detail': (f'Ligne {i} : quantité et prix unitaire '
-                                    'numériques requis.')},
+                        {'detail': erreur},
                         status=status.HTTP_400_BAD_REQUEST)
-                if qte <= 0 or pu < 0:
-                    return Response(
-                        {'detail': (f'Ligne {i} : quantité > 0 et prix '
-                                    'unitaire ≥ 0 requis.')},
-                        status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    remise = Decimal(str(ligne.get('remise') or 0))
-                except (InvalidOperation, TypeError, ValueError):
-                    return Response(
-                        {'detail': f'Ligne {i} : remise invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST)
-                taux_tva = ligne.get('taux_tva')
-                if taux_tva not in (None, ''):
-                    try:
-                        taux_tva = Decimal(str(taux_tva))
-                    except (InvalidOperation, TypeError, ValueError):
-                        return Response(
-                            {'detail': f'Ligne {i} : taux TVA invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    taux_tva = None
+                qte, pu, remise, taux_tva = montants
                 # DC10 — produit REQUIS sur une nouvelle ligne d'avoir (lien
                 # snapshot fort). Le FK reste nullable en base pour l'historique,
                 # mais toute ligne saisie ici doit désigner un produit de la
@@ -1346,7 +1364,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         motif = (request.data.get('motif') or '').strip()
         lignes = request.data.get('lignes')
 
-        from decimal import Decimal, InvalidOperation
         clean_lignes = None
         if isinstance(lignes, list) and lignes:
             clean_lignes = []
@@ -1360,35 +1377,12 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     return Response(
                         {'detail': f'Ligne {i} : désignation requise.'},
                         status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    qte = Decimal(str(ligne.get('quantite')))
-                    pu = Decimal(str(ligne.get('prix_unitaire')))
-                except (InvalidOperation, TypeError, ValueError):
+                montants, erreur = _montants_ligne_corrective(i, ligne)
+                if erreur:
                     return Response(
-                        {'detail': (f'Ligne {i} : quantité et prix unitaire '
-                                    'numériques requis.')},
+                        {'detail': erreur},
                         status=status.HTTP_400_BAD_REQUEST)
-                if qte <= 0 or pu < 0:
-                    return Response(
-                        {'detail': (f'Ligne {i} : quantité > 0 et prix '
-                                    'unitaire ≥ 0 requis.')},
-                        status=status.HTTP_400_BAD_REQUEST)
-                try:
-                    remise = Decimal(str(ligne.get('remise') or 0))
-                except (InvalidOperation, TypeError, ValueError):
-                    return Response(
-                        {'detail': f'Ligne {i} : remise invalide.'},
-                        status=status.HTTP_400_BAD_REQUEST)
-                taux_tva = ligne.get('taux_tva')
-                if taux_tva not in (None, ''):
-                    try:
-                        taux_tva = Decimal(str(taux_tva))
-                    except (InvalidOperation, TypeError, ValueError):
-                        return Response(
-                            {'detail': f'Ligne {i} : taux TVA invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    taux_tva = None
+                qte, pu, remise, taux_tva = montants
                 produit_id = ligne.get('produit') or None
                 if produit_id is None:
                     return Response(
