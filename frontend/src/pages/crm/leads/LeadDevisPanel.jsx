@@ -17,15 +17,18 @@ import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
 import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
 import DevisGenerator from '../../ventes/DevisGenerator'
-import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devisStatuts'
+import {
+  peutEditerDevis, peutReviserDevis, libelleStatutDevis,
+} from '../../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 // QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { toast, useConfirmDialog } from '../../../ui/confirm'
 import {
-  Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent,
+  Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
 
 // L'aperçu PDF vient de usePdfPreview + PdfPreviewBody (le même moteur que
@@ -42,6 +45,13 @@ const TITLES = {
   view: 'Devis',
 }
 
+// EDC1 — largeur du panneau : l'Édition complète prend jusqu'à 1 800 px (la
+// table des lignes tient sans défilement horizontal), les autres phases gardent
+// 1 500 px. Classes écrites EN ENTIER (Tailwind ne devine pas une chaîne
+// recomposée).
+const LARGEUR_STANDARD = 'w-[min(1500px,100%)]'
+const LARGEUR_EDITION = 'w-[min(1800px,100%)]'
+
 // EZ5 — `targetKwc` : puissance cible (kWc) demandée pour CE devis depuis la
 // fiche lead (« Devis automatique »). Optionnelle ; vide = comportement
 // historique (taille souhaitée du lead, sinon facture d'hiver). Elle n'écrit
@@ -50,12 +60,31 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const dispatch = useDispatch()
   const navigate = useNavigate()
 
-  // phase: 'remise-input' | 'creating' | 'edit' | 'preview' | 'error'
+  // phase: 'remise-input' | 'creating' | 'chargement' | 'edit' | 'preview' | 'error'
+  // EDC8 — un devis EXISTANT demandé en édition ne monte PAS le générateur tout
+  // de suite : phase `chargement` (spinner) jusqu'à la lecture du devis, qui
+  // décide (modifiable → `edit`, sinon toast + `preview`). Avant, l'éditeur
+  // s'ouvrait puis se refermait d'un coup sur un devis figé (flash « ouvre puis
+  // referme ») : la garde du générateur n'est plus qu'un second rideau.
   const [phase, setPhase] = useState(
-    existingDevisId ? (mode === 'edit' ? 'edit' : 'preview')
+    existingDevisId ? (mode === 'edit' ? 'chargement' : 'preview')
       : mode === 'remise' ? 'remise-input'
         : mode === 'edit' ? 'edit'
           : 'creating')
+  // Vrai tant que la lecture qui doit trancher entre `edit` et `preview` n'est
+  // pas revenue (une seule décision, jamais rejouée par une relecture).
+  const ouvertureEnAttenteRef = useRef(!!existingDevisId && mode === 'edit')
+  // EDC11 — l'éditeur a-t-il des modifications NON enregistrées ? Poussé par le
+  // générateur (`onDirtyChange`), remis à false à chaque sortie de l'édition et
+  // à chaque enregistrement réussi.
+  const [dirty, setDirty] = useState(false)
+  // EDC11 — enregistrer ne quitte plus l'éditeur : on relit le devis (statut,
+  // référence, droits, dérive lead) pour que l'en-tête et l'aperçu ne montrent
+  // jamais un `devisRecord` périmé.
+  const [rechargeTick, setRechargeTick] = useState(0)
+  const { confirm } = useConfirmDialog()
+  // Une seule confirmation à la fois (double clic, Échap martelé).
+  const confirmationEnCoursRef = useRef(false)
   const [discount, setDiscount] = useState('0')
   const [errorMsg, setErrorMsg] = useState(null)
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
@@ -65,10 +94,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [devisRef, setDevisRef] = useState('')
   // QJR534 — le devis CHARGÉ (droits `modifiable` / `revision_possible` lus du
   // serveur, QJR516) : « Édition complète » seulement si modifiable, sinon
-  // « Réviser ». Tant qu'il n'est pas chargé (ou sans devis), le geste
-  // historique reste offert (le générateur refuse lui-même avec la raison).
+  // « Réviser ».
   const [devisRecord, setDevisRecord] = useState(null)
-  const editable = !devisRecord || peutEditerDevis(devisRecord)
+  // EDC8 — plus de `true` par défaut avant la lecture : sur un devis EXISTANT,
+  // « Édition complète » n'est rendu qu'une fois `devisRecord` chargé ET
+  // modifiable. Seul cas sans devis (échec de la création automatique) :
+  // ouvrir l'éditeur = CRÉER un devis à la main, toujours permis.
+  const editable = devisId ? peutEditerDevis(devisRecord) : true
   const revisable = !editable && peutReviserDevis(devisRecord)
   const reviser = () => reviserEtOuvrir({
     devis: { ...devisRecord, id: devisId },
@@ -165,21 +197,152 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Référence (pour le nom du fichier) une fois le devis connu.
+  // Référence (pour le nom du fichier) une fois le devis connu. EDC8 — c'est
+  // AUSSI cette lecture qui décide d'ouvrir l'éditeur d'un devis existant : le
+  // générateur n'est monté qu'ensuite (phase `chargement` d'ici là).
   useEffect(() => {
-    if (!devisId) return
+    if (!devisId) return undefined
+    let annule = false
     ventesApi.getDevisById(devisId)
       .then(({ data }) => {
+        if (annule) return
         setDevisRef(data.reference || `Devis_${devisId}`)
         setDevisRecord(data)
+        if (!ouvertureEnAttenteRef.current) return
+        ouvertureEnAttenteRef.current = false
+        if (peutEditerDevis(data)) {
+          setPhase('edit')
+          return
+        }
+        // Devis figé : on le DIT (la raison vient du serveur) et on montre
+        // l'aperçu ; « Réviser » y est offert si le serveur le permet.
+        toast.error(data.raison_non_modifiable
+          || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
+        setPhase('preview')
       })
-      .catch(() => setDevisRef(`Devis_${devisId}`))
-  }, [devisId])
+      .catch(() => {
+        if (annule) return
+        setDevisRef(`Devis_${devisId}`)
+        if (!ouvertureEnAttenteRef.current) return
+        ouvertureEnAttenteRef.current = false
+        setErrorMsg("Ce devis n'a pas pu être ouvert. Vérifiez votre connexion puis réessayez.")
+        setPhase('error')
+      })
+    return () => { annule = true }
+  }, [devisId, rechargeTick])
 
+  // EDC11 — UNE confirmation à la fois ; renvoie true si l'ouvrier confirme.
+  const demanderConfirmation = async (options) => {
+    if (confirmationEnCoursRef.current) return false
+    confirmationEnCoursRef.current = true
+    try {
+      return (await confirm(options)) === true
+    } finally {
+      confirmationEnCoursRef.current = false
+    }
+  }
+
+  // CRÉATION embarquée terminée (`onDone`) : le devis existe désormais, on
+  // passe à l'aperçu comme avant.
   const onEditDone = (id) => {
     if (id) setDevisId(id)
+    setDirty(false)
     onDevisChanged?.()
     setPhase('preview')
+  }
+
+  // EDC11 — enregistrement d'un devis EXISTANT (`onEnregistre`) : l'ouvrier
+  // RESTE dans l'éditeur. Avant, chaque enregistrement le renvoyait à l'aperçu
+  // PDF (réentrer = tout recharger) : le « retour d'un coup au devis ».
+  const onEnregistre = (id) => {
+    if (id) setDevisId(id)
+    setDirty(false)
+    setRechargeTick((t) => t + 1)
+    onDevisChanged?.()
+  }
+
+  // EDC11 — « Voir le PDF » est un geste EXPLICITE (bouton de la barre
+  // d'actions du générateur). L'aperçu remplace l'éditeur : avec des
+  // modifications non enregistrées, on le dit avant de les abandonner.
+  const onVoirPdf = async () => {
+    if (dirty) {
+      const ok = await demanderConfirmation({
+        title: 'Voir le PDF sans enregistrer ?',
+        description: 'Le PDF montre la dernière version enregistrée du devis : '
+          + 'vos modifications en cours seront abandonnées.',
+        confirmLabel: 'Voir sans enregistrer',
+        cancelLabel: 'Rester',
+        destructive: false,
+      })
+      if (!ok) return
+    }
+    setDirty(false)
+    setPhase('preview')
+  }
+
+  // EDC6 — SORTIES PROTÉGÉES de l'édition. Échap, clic sur le voile et ✕
+  // fermaient tout le panneau SANS prévenir : une frappe de trop et le devis
+  // en cours était perdu. Maintenant, avec des modifications non enregistrées,
+  // chaque geste passe par « Quitter sans enregistrer ? » (Rester / Quitter) ;
+  // sans modification, il sort directement. La destination dépend du GESTE,
+  // pas de l'état : Échap et le voile « reviennent » (aperçu si le devis
+  // existe, sinon fermeture), ✕ ferme le panneau.
+  const sortirDeLEdition = async (destination) => {
+    const quitter = () => {
+      setDirty(false)
+      if (destination === 'retour' && devisId) setPhase('preview')
+      else onClose()
+    }
+    if (!dirty) {
+      quitter()
+      return
+    }
+    const ok = await demanderConfirmation({
+      title: 'Quitter sans enregistrer ?',
+      description: "Les modifications de ce devis n'ont pas été enregistrées : "
+        + 'elles seront perdues si vous quittez.',
+      confirmLabel: 'Quitter',
+      cancelLabel: 'Rester',
+    })
+    if (ok) quitter()
+  }
+
+  // Rappels de Radix DismissableLayer (préventables). Phase `edit` SEULEMENT :
+  // `preview`/`creating`/`error`/`remise-input` gardent la fermeture Radix
+  // d'origine (Échap / clic sur le voile ferment le panneau).
+  const onEscapeKeyDown = (e) => {
+    if (phase !== 'edit') return
+    // Déjà pris : Radix empile les couches, donc Échap dans un popover ouvert
+    // (ProduitPicker) ne remonte pas jusqu'ici ; ce garde couvre le reste (un
+    // écouteur en amont qui a déjà fait preventDefault()).
+    if (e.defaultPrevented) return
+    e.preventDefault()
+    sortirDeLEdition('retour')
+  }
+  const onInteractOutside = (e) => {
+    if (phase !== 'edit') return
+    // Geste déjà pris : le Dialog modal annule lui-même le clic droit ET la
+    // prise de focus hors du panneau (ex. la boîte de confirmation qui
+    // s'ouvre) AVANT de nous appeler — sans ce garde, la confirmation
+    // rappellerait la confirmation.
+    if (e.defaultPrevented) return
+    // En édition, JAMAIS de fermeture directe par Radix.
+    e.preventDefault()
+    // Un toast (« Modifications enregistrées. ») vit hors du panneau : cliquer
+    // dessus pour le fermer ne doit pas renvoyer l'ouvrier à l'aperçu.
+    if (e.target?.closest?.('[data-sonner-toaster], [data-sonner-toast]')) return
+    sortirDeLEdition('retour')
+  }
+  // Fermeture demandée par Radix par une autre voie : en édition, elle passe
+  // aussi par la garde (filet de sécurité, ces voies sont déjà interceptées).
+  const onOpenChange = (ouvert) => {
+    if (ouvert) return
+    if (phase === 'edit') sortirDeLEdition('fermer')
+    else onClose()
+  }
+  const onCloseClick = () => {
+    if (phase === 'edit') sortirDeLEdition('fermer')
+    else onClose()
   }
 
   // Téléchargement : MÊME source que l'aperçu (/proposal), récupérée en blob
@@ -230,14 +393,25 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // Sheet side="right" : le panneau glisse depuis son bord réel au lieu de
     // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
     // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" showClose={false} className="w-[min(1500px,100%)] gap-0 p-0 sm:max-w-none">
+    <Sheet open onOpenChange={onOpenChange}>
+      <SheetContent side="right" showClose={false}
+                    onEscapeKeyDown={onEscapeKeyDown}
+                    onInteractOutside={onInteractOutside}
+                    className={`${phase === 'edit' ? LARGEUR_EDITION : LARGEUR_STANDARD} gap-0 p-0 sm:max-w-none`}>
         <div className="ldp-header">
           <h3 className="ldp-title">
             {TITLES[mode] || 'Devis'} — {lead.nom} {lead.prenom || ''}
             {devisRef && <span className="ldp-ref">{devisRef}</span>}
+            {/* EDC1 — le statut du devis CHARGÉ (libellés de devisStatuts.js,
+                jamais une clé de STAGES.py) : l'ouvrier sait sur quelle
+                version il travaille sans quitter l'éditeur. */}
+            {devisRecord?.statut && (
+              <StatusPill status={devisRecord.statut}
+                          label={libelleStatutDevis(devisRecord.statut)}
+                          data-testid="ldp-statut" />
+            )}
           </h3>
-          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+          <button type="button" className="modal-close" onClick={onCloseClick}>✕</button>
         </div>
 
         <div className="ldp-body">
@@ -271,6 +445,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             </div>
           )}
 
+          {/* EDC8 — lecture du devis avant de monter l'éditeur. */}
+          {phase === 'chargement' && (
+            <div className="ldp-center" data-testid="ldp-chargement">
+              <p className="gen-hint" role="status"><Spinner /> Ouverture du devis…</p>
+            </div>
+          )}
+
           {phase === 'error' && (
             <div className="ldp-center">
               <div className="form-error-box" role="alert">{errorMsg}</div>
@@ -292,13 +473,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'edit' && (
             <div className="ldp-edit">
-              <DevisGenerator
-                embedded
-                leadId={lead.id}
-                editId={devisId || null}
-                onDone={onEditDone}
-                onCancel={() => (devisId ? setPhase('preview') : onClose())}
-              />
+              {/* EDC1 — le défileur `.ldp-edit` n'a PLUS de padding (sinon tout
+                  `top: 0` collant du générateur se décale de 16 px) : le
+                  retrait vit sur ce conteneur intérieur. */}
+              <div className="ldp-edit-inner">
+                <DevisGenerator
+                  embedded
+                  leadId={lead.id}
+                  editId={devisId || null}
+                  onDone={onEditDone}
+                  onEnregistre={onEnregistre}
+                  onVoirPdf={onVoirPdf}
+                  onDirtyChange={setDirty}
+                  onCancel={() => { setDirty(false); if (devisId) setPhase('preview'); else onClose() }}
+                />
+              </div>
             </div>
           )}
 

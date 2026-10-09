@@ -11422,3 +11422,15 @@ textarea.form-control {
   color: var(--muted-foreground);
   font-size: 0.875rem;
 }
+
+/* ── EDC1 — Panneau d'Édition complète : défileur sans padding, pleine largeur ── */
+/* Contrat EDC (lane panneau) : le défileur `.ldp-edit` ne porte AUCUN padding
+   (un padding décale de 16 px tout `top: 0` collant du générateur : Chromium
+   mesure `top` depuis le bord intérieur du padding) et pose `--header-h: 0px`
+   (il n'y a pas d'en-tête d'app au-dessus dans le panneau, le rail collant du
+   générateur n'a donc rien à éviter). Le retrait de 16 px passe sur le
+   conteneur intérieur. `scrollbar-gutter: stable` : la largeur utile ne bouge
+   pas quand la barre verticale apparaît. Règles ajoutées EN FIN, la règle
+   d'origine `.ldp-edit { padding: 16px }` n'est pas éditée. */
+.ldp-body > .ldp-edit { padding: 0; scrollbar-gutter: stable; --header-h: 0px; }
+.ldp-edit > .ldp-edit-inner { padding: 16px; }
