@@ -608,9 +608,17 @@ jobs:
           python ../../scripts/fuzz/prepare_fuzz_env.py "$FUZZ_STATE_FILE"
       - name: Démarrer Django (gunicorn, throttles coupés — ENF1)
         working-directory: backend/django_core
+        # ENF1b — sortie de gunicorn redirigée vers un FICHIER : lancé en
+        # arrière-plan, il héritait du tube stdout de CETTE étape, fermé dès
+        # qu'elle se termine. Tout `print()`/écriture stdout d'une vue levait
+        # alors `BrokenPipeError` : `envoyer-email` (backend e-mail console)
+        # répondait 502 « [Errno 32] Broken pipe » et `/proposal` 500 (le
+        # moteur imprime « Generating charts... »). Le journal est publié avec
+        # le rapport Schemathesis (traces des 500).
         run: |
           gunicorn -c ../../scripts/fuzz/gunicorn_fuzz.py erp_agentique.wsgi:application \
-            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync &
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            > "$GITHUB_WORKSPACE/gunicorn-fuzz.log" 2>&1 &
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" \
               http://127.0.0.1:8000/api/django/admin/login/ || true)
@@ -690,6 +698,7 @@ jobs:
             schemathesis-report/
             schemathesis-output.log
             fuzz-state.json
+            gunicorn-fuzz.log
           retention-days: 14
           if-no-files-found: warn
 

@@ -389,6 +389,9 @@ MIDDLEWARE = [
     # core.exceptions.taqinor_exception_handler (YAPIC3) et
     # core.observability.RequestObservabilityMiddleware le lisent tous deux.
     'core.middleware.RequestIdMiddleware',
+    # ENF1b — URL d'API interne sans route → 404 JSON `ErreurApi`, jamais la
+    # page HTML de Django (après RequestIdMiddleware : lit request.request_id).
+    'core.middleware.ApiJson404Middleware',
     # NTAPI38-middleware — journalise chaque appel public (`/api/public/…`,
     # `publicapi.ApiCallLog` : latence, statut, request_id) ; APRÈS
     # RequestIdMiddleware dont il lit `request.request_id`. Test de préfixe
@@ -671,6 +674,9 @@ REST_FRAMEWORK = {
     # ``?page_size=`` autorisé, max_page_size=200 (plafond serveur). L'enveloppe
     # count/next/previous/results reste identique à DRF.
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
+    # ENF1b — OPTIONS ne répond jamais 500 sur une action de liste PUT/PATCH
+    # ou une vue sans `serializer_class` (core/metadata.py).
+    'DEFAULT_METADATA_CLASS': 'core.metadata.TaqinorMetadata',
     'PAGE_SIZE': 50,
     # YAPIC2 — backends de tri/recherche par défaut. Toute vue qui déclare son
     # PROPRE `filter_backends` (37/97 aujourd'hui) N'EST PAS affectée (un

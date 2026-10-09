@@ -37,14 +37,17 @@ attrapées (ex. ``apps.ventes`` Devis/Facture, qui n'avaient aucun override).
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.db.models import ProtectedError
 from django.http import Http404
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status
+from rest_framework.fields import get_error_detail
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 from rest_framework.views import set_rollback
@@ -315,10 +318,72 @@ def _rate_limit_headers_for(exc, context):
     return {}
 
 
+# ENF1b — message EXACT de ``IntegerField.get_prep_value`` (Django) quand
+# une recherche ORM reçoit un identifiant non numérique fourni par le client
+# (« null,null », « {} », « AAA »…). Seul CE message est reconnu : un
+# ``ValueError`` quelconque reste un 500 (bug serveur, jamais masqué).
+_ID_NON_NUMERIQUE = re.compile(
+    r"^Field '(?P<champ>[^']+)' expected a number but got (?P<valeur>.*)\.$",
+    re.S)
+
+
+def _kwargs_url(context) -> dict:
+    vue = context.get('view') if context else None
+    return dict(getattr(vue, 'kwargs', None) or {})
+
+
+def _exception_client(exc, context):
+    """ENF1b (api-fuzz du 09/10 : 18 des 29 « Server error ») — deux erreurs
+    Django qui signalent une ENTRÉE CLIENT invalide, pas un bug serveur, et
+    que DRF ne sait pas traduire (son handler renvoie ``None`` → 500) :
+
+    * ``django.core.exceptions.ValidationError`` (``full_clean()``, ou
+      ``Field.to_python`` sur une valeur brute passée au modèle) → 400
+      ``validation_error``, détail par champ conservé ;
+    * le ``ValueError`` « Field 'id' expected a number but got … » d'une
+      recherche ORM sur un identifiant non numérique → 404 ``not_found``
+      quand la valeur est un paramètre de CHEMIN (comme
+      ``get_object_or_404`` de DRF, qui attrape déjà ce cas), sinon 400.
+
+    Renvoie l'exception DRF équivalente, ou ``None`` (exception inchangée).
+    """
+    if isinstance(exc, DjangoValidationError):
+        return drf_exceptions.ValidationError(detail=get_error_detail(exc))
+    if type(exc) is ValueError:
+        trouve = _ID_NON_NUMERIQUE.match(str(exc))
+        if trouve is None:
+            return None
+        valeur = trouve.group('valeur')
+        if any(repr(v) == valeur or repr(str(v)) == valeur
+               for v in _kwargs_url(context).values()):
+            return drf_exceptions.NotFound()
+        return drf_exceptions.ValidationError({
+            trouve.group('champ'): [
+                f'Identifiant invalide : {valeur} (nombre entier attendu).'],
+        })
+    return None
+
+
+def _corps_liste_en_objet(response) -> None:
+    """ENF1b — ``raise ValidationError('…')`` produit un corps LISTE
+    (``["…"]``) : ni le schéma ``ErreurApi`` (un objet) ni le frontend
+    (``lib/apiError.js`` lit ``detail``/``non_field_errors``) ne le
+    comprennent. On le replie en objet ``{detail, non_field_errors}``."""
+    if isinstance(response.data, list):
+        messages = [str(m) for m in response.data]
+        response.data = {
+            'detail': messages[0] if messages else '',
+            'non_field_errors': messages,
+        }
+
+
 def taqinor_exception_handler(exc, context):
     """`REST_FRAMEWORK['EXCEPTION_HANDLER']` — enveloppe UNIQUE pour toute
     réponse d'erreur DRF, y compris les exceptions non reconnues par DRF
     (repliées en 500 `server_error`)."""
+    traduite = _exception_client(exc, context)
+    if traduite is not None:
+        exc = traduite
     response = drf_exception_handler(exc, context)
     request_id = _request_id(context)
 
@@ -357,6 +422,8 @@ def taqinor_exception_handler(exc, context):
         return response
 
     code = _code_for(exc)
+    if code == 'validation_error':
+        _corps_liste_en_objet(response)
     envelope = {
         'code': code,
         'message': _message_for(exc, code),
