@@ -1897,3 +1897,37 @@ EINVOICE_SIGNATURE_PROVIDER = os.environ.get(
 # ``en_attente``) et n'émet AUCUNE requête sortante.
 DGI_TRANSMISSION_ENABLED = os.environ.get('DGI_TRANSMISSION_ENABLED', '0') == '1'
 DGI_TRANSMISSION_URL = os.environ.get('DGI_TRANSMISSION_URL', '')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP32 — réglages de sécurité LUS par le code mais jamais déclarés
+# (C-ADEP-004, D-ADEP-3 : aucune de ces clés n'est posée en prod → rien ne
+# s'active au déploiement). Absentes = comportement inchangé.
+#
+# apps.identity (anomaly._geolocate) — chemin de la base GeoLite2 City. Vide =
+# repli sur GEOIP2_CITY_DB puis géolocalisation inerte.
+GEOIP_PATH = os.environ.get('GEOIP_PATH', '')
+# core.search_backend — URL du cluster OpenSearch. Vide = Postgres FTS.
+OPENSEARCH_URL = os.environ.get('OPENSEARCH_URL', '')
+# core.throttling (ip_de_requete) — n'honorer l'en-tête CF-Connecting-IP que si
+# Cloudflare est déclaré proxy de confiance. Booléen STRICT : seuls « 1 » et
+# « true » l'activent ; toute autre valeur ou absente = faux.
+CF_CONNECTING_IP_TRUSTED = (
+    os.environ.get('CF_CONNECTING_IP_TRUSTED', '').strip().lower()
+    in ('1', 'true'))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP35 — apps.adsengine : webhook WhatsApp Cloud (attribution CTWA). Lus par
+# whatsapp_webhook.py ET par l'écran santé (audit.boucle CTWA) — même source.
+# Vides = webhook 404 + écran « inactif » (D-ADEP-3 : absentes en prod).
+WHATSAPP_CLOUD_VERIFY_TOKEN = os.environ.get('WHATSAPP_CLOUD_VERIFY_TOKEN', '')
+WHATSAPP_CLOUD_APP_SECRET = os.environ.get('WHATSAPP_CLOUD_APP_SECRET', '')
+# Société ERP cible des conversations (sans elle : repli bruyant, écran inactif).
+WHATSAPP_CLOUD_COMPANY_ID = os.environ.get('WHATSAPP_CLOUD_COMPANY_ID') or None
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP36 — apps.notifications : WhatsApp Business Cloud (BSP), lus par
+# views_whatsapp_bsp._whatsapp_actif(). OFF tant que les DEUX ne sont pas posés
+# (D-ADEP-3 : absents en prod). Booléen STRICT : seuls « 1 » et « true ».
+WHATSAPP_ENABLED = (
+    os.environ.get('WHATSAPP_ENABLED', '').strip().lower() in ('1', 'true'))
+WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')

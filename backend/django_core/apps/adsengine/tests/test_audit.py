@@ -214,19 +214,14 @@ class AuditTrackingTests(TestCase):
             any('odoo' in item.lower() for item in section['items']))
 
     def test_pub29_whatsapp_configured_removes_its_item(self):
-        import os
-        env = {
-            'WHATSAPP_CLOUD_VERIFY_TOKEN': 'vt',
-            'WHATSAPP_CLOUD_APP_SECRET': 'sec',
-            # AACQ25 — le webhook exige aussi la société propriétaire.
-            'WHATSAPP_CLOUD_COMPANY_ID': str(self.company.pk),
-        }
-        os.environ.update(env)
-        try:
+        from django.test import override_settings
+        # ADEP35 — l'audit lit les réglages (même source que le webhook).
+        with override_settings(
+                WHATSAPP_CLOUD_VERIFY_TOKEN='vt',
+                WHATSAPP_CLOUD_APP_SECRET='sec',
+                # AACQ25 — le webhook exige aussi la société propriétaire.
+                WHATSAPP_CLOUD_COMPANY_ID=str(self.company.pk)):
             section = audit._audit_tracking(self.company)
-        finally:
-            for k in env:
-                os.environ.pop(k, None)
         self.assertFalse(
             any('whatsapp' in item.lower() for item in section['items']))
 

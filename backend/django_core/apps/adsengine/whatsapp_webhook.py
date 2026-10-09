@@ -50,6 +50,20 @@ def _is_configured():
     return bool(_verify_token() and _app_secret())
 
 
+def _company_id():
+    return (str(getattr(settings, 'WHATSAPP_CLOUD_COMPANY_ID', '') or '')
+            .strip())
+
+
+def boucle_ctwa_active():
+    """ADEP35 — état « boucle CTWA active » de l'écran santé Publicité, lu à
+    la MÊME source que le webhook (``settings``, déclarés dans
+    ``settings/base.py``) : jamais ``os.environ`` à part. Exige les deux jetons
+    (sinon le webhook répond 404) ET la société cible (AACQ25) : « active »
+    implique donc un GET de vérification Meta en 200."""
+    return bool(_is_configured() and _company_id())
+
+
 def _resolve_company():
     """Société cible, résolue CÔTÉ SERVEUR (jamais du corps de requête), au même
     patron que les autres webhooks Meta de l'ERP : ``WHATSAPP_CLOUD_COMPANY_ID``
