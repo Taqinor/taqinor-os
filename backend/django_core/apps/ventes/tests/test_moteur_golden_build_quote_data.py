@@ -216,8 +216,13 @@ class MoteurGoldenBuildQuoteDataTests(TestCase):
         pks |= set(devis.lignes.values_list('pk', flat=True))
         pks |= set(devis.lignes.exclude(produit=None)
                    .values_list('produit_id', flat=True))
+        # Un pk n'est masqué que comme SEGMENT DE CHEMIN : jamais précédé
+        # d'un chiffre. Sans ``(?<![0-9])``, une base ``--keepdb`` dont un
+        # pk vaut 2026 masquait aussi l'année des dates « 01/10/2026 »
+        # (``date``, ``valid_until``) — le golden variait d'une exécution à
+        # l'autre selon la valeur des séquences.
         for pk in sorted(pks, reverse=True):
-            texte = re.sub(r'/%d(?=[/._?#"])' % pk, '/<pk>', texte)
+            texte = re.sub(r'(?<![0-9])/%d(?=[/._?#"])' % pk, '/<pk>', texte)
         return {
             'sha256': hashlib.sha256(texte.encode('utf-8')).hexdigest(),
             'cles': list(data.keys()),
