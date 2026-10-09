@@ -70,11 +70,8 @@ CHAMPS_SERVEUR = [
     _entree('facture', 'Facture', 'updated_by', lambda t: t.collegue.pk,
             'posé par la vue à chaque écriture (VX98)',
             pose_par_la_vue=True),
-    # ── MandatPaiement (ASEC28) ───────────────────────────────────────────
-    _entree('mandat', 'MandatPaiement', 'statut', 'actif',
-            'actions activer / revoquer du mandat'),
-    _entree('mandat', 'MandatPaiement', 'consentement_horodate',
-            '2026-10-01T10:00:00Z', 'recueil du consentement (activation)'),
+    # MandatPaiement (ASEC28) : route `mandats-paiement` PARQUÉE (AFAC19) —
+    # plus aucun PATCH générique à sonder.
     # ── Intervention (ASEC32) ─────────────────────────────────────────────
     _entree('intervention', 'Intervention', 'signature_client',
             'data:image/png;base64,AAAA', 'action signer-client'),
@@ -131,7 +128,6 @@ EXIGES = {
     ('Facture', 'retenue_liberee_le'), ('Facture', 'statut_teledeclaration'),
     ('Facture', 'fichier_ubl'), ('Facture', 'pdf_render_meta'),
     ('Facture', 'updated_by'),
-    ('MandatPaiement', 'statut'), ('MandatPaiement', 'consentement_horodate'),
     ('Intervention', 'signature_client'), ('Intervention', 'signataire_nom'),
     ('Intervention', 'signe_le'), ('Installation', 'etape'),
     ('Ticket', 'non_facturable'), ('Ticket', 'est_recidive'),
@@ -163,7 +159,7 @@ class ChampsServeurTests(TestCase):
         from apps.roles.models import Role
         from apps.sav.models import Ticket
         from apps.ventes.models import (
-            BonCommande, Devis, Facture, LigneDevis, MandatPaiement,
+            BonCommande, Devis, Facture, LigneDevis,
         )
         from authentication.models import Company
 
@@ -208,10 +204,6 @@ class ChampsServeurTests(TestCase):
                 company=self.company, reference='FAC-ASEC19-1',
                 client=client, statut=Facture.Statut.BROUILLON,
                 taux_tva=Decimal('20.00'), created_by=self.admin),
-            'mandat': MandatPaiement.objects.create(
-                company=self.company, client=client,
-                provider='mock_tokenized', token='TOK-ASEC19',
-                statut=MandatPaiement.Statut.REVOQUE),
             'intervention': Intervention.objects.create(
                 company=self.company, installation=installation),
             'installation': installation,
@@ -242,7 +234,6 @@ class ChampsServeurTests(TestCase):
         }
         self.urls = {
             'facture': f'{V}/ventes/factures/{{}}/',
-            'mandat': f'{V}/ventes/mandats-paiement/{{}}/',
             'intervention': f'{V}/installations/interventions/{{}}/',
             'installation': f'{V}/installations/chantiers/{{}}/',
             'ticket': f'{V}/sav/tickets/{{}}/',

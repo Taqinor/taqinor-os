@@ -12,6 +12,7 @@
  *   3. `.hero-page` (pages de texte) : surtitre, titre, introduction.
  */
 @import './global.css';
+@import './motion.css';
 
 *,
 *::before,

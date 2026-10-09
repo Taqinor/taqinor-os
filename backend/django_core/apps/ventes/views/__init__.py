@@ -33,7 +33,6 @@ from .commissioning import (  # FG274-FG278, FG287
     AttestationREViewSet,
 )
 from .remise_encaissement import RemiseEncaissementViewSet  # XFSM19
-from .mandat_paiement import MandatPaiementViewSet  # XCTR22
 from .liste_prix import ListePrixViewSet, prix_applicable_view  # XSAL1-3
 from .parametres_gammes import ParametresGammesView  # PVMRQ
 from .plan_commission import PlanCommissionViewSet  # WIR281/XSAL6
@@ -65,7 +64,6 @@ __all__ = [
     'TestPerformanceReceptionViewSet',
     'AttestationREViewSet',
     'RemiseEncaissementViewSet',
-    'MandatPaiementViewSet',
     'ListePrixViewSet',
     'prix_applicable_view',
     'ParametresGammesView',

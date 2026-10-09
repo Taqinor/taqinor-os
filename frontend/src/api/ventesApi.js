@@ -278,6 +278,8 @@ const ventesApi = {
   // téléchargeable en PDF. Sans `lignes`, le serveur recopie la facture.
   creerNoteDebit: (factureId, data) =>
     api.post(`/ventes/factures/${factureId}/creer-note-debit/`, data || {}),
+  // AFAC33 — annulation d'une ND émise (par avoir de ND, admin, idempotente).
+  annulerNoteDebit: (id) => api.post(`/ventes/notes-debit/${id}/annuler/`),
   getNotesDebit: (params) => api.get('/ventes/notes-debit/', { params }),
   telechargerNoteDebitPdf: (id) =>
     api.get(`/ventes/notes-debit/${id}/telecharger-pdf/`,

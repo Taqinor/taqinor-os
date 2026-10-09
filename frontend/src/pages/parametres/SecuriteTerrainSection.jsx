@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import { apiErrorMessage } from '../../lib/apiError'
 import parametresApi from '../../api/parametresApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -53,14 +54,14 @@ export default function SecuriteTerrainSection() {
         libelle, ordre: slots.length,
       })
       setNewLibelle(''); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Ajout impossible.')) }
   }
   const rename = async (s, libelle) => {
     if (!libelle.trim() || libelle === s.libelle) return
-    try { await installationsApi.saveConsigneSecurite(s.id, { libelle }); load() } catch { /* */ }
+    try { await installationsApi.saveConsigneSecurite(s.id, { libelle }); load() } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleActif = async (s) => {
-    try { await installationsApi.saveConsigneSecurite(s.id, { actif: !s.actif }); load() } catch { /* */ }
+    try { await installationsApi.saveConsigneSecurite(s.id, { actif: !s.actif }); load() } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const move = async (idx, dir) => {
     const j = idx + dir
@@ -72,7 +73,7 @@ export default function SecuriteTerrainSection() {
         installationsApi.saveConsigneSecurite(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const del = (s) => setPendingDelete(s)
 
@@ -84,7 +85,7 @@ export default function SecuriteTerrainSection() {
       setPendingDelete(null)
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Suppression impossible (protégée ?).')
+      toast.error(apiErrorMessage(e, 'Suppression impossible (protégée ?).'))
     } finally {
       setDeleting(false)
     }
@@ -94,7 +95,7 @@ export default function SecuriteTerrainSection() {
       const r = await parametresApi.updateProfile(patch)
       setProfile(r.data)
       toast.success('Enregistré.')
-    } catch { toast.error('Enregistrement impossible.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Enregistrement impossible.')) }
   }
 
   if (loading) return (

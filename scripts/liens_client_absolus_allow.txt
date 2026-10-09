@@ -6,7 +6,6 @@ backend/django_core/apps/automation/serializers.py::IncomingWebhookTriggerSerial
 backend/django_core/apps/installations/selectors.py::intervention_rapport_public_payload  # AFAC94 lien client relatif
 backend/django_core/apps/stock/serializers_wms.py::PortailTiersTokenSerializer.get_lien_public  # AFAC94 lien client relatif
 backend/django_core/apps/ventes/domain/cycle_vie.py::bcf_share_url  # AFAC94 lien client relatif
-backend/django_core/apps/ventes/payments/providers.py::NoOpProvider.create_session  # AFAC94 lien client relatif
 backend/django_core/apps/ventes/public/paiement_views.py::_deposit_success_payload  # AFAC94 lien client relatif
 backend/django_core/apps/ventes/utils/whatsapp.py::build_facture_whatsapp_draft._url  # AFAC94 lien client relatif
 backend/django_core/apps/ventes/utils/whatsapp.py::public_document_url  # AFAC94 lien client relatif
