@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Layers, Check, X, Upload, Sparkles } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   normalizeBacklog, runwayTone, clampRatio, formatPercent, formatNumber,
 } from './adsengine'
@@ -48,6 +49,7 @@ export default function BacklogScreen() {
   // groupée qui les ignore).
   const [itemsSansLot, setItemsSansLot] = useState([])
   const [itemsSansLotLoading, setItemsSansLotLoading] = useState(true)
+  const [itemsTruncation, setItemsTruncation] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -59,10 +61,18 @@ export default function BacklogScreen() {
 
   const loadItemsSansLot = useCallback(() => {
     setItemsSansLotLoading(true)
-    adsengineApi.backlog.rawItems()
-      .then(r => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+    // AACQ68 — TOUTES les pages : un item sans lot en page 2 est listé aussi.
+    let count = null
+    fetchAllPages((page) => adsengineApi.backlog.rawItems({ page })
+      .then((r) => {
+        if (page === 1 && typeof r.data?.count === 'number') count = r.data.count
+        return r.data
+      }), { concurrency: 3 })
+      .then(data => {
+        const rows = Array.isArray(data) ? data : (data?.results || [])
         setItemsSansLot(rows.filter(it => it && (it.batch === null || it.batch === undefined)))
+        setItemsTruncation(count != null && count > rows.length
+          ? { shown: rows.length, total: count } : null)
       })
       .catch(() => setItemsSansLot([]))
       .finally(() => setItemsSansLotLoading(false))
@@ -296,6 +306,11 @@ export default function BacklogScreen() {
       <section className="card ae-backlog-sans-lot" data-testid="ae-backlog-sans-lot"
         style={{ padding: '1rem', marginTop: '1.25rem' }}>
         <h3 style={{ margin: '0 0 0.6rem' }}>Items sans lot</h3>
+        {itemsTruncation && (
+          <p data-testid="ae-backlog-truncation" style={{ color: '#92400e', margin: '0 0 0.5rem' }}>
+            {itemsTruncation.shown} sur {itemsTruncation.total} items affichés.
+          </p>
+        )}
         {itemsSansLotLoading
           ? <p className="page-loading">Chargement…</p>
           : itemsSansLot.length === 0

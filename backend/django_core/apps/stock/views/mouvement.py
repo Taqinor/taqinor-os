@@ -246,12 +246,19 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                         {'quantite': (
                             'Le niveau saisi est déjà le stock actuel '
                             f'({qte_avant}) : aucun ajustement à poser.')})
+            note = donnees.get('note')
+            if type_mv == MouvementStock.TypeMouvement.SORTIE:
+                # ERR-ASTK205 — SORTIE manuelle sans lot sur un produit suivi
+                # par lot : permise, mais « Non affectée à un lot » au
+                # registre (écart nommé, jamais muet).
+                from ..services_wms import note_sortie_sans_lot
+                note = note_sortie_sans_lot(produit.company, produit, note)
             mouvement = record_stock_movement(
                 company=produit.company, produit=produit,
                 type_mouvement=type_mv, quantite=quantite,
                 quantite_avant=qte_avant, quantite_apres=qte_apres,
                 reference=donnees.get('reference'),
-                note=donnees.get('note'), created_by=user,
+                note=note, created_by=user,
                 bin_source=donnees.get('bin_source'),
                 bin_destination=donnees.get('bin_destination'))
             unite = donnees.get('unite_logistique')

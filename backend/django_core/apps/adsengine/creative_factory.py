@@ -365,6 +365,15 @@ def import_chantier_photo(company, *, chantier_id, attachment_id, client_id,
                             "importez seulement une photo dont le client a "
                             "signé l'usage de son image.")}
 
+    # AACQ6 — le consentement doit être celui du client PROPRIÉTAIRE du
+    # chantier (jamais celui d'un autre client) ; chantier sans client → refus.
+    owner_id = inst_selectors.chantier_client_id(company, chantier_id)
+    if owner_id is None or int(owner_id) != int(client_id):
+        return {'imported': False, 'asset': None,
+                'blocked_reason': 'consentement_manquant',
+                'message': ("Le consentement fourni n'est pas celui du "
+                            "client du chantier.")}
+
     attachment = inst_selectors.chantier_photo(
         company, chantier_id, attachment_id)
     if attachment is None:

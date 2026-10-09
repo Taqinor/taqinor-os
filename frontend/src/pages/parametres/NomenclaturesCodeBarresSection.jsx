@@ -4,6 +4,7 @@
 // parsing GS1/EAN existant. Sans nomenclature ACTIVE, le résolveur de scan se
 // comporte exactement comme avant (comportement historique inchangé).
 import { useEffect, useState } from 'react'
+import { useConfirmDialog } from '../../ui/confirm'
 import { Plus, Trash2, Barcode } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
@@ -34,6 +35,7 @@ function frErr(err, fallback = "L'opération a échoué.") {
 
 // ── Règles d'une nomenclature (motif → type d'entité, triées par priorité) ──
 function ReglesTable({ nomenclature, onChanged }) {
+  const { confirmDelete } = useConfirmDialog()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [nouvelle, setNouvelle] = useState({ motif: '', est_regex: false, encode: 'produit', priorite: 100 })
@@ -59,7 +61,7 @@ function ReglesTable({ nomenclature, onChanged }) {
   }
 
   const supprimer = async (id) => {
-    if (!window.confirm('Supprimer cette règle ?')) return
+    if (!(await confirmDelete({ title: 'Supprimer cette règle ?', description: 'Cette action est définitive.' }))) return
     try {
       await stockApi.deleteRegleCodeBarres(id)
       onChanged?.()
@@ -106,6 +108,7 @@ function ReglesTable({ nomenclature, onChanged }) {
 }
 
 export default function NomenclaturesCodeBarresSection() {
+  const { confirmDelete } = useConfirmDialog()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -142,7 +145,7 @@ export default function NomenclaturesCodeBarresSection() {
   }
 
   const supprimer = async (item) => {
-    if (!window.confirm(`Supprimer la nomenclature « ${item.nom} » ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer la nomenclature « ${item.nom} » ?`, description: 'Cette action est définitive.' }))) return
     try {
       await stockApi.deleteNomenclatureCodeBarres(item.id)
       reload()

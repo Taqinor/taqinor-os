@@ -1062,6 +1062,15 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['revoked_at', 'created_at', 'updated_at']
 
+    def validate_client_id(self, value):
+        # AACQ6 — ``client_id`` figé après création (sinon un consentement
+        # pourrait être re-attribué à un autre client).
+        if (self.instance is not None
+                and value != self.instance.client_id):
+            raise serializers.ValidationError(
+                "Le client d'un consentement ne peut plus être modifié.")
+        return value
+
     def get_is_active(self, obj):
         return obj.is_active()
 

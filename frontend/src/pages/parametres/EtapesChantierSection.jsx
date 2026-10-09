@@ -16,7 +16,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 
 // Les exigences attachables à un gate (miroir des champs `exige_*` serveur).
 const EXIGENCES = [
@@ -35,6 +35,7 @@ const slugify = (s) => s.trim().toLowerCase()
   .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
 
 export default function EtapesChantierSection() {
+  const { confirmDelete } = useConfirmDialog()
   // Le Directeur (ou un compte admin hérité) peut configurer ; sinon lecture.
   // Les deux hooks sont appelés inconditionnellement (règle des hooks).
   const isDirecteur = useHasPermission(null, ['Directeur'])
@@ -101,7 +102,7 @@ export default function EtapesChantierSection() {
     } catch { /* */ }
   }
   const delStage = async (s) => {
-    if (!window.confirm(`Supprimer l'étape « ${s.libelle} » ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer l'étape « ${s.libelle} » ?`, description: 'Cette action est définitive.' }))) return
     try { await installationsApi.deleteStageChantier(s.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape système ?).') }
   }

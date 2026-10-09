@@ -11,7 +11,7 @@
 // texte est en français ; les identifiants techniques (clés) restent en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import installationsApi from '../../api/installationsApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -37,6 +37,7 @@ const slugify = (s) => s.trim().toLowerCase()
   .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
 
 export default function ChecklistSection() {
+  const { confirmDelete } = useConfirmDialog()
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   // ERR62 — un échec de chargement affiche une erreur + Réessayer (pas un état
@@ -153,7 +154,7 @@ export default function ChecklistSection() {
     } catch { /* */ }
   }
   const delEtape = async (et) => {
-    if (!window.confirm(`Supprimer l'étape « ${et.libelle} » ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer l'étape « ${et.libelle} » ?`, description: 'Cette action est définitive.' }))) return
     try { await installationsApi.deleteChecklistEtape(et.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape protégée ?).') }
   }

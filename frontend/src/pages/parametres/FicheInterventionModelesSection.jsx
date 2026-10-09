@@ -8,6 +8,7 @@
 // gabarit Card comme les autres sections. Les modèles protégés (système) ne se
 // suppriment pas.
 import { useEffect, useState } from 'react'
+import { useConfirmDialog } from '../../ui/confirm'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   Card, CardContent, Input, Badge, IconButton, Button, Spinner, Checkbox,
@@ -21,6 +22,7 @@ const TYPE_CHAMPS = [
 ]
 
 export default function FicheInterventionModelesSection() {
+  const { confirmDelete } = useConfirmDialog()
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -55,7 +57,7 @@ export default function FicheInterventionModelesSection() {
   }
 
   const delTemplate = async (tpl) => {
-    if (!window.confirm(`Supprimer le modèle « ${tpl.nom} » ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer le modèle « ${tpl.nom} » ?`, description: 'Cette action est définitive.' }))) return
     setBusyId(tpl.id)
     try {
       await installationsApi.deleteFicheTemplate(tpl.id)

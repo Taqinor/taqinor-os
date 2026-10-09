@@ -139,30 +139,20 @@ def notify_alert_recipients(alert):
     Best-effort, jamais bloquant : un échec ne doit jamais faire échouer la
     création de l'alerte elle-même (même contrat que ``notifications.notify``).
 
-    NOTE — un ``EventType`` DÉDIÉ (``'adsengine_alert'``) suivrait le patron
-    déjà utilisé par chaque domaine (NTIDE16/NTIDE31/NTEDU40 : une petite
-    migration additive chacun), mais une migration est HORS PÉRIMÈTRE de cette
-    lane (contrat de lane, aucune migration) : on écrit donc DIRECTEMENT la
-    ligne ``Notification`` (même table, même cloche, même historique lu/
-    non-lu) plutôt que d'appeler ``notify()``, dont la porte
-    ``EventType.values`` refuserait un type non enregistré. Un futur ticket
-    peut promouvoir ceci vers un ``EventType`` propre via une migration
-    dédiée d'une ligne (voir 0041/0042/0043 pour le patron)."""
+    APAR58 — passe par ``notify_many`` (point d'entrée UNIQUE : fenêtre de
+    notification / report ``programmee_pour``, préférences, module
+    désactivé) avec l'``EventType`` dédié ``adsengine_alert``."""
     try:
         from django.contrib.auth import get_user_model
 
-        from apps.notifications.models import Notification
+        from apps.notifications.services import notify_many
         User = get_user_model()
         recipients = User.objects.filter(
             company=alert.company, is_active=True,
             role_legacy__in=['admin', 'responsable'])
-        link = deep_link_for_alert(alert)
-        for user in recipients:
-            Notification.objects.create(
-                company=alert.company, recipient=user,
-                event_type='adsengine_alert',
-                title=str(alert.message or '')[:255],
-                body='', link=link)
+        notify_many(
+            recipients, 'adsengine_alert', str(alert.message or '')[:255],
+            body='', link=deep_link_for_alert(alert), company=alert.company)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning(
             'notify_alert_recipients échoué (alerte %s) : %s',

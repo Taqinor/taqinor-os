@@ -29,6 +29,11 @@ class _FakeAttachment:
 
 class ImportPuissanceTests(TestCase):
     def setUp(self):
+        _p = mock.patch(
+            'apps.installations.selectors.chantier_client_id',
+            return_value=42)
+        _p.start()
+        self.addCleanup(_p.stop)
         self.company = Company.objects.create(nom='Kwc', slug='aacq15-kwc')
         role = Role.objects.create(
             company=self.company, nom='aacq15-role',
