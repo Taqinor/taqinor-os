@@ -289,6 +289,18 @@ class ContratWmsCasiersTests(WmsBase):
         self.assertEqual(rep.status_code, 400)
         self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
 
+    def test_scanner_mouvement_transfert_sans_casier_400(self):
+        """ERR-ASTK196 — le 400 promis par ASTK196 (transfert sans aucun
+        casier) est le corps RÉEL du contrat, enveloppe YAPIC3 comprise."""
+        contrat = route('wms_casiers', 'scanner_mouvement')
+        exemple = contrat['exemple_erreur_400_transfert_sans_casier']
+        rep = self.api.post('/api/django/stock/scanner/mouvement/', {
+            'produit': self.produit.id, 'type_mouvement': 'transfert',
+            'quantite': 5}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertMemesCles(rep.json(), exemple, 'transfert sans casier')
+        self.assertErreurContrat(rep, exemple)
+
     def test_scanner_retour_fournisseur(self):
         contrat = route('wms_casiers', 'scanner_retour_fournisseur')
         url = '/api/django/stock/scanner/retour-fournisseur/'
@@ -1513,6 +1525,27 @@ class ContratWmsRappelsQualiteTests(ContratListeMixin, WmsBase):
         self.assertMemesCles(
             [k for k in rep.json() if k != 'error'],
             contrat['exemple_erreur_400'], 'hazmat 400')
+
+    def test_scanner_hazmat_casier_incompatible_400(self):
+        """ERR-ASTK196 — le 400 promis par ASTK200 (produit dangereux vers
+        un casier non déclaré compatible) est le corps RÉEL du contrat."""
+        contrat = route('wms_rappels_qualite',
+                        'scanner_mouvement_hazmat_refuse')
+        self.produit.classe_danger = 'BATTERIE_LITHIUM'
+        self.produit.save(update_fields=['classe_danger'])
+        stock_avant = self.produit.quantite_stock
+        rep = self.api.post('/api/django/stock/scanner/mouvement/', {
+            'produit': self.produit.id, 'type_mouvement': 'entree',
+            'quantite': 4, 'bin_destination': self.pick.id}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertMemesCles(
+            [k for k in rep.json() if k != 'error'], contrat['exemple'],
+            'hazmat champs')
+        self.assertMemesCles(rep.json(), contrat['exemple_erreur_400'],
+                             'hazmat corps')
+        self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, stock_avant)
 
 
 class ContratFournisseurConformiteTests(ContratListeMixin, WmsBase):
