@@ -1825,6 +1825,15 @@ def proposal_data(request, token):
         # profondeur (``quote`` compris) : ce que le client reçoit = ce que le
         # commercial a coché (en place ; copie profonde des blocs d'abord).
         _filtrer_sections_publiques(payload, link, _cles_base)
+        # AMOT67 (C-AMOT-050) — le bloc moteur ``economie_ci`` ne part à AUCUN
+        # niveau : l'étude C&I stockée (``etude_params.etude_ci``) le porte
+        # aussi en IMBRIQUÉ — retiré partout (blocs copiés d'abord : jamais
+        # ``devis.etude_params`` muté). La page lit ``synthese_ci``.
+        import copy as _copy
+        payload.pop('economie_ci', None)
+        for _cle in list(payload):
+            payload[_cle] = _copy.deepcopy(payload[_cle])
+            _retirer_cles(payload[_cle], frozenset({'economie_ci'}))
         # AMOT67 (D-CIQ-10) — un devis COMMERCIAL ne publie ni VAN, ni LCOE,
         # ni sensibilités, à AUCUN niveau : la liste est celle de
         # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.

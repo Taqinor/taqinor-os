@@ -118,6 +118,9 @@ class BaremeGeleEnvoiTests(q220._Base):
     def test_gel_pose_a_l_envoi(self):
         from apps.ventes.domain.envoi import baremes_forfaits_geles
         devis = self._envoyer(self._devis(9, pose_a=9))
+        # Le gel lit le barème EN BASE (DecimalField → '2000.00') : relire
+        # la fixture, créée en mémoire avec Decimal('2000').
+        self.pose.refresh_from_db()
         self.assertEqual(
             baremes_forfaits_geles(devis),
             {str(self.pose.pk): {
