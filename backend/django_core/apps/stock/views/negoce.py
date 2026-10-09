@@ -50,8 +50,15 @@ class DeclarationConsommationSerializer(CompanyScopedRelationsMixin,
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_facture_reference(self, obj):
+        # ``facture`` n'est posée (attribut non persistant) que par
+        # ``facturer_declaration`` ; après rechargement, la référence vient du
+        # n° de facture persisté dans ``document_reference`` (ERR-ASTK221).
         facture = getattr(obj, 'facture', None)
-        return facture.reference if facture is not None else None
+        if facture is not None:
+            return facture.reference
+        if obj.statut == DeclarationConsommation.Statut.FACTUREE:
+            return obj.document_reference or None
+        return None
 
 
 class DeclarationFactureeSerializer(DeclarationConsommationSerializer):
@@ -113,7 +120,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
     """
     queryset = DepotConsignation.objects.select_related(
         'produit', 'client').prefetch_related(
-        'declarations', 'declarations__facture').all()
+        'declarations').all()
     serializer_class = DepotConsignationSerializer
     ordering = ['-date_depot', '-id']
 

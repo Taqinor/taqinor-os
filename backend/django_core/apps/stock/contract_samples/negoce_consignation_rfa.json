@@ -169,10 +169,8 @@
         "facture_id": 311,
         "facture_reference": "FAC-2026-10-0042"
       },
-      "cles_nouvelles_astk198": [
-        "facture_id",
-        "facture_reference"
-      ]
+      "cles_nouvelles_astk198_note": "ERR-ASTK221 : facture_id / facture_reference sont désormais servis aussi par la déclaration ordinaire (liste des dépôts) — plus aucune clé propre à l'exemple facturé.",
+      "cles_nouvelles_astk198": []
     },
     "consignation_releve": {
       "endpoint": "GET /api/django/stock/consignations/<id>/releve/",
