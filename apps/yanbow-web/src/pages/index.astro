@@ -1,0 +1,110 @@
+---
+// Accueil (YBW61) — UN gabarit FR + EN (`en/index.astro` l'importe). Héros de
+// la direction A : titre (affirmation), trajectoire-flèche du bord de la page
+// jusqu'à l'unique action (le trait est animé À CÔTÉ du titre, jamais sur
+// l'élément LCP), positionnement en une phrase, capture pleine largeur. Deux
+// cartes produit alimentées par le registre, bloc sur mesure, bloc société,
+// appel final. Aucune statistique, aucun logo client, aucune personne ;
+// jamais « en service » pour le produit publicitaire.
+import Layout from '../layouts/Layout.astro';
+import Affirmation from '../components/Affirmation.astro';
+import AppelFinal from '../components/AppelFinal.astro';
+import Capture from '../components/Capture.astro';
+import Logo from '../components/Logo.astro';
+import TraitFleche from '../components/motif/TraitFleche.astro';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { L, lecteur } from '../i18n/utils';
+import { fr } from '../i18n/pages/accueil.fr';
+import { en } from '../i18n/pages/accueil.en';
+import { PRODUITS } from '../lib/brand';
+import { publiables } from '../lib/affirmer';
+
+interface Props {
+  locale?: Locale;
+}
+const { locale = DEFAULT_LOCALE } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const CARTES: Record<keyof typeof PRODUITS, { description: string; points: string[]; ecran: string }> = {
+  solarbow: { description: 'SB-POUR-QUI', points: ['SB-CRM', 'SB-CALEPINAGE-3D', 'SB-PACKS-FR'], ecran: 'calepinage-3d' },
+  marketingbow: { description: 'MB-POUR-QUI', points: ['MB-CREATION-EN-PAUSE', 'MB-PROPOSE-APPROUVE', 'MB-COUPE-CIRCUIT'], ecran: 'approbations' },
+};
+const produits = (Object.keys(PRODUITS) as (keyof typeof PRODUITS)[]).map((cle) => ({ cle, nom: PRODUITS[cle].nom, ...CARTES[cle] }));
+const etapes = ['besoin', 'prototype', 'service', 'exploitation'];
+---
+<Layout page="accueil" locale={locale} titre={tx('titre')} description={tx('description')}>
+  <section class="hero" aria-labelledby="hero-titre">
+    <div class="conteneur">
+      <p class="surtitre">{tx('surtitre')}</p>
+      <h1 id="hero-titre" class="hero-titre"><Affirmation id="YB-METIER" locale={locale} balise="span" /></h1>
+      <div class="hero-trajectoire">
+        <TraitFleche longueur={46} class="hero-fleche fleche-courte" anime />
+        <TraitFleche longueur={92} class="hero-fleche fleche-moyenne" anime />
+        <TraitFleche longueur={150} class="hero-fleche fleche-longue" anime />
+        <a class="bouton" href={L('rendezVous', locale)} data-appel-rdv>{tx('cta')}</a>
+      </div>
+      <div class="hero-bas">
+        <Affirmation id="YB-POSITIONNEMENT" locale={locale} class="hero-intro" />
+        <a class="lien-fleche" href="#produits">{tx('secondaire')}</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="conteneur">
+    <Capture ecran="crm-pipeline" locale={locale} class="capture-hero" prioritaire />
+  </div>
+
+  <section id="produits" class="section" aria-labelledby="produits-titre">
+    <div class="conteneur">
+      <header class="section-tete">
+        <p class="surtitre">{tx('produits.surtitre')}</p>
+        <h2 id="produits-titre">{tx('produits.titre')}</h2>
+      </header>
+      <div class="produits-grille">
+        {produits.map((p) => (
+          <article class="produit" data-produit={p.cle} aria-labelledby={`${p.cle}-titre`}>
+            <p class="produit-surtitre">{tx(`produits.${p.cle}.surtitre`)}</p>
+            <h3 id={`${p.cle}-titre`}>{p.nom}</h3>
+            <Affirmation id={p.description} locale={locale} class="produit-description" />
+            <ul class="points">
+              {publiables(p.points).map((id) => <Affirmation id={id} locale={locale} balise="li" />)}
+            </ul>
+            <Capture ecran={p.ecran} locale={locale} />
+            <a class="lien-fleche" href={L(p.cle, locale)}>{tx(`produits.${p.cle}.lien`)}</a>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section id="sur-mesure" class="section" aria-labelledby="sur-mesure-titre">
+    <div class="conteneur sur-mesure-grille">
+      <div class="sur-mesure-texte">
+        <p class="surtitre">{tx('surMesure.surtitre')}</p>
+        <h2 id="sur-mesure-titre">{tx('surMesure.titre')}</h2>
+        <Affirmation id="SM-OFFRE" locale={locale} />
+        <a class="lien-fleche" href={L('surMesure', locale)}>{tx('surMesure.lien')}</a>
+      </div>
+      <ol class="etapes">
+        {etapes.map((e) => (
+          <li>
+            <span class="etape-titre">{tx(`surMesure.${e}`)}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="section societe" aria-labelledby="societe-titre">
+    <div class="conteneur societe-int">
+      <Logo variante="symbole" taille={88} locale={locale} />
+      <div>
+        <p class="surtitre">{tx('societe.surtitre')}</p>
+        <h2 id="societe-titre">{tx('societe.titre')}</h2>
+        <Affirmation id="YB-NOM-SOURCE" locale={locale} />
+        <a class="lien-fleche" href={L('societe', locale)}>{tx('societe.lien')}</a>
+      </div>
+    </div>
+  </section>
+
+  <AppelFinal locale={locale} titre={tx('appel.titre')} bouton={tx('appel.bouton')} affirmation="YB-REPONSE-HUMAINE" />
+</Layout>

@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 import { cssPolices, FAMILLES, fichierLicence, fichierPolice } from '../scripts/build-fonts.mjs';
 import { metriques } from '../scripts/font-metrics.mjs';
 import { ecartsTypoFr, INTERDITS, NBSP, POLICES_PRECHARGEES, typoFr } from '../src/lib/typo';
-import { candidatDeUrl, FICHES } from '../src/styles/candidates/candidats';
 import { DIST_CLIENT, pagesRendues } from './builtHtml';
 
 const POLICES = fileURLToPath(new URL('../public/fonts/', import.meta.url));
@@ -34,6 +33,11 @@ describe('YBW39 — familles OFL auto-hébergées', () => {
       expect(metriques(police).avanceMoyenne).toBeGreaterThan(0);
     });
   }
+
+  it('YBW44 : seules les familles retenues (Outfit + Instrument Sans) sont livrées', () => {
+    expect(FAMILLES.map((f) => f.nom)).toEqual(['Outfit', 'Instrument Sans']);
+    expect(CSS).not.toMatch(/Urbanist|Geist|Fraunces|Jakarta/);
+  });
 
   it('aucun fichier de police sans licence à côté', () => {
     const woff2 = readdirSync(POLICES).filter((n) => n.endsWith('.woff2'));
@@ -71,9 +75,7 @@ describe('YBW39 — HTML et CSS RENDUS', () => {
   for (const p of pagesRendues()) {
     it(`${p.url} : préchargement des 2 polices critiques, aucun CDN`, () => {
       const pre = [...p.document.querySelectorAll('link[rel="preload"][as="font"]')];
-      // Les candidats PRIVÉS du tour design (YBW42) préchargent LEURS 2 polices critiques.
-      const candidat = candidatDeUrl(p.url);
-      expect(pre.map((l) => l.getAttribute('href'))).toEqual([...(candidat ? FICHES[candidat].polices : POLICES_PRECHARGEES)]);
+      expect(pre.map((l) => l.getAttribute('href'))).toEqual([...POLICES_PRECHARGEES]);
       for (const l of pre) {
         expect(l.getAttribute('type')).toBe('font/woff2');
         expect(l.hasAttribute('crossorigin')).toBe(true);

@@ -64,6 +64,13 @@ import django.dispatch
 
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
+# ADEV54 — CONTRAT TRANSACTIONNEL : émis DANS la transaction d'acceptation.
+# Un abonné OBLIGATOIRE (création du chantier, avance d'étape) qui lève annule
+# la signature ; un abonné BEST-EFFORT (SAV, onboarding, automatisation,
+# commission et cadence crm) tourne dans son PROPRE ``transaction.atomic()``
+# (point de sauvegarde) : son erreur base est journalisée, jamais propagée.
+# Même règle pour les abonnés best-effort qui écrivent sur ``devis_sent`` /
+# ``devis_refused``.
 devis_accepted = django.dispatch.Signal()
 
 # Émis à l'ANNULATION de l'acceptation d'un devis (décision fondateur du

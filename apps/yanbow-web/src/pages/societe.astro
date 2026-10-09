@@ -1,0 +1,90 @@
+---
+// Page Société (YBW65) — UN gabarit FR + EN (`en/company.astro` l'importe).
+// Texte seulement : qui est la société, le sens du nom, la phrase D-YBW-9 (sans
+// nommer l'entreprise d'installation), aucun portrait, aucune date, aucun
+// chiffre. Les sociétés (britannique, marocaine) ne sont citées QUE lorsque
+// `src/lib/legal.ts` les décrit complètement : tant qu'il est `null`, aucune
+// forme juridique ni « Ltd »/« SARL » n'est rendue (Companies Act 2006 s.51).
+import Layout from '../layouts/Layout.astro';
+import Affirmation from '../components/Affirmation.astro';
+import AppelFinal from '../components/AppelFinal.astro';
+import Logo from '../components/Logo.astro';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { L, lecteur } from '../i18n/utils';
+import { fr } from '../i18n/pages/societe.fr';
+import { en } from '../i18n/pages/societe.en';
+import { PRODUITS } from '../lib/brand';
+import { editeurComplet, FORME_SARLAU, LEGAL, marocComplet, PARTIES, type Legal } from '../lib/legal';
+
+interface Props {
+  locale?: Locale;
+  /** Surcharge des identités — réservée aux tests (fixture). */
+  legal?: Legal;
+}
+const { locale = DEFAULT_LOCALE, legal = LEGAL } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const remplir = (modele: string, valeurs: Record<string, string>) => modele.replace(/\{(\w+)\}/g, (_, k: string) => valeurs[k] ?? '');
+const e = legal.editeur;
+const m = legal.maroc;
+const phraseEditeur =
+  editeurComplet(legal) && e.partie ? remplir(tx('entites.editeur'), { nom: e.nomExact!, partie: PARTIES[e.partie][locale], numero: e.numero! }) : null;
+const phraseMaroc = marocComplet(legal) ? remplir(tx('entites.maroc'), { nom: m.denomination!, forme: FORME_SARLAU[locale] }) : null;
+const offre: { href: string; texte: string }[] = [
+  ...(Object.keys(PRODUITS) as (keyof typeof PRODUITS)[]).map((cle) => ({ href: L(cle, locale), texte: PRODUITS[cle].nom })),
+  { href: L('surMesure', locale), texte: tx('offre.surMesure') },
+];
+---
+<Layout page="societe" locale={locale} titre={tx('titre')} description={tx('description')}>
+  <section class="hero-page" aria-labelledby="page-titre">
+    <div class="conteneur">
+      <p class="surtitre">{tx('surtitre')}</p>
+      <h1 id="page-titre">{tx('h1')}</h1>
+      <Affirmation id="YB-METIER" locale={locale} class="hero-intro" />
+    </div>
+  </section>
+
+  <section class="section societe" aria-labelledby="nom-titre">
+    <div class="conteneur societe-int">
+      <Logo variante="symbole" taille={88} locale={locale} />
+      <div class="prose">
+        <p class="surtitre">{tx('nom.surtitre')}</p>
+        <h2 id="nom-titre">{tx('nom.titre')}</h2>
+        <Affirmation id="YB-NOM-SOURCE" locale={locale} />
+        <Affirmation id="YB-NOM-YAN" locale={locale} />
+        <Affirmation id="YB-SLOGAN" locale={locale} lang="en" class="accent" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="origine-titre">
+    <div class="conteneur prose">
+      <p class="surtitre">{tx('origine.surtitre')}</p>
+      <h2 id="origine-titre">{tx('origine.titre')}</h2>
+      <Affirmation id="SB-ENTREPRISE-REELLE" locale={locale} />
+    </div>
+  </section>
+
+  {(phraseEditeur || phraseMaroc) && (
+    <section class="section" aria-labelledby="entites-titre" data-entites>
+      <div class="conteneur prose">
+        <h2 id="entites-titre">{tx('entites.titre')}</h2>
+        {phraseEditeur && <p data-entite="editeur">{phraseEditeur}</p>}
+        {phraseMaroc && <p data-entite="maroc">{phraseMaroc}</p>}
+      </div>
+    </section>
+  )}
+
+  <section class="section" aria-labelledby="offre-titre">
+    <div class="conteneur">
+      <header class="section-tete">
+        <p class="surtitre">{tx('offre.surtitre')}</p>
+        <h2 id="offre-titre">{tx('offre.titre')}</h2>
+      </header>
+      <ul class="points">
+        {offre.map((o) => <li><a class="lien-fleche" href={o.href}>{o.texte}</a></li>)}
+      </ul>
+    </div>
+  </section>
+
+  <AppelFinal locale={locale} titre={tx('appel.titre')} bouton={tx('appel.bouton')} affirmation="YB-REPONSE-HUMAINE" />
+</Layout>

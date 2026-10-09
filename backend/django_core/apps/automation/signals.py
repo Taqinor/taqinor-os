@@ -61,6 +61,18 @@ def _safe(fn):
     return wrapper
 
 
+def _point_de_sauvegarde(fn):
+    """ADEV54 — exécute un handler d'ÉVÉNEMENT MÉTIER dans son PROPRE point
+    de sauvegarde : une erreur base y est annulée seule, jamais la
+    transaction de l'émetteur (ex. la signature d'un devis). Réservé aux
+    abonnés du bus (pas aux ``post_save`` chauds : un SAVEPOINT par save)."""
+    def wrapper(*args, **kwargs):
+        from django.db import transaction
+        with transaction.atomic():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
 # ── pre_save : mémorise l'ancienne valeur d'un champ surveillé ─────────────
 
 def _cache_old(field):
@@ -114,7 +126,7 @@ def _on_devis_accepted(sender, devis, user=None, ancien_statut=None, **kwargs):
                       'nouveau_statut': getattr(devis, 'statut', None)})
 
 
-_on_devis_accepted = _safe(_on_devis_accepted)
+_on_devis_accepted = _safe(_point_de_sauvegarde(_on_devis_accepted))
 
 
 def _installation_saved(sender, instance, created, **kwargs):

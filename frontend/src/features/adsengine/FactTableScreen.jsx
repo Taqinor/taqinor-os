@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Table2, Send, Pencil, Trash2, Plus } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { diffFactEntries } from './adsengine'
+import { diffFactEntries, erreurServeur } from './adsengine'
 
 /* ============================================================================
    PUB6/AGEN1 — Écran « Table des faits ».
@@ -153,8 +153,9 @@ export default function FactTableScreen() {
       setNewEntry(EMPTY_ENTRY)
       setMsg('Fait ajouté.')
       load()
-    } catch {
-      setErr("Ajout du fait impossible (clé déjà utilisée dans cette version ?).")
+    } catch (e) {
+      // AACQ73 — la raison du serveur, jamais une cause devinée.
+      setErr(erreurServeur(e, 'Ajout du fait impossible.'))
     } finally {
       setBusy(false)
     }

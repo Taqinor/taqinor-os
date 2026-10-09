@@ -1,6 +1,9 @@
 /*
- * Jetons de style PROVISOIRES (YBW38) — SEUL fichier où une couleur hexadécimale
- * est écrite (hors pack logo src/brand/). Figés au tour design (YBW44).
+ * Jetons de style FIGÉS (YBW44) — direction retenue par Reda le 09/10/2026
+ * (YBWM12) : « A maison + bandes produit B ». Maison = candidat A « Encre et
+ * papier » ; bandes produit = le principe de B (capture claire qui flotte sur
+ * une bande de nuit), redessiné avec les jetons et les polices de A. Seul
+ * fichier où une couleur hexadécimale est écrite (hors pack logo src/brand/).
  * Garde : tests/styleTokens.test.ts CALCULE chaque contraste (WCAG 2.x) :
  *   texte normal < 4,5:1 = rouge ; graphique ou grand texte (>= 24 px) < 3:1 = rouge.
  *
@@ -9,21 +12,34 @@
  *     jamais en texte < 24 px sur fond clair (3,23:1 sur papier, 3,45:1 sur blanc) ;
  *     jamais de texte blanc sur fond orange (3,45:1) — bouton = encre sur orange (4,99:1).
  *   - `--couleur-orange-texte` (#A6591A) : l'orange des TEXTES sur fond clair (5,17:1 sur blanc).
+ * Polices : Outfit (titres, poids 450) + Instrument Sans (texte) — fonts.css,
+ * jamais mêlées à Urbanist/Geist (familles non retenues, retirées).
  */
 :root {
-  /* Palette brute (croquis du logo, pas une charte validée) */
+  /* Palette brute — clair */
   --couleur-encre: #1B1B1B;
   --couleur-orange: #C8762B;
   --couleur-orange-texte: #A6591A;
   --couleur-papier: #FAF7F2;
   --couleur-blanc: #FFFFFF;
-  /* Gris : le plus CLAIR autorisé pour du texte sur clair, le plus SOMBRE sur sombre */
-  --couleur-gris-texte: #6B6B6B;
-  --couleur-gris-sur-sombre: #A3A3A3;
+  --couleur-gris-texte: #5E5A54;
+  --couleur-gris-bande: #B8B2A7;
+  --couleur-trait: #E3DCD0;
+  --couleur-trait-fort: #CFC6B8;
+  --couleur-capture: #F1ECE3;
+  /* Palette brute — sombre */
+  --couleur-nuit: #161514;
+  --couleur-nuit-surface: #1F1E1C;
+  --couleur-nuit-bande: #232120;
+  --couleur-papier-nuit: #F3EFE8;
+  --couleur-gris-sur-sombre: #A8A29A;
+  --couleur-trait-nuit: #2E2C29;
+  --couleur-trait-fort-nuit: #4A4641;
 
   /* Schéma clair (défaut) */
   --fond: var(--couleur-papier);
   --fond-surface: var(--couleur-blanc);
+  --fond-alt: var(--couleur-blanc);
   --texte: var(--couleur-encre);
   --texte-attenue: var(--couleur-gris-texte);
   --accent-texte: var(--couleur-orange-texte);
@@ -32,6 +48,31 @@
   --bouton-texte: var(--couleur-encre);
   --logo-ink: var(--couleur-encre);
   --logo-arrow: var(--couleur-orange);
+  --trait: var(--couleur-trait);
+  --trait-fort: var(--couleur-trait-fort);
+  --focus: var(--couleur-encre);
+  --ombre: color-mix(in srgb, var(--couleur-encre) 22%, transparent);
+  --capture-fond: var(--couleur-capture);
+  --capture-trait: var(--couleur-trait-fort);
+  --capture-texte: var(--couleur-gris-texte);
+  --capture-grille: color-mix(in srgb, var(--couleur-encre) 6%, transparent);
+  /* Bande d'appel finale (encre en clair, feuille de papier en sombre) */
+  --bande-fond: var(--couleur-encre);
+  --bande-texte: var(--couleur-papier);
+  --bande-attenue: var(--couleur-gris-bande);
+  --bande-logo-ink: var(--couleur-papier);
+  --bande-accent: var(--couleur-orange);
+  /* Bandes produit « nuit » (principe B) : la capture claire flotte dessus */
+  --nuit-fond: var(--couleur-encre);
+  --nuit-bord: var(--couleur-encre);
+  --nuit-texte: var(--couleur-papier);
+  --nuit-attenue: var(--couleur-gris-bande);
+  --nuit-accent-texte: var(--couleur-orange);
+  --nuit-graphique: var(--couleur-orange);
+  --nuit-ombre: color-mix(in srgb, var(--couleur-encre) 60%, transparent);
+  /* La capture reste CLAIRE sur la bande, dans les deux schémas (principe B). */
+  --nuit-capture-fond: var(--couleur-capture);
+  --nuit-capture-texte: var(--couleur-gris-texte);
 
   /* Espacements (échelle 4 px) */
   --espace-1: 0.25rem;
@@ -43,14 +84,19 @@
   --espace-12: 3rem;
   --espace-16: 4rem;
   --espace-24: 6rem;
+  --gouttiere: clamp(1rem, 4vw, 2.5rem);
+  --largeur-max: 76rem;
 
   /* Rayons */
   --rayon-1: 0.25rem;
   --rayon-2: 0.5rem;
   --rayon-3: 1rem;
   --rayon-plein: 999px;
+  --rayon-bouton: var(--rayon-plein);
+  --rayon-capture: var(--rayon-2);
 
-  /* Typographie (familles posées par YBW39 / YBW44) */
+  /* Typographie (familles : fonts.css — Outfit + Instrument Sans) */
+  --poids-titre: 450;
   --texte-xs: 0.8125rem;
   --texte-sm: 0.9375rem;
   --texte-base: 1.0625rem;
@@ -62,20 +108,48 @@
   --interligne-serre: 1.15;
   --interligne-texte: 1.6;
 
+  /* Mouvement : court, jamais sur l'élément LCP, coupé sous prefers-reduced-motion */
+  --duree-courte: 160ms;
+  --courbe: ease;
+
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fond: var(--couleur-encre);
-    --fond-surface: var(--couleur-encre);
-    --texte: var(--couleur-papier);
+    --fond: var(--couleur-nuit);
+    --fond-surface: var(--couleur-nuit-surface);
+    --fond-alt: var(--couleur-nuit-surface);
+    --texte: var(--couleur-papier-nuit);
     --texte-attenue: var(--couleur-gris-sur-sombre);
     --accent-texte: var(--couleur-orange);
     --accent-graphique: var(--couleur-orange);
     --bouton-fond: var(--couleur-orange);
     --bouton-texte: var(--couleur-encre);
-    --logo-ink: var(--couleur-blanc);
+    --logo-ink: var(--couleur-papier-nuit);
     --logo-arrow: var(--couleur-orange);
+    --trait: var(--couleur-trait-nuit);
+    --trait-fort: var(--couleur-trait-fort-nuit);
+    --focus: var(--couleur-papier-nuit);
+    --ombre: color-mix(in srgb, var(--couleur-encre) 70%, transparent);
+    --capture-fond: var(--couleur-nuit-surface);
+    --capture-trait: var(--couleur-trait-fort-nuit);
+    --capture-texte: var(--couleur-gris-sur-sombre);
+    --capture-grille: color-mix(in srgb, var(--couleur-papier-nuit) 6%, transparent);
+    /* La bande finale s'inverse : une feuille de papier sur la nuit. */
+    --bande-fond: var(--couleur-papier-nuit);
+    --bande-texte: var(--couleur-encre);
+    --bande-attenue: var(--couleur-gris-texte);
+    --bande-logo-ink: var(--couleur-encre);
+    /* Sur la feuille de papier : l'orange foncé (#C8762B n'y fait que 3,01:1). */
+    --bande-accent: var(--couleur-orange-texte);
+    /* Bandes produit : DISTINCTES de la page et bordées (critique YBW43, B-1). */
+    --nuit-fond: var(--couleur-nuit-bande);
+    --nuit-bord: var(--couleur-trait-fort-nuit);
+    --nuit-texte: var(--couleur-papier-nuit);
+    --nuit-attenue: var(--couleur-gris-sur-sombre);
+    --nuit-accent-texte: var(--couleur-orange);
+    --nuit-graphique: var(--couleur-orange);
+    --nuit-ombre: color-mix(in srgb, var(--couleur-encre) 80%, transparent);
   }
 }

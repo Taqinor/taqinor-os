@@ -1600,6 +1600,47 @@ def date_validite_effective(devis):
         return None
 
 
+def devis_envoyes_expirant(company, limite, lead_ids):
+    """APRF23 — devis ENVOYÉS des leads ``lead_ids`` (déjà bornés à la
+    portée par l'appelant) dont la date de validité EFFECTIVE (ACRM29 :
+    ``date_validite``, sinon création + ``quote_validity_days`` — la règle de
+    ``utils.expiry.date_expiration``) tombe au plus tard le ``limite``.
+
+    Filtré EN SQL (statut + date), totaux préchargés (``devis_avec_totaux``,
+    APRF7), lead chargé : requêtes constantes, quel que soit le nombre de
+    leads et de devis non concernés. Renvoie une liste de
+    ``{'devis': Devis, 'date_expiration': date}``. Lecture seule."""
+    import datetime
+
+    from django.db.models import Q
+
+    from .models import Devis
+    from .utils.expiry import _validity_days
+
+    lead_ids = list(lead_ids or [])
+    if company is None or not lead_ids:
+        return []
+    jours = _validity_days(company)
+    # ``date_creation.date() + jours <= limite`` ⇔ création AVANT le
+    # lendemain de ``limite - jours`` (date UTC de l'horodatage, comme
+    # ``date_expiration``).
+    borne = datetime.datetime.combine(
+        limite - datetime.timedelta(days=jours - 1), datetime.time.min,
+        tzinfo=datetime.timezone.utc)
+    qs = (Devis.objects
+          .filter(company=company, lead_id__in=lead_ids,
+                  statut=Devis.Statut.ENVOYE)
+          .filter(Q(date_validite__lte=limite)
+                  | Q(date_validite__isnull=True, date_creation__lt=borne))
+          .select_related('lead', 'company'))
+    out = []
+    for devis in devis_avec_totaux(qs):
+        exp = (devis.date_validite
+               or devis.date_creation.date() + datetime.timedelta(days=jours))
+        out.append({'devis': devis, 'date_expiration': exp})
+    return out
+
+
 def devis_predecesseurs_revision_ids(devis):
     """QJR559 — les ids des versions que ``devis`` REMPLACE, par révision
     (relation inverse ``remplace`` = ``superseded_by``), toute la chaîne

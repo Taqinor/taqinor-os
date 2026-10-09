@@ -689,6 +689,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
             if client.date_creation else None,
             'is_anonymized': client.is_anonymized,
         }
+        # ACRM53 — même règle que ``ClientSerializer`` : un rôle sans
+        # ``client_pii_voir`` reçoit l'export sans téléphone/email/adresse.
+        from .serializers import masquer_pii_dict
+        masquer_pii_dict(identite, request.user)
         documents = {
             'devis': [
                 {'reference': d.reference, 'statut': getattr(d, 'statut', None),
@@ -1154,7 +1158,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         `SerializerMethodField` qui interrogerait la base par lead.
         """
         from django.db.models import (
-            Count, DateTimeField, F, OuterRef, Q, Subquery)
+            Count, DateTimeField, F, IntegerField, OuterRef, Subquery)
+        from django.db.models.functions import Coalesce
 
         from .models import LeadActivity, RelanceEtape
 
@@ -1184,14 +1189,24 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # auteur) : compter les lignes système gonflerait le chiffre
             # jusqu'à le rendre inutilisable, et c'est lui qui décide quand
             # un dossier a été assez travaillé pour être classé.
-            nb_tentatives=Count(
-                'activites',
-                filter=Q(activites__kind__in=[
-                    LeadActivity.Kind.APPEL,
-                    LeadActivity.Kind.WHATSAPP,
-                    LeadActivity.Kind.EMAIL,
-                ], activites__user__isnull=False),
-                distinct=True),
+            # APRF20 — sous-requête CORRÉLÉE (et non un ``Count`` joint) : la
+            # page de leads ne joint plus ``crm_leadactivity`` au niveau
+            # principal, le tri/limite ne porte plus sur leads × activités.
+            nb_tentatives=Coalesce(
+                Subquery(
+                    LeadActivity.objects
+                    .filter(lead=OuterRef('pk'), user__isnull=False,
+                            kind__in=[
+                                LeadActivity.Kind.APPEL,
+                                LeadActivity.Kind.WHATSAPP,
+                                LeadActivity.Kind.EMAIL,
+                            ])
+                    .order_by()
+                    .values('lead')
+                    .annotate(n=Count('pk'))
+                    .values('n')[:1],
+                    output_field=IntegerField()),
+                0),
         )
 
     def perform_create(self, serializer):
@@ -1244,7 +1259,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     #: quand leur source est dans le corps : les inclure systématiquement
     #: réécrirait la dédup depuis une copie périmée.
     COLONNES_DERIVEES = {'telephone': 'phone_normalise',
-                         'email': 'email_normalise'}
+                         'email': 'email_normalise',
+                         'whatsapp': 'whatsapp_normalise'}  # ACRM32
 
     @staticmethod
     def _champs_ecrivables(noms):
@@ -2548,9 +2564,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'limite': f'Entier attendu entre 1 et {PLACEMENT_LOT_MAX} '
                            f'(défaut {PLACEMENT_LOT_DEFAUT}).'})
         # ALEA25 — borné par la portée du viewset (société + équipe).
-        rapport = placer_anciens_leads(
-            request.user.company, request.user, apply=apply, limite=limite,
-            leads_en_portee=self._leads_en_portee())
+        from rest_framework.exceptions import APIException
+
+        from .services import PlacementImpossible
+
+        class _PlacementSuspendu(APIException):
+            # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas
+            # renvoyée, pour ne pas entrer ``detail`` dans la forme du rapport.
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+        try:
+            rapport = placer_anciens_leads(
+                request.user.company, request.user, apply=apply,
+                limite=limite, leads_en_portee=self._leads_en_portee())
+        except PlacementImpossible as exc:
+            raise _PlacementSuspendu(str(exc))
         return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
@@ -2841,40 +2869,47 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if canal_filter:
             qs = qs.filter(canal=canal_filter)
 
-        # Grouper par canal puis par campagne
+        # APRF19 — AGRÉGATS : comptes par (canal, campagne) en UNE requête
+        # (prédicat « signé » unique d'ACRM31, clé d'étape lue de STAGES.py),
+        # valeur signée sur les devis retenus par ACRM10, préchargés AVEC
+        # leurs totaux — nombre de requêtes indépendant du nombre de
+        # campagnes et de leads signés.
+        from django.db.models import Count
+        from apps.reporting.pipeline import leads_avec_devis_totaux
+        from .selectors import _devis_compte_comme_signe, lead_signe_q
+
+        base = Lead.objects.filter(pk__in=qs.values('pk'))
+        groupes = list(
+            base.order_by().values('canal', 'utm_campaign')
+            .annotate(lead_count=Count('pk', distinct=True),
+                      signed_count=Count('pk', filter=lead_signe_q(),
+                                         distinct=True))
+            .order_by('canal', 'utm_campaign'))
+        valeurs = {}
+        for lead in leads_avec_devis_totaux(base.filter(lead_signe_q())):
+            cle = (lead.canal, lead.utm_campaign)
+            for d in lead.devis.all():
+                # ACRM10 — la V2 seule d'une révision acceptée.
+                if not _devis_compte_comme_signe(d):
+                    continue
+                try:
+                    valeurs[cle] = valeurs.get(cle, 0) + float(d.total_ttc)
+                except Exception:
+                    pass
         result = []
-        for canal_key in (qs.values_list('canal', flat=True)
-                          .order_by('canal').distinct()):
-            canal_qs = qs.filter(canal=canal_key)
-            # Par campagne UTM (None = pas de campagne)
-            campaigns = (canal_qs.values_list('utm_campaign', flat=True)
-                         .order_by('utm_campaign').distinct())
-            for campaign in campaigns:
-                grp = canal_qs.filter(utm_campaign=campaign)
-                lead_count = grp.count()
-                signed = grp.filter(stage='SIGNED')
-                signed_count = signed.count()
-                # Somme des devis TTC des leads signés
-                signed_value = 0
-                from .selectors import _devis_compte_comme_signe
-                for lead in signed.prefetch_related('devis'):
-                    # ACRM10 — la V2 seule d'une révision acceptée.
-                    for d in lead.devis.all():
-                        if not _devis_compte_comme_signe(d):
-                            continue
-                        try:
-                            signed_value += float(d.total_ttc)
-                        except Exception:
-                            pass
-                result.append({
-                    'canal': canal_key,
-                    'utm_campaign': campaign,
-                    'lead_count': lead_count,
-                    'signed_count': signed_count,
-                    'win_rate': round(signed_count / lead_count * 100, 1)
-                              if lead_count else 0,
-                              'signed_value_ttc': round(signed_value, 2),
-                              })
+        for grp in groupes:
+            lead_count = grp['lead_count']
+            signed_count = grp['signed_count']
+            signed_value = valeurs.get((grp['canal'], grp['utm_campaign']), 0)
+            result.append({
+                'canal': grp['canal'],
+                'utm_campaign': grp['utm_campaign'],
+                'lead_count': lead_count,
+                'signed_count': signed_count,
+                'win_rate': round(signed_count / lead_count * 100, 1)
+                if lead_count else 0,
+                'signed_value_ttc': round(signed_value, 2),
+            })
         return Response(result)
 
     # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────
@@ -3960,20 +3995,27 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 # ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
 
-class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
     liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
     une action (mapping en erreur OU sans lead rattaché). ``?all=1`` renvoie
     la liste complète (comportement admin). LECTURE SEULE — la seule écriture
     possible est l'action ``replay``, qui rejoue EXACTEMENT le même mapping
     que le webhook (jamais une seconde implémentation)."""
+    # ACRM52 — détail/rejeu désormais adressables hors filtre « à traiter » :
+    # bornés à la portée du lead rattaché (sans lead : visible, comme avant).
+    portee_leads = ('lead',)
+    portee_clients = ()
     queryset = WebsiteLeadPayload.objects.select_related('lead').all()
     serializer_class = WebsiteLeadPayloadSerializer
     permission_classes = [IsResponsableOrAdmin]
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.request.query_params.get('all'):
+        # AACQ30 — le filtre « à traiter » ne vaut que pour la LISTE : un
+        # payload déjà rattaché reste adressable en détail et rejouable
+        # (« Déjà rattaché au lead #… », jamais 404 ni second lead).
+        if self.action != 'list' or self.request.query_params.get('all'):
             return qs
         # Défaut : ce qui mérite une action — erreur de mapping OU jamais
         # rattaché à un lead (payload traité mais orphelin, ex. ping
@@ -4143,8 +4185,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         lead_id = request.query_params.get('lead')
         owner = request.query_params.get('owner')
         if lead_id:
+            # APRF21 — ``traite_par`` chargé (``traite_par_nom`` par touche).
             qs = (self.get_queryset().filter(lead_id=lead_id)
-                  .select_related('lead', 'lead__owner', 'devis')
+                  .select_related('lead', 'lead__owner', 'devis',
+                                  'traite_par')
                   .order_by('cadence', 'ordre', 'due_date'))
         else:
             from .selectors import relance_etapes_dues
