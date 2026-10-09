@@ -44,3 +44,18 @@ def pct_fr(v):
     if "." in txt:
         txt = txt.rstrip("0").rstrip(".")
     return txt.replace(".", ",")
+
+
+def fmt_dirhams(v, sep="\u202f"):
+    """AMOT26 — montant client ENTIER (au dirham) à la française, arrondi
+    ROUND_HALF_UP (la règle de l'écran ``Intl``/``solar.js formatMoney`` et
+    de la chaîne canonique) : 52 650,50 → « 52 651 ».
+
+    LE formateur entier du moteur : ``round(float(x))`` arrondissait au PAIR
+    (banquier), donc 52 650,5 → 52 650 au PDF contre 52 651 à l'écran.
+    ``sep`` = séparateur de milliers (espace fine insécable par défaut)."""
+    try:
+        d = Decimal(str(v)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return str(v)
+    return f"{int(d):,}".replace(",", sep)

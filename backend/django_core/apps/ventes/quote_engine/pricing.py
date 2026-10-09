@@ -975,8 +975,11 @@ def _fr_pct(v) -> str:
 
 
 def _fr_mad(v) -> str:
-    """12345 -> '12 345' (espace fine insécable, format des documents)."""
-    return f"{int(round(float(v))):,}".replace(",", " ")
+    """12345 -> '12 345' (espace fine insécable, format des documents).
+
+    AMOT26 — HALF_UP par ``montants.fmt_dirhams``."""
+    from .montants import fmt_dirhams
+    return fmt_dirhams(float(v))
 
 
 def cashflow_assumptions(inverter_replace_cost=None,

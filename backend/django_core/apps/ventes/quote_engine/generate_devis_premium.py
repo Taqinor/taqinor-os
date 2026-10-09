@@ -34,9 +34,9 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
 # paquets premium ; même double chemin d'import.
 try:
-    from .montants import fmt_centimes, fmt_centimes_mad, pct_fr
+    from .montants import fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr
 except ImportError:  # exécution directe du moteur depuis son dossier
-    from montants import fmt_centimes, fmt_centimes_mad, pct_fr
+    from montants import fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -1065,10 +1065,12 @@ def fmt(v):
     \u00e9tiquet\u00e9 EUR aurait affich\u00e9 des dirhams sous un signe euro. L'\u00e9tiquette
     suit d\u00e9sormais la r\u00e9alit\u00e9 des montants.
     """
+    # AMOT26 — HALF_UP par ``montants.fmt_dirhams`` (même dirham que l'écran).
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
+        float(v)
     except Exception:
         return str(v)
+    return fmt_dirhams(v) + "\u00a0MAD"
 
 # QJR623 — ``_repartir_paiement`` (cases arrondies au millier, reliquat sur un
 # total arrondi au dirham — ERR120) est SUPPRIMÉE : les montants des cases
