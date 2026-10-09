@@ -266,6 +266,12 @@ def ticket_public_satisfaction(request, token):
 
 # ── XSAV19 — Page publique « Signaler un problème » via QR équipement ────────
 
+_SignalerReponse = inline_serializer('SavPublicSignalerReponse', {
+    'reference': drf_serializers.CharField(required=False),
+    'detail': drf_serializers.CharField(required=False),
+})
+
+
 @extend_schema(
     request=inline_serializer('SavPublicSignalerRequete', {
         'description': drf_serializers.CharField(),
@@ -274,14 +280,8 @@ def ticket_public_satisfaction(request, token):
         'photo': drf_serializers.ImageField(required=False),
     }),
     responses={
-        200: inline_serializer('SavPublicSignalerReponse', {
-            'reference': drf_serializers.CharField(required=False),
-            'detail': drf_serializers.CharField(required=False),
-        }),
-        201: inline_serializer('SavPublicSignalerReponse', {
-            'reference': drf_serializers.CharField(required=False),
-            'detail': drf_serializers.CharField(required=False),
-        }),
+        200: _SignalerReponse,
+        201: _SignalerReponse,
     })
 @api_view(['POST'])
 @authentication_classes([])
