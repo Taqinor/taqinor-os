@@ -284,6 +284,10 @@ _AT_LANE_RE = re.compile(r"@(?:lane|files):\s*(?P<key>[^@()\n]+)", re.IGNORECASE
 # est la parenthèse NUE : cité en prose entre backticks, ce n'en est pas un.
 _AT_ATOMIQUE_RE = re.compile(r"(?<!`)\(@atomique:\s*(?P<owners>[^@()`\n]+)\)",
                              re.IGNORECASE)
+# AMET97 — tâche à preuve EN DIRECT (pile locale) : `(@acceptation)` nu ou
+# « Preuve en direct : P<n> ». `--sans-pile` la sort des lanes (règle 3-bis).
+_PREUVE_EN_DIRECT_RE = re.compile(
+    r"(?<!`)\(@acceptation\)|Preuve en direct\s*:\s*P\d", re.IGNORECASE)
 _AFTER_RE = re.compile(r"@after:\s*(?P<ids>[A-Z0-9,\s-]+)", re.IGNORECASE)
 _GATE_TOKEN_RE = re.compile(r"\b(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST|GALLERY)\b")
 _DEP_TOKEN_RE = re.compile(r"DEP:\s*([A-Za-z0-9_-]+)")
@@ -1044,6 +1048,7 @@ def pack_pipelined_waves(
     filled heaviest-lane-first (long chains start early) and LPT-balanced inside
     each wave so its agents finish together. Returns ``[[worker, …], …]`` —
     one inner list per wave, each worker a ``{lanes, tasks, cost}`` bundle.
+    AMET97 : a lane never lands in a wave ≤ that of a lane it `@after`s.
 
     The orchestrator work-steals across the soft wave boundary: when a wave-K
     agent finishes early it pulls the heaviest not-yet-started lane of wave K+1,
@@ -1051,6 +1056,17 @@ def pack_pipelined_waves(
     """
     lane_cost = {k: sum(t["cost"] for t in lanes[k]) for k in lane_order}
     pending = sorted(lane_order, key=lambda k: (-len(lanes[k]), -lane_cost[k], k))
+    # AMET97 — précédence INTER-lanes : une lane dont une tâche porte `@after`
+    # sur une tâche d'une AUTRE lane part dans une vague STRICTEMENT
+    # postérieure à celle de cette lane (la moitié M0 avant son consommateur).
+    lane_de = {t["id"]: k for k in lane_order for t in lanes[k]}
+    poids: dict[tuple[str, str], int] = {}     # (lane, lane amont) → n @after
+    for k in lane_order:
+        for d in (d for t in lanes[k] for d in t.get("deps", ())):
+            if d in lane_de and lane_de[d] != k:
+                poids[(k, lane_de[d])] = poids.get((k, lane_de[d]), 0) + 1
+    amont = {k: {b for (a, b) in poids if a == k} for k in lane_order}
+    placees: set[str] = set()
     waves: list[list[dict]] = []
     while pending:
         workers = [{"lanes": [], "tasks": [], "cost": 0.0}
@@ -1059,8 +1075,9 @@ def pack_pipelined_waves(
         leftover: list[str] = []
         for k in pending:
             # Fill a wave until it holds ~wave_size tasks; defer the rest. A
-            # single lane never spills across waves (it stays whole).
-            if wave_tasks >= wave_size:
+            # single lane never spills across waves (it stays whole). A lane
+            # whose upstream lanes are not in an EARLIER wave waits too.
+            if wave_tasks >= wave_size or not amont[k] <= placees:
                 leftover.append(k)
                 continue
             w = min(workers, key=lambda w: (w["cost"], len(w["lanes"])))
@@ -1068,11 +1085,39 @@ def pack_pipelined_waves(
             w["tasks"].extend(t["id"] for t in lanes[k])
             w["cost"] = round(w["cost"] + lane_cost[k], 3)
             wave_tasks += len(lanes[k])
+        if wave_tasks == 0:
+            # Cycle inter-lanes : toutes attendent une lane non placée. On
+            # remonte l'amont jusqu'à reboucler et on coupe l'arête du cycle
+            # qui porte le MOINS d'@after — rien n'est perdu, les violations
+            # restantes sont listées (--check).
+            k, chemin = pending[0], []
+            while k not in chemin:
+                chemin.append(k)
+                k = min(amont[k] - placees)
+            cycle = chemin[chemin.index(k):] + [k]
+            a, b = min(zip(cycle, cycle[1:]), key=lambda e: (poids[e], e))
+            amont[a].discard(b)
+            continue
         workers = [w for w in workers if w["lanes"]]
         workers.sort(key=lambda w: (-w["cost"], w["lanes"][0]))
         waves.append(workers)
+        placees |= {k for w in workers for k in w["lanes"]}
         pending = leftover
     return waves
+
+
+def violations_inter_lanes(
+    lanes: dict[str, list[dict]], vagues: list[list[dict]],
+) -> list[tuple[str, str, int, int]]:
+    """AMET97 — (tâche, son @after d'une AUTRE lane, vague tâche, vague dép.)
+    pour chaque tâche placée dans une vague ≤ celle de sa dépendance."""
+    vague_de = {tid: i for i, wave in enumerate(vagues, 1)
+                for w in wave for tid in w["tasks"]}
+    lane_de = {t["id"]: k for k in lanes for t in lanes[k]}
+    return [(t["id"], d, vague_de[t["id"]], vague_de[d])
+            for k in lanes for t in lanes[k] for d in t.get("deps", ())
+            if d in vague_de and lane_de[d] != k
+            and vague_de[t["id"]] <= vague_de[d]]
 
 
 def parse_tasks(path: Path) -> list[dict]:
@@ -1154,6 +1199,9 @@ def parse_tasks(path: Path) -> list[dict]:
             "owners": _proprietaires(_chemins_pour_proprietaires(label)),
             # AMET96 — clé présente SEULEMENT avec le tag (JSON inchangé sans).
             **({"atomique": sorted(atomique)} if atomique is not None else {}),
+            # AMET97 — idem : clé posée seulement pour une preuve en direct.
+            **({"preuve_en_direct": True}
+               if _PREUVE_EN_DIRECT_RE.search(label) else {}),
         })
     return tasks
 
@@ -1725,6 +1773,7 @@ def schedule(
     # wave K tests/CIs (lanes are globally file-disjoint → waves never collide).
     n_agents = n_workers if n_workers is not None else max_lanes
     pipe = pack_pipelined_waves(lanes, lane_order, n_agents, max(1, wave_size))
+    violations = violations_inter_lanes(lanes, pipe)
     pipelined = [
         {
             "wave": i + 1,
@@ -1742,6 +1791,7 @@ def schedule(
         "lane_costs": {k: round(v, 3) for k, v in lane_costs.items()},
         "workers": worker_out,
         "pipelined_waves": pipelined,
+        "inter_lane_violations": violations,
         "waves": [[t["id"] for t in w] for w in waves],
         "wave_detail": waves,
         "gated": gated,
@@ -1861,6 +1911,17 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         out.append(
             f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}{own}): {', '.join(ids)}"
         )
+    if "sans_pile" in plan:
+        out += ["", f"## Hors lanes — preuve en direct (--sans-pile, AMET97) : "
+                f"{len(plan['sans_pile'])} tâche(s) listée(s), jamais confiée(s) — "
+                f"l'orchestrateur d'une session AVEC pile les joue (règle 3-bis)"]
+        out += [f"- `{t['id']}`  [{t['lane']}]" for t in plan["sans_pile"]]
+    if plan.get("inter_lane_violations"):
+        out += ["", "## Violations inter-lanes (cycle d'@after entre deux lanes "
+                "entières : dans la même vague, l'agent attend le FOLD de la "
+                "dépendance avant de commencer la tâche — CLAUDE.md étape 2 (c))"]
+        out += [f"- `{t}` (vague {vt}) attend `{d}` (vague {vd})"
+                for t, d, vt, vd in plan["inter_lane_violations"]]
     if plan.get("after_blocked"):
         out += [
             "",
@@ -1965,6 +2026,12 @@ def main(argv: list[str] | None = None) -> int:
         "(##/###) contient cette sous-chaîne (insensible à la casse), p. ex. "
         "'Groupe EDC'. Répétable ; union avec --only.",
     )
+    parser.add_argument(
+        "--sans-pile", action="store_true",
+        help="session SANS docker : les tâches à preuve en direct "
+        "((@acceptation), « Preuve en direct : P<n> ») sont listées à part, "
+        "jamais confiées à une lane — sans être refusées (AMET97).",
+    )
     args = parser.parse_args(argv)
 
     plan_args = args.plan if isinstance(args.plan, list) else [args.plan]
@@ -2058,11 +2125,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"REFUSÉ (@after externe, OWN) : {t['id']} — "
               + " ; ".join(t["after_block_reasons"]), file=sys.stderr)
 
+    # AMET97 — `--sans-pile` : APRÈS les portes (une tâche refusée le reste).
+    sans_pile = [t for t in allowed_tasks if args.sans_pile
+                 and "preuve_en_direct" in t and t["gate"] != "gated"]
+    allowed_tasks = [t for t in allowed_tasks if t not in sans_pile]
+
     plan = schedule(
         allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked,
         n_workers=args.workers, wave_size=args.wave_size,
         pairing_blocked=pairing_blocked, after_blocked=after_blocked,
     )
+    if args.sans_pile:
+        plan["sans_pile"] = sans_pile
     if portee is not None:
         plan["scope"] = {
             "selectors": portee,
@@ -2090,6 +2164,15 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         check_failed = True
+
+    if args.check:
+        # Listées, pas bloquantes : un cycle entre deux lanes ENTIÈRES (sans
+        # cycle de tâches) ne se range dans aucun ordre de vagues.
+        print(f"\n{len(plan['inter_lane_violations'])} violation(s) inter-lanes "
+              "(tâche dans une vague ≤ celle de son @after d'une autre lane)"
+              + "".join(f"\n- {t} (vague {vt}) attend {d} (vague {vd})"
+                        for t, d, vt, vd in plan["inter_lane_violations"]),
+              file=sys.stderr)
 
     if args.check:
         # ADEP28 : CHAQUE fichier du pool, pas seulement le premier — une ligne

@@ -1249,5 +1249,100 @@ class Pact11Tests(unittest.TestCase):
         self.assertNotIn("atomique", taches[0])  # sans tag : dict inchangé
 
 
+class DispatchTests(unittest.TestCase):
+    """AMET97 (C-AMET-024, R3_V6) — l'empaquetage des vagues ignorait les
+    `@after` entre lanes : une moitié front partait en vague 1 avant sa moitié
+    M0 d'une autre lane. Et `--sans-pile` sort des lanes les tâches à preuve
+    en direct (les lanes n'ont pas de pile — règle 3-bis)."""
+
+    @staticmethod
+    def _t(tid, lane, deps=(), cost=2.0):
+        return {
+            "id": tid, "prefix": "AMET", "lane": lane, "gate": "buildable",
+            "gate_reasons": [], "deps": list(deps), "section": "",
+            "model": "sonnet", "cost": cost, "files": [],
+        }
+
+    @staticmethod
+    def _vague_de(plan) -> dict:
+        return {tid: w["wave"] for w in plan["pipelined_waves"]
+                for a in w["agents"] for tid in a["tasks"]}
+
+    def test_after_inter_lanes_impose_une_vague_posterieure(self):
+        # L1 : la moitié M0 (contrat) ; L2 (plus lourde, donc empaquetée en
+        # premier) : le consommateur. Tout tiendrait dans UNE vague de 80.
+        tasks = [self._t("M0A", "l1/contrat"),
+                 self._t("FRA", "l2/ecran", deps=["M0A"]),
+                 self._t("FRB", "l2/ecran"),
+                 self._t("LIB", "l3/libre")]
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=8, wave_size=80)
+        vague = self._vague_de(plan)
+        self.assertLess(vague["M0A"], vague["FRA"])
+        self.assertEqual(vague["LIB"], 1)        # une lane libre n'attend pas
+        self.assertEqual(vague["FRA"], vague["FRB"])  # une lane reste entière
+        self.assertEqual(plan["inter_lane_violations"], [])
+
+    def test_chaine_de_trois_lanes_et_cycle_signale(self):
+        tasks = [self._t("A1", "a"), self._t("B1", "b", deps=["A1"]),
+                 self._t("C1", "c", deps=["B1"])]
+        vague = self._vague_de(pl.schedule(tasks, 8, n_workers=8, wave_size=80))
+        self.assertEqual([vague["A1"], vague["B1"], vague["C1"]], [1, 2, 3])
+        # Cycle inter-lanes (plan incohérent) : rien n'est perdu, la violation
+        # est listée (et `--check` échoue dessus).
+        cycle = [self._t("X1", "x", deps=["Y1"]), self._t("Y1", "y", deps=["X1"])]
+        plan = pl.schedule(cycle, 8, n_workers=8, wave_size=80)
+        self.assertEqual(set(self._vague_de(plan)), {"X1", "Y1"})
+        self.assertEqual(len(plan["inter_lane_violations"]), 1)
+
+    def _plan_md(self, *lignes) -> Path:
+        chemin = Path(tempfile.mkdtemp()) / "PLAN_X.md"
+        chemin.write_text("## BUILD QUEUE\n\n" + "\n".join(lignes) + "\n",
+                          encoding="utf-8")
+        return chemin
+
+    def _main(self, *args) -> tuple[int, str, str]:
+        sortie, journal = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(journal):
+            code = pl.main([*map(str, args), "--build-order",
+                            str(Path(tempfile.mktemp(suffix=".yml")))])
+        return code, sortie.getvalue(), journal.getvalue()
+
+    def test_sans_pile_retire_les_preuves_en_direct_sans_les_refuser(self):
+        plan = self._plan_md(
+            "- [ ] ZQ1 — acceptation du groupe. (ROUTINE) (@acceptation) (@lane: z/acc)",
+            "- [ ] ZQ2 — écran. Preuve en direct : P1.2 — dérouler. (@lane: z/ecran)",
+            "- [ ] ZQ3 — garde. Preuve en direct : n/a — garde. (@lane: z/garde)",
+            "- [ ] ZQ4 — cite `(@acceptation)` en prose. (@lane: z/prose)")
+        code, sortie, _ = self._main(plan, "--json")
+        self.assertEqual(code, 0)
+        avec = json.loads(sortie)
+        self.assertEqual(len(avec["lanes"]), 4)
+        self.assertNotIn("sans_pile", avec)
+        code, sortie, _ = self._main(plan, "--json", "--sans-pile")
+        sans = json.loads(sortie)
+        construites = {tid for ids in sans["lanes"].values() for tid in ids}
+        self.assertEqual(construites, {"ZQ3", "ZQ4"})
+        self.assertEqual([t["id"] for t in sans["sans_pile"]], ["ZQ1", "ZQ2"])
+        self.assertEqual(sans["after_blocked"] + sans["pairing_blocked"], [])
+        _, rendu, _ = self._main(plan, "--sans-pile")
+        self.assertIn("--sans-pile", rendu)
+        self.assertIn("ZQ1", rendu)
+
+    def test_check_liste_les_violations_inter_lanes(self):
+        # Cycle entre deux lanes ENTIÈRES (aucun cycle de tâches : A2 attend
+        # B1, B2 attend A1) — inévitable sans couper une lane : listé.
+        plan = self._plan_md("- [ ] ZA1 — a1. (@lane: c/a)",
+                             "- [ ] ZA2 — a2. (@lane: c/a) (@after: ZB1)",
+                             "- [ ] ZB1 — b1. (@lane: c/b)",
+                             "- [ ] ZB2 — b2. (@lane: c/b) (@after: ZA1)")
+        code, _, journal = self._main(plan, "--check")
+        self.assertEqual(code, 0)
+        self.assertIn("1 violation(s) inter-lanes", journal)
+        sain = self._plan_md("- [ ] ZS1 — m0. (@lane: s/a)",
+                             "- [ ] ZS2 — front. (@lane: s/b) (@after: ZS1)")
+        _, _, journal = self._main(sain, "--check")
+        self.assertIn("0 violation(s) inter-lanes", journal)
+
+
 if __name__ == "__main__":
     unittest.main()
