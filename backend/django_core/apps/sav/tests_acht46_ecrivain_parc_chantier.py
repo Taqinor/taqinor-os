@@ -8,7 +8,6 @@ Run :
 from datetime import date
 
 from django.test import TestCase
-from django.utils import timezone
 
 from authentication.models import Company
 from apps.crm.models import Client
@@ -118,4 +117,3 @@ class EcrivainParcChantierTests(TestCase):
         eq = Equipement.objects.filter(
             installation=c, produit=self.panneau).first()
         self.assertEqual(eq.date_fin_garantie.year, 2036)
-        self.assertIsNotNone(timezone.now())

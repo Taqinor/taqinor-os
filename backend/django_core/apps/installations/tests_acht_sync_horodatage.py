@@ -101,8 +101,9 @@ class SyncHorodatageTests(TestCase):
         res = self._sync('intervention.checkin', {}, client_ts=futur)
         self.assertEqual(res['status'], 'applied', res)
         self.iv.refresh_from_db()
+        apres = timezone.now()
         self.assertGreaterEqual(self.iv.arrivee_site_le, avant)
-        self.assertLessEqual(self.iv.arrivee_site_le, timezone.now())
+        self.assertLessEqual(self.iv.arrivee_site_le, apres)
 
     def test_sans_client_ts_retrocompatible(self):
         avant = timezone.now()
