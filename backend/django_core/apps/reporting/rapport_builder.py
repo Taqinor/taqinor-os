@@ -172,7 +172,6 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         est RETIRÉE du fichier (jamais d'export client-facing d'une donnée de
         marge, règle du repo), quelle que soit la définition.
         """
-        import csv
         import io
 
         from django.http import HttpResponse
@@ -231,7 +230,8 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             return reponse
 
         tampon = io.StringIO()
-        writer = csv.writer(tampon)
+        from apps.records.xlsx import EcrivainCsvNeutralise
+        writer = EcrivainCsvNeutralise(tampon)
         if entetes:
             writer.writerow(entetes)
         writer.writerows(lignes)

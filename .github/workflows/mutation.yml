@@ -1,4 +1,4 @@
-name: mutation (nightly, non-blocking)
+name: mutation (nightly)
 
 # YTEST9 — mutation testing measures ASSERTION QUALITY (coverage only proves
 # a line executed, not that a wrong result would be caught). Runs on a small,
@@ -19,11 +19,24 @@ name: mutation (nightly, non-blocking)
 # the apt step below was added) — same packages `.github/actions/backend-env`
 # installs for every other backend job. No Redis/MinIO here: the targeted
 # scope only touches storage/MinIO inside `@tag('pdf')` tests, which
-# setup.cfg's `addopts` already deselects. `continue-on-error` below means
-# none of this blocks a merge either way; do not read an empty score as "0%
-# caught mutants" — it means "did not run", not "ran and failed". Root cause
-# of why this job silently ran ZERO mutants for a long time before QAH5:
-# setup.cfg's own history comment + docs/TESTING.md's Mutation section.
+# setup.cfg's `addopts` already deselects. Root cause of why this job
+# silently ran ZERO mutants for a long time before QAH5: setup.cfg's own
+# history comment + docs/TESTING.md's Mutation section.
+#
+# ENF12 (règle fondateur 09/10/2026, docs/claude-memory/enforce-all-checks.md) :
+# job BLOQUANT — plus de `continue-on-error`, plus de `|| true`. Mesure : de
+# la nuit du 28/09 à celle du 08/10/2026, CHAQUE passe a fini « runner
+# shutdown signal » ~10 min après le début de `mutmut run` (5 608 mutants
+# générés, 0 tué / 0 survivant) — masqué en « success ». Désormais :
+#   * `scripts/check_mutation_score.py` échoue si < 100 mutants ont été jugés
+#     (« n'a pas tourné » n'est plus un vert) ou si le score est sous le
+#     plancher (50 % — CONSERVATEUR, aucune passe n'a encore produit de score ;
+#     à recalibrer sur la première nuit verte, à monter par paliers de 5) ;
+#   * `--max-children 2` (au lieu de 4) : 4 workers Django en parallèle
+#     épuisaient la mémoire du runner (arrêt au démarrage des tests).
+#   * la borne `timeout 170m` (code 124) est une fin NORMALE d'une passe
+#     partielle : le score porte sur les mutants jugés avant la borne ; tout
+#     autre code de sortie de mutmut fait échouer l'étape.
 on:
   workflow_dispatch: {}
   schedule:
@@ -32,8 +45,6 @@ on:
 jobs:
   mutation-score:
     runs-on: ubuntu-latest
-    # Informational only — a low/regressed score never blocks a merge.
-    continue-on-error: true
     # Bounded (QAH5 deepened): the targeted scope is small (7 files, ~360
     # tests per mutant re-run) but mutation testing is O(mutants x test run)
     # — a sensible ceiling so a runaway mutant count/hang doesn't tie up a
@@ -105,11 +116,17 @@ jobs:
           # mutmut 3's `run` has no `--CI` flag any more (see the top-of-file
           # note) — plain `run` is the whole command. `--max-children 2`:
           # modest concurrency for a small, bounded scope on a shared runner
-          # (mutmut forks a worker per mutant batch). `|| true`:
-          # informational, never fails the step even on a real red mutant.
+          # (mutmut forks a worker per mutant batch).
           # `timeout 170m` : borne interne (voir timeout-minutes du job) pour
-          # que les étapes d'export/résumé suivantes tournent toujours.
-          timeout 170m mutmut run --max-children 4 || true
+          # que les étapes d'export/résumé suivantes tournent toujours ; son
+          # code 124 est la seule sortie non nulle tolérée (ENF12, voir en-tête).
+          set +e
+          timeout 170m mutmut run --max-children 2
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "mutmut run en échec (code $rc)"; exit "$rc"
+          fi
       - name: Export mutation results (per-mutant text + CI/CD JSON stats)
         working-directory: backend/django_core
         run: |
@@ -117,8 +134,10 @@ jobs:
           # `results --all` (every mutant, not just survivors) is the closest
           # human-readable text report, `export-cicd-stats` writes the
           # machine-readable global rollup to mutants/mutmut-cicd-stats.json.
-          mutmut results --all > mutmut-results.txt || true
-          mutmut export-cicd-stats || true
+          # `--all` attend une valeur en 3.7 (« Option '--all' requires an
+          # argument » le 28/09/2026, masqué par `|| true`).
+          mutmut results --all true > mutmut-results.txt
+          mutmut export-cicd-stats
       - name: Write per-module score to the job summary
         working-directory: backend/django_core
         run: |
@@ -126,7 +145,7 @@ jobs:
           import json
           from pathlib import Path
 
-          print("## Mutation score (mutmut 3, nightly, informational — QAH5)")
+          print("## Mutation score (mutmut 3, nightly, gate ENF12 — QAH5)")
           print()
 
           try:
@@ -176,7 +195,10 @@ jobs:
           for path, killed, survived, total, score in sorted(rows):
               print(f"| `{path}` | {killed} | {survived} | {total} | {score:.0f}% |")
           PY
+      - name: Garde score de mutation (ENF12, bloquante)
+        run: python scripts/check_mutation_score.py backend/django_core/mutants/mutmut-cicd-stats.json
       - name: Upload mutation report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mutation-report

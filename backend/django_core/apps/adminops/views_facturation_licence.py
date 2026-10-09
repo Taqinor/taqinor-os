@@ -13,7 +13,6 @@ Aucune passerelle de paiement : « payée » est un pointage MANUEL du fondateur
 """
 from __future__ import annotations
 
-import csv
 import logging
 from datetime import date
 
@@ -183,7 +182,8 @@ class FactureLicenceExportCsvView(APIView):
             'attachment; filename="facturation-licences.csv"')
         # BOM UTF-8 : Excel (FR) ouvre le fichier avec les accents corrects.
         reponse.write('﻿')
-        writer = csv.writer(reponse, delimiter=';')
+        from apps.records.xlsx import EcrivainCsvNeutralise
+        writer = EcrivainCsvNeutralise(reponse, delimiter=';')
         writer.writerow([
             'Référence', 'Société', 'Période', 'Plan', 'Montant HT', 'TVA',
             'Montant TTC', 'Statut', 'Date émission', 'Date paiement',

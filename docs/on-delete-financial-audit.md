@@ -520,8 +520,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/ventes/models_regulatory.py::SubventionDossier.devis` | backend/django_core/apps/ventes/models_regulatory.py:327 | ventes.Devis | PROTECT |
 | `backend/django_core/apps/ventes/models_regulatory.py::Regularisation8221.company` | backend/django_core/apps/ventes/models_regulatory.py:388 | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models_regulatory.py::Regularisation8221.devis` | backend/django_core/apps/ventes/models_regulatory.py:391 | ventes.Devis | SET_NULL |
-| `backend/django_core/authentication/models.py::CustomUser.company` | backend/django_core/authentication/models.py:210 | Company | SET_NULL |
-| `backend/django_core/authentication/models.py::UserSession.company` | backend/django_core/authentication/models.py:686 | Company | CASCADE |
+| `backend/django_core/authentication/models.py::CustomUser.company` | backend/django_core/authentication/models.py:211 | Company | SET_NULL |
+| `backend/django_core/authentication/models.py::UserSession.company` | backend/django_core/authentication/models.py:687 | Company | CASCADE |
 | `backend/django_core/core/models.py::TenantModel.company` | backend/django_core/core/models.py:78 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::DeletionRecord.company` | backend/django_core/core/models.py:251 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::AnomalyFlag.company` | backend/django_core/core/models.py:328 | authentication.Company | CASCADE |

@@ -1106,7 +1106,8 @@ def _signature_definition_matrice(type_objet, chaine_paliers):
     base = re.sub(r'[^a-z0-9]+', '_', str(type_objet or '').lower()).strip('_')
     base = base or 'objet'
     payload = json.dumps(chaine_paliers or [], sort_keys=True, default=str)
-    digest = hashlib.sha1(payload.encode('utf-8')).hexdigest()[:16]
+    digest = hashlib.sha1(
+        payload.encode('utf-8'), usedforsecurity=False).hexdigest()[:16]
     return f'matrice_{base}_{digest}'[:64]
 
 

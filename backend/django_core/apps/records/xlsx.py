@@ -136,6 +136,49 @@ def neutralize_rows(rows):
     return [[neutralize_cell(v) for v in row] for row in rows]
 
 
+def _est_nombre(texte):
+    try:
+        float(texte.replace(',', '.'))
+    except ValueError:
+        return False
+    return True
+
+
+def neutralize_csv_cell(value):
+    """ENF12 — neutralise une cellule CSV (injection de formule, semgrep
+    ``csv-writer-injection``).
+
+    Même règle que ``neutralize_cell`` (apostrophe devant ``= + - @``), plus
+    tabulation / retour chariot en tête (OWASP). Un NOMBRE écrit en texte
+    (« -12.50 », un avoir) reste intact : il n'exécute aucune formule.
+    """
+    if (isinstance(value, str) and value[:1] in _RISKY_LEADING + ('\t', '\r')
+            and not _est_nombre(value)):
+        return "'" + value
+    return value
+
+
+class EcrivainCsvNeutralise:
+    """ENF12 — ``csv.writer`` dont chaque cellule texte est neutralisée.
+
+    À utiliser pour TOUT export CSV remis à un utilisateur : un libellé saisi
+    « =HYPERLINK(...) » ne s'exécute plus à l'ouverture dans Excel/LibreOffice.
+    """
+
+    def __init__(self, flux, **options):
+        import csv
+
+        self._ecrivain = csv.writer(flux, **options)
+
+    def writerow(self, ligne):
+        return self._ecrivain.writerow(
+            [neutralize_csv_cell(v) for v in ligne])
+
+    def writerows(self, lignes):
+        for ligne in lignes:
+            self.writerow(ligne)
+
+
 def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
     """Réponse HTTP .xlsx construite avec le builder partagé.
 

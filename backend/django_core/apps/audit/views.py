@@ -427,7 +427,6 @@ def security_events_export(request):
 
     Filtres : ``?from=``/``?to=`` (ISO). Company-scopé strict via le sélecteur
     fondation ``selectors.security_events`` ; jamais d'autre société."""
-    import csv
 
     from django.http import HttpResponse
 
@@ -446,7 +445,8 @@ def security_events_export(request):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = (
         'attachment; filename="security_events.csv"')
-    writer = csv.writer(response)
+    from apps.records.xlsx import EcrivainCsvNeutralise
+    writer = EcrivainCsvNeutralise(response)
     writer.writerow(['timestamp', 'action', 'utilisateur', 'ip', 'detail'])
     for entry in qs.iterator():
         writer.writerow([

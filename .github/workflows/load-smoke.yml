@@ -6,6 +6,14 @@ name: load smoke (Locust, opt-in)
 # (load/locustfile.py, NTPLT48), publie le rapport HTML en artifact et ÉCHOUE
 # si le p95 agrégé dépasse 2× le seuil LISTE documenté (500 ms → 1000 ms, cf.
 # docs/load-testing.md) — la régression de perf se voit AVANT le client.
+#
+# ENF12 (règle fondateur 09/10/2026, docs/claude-memory/enforce-all-checks.md) :
+# plus de `|| true` sur Locust, plus de sortie 0 « non concluant ». Mesure du
+# 05/10/2026 : 4 813 requêtes, 100 % d'échecs (POST /auth/login/ en 404 →
+# tout le reste en 401 de 3 ms : « p95 = 4 ms » trompeur). Seuils désormais :
+#   * Locust échoue sur toute requête en échec (code de sortie natif 1) ;
+#   * p95 agrégé ≤ 1000 ms (2× le seuil LISTE 500 ms de docs/load-testing.md) ;
+#   * CSV ou ligne Aggregated absents = ÉCHEC (la passe n'a pas tourné).
 
 on:
   workflow_dispatch:
@@ -50,8 +58,10 @@ jobs:
       DB_HOST: localhost
       DB_PORT: '5432'
       REDIS_URL: redis://localhost:6379/0
-      LOCUST_USER: charge@taqinor.local
+      LOCUST_USER: charge
       LOCUST_PASSWORD: charge-password-not-secret
+      LOAD_USERNAME: charge
+      LOAD_PASSWORD: charge-password-not-secret
       P95_LIMIT_MS: '1000'   # 2× le seuil LISTE documenté (500 ms)
     steps:
       - uses: actions/checkout@v4
@@ -68,20 +78,7 @@ jobs:
         working-directory: backend/django_core
         run: |
           python manage.py migrate --noinput
-          python manage.py shell <<'PY'
-          from django.contrib.auth import get_user_model
-          from authentication.models import Company
-          User = get_user_model()
-          c, _ = Company.objects.get_or_create(nom='[CHARGE] Load smoke')
-          u, created = User.objects.get_or_create(
-              username='charge', defaults={'email': 'charge@taqinor.local',
-                                           'company': c})
-          u.email = 'charge@taqinor.local'
-          u.company = c
-          u.is_active = True
-          u.set_password('charge-password-not-secret')
-          u.save()
-          PY
+          python ../../scripts/load/creer_compte_charge.py
           python manage.py seed_scale --companies 2 --users 20 \
             --leads 5000 --devis 500 --lignes 5000 --mouvements 5000 \
             --force-je-sais
@@ -105,7 +102,7 @@ jobs:
             --headless -u 20 -r 2 \
             --run-time "${{ github.event.inputs.run_time || '10m' }}" \
             --html ../../locust-report.html \
-            --csv ../../locust || true
+            --csv ../../locust
 
       - name: Upload Locust report
         if: always()
@@ -117,22 +114,23 @@ jobs:
             locust_stats.csv
 
       - name: Gate on p95 (échoue si > 2× le seuil documenté)
+        if: success() || failure()
         run: |
           python - <<'PY'
           import csv, os, sys
           limit = float(os.environ.get('P95_LIMIT_MS', '1000'))
           path = 'locust_stats.csv'
           if not os.path.exists(path):
-              print('Pas de CSV Locust — smoke non concluant (non bloquant).')
-              sys.exit(0)
+              print('::error::Pas de CSV Locust — la passe n\'a pas tourné.')
+              sys.exit(1)
           agg = None
           with open(path) as f:
               for row in csv.DictReader(f):
                   if row.get('Name') == 'Aggregated':
                       agg = row
           if not agg:
-              print('Ligne Aggregated absente — non bloquant.')
-              sys.exit(0)
+              print('::error::Ligne Aggregated absente — la passe n\'a pas tourné.')
+              sys.exit(1)
           col = next((k for k in agg if '95%' in k), None)
           p95 = float(agg.get(col) or 0)
           print(f'p95 agrégé = {p95} ms (limite {limit} ms)')

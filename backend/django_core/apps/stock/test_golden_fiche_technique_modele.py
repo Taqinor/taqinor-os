@@ -124,7 +124,8 @@ def _decrire_champ(champ):
         'decimal_places': getattr(champ, 'decimal_places', None),
         'validateurs': validateurs,
         'help_text_sha1': hashlib.sha1(
-            str(champ.help_text).encode('utf-8')).hexdigest(),
+            str(champ.help_text).encode('utf-8'),
+            usedforsecurity=False).hexdigest(),
         'related_name': getattr(rel, 'related_name', None) if rel else None,
         'on_delete': (rel.on_delete.__name__
                       if rel is not None and rel.on_delete else None),
