@@ -330,7 +330,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     id: 'YB-POSITIONNEMENT',
     produit: 'yanbow',
     texte_fr:
-      'Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur mesure pour le reste.',
+      'Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur-mesure pour le reste.',
     statut: 'construit',
     france: 'neutre',
     publiable: true,

@@ -59,13 +59,13 @@ describe('YBW27 — fixture complète, FR', () => {
     expect(section(doc, 'transferts')?.textContent).toMatch(/Royaume-Uni.*Union européenne.*Maroc/s);
     expect(doc.querySelector('[data-garanties]')?.textContent).toBe('Garanties de test.');
     expect(doc.querySelector('[data-duree]')?.textContent).toBe(
-      "Trois ans après le dernier contact, votre demande est anonymisée dans l'ERP : elle ne permet plus de vous identifier.",
+      "Trois ans après le dernier contact, votre demande est anonymisée dans l’ERP : elle ne permet plus de vous identifier.",
     );
     expect(section(doc, 'droits')?.textContent).toMatch(/09-08/);
     expect(section(doc, 'droits')?.textContent).toMatch(/RGPD.*UK GDPR/s);
     for (const autorite of ['CNDP', 'CNIL', 'ICO']) expect(section(doc, 'reclamation')?.textContent).toContain(autorite);
     expect(section(doc, 'representant')?.textContent).toContain('Représentant Test');
-    expect(section(doc, 'whatsapp')?.textContent).toMatch(/aucune donnée n'est transmise avant le clic/);
+    expect(section(doc, 'whatsapp')?.textContent).toMatch(/aucune donnée n’est transmise avant le clic/);
     expect(section(doc, 'prospection')?.textContent).toMatch(/aucune prospection/i);
     expect(doc.querySelector('[data-foi]')?.textContent).toMatch(/version française/);
     expect(texte(doc)).not.toMatch(/undefined|null|\{n\}/);

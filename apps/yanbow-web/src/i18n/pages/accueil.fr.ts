@@ -18,8 +18,8 @@ export const fr = {
     marketingbow: { surtitre: 'Pour les campagnes publicitaires', lien: 'Découvrir MarketingBow' },
   },
   surMesure: {
-    surtitre: 'Sur mesure',
-    titre: 'Et pour le reste, du sur mesure',
+    surtitre: 'Sur-mesure',
+    titre: 'Et pour le reste, du sur-mesure',
     besoin: 'Le besoin',
     prototype: 'Le prototype',
     service: 'La mise en service',

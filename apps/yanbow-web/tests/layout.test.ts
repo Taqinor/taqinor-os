@@ -82,7 +82,7 @@ describe('YBW60 — en-tête et pied de page', () => {
     expect([...entete.querySelectorAll('.nav-bureau a')].map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['SolarBow', '/solarbow/'],
       ['MarketingBow', '/marketingbow/'],
-      ['Sur mesure', '/sur-mesure/'],
+      ['Sur-mesure', '/sur-mesure/'],
       ['Société', '/societe/'],
     ]);
     expect([...entete.querySelectorAll('.entete-actions .bouton')].map((a) => [a.textContent, a.getAttribute('href')])).toEqual([

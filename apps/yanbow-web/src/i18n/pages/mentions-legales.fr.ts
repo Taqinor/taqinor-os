@@ -8,7 +8,7 @@ export const fr = {
     titre: 'Éditeur du site',
     nom: 'Dénomination',
     partie: 'Immatriculée en',
-    numero: "Numéro d'immatriculation",
+    numero: "Numéro d’immatriculation",
     siege: 'Siège social',
     tva: 'Numéro de TVA',
   },
@@ -30,7 +30,7 @@ export const fr = {
     directeurPublication: 'Directeur de la publication',
     hebergeur: 'Hébergeur',
     cndp: 'Récépissés de déclaration CNDP',
-    representantUe: "Représentant dans l'Union européenne",
+    representantUe: "Représentant dans l’Union européenne",
   },
   foi: 'La version française de cette page fait foi.',
 } as const;

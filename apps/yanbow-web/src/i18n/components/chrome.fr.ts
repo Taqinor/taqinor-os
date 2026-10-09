@@ -11,7 +11,7 @@ export const fr = {
     aria: 'Navigation principale',
     ariaMobile: 'Navigation',
     menu: 'Menu',
-    surMesure: 'Sur mesure',
+    surMesure: 'Sur-mesure',
     societe: 'Société',
     rdv: 'Prendre rendez-vous',
   },

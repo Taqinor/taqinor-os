@@ -260,6 +260,6 @@ describe('YBW65 — Société', () => {
     const doc = new JSDOM(await container.renderToString(Societe, { props: { locale: 'fr', legal: LEGAL_COMPLET } })).window.document;
     expect(doc.querySelector('[data-entite="editeur"]')?.textContent).toContain('Fixture Test Ltd');
     expect(doc.querySelector('[data-entite="editeur"]')?.textContent).toContain('Angleterre et pays de Galles');
-    expect(doc.querySelector('[data-entite="maroc"]')?.textContent).toContain("SARL d'associé unique");
+    expect(doc.querySelector('[data-entite="maroc"]')?.textContent).toContain("SARL d’associé unique");
   });
 });

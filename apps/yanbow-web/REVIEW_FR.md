@@ -8,7 +8,27 @@
 ## État des gardes
 
 - `check-claims` : OK
-- `check-claims --stale` : vide
+- `check-claims --stale` : 20 affirmation(s) dont une preuve a changé depuis sa relecture (à relire avant le lancement, YBW85)
+  - SB-CRM : preuve modifiée depuis 0588a29c8 → backend/django_core/apps/crm/models.py
+  - SB-DEVIS-PDF : preuve modifiée depuis 0588a29c8 → backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py
+  - SB-ENTREPRISE-REELLE : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - SB-PRET-FRANCE : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - SB-NON-PUBLIABLES : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - MB-EN-SERVICE : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - MB-CREATIF-IA : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - SB-POUR-QUI : preuve modifiée depuis 0588a29c8 → backend/django_core/apps/crm/models.py, backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py, docs/plans/PLAN_YANBOW_WEB.md
+  - SB-INTERFACE-FR : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - MB-OPTION : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - MB-PERMISSIONS : preuve modifiée depuis 0588a29c8 → backend/django_core/apps/adsengine/views.py
+  - SM-OFFRE : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - SM-DEMARCHE : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - YB-DEUX-PRODUITS : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md, backend/django_core/apps/crm/models.py
+  - YB-REPONSE-HUMAINE : preuve modifiée depuis 0588a29c8 → backend/django_core/apps/crm/webhooks.py, docs/plans/PLAN_YANBOW_WEB.md
+  - YB-METIER : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - YB-POSITIONNEMENT : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - YB-NOM-SOURCE : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - YB-NOM-YAN : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
+  - YB-SLOGAN : preuve modifiée depuis 0588a29c8 → docs/plans/PLAN_YANBOW_WEB.md
 
 ## Décisions ouvertes
 
@@ -28,13 +48,13 @@
 | 2 | YanBow _(en-tête)_ | — | interface |  |
 | 3 | SolarBow _(en-tête)_ | — | interface |  |
 | 4 | MarketingBow _(en-tête)_ | — | interface |  |
-| 5 | Sur mesure _(en-tête)_ | — | interface |  |
+| 5 | Sur-mesure _(en-tête)_ | — | interface |  |
 | 6 | Société _(en-tête)_ | — | interface |  |
 | 7 | Prendre rendez-vous _(en-tête)_ | — | interface |  |
 | 8 | Studio logiciel | — | interface |  |
 | 9 | Nous construisons des logiciels métier pour les entreprises. | `YB-METIER` | construit | `docs/plans/PLAN_YANBOW_WEB.md:42`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
 | 10 | Prendre rendez-vous | — | interface |  |
-| 11 | Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur mesure pour le reste. | `YB-POSITIONNEMENT` | construit | `docs/plans/PLAN_YANBOW_WEB.md:43`<br>`docs/plans/PLAN_YANBOW_WEB.md:44`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
+| 11 | Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur-mesure pour le reste. | `YB-POSITIONNEMENT` | construit | `docs/plans/PLAN_YANBOW_WEB.md:43`<br>`docs/plans/PLAN_YANBOW_WEB.md:44`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
 | 12 | Découvrir les produits | — | interface |  |
 | 13 | Capture d’écran en préparation | — | interface |  |
 | 14 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
@@ -61,8 +81,8 @@
 | 35 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
 | 36 | Données fictives | — | interface |  |
 | 37 | Découvrir MarketingBow | — | interface |  |
-| 38 | Sur mesure | — | interface |  |
-| 39 | Et pour le reste, du sur mesure | — | interface |  |
+| 38 | Sur-mesure | — | interface |  |
+| 39 | Et pour le reste, du sur-mesure | — | interface |  |
 | 40 | Au-delà de nos deux produits, nous construisons des logiciels sur mesure pour les entreprises. | `SM-OFFRE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:54`<br>`docs/plans/PLAN_YANBOW_WEB.md:42` |
 | 41 | La démarche sur mesure | — | interface |  |
 | 42 | Le besoin | — | interface |  |
@@ -78,7 +98,7 @@
 | 52 | Prendre rendez-vous | — | interface |  |
 | 53 | SolarBow _(pied)_ | — | interface |  |
 | 54 | MarketingBow _(pied)_ | — | interface |  |
-| 55 | Sur mesure _(pied)_ | — | interface |  |
+| 55 | Sur-mesure _(pied)_ | — | interface |  |
 | 56 | Société _(pied)_ | — | interface |  |
 | 57 | Prendre rendez-vous _(pied)_ | — | interface |  |
 
@@ -166,7 +186,7 @@
 
 | # | Phrase | Affirmation | Statut | Preuves |
 | --- | --- | --- | --- | --- |
-| 1 | Sur mesure | — | interface |  |
+| 1 | Sur-mesure | — | interface |  |
 | 2 | Le logiciel dont votre entreprise a besoin | — | interface |  |
 | 3 | Au-delà de nos deux produits, nous construisons des logiciels sur mesure pour les entreprises. | `SM-OFFRE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:54`<br>`docs/plans/PLAN_YANBOW_WEB.md:42` |
 | 4 | La démarche | — | interface |  |
@@ -209,10 +229,10 @@
 | 10 | SolarBow | — | interface |  |
 | 11 | Construit au sein d’une vraie entreprise d’installation. | `SB-ENTREPRISE-REELLE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:63` |
 | 12 | Ce que nous faisons | — | interface |  |
-| 13 | Deux produits et du sur mesure | — | interface |  |
+| 13 | Deux produits et du sur-mesure | — | interface |  |
 | 14 | SolarBow | — | interface |  |
 | 15 | MarketingBow | — | interface |  |
-| 16 | Sur mesure | — | interface |  |
+| 16 | Sur-mesure | — | interface |  |
 | 17 | Parlons de votre projet | — | interface |  |
 | 18 | Une personne de l’équipe lit votre demande et vous répond. | `YB-REPONSE-HUMAINE` | construit | `backend/django_core/apps/crm/webhooks.py:3354`<br>`docs/plans/PLAN_YANBOW_WEB.md:56` |
 | 19 | Prendre rendez-vous | — | interface |  |
@@ -236,8 +256,8 @@
 | 11 | MarketingBow | — | interface |  |
 | 12 | Développement sur mesure | — | interface |  |
 | 13 | Message (facultatif) | — | interface |  |
-| 14 | N'indiquez aucune donnée sensible (santé, opinions, numéro d'identité…). | — | interface |  |
-| 15 | J'accepte que ces informations soient utilisées pour répondre à ma demande de rendez-vous. | — | interface |  |
+| 14 | N’indiquez aucune donnée sensible (santé, opinions, numéro d’identité…). | — | interface |  |
+| 15 | J’accepte que ces informations soient utilisées pour répondre à ma demande de rendez-vous. | — | interface |  |
 | 16 | Envoyer la demande | — | interface |  |
 | 17 | Ce qui se passe ensuite | — | interface |  |
 | 18 | Une personne de l’équipe lit votre demande et vous répond. | `YB-REPONSE-HUMAINE` | construit | `backend/django_core/apps/crm/webhooks.py:3354`<br>`docs/plans/PLAN_YANBOW_WEB.md:56` |
