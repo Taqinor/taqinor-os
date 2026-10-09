@@ -79,7 +79,7 @@ class DateLivraisonPdfTests(TestCase):
 
     def test_date_imprimee(self):
         texte = self._pdf(self._facture(date(2026, 7, 15)))
-        self.assertIn(LIBELLE, texte)
+        self.assertIn(LIBELLE.lower(), texte.lower())  # le gabarit met le libellé en capitales (CSS)
         self.assertIn('15/07/2026', texte)
 
     def test_changement_date_change_texte(self):
@@ -95,7 +95,7 @@ class DateLivraisonPdfTests(TestCase):
 
     def test_sans_date_aucune_ligne(self):
         texte = self._pdf(self._facture(None))
-        self.assertNotIn(LIBELLE, texte)
+        self.assertNotIn(LIBELLE.lower(), texte.lower())
         self.assertNotIn('Date de livraison', self.html[-1])
 
     def test_libelle_ar(self):
@@ -107,5 +107,5 @@ class DateLivraisonPdfTests(TestCase):
             langue_document='ar')
         texte = self._pdf(self._facture(date(2026, 7, 15), client=client_ar))
         self.assertIn('15/07/2026', texte)
-        self.assertNotIn(LIBELLE, texte)
+        self.assertNotIn(LIBELLE.lower(), texte.lower())
         self.assertIn(LIBELLES['ar']['date_livraison'], self.html[-1])

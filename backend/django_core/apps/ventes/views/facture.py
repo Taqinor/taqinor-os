@@ -687,8 +687,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
         # AFAC12 (C-AFAC-002) — jamais une facture annulée sous un avoir
         # ACTIF : l'avoir crédite une facture vivante ; il s'annule d'abord.
+        # L'avoir de note de débit (AFAC32 : il NEUTRALISE une ND, `note_debit_id`
+        # renseigné) n'est pas un crédit client : il ne bloque pas l'annulation.
         avoirs_actifs = [a for a in facture.avoirs.all()
-                         if a.statut != 'annulee']
+                         if a.statut != 'annulee'
+                         and getattr(a, 'note_debit_id', None) is None]
         if avoirs_actifs:
             return Response(
                 {'detail': (
