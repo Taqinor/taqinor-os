@@ -15,6 +15,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import FraisImport, LandedCostLigne
 from ..serializers import FraisImportSerializer, LandedCostLigneSerializer
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -27,7 +28,8 @@ def _check_dossier(serializer, company):
             {'dossier': "Dossier d'import inconnu pour cette société."})
 
 
-class FraisImportViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('categorie'), p1=oa.qi('dossier'))
+class FraisImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG316 — frais d'import. Lecture tout rôle, écriture responsable/admin.
     Société + `created_by` posés serveur ; dossier validé tenant. Filtrable par
     `dossier`, `categorie`."""
@@ -62,7 +64,8 @@ class FraisImportViewSet(CompanyScopedModelViewSet):
         serializer.save(company=company)
 
 
-class LandedCostLigneViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('dossier'))
+class LandedCostLigneViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG316 — lignes de coût débarqué par SKU. Lecture tout rôle, écriture
     responsable/admin. Société posée serveur ; dossier/produit validés tenant.
     Filtrable par `dossier`."""

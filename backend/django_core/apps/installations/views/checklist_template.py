@@ -33,6 +33,7 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -109,7 +110,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ChecklistTemplateViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
+class ChecklistTemplateViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """N74 — modèles NOMMÉS de checklist (Paramètres → Chantiers). Lecture tout
     rôle, écriture admin. Chaque modèle peut viser un `type_installation` qui
     l'auto-sélectionne à la création d'un chantier ; le modèle « Défaut » (type
@@ -136,6 +137,7 @@ class ChecklistTemplateViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewS
             return "Le modèle « Défaut » est protégé — désactivez-le plutôt."
         return None
 
+    @oa.extend_schema(request=None, responses={201: ChecklistTemplateSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, pk=None):
         """NTUX13 — Duplique ce modèle de checklist (en-tête + étapes) en un

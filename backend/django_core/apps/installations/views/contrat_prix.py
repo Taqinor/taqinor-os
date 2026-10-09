@@ -25,11 +25,13 @@ from ..serializers import (
     ContratPrixFournisseurSerializer, ContratPrixLigneSerializer,
 )
 from .. import selectors
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve', 'prix_convenu']
 
 
-class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut'))
+class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG318 — contrats de prix fournisseur. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; `fournisseur` validé tenant. Filtrable par `fournisseur`,
@@ -78,6 +80,7 @@ class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def activer(self, request, pk=None):
         """FG318 — active le contrat (brouillon → actif)."""
@@ -86,6 +89,7 @@ class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
         c.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(c).data)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def expirer(self, request, pk=None):
         """FG318 — expire le contrat (→ expiré)."""
@@ -94,6 +98,7 @@ class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
         c.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(c).data)
 
+    @oa.extend_schema(parameters=[oa.qi('produit', required=True), oa.qi('fournisseur'), oa.qd('date')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='prix-convenu')
     def prix_convenu(self, request):
         """FG318 — prix convenu d'un produit à une date, d'après les contrats en
@@ -120,7 +125,8 @@ class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(result)
 
 
-class ContratPrixLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('contrat'))
+class ContratPrixLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """FG318 — lignes de contrat de prix. La ligne n'a pas de `company` propre :
     le scope société passe par le contrat parent. Filtrable par `contrat`.
     Lecture tout rôle, écriture responsable/admin."""

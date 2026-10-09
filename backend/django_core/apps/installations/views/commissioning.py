@@ -23,11 +23,13 @@ from ..serializers_commissioning import (
     CommissioningRecordSerializer, CommissioningIVReadingSerializer,
     RecettePompageSerializer, recette_pompage_envelope,
 )
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
+@oa.listing(p0=oa.qi('installation'))
+class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
                                  CompanyScopedModelViewSet):
     """CH3 — fiches de recette IEC 62446-1. Lecture tout rôle, écriture
     Responsable/Admin. Filtrable par ``?installation=<id>``.
@@ -107,6 +109,7 @@ class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
         self._check_instrument_etalonnage(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=CommissioningIVReadingSerializer, responses={201: CommissioningIVReadingSerializer})
     @action(detail=True, methods=['post'], url_path='ajouter-iv',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_iv(self, request, pk=None):
@@ -137,7 +140,8 @@ MESSAGE_RECETTE_VERROUILLEE = (
     "la fiche ne peut plus être modifiée.")
 
 
-class RecettePompageViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('installation'))
+class RecettePompageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """AGR608 — fiches de recette POMPAGE (cadre IEC 62253:2011). Lecture
     tout rôle ; PATCH Responsable/Admin. La création passe par l'action
     ``chantiers/{id}/recette-pompage/`` (POST, chantier agricole seulement).
