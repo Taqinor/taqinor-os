@@ -8,6 +8,15 @@
 // `estGesteHorsPanneau` ignore une cible décrochée du document ou vivant dans
 // une autre couche. Même montage que LeadDevisPanelSorties.test.jsx (vrai
 // ConfirmProvider, générateur mocké qui pousse `onDirtyChange`).
+//
+// HONNÊTETÉ DE LA GARDE (mutation du 09/10/2026, garde désactivée) : jsdom
+// n'a pas de PointerEvent tactile, Radix y prend donc le chemin « souris »
+// (rappel immédiat, couche encore ouverte) et les deux parcours « Rester » /
+// « Quitter » ci-dessous passent AVEC ou SANS la garde — ils gardent le
+// parcours lui-même, pas le race. Le race est tenu par les tests du module
+// pur (rouges sans la garde) et par la vérification EN DIRECT du 09/10
+// (Chromium, panneau réel : « Rester » ne fermait jamais la boîte avant,
+// la ferme après).
 // Run : npx vitest run src/pages/crm/leads/LeadDevisPanelSortiesDifferees.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
