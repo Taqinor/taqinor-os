@@ -192,6 +192,24 @@ describe('ApprovalsScreen (ENG25)', () => {
     await waitFor(() => expect(screen.queryByTestId('ae-reject-12')).toBeNull())
   })
 
+  it('AACQ73 — un 403 quatre yeux affiche le detail serveur', async () => {
+    const detail = 'Double validation requise : le proposeur ne peut pas '
+      + 'approuver sa propre action (garde-fou quatre yeux actif).'
+    mocks.approve.mockRejectedValue(Object.assign(new Error('HTTP 403'), {
+      response: { status: 403, data: { detail } } }))
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    const err = await screen.findByTestId('ae-approvals-err')
+    expect(err).toHaveTextContent(detail)
+    expect(err).not.toHaveTextContent('permission ?')
+    // Sans réponse (réseau) : texte neutre, aucune cause devinée.
+    mocks.approve.mockRejectedValue(new Error('Network Error'))
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    await waitFor(() => expect(screen.getByTestId('ae-approvals-err'))
+      .toHaveTextContent('Serveur injoignable.'))
+  })
+
   it('AACQ64 — le rejet envoie le libellé du motif sous commentaire', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.pending).toHaveBeenCalled())

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { ShieldCheck, Plus, Ban, MessageCircle } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { erreurServeur } from './adsengine'
 
 /* ============================================================================
    PUB75 — Écran « Consentements » (registre image/témoignage, CNDP loi 09-08).
@@ -81,8 +82,9 @@ export default function ConsentScreen() {
       setMsg('Consentement enregistré.')
       setDraft(EMPTY)
       load()
-    } catch {
-      setErr('Enregistrement impossible (nom et date requis).')
+    } catch (e) {
+      // AACQ73 — la raison du serveur, jamais une cause devinée.
+      setErr(erreurServeur(e, 'Enregistrement impossible.'))
     } finally {
       setBusy(false)
     }
@@ -95,8 +97,8 @@ export default function ConsentScreen() {
       const n = r.data?.assets_retires ?? 0
       setMsg(`Consentement révoqué (${n} asset(s) retiré(s) de la rotation).`)
       load()
-    } catch {
-      setErr('Révocation impossible.')
+    } catch (e) {
+      setErr(erreurServeur(e, 'Révocation impossible.'))
     } finally {
       setBusy(false)
     }

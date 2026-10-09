@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck, ShieldAlert, PlugZap, ExternalLink, CircleHelp, RefreshCw, Check, X, Bot, Power } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { normalizeWiringStatuses, formatMAD } from './adsengine'
+import { normalizeWiringStatuses, formatMAD, erreurServeur } from './adsengine'
 import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
 
 /* ============================================================================
@@ -235,7 +235,7 @@ export default function ConnectionScreen() {
       .catch(e => {
         // Refus serveur (AutonomyNotReady, 403…) : le message part TEL QUEL.
         const data = e?.response?.data
-        setAutonomyErr(data?.detail || "L'opération d'autonomie a échoué.")
+        setAutonomyErr(erreurServeur(e, "L'opération d'autonomie a échoué."))
         if (data && Array.isArray(data.portes)) setAutonomy(normalizeAutonomy(data))
       })
       .finally(() => setAutonomyBusy(''))
@@ -253,7 +253,7 @@ export default function ConnectionScreen() {
         load()
       })
       .catch(e => setErr(
-        e?.response?.data?.detail || "L'abonnement de la Page a échoué."))
+        erreurServeur(e, "L'abonnement de la Page a échoué.")))
       .finally(() => setSubscribing(false))
   }, [load])
 
@@ -309,8 +309,9 @@ export default function ConnectionScreen() {
         setPolicy(p => ({ ...p, id: r.data?.id ?? null }))
       }
       setPolicyMsg('Policy créative enregistrée.')
-    } catch {
-      setPolicyErr('Enregistrement de la policy créative impossible.')
+    } catch (e) {
+      // AACQ73 — la raison du serveur, jamais une cause devinée.
+      setPolicyErr(erreurServeur(e, 'Enregistrement de la policy créative impossible.'))
     } finally {
       setPolicySaving(false)
     }
@@ -332,8 +333,8 @@ export default function ConnectionScreen() {
       setCreds(EMPTY_CREDS) // on ne conserve JAMAIS les secrets en mémoire écran
       setMsg('Identifiants enregistrés.')
       load()
-    } catch {
-      setErr('Enregistrement des identifiants impossible.')
+    } catch (e) {
+      setErr(erreurServeur(e, 'Enregistrement des identifiants impossible.'))
     }
   }
 

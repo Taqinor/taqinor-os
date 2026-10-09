@@ -38,6 +38,45 @@ export function formatMAD(value, decimals = 0) {
   return formatMoney(value, 'MAD', decimals)
 }
 
+// AACQ73 — Raison RENVOYÉE par le serveur pour un geste refusé (helper UNIQUE
+// des écrans adsengine) : `detail`, sinon le premier message par champ (DRF
+// `{champ: "msg"}` ou `{champ: ["msg"]}`). Jamais une cause devinée : sans
+// réponse (réseau) → « Serveur injoignable. » ; réponse sans message lisible →
+// le `repli` neutre fourni par l'écran.
+function premierMessage(valeur) {
+  if (typeof valeur === 'string') return valeur.trim() || null
+  if (Array.isArray(valeur)) {
+    for (const v of valeur) {
+      const m = premierMessage(v)
+      if (m) return m
+    }
+    return null
+  }
+  if (valeur && typeof valeur === 'object') {
+    for (const v of Object.values(valeur)) {
+      const m = premierMessage(v)
+      if (m) return m
+    }
+  }
+  return null
+}
+
+export function erreurServeur(e, repli = 'Action refusée par le serveur.') {
+  const resp = e?.response
+  if (!resp) return 'Serveur injoignable.'
+  const data = resp.data
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const detail = premierMessage(data.detail)
+    if (detail) return detail
+    const champ = premierMessage(data)
+    if (champ) return champ
+  } else if (Array.isArray(data)) {
+    const m = premierMessage(data)
+    if (m) return m
+  }
+  return repli
+}
+
 // Ratio/nombre décimal simple (ex. fréquence « 1,8 ») — « — » si absent.
 export function formatRatio(value, decimals = 1) {
   return formatNumber(value, decimals)

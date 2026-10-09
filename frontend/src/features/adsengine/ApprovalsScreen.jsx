@@ -5,7 +5,7 @@ import {
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMoney, formatNumber, REJECTION_REASONS,
-  actionWarnings, editCopyDiff, emptyGrid, actionResultKey,
+  actionWarnings, editCopyDiff, emptyGrid, actionResultKey, erreurServeur,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
 // WIR63 — grille dayparting (ADSDEEP36), montée dans ManualActionComposer.jsx
@@ -201,8 +201,10 @@ export default function ApprovalsScreen() {
       const r = await adsengineApi.actions.approve(id)
       // La carte RESTE : approuvée n'est pas appliquée (WIR208).
       mergeAction(id, r?.data)
-    } catch {
-      setErr("Approbation refusée (permission ?). L'action reste dans la boîte.")
+    } catch (e) {
+      // AACQ73 — la raison RENVOYÉE par le serveur (403 quatre yeux, 400…),
+      // jamais une cause devinée.
+      setErr(`${erreurServeur(e, 'Approbation refusée.')} L'action reste dans la boîte.`)
     } finally {
       setBusy(false)
     }
@@ -220,13 +222,14 @@ export default function ApprovalsScreen() {
       if (saved && actionResultKey(saved) === 'applique') removeApplied([id])
     } catch (e) {
       const code = e?.response?.status
-      setErr(code === 409
+      // AACQ73 — `detail` serveur s'il existe ; sinon le texte du code HTTP.
+      const repli = code === 409
         ? "Application refusée : cette action n'est plus approuvée (déjà "
-          + "appliquée ou rejetée). Elle reste dans la boîte."
+          + 'appliquée ou rejetée).'
         : code === 502
-          ? "Meta a refusé l'application : l'action est repassée « échouée ». "
-            + 'Elle reste dans la boîte.'
-          : "Application impossible. L'action reste dans la boîte.")
+          ? "Meta a refusé l'application : l'action est repassée « échouée »."
+          : 'Application impossible.'
+      setErr(`${erreurServeur(e, repli)} Elle reste dans la boîte.`)
     } finally {
       setBusy(false)
     }
@@ -316,8 +319,8 @@ export default function ApprovalsScreen() {
         id, { commentaire: motif ? motif.label : rejectReason })
       setRejectingId(null)
       removeApplied([id])
-    } catch {
-      setErr("Rejet impossible. L'action reste dans la boîte.")
+    } catch (e) {
+      setErr(`${erreurServeur(e, 'Rejet impossible.')} L'action reste dans la boîte.`)
     } finally {
       setBusy(false)
     }
@@ -344,8 +347,8 @@ export default function ApprovalsScreen() {
         ids.forEach(id => next.delete(id))
         return next
       })
-    } catch {
-      setErr("Une partie de la sélection n'a pu être approuvée.")
+    } catch (e) {
+      setErr(`Une partie de la sélection n'a pu être approuvée : ${erreurServeur(e, 'refus du serveur.')}`)
       load()
     } finally {
       setBusy(false)
