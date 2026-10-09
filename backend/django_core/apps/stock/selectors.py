@@ -3608,3 +3608,15 @@ def valeur_stock_par_produit(company):
         carte[ligne['produit_id']] = (
             carte.get(ligne['produit_id'], Decimal('0')) + ligne['valeur'])
     return carte
+
+
+def produits_qs(company=None):
+    """ADEV56 (C-ADEV-027) — queryset ``Produit`` (scopé société si fournie),
+    point d'entrée des LECTURES de catalogue pour les autres apps (jamais un
+    import de ``apps.stock.models`` hors de ``stock``). Chaînable, lecture
+    seule ; ``produits_qs().model.DoesNotExist`` pour l'exception."""
+    from .models import Produit
+    qs = Produit.objects.all()
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs

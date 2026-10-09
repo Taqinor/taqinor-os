@@ -28,6 +28,7 @@ Comportement :
 """
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 
@@ -62,6 +63,42 @@ def _test_corpus():
         if any(a in text for a in BUDGET_ASSERTIONS):
             corpus[path] = text
     return corpus
+
+
+def _skip_sites(text: str):
+    """APRF27 — lignes des SAUTS inconditionnels d'un fichier de test :
+    ``@unittest.skip(...)`` / ``@skip(...)``, ``self.skipTest(...)``,
+    ``@pytest.mark.skip``. Lu par AST : une docstring qui MENTIONNE un skip
+    n'en est pas un ; ``skipIf``/``skipUnless`` (conditionnels) non plus."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    lignes = []
+    for node in ast.walk(tree):
+        cible = None
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            for deco in node.decorator_list:
+                cible = deco.func if isinstance(deco, ast.Call) else deco
+                nom = ast.unparse(cible)
+                if nom in ("unittest.skip", "skip", "pytest.mark.skip",
+                           "mark.skip"):
+                    lignes.append(deco.lineno)
+        elif isinstance(node, ast.Call):
+            f = node.func
+            if isinstance(f, ast.Attribute) and f.attr == "skipTest":
+                lignes.append(node.lineno)
+    return sorted(lignes)
+
+
+def _budgets_sautes(url: str, corpus: dict):
+    """[(fichier, ligne)] des sauts dans les fichiers de budget citant l'URL."""
+    out = []
+    for path, text in corpus.items():
+        if url in text:
+            out.extend((path, ligne) for ligne in _skip_sites(text))
+    return out
 
 
 def _has_budget_test(url: str, corpus: dict) -> bool:
@@ -101,6 +138,7 @@ def main() -> int:
 
     corpus = _test_corpus()
     missing = []
+    sautes = []
     checked = 0
     for entry in endpoints:
         if not isinstance(entry, dict):
@@ -117,6 +155,17 @@ def main() -> int:
         checked += 1
         if not _has_budget_test(path, corpus):
             missing.append(path)
+        else:
+            for fichier, ligne in _budgets_sautes(path, corpus):
+                sautes.append((path, fichier, ligne))
+
+    if sautes:
+        print("check_query_budgets: budget(s) 'enforced' dont le test est "
+              "SAUTÉ (un test sauté ne garde rien) :", file=sys.stderr)
+        for path, fichier, ligne in sautes:
+            print(f"  - budget sauté : {path} — {fichier}:{ligne}",
+                  file=sys.stderr)
+        return 1
 
     if missing:
         print("check_query_budgets: endpoints 'enforced' SANS test de budget :",

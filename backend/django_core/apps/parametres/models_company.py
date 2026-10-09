@@ -50,6 +50,15 @@ class CompanyProfile(models.Model):
         help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
+    # ── APDF21 (D-APDF-1 = a) — identité légale imprimée par la bande légale du
+    # devis (APDF3). Additif, VIDE par défaut. Aucun champ « gérant » : D-APDF-1
+    # interdit d'imprimer un prénom sur un gabarit client.
+    capital_social = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text='Capital social tel qu\'imprimé (ex. 100 000,00 MAD).')
+    forme_juridique = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text='Forme juridique (ex. SARLAU, SARL, SA).')
     # ── SCA27 — site web de la société (identité/coordonnées) ──
     # Additif, VIDE par défaut. Pilote la ligne « site » du pied de page du PDF
     # résidentiel et la base des liens fiches produits : quand il est renseigné,

@@ -124,8 +124,9 @@ class PerimetreTests(unittest.TestCase):
 class AllowlistTests(unittest.TestCase):
     def test_les_deux_exceptions_sca19_sont_dans_l_allowlist(self):
         allow = guard._load_allowlist()
-        self.assertIn('backend/django_core/apps/compta/tasks.py', allow)
-        self.assertIn('backend/django_core/apps/chat/tasks.py', allow)
+        # ADEP26 : compta/chat sortis du MVP (fichiers absents) — lignes
+        # mortes purgées ; il reste l'exception adminops.
+        self.assertIn('backend/django_core/apps/adminops/tasks.py', allow)
 
     def test_les_dix_sites_corriges_ne_sont_pas_dans_l_allowlist(self):
         """AUD415 les a MIGRÉS : les allowlister annulerait le correctif."""

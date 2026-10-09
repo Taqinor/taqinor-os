@@ -675,38 +675,56 @@ def average_cost_with_source(produit, a_la_date=None):
             date_entree_stock__gt=_jour(revalo.date_validation))
     lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
-    total_q, total_v = 0, Decimal('0')
-    if revalo is not None:
-        total_q += revalo.quantite_snapshot
-        total_v += revalo.quantite_snapshot * revalo.nouveau_cout
-    for q_recue, pu, q_ligne, frais in lignes:
-        pu = pu or Decimal('0')
-        frais = frais or Decimal('0')
-        # Coût débarqué unitaire : frais annexes répartis sur la quantité
-        # COMMANDÉE de la ligne (q_ligne), valorisés sur la quantité REÇUE.
-        if q_ligne and frais:
-            pu = pu + (frais / Decimal(str(q_ligne)))
-        total_q += q_recue
-        total_v += q_recue * pu
     # ASTK44 — les ENTRÉES DE PRODUCTION (découpe, assemblage, démontage)
     # portent le coût des sorties qui les produisent (`cout_unitaire`) : elles
     # sont des couches de coût au même titre qu'une réception, bornées comme
     # elles (postérieures à la revalorisation, antérieures à `a_la_date`).
     # Sans elles, la cible d'une découpe retombait sur son prix catalogue et
     # la transformation créait (ou détruisait) de la valeur.
-    total_q, total_v = _ajouter_couches_production(
-        produit, total_q, total_v, jour=jour, revalo=revalo)
+    productions = _couches_production_qs(
+        produit, jour=jour, revalo=revalo).values_list(
+            'quantite', 'cout_unitaire')
+    return _cout_moyen_calcule(produit, revalo, lignes, productions)
+
+
+def _cout_debarque(pu, frais, q_ligne):
+    """Coût débarqué unitaire d'une ligne de BCF : frais annexes répartis sur
+    la quantité COMMANDÉE de la ligne (``q_ligne``) — même formule que
+    ``LigneBonCommandeFournisseur.cout_unitaire_debarque`` (FG67/DC38)."""
+    pu = pu or Decimal('0')
+    frais = frais or Decimal('0')
+    if q_ligne and frais:
+        pu = pu + (frais / Decimal(str(q_ligne)))
+    return pu
+
+
+def _cout_moyen_calcule(produit, revalo, lignes, productions):
+    """APRF35 — LA formule du coût moyen pondéré (partagée par l'accesseur
+    unitaire et le calcul en lot ``valuation_costs_for``), sur des données
+    DÉJÀ lues et DÉJÀ bornées : ``revalo`` (couche de départ ou None),
+    ``lignes`` = [(quantite_recue, prix_achat_unitaire, quantite,
+    frais_annexes)], ``productions`` = [(quantite, cout_unitaire)]. Renvoie
+    (cout, source)."""
+    total_q, total_v = 0, Decimal('0')
+    if revalo is not None:
+        total_q += revalo.quantite_snapshot
+        total_v += revalo.quantite_snapshot * revalo.nouveau_cout
+    for q_recue, pu, q_ligne, frais in lignes:
+        # Valorisé sur la quantité REÇUE au coût débarqué unitaire.
+        total_q += q_recue
+        total_v += q_recue * _cout_debarque(pu, frais, q_ligne)
+    for quantite, cout in productions:
+        total_q += quantite
+        total_v += quantite * cout
     if total_q:
         source = 'achats' if revalo is None else 'revalorisation'
         return (total_v / total_q).quantize(Decimal('0.01')), source
     return (produit.prix_achat or Decimal('0')), 'catalogue'
 
 
-def _ajouter_couches_production(produit, total_q, total_v, *, jour=None,
-                                revalo=None):
-    """ASTK44 — ajoute aux totaux (quantité, valeur) les entrées de production
-    du produit qui portent un ``cout_unitaire`` (couche de coût). Renvoie le
-    nouveau couple (total_q, total_v). Mêmes bornes que les réceptions :
+def _couches_production_qs(produit, *, jour=None, revalo=None):
+    """ASTK44 — entrées de production du produit qui portent un
+    ``cout_unitaire`` (couches de coût). Mêmes bornes que les réceptions :
     société du produit, après le jour de validation de la revalorisation de
     départ, au plus tard ``jour`` quand il est fourni."""
     from .models import MouvementStock
@@ -718,7 +736,16 @@ def _ajouter_couches_production(produit, total_q, total_v, *, jour=None,
         qs = qs.filter(date__date__gt=_jour(revalo.date_validation))
     if jour is not None:
         qs = qs.filter(date__date__lte=jour)
-    for quantite, cout in qs.values_list('quantite', 'cout_unitaire'):
+    return qs
+
+
+def _ajouter_couches_production(produit, total_q, total_v, *, jour=None,
+                                revalo=None):
+    """ASTK44 — ajoute aux totaux (quantité, valeur) les entrées de production
+    du produit (``_couches_production_qs``). Renvoie (total_q, total_v)."""
+    for quantite, cout in _couches_production_qs(
+            produit, jour=jour, revalo=revalo).values_list(
+                'quantite', 'cout_unitaire'):
         total_q += quantite
         total_v += quantite * cout
     return total_q, total_v
@@ -822,13 +849,25 @@ def fifo_cost_with_source(produit, a_la_date=None, quantite=None):
     if jour_revalo is not None:
         lignes = lignes.filter(date_entree_stock__gt=jour_revalo)
         productions = productions.filter(date__date__gt=jour_revalo)
-    couches = [
-        ((ligne.date_entree_stock, 0, ligne.id), ligne.quantite_recue,
-         ligne.cout_unitaire_debarque)
-        for ligne in lignes]
-    couches += [
-        ((_jour(mvt.date), 1, mvt.id), mvt.quantite, mvt.cout_unitaire)
-        for mvt in productions]
+    return _cout_fifo_calcule(
+        produit, revalo,
+        [(ligne.date_entree_stock, ligne.id, ligne.quantite_recue,
+          ligne.cout_unitaire_debarque) for ligne in lignes],
+        [(_jour(mvt.date), mvt.id, mvt.quantite, mvt.cout_unitaire)
+         for mvt in productions],
+        quantite=quantite)
+
+
+def _cout_fifo_calcule(produit, revalo, lignes, productions, quantite=None):
+    """APRF35 — LA formule FIFO (partagée par l'accesseur unitaire et le
+    calcul en lot ``valuation_costs_for``), sur des couches DÉJÀ lues et DÉJÀ
+    bornées : ``lignes`` = [(date_entree_stock, id, quantite_recue,
+    cout_debarque)], ``productions`` = [(jour, id, quantite, cout_unitaire)].
+    Renvoie (cout, source)."""
+    couches = [((jour_entree, 0, pk), q, cout)
+               for jour_entree, pk, q, cout in lignes]
+    couches += [((jour_prod, 1, pk), q, cout)
+                for jour_prod, pk, q, cout in productions]
     couches.sort(key=lambda couche: couche[0], reverse=True)
     if revalo is not None:
         # La couche revalorisée est la plus ANCIENNE encore détenue.
@@ -870,6 +909,92 @@ def valuation_cost_with_source(produit, method=None, a_la_date=None,
         return fifo_cost_with_source(
             produit, a_la_date=a_la_date, quantite=quantite)
     return average_cost_with_source(produit, a_la_date=a_la_date)
+
+
+def valuation_costs_for(produits, method):
+    """APRF35 — coûts de valorisation À L'INSTANT d'un LOT de produits, en un
+    nombre de requêtes CONSTANT (revalorisations, lignes de BCF reçues,
+    entrées de production : une requête chacune, quel que soit le nombre de
+    produits). Renvoie ``{produit_id: (cout, source)}``.
+
+    Aucune formule parallèle : les données lues en lot passent par les MÊMES
+    fonctions de calcul que l'accesseur unitaire ``valuation_cost_with_source``
+    (``_cout_moyen_calcule`` / ``_cout_fifo_calcule``), avec les MÊMES bornes
+    (société du produit — ASTK1 ; revalorisation validée la plus récente ;
+    entrées postérieures au jour de sa validation — AUD210). ``method`` est
+    résolue une fois par l'appelant (``stock_valuation_method``)."""
+    from .models import (
+        LigneBonCommandeFournisseur, MouvementStock, RevalorisationStock,
+    )
+    produits = list(produits)
+    if not produits:
+        return {}
+    ids = [p.id for p in produits]
+    societe = {p.id: p.company_id for p in produits}
+
+    # Revalorisation VALIDÉE la plus récente par produit — même tri que
+    # l'accesseur unitaire (``-date_validation``, ``-id``), la première vue
+    # par produit l'emporte.
+    revalos = {}
+    for r in (RevalorisationStock.objects
+              .filter(produit_id__in=ids,
+                      statut=RevalorisationStock.Statut.VALIDEE)
+              .order_by('produit_id', '-date_validation', '-id')):
+        if r.company_id != societe.get(r.produit_id):
+            continue
+        revalos.setdefault(r.produit_id, r)
+
+    lignes = {}
+    for (produit_id, bcf_company_id, pk, q_recue, pu, q_ligne, frais,
+         date_entree) in _annoter_date_entree_stock(
+            LigneBonCommandeFournisseur.objects.filter(
+                produit_id__in=ids, quantite_recue__gt=0)).values_list(
+            'produit_id', 'bon_commande__company_id', 'id', 'quantite_recue',
+            'prix_achat_unitaire', 'quantite', 'frais_annexes',
+            'date_entree_stock'):
+        if bcf_company_id != societe.get(produit_id):
+            continue
+        lignes.setdefault(produit_id, []).append(
+            (date_entree, pk, q_recue, pu, q_ligne, frais))
+
+    productions = {}
+    for produit_id, mvt_company_id, pk, date, quantite, cout in (
+            MouvementStock.objects.filter(
+                produit_id__in=ids,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                cout_unitaire__isnull=False, quantite__gt=0).values_list(
+                'produit_id', 'company_id', 'id', 'date', 'quantite',
+                'cout_unitaire')):
+        if mvt_company_id != societe.get(produit_id):
+            continue
+        productions.setdefault(produit_id, []).append(
+            (_jour(date), pk, quantite, cout))
+
+    out = {}
+    for p in produits:
+        revalo = revalos.get(p.id)
+        jour_revalo = (_jour(revalo.date_validation)
+                       if revalo is not None
+                       and revalo.date_validation is not None else None)
+        mes_lignes = [
+            ligne for ligne in lignes.get(p.id, [])
+            if jour_revalo is None or ligne[0] > jour_revalo]
+        mes_productions = [
+            prod for prod in productions.get(p.id, [])
+            if jour_revalo is None or prod[0] > jour_revalo]
+        if method == VALUATION_FIFO:
+            out[p.id] = _cout_fifo_calcule(
+                p, revalo,
+                [(d, pk, q, _cout_debarque(pu, frais, q_ligne))
+                 for d, pk, q, pu, q_ligne, frais in mes_lignes],
+                mes_productions)
+        else:
+            out[p.id] = _cout_moyen_calcule(
+                p, revalo,
+                [(q, pu, q_ligne, frais)
+                 for _d, _pk, q, pu, q_ligne, frais in mes_lignes],
+                [(q, cout) for _j, _pk, q, cout in mes_productions])
+    return out
 
 
 # ── DC28 — UN seul résolveur du coût d'achat courant ─────────────────────────
@@ -940,11 +1065,15 @@ def stock_valuation_by_location(company):
     # FG67 — méthode société (coût moyen pondéré débarqué ou FIFO), résolue une
     # seule fois pour toute la passe.
     method = stock_valuation_method(company)
-    produits = (Produit.objects.filter(company=company, is_archived=False)
-                .prefetch_related('stocks_emplacement'))
+    # APRF35 — coûts ET ventilation lus EN LOT (nombre de requêtes constant,
+    # quel que soit le catalogue) : avant, 7 requêtes PAR produit (accesseur
+    # unitaire + ``stock_breakdown``). Mêmes formules, mêmes résultats.
+    produits = list(Produit.objects.filter(company=company, is_archived=False))
+    couts = valuation_costs_for(produits, method)
+    ventilation = stock_breakdown_map(company)
     for p in produits:
-        cout, source = valuation_cost_with_source(p, method=method)
-        for b in stock_breakdown(p):
+        cout, source = couts[p.id]
+        for b in ventilation.get(p.id, []):
             if b['quantite'] == 0 or b['emplacement_id'] in de_tiers_ids:
                 continue
             valeur = (cout * b['quantite']).quantize(Decimal('0.01'))
@@ -4052,27 +4181,65 @@ def rotation_report(company, jours=180):
 
 # ── FG60 — Export xlsx mouvements ─────────────────────────────────────────────
 
+#: APRF34 — en-têtes et nom de l'export des mouvements : UNE seule définition
+#: pour la voie synchrone et la voie asynchrone (même fichier des deux côtés).
+MOUVEMENTS_EXPORT_HEADERS = ['Référence', 'Type', 'Produit', 'Quantité',
+                             'Avant', 'Après', 'Note', 'Créé par', 'Date']
+MOUVEMENTS_EXPORT_FILENAME = 'mouvements-stock.xlsx'
+MOUVEMENTS_EXPORT_SHEET = 'Mouvements'
+#: APRF34 — type logique du ``BackgroundJob`` de l'export asynchrone.
+MOUVEMENTS_EXPORT_JOB_KIND = 'stock_export_mouvements_xlsx'
+
+
+def _mouvement_export_row(m):
+    return [
+        m.reference or '',
+        m.get_type_mouvement_display(),
+        m.produit.nom,
+        m.quantite,
+        m.quantite_avant,
+        m.quantite_apres,
+        m.note or '',
+        m.created_by.username if m.created_by else '',
+        m.date.strftime('%d/%m/%Y %H:%M') if m.date else '',
+    ]
+
+
+def mouvements_export_rows(qs):
+    """APRF34 — lignes de l'export des mouvements (ordre du queryset)."""
+    return [_mouvement_export_row(m)
+            for m in qs.select_related('produit', 'created_by')]
+
+
 def export_mouvements_xlsx(company, qs):
     """Export Excel de la liste filtrée des mouvements de stock (INTERNE).
     Prix d'achat jamais inclus."""
     from apps.crm.exports import build_xlsx_response
-    headers = ['Référence', 'Type', 'Produit', 'Quantité',
-               'Avant', 'Après', 'Note', 'Créé par', 'Date']
-    rows = []
-    for m in qs.select_related('produit', 'created_by'):
-        rows.append([
-            m.reference or '',
-            m.get_type_mouvement_display(),
-            m.produit.nom,
-            m.quantite,
-            m.quantite_avant,
-            m.quantite_apres,
-            m.note or '',
-            m.created_by.username if m.created_by else '',
-            m.date.strftime('%d/%m/%Y %H:%M') if m.date else '',
-        ])
-    return build_xlsx_response('mouvements-stock.xlsx', headers, rows,
-                               sheet_title='Mouvements')
+    return build_xlsx_response(MOUVEMENTS_EXPORT_FILENAME,
+                               MOUVEMENTS_EXPORT_HEADERS,
+                               mouvements_export_rows(qs),
+                               sheet_title=MOUVEMENTS_EXPORT_SHEET)
+
+
+def export_mouvements_xlsx_bytes(company_id, mouvement_ids):
+    """APRF34 — octets de l'export des mouvements ``mouvement_ids`` DANS CET
+    ORDRE (celui de la liste filtrée au moment de la demande), bornés à la
+    société ``company_id``. Même en-têtes, mêmes lignes, même neutralisation
+    que la voie synchrone (``workbook_bytes`` neutralise par défaut)."""
+    from apps.records.xlsx import workbook_bytes
+    from .models import MouvementStock
+
+    ids = [int(i) for i in (mouvement_ids or [])]
+    par_id = {}
+    for debut in range(0, len(ids), 2000):
+        par_id.update(
+            (m.pk, m) for m in MouvementStock.objects.filter(
+                company_id=company_id, produit__company_id=company_id,
+                pk__in=ids[debut:debut + 2000],
+            ).select_related('produit', 'created_by'))
+    rows = [_mouvement_export_row(par_id[i]) for i in ids if i in par_id]
+    return workbook_bytes(MOUVEMENTS_EXPORT_HEADERS, rows,
+                          sheet_title=MOUVEMENTS_EXPORT_SHEET)
 
 
 # ── FG58 — Comparaison fournisseurs ───────────────────────────────────────────
@@ -8869,3 +9036,18 @@ from .services_wms import (  # noqa: E402,F401
     valeur_transfert,
     verifier_capacite_plan,
 )
+
+
+def creer_produit(company, **champs):
+    """ADEV56 (C-ADEV-027) — crée un ``Produit`` de la société (écriture
+    cross-app : ventes ne touche jamais ``apps.stock.models``)."""
+    from .models import Produit
+    return Produit.objects.create(company=company, **champs)
+
+
+def get_or_create_produit(company, *, defaults=None, **lookup):
+    """ADEV56 — ``get_or_create`` d'un ``Produit`` de la société (même
+    contrat que Django : ``(produit, cree)``)."""
+    from .models import Produit
+    return Produit.objects.get_or_create(
+        company=company, defaults=defaults or {}, **lookup)

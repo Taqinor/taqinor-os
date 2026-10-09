@@ -38,6 +38,11 @@ ON_DEMAND_ALLOWLIST = {
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',
+    # APRF34 (09/10/2026) — export xlsx des mouvements de stock au-delà du
+    # seuil ``should_async_export`` : soumis par la vue via ``core.jobs.submit``
+    # (jamais périodique — un export n'existe que parce qu'un utilisateur l'a
+    # demandé).
+    'stock.export_mouvements_xlsx',
     # PUB16 — génération de variantes ANCRÉES (FactTable) : déclenchée à la
     # demande depuis l'endpoint de génération IA (``.delay()`` dans une action
     # de viewset, key-gated GEN_ENV_KEY ; jamais périodique).

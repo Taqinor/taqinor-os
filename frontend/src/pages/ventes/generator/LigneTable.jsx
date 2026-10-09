@@ -15,7 +15,11 @@
 //
 // AUCUNE règle métier ici : ce composant ne calcule rien, il ne fait que
 // rendre et remonter les gestes.
-import { Card, CardContent, Button, IconButton, Input, Label, Segmented } from '../../../ui'
+import {
+  Card, CardContent, Button, IconButton, Input, Label, Segmented,
+  // EDC3 — barre horizontale collante (toujours visible à chaque hauteur).
+  BarreDefilementCollante,
+} from '../../../ui'
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
 import DevisLineRow from '../DevisLineRow'
 import { GenCardHeader } from './CarteMetrique'
@@ -179,24 +183,35 @@ export default function LigneTable({
                  onChange={e => setAccessoiresOnly(e.target.checked)} />
           Composition libre — je choisis les articles moi-même (aucun panneau/onduleur imposé)
         </label>
-        <div className="lines-table-wrap">
-          <table className="lines-table" ref={linesTableRef}>
-            <thead>
+        {/* EDC3 — deux états : « tient » ⇒ conteneur `overflow: visible` et
+            en-tête COLLANT au défileur (`lines-thead-collant`, bordures
+            `separate` pour qu'elles survivent au collage) ; « déborde » ⇒ barre
+            proxy collée au bas de l'écran, synchronisée avec la table (l'en-tête
+            ne colle plus dans cet état — dégradation acceptée). Bureau
+            seulement : sous 768 px la table reste empilée en cartes. */}
+        <BarreDefilementCollante className="lines-table-wrap">
+          <table className="lines-table lines-table-separe" ref={linesTableRef}>
+            <thead className="lines-thead-collant">
+              {/* EDC2 — largeurs FIXES sur les colonnes numériques et les
+                  colonnes d'action ; Désignation et Produit (min-width
+                  conservés) absorbent tout le reste. `table-layout` reste
+                  `auto` (jamais `fixed`, qui ignore min-width) : mesuré, plus
+                  aucun défilement horizontal dès ~734 px de conteneur. */}
               <tr>
                 <th style={{ minWidth: 160 }}>Désignation</th>
                 <th style={{ minWidth: 170 }}>Produit (stock)</th>
                 {multiMode === 'villas' && <th style={{ minWidth: 130 }}>Villa</th>}
-                <th className="col-num">Qté</th>
-                <th className="col-num">Prix Unit. TTC</th>
-                <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
-                <th className="col-num">Total TTC</th>
+                <th className="col-num" style={{ width: 96 }}>Qté</th>
+                <th className="col-num" style={{ width: 128 }}>Prix Unit. TTC</th>
+                <th className="col-num" style={{ width: 72 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
+                <th className="col-num" style={{ width: 128 }}>Total TTC</th>
                 {/* XSAL5 — case « option » : la ligne est un add-on proposé
                     hors total (activable par le client sur la proposition). */}
                 <th style={{ width: 56 }} title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
                 {/* PVORD — monter/descendre : ordre par défaut = ordre du
                     simulateur (autoFillLines), réordonnable ici. */}
-                <th className="col-ordre" title="Réordonner la ligne">Ordre</th>
-                <th className="col-del"></th>
+                <th className="col-ordre" style={{ width: 72 }} title="Réordonner la ligne">Ordre</th>
+                <th className="col-del" style={{ width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -235,7 +250,7 @@ export default function LigneTable({
               ))}
             </tbody>
           </table>
-        </div>
+        </BarreDefilementCollante>
 
         {children}
       </CardContent>

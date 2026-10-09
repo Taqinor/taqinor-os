@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from .registre import (GRAVITE_AVERTISSEMENT, GRAVITE_CRITIQUE, PORTEE_DEVIS,
-                       PORTEE_FACTURE, TOLERANCES, regle)
+                       PORTEE_FACTURE, PORTEE_SOCIETE, TOLERANCES, regle)
 
 STATUT_ACCEPTE = 'accepte'
 STATUT_BROUILLON = 'brouillon'
@@ -166,6 +166,31 @@ def totaux_imprimes(r, devis, ctx):
     return out
 
 
+@regle('DOC_TOTAL_IMPRIME_NE_NOYAU',
+       "Lignes imprimées, total imprimé et total du noyau (option effective) "
+       "ne disent pas le même montant",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_DEVIS, besoin_rendu=True)
+def total_imprime_ne_noyau(r, devis, ctx):
+    """AMOT48 — complète ``DOC_TOTAUX_IMPRIMES`` (qui vérifie l'arithmétique
+    de chaque chaîne et que le TTC du devis figure PARMI les options) : ici,
+    LE total imprimé (``display_total``) doit ÊTRE le TTC unitaire de l'option
+    effective du noyau (``domain.argent.totaux``), la somme des lignes
+    imprimées (``all_items``) doit retomber sur le HT brut de ``totaux_all``,
+    et un document à une option imprime ``display_total == totaux_all.ttc``.
+    Même fonction que la garde du moteur
+    (``quote_engine.builder.ecarts_totaux_imprimes``) — une seule écriture."""
+    from apps.ventes.domain.argent import Vue, totaux
+    from apps.ventes.quote_engine.builder import ecarts_totaux_imprimes
+    data = ctx.donnees_devis(devis)
+    ttc_noyau = _f(totaux(devis, vue=Vue.NET, unitaire=True).ttc)
+    return [r.violation(
+        devis, f"Total imprimé incohérent : « {e['etage']} » porte "
+               f"{e['porte']:.2f} au lieu de {e['attendu']:.2f}.",
+        valeurs=e, attendu=e['attendu'], cle={'etage': e['etage']})
+        for e in ecarts_totaux_imprimes(
+            data, ttc_noyau, tol=TOLERANCES['centime'])]
+
+
 # ── Totaux de la facture ────────────────────────────────────────────────────
 @regle('DOC_TOTAUX_FACTURE',
        "Chaîne des totaux de la facture incohérente",
@@ -214,6 +239,27 @@ def totaux_facture(r, facture, ctx):
 
 
 # ── Facturation ≤ devis ─────────────────────────────────────────────────────
+def _parts_consolidees(devis, deja):
+    """ATOT33 — ``[(facture, part_ttc, part_avoirs)]`` des factures
+    consolidées actives qui portent ``devis`` en source (``FactureSource``),
+    hors ``deja`` (déjà comptées par une autre porte). La part est le
+    sous-total HT de la source rapporté au TTC de la facture."""
+    from apps.ventes.models_facturation import FactureSource
+    sorties = []
+    sources = (FactureSource.objects.filter(devis=devis)
+               .exclude(facture__statut=FACTURE_ANNULEE)
+               .select_related('facture'))
+    for src in sources:
+        f = src.facture
+        if f.pk in deja:
+            continue
+        ht = _f(getattr(f, 'total_ht', None))
+        ratio = (_f(src.sous_total_ht) / ht) if ht > 0 else 0.0
+        sorties.append((f, _f(f.total_ttc) * ratio,
+                        _f(f.avoirs_total) * ratio))
+    return sorties
+
+
 @regle('DOC_FACTURATION_DEPASSE_DEVIS',
        "Le facturé (net des avoirs) dépasse le total de l'option retenue "
        "du devis",
@@ -227,13 +273,20 @@ def facturation_depasse_devis(r, devis, ctx):
     lignes de l'option (``option_lines``, ERR16) avec la remise globale.
     Un avoir actif réduit le facturé (``Facture.avoirs_total``) — une
     facture rectificative après avoir reste donc légitime."""
-    factures = ctx.factures_actives_du_devis(devis.pk)
-    if not factures:
+    factures = list(ctx.factures_actives_du_devis(devis.pk))
+    # ATOT33 — la QUATRIÈME porte : une facture CONSOLIDÉE (``FactureSource``,
+    # ``devis=None``) facture aussi ce devis ; seule SA part (sous-total HT
+    # de la source, rapporté au TTC de la facture) lui est imputée.
+    consolidees = _parts_consolidees(devis, {f.pk for f in factures})
+    if not factures and not consolidees:
         return []
     from apps.ventes.utils.options import option_totaux
     total_devis = _f(option_totaux(devis)['ttc'])
-    facture_ttc = sum(_f(f.total_ttc) for f in factures)
-    avoirs = sum(_f(f.avoirs_total) for f in factures)
+    facture_ttc = (sum(_f(f.total_ttc) for f in factures)
+                   + sum(part for _f_c, part, _a in consolidees))
+    avoirs = (sum(_f(f.avoirs_total) for f in factures)
+              + sum(av for _f_c, _p, av in consolidees))
+    factures = factures + [fc for fc, _p, _a in consolidees]
     net = facture_ttc - avoirs
     if net <= total_devis + TOLERANCES['facturation_devis_mad']:
         return []
@@ -387,3 +440,66 @@ def ligne_sans_prix(r, devis, ctx):
     return [r.violation(devis, f"{len(ids)} ligne(s) produit sans quantité ou "
                                "sans prix, comptées pour 0.",
                         valeurs={'lignes': ids, 'statut': devis.statut})]
+
+
+# ── ATOT33 (C-ATOT-021) — l'argent des factures, la nuit ──────────────────
+@regle('AVOIR_DEPASSE_FACTURE',
+       "Le total des avoirs actifs dépasse le TTC de la facture",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_FACTURE)
+def avoir_depasse_facture(r, facture, ctx):
+    """``Facture.avoirs_total`` (avoirs non annulés) ne peut excéder le TTC
+    de la facture qu'ils créditent : au-delà, le client se voit rembourser
+    une somme qu'il n'a jamais payée."""
+    if facture.statut == FACTURE_ANNULEE:
+        return []
+    ttc, avoirs = _f(facture.total_ttc), _f(facture.avoirs_total)
+    if avoirs <= ttc + TOLERANCES['centime']:
+        return []
+    return [r.violation(
+        facture, f"Avoirs actifs {avoirs:.2f} > TTC de la facture {ttc:.2f}.",
+        valeurs={'avoirs_ttc': round(avoirs, 2), 'facture_ttc': round(ttc, 2)},
+        attendu=round(ttc, 2))]
+
+
+@regle('FACTURE_STATUT_RESTE_INCOHERENT',
+       "Facture « payée » avec un reste à payer",
+       gravite=GRAVITE_CRITIQUE, portee=PORTEE_FACTURE)
+def facture_statut_reste_incoherent(r, facture, ctx):
+    """Une facture au statut ``payee`` a un reste ``Facture.montant_du`` nul
+    (le statut se dérive du reste — décomposition AFAC31). Un reste positif
+    sur une facture « payée » cache une créance."""
+    if facture.statut != 'payee':
+        return []
+    reste = _f(facture.montant_du)
+    if reste <= TOLERANCES['centime']:
+        return []
+    return [r.violation(
+        facture, f"Facture « payée » avec un reste à payer de {reste:.2f}.",
+        valeurs={'statut': facture.statut, 'montant_du': round(reste, 2)},
+        attendu=0.0)]
+
+
+@regle('NUMEROTATION_TROUS_DOUBLONS',
+       "Trou ou doublon dans la numérotation des factures / avoirs",
+       gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_SOCIETE)
+def numerotation_trous_doublons(r, company, ctx):
+    """La numérotation est garantie sans collision
+    (``references.create_with_reference``) ; un trou (pièce supprimée) ou un
+    doublon se DIT — ``utils.numbering_audit.find_gaps_and_dupes``, la
+    fonction pure de l'audit N31 (réutilisée, jamais recopiée)."""
+    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.utils.numbering_audit import find_gaps_and_dupes
+    out = []
+    for type_piece, modele in (('facture', Facture), ('avoir', Avoir)):
+        refs = list(modele.objects.filter(company=company)
+                    .values_list('reference', flat=True))
+        for groupe in find_gaps_and_dupes(refs):
+            out.append(r.violation(
+                None, f"Série {groupe['radical']} ({type_piece}) : "
+                      f"manquants {groupe['manquants']}, "
+                      f"doublons {groupe['doublons']}.",
+                object_type=type_piece, object_id=0,
+                reference=groupe['radical'], company_id=company.pk,
+                valeurs=dict(groupe, type=type_piece),
+                cle={'radical': groupe['radical'], 'type': type_piece}))
+    return out

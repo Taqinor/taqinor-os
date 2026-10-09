@@ -164,7 +164,7 @@ class BaremeDivergencesTest(SimpleTestCase):
         1,405116, la divergence assumée). Le fondateur a tranché : il n'y a
         plus qu'UNE valeur T5 dans l'ERP, celle de bareme.TRANCHES_2026. Si
         quelqu'un les fait diverger à nouveau, ce test le force à mettre
-        DIVERGENCES_PRICING à jour EN MÊME TEMPS."""
+        journal des divergences de ``bareme`` à jour EN MÊME TEMPS."""
         prix = dict((plafond, prix) for plafond, prix in pricing.ONEE_TRANCHES)
         reference = dict((c, p) for c, p in B.TRANCHES_2026)
         self.assertAlmostEqual(prix[500], 1.381704, places=6)
@@ -184,37 +184,14 @@ class BaremeDivergencesTest(SimpleTestCase):
         p2026 = dict((c, p) for c, p in B.TRANCHES_2026)[500]
         self.assertLess(abs(p2025 - p2026), 0.001)
 
-    def test_divergences_epinglees_et_motivees(self):
-        statuts = {d['tranche']: d for d in B.DIVERGENCES_PRICING}
-        self.assertEqual(len(statuts), 2)
-        for detail in B.DIVERGENCES_PRICING:
-            # 'propagé' (D5) = l'écart a été RÉSORBÉ dans pricing.py ; il reste
-            # listé pour garder la trace de la correction et de sa preuve.
-            self.assertIn(detail['statut'],
-                          ('corrigé', 'propagé', 'conflit_non_tranché'))
-            self.assertTrue(detail['preuve'].strip(),
-                            'une divergence sans preuve écrite est interdite')
-            if detail['statut'] == 'propagé':
-                self.assertAlmostEqual(detail['valeur_pricing'],
-                                       detail['valeur_moteur'], places=9)
-
-    def test_t5_est_propagee_et_non_plus_divergente(self):
-        """QJR26 / D5 : l'écart T5 n'existe plus — il est marqué comme tel."""
-        t5 = [d for d in B.DIVERGENCES_PRICING
-              if d['tranche'].startswith('311-510')]
-        self.assertEqual(len(t5), 1)
-        self.assertEqual(t5[0]['statut'], 'propagé')
-        prix = dict((c, p) for c, p in pricing.ONEE_TRANCHES)
-        self.assertAlmostEqual(t5[0]['valeur_pricing'], prix[500], places=9)
-
     def test_conflit_t6_reste_sur_la_valeur_du_repo(self):
         """On ne tranche RIEN sans facture : T6 garde 1,622856 et le conflit
         est déclaré, pas masqué."""
         prix = dict((c, p) for c, p in B.TRANCHES_2026)
         self.assertAlmostEqual(prix[None], 1.622856, places=6)
-        conflits = [d for d in B.DIVERGENCES_PRICING
-                    if d['statut'] == 'conflit_non_tranché']
-        self.assertEqual(len(conflits), 1)
+        # AMOT47 — le tuple ``DIVERGENCES_PRICING`` (sans lecteur) est devenu
+        # le journal commenté de ``bareme`` : il n'est plus un symbole.
+        self.assertFalse(hasattr(B, 'DIVERGENCES_PRICING'))
 
 
 class SilhouettesSourcePinTest(SimpleTestCase):
@@ -347,6 +324,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
 
     def test_autoconsomme_borne_par_production_et_consommation(self):
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=8.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE, batterie_kwh_utile=15.0)
         self.assertIsNotNone(etude)
@@ -362,6 +340,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
 
     def test_taux_bornes_a_cent_pour_cent(self):
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=3.0, conso_kwh_mensuelles=self._conso(4000),
             ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE)
         for cle in ('taux_autoconso_sans', 'taux_autoconso_avec',
@@ -416,6 +395,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         precedent = -1.0
         for kwc in (2, 4, 6, 8, 12, 20):
             etude = EH.calculer_etude_horaire(
+                tranches=None, charges_fixes_mad=None,
                 kwc=kwc, conso_kwh_mensuelles=conso, ville=self.VILLE,
                 occupation=CJ.OCCUPATION_PRESENCE)
             production = etude['annuel']['production_kwh']
@@ -426,6 +406,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         """On ne peut pas économiser plus que ce que le client paie."""
         conso = self._conso(1200)
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=30.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE, batterie_kwh_utile=40.0)
         annuel = etude['annuel']
@@ -442,6 +423,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         from apps.parametres.pvgis_profils import productible_mensuel
         brut = sum(productible_mensuel(ville=self.VILLE)[0])
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=1.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE)
         self.assertAlmostEqual(
@@ -452,6 +434,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         """Un « annuel » qui ne couvre pas douze mois serait lu comme une
         année et sous-estimerait tout."""
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE)
         self.assertEqual(len(etude['mois']), 12)
@@ -466,6 +449,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         """La production d'été DOIT dépasser celle d'hiver — la saisonnalité
         vient des données PVGIS, pas d'une clé de répartition."""
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE)
         self.assertGreater(etude['saisons']['ete']['production_kwh'],
@@ -477,6 +461,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         taux = {}
         for occupation in (CJ.OCCUPATION_PRESENCE, CJ.OCCUPATION_ABSENCE):
             etude = EH.calculer_etude_horaire(
+                tranches=None, charges_fixes_mad=None,
                 kwc=6.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
                 occupation=occupation)
             taux[occupation] = etude['annuel']['taux_autoconso_sans']
@@ -496,16 +481,19 @@ class RepliHonneteTest(SimpleTestCase):
 
     def test_sans_consommation_le_moteur_rend_none(self):
         self.assertIsNone(EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=None, ville='Casablanca'))
 
     def test_ville_inconnue_rend_none_jamais_une_cloche_inventee(self):
         conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         self.assertIsNone(EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Tombouctou'))
 
     def test_puissance_nulle_rend_none(self):
         conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         self.assertIsNone(EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=0, conso_kwh_mensuelles=conso, ville='Casablanca'))
 
     def test_priorite_des_sources_de_consommation(self):
@@ -555,6 +543,7 @@ class PricingInchangeTest(SimpleTestCase):
         conso, source, detail = HC.profil_depuis_factures(
             facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE, batterie_kwh_utile=10.0,
             source_conso=source, detail_conso=detail)
@@ -573,6 +562,7 @@ class PricingInchangeTest(SimpleTestCase):
         annuel réparti par _SF."""
         conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE)
         roi = pricing.calculate_savings_roi(
@@ -580,9 +570,8 @@ class PricingInchangeTest(SimpleTestCase):
         attendu = [round(m['economie_sans_mad']) for m in bloc['mois']]
         self.assertEqual(roi['eco_s_monthly'], attendu)
         # Et ce n'est PAS la vieille clé _SF appliquée au total.
-        _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-               0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
-        ancien = [round(roi['eco_s_ann'] * f) for f in _sf]
+        # AMOT27 — la clé de forme vient de LA constante (poids GHI).
+        ancien = pricing.repartir_mensuel(roi['eco_s_ann'])
         self.assertNotEqual(roi['eco_s_monthly'], ancien)
 
     def test_autoconso_forfaitaire_reste_le_repli_documente(self):
@@ -596,6 +585,7 @@ class PricingInchangeTest(SimpleTestCase):
         chiffre précis et faux."""
         conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE)
         # Même puissance (à l'arrondi près) → accepté.
@@ -614,6 +604,7 @@ class PricingInchangeTest(SimpleTestCase):
         contredire sur la même page."""
         conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE)
         roi = pricing.calculate_savings_roi(
@@ -820,7 +811,7 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         base = dict(kwc=8.0, conso_kwh_mensuelles=self._conso(),
                     ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE)
         base.update(extra)
-        return EH.calculer_etude_horaire(**base)
+        return EH.calculer_etude_horaire(**{'tranches': None, 'charges_fixes_mad': None, **base})
 
     #: Les clés HISTORIQUES d'un mois. Cette liste est un CONTRAT : sans
     #: équipement concentrable, la sortie du moteur ne doit pas gagner une
@@ -994,6 +985,7 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         conso, _s, _d = HC.profil_depuis_factures(
             facture_hiver_mad=2500, facture_ete_mad=4000, ete_differente=True)
         etude = EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=16.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE,
             equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
@@ -1059,7 +1051,7 @@ class GlitchSortieMoteurTest(SimpleTestCase):
                       ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
                       equipements=equipements)
         balayage = EH.balayer_stockage_horaire(capacites_kwh=[10.0], **commun)
-        etude = EH.calculer_etude_horaire(batterie_kwh_utile=10.0, **commun)
+        etude = EH.calculer_etude_horaire(batterie_kwh_utile=10.0, **{'tranches': None, 'charges_fixes_mad': None, **commun})
         self.assertIsNotNone(balayage)
         palier = balayage['paliers'][0]
         self.assertAlmostEqual(palier['autoconsomme_kwh'],
@@ -1095,7 +1087,7 @@ class BatterieDevantLaPointeTest(SimpleTestCase):
         reste plus de surplus à CHARGER dans la journée — et ce surplus-là, elle
         le rend le soir. La reprise est donc réelle mais MINORITAIRE : l'essentiel
         du dépassement part bien au réseau."""
-        etude = EH.calculer_etude_horaire(**self._commun())
+        etude = EH.calculer_etude_horaire(**{'tranches': None, 'charges_fixes_mad': None, **self._commun()})
         glitch = etude['glitch']
         self.assertIsNone(glitch['batterie_puissance_decharge_kw'])
         self.assertEqual(glitch['batterie_puissance_decharge_source'],
@@ -1170,7 +1162,9 @@ class BatterieDevantLaPointeTest(SimpleTestCase):
 
     def test_le_rendement_aller_retour_tient_toujours(self):
         """Même à cinq minutes : restitué ≤ 0,90 × chargé."""
-        etude = EH.calculer_etude_horaire(**self._commun(kwc=12.0))
+        etude = EH.calculer_etude_horaire(**{
+            'tranches': None, 'charges_fixes_mad': None,
+            **self._commun(kwc=12.0)})
         for mois in etude['mois']:
             self.assertLessEqual(mois['autoconsomme_avec_kwh'],
                                  min(mois['production_kwh'],
@@ -1861,6 +1855,7 @@ class JourReferenceExpliciteTests(SimpleTestCase):
 
     def _etude(self, jour_reference):
         return EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None,
             kwc=5.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE,
             jour_reference=jour_reference)
@@ -1964,6 +1959,7 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
     def test_etude_complete_recoit_la_date(self):
         def _etude(jour):
             return EH.calculer_etude_horaire(
+                tranches=None, charges_fixes_mad=None,
                 kwc=5.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
                 occupation=CJ.OCCUPATION_PRESENCE, jour_reference=jour)
         a, b = _etude(self.JOUR_A), _etude(self.JOUR_B)

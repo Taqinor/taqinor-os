@@ -23,14 +23,16 @@ from .noyau import (
 from .payload_conditions import _acompte_publique
 
 
-def _company_rib():
-    """QX33be — coordonnées de virement (RIB/IBAN) depuis settings/env.
-
-    Non stocké sur un modèle aujourd'hui : lu depuis ``settings.COMPANY_RIB``
-    (ou l'env). Vide → aucune instruction de virement affichée (dégradation
-    propre, aucun changement de comportement)."""
-    from django.conf import settings
-    return (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+def _company_rib(company=None):
+    """QX33be / AFAC59 (C-AFAC-051) — coordonnées de virement (RIB) de la
+    SOCIÉTÉ émettrice : ``parametres.selectors.company_identity(company)``,
+    la même source que le PDF facture et le portail (le
+    réglage global de RIB n'était défini nulle part). Vide → aucune
+    instruction de virement affichée (dégradation propre)."""
+    if company is None:
+        return ''
+    from apps.parametres.selectors import company_identity
+    return (company_identity(company).get('rib') or '').strip()
 
 
 def _deposit_success_payload(devis, token):
@@ -44,7 +46,7 @@ def _deposit_success_payload(devis, token):
     payload = {
         'acompte_ttc': None,
         'pourcentage': None,
-        'rib': _company_rib(),
+        'rib': _company_rib(getattr(devis, 'company', None)),
         'message': '',
         'declare_url': f'/api/django/public/proposal/{token}/virement/',
         'card_payment_url': None,

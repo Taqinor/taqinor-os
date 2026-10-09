@@ -1,0 +1,9 @@
+{
+  "endpoint": "GET /api/django/parametres/",
+  "forme_serveur": "partielle",
+  "pourquoi": "APDF21/APDF22 (D-APDF-1 = a, 09/10/2026) — l'écran Paramètres > Société (frontend) et le profil société (backend) ne partagent aucun fichier : ce contrat fige les DEUX champs d'identité légale ajoutés au profil, lus et écrits par la même route que le reste du profil (GET /parametres/, PATCH /parametres/update/). `capital_social` et `forme_juridique` sont du texte libre, chaîne VIDE quand non renseignés (jamais null, jamais un défaut). AUCUN champ gérant : D-APDF-1 interdit d'imprimer un prénom sur un gabarit client. `company` n'est jamais lu du corps. Les mêmes deux clés sont servies par `company_identity(company)` pour les documents (bande légale du devis, APDF3).",
+  "exemple": {
+    "capital_social": "100 000,00 MAD",
+    "forme_juridique": "SARLAU"
+  }
+}

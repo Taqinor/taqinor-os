@@ -989,10 +989,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                                 status=status.HTTP_400_BAD_REQUEST)
         numero = (request.data.get('numero_serie') or '').strip()
         # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
-        if field_capture.numero_serie_en_double(company, numero):
-            return Response(
-                {'numero_serie': field_capture.MESSAGE_SERIE_DOUBLON},
-                status=status.HTTP_400_BAD_REQUEST)
+        raison = field_capture.raison_serie_en_double(company, numero)
+        if raison:
+            return Response({'numero_serie': raison},
+                            status=status.HTTP_400_BAD_REQUEST)
         serie_ocr = False
         plaque = None
         file = request.FILES.get('file')
@@ -1040,6 +1040,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 existant, context={'request': request}).data
             data['replayed'] = True
             return Response(data, status=status.HTTP_200_OK)
+        field_capture.pousser_si_cloturee(interv, request.user)  # ACHT47
         data = ComponentSerialSerializer(
             serial, context={'request': request}).data
         if op_id:
@@ -1063,11 +1064,11 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         fields = []
         if 'numero_serie' in request.data:
             nouveau = (request.data.get('numero_serie') or '').strip()
-            if field_capture.numero_serie_en_double(
-                    interv.company, nouveau, exclude_id=serial.pk):
-                return Response(
-                    {'numero_serie': field_capture.MESSAGE_SERIE_DOUBLON},
-                    status=status.HTTP_400_BAD_REQUEST)
+            raison = field_capture.raison_serie_en_double(
+                interv.company, nouveau, exclude_id=serial.pk)
+            if raison:
+                return Response({'numero_serie': raison},
+                                status=status.HTTP_400_BAD_REQUEST)
             serial.numero_serie = nouveau
             serial.serie_ocr = False
             fields += ['numero_serie', 'serie_ocr']

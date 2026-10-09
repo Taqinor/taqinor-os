@@ -24,7 +24,8 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes
+from ..montants import fmt_centimes, lignes_remisees
+from ..textes import tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
@@ -155,6 +156,7 @@ def _css(C, fonts, compact):
   vertical-align:top; }}
 .ag-lines td.t {{ font-weight:700; color:{C['navy']}; }}
 .ag-mq {{ font-size:6.6pt; color:{C['muted_2']}; }}
+.ag-was {{ text-decoration:line-through; color:{C['muted_2']}; }}
 .ag-tot {{ display:table; width:100%; margin-top:5px; }}
 .ag-tot-g {{ display:table-cell; width:52%; vertical-align:top;
   padding-right:10px; }}
@@ -432,7 +434,15 @@ def page2(ctx):
                          if 1 <= serre <= 12 else None)
         except (TypeError, ValueError):
             serre_txt = None
-        legende = (f'<div class="ag-note">{_t(lg, "agr_legende_barres")}'
+        # AMOT44 (C-AMOT-056) — un besoin AGRONOMIQUE PLEIN (FAO-56) n'est
+        # pas « votre besoin » : la légende le qualifie comme la page web.
+        if bvl.get("base_besoin") == "agronomique_plein":
+            _phrase = mentions.PHRASES_PROVENANCE["agronomique"]
+            _leg = _t(lg, "agr_base_besoin_agronomique",
+                      phrase=_phrase.get(lg) or _phrase["fr"])
+        else:
+            _leg = _t(lg, "agr_legende_barres")
+        legende = (f'<div class="ag-note">{_leg}'
                    + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
                       if serre_txt else "") + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
@@ -486,8 +496,38 @@ def _items(d):
             if isinstance(it, dict) and (_num(it.get("quantite")) or 0) > 0]
 
 
+#: AMOT37 (C-AMOT-046) — libellé DÉCLARÉ de la ligne de regroupement (le
+#: détail reste sur la proposition en ligne). en/ar à relire (CIQM22).
+_LIBELLE_REGROUPEMENT = {
+    "fr": "Autres équipements ({n} lignes) — détail sur la proposition en "
+          "ligne",
+    "en": "Other equipment ({n} lines) — details in the online proposal",
+    "ar": "معدات أخرى ({n} سطر) — التفاصيل في العرض عبر الإنترنت",
+}
+
+
+def _ligne_regroupee(reste, lg):
+    """AMOT37 — UNE ligne qui regroupe ``reste`` : total HT = Σ des lignes
+    regroupées (aucun dirham ne disparaît), TVA affichée si unique."""
+    total = sum(ligne[4] for ligne in lignes_remisees(reste))
+    taux = {(_num(it.get("taux_tva")) or 0) for it in reste}
+    taux_txt = f"{taux.pop():g} %" if len(taux) == 1 else "—"
+    libelle = _LIBELLE_REGROUPEMENT.get(lg, _LIBELLE_REGROUPEMENT["fr"])
+    return (f'<tr><td>{libelle.format(n=len(reste))}</td>'
+            f'<td class="r"></td><td class="r"></td>'
+            f'<td class="r">{taux_txt}</td>'
+            f'<td class="r t">{fmt_centimes(total)}</td></tr>')
+
+
 def _lignes(d):
     items = _items(d)
+    # AMOT37 — regroupement DÉCLARÉ posé par le renderer quand même la
+    # densité serrée ne tient pas en 3 pages : les ``garder`` premières
+    # lignes restent, la suite tient en UNE ligne au total exact.
+    garder = d.get("_regrouper_apres")
+    reste = []
+    if isinstance(garder, int) and 0 <= garder < len(items) - 1:
+        items, reste = items[:garder], items[garder:]
     structure = d.get("lignes_structure") or []
     seq = (sequence_affichage(items, structure) if structure
            else [("item", it) for it in items])
@@ -498,15 +538,24 @@ def _lignes(d):
                         f'</b></td></tr>')
             continue
         qte = _num(it.get("quantite")) or 0
-        pu = _num(it.get("prix_unit_ht")) or 0
         taux = _num(it.get("taux_tva")) or 0
         marque = (it.get("marque") or "").strip()
         mq = f' <span class="ag-mq">{marque}</span>' if marque else ""
+        # AMOT45 (C-AMOT-057) — la remise globale LIGNE PAR LIGNE (QJRREM),
+        # par LE helper unique : P.U. catalogue barré + P.U. remisé, et
+        # Σ des totaux de ligne = Total HT.
+        (_it, pu_cat, pu_rem, _tot_cat, tot_rem,
+         remisee) = lignes_remisees([it])[0]
+        pu_txt = (f'<span class="ag-was">{fmt_centimes(pu_cat)}</span> '
+                  f'{fmt_centimes(pu_rem)}' if remisee
+                  else fmt_centimes(pu_rem))
         rows.append(
             f'<tr><td>{it.get("designation") or ""}{mq}</td>'
-            f'<td class="r">{qte:g}</td><td class="r">{fmt_centimes(pu)}</td>'
+            f'<td class="r">{qte:g}</td><td class="r">{pu_txt}</td>'
             f'<td class="r">{taux:g} %</td>'
-            f'<td class="r t">{fmt_centimes(pu * qte)}</td></tr>')
+            f'<td class="r t">{fmt_centimes(tot_rem)}</td></tr>')
+    if reste:
+        rows.append(_ligne_regroupee(reste, _langue(d)))
     return "".join(rows)
 
 
@@ -836,7 +885,8 @@ def _fiches_annexe(d, lg):
         if marque:
             titre += f" — {marque}"
         fiches.append(f'<div class="ag-li"><b>{titre}</b> : '
-                      f'{description[:220]}</div>')
+                      # AMOT46 — troncature sur le texte BRUT, au mot.
+                      f'{tronquer_au_mot(description, 220)}</div>')
     if not fiches:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
     return "".join(fiches)
@@ -913,7 +963,9 @@ def build_ctx(d):
                   "sans": theme.FONT_SANS},
         "ident": ident,
         "nom_societe": (d.get("entreprise") or {}).get("nom"),
-        "compact": densite_compacte(d),
+        # AMOT37 — le renderer peut IMPOSER une densité plus serrée quand
+        # le contenu déborde de la bande de pied.
+        "compact": max(densite_compacte(d), int(d.get("_compact_min") or 0)),
     }
 
 

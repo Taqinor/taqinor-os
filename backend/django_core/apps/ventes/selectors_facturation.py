@@ -53,7 +53,7 @@ def releve_client_portail(client):
     from decimal import Decimal
 
     from .models import Facture
-    from .recouvrement import _releve_data
+    from .recouvrement import STATUTS_HORS_RELEVE, _releve_data
 
     data = _releve_data(client, user=None)
 
@@ -61,9 +61,14 @@ def releve_client_portail(client):
         'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
         'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
     }
+    # AFAC40 — même définition que le relevé : ni brouillon ni annulée.
     qs = (Facture.objects
           .filter(client=client)
-          .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE]))
+          .exclude(statut__in=[Facture.Statut.PAYEE, *STATUTS_HORS_RELEVE]))
+    # APRF11 — toutes les relations lues par `montant_du` (plus de requête
+    # par facture sur le relevé du portail).
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -309,12 +314,11 @@ def encours_clients_par_tiers(company):
           .filter(company=company)
           .exclude(statut=Facture.Statut.ANNULEE)
           .select_related('client')
-          # AUD158 — EXACTEMENT les relations que `montant_du` lit. Sans
-          # elles, ce point d'entrée cross-app (compta ET credit) posait
-          # SIX requêtes par facture ouverte du portefeuille.
-          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
-                            'retenues_subies',
-                            'affectations_paiement__paiement'))
+          # AUD158 / APRF11 — EXACTEMENT les relations que `montant_du` lit
+          # (UNE liste : `facturation.selectors.factures_avec_montant_du`).
+          )
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -351,12 +355,11 @@ def encours_ouvert_par_tiers(company):
           .filter(company=company)
           .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE])
           .select_related('client')
-          # AUD158 — EXACTEMENT les relations que `montant_du` lit (voir
-          # `encours_clients_par_tiers`). AUD153 va solliciter davantage
-          # encore ce sélecteur en branchant le credit-hold.
-          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
-                            'retenues_subies',
-                            'affectations_paiement__paiement'))
+          # AUD158 / APRF11 — EXACTEMENT les relations que `montant_du` lit
+          # (voir `encours_clients_par_tiers`).
+          )
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if not du:
@@ -387,8 +390,10 @@ def reste_du_factures_brouillon(company, client_id):
     total = Decimal('0')
     qs = (Facture.objects
           .filter(company=company, client_id=client_id,
-                  statut=Facture.Statut.BROUILLON)
-          .prefetch_related('paiements', 'avoirs'))
+                  statut=Facture.Statut.BROUILLON))
+    # APRF11 — toutes les relations lues par `montant_du`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     for facture in qs:
         du = facture.montant_du
         if du:
@@ -420,10 +425,16 @@ def ca_devis_factures_par_clients(company, client_ids):
         return {}
 
     out = {}
-    devis_qs = (Devis.objects
-                .filter(company=company, client_id__in=client_ids,
-                        client__company=company)
-                .exclude(statut=Devis.Statut.REFUSE))
+    # APRF12 (C-APRF-004) — devis via `devis_avec_totaux` (APRF7), factures
+    # via `factures_avec_montant_du` (APRF11) : +N devis n'ajoutent aucune
+    # requête.
+    from apps.facturation.selectors import factures_avec_montant_du
+    from .selectors import devis_avec_totaux
+    devis_qs = devis_avec_totaux(
+        Devis.objects
+        .filter(company=company, client_id__in=client_ids,
+                client__company=company)
+        .exclude(statut=Devis.Statut.REFUSE))
     for devis in devis_qs:
         entry = out.setdefault(devis.client_id, {
             'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
@@ -435,10 +446,11 @@ def ca_devis_factures_par_clients(company, client_ids):
             pass
         entry['nb_devis'] += 1
 
-    facture_qs = (Facture.objects
-                  .filter(company=company, client_id__in=client_ids,
-                          client__company=company)
-                  .exclude(statut=Facture.Statut.ANNULEE))
+    facture_qs = factures_avec_montant_du(
+        Facture.objects
+        .filter(company=company, client_id__in=client_ids,
+                client__company=company)
+        .exclude(statut=Facture.Statut.ANNULEE))
     for facture in facture_qs:
         entry = out.setdefault(facture.client_id, {
             'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
@@ -492,8 +504,10 @@ def etat_recouvrement_client(company, client_id):
         Facture.objects
         .filter(company=company, client_id=client_id)
         .exclude(statut=Facture.Statut.ANNULEE)
-        .prefetch_related('paiements', 'avoirs')
     )
+    # APRF11 — toutes les relations lues par `montant_du`.
+    from apps.facturation.selectors import factures_avec_montant_du
+    factures = factures_avec_montant_du(factures)
 
     retard_max = 0
     encours_echu = Decimal('0')
@@ -648,6 +662,9 @@ def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
     qs = Facture.objects.filter(company=company, devis_id__in=devis_ids)
     if exclure_annulee:
         qs = qs.exclude(statut=Facture.Statut.ANNULEE)
+    # APRF12 — totaux de N factures en un nombre constant de requêtes.
+    from apps.facturation.selectors import factures_avec_montant_du
+    qs = factures_avec_montant_du(qs)
     out = {}
     for facture in qs:
         entry = out.setdefault(
@@ -683,8 +700,11 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
                 date_acceptation__lte=mois_fin)
         .exclude(factures__isnull=False)
         .distinct()
-        .prefetch_related('lignes')
     )
+    # APRF12 — `devis_avec_totaux` (APRF7) : `lignes__produit`, ce que lit
+    # `Devis.total_ttc` (avec `lignes` seul : +1/+2 requêtes par devis).
+    from .selectors import devis_avec_totaux
+    candidats = devis_avec_totaux(candidats)
     par_mois = {}
     for devis in candidats:
         d = devis.date_acceptation

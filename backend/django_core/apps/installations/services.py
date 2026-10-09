@@ -507,6 +507,38 @@ def _niveau_tension_from_lead(lead):
         lead, 'compteur_puissance_kva', None)
 
 
+def recaler_parc_apres_correction_reception(installation, ancienne_date, user):
+    """ACHT48 — la ``date_reception`` d'un chantier DÉJÀ réceptionné est
+    corrigée (PATCH) : les équipements du parc datés de l'ancienne date passent
+    à la nouvelle via ``sav.services.recaler_garanties_chantier`` (même
+    transaction que l'appelant) et une note au chatter le trace. Sans effet si
+    la date n'a pas changé ou si le chantier n'était pas réceptionné.
+    Renvoie le nombre d'équipements recalés."""
+    nouvelle = installation.date_reception
+    if ancienne_date is None or nouvelle is None or ancienne_date == nouvelle:
+        return 0
+    from apps.sav.services import recaler_garanties_chantier
+    n = recaler_garanties_chantier(
+        company=installation.company, installation=installation,
+        ancienne_date=ancienne_date, nouvelle_date=nouvelle)
+    from . import activity
+    activity.log_note(
+        installation, user,
+        f"Garanties du parc recalées : {n} équipement(s) "
+        f"({ancienne_date:%d/%m/%Y} → {nouvelle:%d/%m/%Y})")
+    return n
+
+
+def _nature_ligne_bom(produit):
+    """APDF40 — nature d'une ligne de nomenclature : ``service`` si le type de
+    sa catégorie produit est ``service``, sinon ``materiel`` (ligne libre
+    incluse). Lecture par l'objet produit déjà chargé, sans import stock."""
+    categorie = getattr(produit, 'categorie', None) if produit else None
+    if getattr(categorie, 'type_equipement', None) == 'service':
+        return 'service'
+    return 'materiel'
+
+
 def _freeze_bom(devis):
     """Nomenclature gelée depuis les lignes du devis (N1) : composants +
     quantités, pour le résumé système et la base parc. Ignore les lignes
@@ -536,6 +568,7 @@ def _freeze_bom(devis):
             or (produit.nom if produit else ''),
             'quantite': qte,
             'marque': getattr(produit, 'marque', None) if produit else None,
+            'nature': _nature_ligne_bom(produit),
         })
     return bom
 
@@ -2304,7 +2337,7 @@ def enregistrer_series_lot(installation, lignes, user=None):
     from django.db import transaction
     from django.utils import timezone
 
-    from apps.sav.services import creer_equipement_import
+    from apps.sav.services import assurer_equipement_chantier
     from apps.stock.selectors import get_produit_scoped
 
     resultats = []
@@ -2328,20 +2361,27 @@ def enregistrer_series_lot(installation, lignes, user=None):
                 resultat['statut'] = 'autre_societe'
                 resultat['message'] = "Produit inconnu de cette société."
                 continue
-            champs = {
-                'numero_serie': serie or None,
-                'date_pose': (installation.date_pose_reelle
-                              or timezone.localdate()),
-            }
-            if chaine:
-                champs['note'] = f"Chaîne : {chaine}"
-            statut, message = creer_equipement_import(
-                installation.company, champs, produit=produit,
-                installation=installation, user=user)
-            resultat['statut'] = statut
-            resultat['message'] = message
-            if statut == 'doublon':
+            # ACHT47 — MÊME écrivain unique du parc que la poussée des
+            # relevés d'intervention : date de pose = date de réception.
+            from . import field_capture
+            statut_parc, equip = assurer_equipement_chantier(
+                company=installation.company, installation=installation,
+                produit=produit, numero_serie=serie or None,
+                quantite_ligne=field_capture._quantites_bom_par_produit(
+                    installation).get(produit.id, 1),
+                date_pose=(installation.date_reception
+                           or installation.date_pose_reelle
+                           or timezone.localdate()),
+                created_by=user)
+            if statut_parc == 'doublon':
+                resultat['statut'] = 'doublon'
                 resultat['message'] = "Numéro de série déjà enregistré."
+                continue
+            if chaine and equip is not None:
+                equip.note = f"Chaîne : {chaine}"
+                equip.save(update_fields=['note'])
+            resultat['statut'] = 'cree'
+            resultat['message'] = None
     return resultats
 
 

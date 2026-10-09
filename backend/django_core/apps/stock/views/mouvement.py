@@ -98,10 +98,46 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
         """FG60 — Export Excel de la liste des mouvements de stock (INTERNE).
-        Prix d'achat jamais inclus."""
+        Prix d'achat jamais inclus.
+
+        APRF34 — au-delà du seuil NTPLT30 (``NTPLT30_EXPORT_ROW_THRESHOLD``,
+        défaut 5 000) l'export part en tâche de fond par ``core.jobs.submit`` :
+        réponse 202 ``{job_id, statut}`` (même forme que SCA41), livrable dans
+        MinIO, notification « export prêt ». En dessous : synchrone, fichier
+        inchangé. La tâche reçoit les ids DANS L'ORDRE de la liste filtrée →
+        même contenu que l'export synchrone."""
+        from apps.records.storage import should_async_export
         from ..services import export_mouvements_xlsx
         qs = self.filter_queryset(self.get_queryset())
-        return export_mouvements_xlsx(request.user.company, qs)
+        n_rows = qs.count()
+        if not should_async_export(n_rows):
+            return export_mouvements_xlsx(request.user.company, qs)
+
+        from core.jobs import submit
+        from ..services import MOUVEMENTS_EXPORT_JOB_KIND
+        from ..tasks import export_mouvements_xlsx_task
+        ids = list(qs.values_list('pk', flat=True))
+        try:
+            job = submit(
+                MOUVEMENTS_EXPORT_JOB_KIND, export_mouvements_xlsx_task,
+                company=request.user.company, user=request.user,
+                mouvement_ids=ids)
+        except Exception:  # noqa: BLE001 — broker down : job déjà en échec
+            return Response(
+                {'detail': "L'export n'a pas pu être lancé, réessayez."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(
+            {
+                'detail': ('Export volumineux — préparation en arrière-plan. '
+                           'Une notification vous préviendra quand le '
+                           'fichier sera prêt.'),
+                'job_id': job.pk,
+                'statut': job.statut,
+                'status': 'pending',
+                'rows': n_rows,
+                'status_url': f'/api/django/core/jobs-status/{job.pk}/',
+            },
+            status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['get'], url_path='agregation',
             permission_classes=[IsAnyRole])

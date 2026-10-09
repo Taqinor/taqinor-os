@@ -89,3 +89,23 @@ class CycleSlaTests(TestCase):
         self._post(t, 'reouvrir')
         self.assertFalse(t.sla_pre_alert_notifiee)
         self.assertFalse(t.sla_escalade_notifiee)
+
+    def test_pause_compte_jours_ouvres(self):
+        """Sous ``sla_jours_ouvres`` la pause compte des jours ouvrés
+        (vendredi 2026-10-09 → mardi 2026-10-13 : vendredi + lundi = 2,
+        pas 4 jours calendaires)."""
+        from datetime import date
+        sla = SavSlaSettings.get(self.company)
+        sla.sla_jours_ouvres = True
+        sla.save()
+        t = self._ticket('SAV-A16-5', en_attente_client=True,
+                         attente_depuis=date(2026, 10, 9))
+        mardi = date(2026, 10, 13)
+        self.assertEqual(t._pause_en_cours_jours(today=mardi), 2)
+        t.reprendre_apres_attente(today=mardi)
+        self.assertEqual(t.jours_pause, 2)
+        sla.sla_jours_ouvres = False
+        sla.save()
+        t2 = self._ticket('SAV-A16-6', en_attente_client=True,
+                          attente_depuis=date(2026, 10, 9))
+        self.assertEqual(t2._pause_en_cours_jours(today=mardi), 4)

@@ -95,6 +95,7 @@ class InterventionRapportPhotoPublicView(APIView):
     MÊME jeton : la pièce doit appartenir à l'intervention du jeton (photo de
     créneau, image) — une pièce étrangère, un jeton inconnu ou un rapport
     rouvert répondent 404 (jamais 403 : on ne confirme rien à un tiers)."""
+    authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [PublicPhotoThrottle]
 

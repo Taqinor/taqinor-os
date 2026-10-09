@@ -87,19 +87,43 @@ def deborde(page):
     return False
 
 
+def _tient(html, doc):
+    """AMOT36 — le document a EXACTEMENT ses pages et AUCUNE page ne coupe
+    un texte sous le haut de la bande de pied (toutes les pages, pas
+    seulement la page équipements)."""
+    attendu = html.count('<div class="page">')
+    return (len(doc.pages) == attendu
+            and not any(deborde(page) for page in doc.pages))
+
+
 def pdf_adaptatif(d, build_html, rendre, index_page=1):
     """Les octets PDF au PREMIER palier de densité qui tient, ou ``None``
     quand même le dernier déborde (le renderer lève alors ``Unsupported``).
     ``rendre(html)`` : le document WeasyPrint rendu par le RENDERER — aucun
-    import WeasyPrint ici (ARC11)."""
+    import WeasyPrint ici (ARC11).
+
+    AMOT36 (C-AMOT-046) — la mesure porte sur TOUTES les pages
+    (``index_page`` n'est plus lu ; gardé pour la signature). Au-delà du
+    dernier palier, la liste VARIABLE des conditions (``cgv_ci`` / puces
+    société) est TRONQUÉE avec un renvoi déclaré (« suite des conditions :
+    proposition en ligne », ``ci.blocs.puces_conditions``) avant tout
+    refus — jamais une bande légale, une signature ou un financement coupés."""
     for palier in range(len(PALIERS_DENSITE)):
         donnees = d if palier == 0 else dict(d, _palier_equip=palier)
         html = build_html(donnees)
         doc = rendre(html)
         # Une page qui déborde peut aussi POUSSER une page de plus : le
         # document ne tient que s'il a exactement ses pages et rien de coupé.
-        attendu = html.count('<div class="page">')
-        if len(doc.pages) == attendu and not deborde(doc.pages[index_page]):
+        if _tient(html, doc):
+            return doc.write_pdf()
+    from ..ci.blocs import puces_conditions
+    dernier = len(PALIERS_DENSITE) - 1
+    n = len(puces_conditions(d))
+    for garder in range(n - 1, -1, -1):
+        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder)
+        html = build_html(donnees)
+        doc = rendre(html)
+        if _tient(html, doc):
             return doc.write_pdf()
     return None
 
@@ -140,10 +164,13 @@ def build(ctx):
                          f'letter-spacing:.5px;background:{wash};">{txt}</td></tr>')
             continue
         qte = _num(it.get("quantite"))
-        # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité : la
-        # colonne s'additionne au « Sous-total HT » ; aucun calcul TTC par ligne.
-        pu_ht = _num(it.get("prix_unit_ht"))
-        total = pu_ht * qte
+        # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité.
+        # AMOT45 (C-AMOT-057) — la remise GLOBALE ligne par ligne (QJRREM),
+        # par LE helper unique ``montants.lignes_remisees`` : catalogue
+        # barré + P.U. remisé, Σ des totaux de ligne = Total HT.
+        from ..montants import lignes_remisees
+        (_it, pu_cat, pu_ht, _tot_cat, total,
+         _remisee) = lignes_remisees([it])[0]
         taux = _num(it.get("taux_tva"))
         taux_txt = f"{taux:g}\u202f%"
         marque = (it.get("marque") or "").strip()
@@ -152,7 +179,10 @@ def build(ctx):
         rows += (
             f'<tr><td class="c2-d">{desig}{m}</td>'
             f'<td class="c2-q">{qte:g}</td>'
-            f'<td class="c2-p">{fmt_mad(pu_ht)}</td>'
+            f'<td class="c2-p">'
+            + (f'<span style="text-decoration:line-through;opacity:.6;">'
+               f'{fmt_mad(pu_cat)}</span> ' if _remisee else '')
+            + f'{fmt_mad(pu_ht)}</td>'
             f'<td class="c2-v">{taux_txt}</td>'
             f'<td class="c2-t">{fmt_mad(total)}</td></tr>')
 
@@ -190,12 +220,21 @@ def build(ctx):
     _inj = _num(chiffres_cles(_syn)["revente_mad_an"])
     injection_html = ""
     if _inj and _inj > 0:
+        # AMOT40 (C-AMOT-049) — CHAQUE mention servie par ``revente.mentions``
+        # (82-21, non garanti, second compteur, TSS, tarif arrêté, art. 13),
+        # dans la langue du document ; repli : la seule mention 82-21.
+        from ..ci.mentions import mentions_revente
+        _rev = ((_syn.get("argent") or {}).get("revente")
+                if isinstance(_syn, dict) else None) or {}
+        _mentions = mentions_revente(_rev.get("mentions"), _langue(d))
+        _mention_txt = (" ".join(_mentions) if _mentions
+                        else texte_revente(_langue(d)) + ".")
         injection_html = (
             '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' '
             + L("ci_mad_an", "MAD/an") + '</b> — '
             + L("ci_surplus_injecte", "surplus injecté") + '. <span class="c2-inj-m">'
-            # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
-            + texte_revente(_langue(d)) + '.</span></div>')
+            # CIQ305 — les mentions sont LUES (une table), jamais recopiées.
+            + _mention_txt + '</span></div>')
 
     # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
     # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.

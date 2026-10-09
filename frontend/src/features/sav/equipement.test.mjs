@@ -52,3 +52,21 @@ test('sortEquipements : tri par date de fin de garantie (vides en fin)', () => {
   assert.deepEqual(
     sortEquipements(rows, 'date_fin_garantie', 'asc').map(r => r.id), [3, 1, 2])
 })
+
+// ASAV45 — la garantie affichée est l'EFFECTIVE servie (légale ≥ constructeur).
+test('garantieLabel lit date_fin_garantie_effective avant la constructeur', () => {
+  assert.match(
+    garantieLabel({
+      garantie_etat: 'sous_garantie',
+      date_fin_garantie: '2026-08-09',
+      date_fin_garantie_effective: '2030-12-12',
+    }),
+    /12\/12\/2030/)
+  assert.doesNotMatch(
+    garantieLabel({
+      garantie_etat: 'sous_garantie',
+      date_fin_garantie: '2026-08-09',
+      date_fin_garantie_effective: '2030-12-12',
+    }),
+    /09\/08\/2026/)
+})

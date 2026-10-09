@@ -80,6 +80,12 @@
     sens comptable et n'engage aucune obligation de paiement. Il est fourni à
     titre indicatif (dossier de crédit, administration, import).
   </div>
+  {# APDF29 (C-APDF-009) — validité de l'offre (date du devis). #}
+  {% if date_validite %}
+  <div class="partie-detail" style="margin-bottom: 14px;">
+    <strong>Valable jusqu'au {{ date_validite.strftime('%d/%m/%Y') }}</strong>
+  </div>
+  {% endif %}
 
   <div class="parties">
     <div class="partie-block">
@@ -146,6 +152,15 @@
          'base_ht': 'Base HT',
        }, tva_ventilee=False) }}
   </div>
+
+  {# APDF29 — identité bancaire du BÉNÉFICIAIRE (profil de SA société),
+     rien si vide ; jamais présentée comme une demande de paiement. #}
+  {% if rib %}
+  <div class="partie-detail" style="margin-top: 16px;">
+    <strong>Coordonnées bancaires du bénéficiaire</strong><br />
+    RIB : {{ rib }}{% if banque %} — {{ banque }}{% endif %}
+  </div>
+  {% endif %}
 
   <div class="footer">
     <strong>{{ entreprise_nom }}</strong>

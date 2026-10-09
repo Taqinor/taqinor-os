@@ -98,20 +98,84 @@ def mesurer_talon(pdf_bytes: bytes) -> dict:
     return sortie
 
 
+def debordement(pdf_bytes: bytes, nb_pages: int, attendu: int) -> bool:
+    """AMOT37 — le rendu déborde-t-il ? Une page DE TROP, ou un bloc de
+    texte qui CHEVAUCHE le haut de la bande de pied (vide < 0 : la page le
+    coupe ou le pied le recouvre). Sans PyMuPDF : le seul compte de pages."""
+    if nb_pages != attendu:
+        return True
+    try:
+        import fitz
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        for page in doc:
+            mm = page.rect.height / 297.0
+            haut_pied = page.rect.height - PIED_MM * mm
+            for b in page.get_text("blocks"):
+                if b[1] < haut_pied - 0.5 * mm and b[3] > haut_pied + 0.5 * mm:
+                    doc.close()
+                    return True
+        doc.close()
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def render_pdf_bytes(data: dict) -> bytes:
     """Le document agricole de 3 pages en octets PDF, ou :class:`Unsupported`.
 
     Deux passages (QRES62, comme le canon v6) : le premier rend les pages et
     MESURE leur vide ; le second répartit ce vide sur les joints élastiques —
-    jamais au prix d'une page de plus (sinon le premier rendu est servi)."""
+    jamais au prix d'une page de plus (sinon le premier rendu est servi).
+
+    AMOT37 (C-AMOT-046, D-AGR-2) — au débordement (page de trop, ou contenu
+    sous la bande de pied), la densité SUPÉRIEURE est imposée, puis un
+    REGROUPEMENT DÉCLARÉ des lignes (``pages._ligne_regroupee``, total exact) ;
+    jamais de 4ᵉ page qui coupe le bloc d'acceptation. Au-delà :
+    :class:`Unsupported` NOMMÉ (journalisé par le dispatch)."""
     from weasyprint import HTML
 
     from . import pages
     d = _augment(data)
     base = str(Path(pages.__file__).resolve().parent)
-    doc1 = HTML(string=pages.build_html(d),
-                base_url=f"file://{base}/").render()
-    pdf_bytes = doc1.write_pdf()
+    attendu = 4 if d.get("include_note_calcul") else 3
+
+    def _rendre(donnees):
+        doc = HTML(string=pages.build_html(donnees),
+                   base_url=f"file://{base}/").render()
+        octets = doc.write_pdf()
+        return doc, octets, not debordement(octets, len(doc.pages), attendu)
+
+    doc1, pdf_bytes, tient = _rendre(d)
+    if not tient:
+        trouve = None
+        for compact in range(pages.densite_compacte(d) + 1, 3):
+            essai = dict(d, _compact_min=compact)
+            doc_e, pdf_e, ok = _rendre(essai)
+            if ok:
+                trouve = (essai, doc_e, pdf_e)
+                break
+        if trouve is None:
+            # Regroupement : la PLUS GRANDE part de lignes gardée qui tient
+            # (dichotomie — moins de lignes ⇒ moins de hauteur).
+            n = len(pages._items(d))
+            bas, haut = 0, n - 2
+            while bas <= haut:
+                milieu = (bas + haut) // 2
+                essai = dict(d, _compact_min=2, _regrouper_apres=milieu)
+                doc_e, pdf_e, ok = _rendre(essai)
+                if ok:
+                    trouve = (essai, doc_e, pdf_e)
+                    bas = milieu + 1
+                else:
+                    haut = milieu - 1
+        if trouve is None:
+            raise Unsupported(
+                "document agricole : 3 pages intenables même après "
+                "densité serrée et regroupement déclaré des lignes")
+        d, doc1, pdf_bytes = trouve
     vide = mesurer_talon(pdf_bytes)
     if vide:
         doc2 = HTML(string=pages.build_html(d, elastic=vide),

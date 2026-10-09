@@ -199,10 +199,10 @@ def _boq_candidats(company):
     catalogue global — jamais celui d'un autre tenant.
     """
     from django.db.models import Q
-    from apps.stock.models import Produit
+    from apps.stock.selectors import produits_qs  # ADEV56
 
     filtre = Q(company=company) | Q(company__isnull=True)
-    qs = Produit.objects.filter(
+    qs = produits_qs().filter(
         filtre, categorie__nom__in=BOQ_CATEGORIES, is_archived=False)
     return list(qs.select_related('categorie').order_by('nom'))
 

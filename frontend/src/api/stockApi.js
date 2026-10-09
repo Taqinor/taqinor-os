@@ -415,6 +415,8 @@ const stockApi = {
   facturerReception: (id) =>
     api.post(`/stock/receptions-fournisseur/${id}/facturer/`),
   // FG60 — export Excel de la liste (filtrée) des mouvements de stock (blob).
+  // APRF34 — au-delà du seuil NTPLT30 : 202 `{job_id, statut}` (job de fond,
+  // corps JSON reçu en blob) ; l'appelant teste `res.status === 202`.
   exportMouvementsXlsx: (params) =>
     api.post('/stock/mouvements/export-xlsx/', null,
       { params, responseType: 'blob' }),

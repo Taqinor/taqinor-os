@@ -75,3 +75,5 @@ export * from './ScrollProgress'
 export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'
 // VX152 — primitif « libellé → valeur » partagé (fin des tables clé/valeur maison).
 export * from './KeyValueTable'
+// EDC3 — barre de défilement horizontale collante (table plus large que son conteneur).
+export * from './BarreDefilementCollante'

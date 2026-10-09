@@ -61,9 +61,11 @@ class FactureFkEtChampsServeurTests(TestCase):
             return {
                 'client': client,
                 'devis': devis,
+                # AFAC66 — BC LIBRE (sans devis) : poser le BC d'un devis
+                # sur une facture est refusé (seule porte : creer-facture).
                 'bon_commande': BonCommande.objects.create(
                     company=company, reference=f'BC-ASEC27-{suffixe}',
-                    devis=devis, client=client,
+                    client=client,
                     statut=BonCommande.Statut.CONFIRME),
                 'lead': Lead.objects.create(
                     company=company, nom='Lead', prenom=suffixe),

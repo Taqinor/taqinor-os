@@ -35,9 +35,13 @@ def lettre_relance_premium(request, facture_id):
 
     ?niveau=1 (courtois) / 2 (ferme) / 3 (mise en demeure). Défaut : 1.
     """
-    facture = _scope(
-        Facture.objects.select_related('client'), request.user).filter(
-        pk=facture_id).first()
+    # AFAC54 (C-AFAC-048) — même portée que `FactureViewSet` (créée par soi
+    # / l'équipe) : une facture invisible répond 404, indistinct d'un id
+    # inexistant.
+    from authentication.scoping import scope_queryset
+    facture = scope_queryset(_scope(
+        Facture.objects.select_related('client'), request.user),
+        request.user, ['created_by']).filter(pk=facture_id).first()
     if facture is None:
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
@@ -48,6 +52,17 @@ def lettre_relance_premium(request, facture_id):
     if niveau not in (1, 2, 3):
         return Response({'detail': 'Niveau de relance invalide (1, 2 ou 3).'},
                         status=status.HTTP_400_BAD_REQUEST)
+    # AMOT60 (C-AMOT-036) — jamais de relance (ni de mise en demeure) pour
+    # une facture payée, annulée ou sans somme EXIGIBLE : 409, aucun PDF.
+    from .recouvrement import montant_exigible
+    try:
+        _exigible = float(montant_exigible(facture) or 0)
+    except (TypeError, ValueError):
+        _exigible = 0.0
+    if (getattr(facture, 'statut', None) in ('payee', 'annulee')
+            or _exigible <= 0):
+        return Response({'detail': 'Aucune somme exigible sur cette facture.'},
+                        status=status.HTTP_409_CONFLICT)
     from .quote_engine.extra_docs import render_lettre_relance_pdf
     try:
         pdf_bytes = render_lettre_relance_pdf(facture, niveau)
