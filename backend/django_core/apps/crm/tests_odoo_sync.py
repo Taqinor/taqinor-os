@@ -189,26 +189,27 @@ class TestSyncCommand(OdooSyncBase):
         sortie = self._sync()
         self.assertEqual(
             Lead.objects.filter(company=self.company).count(), 3)
-        self.assertIn('0 avancé(s)', sortie)
+        self.assertIn("0 écart(s) en avance côté Odoo", sortie)
 
     def test_aligns_existing_manual_lead_with_chatter_trace(self):
+        # AACQ97 (D-AACQ, 08/10/2026) — la commande ne fait plus que
+        # RAPPORTER l'écart : l'ERP fait foi, aucune étape n'est écrite.
         manuel = Lead.objects.create(
             company=self.company, nom='Copie Manuelle',
             email='beta@example.test', stage=stages.NEW)
-        self._sync()
+        sortie = self._sync()
         manuel.refresh_from_db()
-        # Rapproché par email → clé technique posée + étape avancée sur Odoo.
+        # Rapproché par email → clé technique posée, étape INCHANGÉE.
         self.assertEqual(manuel.external_id, '12')
-        self.assertEqual(manuel.stage, stages.FOLLOW_UP)
-        # CRX8 — trace écrite par la façade `activity` (chemin canonique),
-        # plus par un LeadActivity artisanal : une MODIFICATION d'étape…
-        self.assertTrue(LeadActivity.objects.filter(
+        self.assertEqual(manuel.stage, stages.NEW)
+        self.assertFalse(LeadActivity.objects.filter(
             lead=manuel, kind=LeadActivity.Kind.MODIFICATION,
-            field='stage', bulk=True).exists())
-        # …et une note de provenance.
-        self.assertTrue(LeadActivity.objects.filter(
+            field='stage').exists())
+        self.assertFalse(LeadActivity.objects.filter(
             lead=manuel, kind=LeadActivity.Kind.NOTE,
             body='auto — alignement sur le pipeline Odoo').exists())
+        self.assertIn('écart (non appliqué) — ERP NEW / Odoo FOLLOW_UP',
+                      sortie)
 
     def test_dry_run_writes_nothing(self):
         sortie = self._sync(dry_run=True)
