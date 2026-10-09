@@ -2587,7 +2587,7 @@
     "technicien": [
      "CompanyScopedPrimaryKeyRelatedField",
      false,
-     true,
+     false,
      null,
      false
     ],

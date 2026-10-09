@@ -85,9 +85,16 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         # restreint ne voit que les paiements qu'il a saisis ou ceux des
         # factures de sa portée (créées par soi / l'équipe).
         from authentication.scoping import scope_queryset
-        return scope_queryset(
+        qs = scope_queryset(
             company_qs(super().get_queryset(), self.request.user),
             self.request.user, ['created_by', 'facture__created_by'])
+        # AFAC60 (C-AFAC-054) — `?remisable=1` : seuls les paiements qu'une
+        # remise d'encaissement accepterait (MÊME prédicat que la déclaration).
+        if str(self.request.query_params.get('remisable') or '').strip() in (
+                '1', 'true', 'True'):
+            from .remise_encaissement import paiements_remisables
+            qs = paiements_remisables(qs)
+        return qs
 
     def _facture_visible(self, facture_id):
         """AFAC55 — facture de la société ET de la portée du rôle, ou None."""

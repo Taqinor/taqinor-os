@@ -707,6 +707,10 @@ class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
             'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
             'company', 'cloture_par', 'date_cloture', 'statut',
         ]
+        # AFAC60 (C-AFAC-054) — `technicien` FACULTATIF en entrée : l'écran
+        # ne l'envoie pas, `perform_create` le pose à l'appelant ; un
+        # technicien d'une autre société reste refusé (ASEC28).
+        extra_kwargs = {'technicien': {'required': False}}
 
 
 class MandatPaiementSerializer(SameCompanyFKSerializerMixin,
