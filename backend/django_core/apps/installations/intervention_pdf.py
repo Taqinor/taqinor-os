@@ -11,8 +11,18 @@ justification d'écart ; jamais un prix interne. Complète le PV de réception.
 from apps.ventes.utils.pdf import _company_context, _html_to_pdf, _render_html
 
 
+def _nom_client_facing(user, company):
+    """APDF41 — nom affichable d'un intervenant sur un document client : nom
+    complet, sinon raison sociale du profil société, JAMAIS l'identifiant de
+    connexion ni une adresse e-mail (``parametres.selectors.nom_intervenant``)."""
+    from apps.parametres.selectors import nom_intervenant
+    return nom_intervenant(user, company)
+
+
 def _equipe_payload(intervention):
-    return [u.username for u in intervention.equipe.all()]
+    noms = [_nom_client_facing(u, intervention.company)
+            for u in intervention.equipe.all()]
+    return [n for n in noms if n]
 
 
 def _photos_payload(intervention, *, public_token=None):
@@ -143,7 +153,10 @@ def _reserves_payload(intervention):
         {
             'description': r.description,
             'statut': r.get_statut_display(),
-            'assignee': getattr(r.assignee, 'username', None),
+            # APDF41 — jamais l'identifiant de connexion sur un document
+            # client (nom complet, sinon raison sociale).
+            'assignee': (_nom_client_facing(r.assignee, intervention.company)
+                         or None) if r.assignee_id else None,
             'resolution': r.resolution,
         }
         for r in intervention.reserves.all()

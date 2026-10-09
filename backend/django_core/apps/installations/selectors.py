@@ -2572,9 +2572,9 @@ def intervention_public_payload(interv):
     technicien_nom = None
     technicien_avatar_url = None
     if technicien is not None:
-        technicien_nom = (
-            getattr(technicien, 'get_full_name', lambda: '')()
-            or technicien.username)
+        # APDF41 — page publique : jamais l'identifiant de connexion.
+        from apps.parametres.selectors import nom_intervenant
+        technicien_nom = nom_intervenant(technicien, interv.company) or None
         avatar_key = getattr(technicien, 'avatar_key', '')
         if avatar_key:
             from authentication.avatars import presign_avatar
