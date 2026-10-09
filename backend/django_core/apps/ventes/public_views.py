@@ -1084,6 +1084,18 @@ _OPTIONS_CUMUL_25_ANS = (
 )
 
 
+def _retirer_economie_ci_partout(payload):
+    """AMOT67 (C-AMOT-050) — retire ``economie_ci`` à TOUTE profondeur de la
+    charge publique, en place ; chaque bloc est copié en profondeur d'abord
+    (jamais ``devis.etude_params`` muté)."""
+    import copy
+    payload.pop('economie_ci', None)
+    for cle in list(payload):
+        bloc = copy.deepcopy(payload[cle])
+        _retirer_cles(bloc, frozenset({'economie_ci'}))
+        payload[cle] = bloc
+
+
 def _economies_cumul_25_ans_publique(data):
     """ADEV50 (C-ADEV-017) — le cumul BRUT des économies sur 25 ans de CHAQUE
     option, lu sur LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``
@@ -1829,11 +1841,7 @@ def proposal_data(request, token):
         # niveau : l'étude C&I stockée (``etude_params.etude_ci``) le porte
         # aussi en IMBRIQUÉ — retiré partout (blocs copiés d'abord : jamais
         # ``devis.etude_params`` muté). La page lit ``synthese_ci``.
-        import copy as _copy
-        payload.pop('economie_ci', None)
-        for _cle in list(payload):
-            payload[_cle] = _copy.deepcopy(payload[_cle])
-            _retirer_cles(payload[_cle], frozenset({'economie_ci'}))
+        _retirer_economie_ci_partout(payload)
         # AMOT67 (D-CIQ-10) — un devis COMMERCIAL ne publie ni VAN, ni LCOE,
         # ni sensibilités, à AUCUN niveau : la liste est celle de
         # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.
