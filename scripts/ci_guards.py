@@ -514,6 +514,13 @@ GARDES = {
         ('Test the champs ecran sans consommateur (AGNR41) checker itself',
          'python -m unittest scripts.tests.test_check_champs_ecran_sans_consommateur -v',
          '.'),
+        # APAR65 - aucun page_size frontend au-dessus du plafond serveur sans suivre next.
+        ('Check page_size front sous le plafond serveur (APAR65)',
+         'python scripts/check_page_size_front.py',
+         '.'),
+        ('Test the page_size front sous le plafond serveur (APAR65) checker itself',
+         'python -m unittest scripts.tests.test_check_page_size_front -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
