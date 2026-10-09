@@ -512,18 +512,45 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
         Le préfixe de reconnaissance vient de ``services`` — la même fonction
         que l'écriture, jamais un second littéral."""
-        if obj.statut != RelanceEtape.Statut.A_FAIRE:
-            return None
-        if obj.canal not in (RelanceEtape.Canal.WHATSAPP,
-                             RelanceEtape.Canal.EMAIL):
+        if not self._message_eligible(obj):
             return None
         from .services import prefixe_activite_message_ouvert
-        return (LeadActivity.objects
-                .filter(lead_id=obj.lead_id,
-                        kind=LeadActivity.Kind.WHATSAPP,
-                        body__startswith=prefixe_activite_message_ouvert(obj))
-                .order_by('-created_at')
-                .values_list('created_at', flat=True).first())
+        # APRF21 — lecture EN LOT : la première touche éligible de la page
+        # lit UNE fois les activités « WhatsApp ouvert » de tous les leads
+        # éligibles (patron ``_visite_du_lead``), carte posée en contexte.
+        cache = self.context.setdefault('_aprf21_messages_ouverts', {})
+        if obj.lead_id not in cache:
+            instances = getattr(self.parent, 'instance', None)
+            touches = ([t for t in instances if self._message_eligible(t)]
+                       if instances is not None else [obj])
+            if obj not in touches:
+                touches.append(obj)
+            lead_ids = {t.lead_id for t in touches}
+            import os.path
+            commun = os.path.commonprefix(
+                [prefixe_activite_message_ouvert(t) for t in touches])
+            for lid in lead_ids:
+                cache[lid] = []
+            for lid, body, cree in (
+                    LeadActivity.objects
+                    .filter(lead_id__in=lead_ids,
+                            kind=LeadActivity.Kind.WHATSAPP,
+                            body__startswith=commun)
+                    .order_by('-created_at')
+                    .values_list('lead_id', 'body', 'created_at')):
+                cache[lid].append((body, cree))
+        prefixe = prefixe_activite_message_ouvert(obj)
+        for body, cree in cache[obj.lead_id]:
+            if (body or '').startswith(prefixe):
+                return cree
+        return None
+
+    @staticmethod
+    def _message_eligible(obj):
+        """RLC3 — seule une touche MESSAGE encore À FAIRE lit « ouvert »."""
+        return (obj.statut == RelanceEtape.Statut.A_FAIRE
+                and obj.canal in (RelanceEtape.Canal.WHATSAPP,
+                                  RelanceEtape.Canal.EMAIL))
 
 
 class _CurrentCompanyDefault:

@@ -4161,8 +4161,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         lead_id = request.query_params.get('lead')
         owner = request.query_params.get('owner')
         if lead_id:
+            # APRF21 — ``traite_par`` chargé (``traite_par_nom`` par touche).
             qs = (self.get_queryset().filter(lead_id=lead_id)
-                  .select_related('lead', 'lead__owner', 'devis')
+                  .select_related('lead', 'lead__owner', 'devis',
+                                  'traite_par')
                   .order_by('cadence', 'ordre', 'due_date'))
         else:
             from .selectors import relance_etapes_dues
