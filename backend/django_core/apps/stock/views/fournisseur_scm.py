@@ -10,7 +10,7 @@ Endpoints livrés ici :
 Toutes ces valeurs sont INTERNES (prix d'achat, coûts) : gardées
 responsable/admin, jamais dans une sortie client-facing.
 """
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -19,6 +19,9 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
+from ..openapi_helpers import (  # noqa: F401
+    BOOL, INT, NUM, P, STR,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
@@ -54,6 +57,7 @@ class IncidentQualiteFournisseurSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['declare_par', 'est_bloquant', 'created_at']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('produit', INT), P('gravite', STR), P('resolu', BOOL)]))
 class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
     """NTSCM9 — incidents qualité fournisseur.
 
@@ -112,7 +116,7 @@ OTIF_SHAPE = {
 class ScmFournisseurActionsMixin:
     """NTSCM8 / NTSCM11 — indicateurs montés sur le viewset fournisseur."""
 
-    @extend_schema(responses={
+    @extend_schema(parameters=[P('fenetre_mois', INT, False, 'Fenêtre glissante (mois)')], responses={
         200: inline_serializer('StockFournisseurOtif', OTIF_SHAPE)})
     @action(detail=True, methods=['get'], url_path='otif',
             permission_classes=[IsAnyRole])
@@ -129,7 +133,7 @@ class ScmFournisseurActionsMixin:
         return Response(otif_fournisseur(
             request.user.company, self.get_object(), fenetre_mois=fenetre))
 
-    @extend_schema(responses={
+    @extend_schema(parameters=[P('produit', INT), P('fenetre_mois', INT), P('seuil_ecart_pct', NUM)], responses={
         200: inline_serializer('StockFournisseurDelaiMesure', {
             'fournisseur_id': serializers.IntegerField(),
             'produit_id': serializers.IntegerField(allow_null=True),
@@ -171,7 +175,7 @@ class ScmFournisseurActionsMixin:
 class ScmProduitTcoMixin:
     """NTSCM26 — colonne TCO du panneau « Comparer fournisseurs » (FG58)."""
 
-    @extend_schema(responses={
+    @extend_schema(parameters=[P('cout_rupture_jour', NUM), P('fenetre_mois', INT)], responses={
         200: inline_serializer('StockProduitComparerTco', {
             'produit': serializers.IntegerField(),
             'cout_rupture_jour': serializers.CharField(),
