@@ -316,6 +316,10 @@ def main(argv=None) -> int:
                     help="amorce UNE fois la dette des groupes qui n'en ont pas")
     ap.add_argument("--write-baseline", action="store_true",
                     help="retire de la dette les ids couverts ou plus cochés à preuve")
+    ap.add_argument("--groupe", metavar="G",
+                    help="couverture d'UN groupe : exit 0 si toute tâche cochée à preuve est "
+                         "couverte par un enregistrement PASS (dette vide), 1 sinon — lu par "
+                         "scripts/audit_registre.py (statut « accepté »)")
     args = ap.parse_args(argv)
 
     erreurs: list = []
@@ -326,6 +330,14 @@ def main(argv=None) -> int:
     for ident in a_couvrir:
         if ident not in couverts:
             restants.setdefault(groupe_de(ident), set()).add(ident)
+
+    if args.groupe:
+        g = args.groupe.upper()
+        ids = {i for i in a_couvrir if groupe_de(i) == g}
+        non_couverts = sorted(ids - couverts, key=_cle)
+        print(f"{g} : {len(ids)} cochée(s) à preuve, {len(ids & couverts)} couverte(s), "
+              f"{len(non_couverts)} non couverte(s) (dette {len(dette.get(g, set()))})")
+        return 0 if not non_couverts and not dette.get(g) else 1
 
     if args.amorcer:
         sha = (_git("rev-parse", "--short=9", "HEAD") or "inconnu").strip()
