@@ -5157,14 +5157,20 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
     """ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM). Lecture
     tout rôle (le dashboard « Mes équipes » y référence des noms), écriture
-    responsable/admin. Société forcée côté serveur (TenantMixin)."""
+    ADMIN. Société forcée côté serveur (TenantMixin).
+
+    ACRM26 (C-ACRM-021) — l'écriture (création, modification dont
+    ``responsable``, suppression) passe au palier ADMIN : une équipe pilote
+    une PORTÉE (le rollup du forecast, les cartes « Mes équipes ») — un
+    Commercial pouvait se nommer responsable d'une équipe et lire son
+    pipeline."""
     queryset = EquipeCommerciale.objects.prefetch_related('membres').all()
     serializer_class = EquipeCommercialeSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
 
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
