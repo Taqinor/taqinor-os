@@ -23,6 +23,10 @@ n'est JAMAIS réimplémentée ici : l'action ``resoudre`` appelle le sélecteur
 existant, l'unique source de vérité, celle que ``reporting/insights`` utilise
 déjà. Contrat partagé : ``apps/ventes/contract_samples/plan_commission.json``.
 """
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -91,6 +95,7 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
         self._check_owner_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(parameters=[OpenApiParameter('owner', OpenApiTypes.INT, required=False)], responses=D.ResoudrePlanResponse)
     @action(detail=False, methods=['get'], url_path='resoudre')
     def resoudre(self, request):
         """XSAL6 — plan RÉELLEMENT appliqué à un commercial.

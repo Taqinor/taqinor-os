@@ -1,3 +1,7 @@
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -523,6 +527,7 @@ class DevisViewSet(DevisEditionActionsMixin,
             },
             status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.VarianteConfigRequest, responses=D.VarianteConfigResponse)
     @action(detail=False, methods=['get', 'put'], url_path='variante-config')
     def variante_config(self, request):
         """QG9 — Lit (GET) ou règle (PUT) le pourcentage des variantes de devis.
@@ -582,6 +587,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 profile.variante_pct)
         return Response({'variante_pct': str(profile.variante_pct)})
 
+    @extend_schema(request=None, responses=D.RevoquerLienPublicResponse)
     @action(detail=True, methods=['post'], url_path='revoquer-lien-public',
             permission_classes=[IsResponsableOrAdmin])
     def revoquer_lien_public(self, request, pk=None):
@@ -594,6 +600,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         nombre, quand = revoquer_liens_publics(devis)
         return Response({'revoques': nombre, 'revoque_le': quand})
 
+    @extend_schema(parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=True)], responses=D.PrefillSiteResponse)
     @action(detail=False, methods=['get'], url_path='prefill-site',
             permission_classes=[IsAnyRole])
     def prefill_site(self, request):

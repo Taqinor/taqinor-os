@@ -12,6 +12,7 @@ dans les corps (patchs ``apps.ventes.utils.pdf.*``,
 """
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -331,6 +332,7 @@ class DevisCalepinageActionsMixin:
         # depuis le corps.
         return _ecrire_conception(devis, payload, request)
 
+    @extend_schema(request=D.ConceptionElectriqueRequest, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['get', 'post'],
             url_path='conception-electrique',
             permission_classes=[IsResponsableOrAdmin])

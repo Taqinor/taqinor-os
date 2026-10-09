@@ -9,6 +9,8 @@ creer_facture_tranche``, ``from ..utils.pdf import generate_proforma_pdf``,
 """
 from django.db import transaction
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -240,6 +242,7 @@ class DevisFacturationActionsMixin:
             } for p in paiements],
         }, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(
         detail=True,
         methods=['post'],

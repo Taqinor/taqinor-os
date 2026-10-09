@@ -1,6 +1,10 @@
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
+from drf_spectacular.utils import extend_schema
+from . import openapi_docs as D
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.exceptions import ValidationError  # noqa: F401
@@ -151,6 +155,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'detail': exc.message}, status=code)
         return Response(PaiementSerializer(paiement).data)
 
+    @extend_schema(parameters=[OpenApiParameter('client', OpenApiTypes.INT, required=False)], responses=PaiementSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='avances-non-affectees')
     def avances_non_affectees(self, request):
         """XFAC1 — avances (paiements sans facture) encore disponibles,
@@ -165,6 +170,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         rows = [p for p in qs if p.montant_disponible > 0]
         return Response(PaiementSerializer(rows, many=True).data)
 
+    @extend_schema(request=D.EnregistrerAvanceRequest, responses={201: PaiementSerializer})
     @action(detail=False, methods=['post'], url_path='enregistrer-avance')
     def enregistrer_avance(self, request):
         """XFAC1 — enregistre un règlement reçu SANS facture (avance/acompte à
@@ -202,6 +208,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             PaiementSerializer(paiement).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.VentilerRequest, responses={201: AffectationPaiementSerializer})
     @action(detail=True, methods=['post'], url_path='ventiler')
     def ventiler(self, request, pk=None):
         """XFAC1 — ventile une avance non affectée sur UNE facture ouverte du
@@ -271,6 +278,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                 pk=facture.pk)).data,
         }, status=status.HTTP_201_CREATED)
 
+    @extend_schema(responses=RetenueSubieSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='attestations-ras-en-attente')
     def attestations_ras_en_attente(self, request):
         """XFAC4 — état des attestations RAS à recevoir (non reçues)."""
