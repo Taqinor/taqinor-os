@@ -214,12 +214,21 @@ def build(ctx):
     _inj = _num(chiffres_cles(_syn)["revente_mad_an"])
     injection_html = ""
     if _inj and _inj > 0:
+        # AMOT40 (C-AMOT-049) — CHAQUE mention servie par ``revente.mentions``
+        # (82-21, non garanti, second compteur, TSS, tarif arrêté, art. 13),
+        # dans la langue du document ; repli : la seule mention 82-21.
+        from ..ci.mentions import mentions_revente
+        _rev = ((_syn.get("argent") or {}).get("revente")
+                if isinstance(_syn, dict) else None) or {}
+        _mentions = mentions_revente(_rev.get("mentions"), _langue(d))
+        _mention_txt = (" ".join(_mentions) if _mentions
+                        else texte_revente(_langue(d)) + ".")
         injection_html = (
             '<div class="c2-inj"><b>+ ' + fmt(round(_inj)) + ' '
             + L("ci_mad_an", "MAD/an") + '</b> — '
             + L("ci_surplus_injecte", "surplus injecté") + '. <span class="c2-inj-m">'
-            # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
-            + texte_revente(_langue(d)) + '.</span></div>')
+            # CIQ305 — les mentions sont LUES (une table), jamais recopiées.
+            + _mention_txt + '</span></div>')
 
     # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
     # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.

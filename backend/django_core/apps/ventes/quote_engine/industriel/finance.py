@@ -176,13 +176,11 @@ def _ligne_revente(argent, fmt, L, langue):
     valeur = _num(revente.get("valeur_mad_an"))
     if not valeur:
         return ""
-    mentions = [m for m in revente.get("mentions") or [] if m]
-    if langue != "fr":
-        # CIQ345 — les mentions servies sont françaises : la langue du
-        # document lit la MÊME table trilingue (CIQ305).
-        from ..ci.mentions import TEXTES_82_21, TEXTES_ART13, texte
-        mentions = [texte(TEXTES_82_21, langue) + ".",
-                    texte(TEXTES_ART13, langue) + "."]
+    # AMOT40 (C-AMOT-049) — CHAQUE mention servie, dans la langue du
+    # document (table trilingue ``ci.mentions``) : plus jamais deux mentions
+    # seulement en anglais, « non garanti » compris.
+    from ..ci.mentions import mentions_revente
+    mentions = mentions_revente(revente.get("mentions"), langue)
     mention = (f' <span class="i2-mini">{" ".join(mentions)}</span>'
                if mentions else "")
     return (f'<div class="i2-inj"><b>+ {fmt(valeur)} '
