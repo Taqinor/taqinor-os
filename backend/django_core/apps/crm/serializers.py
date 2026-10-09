@@ -609,22 +609,61 @@ class _LeadEnPorteeMixin:
     hors portée ou inexistant → la même erreur ``{lead: ["Lead
     introuvable."]}``. Posé en PREMIÈRE base (avant
     ``_CompanyScopedRelationsMixin``) : la portée resserre le re-scope société.
-    Sans requête (rendu interne), rien ne change."""
+    Sans requête (rendu interne), rien ne change.
+
+    ACRM52 — ``champs_lead_portee`` nomme les champs lead bornés (défaut
+    ``lead`` ; ex. ``filleul_lead`` pour un parrainage)."""
+
+    champs_lead_portee = ('lead',)
 
     def get_fields(self):
         fields = super().get_fields()
-        field = fields.get('lead')
         request = self.context.get('request') if hasattr(
             self, 'context') else None
         user = getattr(request, 'user', None)
-        if (field is not None and not field.read_only
-                and getattr(field, 'queryset', None) is not None
-                and user is not None and user.is_authenticated):
-            from .selectors import leads_en_portee
-            field.queryset = leads_en_portee(user)
-            field.error_messages = dict(
-                field.error_messages, does_not_exist=LEAD_INTROUVABLE,
-                incorrect_type=LEAD_INTROUVABLE)
+        for nom in self.champs_lead_portee:
+            field = fields.get(nom)
+            if (field is not None and not field.read_only
+                    and getattr(field, 'queryset', None) is not None
+                    and user is not None and user.is_authenticated):
+                from .selectors import leads_en_portee
+                field.queryset = leads_en_portee(user)
+                field.error_messages = dict(
+                    field.error_messages, does_not_exist=LEAD_INTROUVABLE,
+                    incorrect_type=LEAD_INTROUVABLE)
+        return fields
+
+
+#: ACRM52 — la réponse d'un client hors portée, IDENTIQUE à un id inexistant.
+CLIENT_INTROUVABLE = 'Client inconnu.'
+
+
+class _ClientEnPorteeMixin:
+    """ACRM52 — symétrique de ``_LeadEnPorteeMixin`` pour les champs CLIENT
+    d'un sérialiseur ENFANT (``champs_client_portee``) : seuls les clients de
+    la PORTÉE de l'utilisateur (``scope_client_queryset``, la règle des
+    lectures ``_PorteeEnfantsMixin``) sont acceptés ; hors portée ou
+    inexistant → la même erreur. Sans requête (rendu interne), rien ne
+    change."""
+
+    champs_client_portee = ('client',)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request') if hasattr(
+            self, 'context') else None
+        user = getattr(request, 'user', None)
+        for nom in self.champs_client_portee:
+            field = fields.get(nom)
+            if (field is not None and not field.read_only
+                    and getattr(field, 'queryset', None) is not None
+                    and user is not None and user.is_authenticated):
+                from core.scoping import scope_client_queryset
+                field.queryset = scope_client_queryset(
+                    Client.objects.filter(company_id=user.company_id), user)
+                field.error_messages = dict(
+                    field.error_messages, does_not_exist=CLIENT_INTROUVABLE,
+                    incorrect_type=CLIENT_INTROUVABLE)
         return fields
 
 
@@ -2045,9 +2084,13 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class ParrainageSerializer(serializers.ModelSerializer):
+class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
+                           serializers.ModelSerializer):
     """N98 — parrainage. Société posée côté serveur ; parrain/filleul vérifiés
-    appartenir à la même société (multi-tenant)."""
+    appartenir à la même société (multi-tenant) ET à la portée du rôle
+    (ACRM52)."""
+    champs_lead_portee = ('filleul_lead',)
+    champs_client_portee = ('parrain', 'filleul_client')
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
         source='parrain.nom', read_only=True, default=None)
@@ -2089,7 +2132,8 @@ class ParrainageSerializer(serializers.ModelSerializer):
 
 # DC12 — Profil site/énergie réutilisable par client ─────────────────────────
 
-class SiteProfileSerializer(serializers.ModelSerializer):
+class SiteProfileSerializer(_ClientEnPorteeMixin,
+                            serializers.ModelSerializer):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Société posée CÔTÉ SERVEUR (HiddenField — jamais lue du corps de requête,
@@ -2458,7 +2502,8 @@ class RevueCompteSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = ['created_by', 'created_at']
 
 
-class PlanCompteSerializer(_CompanyScopedRelationsMixin,
+class PlanCompteSerializer(_ClientEnPorteeMixin,
+                           _CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
     scoped_relations = ('client',)
