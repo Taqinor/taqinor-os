@@ -1865,8 +1865,8 @@
     champs: blocages, created_at, date_cloture, date_declenchement, declenchee_par, id, lot, motif, numero_lot, produit, produit_nom, statut, updated_at
     statut ∈ {clos, en_cours}
 - frontend/src/features/stock/api/rfaApi.js :: creerAccord -> /api/django/stock/accords-rfa-fournisseur  [AccordRFAFournisseurSerializer]
-    champs: avoir_deja_genere, avoir_genere, created_at, fournisseur, fournisseur_nom, id, montant_fixe, note, periode_debut, periode_fin, seuil_ca_achat, statut, taux_pct
+    champs: avoir_deja_genere, avoir_genere, avoir_id, avoir_reference, created_at, fournisseur, fournisseur_nom, id, montant_fixe, note, periode_debut, periode_fin, seuil_ca_achat, statut, taux_pct
     statut ∈ {actif, clos}
 - frontend/src/features/stock/api/rfaApi.js :: listAccords -> /api/django/stock/accords-rfa-fournisseur  [AccordRFAFournisseurSerializer]
-    champs: avoir_deja_genere, avoir_genere, created_at, fournisseur, fournisseur_nom, id, montant_fixe, note, periode_debut, periode_fin, seuil_ca_achat, statut, taux_pct
+    champs: avoir_deja_genere, avoir_genere, avoir_id, avoir_reference, created_at, fournisseur, fournisseur_nom, id, montant_fixe, note, periode_debut, periode_fin, seuil_ca_achat, statut, taux_pct
     statut ∈ {actif, clos}

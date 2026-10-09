@@ -30,23 +30,18 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 class DeclarationConsommationSerializer(CompanyScopedRelationsMixin,
                                         serializers.ModelSerializer):
-    class Meta:
-        model = DeclarationConsommation
-        fields = ['id', 'depot', 'quantite', 'date_declaration', 'statut',
-                  'document_reference', 'note', 'created_at']
-        read_only_fields = ['statut', 'document_reference', 'created_at']
-
-
-class DeclarationFactureeSerializer(DeclarationConsommationSerializer):
-    """ASTK198 — réponse de ``declarer-consommation`` : la déclaration plus
-    la facture BROUILLON créée (``facture_id`` / ``facture_reference``,
-    contrat ``negoce_consignation_rfa.json`` ``exemple_nouveau_astk198``)."""
+    """Déclaration de consommation. ``facture_id`` / ``facture_reference``
+    sont servis AUSSI dans la liste des dépôts (ERR-ASTK221) : sinon, après
+    rechargement, une déclaration facturée perdait sa référence et son lien."""
     facture_id = serializers.SerializerMethodField()
     facture_reference = serializers.SerializerMethodField()
 
-    class Meta(DeclarationConsommationSerializer.Meta):
-        fields = DeclarationConsommationSerializer.Meta.fields + [
-            'facture_id', 'facture_reference']
+    class Meta:
+        model = DeclarationConsommation
+        fields = ['id', 'depot', 'quantite', 'date_declaration', 'statut',
+                  'document_reference', 'facture_id', 'facture_reference',
+                  'note', 'created_at']
+        read_only_fields = ['statut', 'document_reference', 'created_at']
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_facture_id(self, obj):
@@ -57,6 +52,12 @@ class DeclarationFactureeSerializer(DeclarationConsommationSerializer):
     def get_facture_reference(self, obj):
         facture = getattr(obj, 'facture', None)
         return facture.reference if facture is not None else None
+
+
+class DeclarationFactureeSerializer(DeclarationConsommationSerializer):
+    """ASTK198 — réponse de ``declarer-consommation`` : la déclaration plus
+    la facture BROUILLON créée (contrat ``negoce_consignation_rfa.json``
+    ``exemple_nouveau_astk198``). Champs désormais portés par la base."""
 
 
 class DepotConsignationSerializer(CompanyScopedRelationsMixin,
@@ -111,7 +112,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
     modifiable par un PATCH.
     """
     queryset = DepotConsignation.objects.select_related(
-        'produit', 'client').prefetch_related('declarations').all()
+        'produit', 'client').prefetch_related(
+        'declarations', 'declarations__facture').all()
     serializer_class = DepotConsignationSerializer
     ordering = ['-date_depot', '-id']
 
@@ -317,18 +319,30 @@ class AccordRFAFournisseurSerializer(CompanyScopedRelationsMixin,
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     avoir_deja_genere = serializers.BooleanField(read_only=True)
+    avoir_id = serializers.SerializerMethodField()
+    avoir_reference = serializers.SerializerMethodField()
 
     class Meta:
         model = AccordRFAFournisseur
         fields = [
             'id', 'fournisseur', 'fournisseur_nom', 'periode_debut',
             'periode_fin', 'seuil_ca_achat', 'taux_pct', 'montant_fixe',
-            'statut', 'avoir_genere', 'avoir_deja_genere', 'note',
-            'created_at',
+            'statut', 'avoir_genere', 'avoir_id', 'avoir_reference',
+            'avoir_deja_genere', 'note', 'created_at',
         ]
         # L'avoir est posé par l'action dédiée, JAMAIS par un PATCH : sinon la
         # garde d'idempotence se contourne en une requête.
         read_only_fields = ['avoir_genere', 'avoir_deja_genere', 'created_at']
+
+    # ERR-ASTK222 — l'avoir généré reste lisible après rechargement.
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_avoir_id(self, obj):
+        return obj.avoir_genere_id
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_avoir_reference(self, obj):
+        avoir = obj.avoir_genere
+        return getattr(avoir, 'reference', None) if avoir is not None else None
 
     def validate(self, attrs):
         taux = attrs.get('taux_pct', getattr(self.instance, 'taux_pct', None))
