@@ -10,6 +10,10 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+  # Merge queue (fondateur, 09/10/2026) : chaque entree de la file est
+  # construite sur main + les PR devant elle, puis mergee si ses checks
+  # requis passent. Sans ce declencheur la file expire et retire la PR.
+  merge_group:
 
 # Cancel a superseded run on the same PR when a newer commit is pushed, so
 # rapid pushes don't pile up redundant runs. Never cancels push runs on
@@ -202,6 +206,8 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
           backend=false; frontend=false; web=false; yanbow=false; fastapi=false
@@ -211,6 +217,10 @@ jobs:
             base="$PR_BASE"; head="$PR_HEAD"
           elif [ "$EVENT_NAME" = "push" ]; then
             base="$PUSH_BEFORE"; head="$PUSH_AFTER"
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            # Entree de la merge queue : main (base) -> commit du groupe (head),
+            # qui contient cette PR et celles devant elle dans la file.
+            base="$MG_BASE"; head="$MG_HEAD"
           else
             base=""; head=""
           fi
