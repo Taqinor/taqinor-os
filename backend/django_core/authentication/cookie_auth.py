@@ -62,6 +62,19 @@ class CookieJWTAuthentication(BaseAuthentication):
         if not token:
             return None
 
+        # Mémo PAR REQUÊTE : trois middlewares (modules, contexte tenant,
+        # politique réseau) puis DRF ré-authentifient la MÊME requête — sans
+        # mémo, chacun relisait l'utilisateur (un SELECT de plus à chaque
+        # fois). Seul un succès complet (toutes les gardes ci-dessous passées)
+        # est mémorisé, pour CE jeton et CETTE requête uniquement.
+        porteur = getattr(request, '_request', request)
+        memo = getattr(porteur, '_taqinor_jwt_auth', None)
+        if memo is not None and memo[0] == token:
+            user, validated = memo[1]
+            from authentication.active_company import set_active_company_id
+            set_active_company_id(user.company_id)
+            return memo[1]
+
         try:
             validated = AccessToken(token)
         except (TokenError, InvalidToken):
@@ -144,6 +157,10 @@ class CookieJWTAuthentication(BaseAuthentication):
                 "Ce compte société est suspendu. "
                 "L'accès est temporairement bloqué.")
 
+        try:
+            porteur._taqinor_jwt_auth = (token, (user, validated))
+        except AttributeError:  # pragma: no cover - requête sans __dict__
+            pass
         return (user, validated)
 
     def authenticate_header(self, request):

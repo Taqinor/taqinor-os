@@ -455,3 +455,9 @@ class EventType(models.TextChoices):
     # None, exception avalée) et aucune notification n'était jamais créée.
     OUTILLAGE_CALIBRATION_PROCHE = (
         'outillage_calibration_proche', "Calibration d'outil proche")
+    # ACRM41/ACRM42 — rappel d'une visite planifiée (QJ20) et visite réservée
+    # par le prospect via le lien public. `crm.services` émettait déjà
+    # 'appointment_reminder' mais le type n'existait pas : notify() renvoyait
+    # None et AUCUNE notification n'était jamais créée (même défaut qu'ACHT75).
+    APPOINTMENT_REMINDER = (
+        'appointment_reminder', 'Rappel de rendez-vous / visite réservée')

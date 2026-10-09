@@ -126,6 +126,9 @@ class LeadDetailChatterRecentTests(AssertQueryBudgetMixin, TestCase):
         chargé : owner/client/devis + next_activity + stage_since_days +
         chatter_recent) — attrape un N+1 dès la 1ère ligne d'activité."""
         self._seed_activites(10)
-        with self.assertMaxQueries(15):
+        # ALEA32 — +3 requêtes CONSTANTES par requête (``seuil_retard`` :
+        # horaires ouvrés, fériés, fermetures de la société) pour le seuil
+        # unique « en retard » ; l'invariance ci-dessus reste le garde N+1.
+        with self.assertMaxQueries(18):
             resp = self.api.get(self._detail_url())
         self.assertEqual(resp.status_code, 200)

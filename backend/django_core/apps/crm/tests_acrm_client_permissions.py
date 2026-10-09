@@ -53,8 +53,12 @@ class ClientPermissionsTests(TestCase):
         self.client_c = Client.objects.create(
             company=self.company, nom='Témoin', prenom='Client',
             telephone='+212661909901', email='temoin-acrm3@example.com')
+        # ``societe`` distincte : l'autocomplete déduplique par (nom, ICE)
+        # et masquerait sinon le lead derrière le client homonyme — la
+        # présence/absence de la source « lead » ne serait plus observable.
         self.lead = Lead.objects.create(
             company=self.company, nom='Témoin', prenom='Lead',
+            societe='Témoin Lead SARL',
             telephone='+212661909902', owner=self.users['Commercial'],
             client=self.client_c)
         self.client_v = Client.objects.create(
