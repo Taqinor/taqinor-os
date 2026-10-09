@@ -89,6 +89,12 @@ from authentication.scoping import scope_queryset  # noqa: E402
 from core.mixins import company_qs  # noqa: E402,F401
 
 
+#: AFAC66 — refus nommé de la cinquième porte de facturation d'un devis.
+BC_DE_DEVIS_REFUSE = (
+    "Cette commande vient d'un devis : créez la facture depuis le bon de "
+    "commande — remise, options et sections du devis signé y sont reprises.")
+
+
 class IsSuperuserOnly(BasePermission):
     """AUD103 — suppression d'une facture : superutilisateur EXCLUSIVEMENT.
 
@@ -222,6 +228,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     {'bon_commande': 'Bon de commande inconnu.'})
             if devis is not None and devis.company_id != company.id:
                 raise ValidationError({'devis': 'Devis inconnu.'})
+        # AFAC66 (C-AFAC-057) — la cinquième porte est FERMÉE : une facture
+        # liée au BC d'un devis ne naît QUE par `bons-commande/<id>/
+        # creer-facture/` (copie fidèle du devis signé, garde ATOT2).
+        bc_corps = serializer.validated_data.get('bon_commande')
+        if bc_corps is not None and bc_corps.devis_id:
+            raise ValidationError({
+                'bon_commande': BC_DE_DEVIS_REFUSE,
+                'code': 'bon_commande_de_devis'})
         # FG52 — devise : si le corps n'en fournit pas, appliquer la devise par
         # défaut de la société (CompanyProfile.devise_defaut), repli MAD.
         save_kwargs = dict(
@@ -319,6 +333,15 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # non financiers (conditions, notes, dates de livraison…) restent
         # modifiables.
         facture = self.get_object()
+        # AFAC66 (C-AFAC-057) — même porte fermée en modification : poser le
+        # BC d'un devis sur une facture existante est refusé.
+        bc_corps = serializer.validated_data.get('bon_commande')
+        if bc_corps is not None and bc_corps.devis_id \
+                and bc_corps.pk != facture.bon_commande_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                'bon_commande': BC_DE_DEVIS_REFUSE,
+                'code': 'bon_commande_de_devis'})
         argent_touche = (set(serializer.validated_data.keys())
                          & FACTURE_CHAMPS_ARGENT)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
