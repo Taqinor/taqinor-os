@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration du routeur (lazy imports + loaders), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
-import { createBrowserRouter, redirect, useLocation } from 'react-router-dom'
+import { createBrowserRouter, redirect, useLocation, useLoaderData } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
 import { fetchMe } from '../features/auth/store/authSlice'
@@ -18,6 +18,7 @@ import RouteFallback from '../components/RouteFallback'
 // L880 — Error-boundary de route globale : écran FR de récupération au lieu
 // d'une application blanche sur une erreur de rendu non capturée.
 import RouteErrorBoundary from '../components/RouteErrorBoundary'
+import HorsLigneDemarrage from './HorsLigneDemarrage'
 // UX1 — Registre de modules : chaque module « coquille » (Compta, Paie, RH,
 // Flotte, QHSE, Contrats, Projet, GED, KB, Litiges…) enregistre ses routes via
 // un fichier `features/<module>/module.config.jsx`, sans toucher ce fichier.
@@ -147,6 +148,13 @@ const PortailPartenaireCommissions = lazy(() => import('../features/portail/part
 // chargement suffit.
 let bootstrapPromise = null
 
+// ADEP19 — état « hors ligne » : `fetchMe` a échoué SANS refus d'authentification
+// (aucune réponse, 5xx). Seul un 401/403 vaut « pas de session » (→ /login). Les
+// loaders renvoient alors ETAT_HORS_LIGNE (donnée de loader) et l'écran
+// HorsLigneDemarrage est rendu à la place de la route, URL inchangée.
+const HORS_LIGNE = Symbol('hors-ligne')
+const ETAT_HORS_LIGNE = { horsLigne: true }
+
 const ensureSession = async () => {
   const state = store.getState().auth
   if (state.isAuthenticated) return true
@@ -155,7 +163,11 @@ const ensureSession = async () => {
   if (!bootstrapPromise) {
     bootstrapPromise = store
       .dispatch(fetchMe())
-      .then((result) => fetchMe.fulfilled.match(result))
+      .then((result) => {
+        if (fetchMe.fulfilled.match(result)) return true
+        const status = result.payload?.status
+        return (status === 401 || status === 403) ? false : HORS_LIGNE
+      })
       .finally(() => { bootstrapPromise = null })
   }
   return bootstrapPromise
@@ -189,6 +201,7 @@ const buildLoginRedirect = (request) => {
 // est défini, y compris à `interne`).
 const ensurePortalScope = async () => {
   const ok = await ensureSession()
+  if (ok === HORS_LIGNE) return HORS_LIGNE
   if (!ok) return null
   let user = store.getState().auth.user
   if (!user || user.portee === undefined) {
@@ -207,6 +220,7 @@ const redirectSiPortail = (user) => {
 
 const authLoader = async ({ request }) => {
   const user = await ensurePortalScope()
+  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
   if (!user) return buildLoginRedirect(request)
   return redirectSiPortail(user)
 }
@@ -220,6 +234,7 @@ const authLoader = async ({ request }) => {
 // unique), les trois routes sont déclarées plus bas.
 const portalLoader = (portee) => async ({ request }) => {
   const user = await ensurePortalScope()
+  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
   if (!user) return buildLoginRedirect(request)
   if (!peutEntrerDansPortail(user, portee)) {
     return redirectSiPortail(user) || redirect('/dashboard')
@@ -259,6 +274,7 @@ const notFoundLoader = async () => {
 // UNIQUE partagée avec la Sidebar, la BottomTabBar et le lanceur d'apps.
 const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
   const user = await ensurePortalScope()
+  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
   if (!user) return buildLoginRedirect(request)
   // NTPRT8 — un compte portail externe ne franchit jamais une route interne,
   // même gardée par rôle : il rejoint son propre shell.
@@ -279,6 +295,7 @@ const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
 // garde ne réutilise pas `authLoader` (qui redirigerait).
 const rootLoader = async () => {
   const user = await ensurePortalScope()
+  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
   if (!user) return null // anonyme : Login rendu sur `/`, comme avant
   // Un compte PORTAIL externe ne voit jamais la coquille interne.
   const versPortail = redirectSiPortail(user)
@@ -330,12 +347,15 @@ function WithLayout({ children }) {
   // erreur est survenue — recharger ») au lieu d'une app blanche, et naviguer
   // ailleurs réinitialise la barrière (nouvelle key).
   const { pathname } = useLocation()
+  const donneesLoader = useLoaderData()
   // NTADM26 — l'entité affichée fait partie de la CLÉ de remontage : basculer
   // d'entité dans l'en-tête refait immédiatement les listes de l'écran courant
   // (l'intercepteur axios pose alors `?entite=`), SANS rechargement de page.
   // `null` (toutes entités) laisse la clé exactement telle qu'avant.
   const entiteActive = useEntiteActive()
   const cleEcran = entiteActive ? `${pathname}|e${entiteActive}` : pathname
+  // ADEP19 — démarrage hors ligne : écran dédié, URL inchangée.
+  if (donneesLoader?.horsLigne) return <HorsLigneDemarrage />
   return (
     <ShortcutsProvider>
       <Layout>
@@ -362,6 +382,8 @@ function WithLayout({ children }) {
 function WithPortal(props) {
   const { shell: Shell, children } = props
   const { pathname } = useLocation()
+  const donneesLoader = useLoaderData()
+  if (donneesLoader?.horsLigne) return <HorsLigneDemarrage />
   return (
     <RouteErrorBoundary key={pathname}>
       <Suspense fallback={<Fallback />}>
@@ -371,6 +393,13 @@ function WithPortal(props) {
       </Suspense>
     </RouteErrorBoundary>
   )
+}
+
+// ADEP19 — `/` : Login pour un anonyme, écran « Hors ligne » si le démarrage a échoué sans refus.
+function RacineOuHorsLigne() {
+  const donneesLoader = useLoaderData()
+  if (donneesLoader?.horsLigne) return <HorsLigneDemarrage />
+  return <Suspense fallback={<Fallback />}><Login /></Suspense>
 }
 
 const router = createBrowserRouter([
@@ -383,7 +412,7 @@ const router = createBrowserRouter([
   // élément est désormais enveloppé du même `RouteErrorBoundary` que WithLayout,
   // sans layout ERP autour.
   // ODY3 — `/` authentifié → SES apps (`rootLoader`) ; `/` anonyme → Login.
-  { path: '/',      loader: rootLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
+  { path: '/',      loader: rootLoader, element: <RouteErrorBoundary><RacineOuHorsLigne /></RouteErrorBoundary> },
   { path: '/landing', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Landing /></Suspense></RouteErrorBoundary> },
   { path: '/login',  element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   // PACT116 — inscription publique d'une societe (sans login, sans layout ERP).
