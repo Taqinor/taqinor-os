@@ -1,0 +1,52 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^appareils-equipe/$",
+  "nom": "crm-appareil-equipe-list",
+  "vue": "AppareilEquipeViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy"
+  },
+  "motif": "^appareils-equipe/(?P<pk>[^/.]+)/$",
+  "nom": "crm-appareil-equipe-detail",
+  "vue": "AppareilEquipeViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy"
+  },
+  "motif": "^appareils-equipe/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-appareil-equipe-detail",
+  "vue": "AppareilEquipeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "ce_navigateur"
+  },
+  "motif": "^appareils-equipe/ce-navigateur/$",
+  "nom": "crm-appareil-equipe-ce-navigateur",
+  "vue": "AppareilEquipeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "ce_navigateur"
+  },
+  "motif": "^appareils-equipe/ce-navigateur\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-appareil-equipe-ce-navigateur",
+  "vue": "AppareilEquipeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^appareils-equipe\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-appareil-equipe-list",
+  "vue": "AppareilEquipeViewSet"
+ }
+]

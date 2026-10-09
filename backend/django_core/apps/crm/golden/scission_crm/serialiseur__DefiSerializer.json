@@ -1,0 +1,70 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DateField",
+   "nom": "periode_debut",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "DateField",
+   "nom": "periode_fin",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "metrique",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "metrique_display",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "cible_equipe",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "recompense",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "actif",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

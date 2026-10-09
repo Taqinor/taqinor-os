@@ -1,0 +1,149 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "help_text": "PK de la LeadActivity d'origine (table vive)."
+   },
+   "nom": "original_id",
+   "type": "BigIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "company_id",
+   "type": "BigIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "lead_id",
+   "type": "BigIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 15
+   },
+   "nom": "kind",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 100,
+    "null": true
+   },
+   "nom": "field",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 150,
+    "null": true
+   },
+   "nom": "field_label",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "old_value",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "new_value",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "body",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 20
+   },
+   "nom": "outcome",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "attachment_id",
+   "type": "BigIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "bulk",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "user_id",
+   "type": "BigIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {},
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "archived_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_leadactivityarchive",
+ "label": "crm.LeadActivityArchive",
+ "relations_inverses": []
+}

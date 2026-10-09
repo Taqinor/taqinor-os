@@ -1,0 +1,93 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "%(app_label)s_%(class)s_set",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "crm_vues_enregistrees",
+    "to": "authentication.customuser"
+   },
+   "nom": "user",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "help_text": "Clé applicative de la page (ex. 'crm.leads').",
+    "max_length": 64
+   },
+   "nom": "page",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 80,
+    "verbose_name": "Nom"
+   },
+   "nom": "name",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0,
+    "help_text": "0 = première/vue par défaut.",
+    "verbose_name": "Rang"
+   },
+   "nom": "rank",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:dict",
+    "help_text": "Contenu de la vue : {filters, view}."
+   },
+   "nom": "payload",
+   "type": "JSONField"
+  }
+ ],
+ "db_table": "crm_savedview",
+ "label": "crm.SavedView",
+ "relations_inverses": []
+}

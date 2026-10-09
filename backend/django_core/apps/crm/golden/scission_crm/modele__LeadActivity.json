@@ -1,0 +1,212 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "",
+      "—"
+     ],
+     [
+      "joint",
+      "Joint"
+     ],
+     [
+      "non_joint",
+      "Non joint"
+     ],
+     [
+      "rappel",
+      "À rappeler"
+     ],
+     [
+      "refuse",
+      "Refus"
+     ],
+     [
+      "interesse",
+      "Intéressé"
+     ],
+     [
+      "visite_acceptee",
+      "Visite acceptée"
+     ]
+    ],
+    "default": "",
+    "max_length": 20,
+    "verbose_name": "Résultat de l'interaction"
+   },
+   "nom": "outcome",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "lead_activities",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "activites",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "creation",
+      "Création"
+     ],
+     [
+      "modification",
+      "Modification"
+     ],
+     [
+      "note",
+      "Note"
+     ],
+     [
+      "appel",
+      "Appel"
+     ],
+     [
+      "email",
+      "E-mail"
+     ],
+     [
+      "whatsapp",
+      "WhatsApp"
+     ]
+    ],
+    "max_length": 15
+   },
+   "nom": "kind",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 100,
+    "null": true
+   },
+   "nom": "field",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 150,
+    "null": true
+   },
+   "nom": "field_label",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "old_value",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "new_value",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "body",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "lead_notes",
+    "to": "records.attachment",
+    "verbose_name": "Pièce jointe"
+   },
+   "nom": "attachment",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "bulk",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "verbose_name": "Épinglée"
+   },
+   "nom": "pinned",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "lead_activities",
+    "to": "authentication.customuser"
+   },
+   "nom": "user",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_leadactivity",
+ "label": "crm.LeadActivity",
+ "relations_inverses": []
+}

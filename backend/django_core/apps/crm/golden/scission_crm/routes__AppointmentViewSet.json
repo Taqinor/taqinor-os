@@ -1,0 +1,74 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^appointments/$",
+  "nom": "appointment-list",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^appointments/(?P<pk>[^/.]+)/$",
+  "nom": "appointment-detail",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "confirmer_whatsapp"
+  },
+  "motif": "^appointments/(?P<pk>[^/.]+)/confirmer-whatsapp/$",
+  "nom": "appointment-confirmer-whatsapp",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "confirmer_whatsapp"
+  },
+  "motif": "^appointments/(?P<pk>[^/.]+)/confirmer-whatsapp\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "appointment-confirmer-whatsapp",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "ics"
+  },
+  "motif": "^appointments/(?P<pk>[^/.]+)/ics/$",
+  "nom": "appointment-ics",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "ics"
+  },
+  "motif": "^appointments/(?P<pk>[^/.]+)/ics\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "appointment-ics",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^appointments/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "appointment-detail",
+  "vue": "AppointmentViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^appointments\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "appointment-list",
+  "vue": "AppointmentViewSet"
+ }
+]

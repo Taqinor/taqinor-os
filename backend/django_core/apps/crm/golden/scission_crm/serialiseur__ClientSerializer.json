@@ -1,0 +1,244 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "devis_count",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "total_facture_ttc",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "total_paye",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "created_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "created_by_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "identite_entreprise",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "prenom",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "EmailField",
+   "nom": "email",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "telephone",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "adresse",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_client",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "cin",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "ice",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "if_fiscal",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "rc",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "adresse_siege",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "contact_nom",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "contact_fonction",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "tva_recuperable",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "raison_sociale_a_confirmer",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_modification",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "custom_data",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "plafond_credit",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "is_anonymized",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "anonymized_at",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "langue_document",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "releve_mensuel_auto",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "delai_paiement_jours",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "fin_de_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "code_parrainage",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "avertissement_vente",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "avertissement_bloquant",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "derniere_alerte_dormance",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "liste_prix",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "parent",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "tiers",
+   "read_only": false,
+   "required": false
+  }
+ ]
+}

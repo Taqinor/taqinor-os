@@ -1,0 +1,131 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "%(app_label)s_%(class)s_set",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Qui est absent ? Laisser vide pour une fermeture qui concerne toute la société.",
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "crm_absences",
+    "to": "authentication.customuser",
+    "verbose_name": "Personne absente"
+   },
+   "nom": "utilisateur",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "help_text": "À partir de quel jour, ce jour-là compris ?",
+    "verbose_name": "Premier jour"
+   },
+   "nom": "date_debut",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "help_text": "Jusqu’à quel jour, ce jour-là compris ?",
+    "verbose_name": "Dernier jour"
+   },
+   "nom": "date_fin",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "conge",
+      "Congé"
+     ],
+     [
+      "arret",
+      "Arrêt maladie"
+     ],
+     [
+      "formation",
+      "Formation"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "default": "conge",
+    "help_text": "Congé, arrêt maladie, formation, ou autre ?",
+    "max_length": 10,
+    "verbose_name": "Motif"
+   },
+   "nom": "motif",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Qui reprend les dossiers pendant cette absence ?",
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "crm_absences_couvertes",
+    "to": "authentication.customuser",
+    "verbose_name": "Reprise des dossiers"
+   },
+   "nom": "remplacant",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "help_text": "Quelque chose à savoir pour la reprise ?",
+    "verbose_name": "Note"
+   },
+   "nom": "note",
+   "type": "TextField"
+  }
+ ],
+ "db_table": "crm_periodeabsence",
+ "label": "crm.PeriodeAbsence",
+ "relations_inverses": []
+}

@@ -1,0 +1,50 @@
+[
+ {
+  "actions_map": {
+   "get": "list"
+  },
+  "motif": "^visites-externes/$",
+  "nom": "crm-visite-externe-list",
+  "vue": "VisiteExterneViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "retrieve"
+  },
+  "motif": "^visites-externes/(?P<pk>[^/.]+)/$",
+  "nom": "crm-visite-externe-detail",
+  "vue": "VisiteExterneViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "retrieve"
+  },
+  "motif": "^visites-externes/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-visite-externe-detail",
+  "vue": "VisiteExterneViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "appareils"
+  },
+  "motif": "^visites-externes/appareils/$",
+  "nom": "crm-visite-externe-appareils",
+  "vue": "VisiteExterneViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "appareils"
+  },
+  "motif": "^visites-externes/appareils\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-visite-externe-appareils",
+  "vue": "VisiteExterneViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list"
+  },
+  "motif": "^visites-externes\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-visite-externe-list",
+  "vue": "VisiteExterneViewSet"
+ }
+]

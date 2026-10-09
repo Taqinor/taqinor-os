@@ -1,0 +1,79 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "%(app_label)s_%(class)s_set",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "db_index": true,
+    "max_length": 64,
+    "verbose_name": "Identifiant d’appareil"
+   },
+   "nom": "appareil_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 200,
+    "verbose_name": "Libellé (ex. « Téléphone Reda »)"
+   },
+   "nom": "libelle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "authentication.customuser",
+    "verbose_name": "Enregistré par"
+   },
+   "nom": "cree_par",
+   "type": "ForeignKey"
+  }
+ ],
+ "db_table": "crm_appareilequipe",
+ "label": "crm.AppareilEquipe",
+ "relations_inverses": []
+}

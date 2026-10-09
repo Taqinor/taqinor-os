@@ -1,0 +1,104 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "crm_message_templates",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 150,
+    "verbose_name": "Nom du modèle"
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "fr",
+      "Français"
+     ],
+     [
+      "darija",
+      "Darija"
+     ]
+    ],
+    "default": "fr",
+    "max_length": 10,
+    "verbose_name": "Langue"
+   },
+   "nom": "langue",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "verbose_name": "Corps du message"
+   },
+   "nom": "corps",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "verbose_name": "Archivé"
+   },
+   "nom": "archived",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_messagetemplate",
+ "label": "crm.MessageTemplate",
+ "relations_inverses": []
+}

@@ -1,0 +1,113 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "%(app_label)s_%(class)s_set",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "fait",
+      "Fait"
+     ],
+     [
+      "reporter",
+      "Reporter"
+     ],
+     [
+      "appeler",
+      "Appeler"
+     ],
+     [
+      "whatsapp",
+      "WhatsApp"
+     ]
+    ],
+    "max_length": 20
+   },
+   "nom": "geste",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "mobile",
+      "Mobile"
+     ],
+     [
+      "tablette",
+      "Tablette"
+     ],
+     [
+      "ordinateur",
+      "Ordinateur"
+     ],
+     [
+      "inconnu",
+      "Inconnu"
+     ]
+    ],
+    "max_length": 20
+   },
+   "nom": "famille_appareil",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "verbose_name": "Jour (Casablanca)"
+   },
+   "nom": "jour",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "total",
+   "type": "PositiveIntegerField"
+  }
+ ],
+ "db_table": "crm_gesterelanceappareil",
+ "label": "crm.GesteRelanceAppareil",
+ "relations_inverses": []
+}

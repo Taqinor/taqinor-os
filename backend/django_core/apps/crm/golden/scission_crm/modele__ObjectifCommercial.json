@@ -1,0 +1,177 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "objectifs_commerciaux",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "crm_objectifs",
+    "to": "authentication.customuser",
+    "verbose_name": "Responsable"
+   },
+   "nom": "owner",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "nb_leads",
+      "Nombre de leads"
+     ],
+     [
+      "nb_contacts",
+      "Leads contactés"
+     ],
+     [
+      "nb_devis",
+      "Nombre de devis"
+     ],
+     [
+      "ca_signe",
+      "CA signé (MAD TTC)"
+     ],
+     [
+      "nb_rdv",
+      "Rendez-vous effectués"
+     ]
+    ],
+    "max_length": 20,
+    "verbose_name": "Métrique"
+   },
+   "nom": "metric",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "month",
+      "Mensuel"
+     ],
+     [
+      "quarter",
+      "Trimestriel"
+     ],
+     [
+      "year",
+      "Annuel"
+     ]
+    ],
+    "default": "month",
+    "max_length": 10,
+    "verbose_name": "Périodicité"
+   },
+   "nom": "period_type",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "verbose_name": "Année"
+   },
+   "nom": "period_year",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Uniquement pour les objectifs mensuels.",
+    "null": true,
+    "verbose_name": "Mois (1–12)"
+   },
+   "nom": "period_month",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Uniquement pour les objectifs trimestriels.",
+    "null": true,
+    "verbose_name": "Trimestre (1–4)"
+   },
+   "nom": "period_quarter",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "decimal_places": 2,
+    "max_digits": 14,
+    "verbose_name": "Cible"
+   },
+   "nom": "cible",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Notes"
+   },
+   "nom": "notes",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "crm_objectifs_crees",
+    "to": "authentication.customuser",
+    "verbose_name": "Créé par"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_objectifcommercial",
+ "label": "crm.ObjectifCommercial",
+ "relations_inverses": []
+}
