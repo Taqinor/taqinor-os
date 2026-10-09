@@ -6,78 +6,25 @@
 // directement les props du contrat (onEnregistre / onVoirPdf / onDirtyChange).
 // Run : npx vitest run src/pages/crm/leads/LeadDevisPanelResterEdition.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import ConfirmProvider from '../../../providers/ConfirmProvider'
 
-vi.mock('../../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    // Aperçu jamais résolu : seul le passage de phase est sous test.
-    getProposalPdf: vi.fn(() => new Promise(() => {})),
-    reviserDevis: vi.fn(),
-    creerDevisAuto: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-// Les props reçues par le générateur sont gardées : le test joue le rôle de
-// DevisGenerator et appelle les rappels du contrat.
-const { generateur } = vi.hoisted(() => ({ generateur: { props: null } }))
-vi.mock('../../ventes/DevisGenerator', () => ({
-  default: (props) => {
-    generateur.props = props
-    return <div data-testid="generateur-monte">editId={String(props.editId)}</div>
-  },
-}))
+import { generateur } from '../../../test/mocksApiDevis.js'
+import { envoye, preparerApisPanneau, ouvrirEdition } from '../../../test/panneauDevis'
+
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../../api/ventesApi', async () => (await import('../../../test/mocksApiDevis.js')).ventesApiPanneauMock())
+vi.mock('../../../api/stockApi', async () => (await import('../../../test/mocksApiDevis.js')).stockApiMock())
+// Les props reçues par le générateur sont gardées (`generateur.props`) : le test
+// joue le rôle de DevisGenerator et appelle les rappels du contrat.
+vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/mocksApiDevis.js')).generateurSimule())
 
 import ventesApi from '../../../api/ventesApi'
-import LeadDevisPanel from './LeadDevisPanel'
-
-const LEAD = { id: 77, nom: 'Khalid' }
-const envoye = () => ({
-  data: exempleContrat('ventes', 'devis_modifiabilite', 'exemple_envoye'),
-})
-
-function rendre(props = {}) {
-  const onClose = vi.fn()
-  const onDevisChanged = vi.fn()
-  const store = configureStore({ reducer: { r: (s = {}) => s } })
-  render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ConfirmProvider>
-          <LeadDevisPanel lead={LEAD} mode="edit" existingDevisId={413}
-                          onClose={onClose} onDevisChanged={onDevisChanged} {...props} />
-        </ConfirmProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-  return { onClose, onDevisChanged }
-}
-
-// Ouvre l'éditeur d'un devis existant et attend que le générateur soit monté.
-async function ouvrirEdition(props) {
-  const rendu = rendre(props)
-  await screen.findByTestId('generateur-monte')
-  return rendu
-}
 
 const enPhaseEdition = () => screen.queryByTestId('generateur-monte') !== null
 const enPhaseApercu = () => screen.queryByRole('button', { name: /Télécharger le PDF/ }) !== null
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  generateur.props = null
-  ventesApi.getProposalPdf.mockImplementation(() => new Promise(() => {}))
-  ventesApi.getDevisById.mockResolvedValue(envoye())
-})
+beforeEach(() => preparerApisPanneau({ ventesApi }))
 
 describe('EDC11 — LeadDevisPanel : on reste dans l\'éditeur après l\'enregistrement', () => {
   it('le panneau passe au générateur les trois props du contrat EDC (+ onDone / onCancel)', async () => {

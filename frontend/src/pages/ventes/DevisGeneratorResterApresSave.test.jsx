@@ -7,119 +7,30 @@
 // Écran RÉEL rendu, API mockées.
 // Run : npx vitest run src/pages/ventes/DevisGeneratorResterApresSave.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 
-import authReducer from '../../features/auth/store/authSlice'
-import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { toast } from '../../ui/confirm'
+import {
+  PANNEAU, renderGenerateurEdition, preparerApisGenerateur, ouvrirEditionEtAttendreReference,
+} from '../../test/generateurEmbarque'
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
-    poserOverrides: vi.fn(),
-    regenererOverride: vi.fn(),
-  },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiMock())
 
+import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
-import DevisGenerator from './DevisGenerator'
-
-const PANNEAU = {
-  id: 101, nom: 'Panneau Canadien Solar 715W', prix_vente: 1200, tva: 10,
-  is_archived: false, prix_achat: 800,
-}
-const ONDULEUR = {
-  id: 102, nom: 'Onduleur réseau 5kW Monophasé', prix_vente: 9000, tva: 20,
-  is_archived: false, prix_achat: 6000,
-}
-const DEVIS = {
-  id: 42, reference: 'DEV-202610-0042', statut: 'brouillon', modifiable: true,
-  raison_non_modifiable: '', revision_possible: false, is_active: true,
-  lead: null, client: 9, mode_installation: 'residentiel', taux_tva: '20.00',
-  remise_globale: '0', updated_at: '2026-10-09T08:00:00Z',
-  etude_params: { scenario: 'Sans batterie' },
-  lignes: [
-    { id: 1, produit: PANNEAU.id, designation: PANNEAU.nom, quantite: '8',
-      prix_unitaire: '1200.00', taux_tva: '10.00', ordre: 0,
-      type_ligne: 'produit', optionnelle: false },
-    { id: 2, produit: ONDULEUR.id, designation: ONDULEUR.nom, quantite: '1',
-      prix_unitaire: '9000.00', taux_tva: '20.00', ordre: 1,
-      type_ligne: 'produit', optionnelle: false },
-  ],
-}
-
-function makeStore() {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
-function renderEdition(props) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={['/crm/leads/7']}>
-        <DevisGenerator embedded editId={42} onCancel={() => {}} {...props} />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
 
 const boutonPied = () => screen.getByRole('button', { name: /Enregistrer les modifications/ })
 const note = () => screen.getByPlaceholderText(/Conditions particulières/)
 
-beforeEach(async () => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  const stockApi = (await import('../../api/stockApi')).default
-  stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR] })
-  ventesApi.getDevisById.mockResolvedValue({ data: DEVIS })
-  ventesApi.replaceLignesDevis.mockResolvedValue({ data: { updated_at: '2026-10-09T09:30:00Z' } })
-  ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
-})
+beforeEach(() => preparerApisGenerateur({ stockApi, ventesApi }))
 
 /** Ouvre, attend la fenêtre de référence QJR581 (1,5 s), tape une note. */
 async function ouvrirEtModifier() {
-  await screen.findByRole('button', { name: /Enregistrer les modifications/ })
-  await screen.findByDisplayValue(PANNEAU.nom)
-  await new Promise((r) => setTimeout(r, 1700))
+  await ouvrirEditionEtAttendreReference()
   fireEvent.change(note(), { target: { value: 'Acompte 30 % à la commande' } })
 }
 
@@ -141,7 +52,7 @@ describe('EDC7 — rester dans l\'éditeur après « Enregistrer les modificatio
     const onDone = vi.fn()
     const onDirtyChange = vi.fn()
     const succes = vi.spyOn(toast, 'success')
-    renderEdition({ onEnregistre, onDone, onDirtyChange })
+    renderGenerateurEdition({ onEnregistre, onDone, onDirtyChange })
     // Valeur initiale : rien n'a changé.
     await waitFor(() => expect(onDirtyChange).toHaveBeenCalled())
     expect(onDirtyChange.mock.calls[0][0]).toBe(false)
@@ -166,7 +77,7 @@ describe('EDC7 — rester dans l\'éditeur après « Enregistrer les modificatio
 
   it('le jeton ré-armé part avec l\'enregistrement suivant (pas de faux conflit 409)', async () => {
     const onEnregistre = vi.fn()
-    renderEdition({ onEnregistre, onDone: vi.fn() })
+    renderGenerateurEdition({ onEnregistre, onDone: vi.fn() })
     await ouvrirEtModifier()
     await enregistrer()
     await waitFor(() => expect(onEnregistre).toHaveBeenCalledTimes(1))
@@ -180,7 +91,7 @@ describe('EDC7 — rester dans l\'éditeur après « Enregistrer les modificatio
 
   it('sans onEnregistre : repli sur onDone(42), comme avant', async () => {
     const onDone = vi.fn()
-    renderEdition({ onDone })
+    renderGenerateurEdition({ onDone })
     await ouvrirEtModifier()
     await enregistrer()
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(42))

@@ -8,95 +8,33 @@
 // Écran RÉEL rendu, API mockées.
 // Run : npx vitest run src/pages/ventes/generator/NavigationSections.test.jsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within, fireEvent, act } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, waitFor, within, fireEvent, act } from '@testing-library/react'
 
-import authReducer from '../../../features/auth/store/authSlice'
-import ventesReducer from '../../../features/ventes/store/ventesSlice'
+import {
+  DEVIS_INSTALLATION, makeStoreGenerateur, renderGenerateurEdition,
+  preparerApisGenerateur, matchMediaDe,
+} from '../../../test/generateurEmbarque'
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getClients: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: null })),
-  },
-}))
-vi.mock('../../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-vi.mock('../../../api/parametresApi', () => ({
-  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
-}))
-vi.mock('../../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrefillSite: vi.fn(() => Promise.resolve({ data: {} })),
-    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
-    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
-    getPrixApplicable: vi.fn(() => Promise.resolve({ data: null })),
-    patchDevis: vi.fn(),
-    replaceLignesDevis: vi.fn(),
-    createDevisAtomic: vi.fn(),
-    patchEtudeParams: vi.fn(),
-  },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/mocksApiDevis.js')).crmApiMock())
+vi.mock('../../../api/stockApi', async () => (await import('../../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../../api/parametresApi', async () => (await import('../../../test/mocksApiDevis.js')).parametresApiMock())
+vi.mock('../../../api/ventesApi', async () => (await import('../../../test/mocksApiDevis.js')).ventesApiMock())
 
+import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import DevisGenerator from '../DevisGenerator'
 import { CLE_CARTES_REPLIEES } from './cartesRepliees'
 
-const DEVIS = {
-  id: 42, reference: 'DEV-202610-0042', statut: 'brouillon', modifiable: true,
-  raison_non_modifiable: '', revision_possible: false, is_active: true,
-  lead: null, client: 9, mode_installation: 'residentiel', taux_tva: '20.00',
-  remise_globale: '0', updated_at: '2026-10-09T08:00:00Z',
-  etude_params: { scenario: 'Sans batterie' },
-  lignes: [
-    { id: 1, produit: null, designation: 'Installation', quantite: '1',
-      prix_unitaire: '1000.00', taux_tva: '20.00', ordre: 0,
-      type_ligne: 'produit', optionnelle: false },
-  ],
-}
-
-function makeStore({ role = 'normal' } = {}) {
-  return configureStore({
-    reducer: { auth: authReducer, ventes: ventesReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role, role_nom: 'Commercial', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-}
-
-function rendre({ editId = null, role } = {}) {
-  return render(
-    <Provider store={makeStore({ role })}>
-      <MemoryRouter initialEntries={['/crm/leads/7']}>
-        <DevisGenerator embedded editId={editId} onDone={() => {}} onCancel={() => {}} />
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const rendre = ({ editId = null, role } = {}) => renderGenerateurEdition(
+  { editId }, { store: makeStoreGenerateur({ role }) })
 
 const nav = () => screen.getByRole('navigation', { name: 'Sections du devis' })
 const puces = () => within(nav()).queryAllByRole('button').map((b) => b.textContent)
-const matchMediaDe = (reduit) => vi.fn().mockImplementation((q) => ({
-  matches: reduit && q.includes('prefers-reduced-motion: reduce'), media: q, onchange: null,
-  addListener: vi.fn(), removeListener: vi.fn(),
-  addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-}))
 
 const MATCH_MEDIA_ORIGINAL = window.matchMedia
 beforeEach(() => {
-  vi.clearAllMocks()
-  try { window.localStorage.clear() } catch { /* stockage indisponible */ }
+  preparerApisGenerateur({ stockApi, ventesApi, produits: [], devis: DEVIS_INSTALLATION })
   window.matchMedia = matchMediaDe(false)
-  ventesApi.getDevisById.mockResolvedValue({ data: DEVIS })
 })
 afterEach(() => {
   window.matchMedia = MATCH_MEDIA_ORIGINAL
