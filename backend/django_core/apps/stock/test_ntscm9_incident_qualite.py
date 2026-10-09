@@ -144,3 +144,64 @@ class Ntscm9ApiTests(Ntscm9Base):
             date_incident=JOUR)
         res = auth(self.admin).get(self.URL)
         self.assertEqual(len(res.data.get('results', res.data)), 1)
+
+
+class ResolutionServeurTests(Ntscm9Base):
+    """ERR-ASTK226-RESOLUTION-INCIDENT-AUTEUR-SERVEUR — la résolution d'un
+    incident enregistre son auteur (utilisateur connecté) et la date SERVEUR ;
+    les valeurs envoyées par le client sont ignorées."""
+
+    def setUp(self):
+        super().setUp()
+        self.responsable = User.objects.create_user(
+            username='errastk226_resp', password='x',
+            role_legacy='responsable', company=self.company)
+        self.incident = IncidentQualiteFournisseur.objects.create(
+            company=self.company, fournisseur=self.fournisseur,
+            date_incident=JOUR, declare_par=self.admin,
+            gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE)
+
+    def test_patch_resolu_pose_auteur_et_date_serveur(self):
+        from django.utils import timezone
+        res = auth(self.responsable).patch(
+            f'{self.URL}{self.incident.id}/', {
+                'resolu': True, 'date_resolution': '2001-01-01',
+                'resolu_par': self.admin.id}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.incident.refresh_from_db()
+        self.assertTrue(self.incident.resolu)
+        self.assertEqual(self.incident.resolu_par_id, self.responsable.id)
+        self.assertEqual(self.incident.date_resolution, timezone.localdate())
+        self.assertEqual(res.data['resolu_par'], self.responsable.id)
+
+    def test_reouverture_efface_la_resolution(self):
+        api = auth(self.responsable)
+        api.patch(f'{self.URL}{self.incident.id}/', {'resolu': True},
+                  format='json')
+        res = api.patch(f'{self.URL}{self.incident.id}/', {'resolu': False},
+                        format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.incident.refresh_from_db()
+        self.assertIsNone(self.incident.resolu_par_id)
+        self.assertIsNone(self.incident.date_resolution)
+
+    def test_patch_sans_bascule_garde_l_auteur(self):
+        api = auth(self.responsable)
+        api.patch(f'{self.URL}{self.incident.id}/', {'resolu': True},
+                  format='json')
+        auth(self.admin).patch(
+            f'{self.URL}{self.incident.id}/',
+            {'description': 'Complément'}, format='json')
+        self.incident.refresh_from_db()
+        self.assertEqual(self.incident.resolu_par_id, self.responsable.id)
+
+    def test_creation_deja_resolue_auteur_serveur(self):
+        from django.utils import timezone
+        res = auth(self.admin).post(self.URL, {
+            'fournisseur': self.fournisseur.id,
+            'date_incident': JOUR.isoformat(), 'resolu': True,
+            'date_resolution': '2001-01-01'}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        incident = IncidentQualiteFournisseur.objects.get(id=res.data['id'])
+        self.assertEqual(incident.resolu_par_id, self.admin.id)
+        self.assertEqual(incident.date_resolution, timezone.localdate())

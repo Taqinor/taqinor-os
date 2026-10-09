@@ -1565,7 +1565,7 @@
     bat_chimie ∈ {autre, lfp, lmo, lto, nca, nmc, plomb_agm, plomb_gel, plomb_ouvert}
     type_fiche ∈ {autre, batterie, cable, limiteur, logger, module, onduleur, optimiseur, pompe, protection, structure, variateur_pompage}
 - frontend/src/api/stockApi.js :: createIncidentQualiteFournisseur -> /api/django/stock/incidents-qualite-fournisseur  [IncidentQualiteFournisseurSerializer]
-    champs: bon_commande_fournisseur, cout_impact_mad, created_at, date_incident, date_resolution, declare_par, description, est_bloquant, fournisseur, fournisseur_nom, gravite, id, produit, quantite_affectee, resolu, retour, type_incident
+    champs: bon_commande_fournisseur, cout_impact_mad, created_at, date_incident, date_resolution, declare_par, description, est_bloquant, fournisseur, fournisseur_nom, gravite, id, produit, quantite_affectee, resolu, resolu_par, retour, type_incident
     gravite ∈ {critique, majeure, mineure}
     type_incident ∈ {autre, documentation_manquante, endommage, erreur_reference, non_conforme}
 - frontend/src/api/stockApi.js :: createModeleBcf -> /api/django/stock/modeles-bcf  [ModeleBonCommandeFournisseurSerializer]
@@ -1633,7 +1633,7 @@
     bat_chimie ∈ {autre, lfp, lmo, lto, nca, nmc, plomb_agm, plomb_gel, plomb_ouvert}
     type_fiche ∈ {autre, batterie, cable, limiteur, logger, module, onduleur, optimiseur, pompe, protection, structure, variateur_pompage}
 - frontend/src/api/stockApi.js :: getIncidentsQualiteFournisseurDe -> /api/django/stock/incidents-qualite-fournisseur  [IncidentQualiteFournisseurSerializer]
-    champs: bon_commande_fournisseur, cout_impact_mad, created_at, date_incident, date_resolution, declare_par, description, est_bloquant, fournisseur, fournisseur_nom, gravite, id, produit, quantite_affectee, resolu, retour, type_incident
+    champs: bon_commande_fournisseur, cout_impact_mad, created_at, date_incident, date_resolution, declare_par, description, est_bloquant, fournisseur, fournisseur_nom, gravite, id, produit, quantite_affectee, resolu, resolu_par, retour, type_incident
     gravite ∈ {critique, majeure, mineure}
     type_incident ∈ {autre, documentation_manquante, endommage, erreur_reference, non_conforme}
 - frontend/src/api/stockApi.js :: getInventairesAnnuels -> /api/django/stock/inventaires-annuels  [InventaireAnnuelSerializer]
@@ -1689,7 +1689,7 @@
     bat_chimie ∈ {autre, lfp, lmo, lto, nca, nmc, plomb_agm, plomb_gel, plomb_ouvert}
     type_fiche ∈ {autre, batterie, cable, limiteur, logger, module, onduleur, optimiseur, pompe, protection, structure, variateur_pompage}
 - frontend/src/api/stockApi.js :: updateIncidentQualiteFournisseur -> /api/django/stock/incidents-qualite-fournisseur/<>  [IncidentQualiteFournisseurSerializer]
-    champs: bon_commande_fournisseur, cout_impact_mad, created_at, date_incident, date_resolution, declare_par, description, est_bloquant, fournisseur, fournisseur_nom, gravite, id, produit, quantite_affectee, resolu, retour, type_incident
+    champs: bon_commande_fournisseur, cout_impact_mad, created_at, date_incident, date_resolution, declare_par, description, est_bloquant, fournisseur, fournisseur_nom, gravite, id, produit, quantite_affectee, resolu, resolu_par, retour, type_incident
     gravite ∈ {critique, majeure, mineure}
     type_incident ∈ {autre, documentation_manquante, endommage, erreur_reference, non_conforme}
 - frontend/src/api/stockApi.js :: updateModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
