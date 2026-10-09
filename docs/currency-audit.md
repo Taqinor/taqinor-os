@@ -99,15 +99,15 @@ with no rate column at all — mono-MAD in practice.
 | ventes | LignePrixListe | `apps/ventes/models.py:2086` | prix_unitaire |
 | ventes | PalierRemiseVolume | `apps/ventes/models.py:2175` | remise_pct |
 | ventes | PlanCommission | `apps/ventes/models.py:2235` | montant_par_kwc |
-| ventes | FactureSource | `apps/ventes/models_facturation.py:96` | sous_total_ht |
-| ventes | AffectationPaiement | `apps/ventes/models_facturation.py:395` | montant |
-| ventes | NoteDebit | `apps/ventes/models_facturation.py:429` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
-| ventes | LigneNoteDebit | `apps/ventes/models_facturation.py:499` | prix_unitaire, remise, taux_tva |
-| ventes | RetenueSubie | `apps/ventes/models_facturation.py:531` | montant |
-| ventes | AbandonCreance | `apps/ventes/models_facturation.py:581` | montant |
-| ventes | PromessePaiement | `apps/ventes/models_facturation.py:617` | montant_promis |
-| ventes | PaymentLink | `apps/ventes/models_facturation.py:686` | montant |
-| ventes | RemiseEncaissement | `apps/ventes/models_facturation.py:785` | montant_declare |
+| ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
+| ventes | AffectationPaiement | `apps/ventes/models_facturation.py:397` | montant |
+| ventes | NoteDebit | `apps/ventes/models_facturation.py:431` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
+| ventes | LigneNoteDebit | `apps/ventes/models_facturation.py:501` | prix_unitaire, remise, taux_tva |
+| ventes | RetenueSubie | `apps/ventes/models_facturation.py:533` | montant |
+| ventes | AbandonCreance | `apps/ventes/models_facturation.py:583` | montant |
+| ventes | PromessePaiement | `apps/ventes/models_facturation.py:622` | montant_promis |
+| ventes | PaymentLink | `apps/ventes/models_facturation.py:691` | montant |
+| ventes | RemiseEncaissement | `apps/ventes/models_facturation.py:790` | montant_declare |
 | ventes | SubventionDossier | `apps/ventes/models_regulatory.py:306` | montant_accorde, montant_demande |
 
 ## Models WITH an explicit devise/currency field
