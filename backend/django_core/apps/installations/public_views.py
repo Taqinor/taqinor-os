@@ -1,4 +1,6 @@
 """Vues publiques tokenisées de l'app Installations (SANS LOGIN)."""
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -94,6 +96,8 @@ class InterventionRapportPhotoPublicView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [PublicPhotoThrottle]
 
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY,
+                              404: OpenApiTypes.OBJECT})
     def get(self, request, token, att_id):
         interv = (
             Intervention.objects
