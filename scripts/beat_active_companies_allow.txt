@@ -9,17 +9,14 @@
 # compta : chaque écriture passe par un service scopé société qui ne produit
 # rien pour un tenant sans données ; laissé tel quel pour ne pas modifier la
 # sémantique comptable. Migrable séparément si un skip explicite est voulu.
-backend/django_core/apps/compta/tasks.py
 # chat : maintenance de sessions internes (ni facturation ni relance) — hors
 # périmètre SCA19.
-backend/django_core/apps/chat/tasks.py
 
 # ── Filtre actif=True recopié à la main : SÉMANTIQUE DÉJÀ CORRECTE ──────────
 # Ces fichiers n'ont jamais balayé un tenant suspendu ; il leur reste seulement
 # à passer par la source unique. Hors périmètre d'AUD415 (« touch only the
 # named files ») : à migrer par une tâche dédiée, sans urgence de sécurité.
 backend/django_core/apps/adminops/tasks.py
-backend/django_core/apps/compta/scheduled.py
 
 # AFAC44/AFAC93 - PASSIF GELE : requetes sur un modele a FK company, dans un module beat,
 # sans active_companies() ni filtre company. Cle stable fichier::fonction. NE PEUT QUE

@@ -530,6 +530,13 @@ GARDES = {
         ('Test the page_size front sous le plafond serveur (APAR65) checker itself',
          'python -m unittest scripts.tests.test_check_page_size_front -v',
          '.'),
+        # ALEA43 - UNE seule definition de « en retard » (controle_suivi.py).
+        ('Check retard de touche defini en un seul endroit (ALEA43)',
+         'python scripts/check_retard_unique.py',
+         '.'),
+        ('Test the retard-unique checker itself (ALEA43)',
+         'python -m unittest scripts.tests.test_check_retard_unique -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
@@ -588,6 +595,31 @@ GARDES = {
          '.'),
         ('Check for naive datetime / DateField timestamps (YDATA10/11)',
          'python scripts/check_naive_datetime.py',
+         '.'),
+        # ADEP26 — une ligne d'allowlist dont le fichier n'existe plus rougit la garde concernée.
+        ('Test allowlists sans ligne morte (fichier absent, ADEP26)',
+         'python -m unittest scripts.tests.test_allowlists_orphelines -v',
+         '.'),
+        # ACRM51 — toute lecture « devis accepté / envoyé » du CRM passe par la version en vigueur.
+        ('Check lecture de devis sans version en vigueur (is_active, ACRM51)',
+         'python scripts/check_version_en_vigueur.py',
+         '.'),
+        ('Test the version-en-vigueur checker itself (ACRM51)',
+         'python -m unittest scripts.tests.test_check_version_en_vigueur -v',
+         '.'),
+        # ACRM54 — toute @action crm à écritures multiples est atomique.
+        ('Check actions crm multi-ecritures atomiques (ACRM54)',
+         'python scripts/check_actions_atomiques.py',
+         '.'),
+        ('Test the actions-atomiques checker itself (ACRM54)',
+         'python -m unittest scripts.tests.test_check_actions_atomiques -v',
+         '.'),
+        # APRF28 — tout export XLSX/ZIP est borné (should_async_export / ids) ou en exception datée.
+        ('Check exports non bornes (should_async_export, APRF28)',
+         'python scripts/check_exports_bornes.py',
+         '.'),
+        ('Test the exports-bornes checker itself (APRF28)',
+         'python -m unittest scripts.tests.test_check_exports_bornes -v',
          '.'),
         # ADOC79 — une seule primitive de lecture d'IP (core.throttling.ip_de_requete).
         ('Check lecture d IP hors primitive (ip_de_requete, ADOC79)',
