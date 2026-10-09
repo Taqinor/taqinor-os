@@ -619,10 +619,13 @@ def send_devis_followup_nudges():
 
     # Only look at envoye devis with a known send date.
     # QJR520 — une version remplacée (is_active=False) n'est jamais relancée.
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     candidates = Devis.objects.filter(
         statut=Devis.Statut.ENVOYE,
         is_active=True,
         date_envoi__isnull=False,
+        company_id__in=active_company_ids(),
     ).select_related('client', 'company', 'created_by').prefetch_related(
         'nudge_logs',
     )
@@ -811,9 +814,12 @@ def expire_stale_devis():
 
     # Candidats : devis envoyés uniquement (jamais accepte/refuse/expire).
     # QJR520 — une version remplacée n'expire pas (elle n'est plus en jeu).
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     candidates = Devis.objects.filter(
         statut=Devis.Statut.ENVOYE,
         is_active=True,
+        company_id__in=active_company_ids(),
     ).select_related('lead', 'lead__company')
 
     for devis in candidates:

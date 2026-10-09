@@ -85,8 +85,13 @@ def check_overdue_factures():
     premiers_niveaux = {}
     # On ne considère que les statuts « ouverts » : émise (déjà en retard exclu
     # car déjà au bon statut → idempotence), jamais payée/annulée.
+    # AFAC43 (C-AFAC-036) — un locataire suspendu (`actif=False`) n'est
+    # jamais balayé (SCA19, `authentication.selectors.active_company_ids`).
+    from authentication.selectors import active_company_ids
     candidates = Facture.objects.filter(
-        statut=Facture.Statut.EMISE).select_related('client').prefetch_related(
+        statut=Facture.Statut.EMISE,
+        company_id__in=active_company_ids(),
+    ).select_related('client').prefetch_related(
         'lignes', 'paiements', 'avoirs')
     for facture in candidates:
         # CIQ214 — en retard seulement si l'EXIGIBLE reste dû (une retenue de
@@ -129,9 +134,12 @@ def _check_promesses_expirees(today):
     from .models import PromessePaiement
 
     rompues = 0
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     en_cours = PromessePaiement.objects.filter(
         statut=PromessePaiement.Statut.EN_COURS,
         date_promise__lt=today,
+        facture__company_id__in=active_company_ids(),
     ).select_related('facture').prefetch_related(
         'facture__paiements', 'facture__avoirs',
         'facture__retenues_subies', 'facture__affectations_paiement')
@@ -272,8 +280,11 @@ def relance_reminders():
     # impayés : un seul propriétaire de la définition (`recouvrement`).
     from .recouvrement import STATUTS_NON_RELANCABLES, facture_relancable
 
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
+        company_id__in=active_company_ids(),
     ).exclude(
         statut__in=STATUTS_NON_RELANCABLES,
     ).exclude(
@@ -434,9 +445,12 @@ def pre_echeance_reminders():
 
     today = casablanca_today()
     sent = 0
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     candidates = Facture.objects.filter(
         statut=Facture.Statut.EMISE, exclu_relances=False,
         date_echeance__isnull=False,
+        company_id__in=active_company_ids(),
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
@@ -502,8 +516,12 @@ def releve_mensuel_reminders():
     marker = f'{RELEVE_MENSUEL_MARKER}-{mois}'
     sent = 0
 
+    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    from authentication.selectors import active_company_ids
     clients = client_base_qs().filter(
-        releve_mensuel_auto=True).exclude(email__isnull=True).exclude(email='')
+        releve_mensuel_auto=True,
+        company_id__in=active_company_ids(),
+    ).exclude(email__isnull=True).exclude(email='')
 
     for client in clients:
         # Idempotence : un seul envoi par client et par mois.
