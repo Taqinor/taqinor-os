@@ -54,11 +54,13 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
     def _company(self, request):
         return getattr(request.user, 'company', None)
 
+    @extend_schema(responses=OpenApiTypes.ANY)
     def list(self, request):
         resume = resume_pour_utilisateur(
             self._company(request), request.user)
         return Response(resume)
 
+    @extend_schema(request=None, responses=OpenApiTypes.ANY)
     @action(detail=True, methods=['post'], url_path='ignorer',
             permission_classes=[IsAuthenticated])
     def ignorer(self, request, pk=None):
@@ -67,6 +69,7 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=OpenApiTypes.ANY)
     @action(detail=False, methods=['post'], url_path='ignorer-tout',
             permission_classes=[IsAuthenticated])
     def ignorer_tout(self, request):
@@ -75,6 +78,7 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=OpenApiTypes.ANY)
     @action(detail=True, methods=['post'], url_path='marquer-fait',
             permission_classes=[IsAuthenticated])
     def marquer_fait(self, request, pk=None):

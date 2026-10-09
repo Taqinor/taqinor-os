@@ -11,8 +11,30 @@ from .models import ElementSupprime
 from .permissions import PeutConsulterCorbeille, PeutRestaurerCorbeille
 from .serializers import ElementSupprimeSerializer
 from .services import RestaurationImpossible, restaurer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers
+from rest_framework.parsers import JSONParser
+from django.utils.dateparse import parse_date, parse_datetime
 
 
+_FILTRES = [
+    OpenApiParameter('type', OpenApiTypes.STR, required=False),
+    OpenApiParameter('depuis', OpenApiTypes.DATETIME, required=False),
+    OpenApiParameter('jusqua', OpenApiTypes.DATETIME, required=False),
+    OpenApiParameter('restaures', OpenApiTypes.STR, required=False,
+                     enum=['1', 'true', 'True', '0', 'false']),
+]
+
+
+def _borne_temporelle(valeur, nom):
+    """Date ou date-heure ISO ; sinon 400 nommant le paramètre (jamais 500)."""
+    if parse_datetime(valeur) is not None or parse_date(valeur) is not None:
+        return valeur
+    raise ValidationError({nom: 'Date ou date-heure ISO attendue.'})
+
+
+@extend_schema_view(list=extend_schema(parameters=_FILTRES))
 class CorbeilleViewSet(CompanyScopedModelViewSet):
     """Corbeille transverse : liste paginée filtrable + restauration.
 
@@ -30,6 +52,7 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
     serializer_class = ElementSupprimeSerializer
     # Pas de PUT/PATCH/DELETE ; POST sert UNIQUEMENT à l'action `restaurer/`.
     http_method_names = ['get', 'post', 'head', 'options']
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         # Une garde déclarée par l'@action PRIME (sinon le `permission_classes=`
@@ -66,17 +89,23 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(type_libelle__iexact=type_libelle)
         depuis = params.get('depuis')
         if depuis:
-            qs = qs.filter(supprime_le__gte=depuis)
+            qs = qs.filter(
+                supprime_le__gte=_borne_temporelle(depuis, 'depuis'))
         jusqua = params.get('jusqua')
         if jusqua:
-            qs = qs.filter(supprime_le__lte=jusqua)
+            qs = qs.filter(
+                supprime_le__lte=_borne_temporelle(jusqua, 'jusqua'))
         return qs
 
+    @extend_schema(exclude=True)
     def create(self, request, *args, **kwargs):
         # Le journal n'est jamais alimenté depuis l'API (seulement par le bus
         # d'événements) — POST reste ouvert pour l'action `restaurer/`.
         raise MethodNotAllowed('POST')
 
+    @extend_schema(request=None, responses=inline_serializer('CorbeilleRestauration', {
+        'restaure': serializers.BooleanField(),
+        'element': ElementSupprimeSerializer()}))
     @action(detail=True, methods=['post'], url_path='restaurer',
             permission_classes=[IsAdminOrResponsableTier, PeutRestaurerCorbeille])
     def restaurer(self, request, pk=None):
@@ -105,6 +134,9 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
             'element': ElementSupprimeSerializer(element).data,
         })
 
+    @extend_schema(
+        parameters=_FILTRES,
+        responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], url_path='export-xlsx')
     def export_xlsx(self, request):
         """NTUX24 — export .xlsx du journal de corbeille (audit de rétention
