@@ -6,11 +6,19 @@
 from django.db import migrations, models
 
 
+#: YOPSB4 — mise à jour par lots (batch) de clés primaires (jamais un UPDATE global
+#: qui verrouillerait longtemps la table des devis).
+TAILLE_LOT = 500
+
+
 def figer_devis_envoyes(apps, schema_editor):
     Devis = apps.get_model('ventes', 'Devis')
-    (Devis.objects
-     .exclude(statut='brouillon', date_envoi__isnull=True)
-     .update(regles_calcul=1))
+    ids = list(Devis.objects
+               .exclude(statut='brouillon', date_envoi__isnull=True)
+               .order_by('pk').values_list('pk', flat=True))
+    for debut in range(0, len(ids), TAILLE_LOT):
+        lot = ids[debut:debut + TAILLE_LOT]
+        Devis.objects.filter(pk__in=lot).update(regles_calcul=1)
 
 
 class Migration(migrations.Migration):
