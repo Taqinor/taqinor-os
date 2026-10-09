@@ -83,7 +83,7 @@ class InterventionRapportPublicView(APIView):
                 {'detail': 'Lien invalide ou expiré.'},
                 status=status.HTTP_404_NOT_FOUND)
         from .selectors import intervention_rapport_public_payload
-        return Response(intervention_rapport_public_payload(interv))
+        return Response(intervention_rapport_public_payload(interv, request))
 
 
 class InterventionRapportPhotoPublicView(APIView):

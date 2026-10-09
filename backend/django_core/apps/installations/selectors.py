@@ -2607,7 +2607,7 @@ def intervention_public_payload(interv):
 
 
 # ── ZFSM2 — lien public tokenisé du compte-rendu signé ───────────────────────
-def intervention_rapport_public_payload(interv):
+def intervention_rapport_public_payload(interv, request=None):
     """ZFSM2 — payload public (read-only, tokenisé) du compte-rendu signé :
     mêmes données que le PDF F19 (photos avant/après, réserves, matériel
     consommé SANS prix d'achat ni marge, signature), plus un lien de
@@ -2627,7 +2627,7 @@ def intervention_rapport_public_payload(interv):
         # APDF38 — URL tokenisées (route publique), plus le téléchargement
         # authentifié de ``records``.
         'photos': intervention_pdf._photos_payload(
-            interv, public_token=interv.lien_rapport_token),
+            interv, public_token=interv.lien_rapport_token, request=request),
         'serials': intervention_pdf._serials_payload(interv),
         'consommation': intervention_pdf._consommation_payload(interv),
         'reserves': intervention_pdf._reserves_payload(interv),
