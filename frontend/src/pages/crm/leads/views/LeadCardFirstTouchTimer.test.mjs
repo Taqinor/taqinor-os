@@ -27,7 +27,7 @@ test('QX31 : formatDepuis produit un libellé FR compact (min/h/j)', () => {
 })
 
 test('QX31 : le minuteur n\'est calculé que pour la colonne NEW', () => {
-  assert.match(SRC, /const minutesNouveau = lead\.stage === 'NEW' \? minutesDepuis\(lead\.date_creation\) : null/)
+  assert.match(SRC, /const minutesNouveau = lead\.stage === NEW_STAGE \? minutesDepuis\(lead\.date_creation\) : null/)
 })
 
 test('QX31 : le badge SLA « À contacter — …, non contacté » est la ligne d\'action quand minutesNouveau est posé', () => {

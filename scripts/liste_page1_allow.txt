@@ -70,7 +70,6 @@ frontend/src/features/portail/partenaire/PortailPartenaireLeads.jsx::charger
 frontend/src/features/uxviews/useServerSavedViews.js::useServerSavedViews
 frontend/src/pages/Journal.jsx::run
 frontend/src/pages/Rapports.jsx::MesRapports
-frontend/src/pages/activities/MesActivitesPage.jsx::loadTeam
 frontend/src/pages/admin/RolesManagement.jsx::load
 frontend/src/pages/admin/TenantsConsole.jsx::TenantsConsole
 frontend/src/pages/admin/UsersManagement.jsx::load
@@ -78,11 +77,9 @@ frontend/src/pages/approbations/ApprobationsPage.jsx::load
 frontend/src/pages/crm/ClientForm.jsx::ClientForm
 frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour
 frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget
-frontend/src/pages/crm/ParrainagePage.jsx::load
 frontend/src/pages/crm/RelancesDuJourWidget.jsx::CadencesEchues
 frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger
 frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage
-frontend/src/pages/crm/SiteProfilePage.jsx::SiteProfilePage
 frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils
 frontend/src/pages/crm/VisiteursPage.jsx::chargerEquipe
 frontend/src/pages/crm/VisiteursPage.jsx::toggleDetail

@@ -240,6 +240,34 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     expect(await screen.findByText(/FAC-1 créée/)).toBeInTheDocument()
   })
 
+  // ATOT31 — les boutons suivent `solde.porte_facturation` du contrat
+  // `devis_solde.json` (exemples COMMITTÉS, jamais un mock inventé).
+  const avecPorte = (variante) => ({
+    ...devisAccepte,
+    solde: exempleContrat('ventes', 'devis_solde', variante).solde,
+  })
+
+  it('porte aucune masque generer-facture', () => {
+    renderTab({ state: leadState({ devis: [avecPorte('exemple_tout_facture')] }) })
+    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  })
+
+  it('porte tranche', () => {
+    renderTab({ state: leadState({ devis: [avecPorte('exemple')] }) })
+    expect(screen.getByRole('button', { name: /Générer la facture/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  })
+
+  it('porte libre', () => {
+    renderTab({ state: leadState({ devis: [avecPorte('exemple_vide')] }) })
+    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
+  })
+
   it('« Créer le chantier » appelle installationsApi puis onAction(\'refresh\')', async () => {
     const user = userEvent.setup()
     const { onAction } = renderTab({ state: leadState({ devis: [devisAccepte] }) })

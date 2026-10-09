@@ -3,6 +3,7 @@
 // récompense par défaut + l'activation se règlent dans Paramètres.
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { Table } from '../reporting/Table'
 import { formatMAD } from '../../lib/format'
 
@@ -34,8 +35,11 @@ export default function ParrainagePage() {
   }
   useEffect(() => { load() }, [])
   useEffect(() => {
-    crmApi.getClients()
-      .then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+    // ALEA20 — sélecteur parrain : TOUS les clients (pagination complète).
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getClients({ page, page_size: pageSize }).then((r) => r.data))
+      .then(res => setClients(Array.isArray(res) ? res : (res?.results ?? [])))
+      .catch(() => {})
   }, [])
 
   const create = async () => {
