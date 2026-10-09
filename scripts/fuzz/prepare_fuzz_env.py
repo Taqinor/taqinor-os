@@ -142,6 +142,8 @@ def main():
         'username': USERNAME,
         'user_id': user.pk,
         'company_id': company.pk,
+        # ENF1b — rôle du compte, protégé par le crochet ``before_call``.
+        'role_id': user.role_id,
         'fk_ids': table,
     }
     with open(sys.argv[1], 'w', encoding='utf-8') as fh:
