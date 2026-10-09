@@ -26,7 +26,7 @@ class AgentActionLog(models.Model):
 
     # Société forcée côté serveur (jamais depuis le corps de requête).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='agent_action_logs', verbose_name='Société')
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
