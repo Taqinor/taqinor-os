@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -242,6 +242,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     notes: F('notes'),
   }
   const [fields, setFields] = useState(initialFields)
+  // ACHT57 — resynchronise le formulaire sur `current` après chaque
+  // rafraîchissement (avancée du stepper, dates posées par le serveur) : un
+  // champ NON touché suit la nouvelle valeur serveur, un champ édité par
+  // l'utilisateur garde sa saisie. Le diff envoyé à « Mettre à jour » se
+  // calcule contre `initialFields`, donc un champ périmé n'est jamais renvoyé.
+  const initialKey = JSON.stringify(initialFields)
+  const baseRef = useRef(initialKey)
+  useEffect(() => {
+    if (baseRef.current === initialKey) return
+    const ancien = JSON.parse(baseRef.current)
+    baseRef.current = initialKey
+    setFields(f => Object.fromEntries(Object.keys(initialFields).map(
+      k => [k, JSON.stringify(f[k]) === JSON.stringify(ancien[k]) ? initialFields[k] : f[k]])))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey])
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const dirty = JSON.stringify(fields) !== JSON.stringify(initialFields)
   useDirtyGuard(dirty)
@@ -522,8 +537,13 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     setStatutBlockedReasons(null)
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
+      // ACHT57 — SEUL le diff des champs modifiés depuis l'ouverture part au
+      // serveur (un formulaire périmé ne recule plus un statut, un chantier
+      // clôturé n'est plus rejeté sur ses champs gelés).
       const data = Object.fromEntries(
-        Object.entries(fields).map(([k, v]) => [k, nullable(v)]))
+        Object.entries(fields)
+          .filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(initialFields[k]))
+          .map(([k, v]) => [k, nullable(v)]))
       if (motifDerogation.trim()) data.motif_derogation_8221 = motifDerogation.trim()
       await dispatch(updateInstallation({ id, data })).unwrap()
       setMotifDerogation('')
@@ -1135,6 +1155,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </FormField>
                 <FormField label="Puissance installée (kWc)" htmlFor="ch-kwc">
                   <Input id="ch-kwc" type="number" step="any" value={fields.puissance_installee_kwc ?? ''}
+                         disabled={!!current.cloture_verrouillee}
                          onChange={(e) => set('puissance_installee_kwc', e.target.value)} />
                 </FormField>
                 <FormField label="Jours-homme estimés" htmlFor="ch-je">
