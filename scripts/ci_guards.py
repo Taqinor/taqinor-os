@@ -470,6 +470,13 @@ GARDES = {
         ('Test the tests squelettes (skip inconditionnel, ACAL341) checker itself',
          'python -m unittest scripts.tests.test_check_tests_skips_inconditionnels -v',
          '.'),
+        # ACAL343 - le document de référence roof_layout_v2 porte toutes les clés racine, chacune avec un écrivain.
+        ('Check clés du document roof_layout_v2 (exemple + écrivain, ACAL343)',
+         'python scripts/check_calepinage_cles_document.py',
+         '.'),
+        ('Test the clés du document roof_layout_v2 (exemple + écrivain, ACAL343) checker itself',
+         'python -m unittest scripts.tests.test_check_calepinage_cles_document -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
