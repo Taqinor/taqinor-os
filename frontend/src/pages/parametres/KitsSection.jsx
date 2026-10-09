@@ -10,7 +10,7 @@
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
-import { toast } from '../../ui/confirm'
+import { toast, useConfirmDialog } from '../../ui/confirm'
 import outillageApi from '../../api/outillageApi'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -22,6 +22,7 @@ import { SectionTitle } from './peComponents'
 const NONE = '__none__'
 
 export default function KitsSection() {
+  const { confirmDelete } = useConfirmDialog()
   const [kits, setKits] = useState([])
   const [outils, setOutils] = useState([])
   const [types, setTypes] = useState([])
@@ -88,7 +89,7 @@ export default function KitsSection() {
     } catch { /* */ }
   }
   const delKit = async (k) => {
-    if (!window.confirm(`Supprimer le kit « ${k.nom} » et sa liste d'outils ?`)) return
+    if (!(await confirmDelete({ title: `Supprimer le kit « ${k.nom} » ?`, description: "Sa liste d'outils sera supprimée aussi." }))) return
     try { await outillageApi.deleteKit(k.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
   }

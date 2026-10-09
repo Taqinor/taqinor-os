@@ -425,11 +425,26 @@
     },
     "scanner_mouvement_hazmat_refuse": {
       "endpoint": "POST /api/django/stock/scanner/mouvement/",
-      "pourquoi": "NOUVEAU — ASTK200 : une ENTRÉE d'un produit dangereux dans un casier non déclaré compatible (casiers-hazmat) est refusée en 400 sur la clé du champ fautif. Texte = PROPOSITION figée par ASTK200 à la construction ; hors affirmation serveur tant que non construite.",
+      "pourquoi": "ASTK200 (construit) : une ENTRÉE d'un produit dangereux dans un casier non déclaré compatible (casiers-hazmat) est refusée en 400 sur la clé du champ fautif (`services_hazmat.exiger_casier_compatible`, libellé de la classe). `exemple` = clés de champ ; `exemple_erreur_400` = corps réel complet (enveloppe YAPIC3 `error` comprise), affirmé par test_contrats_wms_astk.py (ERR-ASTK196).",
       "exemple": {
         "bin_destination": [
-          "Casier non compatible avec la classe de danger de ce produit (BATTERIE_LITHIUM)."
+          "Casier non autorisé pour la classe de danger « Batterie lithium »."
         ]
+      },
+      "exemple_erreur_400": {
+        "bin_destination": [
+          "Casier non autorisé pour la classe de danger « Batterie lithium »."
+        ],
+        "error": {
+          "code": "validation_error",
+          "message": "{'bin_destination': [ErrorDetail(string='Casier non autorisé pour la classe de danger « Batterie lithium ».', code='invalid')]}",
+          "fields": {
+            "bin_destination": [
+              "Casier non autorisé pour la classe de danger « Batterie lithium »."
+            ]
+          },
+          "request_id": "<request_id>"
+        }
       },
       "exemple_corps": {
         "produit": 5,

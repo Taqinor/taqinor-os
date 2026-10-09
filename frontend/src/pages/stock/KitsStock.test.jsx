@@ -104,4 +104,12 @@ describe('ASTK229 — nomenclatures de stock (kits)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le kit' }))
     expect(await screen.findByText('La quantité doit être positive.')).toBeInTheDocument()
   })
+
+  it('ERR-ASTK229 — le corps nu de /revisions/ est listé (pas « Aucune révision »)', async () => {
+    kitsApi.revisions.mockResolvedValue({ data: R.kit_revisions.exemple.revisions })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /Révisions/ }))
+    expect(await screen.findByText(/Révision 1 —/)).toBeInTheDocument()
+    expect(screen.queryByText('Aucune révision.')).not.toBeInTheDocument()
+  })
 })

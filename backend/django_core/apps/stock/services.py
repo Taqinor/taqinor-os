@@ -1762,6 +1762,43 @@ def _lever_blocages_reception_annulee(reception, user):
     return len(blocages)
 
 
+def _liberer_cross_dock_reception_annulee(reception):
+    """ERR-ASTK58 — libère les ``AffectationCrossDock`` d'une réception
+    annulée : la marchandise contre-passée sort du colis d'expédition non
+    scellé qui la portait (ligne de contenu décrémentée, supprimée à 0) puis
+    l'affectation est supprimée (le put-away n'est plus « sauté » pour une
+    réception qui n'existe plus). Un colis déjà SCELLÉ garde son contenu
+    figé (expédition à traiter par retour). Dans la transaction de
+    l'appelant. Renvoie le nombre d'affectations libérées."""
+    from .models_wms import (
+        AffectationCrossDock, UniteLogistique, UniteLogistiqueLigne,
+    )
+
+    affectations = list(AffectationCrossDock.objects.select_for_update()
+                        .filter(company=reception.company,
+                                reception=reception))
+    for affectation in affectations:
+        unite = (UniteLogistique.objects.select_for_update()
+                 .filter(pk=affectation.unite_logistique_id).first())
+        if unite is not None and not unite.est_figee:
+            reste = affectation.quantite or 0
+            for ligne in (UniteLogistiqueLigne.objects.select_for_update()
+                          .filter(unite=unite,
+                                  produit_id=affectation.produit_id)
+                          .order_by('-id')):
+                if reste <= 0:
+                    break
+                retire = min(reste, ligne.quantite or 0)
+                reste -= retire
+                if retire >= (ligne.quantite or 0):
+                    ligne.delete()
+                else:
+                    ligne.quantite = ligne.quantite - retire
+                    ligne.save(update_fields=['quantite'])
+        affectation.delete()
+    return len(affectations)
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1803,6 +1840,17 @@ def annuler_reception_confirmee(reception, user):
                     and not (ligne.ligne_commande is not None
                              and ligne.ligne_commande.sans_stock))
 
+        # ERR-ASTK54 — réception FACTURÉE : contre-passer le stock laisserait
+        # la facture due (et la re-réception se refacturerait → double
+        # facture). Refus tant que la facture n'est pas supprimée ou
+        # neutralisée par un avoir.
+        factures = factures_ouvertes_de_reception(verrou)
+        if factures:
+            refs = ', '.join(f.reference for f in factures)
+            raise ValueError(
+                f'Réception facturée ({refs}) : supprimez la facture ou '
+                "émettez un avoir avant d'annuler la réception.")
+
         # ASTK54 — livraison DIRECTE chantier : la marchandise est sortie
         # vers le chantier dès la confirmation (entrée + sortie). Annuler
         # ressortirait du stock LIBRE qui n'a jamais reçu ces unités : refus,
@@ -1813,6 +1861,14 @@ def annuler_reception_confirmee(reception, user):
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
+        # ERR-ASTK58 — jumeaux de la confirmation : l'ajustement de pesée
+        # `PESEE-<réf>` est contre-passé AVANT la sortie (la sortie est
+        # plafonnée au stock en main : l'ordre inverse laisserait un reste),
+        # et les affectations cross-dock de la réception sont libérées.
+        from .services_catch_weight import contre_passer_pesee_reception
+        contre_passer_pesee_reception(reception=reception, user=user)
+        _liberer_cross_dock_reception_annulee(reception)
+
         # ASTK56 — quantités annulées, portées par l'événement émis après
         # commit (abonné installations : GR/IR, séries, réservation).
         lignes_annulees = []
@@ -3772,62 +3828,103 @@ def facturer_reception(company, user, reception):
     Lance ValueError si déjà facturée ou si la réception n'est pas confirmée.
     """
     from decimal import Decimal
+    from django.db import transaction
+    from .models import FactureFournisseur, ReceptionFournisseur
+
+    with transaction.atomic():
+        # ERR-ASTK53 — statut et « déjà facturée » relus SOUS verrou : deux
+        # « Facturer » concurrents ne créent jamais deux factures.
+        reception = ReceptionFournisseur.objects.select_for_update().get(
+            pk=reception.pk)
+        if reception.statut != 'confirme':
+            raise ValueError("Seule une réception confirmée peut être facturée.")
+
+        # Garde idempotence : si une FF porte déjà ce bon de commande et la même
+        # réception (on lie via note), on refuse.
+        deja_liee = FactureFournisseur.objects.filter(
+            reception=reception).exists()
+        if deja_liee or FactureFournisseur.objects.filter(
+                company=company, reception__isnull=True,
+                bon_commande=reception.bon_commande,
+                note__startswith=f'Facture réception {reception.reference}'
+        ).exists():
+            raise ValueError(
+                f"Cette réception ({reception.reference}) est déjà facturée.")
+
+        from .models import Produit
+        lignes_reception = [
+            ligne for ligne in reception.lignes.select_related(
+                'produit', 'ligne_commande', 'ligne_commande__produit').all()
+            # ASTK108 — une ligne « sur commande » est déjà facturée au BCF
+            # (ZPUR1) : jamais refacturée à la réception.
+            if _politique_ligne(ligne)
+            != Produit.PolitiqueFacturationAchat.SUR_COMMANDE
+        ]
+        if not lignes_reception:
+            raise ValueError(
+                'Rien à facturer à la réception : toutes les lignes de '
+                f'{reception.reference} sont « sur commande » (facturées sur le '
+                'bon de commande).')
+
+        lignes = []
+        for ligne in lignes_reception:
+            # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
+            # jamais la saisie : une ligne plafonnée à 0 ne facture rien.
+            qte_facturee = quantite_entree_ligne_reception(ligne)
+            if qte_facturee <= 0:
+                continue
+            pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
+            # XPUR16 — une ligne libre/service reprend sa désignation d'origine
+            # (BCF) plutôt que le nom d'un produit catalogue absent.
+            if ligne.produit:
+                designation = ligne.produit.nom
+            elif ligne.ligne_commande and ligne.ligne_commande.designation:
+                designation = ligne.ligne_commande.designation
+            else:
+                designation = 'Produit'
+            lignes.append((designation, qte_facturee, pu, ligne.produit))
+
+        if not lignes:
+            raise ValueError(
+                f"Rien à facturer : la réception {reception.reference} n'a fait "
+                'entrer aucune quantité.')
+
+        # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
+        facture = _construire_facture_fournisseur(
+            company, user, reception.bon_commande, lignes,
+            note=f'Facture réception {reception.reference}')
+        # ERR-ASTK54 — lien réel réception → facture (garde d'annulation).
+        facture.reception = reception
+        facture.save(update_fields=['reception'])
+        return facture
+
+
+def factures_ouvertes_de_reception(reception):
+    """ERR-ASTK54 — factures fournisseur ISSUES de cette réception et encore
+    dues au sens comptable (non neutralisées par un avoir couvrant tout le
+    TTC). Lien = FK ``FactureFournisseur.reception`` ; repli pour les
+    factures antérieures à la FK : note EXACTE « Facture réception <REF> »
+    sur le même BCF (jamais un simple préfixe : REC-1 ≠ REC-10). Une
+    facture SUPPRIMÉE n'existe plus → l'annulation redevient possible."""
+    from django.db.models import Q
     from .models import FactureFournisseur
-
-    if reception.statut != 'confirme':
-        raise ValueError("Seule une réception confirmée peut être facturée.")
-
-    # Garde idempotence : si une FF porte déjà ce bon de commande et la même
-    # réception (on lie via note), on refuse.
-    if FactureFournisseur.objects.filter(
-            company=company,
-            bon_commande=reception.bon_commande,
-            note__startswith=f'Facture réception {reception.reference}').exists():
-        raise ValueError(
-            f"Cette réception ({reception.reference}) est déjà facturée.")
-
-    from .models import Produit
-    lignes_reception = [
-        ligne for ligne in reception.lignes.select_related(
-            'produit', 'ligne_commande', 'ligne_commande__produit').all()
-        # ASTK108 — une ligne « sur commande » est déjà facturée au BCF
-        # (ZPUR1) : jamais refacturée à la réception.
-        if _politique_ligne(ligne)
-        != Produit.PolitiqueFacturationAchat.SUR_COMMANDE
-    ]
-    if not lignes_reception:
-        raise ValueError(
-            'Rien à facturer à la réception : toutes les lignes de '
-            f'{reception.reference} sont « sur commande » (facturées sur le '
-            'bon de commande).')
-
-    lignes = []
-    for ligne in lignes_reception:
-        # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
-        # jamais la saisie : une ligne plafonnée à 0 ne facture rien.
-        qte_facturee = quantite_entree_ligne_reception(ligne)
-        if qte_facturee <= 0:
+    note = f'Facture réception {reception.reference}'
+    candidates = FactureFournisseur.objects.filter(
+        Q(reception=reception)
+        | Q(reception__isnull=True, company=reception.company,
+            bon_commande_id=reception.bon_commande_id,
+            note__startswith=note))
+    ouvertes = []
+    for facture in candidates:
+        if facture.reception_id is None:
+            texte = (facture.note or '')
+            suite = texte[len(note):len(note) + 1]
+            if not texte.startswith(note) or suite not in ('', ' ', '\n'):
+                continue
+        if facture.total_avoirs_imputes >= (facture.montant_ttc or 0):
             continue
-        pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
-        # XPUR16 — une ligne libre/service reprend sa désignation d'origine
-        # (BCF) plutôt que le nom d'un produit catalogue absent.
-        if ligne.produit:
-            designation = ligne.produit.nom
-        elif ligne.ligne_commande and ligne.ligne_commande.designation:
-            designation = ligne.ligne_commande.designation
-        else:
-            designation = 'Produit'
-        lignes.append((designation, qte_facturee, pu, ligne.produit))
-
-    if not lignes:
-        raise ValueError(
-            f"Rien à facturer : la réception {reception.reference} n'a fait "
-            'entrer aucune quantité.')
-
-    # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
-    return _construire_facture_fournisseur(
-        company, user, reception.bon_commande, lignes,
-        note=f'Facture réception {reception.reference}')
+        ouvertes.append(facture)
+    return ouvertes
 
 
 # ── ZPUR1 — Politique de facturation d'achat (Odoo « Bill Control ») ────────
@@ -6039,30 +6136,41 @@ def creer_avoir_depuis_retour(company, retour, user=None):
     clic depuis un ``RetourFournisseur`` VALIDÉ. Lève ValueError si le
     retour n'est pas validé ou a déjà un avoir. Référencé via
     ``create_with_reference`` (préfixe AVF)."""
+    from django.db import transaction
     from apps.ventes.utils.references import create_with_reference
     from .models import AvoirFournisseur, RetourFournisseur
 
-    if retour.statut != RetourFournisseur.Statut.VALIDE:
-        raise ValueError(
-            'Seul un retour validé peut générer un avoir (« attente '
-            "d'avoir » tant que non reçu).")
-    if AvoirFournisseur.objects.filter(retour=retour).exists():
-        raise ValueError('Ce retour a déjà un avoir associé.')
+    def _verifier(doc):
+        if doc.statut != RetourFournisseur.Statut.VALIDE:
+            raise ValueError(
+                'Seul un retour validé peut générer un avoir (« attente '
+                "d'avoir » tant que non reçu).")
+        if AvoirFournisseur.objects.filter(retour=doc).exists():
+            raise ValueError('Ce retour a déjà un avoir associé.')
 
-    montants = preparer_avoir_depuis_retour(retour)
-    avoir = AvoirFournisseur(
-        company=company, fournisseur=retour.fournisseur,
-        facture_origine=None, retour=retour,
-        montant_ht=montants['montant_ht'], montant_tva=montants['montant_tva'],
-        montant_ttc=montants['montant_ttc'],
-        statut=AvoirFournisseur.Statut.BROUILLON, created_by=user)
+    _verifier(retour)
+    with transaction.atomic():
+        # ERR-ASTK53 — statut + « déjà un avoir » relus SOUS verrou : deux
+        # clics concurrents ne génèrent jamais deux avoirs du même retour.
+        retour = RetourFournisseur.objects.select_for_update().get(
+            pk=retour.pk)
+        _verifier(retour)
 
-    def _save(ref):
-        avoir.reference = ref
-        avoir.save()
-        return avoir
+        montants = preparer_avoir_depuis_retour(retour)
+        avoir = AvoirFournisseur(
+            company=company, fournisseur=retour.fournisseur,
+            facture_origine=None, retour=retour,
+            montant_ht=montants['montant_ht'],
+            montant_tva=montants['montant_tva'],
+            montant_ttc=montants['montant_ttc'],
+            statut=AvoirFournisseur.Statut.BROUILLON, created_by=user)
 
-    return create_with_reference(AvoirFournisseur, 'AVF', company, _save)
+        def _save(ref):
+            avoir.reference = ref
+            avoir.save()
+            return avoir
+
+        return create_with_reference(AvoirFournisseur, 'AVF', company, _save)
 
 
 def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):

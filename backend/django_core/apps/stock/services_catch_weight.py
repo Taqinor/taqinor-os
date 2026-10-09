@@ -224,3 +224,47 @@ def rapprocher_pesee_reception(*, reception, user=None, note=None):
             result['mouvements'].append({
                 'produit': produit.id, 'avant': avant, 'apres': apres})
     return result
+
+
+def contre_passer_pesee_reception(*, reception, user=None):
+    """ERR-ASTK58 — jumeau d'annulation de ``rapprocher_pesee_reception`` :
+    à l'annulation d'une réception, chaque ajustement ``PESEE-<réf>`` est
+    contre-passé par un AJUSTEMENT inverse référencé ``ANNUL-PESEE-<réf>``
+    (jamais une suppression — la trace est conservée). Le stock ne descend
+    jamais sous 0. IDEMPOTENT : une contre-passation déjà posée n'est pas
+    rejouée. Dans la transaction de l'appelant. Renvoie le nombre
+    d'ajustements contre-passés."""
+    from .models import MouvementStock, Produit
+    from .services import record_stock_movement
+
+    reference = reference_rapprochement(reception)
+    reference_annul = f'ANNUL-{reference}'
+    if MouvementStock.objects.filter(
+            company=reception.company, reference=reference_annul).exists():
+        return 0
+    originaux = list(MouvementStock.objects.filter(
+        company=reception.company, reference=reference,
+        type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+    ).order_by('id'))
+    n = 0
+    for mouvement in originaux:
+        delta = ((mouvement.quantite_apres or 0)
+                 - (mouvement.quantite_avant or 0))
+        if delta == 0:
+            continue
+        produit = Produit.objects.select_for_update().get(
+            pk=mouvement.produit_id)
+        avant = produit.quantite_stock
+        apres = max(avant - delta, 0)
+        if apres == avant:
+            continue
+        record_stock_movement(
+            company=reception.company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+            quantite=abs(apres - avant), quantite_avant=avant,
+            quantite_apres=apres, reference=reference_annul,
+            note=(f'Contre-passation du rapprochement de pesée '
+                  f'{reception.reference} (réception annulée)'),
+            created_by=user)
+        n += 1
+    return n

@@ -74,6 +74,14 @@ describe('ASTK222 — RfaPage', () => {
     expect(screen.queryByRole('button', { name: /^Générer l'avoir/i })).toBeNull()
   })
 
+  it('ERR-ASTK222 — la référence de l avoir survit au rechargement (servie par l accord relu)', async () => {
+    etat = { ...ACCORDS, results: [{
+      ...ACCORDS.results[0], avoir_deja_genere: true, avoir_genere: 21, avoir_id: 21, avoir_reference: 'AVF-2026-10-0001',
+    }] }
+    monter()
+    expect(await screen.findByText(/Avoir AVF-2026-10-0001 généré/)).toBeInTheDocument()
+  })
+
   it('un second POST refusé par le serveur affiche son message', async () => {
     api.post.mockRejectedValue({
       response: { status: 400, data: R.accord_rfa_generer_avoir.exemple_erreur_400 },
