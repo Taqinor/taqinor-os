@@ -854,7 +854,9 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     services:
       redis:
-        image: redis:7.4-alpine
+        # Miroir GCR comme les lanes (6acc5ce39) : la limite anonyme Docker Hub
+        # (toomanyrequests) tuait les shards de toutes les sessions.
+        image: mirror.gcr.io/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
