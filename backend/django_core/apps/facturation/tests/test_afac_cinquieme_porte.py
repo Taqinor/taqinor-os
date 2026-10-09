@@ -23,6 +23,7 @@ FACTURES = '/api/django/ventes/factures/'
 class CinquiemePorteTests(TestCase):
     def setUp(self):
         from apps.crm.models import Client
+        from apps.stock.models import Produit
         from apps.ventes.models import BonCommande, Devis, LigneDevis
         from authentication.models import Company
         self.company = Company.objects.create(nom='AFAC66', slug='afac66-co')
@@ -41,8 +42,12 @@ class CinquiemePorteTests(TestCase):
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
             taux_tva=Decimal('20'), remise_globale=Decimal('10'),
             mode_installation='residentiel')
+        produit = Produit.objects.create(
+            company=self.company, nom='Centrale', sku='AFAC66-P',
+            prix_vente=Decimal('10000'))
         LigneDevis.objects.create(
-            devis=self.devis, designation='Centrale', quantite=Decimal('1'),
+            devis=self.devis, produit=produit, designation='Centrale',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('10000'), remise=Decimal('0'),
             taux_tva=Decimal('20'))
         self.bc_devis = BonCommande.objects.create(
