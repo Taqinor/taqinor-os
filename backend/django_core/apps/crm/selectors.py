@@ -4396,32 +4396,32 @@ def devis_expirant_bientot(company, user, dans_jours=7, today=None):
     """
     import datetime
     from core.dates import aujourd_hui_local
-    from apps.ventes.selectors import date_validite_effective
+    from apps.ventes.selectors import devis_envoyes_expirant
     from .models import Lead
 
     today = today or aujourd_hui_local()
     limite = today + datetime.timedelta(days=dans_jours)
     # ACRM28 — portée propriétaire ET périmètre d'entités.
-    leads = portee_leads(
+    lead_ids = portee_leads(
         Lead.objects.filter(company=company, is_archived=False),
-        user).prefetch_related('devis')
+        user).values_list('id', flat=True)
 
+    # APRF23 — seuls les devis ENVOYÉS qui expirent avant la limite, filtrés
+    # EN SQL par le sélecteur ventes (date effective ACRM29), totaux
+    # préchargés : requêtes constantes.
     out = []
-    for lead in leads:
-        for devis in lead.devis.all():
-            if getattr(devis, 'statut', None) != 'envoye':
-                continue
-            exp = date_validite_effective(devis)
-            if exp is None or exp > limite:
-                continue
-            out.append({
-                'devis_id': devis.id,
-                'reference': getattr(devis, 'reference', '') or f'#{devis.id}',
-                'lead_id': lead.id,
-                'lead_nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
-                'date_expiration': exp,
-                'total_ttc': str(getattr(devis, 'total_ttc', None) or ''),
-            })
+    for ligne in devis_envoyes_expirant(company, limite, lead_ids):
+        devis = ligne['devis']
+        lead = devis.lead
+        exp = ligne['date_expiration']
+        out.append({
+            'devis_id': devis.id,
+            'reference': getattr(devis, 'reference', '') or f'#{devis.id}',
+            'lead_id': lead.id,
+            'lead_nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
+            'date_expiration': exp,
+            'total_ttc': str(getattr(devis, 'total_ttc', None) or ''),
+        })
     out.sort(key=lambda d: (d['date_expiration'], d['reference']))
     return out
 
@@ -4469,7 +4469,14 @@ def ma_file_commercial_items(company, user, today=None):
     today = today or aujourd_hui_local()
     items = []
 
-    for lead in relances_du_jour(company, user, scope='overdue', today=today):
+    # APRF23 — les familles « lead » ne lisent que id/nom/prénom/relance :
+    # aucun préchargement de devis/lignes ni colonne inutile.
+    def _leger(qs):
+        return (qs.select_related(None).prefetch_related(None)
+                .only('id', 'nom', 'prenom', 'relance_date'))
+
+    for lead in _leger(relances_du_jour(
+            company, user, scope='overdue', today=today)):
         nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
         items.append({
             'kind': 'relance',
@@ -4479,7 +4486,7 @@ def ma_file_commercial_items(company, user, today=None):
             'urgency': 'overdue',
         })
 
-    for lead in leads_chauds_non_contactes(company, user):
+    for lead in _leger(leads_chauds_non_contactes(company, user)):
         nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
         items.append({
             'kind': 'lead_chaud',
@@ -4504,7 +4511,7 @@ def ma_file_commercial_items(company, user, today=None):
     # VX223 — rappels demandés : signal le plus chaud du pipeline (un client a
     # explicitement demandé un rappel), jusqu'ici un badge passif jamais
     # remonté dans aucune file.
-    for lead in leads_rappel_demande(company, user):
+    for lead in _leger(leads_rappel_demande(company, user)):
         nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
         items.append({
             'kind': 'rappel',
