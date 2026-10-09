@@ -1,0 +1,49 @@
+{
+ "cas": "ACRM26",
+ "commandes": {
+  "appelants backend/django_core/apps/crm/views.py::EquipeCommercialeViewSet.get_permissions": {
+   "chaines": [],
+   "ecrans": [
+    "frontend/src/pages/crm/leads/LeadsPage.jsx",
+    "frontend/src/pages/parametres/EquipesCommercialesSection.jsx",
+    "frontend/src/pages/ventes/DevisList.jsx"
+   ],
+   "nb_ecrans": 3,
+   "python": [],
+   "routes": [
+    "/api/django/crm/equipes/",
+    "/api/django/crm/equipes/<id>/",
+    "/api/v1/crm/equipes/",
+    "/api/v1/crm/equipes/<id>/"
+   ],
+   "wrappers": [
+    "frontend/src/api/crmApi.js::deleteEquipe",
+    "frontend/src/api/crmApi.js::getEquipes",
+    "frontend/src/api/crmApi.js::saveEquipe"
+   ]
+  },
+  "ecrivains Lead.telephone_whatsapp": {
+   "champ_existe": false,
+   "ecrivains": []
+  },
+  "ecrivains Lead.whatsapp": {
+   "champ_existe": true,
+   "ecrivains": [
+    "backend/django_core/apps/crm/dsr_provider.py::anonymiser_lead",
+    "backend/django_core/apps/crm/management/commands/import_odoo_leads.py::Command.handle",
+    "backend/django_core/apps/crm/management/commands/import_odoo_leads.py::_fill_empty",
+    "backend/django_core/apps/crm/services.py::_apply_meta_form_extras",
+    "backend/django_core/apps/crm/services.py::creer_lead_proprietaire",
+    "backend/django_core/apps/crm/services.py::merge_leads",
+    "backend/django_core/apps/crm/services.py::resolve_or_create_lead_from_whatsapp",
+    "backend/django_core/apps/crm/views.py::LeadViewSet.perform_update",
+    "backend/django_core/apps/crm/webhooks.py::_map_payload_to_fields"
+   ]
+  },
+  "lecteurs-front tranches_facturees": {
+   "lecteurs": [
+    "frontend/src/pages/ventes/devisList/DevisRow.jsx"
+   ]
+  }
+ }
+}

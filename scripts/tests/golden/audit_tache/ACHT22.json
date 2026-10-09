@@ -1,0 +1,30 @@
+{
+ "cas": "ACHT22",
+ "commandes": {
+  "appelants backend/django_core/apps/installations/livraison_pdf.py::bon_livraison_pdf": {
+   "chaines": [],
+   "ecrans": [],
+   "nb_ecrans": 0,
+   "python": [
+    "backend/django_core/apps/installations/tests_acht_bon_livraison.py::BonLivraisonTests.test_adresse_livraison_imprimee",
+    "backend/django_core/apps/installations/tests_acht_bon_livraison.py::BonLivraisonTests.test_bandeau_annulee",
+    "backend/django_core/apps/installations/tests_acht_bon_livraison.py::BonLivraisonTests.test_repli_adresse_chantier",
+    "backend/django_core/apps/installations/tests_zstk4_bon_livraison.py::TestBonLivraisonPdf.test_contexte_sans_cout_interne",
+    "backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.bon_livraison"
+   ],
+   "routes": [],
+   "wrappers": []
+  },
+  "appelants backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.bon_livraison": {
+   "chaines": [],
+   "ecrans": [],
+   "nb_ecrans": 0,
+   "python": [],
+   "routes": [
+    "/api/django/installations/livraisons/<id>/bon-livraison/",
+    "/api/v1/installations/livraisons/<id>/bon-livraison/"
+   ],
+   "wrappers": []
+  }
+ }
+}

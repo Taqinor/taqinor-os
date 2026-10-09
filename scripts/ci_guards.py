@@ -248,7 +248,9 @@ GARDES = {
         ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
          'python scripts/check_adsengine_ecrans.py',
          '.'),
-        # ANCRE-A1-generateur : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Tests du generateur de clauses audit_tache (AMET80-82)',
+         'python -m unittest scripts.tests.test_audit_tache -v',
+         '.'),
         ('Test the adsengine-screens checker itself (AACQ77)',
          'python -m unittest scripts.tests.test_check_adsengine_ecrans -v',
          '.'),

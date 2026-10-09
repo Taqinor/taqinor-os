@@ -1,0 +1,49 @@
+{
+ "cas": "AFAC47",
+ "commandes": {
+  "appelants backend/django_core/apps/ventes/utils/echeancier.py::tranches_normalisees": {
+   "chaines": [
+    "backend/django_core/apps/ventes/tests/test_err_acompte_ttc_centime.py::_tranche",
+    "backend/django_core/apps/ventes/tests/test_err_qac_multivilla_total_xn.py::TestEcheancier._tranche"
+   ],
+   "ecrans": [],
+   "nb_ecrans": 0,
+   "python": [
+    "backend/django_core/apps/ventes/quote_engine/builder.py::_marqueurs_cgv_ci",
+    "backend/django_core/apps/ventes/quote_engine/builder.py::tranches_echeancier_en_montant",
+    "backend/django_core/apps/ventes/tests/test_ciq212_echeancier_jalons.py::JalonsDefautTest.test_commercial_40_50_10",
+    "backend/django_core/apps/ventes/tests/test_ciq212_echeancier_jalons.py::JalonsDefautTest.test_industriel_30_40_20_10",
+    "backend/django_core/apps/ventes/tests/test_ciq212_echeancier_jalons.py::JalonsDefautTest.test_residentiel_identique_a_l_octet",
+    "backend/django_core/apps/ventes/tests/test_echeancier_agnr12_somme.py::SommeEcheancierApiTests.test_stocke_hors_regle_reste_lisible",
+    "backend/django_core/apps/ventes/tests/test_qjr_echeancier_validation.py::EcheancierDUnDevis.test_echeancier_ambigu_deja_stocke_retombe_sur_le_defaut",
+    "backend/django_core/apps/ventes/tests/test_qjr_echeancier_validation.py::EcheancierDUnDevis.test_montant_declare_vaut_ce_montant_et_non_un_pourcentage",
+    "backend/django_core/apps/ventes/utils/echeancier.py::dates_prevues_par_creneau",
+    "backend/django_core/apps/ventes/utils/echeancier.py::jalons_paiement_devis",
+    "backend/django_core/apps/ventes/utils/echeancier.py::next_tranche",
+    "backend/django_core/apps/ventes/utils/echeancier.py::pourcentages_echeancier",
+    "backend/django_core/apps/ventes/utils/echeancier.py::schedule_for_devis"
+   ],
+   "routes": [],
+   "wrappers": []
+  },
+  "appelants backend/django_core/apps/ventes/views/facture.py::FactureViewSet.perform_update": {
+   "chaines": [],
+   "ecrans": [
+    "frontend/src/pages/ventes/DossiersReglementairesPage.jsx",
+    "frontend/src/pages/ventes/FactureForm.jsx",
+    "frontend/src/pages/ventes/FactureList.jsx"
+   ],
+   "nb_ecrans": 3,
+   "python": [],
+   "routes": [
+    "/api/django/ventes/factures/<id>/",
+    "/api/v1/ventes/factures/<id>/"
+   ],
+   "wrappers": [
+    "frontend/src/api/ventesApi.js::patchFacture",
+    "frontend/src/api/ventesApi.js::patchReglementaire",
+    "frontend/src/api/ventesApi.js::updateFacture"
+   ]
+  }
+ }
+}
