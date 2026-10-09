@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import calendar
 import logging
+import math
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -847,6 +848,28 @@ def _vide_etude(res, alertes, hypotheses, sous_reserve=None):
     }
 
 
+def _taille_en_panneaux_entiers(taille, module, hypotheses):
+    """CAD177 — une taille saisie se pose en panneaux ENTIERS.
+
+    La composition pose ``ceil(kWc / Pmax)`` panneaux : un bilan calculé à la
+    taille saisie (20 kWc) décrivait une autre installation que celle vendue
+    (29 × 710 Wc = 20,59 kWc), et l'étude rafraîchie depuis les lignes
+    (CIQ119, kWc réel des panneaux) — celle du PDF — imprimait d'autres taux
+    que l'aperçu de l'écran. Sans Pmax publiée : la taille saisie, telle quelle.
+    """
+    kwc = _num(taille)
+    pmax = _num((module or {}).get('pmax_wc'))
+    if not kwc or kwc <= 0 or not pmax or pmax <= 0:
+        return taille
+    nb = int(math.ceil(kwc * 1000.0 / pmax - 1e-9))
+    pose = round(nb * pmax / 1000.0, 6)
+    if abs(pose - kwc) > 1e-9:
+        hypotheses.append({
+            'cle': 'taille_panneaux_entiers', 'valeur': pose, 'statut': 'declare',
+            'source': '%d panneaux de %g Wc pour la taille saisie de %g kWc' % (nb, pmax, kwc)})
+    return pose
+
+
 def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
     """CIQ119 — les onduleurs RÉELLEMENT au devis, au format CIQ111."""
     prix = {o['produit']: o.get('prix') for o in catalogue_onduleurs}
@@ -1031,7 +1054,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                 'phase': {'kwc': None, 'motif': 'triphasé : aucune borne de phase'
                           if phase == 'tri' else 'phase : voir la combinaison d’onduleurs'}},
         puissance_souscrite_kva=res.valeur('puissance_souscrite_kva'),
-        revente_choisie=revente, taille_explicite_kwc=res.valeur('taille_explicite_kwc'),
+        revente_choisie=revente,
+        taille_explicite_kwc=_taille_en_panneaux_entiers(
+            res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
         taux_tva_pct=20)
     alertes.extend(resultat['alertes'])
     hypotheses.extend(resultat['hypotheses'])
