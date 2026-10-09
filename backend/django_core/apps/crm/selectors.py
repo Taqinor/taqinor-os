@@ -3635,13 +3635,18 @@ def clients_contact_identifiers(company):
     ]
 
 
-def leads_ville_rows(company):
+def leads_ville_rows(company, canaux=None, date_start=None, date_end=None):
     """PUB62 — Une ligne par lead PORTANT une ville renseignée : id, ville,
     signé (stade SIGNED, jamais perdu — STAGES.py, jamais codé en dur).
     Scopé société, leads vivants. Un lead SANS ville est simplement ABSENT
     (jamais une ville vide fabriquée — règle checked-facts). Point d'entrée
     cross-app pour la carte chaleur ville d'``apps.adsengine.reporting``
-    (jamais un import d'``apps.crm.models`` côté adsengine)."""
+    (jamais un import d'``apps.crm.models`` côté adsengine).
+
+    AACQ10 — filtres OPTIONNELS (défaut = comportement d'avant) : ``canaux``
+    (liste de clés ``Lead.Canal``) et ``date_start``/``date_end`` (dates
+    incluses, sur la date de création du lead) — la carte chaleur peut ainsi
+    ne demander que les leads Meta d'une fenêtre."""
     from .models import Lead
 
     rows = []
@@ -3649,6 +3654,12 @@ def leads_ville_rows(company):
           .filter(company=company, is_archived=False)
           .exclude(ville__isnull=True).exclude(ville__exact='')
           .only('id', 'ville', 'stage', 'perdu', 'is_archived'))
+    if canaux is not None:
+        qs = qs.filter(canal__in=list(canaux))
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
     for lead in qs:
         rows.append({
             'id': lead.id,
