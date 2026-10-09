@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle, Lock } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import { apiErrorMessage } from '../../lib/apiError'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
 } from '../../ui'
@@ -62,24 +63,24 @@ export default function EtapesChantierSection() {
         libelle, ordre: stages.length,
       })
       setNewLibelle(''); load()
-    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Ajout impossible.')) }
   }
   const renameStage = async (s, libelle) => {
     if (!libelle.trim() || libelle === s.libelle) return
     try { await installationsApi.saveStageChantier(s.id, { libelle }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleBloquant = async (s) => {
     try { await installationsApi.saveStageChantier(s.id, { bloquant: !s.bloquant }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleActif = async (s) => {
     try { await installationsApi.saveStageChantier(s.id, { actif: !s.actif }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const toggleExigence = async (s, key) => {
     try { await installationsApi.saveStageChantier(s.id, { [key]: !s[key] }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   // CHT23 — exigences de comptage configurables (additif : défauts 0/100 =
   // comportement historique octet pour octet).
@@ -87,7 +88,7 @@ export default function EtapesChantierSection() {
     const n = Number(valeur)
     if (!Number.isFinite(n) || n < min || n > max) return
     try { await installationsApi.saveStageChantier(s.id, { [key]: n }); load() }
-    catch { /* */ }
+    catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const moveStage = async (idx, dir) => {
     const j = idx + dir
@@ -99,12 +100,12 @@ export default function EtapesChantierSection() {
         installationsApi.saveStageChantier(b.id, { ordre: a.ordre }),
       ])
       load()
-    } catch { /* */ }
+    } catch (e) { toast.error(apiErrorMessage(e, 'Modification impossible.')) }
   }
   const delStage = async (s) => {
     if (!(await confirmDelete({ title: `Supprimer l'étape « ${s.libelle} » ?`, description: 'Cette action est définitive.' }))) return
     try { await installationsApi.deleteStageChantier(s.id); load() }
-    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible (étape système ?).') }
+    catch (e) { toast.error(apiErrorMessage(e, 'Suppression impossible (étape système ?).')) }
   }
 
   if (loading) return <Spinner />
