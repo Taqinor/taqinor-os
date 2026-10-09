@@ -6471,9 +6471,20 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         l'utilisateur connecté (jamais un prénom en dur) : un libellé déjà
         saisi à la main dans l'écran Visiteurs n'est jamais écrasé."""
         appareil_id = str(request.data.get('appareil_id') or '').strip()
+        cookie = str(request.COOKIES.get(COOKIE_APPAREIL) or '').strip()
+        # ACRM24 (C-ACRM-017) — l'identifiant du CORPS n'est retenu que s'il
+        # est CELUI de ce navigateur (cookie ``tq_appareil``) ou n'a jamais
+        # servi à une visite rattachée à un lead : sinon n'importe quel rôle
+        # pourrait inscrire l'appareil d'un PROSPECT (lu dans « Visiteurs »)
+        # comme appareil d'équipe — et ses ouvertures de devis ne
+        # notifieraient plus personne. Refusé → un identifiant NEUF.
+        if (_UUID_APPAREIL_RE.match(appareil_id) and appareil_id != cookie
+                and VisiteExterne.objects.filter(
+                    company=request.user.company, appareil_id=appareil_id,
+                    lead__isnull=False).exists()):
+            appareil_id = ''
         if not _UUID_APPAREIL_RE.match(appareil_id):
-            appareil_id = str(
-                request.COOKIES.get(COOKIE_APPAREIL) or '').strip()
+            appareil_id = cookie
         if not _UUID_APPAREIL_RE.match(appareil_id):
             appareil_id = str(uuid.uuid4())
 
