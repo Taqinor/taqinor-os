@@ -500,6 +500,13 @@ GARDES = {
         ('Test the get_or_create en lecture seule (ADEP29) checker itself',
          'python -m unittest scripts.tests.test_check_get_or_create -v',
          '.'),
+        # ADEV72 - les proxys proposition-* relaient chaque clé obligatoire du contrat.
+        ('Check proxys relayant le contrat (ADEV72)',
+         'python scripts/check_proxy_relaie_contrat.py',
+         '.'),
+        ('Test the proxys relayant le contrat (ADEV72) checker itself',
+         'python -m unittest scripts.tests.test_check_proxy_relaie_contrat -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Check binaires de sous-processus <-> paquets de l\'image de prod (ADEP1)',
