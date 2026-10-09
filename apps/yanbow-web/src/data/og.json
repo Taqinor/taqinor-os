@@ -1,4 +1,18 @@
 {
   "gabarit": "og-1",
-  "images": {}
+  "images": {
+    "surMesure.fr": {
+      "fichier": "surMesure-fr-282ae3c275.png",
+      "titre": "Logiciel sur mesure — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    }
+  }
 }

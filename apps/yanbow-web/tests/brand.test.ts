@@ -13,7 +13,13 @@ const NOMS = /yanbow|solarbow|marketingbow/i;
  * et les jumeaux de contrat `contract_samples/` (YBW53 : JSON-égaux à la copie ERP, jamais rendus).
  */
 const EXEMPTES = (rel: string) =>
-  rel === 'lib/brand.ts' || rel.startsWith('i18n/') || rel === 'lib/claims.ts' || rel.startsWith('brand/') || rel.startsWith('contract_samples/');
+  rel === 'lib/brand.ts' ||
+  rel.startsWith('i18n/') ||
+  rel === 'lib/claims.ts' ||
+  rel.startsWith('brand/') ||
+  rel.startsWith('contract_samples/') ||
+  // YBW45 : registre GÉNÉRÉ des images Open Graph (titres publiés, copiés des dictionnaires).
+  rel === 'data/og.json';
 
 function fichiers(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {

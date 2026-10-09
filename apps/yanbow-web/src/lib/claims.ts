@@ -44,6 +44,8 @@ export interface Affirmation {
 
 const SHA = '595d068b92dcf9eeff7f00e0fe916238d110fb1a';
 const PLAN = 'docs/plans/PLAN_YANBOW_WEB.md';
+/** Preuves des affirmations ajoutées avec les pages (YBW61-66), relues le 09/10/2026 à ce commit. */
+const SHA_PAGES = 'd0cd0400aabc4086488b6e95afb1fbc6ea2016b8';
 
 export const AFFIRMATIONS: Affirmation[] = [
   // ── SolarBow — parties prêtes pour la France (D-YBW-8) ─────────────────────
@@ -181,6 +183,47 @@ export const AFFIRMATIONS: Affirmation[] = [
     raison_non_publiable: 'Aucune clé active : jamais promise (faits établis du 06/10).',
     preuves: [`${PLAN}:110`],
     verifie_a_sha: SHA,
+  },
+  // ── Sur mesure (YBW64) ──────────────────────────────────────────────────────
+  {
+    id: 'SM-OFFRE',
+    produit: 'sur_mesure',
+    texte_fr: 'Au-delà de nos deux produits, nous construisons des logiciels sur mesure pour les entreprises.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:54`, `${PLAN}:42`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'SM-DEMARCHE',
+    produit: 'sur_mesure',
+    texte_fr: 'On part du besoin réel, on montre un prototype, puis on met le logiciel en service et on l’exploite avec vous.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:54`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'YB-DEUX-PRODUITS',
+    produit: 'yanbow',
+    texte_fr: 'Nos deux produits, SolarBow et MarketingBow, sont construits.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:43`, 'backend/django_core/apps/adsengine/meta_client.py:695', 'backend/django_core/apps/crm/models.py:520'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'YB-REPONSE-HUMAINE',
+    produit: 'yanbow',
+    texte_fr: 'Une personne de l’équipe lit votre demande et vous répond.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['backend/django_core/apps/crm/webhooks.py:3354', `${PLAN}:56`],
+    verifie_a_sha: SHA_PAGES,
   },
   // ── YanBow — le nom ─────────────────────────────────────────────────────────
   {
