@@ -199,7 +199,8 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
 
 def client_environmental_dashboard(company, client_id, *,
                                    tarif_mad_par_kwh=None,
-                                   co2_kg_par_kwh=None):
+                                   co2_kg_par_kwh=None, since=None,
+                                   until=None):
     """FG288 — synthèse environnementale CUMULÉE des systèmes d'un client.
 
     Production / économies (MAD) / CO₂ évité cumulés sur tous les systèmes du
@@ -217,6 +218,11 @@ def client_environmental_dashboard(company, client_id, *,
 
     qs = ProductionReading.objects.filter(
         company=company, installation__client_id=client_id)
+    # ASAV67 — période optionnelle (attestation bornée).
+    if since is not None:
+        qs = qs.filter(date__gte=since)
+    if until is not None:
+        qs = qs.filter(date__lte=until)
     total_kwh = qs.aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
     total_kwh = Decimal(str(total_kwh))
 

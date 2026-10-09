@@ -85,15 +85,21 @@ def build_carbon_report_data_site(installation, *, since=None, until=None,
 
 def build_carbon_report_data_client(company, client_id, *,
                                     tarif_mad_par_kwh=None,
-                                    co2_kg_par_kwh=None, today=None):
+                                    co2_kg_par_kwh=None, today=None,
+                                    since=None, until=None):
     """Données de l'attestation carbone CONSOLIDÉE d'un client multi-sites
     (FG288, ``client_environmental_dashboard``). 100 % lecture."""
     today = today or timezone.localdate()
     data = client_environmental_dashboard(
         company, client_id, tarif_mad_par_kwh=tarif_mad_par_kwh,
-        co2_kg_par_kwh=co2_kg_par_kwh)
+        co2_kg_par_kwh=co2_kg_par_kwh, since=since, until=until)
     facteur = data['co2_kg_par_kwh']
-    periode_label = f'cumul depuis origine → {today.isoformat()}'
+    if since is None and until is None:
+        periode_label = f'cumul depuis origine → {today.isoformat()}'
+    else:
+        periode_label = (
+            f'{since.isoformat() if since else "origine"} → '
+            f'{until.isoformat() if until else today.isoformat()}')
     return {
         'scope': 'client',
         'client': data['client'],
@@ -167,10 +173,12 @@ def render_carbon_report_pdf_site(installation, *, since=None, until=None,
 
 def render_carbon_report_pdf_client(company, client_id, *,
                                     tarif_mad_par_kwh=None,
-                                    co2_kg_par_kwh=None, today=None):
+                                    co2_kg_par_kwh=None, today=None,
+                                    since=None, until=None):
     """Octets PDF de l'attestation carbone CONSOLIDÉE d'un client."""
     data = build_carbon_report_data_client(
         company, client_id, tarif_mad_par_kwh=tarif_mad_par_kwh,
-        co2_kg_par_kwh=co2_kg_par_kwh, today=today)
+        co2_kg_par_kwh=co2_kg_par_kwh, today=today, since=since,
+        until=until)
     entreprise_nom = getattr(company, 'nom', '') or ''
     return render_pdf(html=_build_html(data, entreprise_nom=entreprise_nom))
