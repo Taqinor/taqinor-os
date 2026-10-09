@@ -32,7 +32,7 @@ from apps.ventes.models import (
     Facture, FollowupLevel, LigneFacture, RelanceLog,
 )
 from apps.ventes.services import (
-    RELANCE_AUTO_NOTE, RELANCE_AUTO_NOTE_RESOLUE, reset_relance_escalation,
+    RELANCE_AUTO_NOTE, reset_relance_escalation,
 )
 
 User = get_user_model()
@@ -106,26 +106,26 @@ class U10RelanceResetTests(TestCase):
         self.assertEqual(self.facture.statut, Facture.Statut.PAYEE)
         # prochaine_relance effacée → plus de retard programmé.
         self.assertIsNone(self.facture.prochaine_relance)
-        # Les relances auto ne sont plus comptées dans l'escalade…
+        # AFAC46 : les relances ne sont plus comptées dans la cadence
+        # (``compte_dans_cadence`` faux)…
         self.assertEqual(self.facture.relances.filter(
-            note=RELANCE_AUTO_NOTE).count(), 0)
-        # …mais l'historique est conservé (marqué résolu, jamais supprimé).
+            compte_dans_cadence=True).count(), 0)
+        # …mais l'historique est conservé (neutralisé, jamais supprimé).
         self.assertEqual(self.facture.relances.filter(
-            note=RELANCE_AUTO_NOTE_RESOLUE).count(), 2)
+            note=RELANCE_AUTO_NOTE, compte_dans_cadence=False).count(), 2)
 
     def test_reset_clears_the_escalation_counter_the_scheduler_uses(self):
-        # Le scheduler (relance_reminders) déduit le niveau courant du NOMBRE de
-        # relances automatiques consignées : idx = min(deja, len(levels)-1).
-        # Avant reset, 2 relances auto → le scheduler reprendrait au 3e niveau.
+        # AFAC46 : la cadence (``prochain_niveau``) suit les relances dont
+        # ``compte_dans_cadence`` est vrai. Avant reset, 2 relances comptées.
         self._escalate()
         self.assertEqual(self.facture.relances.filter(
-            note=RELANCE_AUTO_NOTE).count(), 2)
+            compte_dans_cadence=True).count(), 2)
         # Paiement intégral → reset : le compteur d'escalade retombe à 0, donc
         # une éventuelle nouvelle séquence repartirait du PREMIER niveau.
         self.assertEqual(self._pay('6000').status_code, 201)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.relances.filter(
-            note=RELANCE_AUTO_NOTE).count(), 0)
+            compte_dans_cadence=True).count(), 0)
 
     def test_partial_payment_does_not_reset(self):
         self._escalate()
@@ -136,7 +136,7 @@ class U10RelanceResetTests(TestCase):
         # Rien réinitialisé : escalade et date intactes.
         self.assertIsNotNone(self.facture.prochaine_relance)
         self.assertEqual(self.facture.relances.filter(
-            note=RELANCE_AUTO_NOTE).count(), 2)
+            compte_dans_cadence=True).count(), 2)
 
     def test_reset_service_is_idempotent_and_preserves_history(self):
         self._escalate()
