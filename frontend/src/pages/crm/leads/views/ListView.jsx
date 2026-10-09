@@ -9,6 +9,7 @@ import { useIsAdmin } from '../../../../hooks/useHasPermission'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
 import { toastWithUndo, toastError } from '../../../../lib/toast'
+import { useConfirmDialog } from '../../../../ui/confirm'
 // EZ14 — undo universel : « appliquer tout de suite + inverse à l'annulation »,
 // jamais le commit différé qui perd l'écriture au démontage d'un board.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
@@ -616,6 +617,7 @@ export default function ListView({
   tri = 'recent',
 }) {
   const dispatch = useDispatch()
+  const { confirm } = useConfirmDialog()
   const canDelete = useIsAdmin() // règle existante : destroy = admin
   const isMobile = useIsMobile(MOBILE_QUERY)
   // LB18 — `.lv-wrap` est LE scrolleur deux axes (D1) : un listener de
@@ -783,7 +785,14 @@ export default function ListView({
   const onDelete = useCallback(async (lead) => {
     // VX96 — la suppression est RÉVERSIBLE (soft-delete + corbeille 30 min) :
     // plus de copie « irréversible », et un toast « Annuler » restaure le lead.
-    if (!window.confirm('Supprimer ce lead ? Il ira à la corbeille (restaurable 30 min).')) return
+    const ok = await confirm({
+      title: 'Supprimer ce lead ?',
+      description: 'Il ira à la corbeille (restaurable 30 min).',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      destructive: true,
+    })
+    if (!ok) return
     setBusyId(lead.id)
     try {
       const { corbeille_id: corbeilleId } = await dispatch(deleteLead(lead.id)).unwrap()
@@ -801,9 +810,9 @@ export default function ListView({
       onRefetch?.()
     } catch (err) {
       // 409 : lead lié à un devis → on archive plutôt que de supprimer.
-      window.alert(err?.detail ?? 'Suppression impossible.')
+      toastError(err?.detail ?? 'Suppression impossible.')
     } finally { setBusyId(null) }
-  }, [dispatch, onRefetch])
+  }, [dispatch, onRefetch, confirm])
 
   const onSort = (key) =>
     setSort((s) =>
