@@ -42,7 +42,7 @@ class ComponentStatus(TenantModel):
     # PRÉ-EXISTANTS de ce champ sont conservés, donc redéclarés ici (le socle
     # pose ``company`` obligatoire).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='statuspage_composants',
         verbose_name='Société',
         help_text='NULL = composant système, partagé entre tous les tenants.')
@@ -92,7 +92,7 @@ class IncidentPublic(TenantModel):
     # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
     # ici, le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='statuspage_incidents',
         verbose_name='Société',
         help_text='NULL = incident système, visible de tous les tenants.')
@@ -140,7 +140,7 @@ class IncidentUpdate(TimestampedModel):
     """Mise à jour horodatée d'un incident public (texte libre, humain)."""
 
     incident = models.ForeignKey(
-        IncidentPublic, on_delete=models.CASCADE, related_name='updates',
+        IncidentPublic, on_delete=models.CASCADE, related_name='updates',  # on_delete: IncidentUpdate est le détail de IncidentPublic — n'existe pas sans lui
         verbose_name='Incident')
     statut = models.CharField(
         'Statut au moment de la mise à jour', max_length=20,
@@ -173,7 +173,7 @@ class UptimeDayBucket(TenantModel):
     # nullabilité et le related_name PRÉ-EXISTANTS sont conservés (redéclarés
     # ici, le socle pose ``company`` obligatoire).
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='statuspage_uptime_buckets',
         verbose_name='Société',
         help_text='NULL = composant système, partagé entre tous les tenants.')
