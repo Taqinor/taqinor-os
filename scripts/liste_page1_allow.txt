@@ -175,7 +175,6 @@ frontend/src/pages/reporting/DashboardConfigPage.jsx::reload
 frontend/src/pages/reporting/DashboardSharePage.jsx::reload
 frontend/src/pages/reporting/DashboardSharePage.jsx::reloadInternes
 frontend/src/pages/reporting/TechnicienScorecardPage.jsx::TechnicienScorecardPage
-frontend/src/pages/sav/ContratsMaintenance.jsx::generer
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadRentabilite
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadTournee
 frontend/src/pages/sav/EquipementsPage.jsx::set
