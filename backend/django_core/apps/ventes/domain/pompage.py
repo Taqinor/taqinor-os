@@ -1149,6 +1149,16 @@ def _au_mois_critique(serie, mois):
     return serie[mois - 1]
 
 
+#: AMOT63 — entrées RÉSOLUES persistées (``etude_params['entrees_pompage']``,
+#: forme figée dans ``contract_samples/etude_pompage_preview.json``) : ce que
+#: le schéma et la comparaison besoin/livré impriment.
+CLES_ENTREES_POMPAGE = (
+    'cultures', 'region', 'niveau_statique_m', 'niveau_dynamique_m',
+    'profondeur_forage_m', 'volume_reservoir_m3', 'distance_champ_m',
+    'plaque',
+)
+
+
 def derivees_de_l_etude(sortie, *, pvgis_fige=None):
     """AGR122/AGR123 — l'étude (forme du contrat) → les clés DÉRIVÉES
     ``moteur_pompage`` d'``etude_params``. ``None`` = clé RETIRÉE (Z2)."""
@@ -1165,6 +1175,12 @@ def derivees_de_l_etude(sortie, *, pvgis_fige=None):
         figees = pvgis_fige
     provenance = {cle: (v or {}).get('provenance')
                   for cle, v in (sortie.get('entrees_resolues') or {}).items()}
+    # AMOT63 — les valeurs RÉSOLUES que le moteur a utilisées (priorité corps >
+    # devis > lead déjà appliquée par le résolveur) : le rendu les lit au
+    # lieu de ne voir que les entrées saisies au devis.
+    resolues = sortie.get('entrees_resolues') or {}
+    entrees_pompage = {cle: (resolues[cle] or {}).get('valeur')
+                       for cle in CLES_ENTREES_POMPAGE if cle in resolues}
     return {
         'besoin_mensuel': sortie.get('besoin'),
         'production': production,
@@ -1180,6 +1196,7 @@ def derivees_de_l_etude(sortie, *, pvgis_fige=None):
         'hypotheses_pompage': sortie.get('hypotheses') or None,
         'pvgis_fige': figees or None,
         'provenance_pompage': {'entrees': provenance},
+        'entrees_pompage': entrees_pompage or None,
         'pompe_cv': puissance.get('cv'),
         'pompe_kw': puissance.get('kw'),
         'hmt_m': hmt.get('valeur_m'),

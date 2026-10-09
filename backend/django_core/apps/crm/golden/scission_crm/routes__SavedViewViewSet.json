@@ -1,0 +1,58 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^vues-enregistrees/$",
+  "nom": "savedview-list",
+  "vue": "SavedViewViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^vues-enregistrees/(?P<pk>[^/.]+)/$",
+  "nom": "savedview-detail",
+  "vue": "SavedViewViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^vues-enregistrees/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "savedview-detail",
+  "vue": "SavedViewViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "reorder"
+  },
+  "motif": "^vues-enregistrees/reorder/$",
+  "nom": "savedview-reorder",
+  "vue": "SavedViewViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "reorder"
+  },
+  "motif": "^vues-enregistrees/reorder\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "savedview-reorder",
+  "vue": "SavedViewViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^vues-enregistrees\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "savedview-list",
+  "vue": "SavedViewViewSet"
+ }
+]

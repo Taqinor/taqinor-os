@@ -1,0 +1,58 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^partenaires/$",
+  "nom": "partenaire-list",
+  "vue": "PartenaireViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^partenaires/(?P<pk>[^/.]+)/$",
+  "nom": "partenaire-detail",
+  "vue": "PartenaireViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "provisionner_acces"
+  },
+  "motif": "^partenaires/(?P<pk>[^/.]+)/provisionner-acces/$",
+  "nom": "partenaire-provisionner-acces",
+  "vue": "PartenaireViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "provisionner_acces"
+  },
+  "motif": "^partenaires/(?P<pk>[^/.]+)/provisionner-acces\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "partenaire-provisionner-acces",
+  "vue": "PartenaireViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^partenaires/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "partenaire-detail",
+  "vue": "PartenaireViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^partenaires\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "partenaire-list",
+  "vue": "PartenaireViewSet"
+ }
+]

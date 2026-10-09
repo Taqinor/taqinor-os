@@ -1,0 +1,90 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^deals-enregistres/$",
+  "nom": "deal-enregistre-list",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^deals-enregistres/(?P<pk>[^/.]+)/$",
+  "nom": "deal-enregistre-detail",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "approuver"
+  },
+  "motif": "^deals-enregistres/(?P<pk>[^/.]+)/approuver/$",
+  "nom": "deal-enregistre-approuver",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "approuver"
+  },
+  "motif": "^deals-enregistres/(?P<pk>[^/.]+)/approuver\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "deal-enregistre-approuver",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "rejeter"
+  },
+  "motif": "^deals-enregistres/(?P<pk>[^/.]+)/rejeter/$",
+  "nom": "deal-enregistre-rejeter",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "rejeter"
+  },
+  "motif": "^deals-enregistres/(?P<pk>[^/.]+)/rejeter\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "deal-enregistre-rejeter",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^deals-enregistres/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "deal-enregistre-detail",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "a_payer"
+  },
+  "motif": "^deals-enregistres/a-payer/$",
+  "nom": "deal-enregistre-a-payer",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "a_payer"
+  },
+  "motif": "^deals-enregistres/a-payer\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "deal-enregistre-a-payer",
+  "vue": "DealEnregistreViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^deals-enregistres\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "deal-enregistre-list",
+  "vue": "DealEnregistreViewSet"
+ }
+]

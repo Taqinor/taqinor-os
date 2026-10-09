@@ -3,6 +3,7 @@ import { Tags, Plus } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Card, CardContent, Skeleton, EmptyState, Button, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -35,8 +36,9 @@ export default function ListesPrixPage() {
   const [produits, setProduits] = useState([])
 
   const fetchListes = () =>
-    ventesApi.getListesPrix()
-      .then(r => setListes(r.data.results ?? r.data))
+    // ADEV35 — toutes les pages (60 listes ≠ première page de 50).
+    fetchAllPages(page => ventesApi.getListesPrix({ page }).then(r => r.data))
+      .then(data => setListes(Array.isArray(data) ? data : (data?.results ?? [])))
       .catch(() => setError('Impossible de charger les listes de prix.'))
       .finally(() => setLoading(false))
 

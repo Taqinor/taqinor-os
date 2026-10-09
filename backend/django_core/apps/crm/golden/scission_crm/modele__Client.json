@@ -1,0 +1,443 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "clients",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 255
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 255,
+    "null": true
+   },
+   "nom": "prenom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 254,
+    "null": true
+   },
+   "nom": "email",
+   "type": "EmailField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "telephone",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "adresse",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "particulier",
+      "Particulier"
+     ],
+     [
+      "entreprise",
+      "Entreprise"
+     ]
+    ],
+    "default": "particulier",
+    "max_length": 12
+   },
+   "nom": "type_client",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 30,
+    "null": true
+   },
+   "nom": "cin",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 30,
+    "null": true
+   },
+   "nom": "ice",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 30,
+    "null": true
+   },
+   "nom": "if_fiscal",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 30,
+    "null": true
+   },
+   "nom": "rc",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Sert au document et à la facture quand elle existe ; sinon l'adresse (du site).",
+    "null": true,
+    "verbose_name": "Adresse du siège"
+   },
+   "nom": "adresse_siege",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "La personne qui représente l'entreprise.",
+    "max_length": 255,
+    "null": true,
+    "verbose_name": "À l'attention de"
+   },
+   "nom": "contact_nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 120,
+    "null": true,
+    "verbose_name": "Fonction du contact"
+   },
+   "nom": "contact_fonction",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "oui",
+      "Oui"
+     ],
+     [
+      "non",
+      "Non"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "D-CIQ-3 : économies en HT si oui, en TTC sinon.",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "TVA récupérable"
+   },
+   "nom": "tva_recuperable",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "help_text": "Commerçant en nom propre créé depuis un lead sans raison sociale : le nom est celui de la personne — jamais bloquant.",
+    "verbose_name": "Raison sociale à confirmer"
+   },
+   "nom": "raison_sociale_a_confirmer",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "clients_crees",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "custom_data",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Seuil d'encours client. Vide = pas de limite.",
+    "max_digits": 12,
+    "null": true,
+    "verbose_name": "Plafond de crédit (MAD TTC)"
+   },
+   "nom": "plafond_credit",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "is_anonymized",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "anonymized_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "fr",
+      "Français"
+     ],
+     [
+      "ar",
+      "العربية"
+     ]
+    ],
+    "default": "fr",
+    "help_text": "Langue des factures / devis générés pour ce client.",
+    "max_length": 2,
+    "verbose_name": "Langue des documents"
+   },
+   "nom": "langue_document",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Tarif négocié pour ce client. Vide = prix de vente standard.",
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "clients",
+    "to": "ventes.listeprix",
+    "verbose_name": "Liste de prix"
+   },
+   "nom": "liste_prix",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "help_text": "Envoie automatiquement le relevé de compte PDF le 1er du mois si l'encours n'est pas nul. Désactivé par défaut.",
+    "verbose_name": "Envoi mensuel automatique du relevé"
+   },
+   "nom": "releve_mensuel_auto",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Vide = comportement par défaut (+30 j depuis émission).",
+    "null": true,
+    "verbose_name": "Délai de paiement (jours)"
+   },
+   "nom": "delai_paiement_jours",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "help_text": "Si coché, l'échéance calculée depuis le délai est reportée au dernier jour de son mois (ex. « 60 jours fin de mois »).",
+    "verbose_name": "Échéance reportée en fin de mois"
+   },
+   "nom": "fin_de_mois",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Rattache ce client à une société mère (consolidation CA groupe). Même société uniquement ; jamais de cycle.",
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "filiales",
+    "to": "crm.client",
+    "verbose_name": "Société mère"
+   },
+   "nom": "parent",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Code stable partagé par ce client pour parrainer un prospect (lien /devis/mon-toit?utm_source=parrainage&utm_campaign=<code>).",
+    "max_length": 20,
+    "null": true,
+    "unique": true,
+    "verbose_name": "Code de parrainage"
+   },
+   "nom": "code_parrainage",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Fiche du répertoire unifié des parties prenantes reflétant ce client. Renseignée automatiquement (miroir).",
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "clients",
+    "to": "tiers.tiers",
+    "verbose_name": "Tiers (répertoire unifié)"
+   },
+   "nom": "tiers",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "help_text": "Message affiché au devis quand ce client est sélectionné.",
+    "verbose_name": "Avertissement de vente"
+   },
+   "nom": "avertissement_vente",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "help_text": "Si activé, empêche l'acceptation/facturation sans override responsable/admin.",
+    "verbose_name": "Avertissement bloquant"
+   },
+   "nom": "avertissement_bloquant",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Date de la dernière notification 'compte dormant' envoyée pour ce client. Vide = jamais alerté.",
+    "null": true,
+    "verbose_name": "Dernière alerte de dormance"
+   },
+   "nom": "derniere_alerte_dormance",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_client",
+ "label": "crm.Client",
+ "relations_inverses": [
+  "avances",
+  "avoirs",
+  "bons_commande",
+  "calepinages",
+  "comptes_portail",
+  "contrats_maintenance",
+  "demandes_ticket_portail",
+  "depots_consignation_stock",
+  "devis",
+  "devis_finances",
+  "documents_portail",
+  "email_logs",
+  "equipements_vente_directe",
+  "factures",
+  "filiales",
+  "ged_acls",
+  "ged_coffres",
+  "installations",
+  "installations_projets",
+  "leads",
+  "mandats_paiement",
+  "notes_debit",
+  "parametrage_relance",
+  "parrainages_donnes",
+  "parrainages_recus",
+  "plan_compte",
+  "retours_entrepot",
+  "salles_vente",
+  "site_profile",
+  "tickets_sav"
+ ]
+}

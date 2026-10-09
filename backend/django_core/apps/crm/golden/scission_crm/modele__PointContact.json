@@ -1,0 +1,173 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "points_contact",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "points_contact",
+    "to": "crm.lead",
+    "verbose_name": "Lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "meta_ads",
+      "Publicité Meta"
+     ],
+     [
+      "whatsapp_ctwa",
+      "WhatsApp/CTWA"
+     ],
+     [
+      "site_web",
+      "Site web"
+     ],
+     [
+      "google_ads",
+      "Google Ads"
+     ],
+     [
+      "reference",
+      "Référence"
+     ],
+     [
+      "telephone",
+      "Téléphone"
+     ],
+     [
+      "walk_in",
+      "Visite/Walk-in"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 20,
+    "verbose_name": "Canal"
+   },
+   "nom": "canal",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 200,
+    "null": true,
+    "verbose_name": "Source"
+   },
+   "nom": "source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "verbose_name": "Date du contact"
+   },
+   "nom": "date_contact",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0,
+    "verbose_name": "Ordre / séquence"
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Détail"
+   },
+   "nom": "detail",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Coût du point de contact (canaux payants). Vide si gratuit.",
+    "max_digits": 12,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       0
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     }
+    ],
+    "verbose_name": "Coût"
+   },
+   "nom": "cout",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "points_contact_saisis",
+    "to": "authentication.customuser",
+    "verbose_name": "Saisi par"
+   },
+   "nom": "saisi_par",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "saisi_le",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_pointcontact",
+ "label": "crm.PointContact",
+ "relations_inverses": []
+}

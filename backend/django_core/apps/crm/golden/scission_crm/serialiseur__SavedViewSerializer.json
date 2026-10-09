@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "page",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "name",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "rank",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "payload",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "user",
+   "read_only": false,
+   "required": false
+  }
+ ]
+}

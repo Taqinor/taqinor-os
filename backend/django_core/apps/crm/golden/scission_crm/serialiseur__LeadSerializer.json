@@ -1,0 +1,1432 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "_PuissanceKwField",
+   "nom": "equip_piscine_pompe_kw",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "_PuissanceKwField",
+   "nom": "equip_chauffe_eau_kw",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "_PuissanceKwField",
+   "nom": "equip_ve_chargeur_kw",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "_PuissanceKwField",
+   "nom": "equip_clim_kw",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "stage_label",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "source_label",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "client_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "client_ecart",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "ville_effective",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "devis",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "owner_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "owner_poste",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "owner_avatar",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "devis_auto",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "next_activity",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "score",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "score_label",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "score_reasons",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "stage_since_days",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "updated_by_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "structure_produit_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "archived_by_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "pii_masked",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "prochaine_touche_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "prochaine_touche_canal",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "touche_en_retard",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "nb_tentatives",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "repere_toit",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "undo",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "confirme_recul",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "facture_periodicite",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "is_deleted",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "deleted_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "prenom",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "civilite",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "societe",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "EmailField",
+   "nom": "email",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "telephone",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "adresse",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "ville",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "contact_secondaire_nom",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "contact_secondaire_telephone",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "facture_hiver",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "facture_ete",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "ete_differente",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "whatsapp",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "langue_preferee",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "gps_lat",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "gps_lng",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "URLField",
+   "nom": "lien_maps",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "ville_reference",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "canal",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "priorite",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "tags",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "perdu",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "motif_perte",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "relance_date",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "ne_plus_contacter",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_installation",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "montant_estime",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "date_cloture_prevue",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "conso_mensuelle_kwh",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "tranche_onee",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "raccordement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "regularisation_8221",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "occupation_jour",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "equip_piscine",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "equip_voiture_electrique",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "equip_ve_km_semaine",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "equip_clim",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "equip_clim_pieces",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "equip_chauffe_eau_electrique",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "equip_chauffe_eau_creneau",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "equip_ve_creneau",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "equip_piscine_heures_jour",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "equip_clim_creneau",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "equip_piscine_creneau",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompe_actuelle_cv",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompe_hmt_m",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompe_debit_m3h",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "source_eau",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "niveau_statique_m",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "niveau_statique_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "profondeur_forage_m",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "debit_forage_m3h",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "debit_forage_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "besoin_eau_m3j",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "besoin_eau_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "culture",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "surface_irriguee_ha",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "irrigation_methode",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "region_agricole",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "pompe_actuelle_type",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompe_actuelle_debit_m3h",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "butane_bouteilles_jour",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "carburant_prix_unitaire_mad",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "carburant_prix_declare_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "depense_carburant_mad_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "mois_irrigation",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "distance_forage_champ_m",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "electricite_sur_place",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "autorisation_prelevement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "autorisation_numero",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "autorisation_debit_l_s",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "autorisation_volume_m3_an",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "compteur_eau",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "projet_pompage",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "deja_beneficiaire_fda",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "pompe_hmt_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "dossier_subvention",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "dossier_subvention_le",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_toiture",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "surface_toiture_m2",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "orientation",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "inclinaison_deg",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "ombrage",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "ombrage_notes",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "nb_etages",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "structure_pref",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "taille_souhaitee_kwc",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "batterie_souhaitee",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "visite_prevue_le",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "visite_effectuee",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "visite_notes",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "stage",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "source",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "external_system",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "external_id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "bill_range_bucket",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "roof_type",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "roof_point",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "roof_outline",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "bill_kwh",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "UUIDField",
+   "nom": "token",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "roi_band",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "whatsapp_opt_in",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "contact_preference",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "contact_preference_set_at",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "consent_timestamp",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "fbclid",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "gclid",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "utm_source",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "utm_medium",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "utm_campaign",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "utm_content",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "utm_term",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "meta_ad_id",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "meta_adset_id",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "meta_campaign_id",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "meta_form_id",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "distributeur",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "roof_age",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "ownership",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "project_timeline",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "financing_intent",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "futures_charges",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "facility_type",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "site_count",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "visit_window_part",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "visit_window_week",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "client_ref",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "client_ref_provisoire",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "phone_is_foreign",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "page",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "web_questionnaire",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "web_estimate",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "note",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "first_contacted_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "is_archived",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "custom_data",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "archived_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_modification",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation_origine",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "score_ajustement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "mql_assigned_at",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "phone_normalise",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "email_normalise",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "whatsapp_normalise",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "appareil_id",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_bien",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "objectif_projet",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "decideur",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "devis_concurrents",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "equip_ve_statut",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompage_heures_jour",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "pompe_alim_actuelle",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "carburant_litres_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "nb_personnes_foyer",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "budget_client_mad",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "frein_principal",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "declencheur",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "compteur_puissance_kva",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "chauffage_electrique_hiver",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "tension_raccordement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "tension_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "contrat_electricite",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "option_tarifaire_bt",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "puissance_souscrite_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "categorie_commerciale",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "reponses_categorie",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "secteur_industriel",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "export_ue_declare",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "regime_equipes",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "jours_ouverture",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "heure_debut",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "heure_fin",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "fermeture_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_surface",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "surface_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "groupe_electrogene",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "groupe_kva",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "groupe_litres_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "groupe_depense_mad_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pv_existant_kwc",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "cos_phi",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "cos_phi_source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "releve_conso",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "tva_recuperable",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "ice",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "rc",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "if_fiscal",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "adresse_siege",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "fonction_contact",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "contact_secondaire_fonction",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "EmailField",
+   "nom": "contact_secondaire_email",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "facture_tranche_declaree",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "deleted_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "company",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "client",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "tiers",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "owner",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "structure_produit",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "archived_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "updated_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "entite",
+   "read_only": false,
+   "required": false
+  }
+ ]
+}

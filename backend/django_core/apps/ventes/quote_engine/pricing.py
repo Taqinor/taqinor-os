@@ -1014,7 +1014,8 @@ def _fr_pct(v) -> str:
 def _fr_mad(v) -> str:
     """12345 -> '12 345' (espace fine insécable, format des documents).
 
-    AMOT26 — HALF_UP par ``montants.fmt_dirhams``."""
+    AMOT26 — HALF_UP par ``montants.fmt_dirhams`` (qui garde l'arrondi
+    d'origine pour un devis aux règles d'origine, décision 08/10/2026)."""
     from .montants import fmt_dirhams
     return fmt_dirhams(float(v))
 
@@ -1314,6 +1315,10 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
 from .constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS as _POIDS_GHI  # noqa: E402
 
 CLE_SOLAIRE_MENSUELLE = tuple(_POIDS_GHI)
+#: Décision fondateur 08/10/2026 (« nouveaux rendus seulement ») — la clé
+#: LITTÉRALE d'avant AMOT27, gardée pour les seuls devis envoyés avant la
+#: correction (``Devis.regles_calcul = 1``) : le client relit ce qu'il a reçu.
+from .constants import CLE_SOLAIRE_MENSUELLE_HISTORIQUE  # noqa: E402,F401
 
 
 def repartir_mensuel(total, cle=CLE_SOLAIRE_MENSUELLE):
@@ -1456,6 +1461,13 @@ def calculate_savings_roi(
     # répartition mensuelle suit la clé de forme. Le chiffre saisi est NET (la
     # perte de stockage n'est pas re-déduite). ``None`` ⇒ byte-identique.
     economie_imposee: float | None = None,
+    # Décision fondateur 08/10/2026 — « nouveaux rendus seulement ». Vrai par
+    # défaut (règles corrigées) ; le builder passe ``False`` pour un devis
+    # envoyé avant les corrections (``Devis.regles_calcul = 1``) :
+    #   ``rendement_une_fois`` — AMOT58 (part batterie 0 en modèle horaire) ;
+    #   ``forme_mensuelle_ghi`` — AMOT27 (répartition GHI au dirham).
+    rendement_une_fois: bool = True,
+    forme_mensuelle_ghi: bool = True,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1706,7 +1718,7 @@ def calculate_savings_roi(
     # « factures » / « estimation » : la perte Z5 reste appliquée au seul
     # cashflow — leur économie imprimée est BRUTE ; volet laissé à une tâche
     # dédiée, il re-chiffrerait des valeurs épinglées hors de cette lane.)
-    if _h:
+    if _h and rendement_une_fois:
         _batt_part = 0.0
     # QJR158 (c) — UNE SEULE définition des paramètres de projection, employée
     # par le CALCUL (les deux appels ci-dessous) et par le bloc d'hypothèses
@@ -1749,8 +1761,14 @@ def calculate_savings_roi(
         eco_s_monthly, eco_a_monthly = eco_monthly_reel
     else:
         # AMOT27 — la forme GHI de la production, Σ = annuel au dirham.
-        eco_s_monthly = repartir_mensuel(economie_opt1)
-        eco_a_monthly = repartir_mensuel(economie_opt2)
+        if forme_mensuelle_ghi:
+            eco_s_monthly = repartir_mensuel(economie_opt1)
+            eco_a_monthly = repartir_mensuel(economie_opt2)
+        else:
+            # Règles d'origine (regles_calcul = 1) : la clé et l'arrondi d'hier.
+            _SF = CLE_SOLAIRE_MENSUELLE_HISTORIQUE
+            eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
+            eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
 
     return {
         "prod_kwh":         production_annuelle,

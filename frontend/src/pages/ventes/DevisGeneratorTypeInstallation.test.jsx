@@ -113,13 +113,15 @@ function rendre(url) {
 const curseur = () => screen.queryByTestId('curseur-part-diurne')
 
 describe('QJR641 — plus de « Type d’installation » : le Marché pilote la part diurne', () => {
-  it('nouveau devis : aucun sélecteur de type, curseur au défaut résidentiel (60 %)', async () => {
+  it('nouveau devis : aucun sélecteur de type, pas de curseur, défaut résidentiel (60 %) affiché', async () => {
     rendre('/ventes/devis/nouveau')
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: /Résidentiel/ })).toHaveAttribute('aria-checked', 'true'))
     expect(document.getElementById('gen-insttype')).toBeNull()
     expect(screen.queryByText(/Type d'Installation/)).toBeNull()
-    expect(curseur().querySelector('input[type="range"]')).toHaveValue('60')
+    // AGNR44 — plus de curseur : la part diurne par défaut est DITE (60 %).
+    expect(curseur()).toBeNull()
+    expect(screen.getByTestId('part-diurne-defaut').textContent).toMatch(/60 %/)
   })
 
   it('CIQ126 — Industriel, Commercial et Agricole : curseur masqué (profil déclaré au moteur C&I)', async () => {

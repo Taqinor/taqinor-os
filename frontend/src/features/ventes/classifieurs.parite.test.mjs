@@ -34,6 +34,8 @@ import { fileURLToPath } from 'node:url'
 import {
   isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter,
   parseKwh, batteryKwhFromLines, classifyProduct,
+  texteClassement, appartientAuPanierSans, appartientAuPanierAvec, inverterCostFromLines,
+  optionTotalsTTC, avecBatterieAvailability,
 } from './solar.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -148,3 +150,57 @@ for (const cas of CAS_AVEC_ROLE) {
       `classifyProduct(« ${d} ») attendu ${JSON.stringify(cas.role)} (contrat QJR2/STKCAT19)`)
   })
 }
+
+// ── AGNR36 — section `cas_ligne_produit` (AGNR2) : la LIGNE se classe sur
+// désignation + nom du produit lié (`texteClassement`, miroir de
+// `utils/options.texte_classement`), jamais sur la désignation seule. Chaque
+// prédicat de ligne reçoit la liste des produits de l'écran.
+const CAS_LIGNE = FIXTURE.exemple?.cas_ligne_produit ?? []
+
+test('AGNR36 — la section cas_ligne_produit est présente', () => {
+  assert.ok(CAS_LIGNE.length > 0, 'classification_lignes.json ne porte aucun cas_ligne_produit')
+})
+
+for (const cas of CAS_LIGNE) {
+  test(`AGNR36 écran — ligne « ${cas.designation} » / produit « ${cas.produit_nom} »`, () => {
+    const produits = cas.produit_nom ? [{ id: 1, nom: cas.produit_nom }] : []
+    const l = {
+      designation: cas.designation, produit: cas.produit_nom ? '1' : '', quantite: '1',
+      prix_unit_ttc: '1000', taux_tva: '20', variante: '',
+    }
+    assert.equal(texteClassement(l, produits).trim(), `${cas.designation} ${cas.produit_nom}`.trim())
+    assert.equal(appartientAuPanierSans(l, produits), cas.panier_sans, 'panier_sans')
+    assert.equal(appartientAuPanierAvec(l, produits), cas.panier_avec, 'panier_avec')
+    assert.equal(batteryKwhFromLines([l], produits) || null, cas.kwh_batterie, 'kwh_batterie')
+    assert.equal(inverterCostFromLines([l], produits) != null, cas.provision_onduleur, 'provision_onduleur')
+    assert.equal(isPanel(cas.designation, cas.produit_nom), cas.est_panneau, 'est_panneau')
+  })
+}
+
+test('AGNR36 — DEV-DEMO-0003 : désignations retouchées, totaux par option inchangés', () => {
+  const produits = [
+    { id: 1, nom: 'Panneau Canadian Solar 710W' },
+    { id: 2, nom: 'Onduleur réseau Huawei 5kW Monophasé' },
+    { id: 3, nom: 'Onduleur hybride Deye 5kW Monophasé' },
+    { id: 4, nom: 'Batterie Dyness 5 kWh' },
+  ]
+  const L = (produit, designation, quantite, ttc) => ({
+    produit: String(produit), designation, quantite: String(quantite), prix_unit_ttc: String(ttc),
+    taux_tva: '20', variante: '',
+  })
+  const avant = [
+    L(1, 'Panneau Canadian Solar 710W', 8, 1500), L(2, 'Onduleur réseau Huawei 5kW Monophasé', 1, 9000),
+    L(3, 'Onduleur hybride Deye 5kW Monophasé', 1, 14000), L(4, 'Batterie Dyness 5 kWh', 1, 16000),
+  ]
+  const retouche = [
+    avant[0], avant[1],
+    { ...avant[2], designation: 'Onduleur Deye 5kW (garantie 10 ans)' },
+    { ...avant[3], designation: 'Stockage Dyness 5 kWh' },
+  ]
+  const ref = optionTotalsTTC(avant, 0, { produits })
+  const t = optionTotalsTTC(retouche, 0, { produits })
+  assert.equal(t.totalSans, ref.totalSans)
+  assert.equal(t.totalAvec, ref.totalAvec)
+  assert.equal(batteryKwhFromLines(retouche, produits), 5)
+  assert.equal(avecBatterieAvailability(retouche, produits, 5.68).available, true)
+})

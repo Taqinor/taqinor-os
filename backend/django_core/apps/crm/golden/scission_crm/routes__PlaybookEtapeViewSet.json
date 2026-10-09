@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^playbook-etapes/$",
+  "nom": "playbooketape-list",
+  "vue": "PlaybookEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^playbook-etapes/(?P<pk>[^/.]+)/$",
+  "nom": "playbooketape-detail",
+  "vue": "PlaybookEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^playbook-etapes/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "playbooketape-detail",
+  "vue": "PlaybookEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^playbook-etapes\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "playbooketape-list",
+  "vue": "PlaybookEtapeViewSet"
+ }
+]

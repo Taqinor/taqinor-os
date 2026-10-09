@@ -1,0 +1,85 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "territoires_commerciaux",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 120,
+    "verbose_name": "Nom du territoire"
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:list",
+    "verbose_name": "Villes / régions (liste)"
+   },
+   "nom": "villes",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Commercial responsable (id)"
+   },
+   "nom": "owner_user_id",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0,
+    "verbose_name": "Priorité (haute = prioritaire)"
+   },
+   "nom": "priorite",
+   "type": "IntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": true,
+    "verbose_name": "Actif"
+   },
+   "nom": "actif",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true,
+    "verbose_name": "Créé le"
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "compta_territoirecommercial",
+ "label": "crm.TerritoireCommercial",
+ "relations_inverses": []
+}

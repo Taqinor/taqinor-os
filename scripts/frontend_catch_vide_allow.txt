@@ -75,6 +75,7 @@ frontend/src/features/uxviews/useServerSavedViews.js::writePref  1
 frontend/src/features/ventes/EtudeBancable.jsx::poll  1
 frontend/src/features/ventes/FacturerDevisDialog.jsx::submit  1
 frontend/src/features/ventes/PdfCanvas.jsx::run  1
+frontend/src/features/ventes/quote/ecranDefauts.js::ecrireLastTva  1
 frontend/src/pages/crm/ClientForm.jsx::ecrireCreerUnAutre  1
 frontend/src/pages/crm/ClientList.jsx::bulkDelete  1
 frontend/src/pages/crm/DormantAccountsWidget.jsx::relancer  1
@@ -163,7 +164,6 @@ frontend/src/pages/stock/ProduitForm.jsx::handleSubmit  1
 frontend/src/pages/stock/StockList.jsx::exportProduitsIds  1
 frontend/src/pages/stock/StockList.jsx::submit  1
 frontend/src/pages/ventes/BonCommandeList.jsx::handleSubmit  1
-frontend/src/pages/ventes/DevisGenerator.jsx::ecrireLastTva  1
 frontend/src/pages/ventes/DevisList.jsx::openVarianteModal  1
 frontend/src/pages/ventes/DevisOffresTailles.jsx::appliquer  1
 frontend/src/pages/ventes/FactureForm.jsx::handleSubmit  1

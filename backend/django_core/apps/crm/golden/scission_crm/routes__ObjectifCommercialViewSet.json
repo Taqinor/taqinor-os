@@ -1,0 +1,74 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^objectifs/$",
+  "nom": "objectifcommercial-list",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^objectifs/(?P<pk>[^/.]+)/$",
+  "nom": "objectifcommercial-detail",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "attainment"
+  },
+  "motif": "^objectifs/(?P<pk>[^/.]+)/attainment/$",
+  "nom": "objectifcommercial-attainment",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "attainment"
+  },
+  "motif": "^objectifs/(?P<pk>[^/.]+)/attainment\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "objectifcommercial-attainment",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^objectifs/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "objectifcommercial-detail",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "attainment_list"
+  },
+  "motif": "^objectifs/attainment/$",
+  "nom": "objectifcommercial-attainment-list",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "attainment_list"
+  },
+  "motif": "^objectifs/attainment\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "objectifcommercial-attainment-list",
+  "vue": "ObjectifCommercialViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^objectifs\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "objectifcommercial-list",
+  "vue": "ObjectifCommercialViewSet"
+ }
+]

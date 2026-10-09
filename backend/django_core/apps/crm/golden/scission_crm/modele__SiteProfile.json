@@ -1,0 +1,399 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "site_profiles",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "site_profile",
+    "to": "crm.client",
+    "verbose_name": "Client"
+   },
+   "nom": "client",
+   "type": "OneToOneField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "facture_hiver",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "facture_ete",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "ete_differente",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "conso_mensuelle_kwh",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 100,
+    "null": true
+   },
+   "nom": "tranche_onee",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "monophase",
+      "Monophasé"
+     ],
+     [
+      "triphase",
+      "Triphasé"
+     ],
+     [
+      "inconnu",
+      "Je ne sais pas"
+     ],
+     [
+      "aucun",
+      "Non raccordé (site isolé)"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "raccordement",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "regularisation_8221",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "residentiel",
+      "Résidentiel"
+     ],
+     [
+      "commercial",
+      "Commercial"
+     ],
+     [
+      "industriel",
+      "Industriel"
+     ],
+     [
+      "agricole",
+      "Agricole"
+     ]
+    ],
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "type_installation",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 6,
+    "null": true,
+    "verbose_name": "Pompe actuelle (CV)"
+   },
+   "nom": "pompe_actuelle_cv",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 8,
+    "null": true
+   },
+   "nom": "pompe_hmt_m",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 8,
+    "null": true
+   },
+   "nom": "pompe_debit_m3h",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "terrasse_beton",
+      "Terrasse béton"
+     ],
+     [
+      "tole_metal",
+      "Tôle/Métal"
+     ],
+     [
+      "tuiles",
+      "Tuiles"
+     ],
+     [
+      "bac_acier",
+      "Bac acier"
+     ],
+     [
+      "fibrociment",
+      "Fibrociment"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "type_toiture",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "surface_toiture_m2",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "sud",
+      "Sud"
+     ],
+     [
+      "sud_est",
+      "Sud-Est"
+     ],
+     [
+      "sud_ouest",
+      "Sud-Ouest"
+     ],
+     [
+      "est",
+      "Est"
+     ],
+     [
+      "ouest",
+      "Ouest"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "orientation",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 5,
+    "null": true
+   },
+   "nom": "inclinaison_deg",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucun",
+      "Aucun"
+     ],
+     [
+      "partiel",
+      "Partiel"
+     ],
+     [
+      "important",
+      "Important"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "ombrage",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "ombrage_notes",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 6,
+    "max_digits": 9,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       -90
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     },
+     {
+      "args": [
+       90
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ]
+   },
+   "nom": "gps_lat",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 6,
+    "max_digits": 9,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       -180
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     },
+     {
+      "args": [
+       180
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ]
+   },
+   "nom": "gps_lng",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_siteprofile",
+ "label": "crm.SiteProfile",
+ "relations_inverses": []
+}

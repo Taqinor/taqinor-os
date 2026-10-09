@@ -1,0 +1,175 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "%(app_label)s_%(class)s_set",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "visites_externes",
+    "to": "crm.lead",
+    "verbose_name": "Lead rattaché"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "visite_site",
+      "Visite du site"
+     ],
+     [
+      "tunnel_lead",
+      "Demande de devis (tunnel)"
+     ],
+     [
+      "proposition",
+      "Ouverture de proposition"
+     ],
+     [
+      "questionnaire",
+      "Réponse au questionnaire"
+     ],
+     [
+      "booking",
+      "Réservation de visite"
+     ]
+    ],
+    "default": "visite_site",
+    "max_length": 20,
+    "verbose_name": "Point de contact"
+   },
+   "nom": "point",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 200,
+    "verbose_name": "Page / contexte"
+   },
+   "nom": "contexte",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 6,
+    "verbose_name": "Suffixe du jeton"
+   },
+   "nom": "token_suffixe",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 64,
+    "verbose_name": "Adresse IP"
+   },
+   "nom": "ip",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 255,
+    "verbose_name": "Navigateur (tronqué)"
+   },
+   "nom": "user_agent",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 10,
+    "verbose_name": "Langue affichée"
+   },
+   "nom": "langue",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "db_index": true,
+    "default": "",
+    "max_length": 64,
+    "verbose_name": "Identifiant d’appareil"
+   },
+   "nom": "appareil_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0,
+    "verbose_name": "Durée sur la page (s)"
+   },
+   "nom": "duree_s",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "verbose_name": "Visite terminée"
+   },
+   "nom": "terminee",
+   "type": "BooleanField"
+  }
+ ],
+ "db_table": "crm_visiteexterne",
+ "label": "crm.VisiteExterne",
+ "relations_inverses": []
+}

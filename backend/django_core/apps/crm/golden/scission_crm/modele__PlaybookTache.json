@@ -1,0 +1,54 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "taches",
+    "to": "crm.playbooketape"
+   },
+   "nom": "etape",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 255
+   },
+   "nom": "libelle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "obligatoire",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  }
+ ],
+ "db_table": "crm_playbooktache",
+ "label": "crm.PlaybookTache",
+ "relations_inverses": [
+  "progressions"
+ ]
+}
