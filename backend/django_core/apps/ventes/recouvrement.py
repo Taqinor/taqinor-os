@@ -215,21 +215,11 @@ def apercu_relance(facture):
     from .models import RelanceLog
 
     ensure_default_followup_levels(facture.company)
-    niveaux = list(FollowupLevel.objects.filter(
-        company=facture.company).order_by('ordre', 'delai_jours', 'id'))
-    ordres_envoyes = [o for o in RelanceLog.objects.filter(
-        facture=facture).values_list('niveau', flat=True) if o is not None]
-    plus_haut = max(ordres_envoyes) if ordres_envoyes else None
-    suivant = None
-    deja_tous = False
-    if niveaux:
-        if plus_haut is None:
-            suivant = niveaux[0]
-        else:
-            suivant = next((n for n in niveaux if n.ordre > plus_haut), None)
-            if suivant is None:
-                suivant = niveaux[-1]
-                deja_tous = True
+    # AFAC46 — LE prochain niveau partagé avec la liste, les relances et le
+    # beat (journal effectif, un seul tri).
+    from .domain.recouvrement import niveaux_cadence, prochain_niveau
+    niveaux = niveaux_cadence(facture.company)
+    suivant, deja_tous = prochain_niveau(facture, niveaux)
     # Même valeur que la variable `{jours_retard}` du message (propriété
     # canonique : 0 sans échéance, non échue, ou soldée).
     jours = int(getattr(facture, 'jours_retard', 0) or 0)
@@ -289,16 +279,15 @@ def _current_level(jours_retard, levels, montant_du=None):
     return out
 
 
-def _next_level(jours_retard, levels):
-    """Prochain niveau non encore atteint (seuil strictement supérieur), ou None.
-
-    Sert à proposer une date de prochaine relance (aujourd'hui + son délai).
-    """
-    for lvl in levels:
-        if lvl.delai_jours > jours_retard:
-            return {'ordre': lvl.ordre, 'nom': lvl.nom,
-                    'delai_jours': lvl.delai_jours}
-    return None
+def _niveau_suivant_ligne(facture, niveaux):
+    """AFAC46 — ``niveau_suivant`` d'une ligne d'impayé : LE prochain
+    niveau de la cadence (``None`` quand tous sont partis)."""
+    from .domain.recouvrement import prochain_niveau
+    niveau, deja_tous = prochain_niveau(facture, niveaux)
+    if niveau is None or deja_tous:
+        return None
+    return {'ordre': niveau.ordre, 'nom': niveau.nom,
+            'delai_jours': niveau.delai_jours}
 
 
 class FollowupLevelViewSet(viewsets.ModelViewSet):
@@ -421,6 +410,11 @@ def relances_list(request):
     (« mes relances »). Sans ce paramètre : comportement inchangé (toutes
     les factures dues visibles à l'utilisateur)."""
     levels = _levels(request.user.company if request.user.company_id else None)
+    # AFAC46 — `niveau_suivant` = LE prochain niveau (même calcul que
+    # l'aperçu et le beat), plus une estimation par jours de retard.
+    from .domain.recouvrement import niveaux_cadence
+    niveaux_seq = niveaux_cadence(
+        request.user.company if request.user.company_id else None)
     from .models import ParametrageRelanceClient
     from .selectors import comportement_paiement
     scores_cache = {}
@@ -465,7 +459,7 @@ def relances_list(request):
             'montant_du': _s(du),
             'jours_retard': jr,
             'niveau': _current_level(jr, levels, montant_du=du),
-            'niveau_suivant': _next_level(jr, levels),
+            'niveau_suivant': _niveau_suivant_ligne(f, niveaux_seq),
             'prochaine_relance': (f.prochaine_relance.isoformat()
                                   if f.prochaine_relance else None),
             # AUD158 — `relances` est préchargé : `len()` lit le cache, là où

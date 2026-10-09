@@ -52,8 +52,11 @@ def reset_relance_escalation(facture):
         facture.prochaine_relance = None
         facture.save(update_fields=['prochaine_relance'])
         changed = True
-    autos = facture.relances.filter(note=RELANCE_AUTO_NOTE)
-    n = autos.update(note=RELANCE_AUTO_NOTE_RESOLUE)
+    # AFAC46 — la neutralisation porte un booléen sur TOUTES les relances
+    # (manuelles comme automatiques), plus une réécriture de la note des
+    # seules automatiques : la cadence repart au niveau 1 si la facture rouvre.
+    n = facture.relances.filter(compte_dans_cadence=True).update(
+        compte_dans_cadence=False)
     if n:
         changed = True
     # XFAC5 — une facture soldée referme toute promesse de paiement encore
@@ -82,6 +85,68 @@ def _rouvrir_facture_apres_rejet(facture, user=None):
     rouvre pas (CIQ214) ; états terminaux préservés. Idempotent."""
     from .encaissements import recalculer_statut_paiement
     recalculer_statut_paiement(facture, user=user, source='rejet_paiement')
+    # AFAC46 — une facture ROUVERTE en retard reçoit sa prochaine relance par
+    # la MÊME règle que la bascule (échéance + délai du premier niveau).
+    facture.refresh_from_db()
+    amorcer_cadence(facture)
+
+
+# ── AFAC46 (C-AFAC-034 + C-AFAC-037) — UNE cadence de relance ───────────────
+def niveaux_cadence(company):
+    """Niveaux de relance de la société, UN seul tri (``ordre``,
+    ``delai_jours``) pour l'aperçu, la liste, les relances et le beat."""
+    from ..models import FollowupLevel
+    return list(FollowupLevel.objects.filter(company=company).order_by(
+        'ordre', 'delai_jours', 'id'))
+
+
+def prochain_niveau(facture, niveaux=None):
+    """LE prochain niveau de relance d'une facture : celui qui suit le plus
+    haut ``RelanceLog.niveau`` (ORDRE) EFFECTIF — tous canaux et auteurs,
+    ``compte_dans_cadence`` vrai —, le premier s'il n'y en a aucun.
+
+    Renvoie ``(niveau, deja_tous)`` : tous partis → ``(dernier, True)`` ;
+    aucun niveau configuré → ``(None, False)``. Lit ``facture.relances.all()``
+    (préchargé par la liste des impayés : aucune requête par ligne)."""
+    if niveaux is None:
+        niveaux = niveaux_cadence(facture.company)
+    if not niveaux:
+        return None, False
+    ordres = [r.niveau for r in facture.relances.all()
+              if r.niveau is not None and r.compte_dans_cadence]
+    if not ordres:
+        return niveaux[0], False
+    plus_haut = max(ordres)
+    suivant = next((n for n in niveaux if n.ordre > plus_haut), None)
+    if suivant is None:
+        return niveaux[-1], True
+    return suivant, False
+
+
+def amorcer_cadence(facture, *, echeance=None, niveaux=None, save=True):
+    """Amorce ``prochaine_relance`` d'une facture EN RETARD qui n'en a pas :
+    échéance (effective) + délai du PREMIER niveau. Une date déjà posée n'est
+    JAMAIS écrasée ; sans niveau configuré, rien n'est posé. Renvoie True si
+    une date a été posée."""
+    from datetime import timedelta
+    from ..models import Facture
+    if facture.prochaine_relance is not None \
+            or facture.statut != Facture.Statut.EN_RETARD:
+        return False
+    if niveaux is None:
+        niveaux = niveaux_cadence(facture.company)
+    if not niveaux:
+        return False
+    if echeance is None:
+        from ..scheduled import _echeance_effective, casablanca_today
+        echeance = _echeance_effective(facture, casablanca_today())
+    if echeance is None:
+        return False
+    facture.prochaine_relance = echeance + timedelta(
+        days=niveaux[0].delai_jours or 0)
+    if save:
+        facture.save(update_fields=['prochaine_relance'])
+    return True
 
 
 class PaiementRejectError(Exception):

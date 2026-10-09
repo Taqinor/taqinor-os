@@ -78,8 +78,10 @@ class TestRecouvrement(TestCase):
         self.assertEqual(row['niveau']['delai_jours'], 30)
         # Le niveau courant porte sa clé message (pré-remplissage modale).
         self.assertIn('message', row['niveau'])
-        # 45 j dépasse tous les seuils → pas de niveau suivant proposé.
-        self.assertIsNone(row['niveau_suivant'])
+        # AFAC46 — `niveau_suivant` = LE prochain niveau de la cadence (journal
+        # des relances), plus une estimation par jours : aucune relance encore
+        # consignée → le premier niveau (celui que le beat enverrait).
+        self.assertEqual(row['niveau_suivant']['ordre'], 1)
 
     def test_next_level_suggested_for_mid_overdue(self):
         # Configure un message sur le niveau courant et une facture à 10 j de
@@ -102,7 +104,8 @@ class TestRecouvrement(TestCase):
         self.assertEqual(row['niveau']['delai_jours'], 7)
         self.assertEqual(row['niveau']['message'],
                          'Cher client, merci de régulariser.')
-        self.assertEqual(row['niveau_suivant']['delai_jours'], 15)
+        # AFAC46 — aucune relance consignée → le premier niveau de la cadence.
+        self.assertEqual(row['niveau_suivant']['delai_jours'], 7)
 
     def test_overdue_in_aged_balance_bucket(self):
         resp = self.api.get('/api/django/ventes/balance-agee/')

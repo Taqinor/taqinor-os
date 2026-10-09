@@ -1202,6 +1202,10 @@ class RelanceLog(models.Model):
     # d'impression (jamais d'envoi postal automatisé — impression manuelle).
     courrier_pdf_key = models.CharField(max_length=500, blank=True, default='')
     date = models.DateField(auto_now_add=True)
+    # AFAC46 — compte dans la cadence de relance (``prochain_niveau``) ;
+    # False une fois la facture soldée (``reset_relance_escalation``), pour
+    # toute relance, manuelle comme automatique — l'historique reste.
+    compte_dans_cadence = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='relances_effectuees')

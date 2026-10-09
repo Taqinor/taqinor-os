@@ -77,7 +77,8 @@ def check_overdue_factures():
     et seulement si aucune date n'est déjà posée (une date existante n'est
     JAMAIS écrasée). Aucun niveau configuré ⇒ rien n'est posé, comportement
     strictement inchangé."""
-    from .models import Facture, FollowupLevel
+    from .models import Facture
+    from .domain.recouvrement import amorcer_cadence, niveaux_cadence
 
     today = casablanca_today()
     flipped = 0
@@ -104,17 +105,14 @@ def check_overdue_factures():
         facture.statut = Facture.Statut.EN_RETARD
         champs = ['statut']
         # AUD131 — amorce de cadence : sans cette date, le beat ne verrait
-        # JAMAIS cette facture (cf. docstring).
-        if facture.prochaine_relance is None:
-            cid = facture.company_id
-            if cid not in premiers_niveaux:
-                premiers_niveaux[cid] = FollowupLevel.objects.filter(
-                    company_id=cid).order_by('delai_jours', 'ordre').first()
-            premier = premiers_niveaux[cid]
-            if premier is not None:
-                facture.prochaine_relance = echeance + timedelta(
-                    days=premier.delai_jours or 0)
-                champs.append('prochaine_relance')
+        # JAMAIS cette facture (cf. docstring). AFAC46 — LA règle partagée
+        # (`amorcer_cadence`, aussi appelée à la réouverture après un rejet).
+        cid = facture.company_id
+        if cid not in premiers_niveaux:
+            premiers_niveaux[cid] = niveaux_cadence(facture.company)
+        if amorcer_cadence(facture, echeance=echeance,
+                           niveaux=premiers_niveaux[cid], save=False):
+            champs.append('prochaine_relance')
         facture.save(update_fields=champs)
         flipped += 1
     logger.info('check_overdue_factures: %s facture(s) basculée(s) en retard',
@@ -287,7 +285,7 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import Facture, FollowupLevel, ParametrageRelanceClient, RelanceLog
+    from .models import Facture, ParametrageRelanceClient, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
@@ -333,8 +331,10 @@ def relance_reminders():
         if facture.company_id not in societes_pourvues:
             ensure_default_followup_levels(facture.company)
             societes_pourvues.add(facture.company_id)
-        levels = list(FollowupLevel.objects.filter(
-            company=facture.company).order_by('delai_jours', 'ordre'))
+        # AFAC46 — UN tri des niveaux (``ordre``, ``delai_jours``), partagé
+        # avec l'aperçu, la liste et les relances manuelles.
+        from .domain.recouvrement import niveaux_cadence, prochain_niveau
+        levels = niveaux_cadence(facture.company)
         if not levels:
             # Aucun niveau configuré : envoi générique unique, puis stop.
             log = send_relance_email(
@@ -350,14 +350,16 @@ def relance_reminders():
             sent += 1
             continue
 
-        # Niveau courant = PROCHAIN non encore envoyé (séquence niveau par
-        # niveau). On compte les relances automatiques déjà consignées pour
-        # cette facture afin de reprendre où la séquence s'est arrêtée — pas de
-        # saut direct au niveau le plus dur.
-        deja = facture.relances.filter(
-            note='Relance automatique programmée (email).').count()
-        idx = min(deja, len(levels) - 1)
-        niveau = levels[idx]
+        # AFAC46 — niveau courant = LE prochain niveau du journal EFFECTIF
+        # (tous canaux et auteurs : une relance manuelle niveau 3 n'est plus
+        # suivie d'un « Rappel courtois » niveau 1). Tous partis → séquence
+        # terminée, rien n'est envoyé.
+        niveau, deja_tous = prochain_niveau(facture, levels)
+        if deja_tous:
+            facture.prochaine_relance = None
+            facture.save(update_fields=['prochaine_relance'])
+            continue
+        idx = levels.index(niveau)
 
         # XFAC8 — route selon le canal configuré sur CE niveau (email par
         # défaut = comportement historique inchangé).

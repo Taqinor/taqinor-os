@@ -1667,6 +1667,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         niveau = donnees.get('niveau')
         note = (donnees.get('note') or '').strip()
         lvl = payload.context.get('followup_level')
+        if niveau is None and lvl is None:
+            # AFAC46 — sans niveau choisi, LE prochain niveau de la cadence
+            # (le même que l'aperçu et le beat), jamais une relance hors
+            # séquence.
+            from ..domain.recouvrement import prochain_niveau
+            lvl, _tous = prochain_niveau(facture)
+            niveau = lvl.ordre if lvl is not None else None
         niveau_nom = lvl.nom if lvl is not None else ''
         RelanceLog.objects.create(
             company=facture.company, facture=facture,
@@ -2027,19 +2034,23 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             'reference': facture.reference}
 
                 elif action_name == 'relancer':
-                    if facture.statut not in (
-                        Facture.Statut.EMISE, Facture.Statut.EN_RETARD,
-                    ):
-                        results[fid_int] = {
-                            'ok': False,
-                            'detail': (
-                                f'Statut {facture.get_statut_display()} : '
-                                'relance uniquement sur facture émise ou en retard.'
-                            )}
+                    # AFAC46 — LE prédicat partagé (`facture_relancable`) et
+                    # LE prochain niveau de la cadence (jamais `niveau=NULL`).
+                    from ..recouvrement import (
+                        ensure_default_followup_levels, facture_relancable,
+                    )
+                    relancable, motif_refus = facture_relancable(facture)
+                    if not relancable:
+                        results[fid_int] = {'ok': False, 'detail': motif_refus}
                     else:
+                        from ..domain.recouvrement import prochain_niveau
                         from ..models import RelanceLog
+                        ensure_default_followup_levels(facture.company)
+                        lvl, _tous = prochain_niveau(facture)
                         RelanceLog.objects.create(
                             company=facture.company, facture=facture,
+                            niveau=lvl.ordre if lvl is not None else None,
+                            niveau_nom=lvl.nom if lvl is not None else '',
                             note='Relance en masse', created_by=request.user)
                         results[fid_int] = {
                             'ok': True,
