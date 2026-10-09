@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import (
-    IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -53,6 +53,13 @@ class ApprobationBCFViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         'bcf', 'approuve_par').all()
     serializer_class = ApprobationBCFSerializer
     permission_classes = [IsAnyRole]
+
+    def get_permissions(self):
+        # ACHT79 — l'APPROBATION est une écriture : code fin `achats_commander`
+        # au niveau de la permission (en plus de la garde de palier inline).
+        if self.action == 'approuver':
+            return [HasPermissionOrLegacy('achats_commander')()]
+        return [IsAnyRole()]
 
     def get_queryset(self):
         qs = super().get_queryset()

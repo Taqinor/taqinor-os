@@ -41,6 +41,10 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
     nom / asset tag / n° de série. JAMAIS de stock vendable."""
     queryset = Outillage.objects.select_related('emplacement').all()
     serializer_class = OutillageSerializer
+    # ACHT79 — l'outillage relève du module « installations » pour les droits :
+    # `IsResponsableOrAdmin` exige alors un code d'ÉCRITURE de ce module (un
+    # Admin RH, qui porte des codes d'écriture ailleurs, n'écrit plus ici).
+    permission_module = 'installations'
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'asset_tag', 'numero_serie', 'categorie']
     ordering_fields = ['nom', 'statut', 'date_achat', 'date_creation']
