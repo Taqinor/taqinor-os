@@ -2980,6 +2980,19 @@ def chantier_ville(company, chantier_id):
     return (getattr(chantier, 'site_ville', '') or '').strip() or None
 
 
+def chantier_client_id(company, chantier_id):
+    """AACQ5 — id du client propriétaire d'un chantier (``Installation.client``),
+    ou ``None`` (chantier inconnu, d'une autre société, ou sans client).
+    Lecture seule, scopée société : permet à la créathèque de recouper un
+    consentement avec le propriétaire réel d'une photo de chantier sans
+    importer ``installations.models``."""
+    from .models import Installation
+
+    return (Installation.objects
+            .filter(pk=chantier_id, company=company)
+            .values_list('client_id', flat=True).first())
+
+
 # ── NTPRT9 — Prochain jalon de chantier (tableau de bord portail client) ────
 
 def prochain_jalon_client_portail(company, client_id):
