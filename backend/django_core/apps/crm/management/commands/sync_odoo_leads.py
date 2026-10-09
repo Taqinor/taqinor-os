@@ -6,11 +6,11 @@ Enchaîne, via l'API JSON-2 uniquement (lecture seule côté Odoo) :
   1. rapatriement de TOUS les crm.lead (archivés compris) + tags ;
   2. import idempotent (réutilise ``import_odoo_leads`` : zéro doublon,
      jamais d'écrasement d'une saisie existante, société forcée) ;
-  3. alignement des étapes ERP sur le pipeline Odoo EN AVANT SEULEMENT
-     (D-CRX3, 02/09/2026), journalisé dans le chatter par la façade
-     ``activity`` et émetteur de ``lead_stage_changed``. Une étape Odoo en
-     retrait, ou hors table de correspondance, n'écrit RIEN : elle est
-     signalée au rapport pour arbitrage humain.
+  3. RAPPORT des écarts d'étape entre l'ERP et le pipeline Odoo — AUCUNE
+     écriture d'étape (AACQ97, décision fondateur du 08/10/2026, D-AACQ :
+     la synchro est MANUELLE, l'ERP fait toujours foi, Odoo ne modifie
+     jamais un lead ERP). Remplace l'alignement « en avant seulement »
+     (D-CRX3) : les écarts sont listés pour information, rien n'est avancé.
 
 Sans ODOO_SYNC_URL + ODOO_SYNC_API_KEY dans l'environnement, ne fait RIEN
 (usage + sortie propre). ``--dry-run`` : compte tout, n'écrit rien.
@@ -111,10 +111,12 @@ class Command(BaseCommand):
                 f'{prefix}--no-align : import terminé, étapes ERP laissées '
                 'telles quelles (aucun alignement sur le pipeline Odoo).'))
             return
-        rapport = align_stages_from_rows(
-            company, rows, apply_changes=not dry_run)
+        # AACQ97 (D-AACQ, 08/10/2026) — RAPPORT seul : jamais d'écriture
+        # d'étape, quel que soit --dry-run (l'ERP fait foi).
+        rapport = align_stages_from_rows(company, rows, apply_changes=False)
         for (src, dst), n in sorted(rapport.moves.items()):
-            self.stdout.write(f'{prefix}étape {src} → {dst} : {n}')
+            self.stdout.write(
+                f'{prefix}écart (non appliqué) — ERP {src} / Odoo {dst} : {n}')
         if rapport.corbeille:
             self.stdout.write(self.style.WARNING(
                 f"{prefix}{rapport.corbeille} lead(s) en corbeille ignoré(s) — "
@@ -125,6 +127,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"{prefix}gelé(s) : {rapport.geles} — lead(s) perdu(s), "
                 "archivé(s) ou « ne plus contacter », étape laissée telle "
+                "quelle."))
+        if rapport.divergences_assumees:
+            # AACQ31 — recul/changement humain plus récent qu'Odoo : l'ERP
+            # fait foi, rien n'est écrit.
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}divergence(s) assumée(s) : "
+                f"{rapport.divergences_assumees} — étape changée à la main "
+                "dans l'ERP après le dernier mouvement Odoo, laissée telle "
                 "quelle."))
         if rapport.inconnus:
             self.stdout.write(self.style.WARNING(
@@ -147,7 +157,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f"{prefix}… et {reste} autre(s) régression(s) non appliquée(s)."))
         self.stdout.write(self.style.SUCCESS(
-            f"{prefix}Alignement : {sum(rapport.moves.values())} avancé(s), "
+            f"{prefix}Écarts d'étape (rapport seul — l'ERP fait foi, aucune "
+            "étape écrite) : "
+            f"{sum(rapport.moves.values())} écart(s) en avance côté Odoo, "
             f"{rapport.deja_ok} déjà aligné(s), "
             f"{rapport.introuvables} non rapproché(s), "
             f"{rapport.corbeille} en corbeille, "

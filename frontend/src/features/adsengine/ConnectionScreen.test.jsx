@@ -435,4 +435,61 @@ describe('ConnectionScreen (ENG22)', () => {
       expect(screen.getByTestId('ae-conn-autonomy-desactiver')).not.toBeDisabled()
     })
   })
+
+  // ── AACQ71 — l'écran dit ce que le serveur a RÉELLEMENT enregistré ─────────
+  describe('AACQ71 — garde-fous : relecture et échec de chargement', () => {
+    it('échec de chargement : aucun envoi des bascules', async () => {
+      mocks.guardGet.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-conn-guard-load-error'))
+        .toHaveTextContent('Garde-fous indisponibles')
+      expect(screen.getByTestId('ae-conn-guard-save')).toBeDisabled()
+      fireEvent.submit(screen.getByTestId('ae-conn-guard-form'))
+      await waitFor(() => expect(screen.getByTestId('ae-conn-err'))
+        .toHaveTextContent('Garde-fous indisponibles'))
+      expect(mocks.guardUpdate).not.toHaveBeenCalled()
+    })
+
+    it("l'écran relit la valeur stockée", async () => {
+      const stocke = {
+        max_daily_budget_mad: 100, max_monthly_budget_mad: 9000,
+        weekly_change_pct_max: 20, anomaly_window_hours: 48,
+        auto_rotate_creative: false, auto_rebalance_within_band: false,
+        pacing_band_pct: 7, exploration_floor_mad: 20, exploration_floor_pct: 20,
+        health_creative_weight_ctr: 0, health_creative_weight_freshness: 40,
+        health_ops_weight_cpl: 60, health_ops_weight_delivery: 40,
+        require_approval_above_mad: null,
+      }
+      mocks.guardUpdate.mockResolvedValue({ data: stocke })
+      renderScreen()
+      const ctr = await screen.findByTestId('ae-conn-guard-health_creative_weight_ctr')
+      fireEvent.change(ctr, { target: { value: '0.4' } })
+      fireEvent.change(screen.getByTestId('ae-conn-guard-pacing_band_pct'),
+        { target: { value: '7.5' } })
+      fireEvent.change(screen.getByTestId('ae-conn-guard-max_monthly_budget_mad'),
+        { target: { value: '' } })
+      fireEvent.click(screen.getByTestId('ae-conn-guard-save'))
+      await waitFor(() => expect(mocks.guardUpdate).toHaveBeenCalled())
+      // L'écran montre la valeur ENREGISTRÉE, pas la saisie.
+      await waitFor(() => expect(
+        screen.getByTestId('ae-conn-guard-health_creative_weight_ctr').value).toBe('0'))
+      expect(screen.getByTestId('ae-conn-guard-pacing_band_pct').value).toBe('7')
+      expect(screen.getByTestId('ae-conn-guard-note-health_creative_weight_ctr'))
+        .toHaveTextContent('Enregistré : 0 (le serveur ne garde que des entiers)')
+      expect(screen.getByTestId('ae-conn-guard-note-max_monthly_budget_mad'))
+        .toHaveTextContent('valeur conservée : 9000')
+      expect(screen.getByTestId('ae-conn-guard-max_monthly_budget_mad').value).toBe('9000')
+    })
+
+    it("un 400 s'affiche sous le champ", async () => {
+      mocks.guardUpdate.mockRejectedValue(Object.assign(new Error('HTTP 400'), {
+        response: { status: 400, data: {
+          pacing_band_pct: ['Valeur invalide pour pacing_band_pct.'] } } }))
+      renderScreen()
+      await screen.findByTestId('ae-conn-guard-pacing_band_pct')
+      fireEvent.click(screen.getByTestId('ae-conn-guard-save'))
+      expect(await screen.findByTestId('ae-conn-guard-err-pacing_band_pct'))
+        .toHaveTextContent('Valeur invalide pour pacing_band_pct.')
+    })
+  })
 })

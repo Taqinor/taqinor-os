@@ -188,3 +188,157 @@ class MappingFailureNotifiesManagersTests(TestCase):
         self.assertTrue(Notification.objects.filter(
             recipient=self.manager, event_type='lead_new',
             link='/crm/payloads-site-web').exists())
+
+
+APPLY_ASYNC = 'apps.ventes.tasks.task_devis_automatique_depuis_lead.apply_async'
+
+
+class ReplayAACQ30Tests(TestCase):
+    """AACQ30 — rejeu idempotent et fidèle au webhook, à n'importe quel délai.
+
+    Les lignes (a)/(b)/(c) sont fabriquées par un VRAI POST du webhook ; le
+    rejeu passe par la vraie action ``replay``. Seul ``apply_async`` (Celery)
+    est simulé ; le vieillissement se fait par ``update(date_creation=…)``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor AACQ30', slug='taqinor-aacq30')
+        ovr = override_settings(
+            WEBSITE_LEAD_WEBHOOK_SECRET=SECRET,
+            WEBSITE_LEADS_COMPANY_ID=self.company.pk)
+        ovr.enable()
+        self.addCleanup(ovr.disable)
+        role = Role.objects.create(
+            company=self.company, nom='Responsable',
+            permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
+        self.user = User.objects.create_user(
+            username='aacq30_resp', password='x', company=self.company,
+            role=role)
+        self.api = _auth(self.user)
+        self.url = reverse('website-lead-webhook')
+
+    def _post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data), content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def _vieillir(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        old = timezone.now() - timedelta(minutes=2)
+        Lead.objects.filter(company=self.company).update(date_creation=old)
+        WebsiteLeadPayload.objects.filter(company=self.company).update(
+            received_at=old)
+
+    def _replay(self, raw):
+        return self.api.post(
+            f'/api/django/crm/website-lead-payloads/{raw.pk}/replay/')
+
+    def _payload_echoue(self, phone):
+        from unittest.mock import patch
+        with patch('apps.crm.webhooks._map_and_link_lead',
+                   side_effect=ValueError('mapping cassé (test)')):
+            res = self._post({'fullName': 'Rejeu AACQ30', 'phoneE164': phone,
+                              'consent': True})
+        self.assertEqual(res.status_code, 202, res.content)
+        raw = WebsiteLeadPayload.objects.get(pk=res.json()['payload_id'])
+        self.assertTrue(raw.error)
+        return raw
+
+    def _ids_liste(self):
+        r = self.api.get('/api/django/crm/website-lead-payloads/')
+        self.assertEqual(r.status_code, 200, r.data)
+        lignes = r.data['results'] if isinstance(r.data, dict) else r.data
+        return [p['id'] for p in lignes]
+
+    def test_rejeu_reussi_efface_erreur_et_sort_de_la_liste(self):
+        from unittest.mock import patch
+        raw = self._payload_echoue('+212600300001')
+        self.assertIn(raw.pk, self._ids_liste())
+        with patch(APPLY_ASYNC):
+            r = self._replay(raw)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['detail'], 'Lead créé.')
+        raw.refresh_from_db()
+        self.assertEqual(raw.error, '')
+        self.assertTrue(raw.processed)
+        self.assertIsNotNone(raw.lead_id)
+        self.assertNotIn(raw.pk, self._ids_liste())
+
+    def test_second_rejeu_au_dela_de_60s_ne_cree_pas_de_doublon(self):
+        from unittest.mock import patch
+        raw = self._payload_echoue('+212600300002')
+        with patch(APPLY_ASYNC):
+            r1 = self._replay(raw)
+            self.assertEqual(r1.status_code, 200, r1.data)
+            self._vieillir()
+            r2 = self._replay(raw)
+        self.assertEqual(r2.status_code, 200, r2.data)
+        raw.refresh_from_db()
+        self.assertEqual(
+            r2.data['detail'],
+            f'Déjà rattaché au lead #{raw.lead_id} — aucun nouveau lead.')
+        self.assertEqual(r2.data['payload']['lead'], raw.lead_id)
+        self.assertEqual(
+            Lead.objects.filter(telephone='212600300002').count(), 1)
+
+    def test_ping_engagement_refuse_sans_lead(self):
+        from apps.crm.models import LeadActivity
+        res = self._post({'qualified': False,
+                          'event_type': 'proposal_first_view',
+                          'phoneE164': '+212600300003'})
+        self.assertEqual(res.status_code, 200, res.content)
+        raw = WebsiteLeadPayload.objects.get(pk=res.json()['payload_id'])
+        self.assertTrue(raw.processed)
+        self.assertIsNone(raw.lead_id)
+        self._vieillir()
+        r = self._replay(raw)
+        self.assertEqual(r.status_code, 422, r.data)
+        self.assertEqual(r.data['detail'],
+                         "Ping d'engagement : jamais rejoué en lead.")
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+        self.assertEqual(
+            LeadActivity.objects.filter(company=self.company).count(), 0)
+        raw.refresh_from_db()
+        self.assertIsNone(raw.lead_id)
+
+    def test_ligne_dedupliquee_refusee(self):
+        from unittest.mock import patch
+        data = {'fullName': 'Dédup AACQ30', 'phoneE164': '+212600300004',
+                'consent': True}  # même corps ⇒ même empreinte (YDATA12)
+        with patch(APPLY_ASYNC):
+            first = self._post(data)
+            second = self._post(data)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(second.json()['detail'],
+                         'Événement déjà traité (dédupliqué).')
+        raw2 = WebsiteLeadPayload.objects.get(pk=second.json()['payload_id'])
+        self.assertTrue(raw2.processed)
+        self.assertIsNone(raw2.lead_id)
+        self._vieillir()
+        avant = Lead.objects.filter(company=self.company).count()
+        r = self._replay(raw2)
+        self.assertEqual(r.status_code, 422, r.data)
+        self.assertEqual(
+            r.data['detail'],
+            "Événement déjà traité : la soumission d'origine a déjà sa fiche.")
+        self.assertEqual(Lead.objects.filter(company=self.company).count(),
+                         avant)
+        self.assertEqual(
+            Lead.objects.filter(telephone='212600300004').count(), 1)
+
+    def test_rejeu_qui_cree_met_en_file_le_devis_auto(self):
+        from unittest.mock import patch
+        raw = self._payload_echoue('+212600300005')
+        with patch(APPLY_ASYNC) as file_:
+            r = self._replay(raw)
+            self.assertEqual(r.status_code, 200, r.data)
+            raw.refresh_from_db()
+            self.assertEqual(file_.call_count, 1)
+            self.assertEqual(file_.call_args.kwargs['args'],
+                             [raw.lead_id, self.company.pk])
+            # Second rejeu : aucun nouveau devis mis en file.
+            self._vieillir()
+            self._replay(raw)
+            self.assertEqual(file_.call_count, 1)

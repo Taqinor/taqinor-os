@@ -251,7 +251,7 @@ class OdooClient:
                           args, kwargs or {}])
 
     def search_read(self, model, domain=None, *, fields=None, limit=None,
-                    order=None, offset=None):
+                    order=None, offset=None, context=None):
         """``search_read`` LECTURE SEULE : renvoie toujours une liste (jamais
         None). ``domain`` par défaut ``[]`` (tout, aucun filtre utilisateur).
         ``offset`` (DATAPUB1) permet la pagination par ``search_read_all``."""
@@ -264,6 +264,9 @@ class OdooClient:
             kwargs['offset'] = offset
         if order is not None:
             kwargs['order'] = order
+        if context is not None:
+            # AACQ35 — contexte Odoo (ex. ``active_test: False`` : archives).
+            kwargs['context'] = dict(context)
         rows = self._execute_kw(model, 'search_read', [domain or []], kwargs)
         return rows if isinstance(rows, list) else []
 
@@ -275,7 +278,7 @@ class OdooClient:
     READ_PAGE_SIZE = 500
 
     def search_read_all(self, model, domain=None, *, fields=None, order=None,
-                        page_size=None):
+                        page_size=None, context=None):
         """``search_read`` PAGINÉ : boucle par pages de ``page_size`` (défaut
         ``READ_PAGE_SIZE``) en avançant l'``offset`` jusqu'à une page INCOMPLÈTE
         (moins de ``page_size`` lignes), puis concatène. Garantit qu'aucune
@@ -290,7 +293,7 @@ class OdooClient:
         for _ in range(500):
             rows = self.search_read(
                 model, domain, fields=fields, order=order,
-                limit=page_size, offset=offset)
+                limit=page_size, offset=offset, context=context)
             out.extend(rows)
             if len(rows) < page_size:
                 break
@@ -356,10 +359,13 @@ class OdooClient:
         domain = []
         if since is not None:
             domain.append(['create_date', '>=', _as_odoo_dt(since)])
+        # AACQ35 — leads ARCHIVÉS inclus (``active_test: False``, comme
+        # ``crm/odoo_sync.py``) : un lead perdu reste un lead pour le coût par
+        # lead ; ``is_won_lead`` exige toujours ``active`` pour une signature.
         return self.search_read_all(
             'crm.lead', domain,
             fields=self._existing_fields('crm.lead', self.LEAD_FIELDS),
-            order='id')
+            order='id', context={'active_test': False})
 
     def read_sale_orders(self, since=None):
         """LECTURE SEULE — tous les ``sale.order``. ``since`` borne

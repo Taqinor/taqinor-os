@@ -38,8 +38,12 @@ logger = logging.getLogger(__name__)
 def _safe_complete(event_key, company, user):
     """Best-effort : une erreur ici ne doit jamais casser l'action métier
     (l'émission du signal est déjà actée côté app émettrice)."""
+    from django.db import transaction
     try:
-        completer_par_evenement(event_key, company, user)
+        # ADEV54 — point de sauvegarde PROPRE : une erreur base ici est
+        # annulée seule, jamais la transaction de l'action métier émettrice.
+        with transaction.atomic():
+            completer_par_evenement(event_key, company, user)
     except Exception:  # noqa: BLE001 — best-effort
         logger.warning('NTDMO12 : auto-complétion onboarding échouée pour '
                        'event_key=%s', event_key, exc_info=True)

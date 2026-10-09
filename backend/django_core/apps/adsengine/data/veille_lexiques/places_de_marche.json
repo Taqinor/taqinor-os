@@ -8,6 +8,13 @@
     "primark.com", "boohoo.com", "prettylittlething.com"
   ],
   "racines": ["amazon", "zalando", "vinted", "ebay", "shein", "temu"],
+  "hebergeurs_boutiques_motif": "AACQ38 : hébergeurs de boutiques — le domaine affiché garde le sous-domaine complet (boutique-a.myshopify.com), jamais l'hébergeur nu.",
+  "hebergeurs_boutiques": [
+    "myshopify.com", "wixsite.com", "square.site", "company.site",
+    "webflow.io", "weebly.com", "squarespace.com", "bigcartel.com",
+    "ecwid.com", "mystrikingly.com", "blogspot.com", "wordpress.com",
+    "godaddysites.com", "jimdosite.com", "sumupstore.com"
+  ],
   "domaines_sociaux": [
     "instagram.com", "facebook.com", "fb.me", "fb.com", "wa.me",
     "whatsapp.com", "linktr.ee", "tiktok.com", "youtube.com", "m.me",

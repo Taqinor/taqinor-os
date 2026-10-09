@@ -1,0 +1,48 @@
+---
+// Page Rendez-vous (YBW66) — UN gabarit FR + EN (`en/book-a-meeting.astro`
+// l'importe). Le formulaire YBW55 (champs = le registre, rien d'autre), ce
+// qui se passe ensuite (une personne répond — aucun délai promis), le bouton
+// WhatsApp seulement quand Reda a fourni le numéro (YBWM4). Le sujet est
+// pré-sélectionné par `?produit=` (src/scripts/rendezVous.ts).
+import Layout from '../layouts/Layout.astro';
+import Affirmation from '../components/Affirmation.astro';
+import RendezVousForm from '../components/RendezVousForm.astro';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/config';
+import { lecteur } from '../i18n/utils';
+import { fr } from '../i18n/pages/rendez-vous.fr';
+import { en } from '../i18n/pages/rendez-vous.en';
+import { lienWhatsApp, WHATSAPP } from '../lib/whatsapp';
+
+interface Props {
+  locale?: Locale;
+  /** Numéro WhatsApp — surcharge réservée aux tests (fixture). */
+  whatsapp?: string | null;
+}
+const { locale = DEFAULT_LOCALE, whatsapp = WHATSAPP } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const wa = lienWhatsApp(whatsapp);
+---
+<Layout page="rendezVous" locale={locale} titre={tx('titre')} description={tx('description')}>
+  <section class="hero-page" aria-labelledby="page-titre">
+    <div class="conteneur">
+      <p class="surtitre">{tx('surtitre')}</p>
+      <h1 id="page-titre">{tx('h1')}</h1>
+      <p class="hero-intro">{tx('intro')}</p>
+    </div>
+  </section>
+
+  <section class="section" aria-label={tx('h1')}>
+    <div class="conteneur rdv-grille">
+      <RendezVousForm locale={locale} whatsapp={whatsapp} />
+      <aside class="rdv-suite" aria-labelledby="ensuite-titre">
+        <h2 id="ensuite-titre">{tx('ensuite.titre')}</h2>
+        <Affirmation id="YB-REPONSE-HUMAINE" locale={locale} />
+        {wa && (
+          <a class="bouton" href={wa} rel="noopener" data-whatsapp-page>
+            {tx('whatsapp')}
+          </a>
+        )}
+      </aside>
+    </div>
+  </section>
+</Layout>

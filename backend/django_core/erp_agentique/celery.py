@@ -272,14 +272,11 @@ app.conf.beat_schedule = {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
     },
-    # MRY0 (lot C) — miroir Odoo → ERP. Il n'était planifié NULLE PART : le
-    # cockpit de Meryem décrochait silencieusement (dernière passe 01/09/2026).
-    # No-op propre sans config Odoo ni ODOO_SYNC_COMPANY_SLUG ; verrou interne
-    # contre deux passes simultanées. Odoo reste en LECTURE SEULE.
-    'crm-sync-odoo-leads': {
-        'task': 'crm.sync_odoo_leads',
-        'schedule': crontab(minute='*/30'),
-    },
+    # AACQ97 (décision fondateur 08/10/2026, D-AACQ) — la synchro Odoo est
+    # MANUELLE, jamais automatique : l'entrée `crm-sync-odoo-leads` (toutes
+    # les 30 min) est RETIRÉE. L'ERP fait toujours foi ; la commande
+    # `manage.py sync_odoo_leads` reste lançable à la main et ne fait que
+    # RAPPORTER les écarts d'étape (aucune écriture).
     # MRY17 — digest du matin : « N relance(s) à faire aujourd'hui », UNE
     # fois par jour et par commercial (idempotent par jour). Le panneau
     # « Relances du jour » ne sert à rien si personne ne l'ouvre.
@@ -615,13 +612,10 @@ app.conf.beat_schedule = {
         'task': 'adsengine.pull_meta_leads_recent',
         'schedule': crontab(minute='*/15'),
     },
-    # ADSDEEP27 — boucle de retour CAPI « signatures » (CRM Dataset Meta) : push
-    # QUOTIDIEN de l'événement signed_contract par deal signé Odoo, idempotent
-    # (marqueur CapiOdooEvent). NO-OP propre sans CAPI_CRM_DATASET_ID + token.
-    'adsengine-emit-capi-signatures': {
-        'task': 'adsengine.emit_capi_signatures',
-        'schedule': crontab(hour=7, minute=35),
-    },
+    # AACQ97 (D-AACQ, 08/10/2026) — `adsengine-emit-capi-signatures` (lecture
+    # QUOTIDIENNE des deals Odoo, capi_odoo) RETIRÉ du beat : aucune lecture
+    # Odoo des leads n'est plus planifiée. La tâche
+    # `adsengine.emit_capi_signatures` reste déclenchable à la main.
     # PUB89 — score QUOTIDIEN de qualité de la chaîne d'attribution (complétude
     # de jointure de la récompense proxy CtwaReferral) : alerte BRAKE-ONLY sous
     # seuil, jamais une pause auto. NO-OP propre sans référence CTWA.
