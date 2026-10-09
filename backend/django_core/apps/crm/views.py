@@ -689,6 +689,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
             if client.date_creation else None,
             'is_anonymized': client.is_anonymized,
         }
+        # ACRM53 — même règle que ``ClientSerializer`` : un rôle sans
+        # ``client_pii_voir`` reçoit l'export sans téléphone/email/adresse.
+        from .serializers import masquer_pii_dict
+        masquer_pii_dict(identite, request.user)
         documents = {
             'devis': [
                 {'reference': d.reference, 'statut': getattr(d, 'statut', None),
