@@ -31,6 +31,8 @@ export default function ChantierChecklist({
   const [items, setItems] = useState([])
   const [completion, setCompletion] = useState(null)
   const [loading, setLoading] = useState(true)
+  // ACHT71 — un échec de chargement n'est pas une liste vide.
+  const [loadError, setLoadError] = useState(false)
   // Saisies de série en attente, par clé d'étape : { produit, numero_serie }
   const [serie, setSerie] = useState({})
   // NTMOB11 — clé de l'étape dont le panneau de capture photo est ouvert
@@ -53,8 +55,8 @@ export default function ChantierChecklist({
 
   const load = () => {
     installationsApi.getChecklist(installationId)
-      .then((r) => { setItems(r.data.items ?? []); setCompletion(r.data.completion) })
-      .catch(() => {})
+      .then((r) => { setItems(r.data.items ?? []); setCompletion(r.data.completion); setLoadError(false) })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -69,17 +71,20 @@ export default function ChantierChecklist({
       }
     }
     try {
-      // N91 — repli hors-ligne : on file le cochage (la capture de série
-      // optionnelle, qui crée un équipement parc, reste en ligne — elle n'est
-      // pas portée par l'op JSON et sera ressaisie/synchronisée si besoin).
+      // N91 — repli hors-ligne : on file le cochage. ACHT71 — l'op porte aussi
+      // la série saisie (`equipements`, forme du contrat ACHT40
+      // field_sync_cocher_checklist.json) : elle n'est plus perdue hors-ligne.
+      const equipements = payload.equipements ?? []
       const r = await withOfflineFallback(
         () => installationsApi.cocherChecklist(installationId, payload),
         FIELD_OPS.COCHER_CHECKLIST,
-        { chantier: installationId, cle: item.cle, fait })
+        { chantier: installationId, cle: item.cle, fait, equipements })
       if (r.queued) {
         // Reflète l'état localement ; la synchro reposera le serveur au retour.
         setItems((prev) => prev.map((it) => it.cle === item.cle ? { ...it, fait } : it))
-        toast.success('Hors ligne — coché, synchro au retour du réseau.')
+        toast.success(equipements.length
+          ? 'Hors ligne — coché, série enregistrée à la synchro.'
+          : 'Hors ligne — coché, synchro au retour du réseau.')
       } else {
         // ERR117 — `withOfflineFallback` renvoie {queued, data:<réponse axios BRUTE>}.
         setItems(r.data.data?.items ?? [])
@@ -128,6 +133,14 @@ export default function ChantierChecklist({
       )}
       {loading ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+      ) : loadError ? (
+        <p className="flex items-center gap-2 text-sm text-destructive" role="alert">
+          Checklist indisponible —
+          <Button type="button" size="sm" variant="outline"
+                  onClick={() => { setLoading(true); load() }}>
+            réessayer
+          </Button>
+        </p>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Aucune étape modèle.{' '}

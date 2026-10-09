@@ -29,6 +29,7 @@ import {
   INTERVENTION_STATUS_COLORS,
   interventionStatusLabel,
   INTERVENTION_TYPES,
+  raisonRefusStatut,
 } from '../../features/installations/statuses'
 import {
   Button,
@@ -317,7 +318,8 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
     setBusy(true)
     setStatutBlockReason(null)
     try {
-      await installationsApi.updateIntervention(intervention.id, { statut })
+      await installationsApi.updateIntervention(
+        intervention.id, { statut }, { suppressErrorToast: true })
       toast.success('Statut mis à jour.')
       hapticTap()
       await reloadHist()
@@ -326,9 +328,9 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
       // VX225 — le 400 porte {statut:[raisons]} (transition_block_reason) :
       // rendre le message EXACT du serveur sous le sélecteur, toast générique
       // en repli seulement si le corps ne contient pas de raisons exploitables.
-      const raisons = err?.response?.data?.statut
-      if (Array.isArray(raisons) && raisons.length > 0) {
-        setStatutBlockReason(raisons)
+      const raison = raisonRefusStatut(err)
+      if (raison) {
+        setStatutBlockReason([raison])
       } else {
         toast.error('Impossible de changer le statut.')
       }
@@ -608,9 +610,13 @@ export default function InterventionsPage() {
   const patchStatus = (it, statut) => {
     // Optimiste : reflète immédiatement, recharge en arrière-plan.
     setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, statut } : x)))
-    installationsApi.updateIntervention(it.id, { statut })
+    // ACHT61 — même raison que la fiche, UN seul toast (pont axios coupé).
+    installationsApi.updateIntervention(it.id, { statut }, { suppressErrorToast: true })
       .then(() => { toast.success('Statut mis à jour.'); fetchData() })
-      .catch(() => { toast.error('Changement de statut impossible.'); fetchData() })
+      .catch((err) => {
+        toast.error(raisonRefusStatut(err) ?? 'Changement de statut impossible.')
+        fetchData()
+      })
   }
   const reassign = (it, technicien) => {
     // Optimiste : reflète immédiatement, puis resynchronise. En cas d'échec on

@@ -130,7 +130,7 @@ test('applyStatutConfig ignore les clés inconnues', () => {
 test('canMoveStatus : un seul pas avant/arrière, jamais de saut', () => {
   assert.ok(canMoveStatus('signe', 'materiel_commande')) // +1
   assert.ok(canMoveStatus('planifie', 'materiel_commande')) // −1
-  assert.ok(canMoveStatus('signe', 'signe')) // sur place
+  assert.equal(canMoveStatus('signe', 'signe'), false) // sur place : pas un mouvement (ACHT60)
   assert.equal(canMoveStatus('signe', 'planifie'), false) // saut +2
   assert.equal(canMoveStatus('signe', 'cloture'), false) // saut lointain
   // Un statut hérité (source) se rabat sur sa colonne canonique : mise_en_service
