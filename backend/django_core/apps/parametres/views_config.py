@@ -179,7 +179,16 @@ def _serialize_statuts(company):
     ]
 
 
-@extend_schema(responses=OpenApiTypes.OBJECT)
+@extend_schema(responses=inline_serializer('ConfigExport', {
+    'version': serializers.IntegerField(),
+    'profile': serializers.JSONField(),
+    'document_templates': serializers.JSONField(),
+    'roles': serializers.JSONField(),
+    'message_templates': serializers.JSONField(),
+    'email_templates': serializers.JSONField(),
+    'automation_rules': serializers.JSONField(),
+    'statuts': serializers.JSONField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def config_export(request):

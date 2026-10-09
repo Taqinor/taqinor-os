@@ -204,7 +204,13 @@ def compute_roi(request):
         _q('tilt', OpenApiTypes.INT, 'Inclinaison (degrés).'),
         _q('azimuth', OpenApiTypes.INT, 'Azimut (degrés).'),
     ],
-    responses=OpenApiTypes.OBJECT)
+    responses=inline_serializer('ProductibleReponse', {
+        'source': serializers.CharField(),
+        'productible_kwh_kwc': serializers.FloatField(),
+        'production_mensuelle_kwh_kwc': serializers.ListField(
+            child=serializers.FloatField(), allow_null=True),
+        'reason': serializers.CharField(allow_null=True),
+    }))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_productible(request):
