@@ -249,6 +249,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
+        # ACHT56 — `tool-return` : GET lecture, POST matérialise des lignes.
+        if (self.action == 'tool_return'
+                and self.request.method not in ('GET', 'HEAD', 'OPTIONS')):
+            return [IsResponsableOrAdmin()]
         if self.action == 'commander_manques':
             # ACHT54 — crée un BCF : `achats_commander` en plus du module.
             return [IsResponsableOrAdmin(),
@@ -275,8 +279,6 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'suggerer_creneau',
             # FG303 — planning des camionnettes (capacité véhicule).
             'planning_camionnettes',
-            # FG69 — signature client.
-            'signer_client',
             # XFSM13 — historique des re-vérifications (lecture).
             'reverifications',
             # XFSM22 — durée & pièces suggérées par l'historique.
@@ -300,6 +302,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'cocher_safety', 'signer_safety',
             # FG78 — confirmation RDV.
             'confirmer_rdv',
+            # ACHT56 — FG69 signature client : une ÉCRITURE (un Viewer ne pose
+            # plus de signature), jamais rangée dans les lectures.
+            'signer_client',
             # XFSM3 — replanification en masse d'une journée.
             'replanifier_en_masse',
             # XFSM13 — enregistrement d'une re-vérification (écriture).
