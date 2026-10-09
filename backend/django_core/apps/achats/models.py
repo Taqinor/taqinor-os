@@ -43,7 +43,7 @@ class PrixFournisseur(models.Model):
     rédiger un bon de commande. La date du dernier achat est mise à jour
     automatiquement à la réception d'un BCF. Additif."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='prix_fournisseurs')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — porte un prix d'achat fournisseur NÉGOCIÉ (donnée réelle, non reconstructible) ; on refuse la suppression du produit plutôt que d'effacer silencieusement l'historique de prix
@@ -116,7 +116,7 @@ class BonCommandeFournisseur(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True,
         blank=True,
         related_name='bons_commande_fournisseur',
@@ -272,7 +272,7 @@ class LigneBonCommandeFournisseur(models.Model):
 
     bon_commande = models.ForeignKey(
         BonCommandeFournisseur,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: ligne de BonCommandeFournisseur — n'existe pas sans son document parent
         related_name='lignes',
     )
     # XPUR16 — nullable : une ligne LIBRE/SERVICE (transport, prestation,
@@ -384,7 +384,7 @@ class ReceptionFournisseur(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='receptions_fournisseur')
     reference = models.CharField(max_length=50)
     bon_commande = models.ForeignKey(
@@ -425,7 +425,7 @@ class LigneReceptionFournisseur(models.Model):
     et la quantité effectivement reçue lors de cette réception."""
 
     reception = models.ForeignKey(
-        ReceptionFournisseur, on_delete=models.CASCADE, related_name='lignes')
+        ReceptionFournisseur, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de ReceptionFournisseur — n'existe pas sans son document parent
     ligne_commande = models.ForeignKey(
         LigneBonCommandeFournisseur, on_delete=models.PROTECT,
         related_name='lignes_reception')
@@ -497,7 +497,7 @@ class FactureFournisseur(models.Model):
         SERVICES = 'services', 'Prestations de services'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='factures_fournisseur')
     reference = models.CharField(max_length=50)
     fournisseur = models.ForeignKey(
@@ -661,7 +661,7 @@ class LigneFactureFournisseur(models.Model):
     article. INTERNE."""
 
     facture = models.ForeignKey(
-        FactureFournisseur, on_delete=models.CASCADE, related_name='lignes')
+        FactureFournisseur, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de FactureFournisseur — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_facture_fournisseur')
@@ -717,7 +717,7 @@ class PaiementFournisseur(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='paiements_fournisseur')
     # AUD207 — PROTECT (était CASCADE) : une facture réellement réglée ne
     # doit jamais pouvoir effacer silencieusement ses paiements à sa
@@ -789,7 +789,7 @@ class RetourFournisseur(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='retours_fournisseur')
     reference = models.CharField(max_length=50)
     fournisseur = models.ForeignKey(
@@ -820,7 +820,7 @@ class RetourFournisseur(models.Model):
 class LigneRetourFournisseur(models.Model):
     """Ligne d'un retour fournisseur : SKU, quantité retournée, motif."""
     retour = models.ForeignKey(
-        RetourFournisseur, on_delete=models.CASCADE, related_name='lignes')
+        RetourFournisseur, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de RetourFournisseur — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='lignes_retour_fournisseur')
