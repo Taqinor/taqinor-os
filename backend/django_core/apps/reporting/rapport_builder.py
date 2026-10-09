@@ -20,6 +20,10 @@ from rest_framework.response import Response
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 
 class RapportDefinitionSerializer(serializers.ModelSerializer):
@@ -56,6 +60,7 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
     ``societe`` ne franchit JAMAIS la frontière du tenant.
     """
     serializer_class = RapportDefinitionSerializer
+    parser_classes = [JSONParser]
     queryset = RapportDefinition.objects.all()
 
     def get_queryset(self):
@@ -117,6 +122,10 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             return (JSONRenderer(), 'application/json')
         return super().perform_content_negotiation(request, force=force)
 
+    @extend_schema(request=None, responses=inline_serializer('RapportExecution', {
+        'rows': drf_serializers.ListField(child=drf_serializers.DictField()),
+        'pivot': drf_serializers.JSONField(required=False),
+    }))
     @action(detail=True, methods=['post'], url_path='executer')
     def executer(self, request, pk=None):
         """Rejoue la définition et renvoie ``{rows}`` (+ ``pivot`` si demandé)."""
@@ -157,6 +166,10 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'rows': rows, 'pivot': pivot})
 
+    @extend_schema(
+        parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False)],
+        responses={(200, 'text/csv'): OpenApiTypes.STR,
+                   (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='export')
     def export(self, request, pk=None):
         """NTEXT11 — export ``?format=csv|xlsx`` de la définition rejouée.

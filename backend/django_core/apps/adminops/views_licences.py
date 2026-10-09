@@ -80,7 +80,7 @@ def _historique_plan(company):
     'sieges_max': drf_serializers.IntegerField(allow_null=True),
     'quota_atteint': drf_serializers.BooleanField(),
     'plan': drf_serializers.JSONField(allow_null=True),
-    'historique': drf_serializers.JSONField(),
+    'historique_plan': drf_serializers.JSONField(),
 }))
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
@@ -122,7 +122,7 @@ def _comptes_actifs_nominatifs(company):
     ]
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def licence_pdf_view(request):

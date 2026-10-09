@@ -208,3 +208,23 @@ class HealthScoreSnapshotTaskTests(TestCase):
         from ..tasks import recalculer_health_score_tenants
         recalculer_health_score_tenants()
         self.assertTrue(HealthScoreSnapshot.objects.filter(company=company).exists())
+
+
+class EnfSchemaValidationTests(TestCase):
+    """ENF10 — 400 (jamais 500) sur entrées invalides, schéma == réel."""
+
+    def setUp(self):
+        self.company = _company('EnfCo')
+        self.admin = _admin(self.company, 'enf_admin')
+        self.client_api = APIClient()
+        self.client_api.force_authenticate(self.admin)
+
+    def test_tracker_usage_module_requis(self):
+        resp = self.client_api.post(
+            '/api/django/adminops/tracker-usage/', {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_adoption_periode_invalide_400(self):
+        resp = self.client_api.get(
+            '/api/django/adminops/adoption/?periode=abc')
+        self.assertEqual(resp.status_code, 400)

@@ -15,6 +15,10 @@ from apps.parametres.models import SettingsAuditLog
 from .models import Role
 from .permissions_registre import ALL_PERMISSIONS
 from .serializers import RoleSerializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 
 class _CsvOrJSONRenderer(JSONRenderer):
@@ -52,6 +56,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     queryset = Role.objects.select_related('company').all()
     serializer_class = RoleSerializer
+    parser_classes = [JSONParser]
     permission_classes = [IsAdminOrResponsableTier]
 
     def get_permissions(self):
@@ -200,6 +205,11 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             new=None,
         )
 
+    @extend_schema(responses=inline_serializer('PermissionsDisponibles', {
+        'permissions': drf_serializers.ListField(
+            child=drf_serializers.CharField()),
+        'modules': drf_serializers.DictField(
+            child=drf_serializers.CharField())}))
     @action(detail=False, methods=['get'], url_path='permissions-disponibles')
     def permissions_disponibles(self, request):
         """Retourne la liste de toutes les permissions disponibles.
@@ -220,6 +230,11 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             'modules': PERMISSION_MODULE,
         })
 
+    @extend_schema(responses=inline_serializer('PermissionCatalogue', {
+        'permissions': drf_serializers.ListField(
+            child=drf_serializers.CharField()),
+        'routes': drf_serializers.ListField(
+            child=drf_serializers.DictField())}))
     @action(detail=False, methods=['get'], url_path='permission-catalog')
     def permission_catalog(self, request):
         """YRBAC10 — Catalogue de permissions + carte d'enforcement par route.
@@ -324,6 +339,20 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             })
         return dormant_days, rows
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('dormant_days', OpenApiTypes.INT, required=False),
+            OpenApiParameter('format', OpenApiTypes.STR, required=False),
+        ],
+        responses={
+            (200, 'application/json'): inline_serializer('RevueAcces', {
+                'dormant_days': drf_serializers.IntegerField(),
+                'total': drf_serializers.IntegerField(),
+                'dormants': drf_serializers.IntegerField(),
+                'utilisateurs': drf_serializers.ListField(
+                    child=drf_serializers.DictField())}),
+            (200, 'text/csv'): OpenApiTypes.STR,
+        })
     @action(detail=False, methods=['get'], url_path='revue-acces',
             renderer_classes=[_CsvOrJSONRenderer])
     def revue_acces(self, request):

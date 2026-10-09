@@ -22,7 +22,10 @@ from __future__ import annotations
 import logging
 
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -71,12 +74,25 @@ def diffuser_annonce(annonce):
     return envoyees
 
 
+class AnnoncePublierSerializer(drf_serializers.Serializer):
+    titre = drf_serializers.CharField(max_length=200)
+    corps = drf_serializers.CharField(
+        max_length=LONGUEUR_MAX_CORPS, required=False, allow_blank=True)
+    cible_roles = drf_serializers.ListField(
+        child=drf_serializers.IntegerField(), required=False)
+
+
 class AnnonceProduitListView(APIView):
     """GET — mes annonces (non lues d'abord) ; POST — publication (éditeur)."""
 
     permission_classes = [IsAuthenticated]
     serializer_class = AnnonceProduitSerializer
+    parser_classes = [JSONParser]
 
+    @extend_schema(responses=inline_serializer('AnnoncesProduitListe', {
+        'results': AnnonceProduitSerializer(many=True),
+        'non_lues': drf_serializers.IntegerField(),
+    }))
     def get(self, request):
         lues = set(LectureAnnonce.objects.filter(
             utilisateur=request.user).values_list('annonce_id', flat=True))
@@ -105,6 +121,8 @@ class AnnonceProduitListView(APIView):
             'non_lues': sum(1 for a in visibles if a.pk not in lues),
         })
 
+    @extend_schema(request=AnnoncePublierSerializer,
+                   responses={201: AnnonceProduitSerializer})
     def post(self, request):
         # Garde de publication : éditeur uniquement (portée globale).
         if not IsTaqinorSupport().has_permission(request, self):
@@ -140,7 +158,9 @@ class AnnonceProduitMarquerLuView(APIView):
 
     permission_classes = [IsAuthenticated]
     serializer_class = AnnonceProduitSerializer
+    parser_classes = [JSONParser]
 
+    @extend_schema(request=None, responses=AnnonceProduitSerializer)
     def post(self, request, pk):
         annonce = AnnonceProduit.objects.filter(pk=pk).first()
         if annonce is None:

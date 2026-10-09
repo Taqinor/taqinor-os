@@ -4,12 +4,14 @@ Authentifiés par session/JWT normaux, palier admin. La clé en clair et le
 secret webhook ne sont JAMAIS renvoyés en lecture — uniquement une fois, à la
 création, par les vues dédiées.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.models import ApiUsagePlan
 
 from .portees import ALL_SCOPES, SCOPE_CHOICES
 from .constants import ALL_EVENTS, EVENT_CHOICES, ALL_ENVIRONMENTS, ENV_LIVE
+from .schema_fields import champ_choix
 from .models import ApiKey, ServiceAccount, Webhook, WebhookDelivery
 from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
@@ -29,6 +31,7 @@ class ApiKeySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.CharField())
     def get_created_by_nom(self, obj):
         u = obj.created_by
         if not u:
@@ -44,8 +47,8 @@ class ApiKeyCreateSerializer(serializers.Serializer):
         allow_empty=True, default=list)
     # NTAPI26 — environnement de la clé (défaut `live`, comportement
     # historique inchangé pour tout appelant qui ne l'envoie pas).
-    environnement = serializers.ChoiceField(
-        choices=ALL_ENVIRONMENTS, required=False, default=ENV_LIVE)
+    environnement = champ_choix(
+        ALL_ENVIRONMENTS, required=False, default=ENV_LIVE)
 
     def validate_label(self, value):
         value = value.strip()

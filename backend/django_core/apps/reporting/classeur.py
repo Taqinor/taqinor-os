@@ -20,6 +20,9 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 
 from .models import Classeur, ClasseurPartageInterne
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework.parsers import JSONParser
 
 _CELL_REF_RE = re.compile(r'\b([A-Z]+)([0-9]+)\b')
 _RANGE_RE = re.compile(r'\b([A-Z]+[0-9]+):([A-Z]+[0-9]+)\b')
@@ -178,6 +181,7 @@ class ClasseurViewSet(TenantMixin, viewsets.ModelViewSet):
     propriétaire, PLUS ceux explicitement partagés en interne avec lui
     (``ClasseurPartageInterne``, réutilise le pattern XPLT10)."""
     serializer_class = ClasseurSerializer
+    parser_classes = [JSONParser]
     permission_classes = [IsAuthenticated]
     queryset = Classeur.objects.all()
 
@@ -202,6 +206,8 @@ class ClasseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(responses=inline_serializer('ClasseurRafraichi', {
+        'cellules': drf_serializers.DictField()}))
     @action(detail=True, methods=['get'])
     def rafraichir(self, request, pk=None):
         """XPLT22 — recalcule TOUTES les cellules du classeur (formules +
@@ -213,6 +219,11 @@ class ClasseurViewSet(TenantMixin, viewsets.ModelViewSet):
             resolved[ref] = _cell_value(classeur, ref, user=user)
         return Response({'cellules': resolved})
 
+    @extend_schema(
+        request=inline_serializer('ClasseurEvaluerRequete', {
+            'formule': drf_serializers.CharField()}),
+        responses=inline_serializer('ClasseurEvaluerReponse', {
+            'valeur': drf_serializers.JSONField(allow_null=True)}))
     @action(detail=True, methods=['post'], url_path='evaluer')
     def evaluer(self, request, pk=None):
         """XPLT22 — évalue UNE formule ad-hoc sans la persister (aperçu live

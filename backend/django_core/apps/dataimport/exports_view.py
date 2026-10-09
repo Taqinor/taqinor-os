@@ -6,6 +6,9 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from apps.crm.exports import build_xlsx_response
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
 
 
 def _co_qs(model, user, company_id=None):
@@ -113,6 +116,15 @@ _BUILDERS = {
 }
 
 
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'entity', OpenApiTypes.STR, OpenApiParameter.PATH,
+        enum=sorted(_BUILDERS))],
+    request=inline_serializer('ExportListeRequete', {
+        'ids': serializers.ListField(
+            child=serializers.IntegerField(), required=False),
+        'company': serializers.IntegerField(required=False)}),
+    responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def export_list(request, entity):
