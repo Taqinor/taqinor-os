@@ -63,14 +63,39 @@ class _PanneDealEnregistre:
         filter = staticmethod(_panne_sql)
 
 
+def _panne_evaluate_devis_accepted(trigger_type, *args, **kwargs):
+    """Panne CIBLÉE sur l'abonné ``_on_devis_accepted`` d'automation.
+
+    ``evaluate`` est aussi appelé par les ``post_save`` du même module
+    (``_lead_saved`` à l'avance d'étape, ``_installation_saved`` à la
+    création du chantier), qui ne sont PAS des abonnés de ``devis_accepted`` :
+    les faire tomber testerait un autre chemin. Seul le déclencheur
+    ``DEVIS_ACCEPTED`` reçoit la panne ; les autres appels passent au moteur
+    réel."""
+    from apps.automation.engine import evaluate
+    from apps.automation.models import TriggerType
+    if trigger_type == TriggerType.DEVIS_ACCEPTED:
+        return _panne_sql()
+    return evaluate(trigger_type, *args, **kwargs)
+
+
+#: remplaçants spécifiques (défaut : ``_panne_sql``).
+REMPLACANTS = {
+    'apps.crm.models.DealEnregistre': _PanneDealEnregistre,
+    'apps.automation.signals.evaluate': _panne_evaluate_devis_accepted,
+}
+
+
 def _noms_abonnes():
     vivants = devis_accepted._live_receivers(None)
     if isinstance(vivants, tuple):  # Django 5 : (sync, async)
         vivants = list(vivants[0]) + list(vivants[1])
     noms = set()
+    modules = set()
     for recepteur in vivants:
         noms.add(f'{recepteur.__module__}.{recepteur.__qualname__}')
-    return noms
+        modules.add(recepteur.__module__)
+    return noms, modules
 
 
 class AbonnesPointDeSauvegardeTests(TestCase):
@@ -97,10 +122,11 @@ class AbonnesPointDeSauvegardeTests(TestCase):
                             option='sans_batterie')
 
     def test_abonnes_decouverts_et_classes(self):
-        noms = _noms_abonnes()
-        # automation est enveloppé par ``_safe`` (nom ``wrapper``) : on le
-        # reconnaît par son module.
-        modules = {n.rsplit('.', 1)[0] for n in noms}
+        noms, modules = _noms_abonnes()
+        # automation est enveloppé par ``_safe`` (qualname
+        # ``_safe.<locals>.wrapper``) : on le reconnaît par le ``__module__``
+        # réel du récepteur (un ``rsplit`` du nom complet donnait
+        # ``apps.automation.signals._safe.<locals>`` et ne matchait jamais).
         for nom in BEST_EFFORT:
             module = nom.rsplit('.', 1)[0]
             with self.subTest(abonne=nom):
@@ -110,8 +136,7 @@ class AbonnesPointDeSauvegardeTests(TestCase):
 
     def test_panne_isolee_par_abonne(self):
         for i, (abonne, cible) in enumerate(sorted(BEST_EFFORT.items())):
-            remplacant = (_PanneDealEnregistre
-                          if cible.endswith('DealEnregistre') else _panne_sql)
+            remplacant = REMPLACANTS.get(cible, _panne_sql)
             devis = self._devis(f'{i:04d}')
             with self.subTest(abonne=abonne):
                 with mock.patch(cible, remplacant):
