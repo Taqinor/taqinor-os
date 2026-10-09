@@ -12,8 +12,7 @@
 #      manque = une ligne d'action claire, JAMAIS d'installation silencieuse ;
 #   2. depot sur main, propre, a jour (git pull --ff-only) ;
 #   3. .env cree depuis .env.example s'il manque ;
-#   4. docker compose up -d --build, attente de la stack, migrations ;
-#   5. seed_demo si la societe demo est vide (JAMAIS le drapeau de forcage) ;
+#   4-5. pile locale (stack, migrations, seed_demo si vide) : scripts/pile_locale.ps1 ;
 #   6. rappel : approuver Playwright MCP + Chrome DevTools MCP dans /mcp ;
 #   7. tache planifiee Windows "TAQINOR nightly QA" (quotidienne, heure LOCALE,
 #      23:00 par defaut) qui lance scripts/nightly-qa.ps1 ; option
@@ -91,28 +90,6 @@ function Test-ChromeInstalled {
     )
     if (${env:ProgramFiles(x86)}) { $paths += (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe') }
     foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { return $true } }
-    return $false
-}
-
-function Get-HttpStatus([string]$Url) {
-    try {
-        $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 15
-        return [int]$resp.StatusCode
-    } catch {
-        $r = $_.Exception.Response
-        if ($null -ne $r) { return [int]$r.StatusCode }
-        return 0
-    }
-}
-
-function Wait-Stack([int]$TimeoutSec) {
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    while ((Get-Date) -lt $deadline) {
-        $root = Get-HttpStatus 'http://localhost/'
-        $api = Get-HttpStatus 'http://localhost/api/django/token/'
-        if (($root -eq 200) -and ($api -gt 0) -and ($api -lt 500)) { return $true }
-        Start-Sleep -Seconds 10
-    }
     return $false
 }
 
@@ -244,33 +221,10 @@ if (($null -ne $debugLine) -and ($debugLine -notmatch '=\s*(True|true|1)\s*$')) 
     exit 1
 }
 
-# ---- 4. Stack docker ----------------------------------------------------------
-$held = Invoke-Native { docker ps --filter 'name=erp-agentique-django_core-run' --format '{{.Names}}' }
-$heldNames = @($held.Lines | Where-Object { $_ -match 'erp-agentique-django_core-run' })
-if ($heldNames.Count -gt 0) {
-    Say ('ACTION : un run de tests backend tient le verrou single-writer (' + ($heldNames -join ', ') + '). Attendre sa fin, puis relancer.')
-    exit 1
-}
-$code = Invoke-Shown 'docker compose up -d --build (premier build : plusieurs minutes)' { docker compose up -d --build }
-if ($code -ne 0) { Fail 'docker compose up -d --build.' }
-Say 'attente de la stack sur http://localhost ...'
-if (-not (Wait-Stack 600)) { Fail 'la stack locale ne repond pas sur http://localhost apres 10 min (docker compose ps / docker compose logs django_core).' }
-$code = Invoke-Shown 'migrations' { docker compose exec -T django_core python manage.py migrate --noinput }
-if ($code -ne 0) { Fail 'manage.py migrate.' }
-
-# ---- 5. Societe demo ----------------------------------------------------------
-$probe = "from authentication.models import Company; c = Company.objects.filter(slug='taqinor-demo').first(); print('DEMO_STATE=' + ('SEEDED' if c is not None and c.produits.exists() else 'EMPTY'))"
-$ds = Invoke-Native { docker compose exec -T django_core python manage.py shell -c $probe }
-$demo = ($ds.Lines -join ' ')
-if ($demo -match 'DEMO_STATE=EMPTY') {
-    $code = Invoke-Shown 'seed_demo (societe demo vide)' { docker compose exec -T django_core python manage.py seed_demo }
-    if ($code -ne 0) { Fail 'seed_demo a refuse (DJANGO_DEBUG=True requis dans le .env LOCAL ; jamais de forcage).' }
-    $Created.Add('societe demo (seed_demo)')
-} elseif ($demo -match 'DEMO_STATE=SEEDED') {
-    Say 'societe demo deja seedee - rien a faire.'
-} else {
-    Fail ('etat de la societe demo illisible : ' + $demo)
-}
+# ---- 4-5. Pile locale : stack, migrations, societes demo ------------------------
+# Survivant unique de ces etapes : scripts/pile_locale.ps1 (jamais de --force).
+& (Join-Path $RepoRoot 'scripts\pile_locale.ps1') -Build
+if ($LASTEXITCODE -ne 0) { Fail 'scripts/pile_locale.ps1 (voir la ligne ACTION / ECHEC ci-dessus).' }
 
 # ---- Kill switch (information) ------------------------------------------------
 $cfg = Join-Path $RepoRoot 'docs\qa-explorer.config.yml'
