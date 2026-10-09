@@ -213,15 +213,12 @@ class TestToleranceOrthographeDyness(SimpleTestCase):
                 f"apps/ventes a perdu la graphie {graphie} — une désignation "
                 "historique cesserait d'alimenter le vivier batterie.")
 
-    def test_solar_js_tolere_les_deux(self):
-        # Miroir écran de la garde ci-dessus (même règle, deux langages).
-        with open(SOLAR_JS, encoding='utf-8') as fh:
-            src = fh.read().lower()
-        for graphie in ("'dyness'", "'deyness'"):
-            self.assertIn(
-                graphie, src,
-                f"solar.js a perdu la graphie {graphie} — il doit rester "
-                "aligné avec le vivier backend d'apps/ventes.")
+    # ADEV69 — ``test_solar_js_tolere_les_deux`` est RETIRÉ, pas affaibli : les
+    # graphies 'dyness'/'deyness' vivaient DANS le corps de
+    # ``solar.autoFillLines``, second composeur supprimé (D-QJR5-9, un seul
+    # composeur côté serveur). Le vivier batterie n'existe plus qu'au serveur
+    # (``domain/composition.py``), gardé par ``test_ventes_tolere_les_deux``
+    # ci-dessus.
 
 
 class TestStkcat22TablePanneauPartagee(SimpleTestCase):

@@ -4,7 +4,7 @@
 // dedans : invariant gardé par le verbatim), `appliquerTailleDimensionnement`,
 // `recalculerDimensionnement` et l'effet de recalcul. Corps verbatim ; `ctx`
 // porte, nom par nom, ce que le corps lit du composant.
-import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcFromHt } from '../../../../features/ventes/solar'
+import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
@@ -57,8 +57,9 @@ export function useCompositionEcran(ctx) {
     const generated = (data.lignes || []).map(li => {
       const produit = produits.find(p => String(p.id) === String(li.produit))
       const taux = produit ? tauxTvaOf(produit) : tauxTvaOuDefaut(li.taux_tva, 20)
+      // ATOT28 — TTC au centime et HT servi PORTÉ (renvoyé tel quel).
       const prixTtc = produit
-        ? ttcFromHt(li.prix_unitaire_ht, taux)
+        ? ttcExactFromHt(li.prix_unitaire_ht, taux)
         : (li.prix_unitaire_ttc ?? 0)
       return {
         produit: li.produit ?? '',
@@ -67,6 +68,8 @@ export function useCompositionEcran(ctx) {
         prix_unit_ttc: prixTtc,
         taux_tva: taux,
         variante: li.variante || '',
+        prixHtOrigine: produit && li.prix_unitaire_ht != null
+          ? (parseFloat(li.prix_unitaire_ht) || 0).toFixed(2) : null,
       }
     })
     if (!generated.length) {

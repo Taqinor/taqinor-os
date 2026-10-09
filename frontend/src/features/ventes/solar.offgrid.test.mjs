@@ -21,7 +21,7 @@ import assert from 'node:assert/strict'
 import {
   isOffgridInverter, isReseauInverter, isHybridInverter, classifyProduct,
   appartientAuPanierSans, appartientAuPanierAvec,
-  autoFillLines, PRODUCT_CATEGORIES,
+  PRODUCT_CATEGORIES,
 } from './solar.js'
 
 // Même convention que solar.test.mjs / solar.marques.test.mjs : prix HT =
@@ -166,120 +166,15 @@ const OFFGRID_CATALOGUE = [
   P('Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 5000),
 ]
 
-test('offgrid : compose UNE option — onduleur hors réseau (≥ 80 % cible) + batterie + panneaux, jamais réseau/hybride', () => {
-  const rows = autoFillLines(OFFGRID_CATALOGUE, {
-    kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
-  })
-  assert.ok(rows.length > 0)
-  // Plus petit modèle ≥ 7,952 kW : 10 kW Mono et 10 kW Triphasé sont à égalité
-  // de puissance → Triphasé préféré (règle historique, bestPower >= 10).
-  const inv = rows.find(r => r.designation.includes('Off-Grid'))
-  assert.equal(inv.designation, 'Onduleur Off-Grid Deye 10kW Triphasé')
-  assert.equal(inv.quantite, 1)
-  assert.equal(inv.prix_unit_ttc, 27000)
-  // JAMAIS de ligne onduleur réseau ni hybride sur une composition hors réseau.
-  assert.equal(rows.find(r => r.designation === 'Onduleur réseau'), undefined)
-  assert.equal(rows.find(r => r.designation.includes('réseau Huawei')), undefined)
-  assert.equal(rows.find(r => r.designation.toLowerCase().includes('hybride')), undefined)
-  // Panneaux : identique à la composition historique.
-  const pan = rows.find(r => r.designation.includes('Panneau'))
-  assert.equal(pan.designation, 'Panneau Canadien Solar 710W')
-  assert.equal(pan.quantite, 14)
-  // Batterie : cible 10 kWh → 1 × Dyness 10 kWh (moins cher que 2 × 5 kWh),
-  // MÊME logique BATHOMO que la branche hybride historique.
-  assert.equal(rows.find(r => r.designation.includes('Dyness 10')).quantite, 1)
-  assert.equal(rows.find(r => r.designation.includes('Dyness 5')).quantite, 0)
-})
-
-test('offgrid : aucun onduleur hors réseau tarifé → erreur FRANÇAISE claire, jamais un repli hybride', () => {
-  const catalogue = [
-    P('Onduleur Off-Grid Deye 10kW Triphasé', 0), // prix 0 = jamais choisi
-    P('Onduleur hybride Deye 10kW Triphasé', 28000), // présent mais JAMAIS utilisé
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 10 kWh', 30000),
-  ]
-  const rows = autoFillLines(catalogue, {
-    kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
-  })
-  assert.equal(rows.length, 0)
-  // Incident fondateur 01/09 round 2 — le motif seul ne disait pas au vendeur
-  // POURQUOI un produit qu'il voit au catalogue (prix 0 ici) n'est pas trouvé :
-  // le message rappelle désormais le contrat de nommage ET l'exigence de prix.
-  assert.equal(rows.offgridErreur,
-    'Aucun onduleur hors réseau avec prix au catalogue. '
-    + 'Le NOM du produit doit contenir « off-grid », « off grid », '
-    + '« hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW »), '
-    + 'avec un prix de vente.')
-  // Preuve « jamais un repli silencieux sur l'hybride » : le tableau est VIDE,
-  // pas une seule ligne hybride composée à la place.
-})
-
 // Incident fondateur 01/09 (round 2) — autoFillLines doit composer avec le
 // nom RÉEL du catalogue prod (« Deye off-Grid 6kw », sans « onduleur »), pas
 // seulement le nom de test historique (« Onduleur Off-Grid Deye … »).
-test('offgrid : autoFillLines choisit « Deye off-Grid 6kw » (nom produit réel, sans le mot « onduleur »)', () => {
-  const catalogueReel = [
-    P('Deye off-Grid 6kw', 18000),
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 5 kWh', 17000),
-    P('Batterie Dyness 10 kWh', 30000),
-  ]
-  const rows = autoFillLines(catalogueReel, {
-    kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
-  })
-  assert.ok(rows.length > 0)
-  const inv = rows.find(r => r.designation === 'Deye off-Grid 6kw')
-  assert.ok(inv, 'la ligne « Deye off-Grid 6kw » doit être composée')
-  // Seuil 7,952 kW, aucun modèle ≥ 6 kW seul disponible → 2 unités (comme le
-  // repli historique quand le plus gros modèle du catalogue est trop petit).
-  assert.equal(inv.quantite, 2)
-  assert.equal(inv.prix_unit_ttc, 18000)
-  assert.equal(rows.find(r => r.designation.toLowerCase().includes('hybride')), undefined)
-})
 
-test('offgrid : aucune batterie tarifée/compatible → erreur FRANÇAISE claire, jamais une composition sans stockage', () => {
-  const catalogue = [
-    P('Onduleur Off-Grid Deye 10kW Triphasé', 27000),
-    P('Panneau Canadien Solar 710W', 1400),
-    // Aucune batterie du tout au catalogue.
-  ]
-  const rows = autoFillLines(catalogue, {
-    kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
-  })
-  assert.equal(rows.length, 0)
-  assert.equal(rows.offgridErreur,
-    'Aucune batterie compatible tarifée au catalogue pour cet onduleur hors réseau.')
-})
-
-test('offgrid : une batterie SANS PRIX ne peut jamais être composée (jamais une ligne à 0 MAD)', () => {
-  const catalogue = [
-    P('Onduleur Off-Grid Deye 10kW Triphasé', 27000),
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 10 kWh', 0), // en stock, mais prix à renseigner
-  ]
-  const rows = autoFillLines(catalogue, {
-    kwp: KWP_14, panelW: 710, structureType: 'acier', offgrid: true,
-  })
-  assert.equal(rows.length, 0)
-  assert.equal(rows.offgridErreur,
-    'Aucune batterie compatible tarifée au catalogue pour cet onduleur hors réseau.')
-})
-
-test('offgrid : `offgrid` absent/faux reste BYTE-IDENTIQUE à l\'historique (réseau + hybride)', () => {
-  const catalogueMixte = [
-    ...OFFGRID_CATALOGUE,
-    P('Onduleur réseau Huawei 10kW Triphasé', 20000),
-    P('Onduleur hybride Deye 10kW Triphasé', 28000),
-  ]
-  const opts = { kwp: KWP_14, panelW: 710, structureType: 'acier' }
-  const sansOption = autoFillLines(catalogueMixte, opts)
-  const offgridFaux = autoFillLines(catalogueMixte, { ...opts, offgrid: false })
-  const offgridUndefined = autoFillLines(catalogueMixte, { ...opts, offgrid: undefined })
-  assert.deepEqual(offgridFaux, sansOption)
-  assert.deepEqual(offgridUndefined, sansOption)
-  // Le comportement historique compose réseau + hybride, JAMAIS l'off-grid,
-  // même si le catalogue en porte un tarifé.
-  assert.ok(sansOption.some(r => r.designation.includes('réseau')))
-  assert.ok(sansOption.some(r => r.designation.includes('hybride')))
-  assert.equal(sansOption.some(r => r.designation.includes('Off-Grid')), false)
-})
+// ADEV69 — second composeur supprimé (D-QJR5-9) : la composition vit au serveur (apps/ventes/domain/composition.py, testée côté backend).
+// Tests retirés (ils ne protégeaient QUE `autoFillLines`) :
+//   · offgrid : compose UNE option — onduleur hors réseau (≥ 80 % cible) + batterie + panneaux, jamais réseau/hybride
+//   · offgrid : aucun onduleur hors réseau tarifé → erreur FRANÇAISE claire, jamais un repli hybride
+//   · offgrid : autoFillLines choisit « Deye off-Grid 6kw » (nom produit réel, sans le mot « onduleur »)
+//   · offgrid : aucune batterie tarifée/compatible → erreur FRANÇAISE claire, jamais une composition sans stockage
+//   · offgrid : une batterie SANS PRIX ne peut jamais être composée (jamais une ligne à 0 MAD)
+//   · offgrid : `offgrid` absent/faux reste BYTE-IDENTIQUE à l\

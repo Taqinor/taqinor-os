@@ -194,7 +194,8 @@ export default function LigneTable({
                     hors total (activable par le client sur la proposition). */}
                 <th style={{ width: 56 }} title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
                 {/* PVORD — monter/descendre : ordre par défaut = ordre du
-                    simulateur (autoFillLines), réordonnable ici. */}
+                    la composition serveur (ADEV69 : plus de composeur JS),
+                    réordonnable ici. */}
                 <th className="col-ordre" title="Réordonner la ligne">Ordre</th>
                 <th className="col-del"></th>
               </tr>

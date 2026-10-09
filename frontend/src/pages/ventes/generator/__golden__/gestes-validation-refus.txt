@@ -150,8 +150,7 @@ Total SANS batterie ⭐
 0 MAD
 Réduction
 %
-TVA
-%
+TVA : par ligne (voir la table)
 Prix cible / kWc
 Appliquer via remise
 <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
@@ -230,8 +229,7 @@ gen-panelw=715
 #27=60
 #28=on [ ]
 #29=0
-#30=20.00
-#31=
+#30=
 :id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
@@ -242,7 +240,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#42=
+#41=
 == APPELS ==
 {
   "crmApi.getClients": [
@@ -290,29 +288,6 @@ gen-cond-acompte-financeur=
   "ventesApi.getPrefillSite": [
     [
       "9"
-    ]
-  ],
-  "ventesApi.getPrixApplicable": [
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
     ]
   ],
   "ventesApi.lireOverrides": [

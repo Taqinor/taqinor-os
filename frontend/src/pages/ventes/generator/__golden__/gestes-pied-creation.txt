@@ -131,8 +131,7 @@ Total SANS batterie ⭐
 21 300 MAD
 Réduction
 %
-TVA
-%
+TVA : par ligne (voir la table)
 Arrondi commercial
 -60 MAD
 Prix / kWc
@@ -230,8 +229,7 @@ line-qty=1
 #37=20
 Ligne optionnelle (add-on hors total)=on [ ]
 #39=0
-#40=20.00
-#41=
+#40=
 :id0:=
 gen-cond-retenue=on [ ]
 gen-cond-penaliteTaux=
@@ -242,7 +240,7 @@ gen-cond-cautionPlafond=
 gen-cond-referenceCommande=
 gen-cond-tiersPayeur=
 gen-cond-acompte-financeur=
-#52=Garantie 10 ans.
+#51=Garantie 10 ans.
 == APPELS ==
 {
   "crmApi.getClients": [
@@ -295,22 +293,6 @@ gen-cond-acompte-financeur=
   "ventesApi.getPrefillSite": [
     [
       "9"
-    ]
-  ],
-  "ventesApi.getPrixApplicable": [
-    [
-      {
-        "produit": "101",
-        "client": "9",
-        "quantite": "8"
-      }
-    ],
-    [
-      {
-        "produit": "102",
-        "client": "9",
-        "quantite": "1"
-      }
     ]
   ],
   "ventesApi.lireOverrides": [

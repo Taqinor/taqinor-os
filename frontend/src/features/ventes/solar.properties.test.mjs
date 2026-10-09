@@ -30,8 +30,11 @@ import {
   productibleForCity, PRODUCTIBLE_NET_FACTOR,
   panneauxPourKwc,
   totauxCanoniquesTtc, ttcFromHt, htFromTtc,
+  ligneProduitCatalogue,
 } from './solar.js'
 import { forAll, premierNonFini } from './proprietes.aleatoire.js'
+import { lignesEcranVersPayload, lignesServeurVersEcran } from './quote/lignesEcran.js'
+import { withKeys } from './quote/ligneFabrique.js'
 
 // ── VIOLATIONS RÉELLES CONNUES — jamais un test assoupli ─────────────────────
 // id → { resume, exemple }. Le test `KNOWN_VIOLATIONS se reproduisent encore`
@@ -595,6 +598,57 @@ test('productible : toujours > 0 et fini, quel que soit la ville (inconnue, vide
     verifie: ({ ville, ov }) => {
       const p = productibleForCity(ville, ov)
       return Number.isFinite(p) && p > 0 ? null : `productible ${p}`
+    },
+  })
+})
+
+// ══ ATOT28 — prix catalogue repris sans retouche = prix_vente EXACT ═════════
+// Une ligne créée depuis un produit porte le HT catalogue d'origine
+// (`prixHtOrigine`) et un TTC affiché au centime ; tant que le vendeur n'a pas
+// tapé de prix, l'enregistrement renvoie ce HT tel quel (avant : TTC arrondi
+// au dirham puis re-dérivé — 1 234,56 HT revenait 1 234,17).
+const TAUX = [20, 10, 0, 14, 7, 5.5]
+
+test('ATOT28 — produit catalogue ajouté puis enregistré ⇒ prix_unitaire == prix_vente', () => {
+  verifier('', 'prix catalogue exact à l’enregistrement', {
+    seed: 2801, runs: RUNS,
+    gen: (g) => ({
+      ht: Math.round(g.logFloat(1, 200000) * 100) / 100,
+      tva: g.pick(TAUX),
+      q: g.int(1, 40),
+    }),
+    verifie: ({ ht, tva, q }) => {
+      const p = { id: 7, nom: 'Produit', prix_vente: ht, tva }
+      const [ligne] = withKeys([ligneProduitCatalogue(p, q)])
+      const [envoye] = lignesEcranVersPayload([ligne])
+      return envoye.prix_unitaire === ht.toFixed(2)
+        ? null : `${ht} @ ${tva} % → ${envoye.prix_unitaire}`
+    },
+  })
+})
+
+test('ATOT28 — exemples du constat : 1 234,56 @20 %, 4 583,33 @10 %, 87,50 @10 %', () => {
+  for (const [ht, tva] of [[1234.56, 20], [4583.33, 10], [87.5, 10]]) {
+    const [ligne] = withKeys([ligneProduitCatalogue({ id: 1, nom: 'P', prix_vente: ht, tva }, 1)])
+    assert.equal(lignesEcranVersPayload([ligne])[0].prix_unitaire, ht.toFixed(2))
+  }
+})
+
+test('ATOT28 — un prix TAPÉ n’est plus remplacé par le HT d’origine', () => {
+  const [ligne] = withKeys([ligneProduitCatalogue({ id: 1, nom: 'P', prix_vente: 1000, tva: 20 }, 1)])
+  const tape = { ...ligne, prix_unit_ttc: '1300', prixManuel: true }
+  assert.equal(lignesEcranVersPayload([tape])[0].prix_unitaire, htFromTtc('1300', 20))
+})
+
+test('ATOT28 — TTC entier tapé ⇒ réouverture identique', () => {
+  verifier('', 'TTC entier stable à la réouverture', {
+    seed: 2802, runs: RUNS,
+    gen: (g) => ({ ttc: g.int(1, 300000), tva: g.pick(TAUX) }),
+    verifie: ({ ttc, tva }) => {
+      const ht = htFromTtc(String(ttc), tva)
+      const [relue] = lignesServeurVersEcran([{ produit: 1, designation: 'P', quantite: '1',
+        prix_unitaire: ht, taux_tva: String(tva) }], '20')
+      return relue.prix_unit_ttc === String(ttc) ? null : `${ttc} @ ${tva} % → ${relue.prix_unit_ttc}`
     },
   })
 })

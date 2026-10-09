@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ecrireLastTva } from '../../../../features/ventes/quote/ecranDefauts.js'
 import ventesApi from '../../../../api/ventesApi'
-import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManuellesEnConflitPossible, tauxTvaOf, ttcFromHt } from '../../../../features/ventes/solar'
+import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManuellesEnConflitPossible, tauxTvaOf, ttcExactFromHt } from '../../../../features/ventes/solar'
 import stockApi from '../../../../api/stockApi'
 import { emptyLine, structureLine, withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { toast } from '../../../../ui/confirm'
@@ -78,8 +78,16 @@ export function useLignesEcran(ctx) {
         // jamais un `lines` capturé au lancement de l'appel réseau, qui serait
         // périmé) : le vendeur reprend la main tant qu'il n'a pas resélectionné
         // le produit de cette ligne (onProduitChange lève le verrou).
+        // AGNR15 — le prix servi est HT (contrat AGNR1, `unite: 'HT'`) : il est
+        // converti au taux de CETTE ligne, au centime (`ttcExactFromHt`, que
+        // `htFromTtc` inverse exactement à l'enregistrement), jamais écrit tel
+        // quel dans un champ TTC (1 350 HT s'affichait 1 350 et s'enregistrait
+        // 1 125,00 HT).
         setLines(ls => ls.map(l =>
-          (l._key === key && !l.prixManuel) ? { ...l, prix_unit_ttc: String(data.prix) } : l))
+          (l._key === key && !l.prixManuel)
+            ? { ...l, prix_unit_ttc: String(ttcExactFromHt(data.prix, l.taux_tva)),
+                prixHtOrigine: (parseFloat(data.prix) || 0).toFixed(2) }
+            : l))
       } else {
         setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
       }
@@ -98,7 +106,9 @@ export function useLignesEcran(ctx) {
             ...l,
             produit: produitId,
             designation: p?.nom ?? l.designation,
-            prix_unit_ttc: p ? String(ttcFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
+            // ATOT28 — TTC au centime, HT catalogue d'origine porté.
+            prix_unit_ttc: p ? String(ttcExactFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
+            prixHtOrigine: p ? (parseFloat(p.prix_vente) || 0).toFixed(2) : (l.prixHtOrigine ?? null),
             taux_tva: p ? String(tauxTvaOf(p)) : (l.taux_tva ?? '20'),
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
@@ -128,8 +138,23 @@ export function useLignesEcran(ctx) {
     if (l?.produit) refreshTarif(key, l.produit, quantite)
   }, [lines, setLine, refreshTarif])
 
+  // AGNR16 — l'effet ne résout le tarif que d'une ligne NOUVELLE pour l'écran
+  // (clé jamais vue), ou de toutes les lignes quand le CLIENT change ; jamais
+  // d'une ligne dont le prix a été RELU du serveur (`prixRelu`, réouverture
+  // `?edit=`, relecture après enregistrement) : rouvrir puis enregistrer sans
+  // toucher gardait sinon 818,18 au lieu de 1 200,00 HT. Les gestes
+  // (onProduitChange, onQuantiteChange) résolvent toujours leur ligne.
+  const clesTarifVues = useRef(new Set())
+  const clientTarif = useRef(clientId)
   useEffect(() => {
-    lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
+    const clientChange = clientTarif.current !== clientId
+    clientTarif.current = clientId
+    lines.forEach(l => {
+      const nouvelle = !clesTarifVues.current.has(l._key)
+      clesTarifVues.current.add(l._key)
+      if (!l.produit || l.prixRelu) return
+      if (nouvelle || clientChange) refreshTarif(l._key, l.produit, l.quantite)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, lines.length])
 
@@ -373,7 +398,8 @@ export function useLignesEcran(ctx) {
     if (preset.remise_globale != null) setDiscountPct(String(parseFloat(preset.remise_globale) || 0))
     // QJR523 — même mappeur que la réouverture `?edit=` (HT → TTC au taux de
     // la ligne, tous les champs portés).
-    setLines(withKeys(lignesServeurVersEcran(retenues, preset.taux_tva)))
+    // AGNR16 — un modèle n'est pas un devis relu : ses lignes restent résolubles par la liste du client.
+    setLines(withKeys(lignesServeurVersEcran(retenues, preset.taux_tva).map(l => ({ ...l, prixRelu: false }))))
     if (sansPrix.length) {
       toast.warning('Produit(s) sans prix non repris du modèle : ' + sansPrix.join(', '))
     }

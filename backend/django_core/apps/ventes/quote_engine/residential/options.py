@@ -148,21 +148,11 @@ def _name_html(it, produits_base):
 # caractère près.
 
 
-def _pu_ht_affiche(it):
-    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut."""
-    valeur = it.get("pu_ht_remise")
-    if valeur is None:
-        return float(it.get("prix_unit_ht") or 0)
-    return float(valeur)
-
-
-def _total_ht_affiche(it):
-    """Total HT de la ligne à afficher : après remise globale, ou catalogue."""
-    valeur = it.get("total_ht_remise")
-    if valeur is None:
-        return float(it.get("prix_unit_ht") or 0) * float(
-            it.get("quantite") or 0)
-    return float(valeur)
+# AMOT45 — la lecture de ``pu_ht_remise`` / ``total_ht_remise`` vit dans
+# ``montants`` (helper UNIQUE partagé avec l'agricole et la page équipements
+# commerciale / industrielle) ; noms locaux gardés pour les appelants.
+from ..montants import pu_ht_remise as _pu_ht_affiche  # noqa: E402
+from ..montants import total_ht_remise as _total_ht_affiche  # noqa: E402
 
 
 def _deux_prix(fmt, valeur_catalogue, valeur_remisee):

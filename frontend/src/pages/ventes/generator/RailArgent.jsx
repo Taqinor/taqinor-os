@@ -15,11 +15,11 @@
 // les calcule pas, il les reçoit déjà chiffrés.
 import { Button } from '../../../ui'
 import { formatMoney } from '../../../features/ventes/solar'
+import MargeIndicative from './MargeIndicative'
 
 export default function RailArgent({
   showSans, showAvec, sansRec, avecRec, totals,
   discountPct, setDiscountPct, remiseMax,
-  tauxTva, setTauxTva,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
   marge, kpiTotal, margeLignesSansAchat = 0,
   // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
@@ -77,11 +77,12 @@ export default function RailArgent({
             </span>
           )}
         </div>
-        <div className="gen-total-item gen-total-inline gen-tier-2">
-          <span className="gen-total-label">TVA</span>
-          <input type="number" min="0" max="100" step="any" className="gen-discount-input"
-                 value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
-          <span style={{ fontWeight: 700 }}>%</span>
+        {/* AGNR28 — plus de champ « TVA % » ici : il ne changeait AUCUN total
+            (chaque ligne porte son taux, lu par les totaux et le serveur).
+            L'en-tête `taux_tva` garde la valeur chargée / le défaut société,
+            simple repli serveur. Un refus serveur sur ce champ reste affiché. */}
+        <div className="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
+          <span className="gen-total-label">TVA : par ligne (voir la table)</span>
           {sousChamp('taux_tva')}
         </div>
         {parseFloat(discountPct) > 0 && showSans && (
@@ -150,27 +151,9 @@ export default function RailArgent({
             Appliquer via remise
           </Button>
         </div>
-        {marge != null && (
-          <div className="gen-total-item">
-            {/* VX17 — couleurs via tokens de thème (text-success/destructive)
-                plutôt qu'un hex codé en dur. */}
-            <span className={`gen-total-label ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-              Marge indicative (interne)
-            </span>
-            <span className={`gen-total-value ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-              {formatMoney(marge)}
-              {margeLignesSansAchat === 0 && kpiTotal > 0
-                ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
-            </span>
-            {margeLignesSansAchat > 0 && (
-              /* AGR134 — une ligne chiffrée sans prix d'achat sort du coût : la
-                 marge est gonflée, son pourcentage est masqué et le dit. */
-              <span className="text-xs text-warning" data-testid="marge-partielle">
-                marge partielle : {margeLignesSansAchat} ligne{margeLignesSansAchat > 1 ? 's' : ''} sans prix d'achat
-              </span>
-            )}
-          </div>
-        )}
+        {/* AGNR29 — composant partagé avec le rail latéral (AGR134 : marge
+            partielle dite, jamais de % sur un coût partiel). */}
+        <MargeIndicative marge={marge} kpiTotal={kpiTotal} lignesSansAchat={margeLignesSansAchat} />
       </div>
       {marge != null && marge < 0 && (
         <div className="mx-5 mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

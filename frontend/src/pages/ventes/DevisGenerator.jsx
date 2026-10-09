@@ -1,23 +1,19 @@
 import {
-  Fragment, useCallback, useDeferredValue, useEffect, useMemo, useReducer,
+  useCallback, useEffect, useMemo, useReducer,
   useRef, useState,
 } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-} from 'recharts'
-import {
   // QJR101 — `Sprout` est parti avec le panneau agricole (`PanneauAgricole`),
   // qui l'importe désormais lui-même.
-  ArrowLeft, Target, ClipboardList, Zap, BarChart3,
+  ArrowLeft, Target, ClipboardList,
   // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
   // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
   FileText, Sun,
   // EZ3 — actions du panneau de succès (envoyer / aperçu).
   Send, Eye,
-  // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ».
-  RefreshCw,
+  // SPL55 — `Zap` et `RefreshCw` (Auto-remplir / Recalculer) sont partis avec
+  // la carte « Paramètres Techniques » (`generator/CarteParametresTechniques.jsx`).
 } from 'lucide-react'
 // QX21 — la sauvegarde passe désormais par les endpoints ATOMIQUES de ventesApi
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
@@ -61,7 +57,7 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 // pas alourdir ce fichier déjà volumineux.
 import DevisOffresTailles from './DevisOffresTailles'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
-import { useConfirmDialog, toast } from '../../ui/confirm'
+import { useConfirmDialog } from '../../ui/confirm'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
@@ -78,37 +74,27 @@ import {
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
-  // QJR540 — compteurs factures / BC / chantier du devis rouvert (ex-DevisForm).
-  RelationCounters,
+  // QJR540 — `RelationCounters` est parti avec les bandeaux d'édition (SPL53).
 } from '../../ui'
 // QJR540 — blocs issus de l'ancien modal DevisForm (supprimé) : le calepinage qui
 // pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
 // du devis (seule UI de pièces jointes devis).
 // QJR553 (D-QJR5-7) — historique des versions + « Revenir à cette version ».
-// QJR589 — bannière de dérive lead → devis à deux gestes (partagée cockpit).
-import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
-// STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
-// fondateur 16/09/2026) qui remplace le bouton acier/aluminium ; il rend
-// lui-même ce bouton en REPLI quand la société n'a aucune catégorie typée
-// « structure ». Partagé tel quel avec la fiche lead (SectionSite).
-import StructureSelector from '../../features/stock/StructureSelector'
+// QJR589 / STKCAT10 — `BandeauDeriveLead` et `StructureSelector` sont partis
+// avec la carte « Paramètres Techniques » (SPL55).
 import { structuresEligibles } from '../../features/stock/structures'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
-import { useDirtyGuard } from '../../ui/useDirtyGuard'
-import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
   // QJR101 — `MONTHS_FR` (grille des 12 mois), le barème MT et
   // `COMMERCIAL_CATEGORIES` sont partis avec les panneaux de marché qui les
   // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
   // supprimée : le moteur serveur C&I est la seule source.
-  CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, computeROI, htFromTtc,
-  paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
-  appartientAuPanierAvec,
-  batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
-  kwcFactureDesLignes, kwcPourPanneaux,
+  DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
+  formatMoney, estimerMois, htFromTtc,
+  comptePanneauxOption,
+  kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
   optionTotalsTTC, defaultProductLines,
   prixParKwc, discountForTarget,
   computeBuyCostDetail, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
@@ -118,34 +104,23 @@ import {
   // dans `etude_params` (registre de surcharges D12 côté serveur). La fonction
   // reste dans solar.js, avec ses tests — elle n'a simplement plus d'appelant
   // sur ce chemin d'enregistrement.
-  consoAnnuelleDepuisFactures, baremeDepuisProfil, multiPropertyPreviewTTC, lignesRemiseesParPanier,
-  productibleForCity,
+  baremeDepuisProfil, multiPropertyPreviewTTC, lignesRemiseesParPanier,
   COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
   // sur-vend jusqu'au plafond du balayage.
-  // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
-  // « marque épinglée introuvable ».
-  roleLabel,
   // PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
-  // ordre »), appliquée par autoFillLines via ordreLignes.
+  // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
+  // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
   // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
   _hasPrix,
   // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures du lead.
   MESSAGE_KWH_INCOHERENT,
 } from '../../features/ventes/solar'
-import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
-// CJ2b — aperçu du moteur horaire résidentiel (PVGIS réel × consommation
-// réelle du client, mois par mois) : source UNIQUE des chiffres d'économie à
-// l'écran, à la place du miroir local `computeROI` dès que le serveur a
-// répondu (voir `roi` ci-dessous, conservé comme repli hors-ligne).
-import {
-  construireCorpsPreview, etiquetteSource, lignesAffichables,
-  useEtudeHorairePreview, verdictBatteriePourTaille,
-  falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
-  estimationConsoAffichable, LIBELLES_MOIS,
-} from '../../features/ventes/etudeHorairePreview'
+import { formatNumber } from '../../lib/format'
+// CJ2b — l'aperçu du moteur horaire résidentiel vit dans `useApercuEtude`
+// (SPL51, dérivations) et `ApercuSimulation` (SPL52, carte).
 // QJR99 — LA BASCULE : l'écran adopte la machine à états du dimensionnement
 // (QJR87) et les hooks QJR90. Les six `useRef` « touché », l'effet de sizing
 // écrit à la main, les écritures gardées d'applyLead/applySiteProfile,
@@ -157,7 +132,6 @@ import {
   SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC,
   toucheNbPanneauxPourComposition,
 } from '../../features/ventes/quote/sizingReducer'
-import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
 import {
@@ -169,7 +143,6 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // Simulation + étude industrielle/commercial) portent désormais la VALEUR
 // SIGNÉE (`moteur`/`apercu`) au lieu d'un `value=` littéral : `CarteMetrique`
 // reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
-import { moteur, apercu } from '../../features/ventes/quote/valeur'
 // QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
 // QJR658 — devis ⇄ état d'écran : un module pur.
 // CIQ125 — profil déclaré C&I (corps de l'aperçu serveur + entrées v2).
@@ -181,16 +154,20 @@ import {
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
 // d'argent (totaux, remise, TVA, prix cible, marge interne).
-import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
+import { GenCardHeader } from './generator/CarteMetrique'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import { CONDITIONS_VIDES } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
+import MargeIndicative from './generator/MargeIndicative'
 import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
 import CarteCreation from './generator/CarteCreation'
 import BlocsEditionComplete from './generator/BlocsEditionComplete'
 import CarteLeadClient from './generator/CarteLeadClient'
+import ApercuSimulation from './generator/ApercuSimulation'
+import BandeauxEdition from './generator/BandeauxEdition'
+import CarteParametresTechniques from './generator/CarteParametresTechniques'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
 // SON marché et lit la clé de son module de stratégie (QJR89) pour se retirer
 // ailleurs. Cet écran garde l'en-tête, le sélecteur de marché, le lead/client,
@@ -212,11 +189,13 @@ import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegis
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
 import { useCompositionEcran } from './generator/hooks/useCompositionEcran'
 import { useLeadClientEcran } from './generator/hooks/useLeadClientEcran'
+import { useApercuEtude } from './generator/hooks/useApercuEtude'
+import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
 import { withKeys } from '../../features/ventes/quote/ligneFabrique.js'
 import {
-  SAISON_LABELS, villeEffectiveLead, partDiurneParDefaut,
-  FENETRE_REFERENCE_MS, fmtNum,
+  partDiurneParDefaut,
+  FENETRE_REFERENCE_MS,
 } from '../../features/ventes/quote/ecranDefauts.js'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
@@ -730,203 +709,30 @@ export default function DevisGenerator({
     }
   })
 
-  // ── VX62 — Brouillon auto + garde de sortie ──
-  // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
-  // garde : un onglet fermé/un swipe retour = tout perdu. On sauvegarde un
-  // snapshot débouncé dans localStorage (clé scopée lead/client/édition), on
-  // propose « Reprendre le brouillon » au montage, on purge au succès, et on
-  // pose useDirtyGuard pour la fermeture d'onglet.
-  const draftKey = editId
-    ? `devis:edit:${editId}`
-    : (leadId ? `devis:lead:${leadId}` : (clientId ? `devis:client:${clientId}` : 'devis:new'))
-  // Snapshot des champs éditables saillants (les référentiels leads/clients/
-  // produits ne sont jamais persistés — seulement la saisie de l'utilisateur).
-  const draftSnapshot = useMemo(() => ({
-    leadId, clientId, dateValidite, scenario, recommendedChoice, note,
-    fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
-    realBillSaisi, distributeurChoisi,
-    nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
-    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
-    categorieCommerciale, commercialAnswers,
-    tensionRaccordement, profilCi,
-    prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
-    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
-    pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
-    farmHmtDrawdown, pompageSaisie,
-    // AGNR30 — conditions, échéancier, tarif déclaré et éco C&I : les
-    // modifier arme la garde de sortie et crée un brouillon local.
-    conditions, echeancierSaisie, tarifSaisie, ecoCi,
-  }), [
-    leadId, clientId, dateValidite, scenario, recommendedChoice, note,
-    fHiver, fEte, monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh,
-    realBillSaisi, distributeurChoisi,
-    nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
-    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
-    categorieCommerciale, commercialAnswers,
-    tensionRaccordement, profilCi,
-    prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
-    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
-    pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
-    farmHmtDrawdown, pompageSaisie,
-    conditions, echeancierSaisie, tarifSaisie, ecoCi,
-  ])
-  // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
-  // (au moins un identifiant de cible OU une note OU des factures OU des
-  // paramètres techniques). Tant que le formulaire est vierge, ni brouillon ni
-  // garde ne s'activent (évite un bandeau/blocage sur un simple montage).
-  // EZ4 — L'ANGLE MORT DU BROUILLON : `dirty` ignorait `lines`, `discountPct`,
-  // `tauxTva` et `villaGroups` — or ces quatre champs sont DÉJÀ dans
-  // `draftSnapshot` ci-dessus. Un utilisateur qui n'avait fait qu'ajouter des
-  // LIGNES (le cœur du devis) n'était donc ni sauvegardé ni protégé par la
-  // garde de fermeture d'onglet. Seul ce prédicat était à corriger.
-  const lignesSaisies = lines.some(
-    (l) => l.produit || (l.designation || '').trim() || parseFloat(l.prix_unit_ttc) > 0,
-  )
-  const remiseSaisie = parseFloat(discountPct) > 0
-  const tvaModifiee = String(tauxTva ?? '') !== '' && parseFloat(tauxTva) !== TVA_STANDARD_DEFAUT
-  // `villaGroups` a des libellés PAR DÉFAUT : le signal utile est le mode
-  // multi-propriétés lui-même (défaut 'none'), pas la présence de libellés.
-  const villasSaisies = multiMode !== 'none'
-  const formulaireNonVierge = Boolean(
-    leadId || clientId || note || fHiver || fEte || nbPanneaux
-    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa
-    || lignesSaisies || remiseSaisie || tvaModifiee || villasSaisies,
-  )
-  // QJR581 — « dirty » veut dire « DIFFÉRENT de la référence » : l'état que le
-  // mappeur `?edit=` vient de poser (édition) ou le dernier enregistrement
-  // réussi. Sans référence : non-vacuité en création, jamais en édition (le
-  // devis n'est pas encore chargé). Avant, ouvrir un devis sans rien toucher
-  // écrivait un « brouillon non enregistré » et armait la garde de sortie,
-  // même après un enregistrement réussi.
-  const snapshotJson = useMemo(() => JSON.stringify(draftSnapshot), [draftSnapshot])
-  const [referenceEcran, setReferenceEcran] = useState(null)
-  useEffect(() => {
-    if (Date.now() < captureReferenceJusqua.current) {
-      setReferenceEcran(snapshotJson)
-    }
-  }, [snapshotJson])
-  const dirty = referenceEcran != null
-    ? snapshotJson !== referenceEcran
-    : (editId ? false : formulaireNonVierge)
-  const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
-    enabled: dirty,
-    version: editId ? (editDevis?.updated_at ?? null) : undefined,
+  // SPL54 — brouillon local + garde de sortie (déplacés tels quels dans le hook, même position : l'ordre des hooks est inchangé).
+  const {
+    restored, discard, clear, savedAt, brouillonProposable, marquerEnregistre, handleRestoreDraft,
+  } = useBrouillonEcran({
+    editId, leadId, clientId, dateValidite, scenario, recommendedChoice, note, fHiver, fEte,
+    monthly, provenanceMois, distributeur, realBillMode, realBillMad, realBillKwh, realBillSaisi,
+    distributeurChoisi, nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines,
+    tauxTva, discountPct, multiMode, nombreProprietes, villaGroups, modeInstallation,
+    consoMensuelle, categorieCommerciale, commercialAnswers, tensionRaccordement, profilCi,
+    prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched, pompeCv, pompeType,
+    pompeAlim, pompeHmt, pompeDebit, pompeProfondeur, pompeDistance, farmRegion, farmCrop,
+    farmSurfaceHa, farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic, farmHmtDrawdown,
+    pompageSaisie, conditions, echeancierSaisie, tarifSaisie, ecoCi, captureReferenceJusqua,
+    editDevis, setLeadId, setClientId, setDateValidite, dispatchSizing, setRecommendedChoice,
+    setNote, setFHiver, setFEte, setMonthly, setConditions, setEcheancierSaisie, setTarifSaisie,
+    setEcoCi, setProvenanceMois, setDistributeur, setRealBillMode, setRealBillMad, setRealBillKwh,
+    setRealBillSaisi, setDistributeurChoisi, setDayUsage, setLines, linesInitialized, setTauxTva,
+    setDiscountPct, setMultiMode, setNombreProprietes, setVillaGroups, setConsoMensuelle,
+    setCategorieCommerciale, setCommercialAnswers, setProfilCi, setPrixCible, setRemiseMax,
+    setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
+    setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
+    setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
+    setFarmHmtDrawdown, setPompageSaisie,
   })
-  useDirtyGuard(dirty)
-  // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
-  // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
-  // d'avant QJR581 sans version) il est purgé, avec une notice.
-  const brouillonPerime = Boolean(editId && restored && editDevis
-    && restored.version !== editDevis.updated_at)
-  const brouillonProposable = Boolean(restored
-    && (!editId || (editDevis && restored.version === editDevis.updated_at)))
-  useEffect(() => {
-    if (!brouillonPerime) return
-    discard()
-    toast.info('Brouillon local ignoré : ce devis a été modifié depuis.')
-  }, [brouillonPerime, discard])
-  // Après un enregistrement réussi, l'état courant DEVIENT la référence.
-  const marquerEnregistre = () => setReferenceEcran(snapshotJson)
-
-  // Restauration : réinjecte le snapshot sauvegardé dans tous les setters.
-  const handleRestoreDraft = () => {
-    const d = restore()
-    if (!d) return
-    if (d.leadId != null) setLeadId(d.leadId)
-    if (d.clientId != null) setClientId(d.clientId)
-    if (d.dateValidite != null) setDateValidite(d.dateValidite)
-    // QJR641 — un vieux brouillon qui porte encore `instType` : clé ignorée.
-    // Le scénario du brouillon local est lui aussi un choix déjà posé : un lead
-    // sélectionné après restauration ne le réécrit pas. QJR99 — même effet
-    // qu'avant (`scenarioTouched.current = true` + `setScenario`), en UNE
-    // transition. Il DOIT précéder le marché ci-dessous : c'est ce qui empêche
-    // `MARCHE_CHANGE` de reposer le défaut du marché par-dessus.
-    if (d.scenario != null) dispatchSizing({ type: 'SAISI', champ: 'scenario', valeur: d.scenario })
-    if (d.recommendedChoice != null) setRecommendedChoice(d.recommendedChoice)
-    if (d.note != null) setNote(d.note)
-    if (d.fHiver != null) setFHiver(d.fHiver)
-    if (d.fEte != null) setFEte(d.fEte)
-    if (d.monthly != null) setMonthly(d.monthly)
-    // AGNR30 — conditions, échéancier, tarif déclaré, éco C&I.
-    if (d.conditions != null) setConditions(d.conditions)
-    if (d.echeancierSaisie != null) setEcheancierSaisie(d.echeancierSaisie)
-    if (d.tarifSaisie != null) setTarifSaisie(d.tarifSaisie)
-    if (d.ecoCi != null) setEcoCi(d.ecoCi)
-    // AGNR13 — la provenance revient avec le brouillon ; un brouillon ancien
-    // (sans elle) garde la règle d'avant : une série modifiée = saisie.
-    if (Array.isArray(d.provenanceMois) && d.provenanceMois.length === 12) {
-      setProvenanceMois(d.provenanceMois)
-    } else if (Array.isArray(d.monthly)
-      && d.monthly.some((v, i) => Number(v) !== DEFAULT_MONTHLY_BILLS[i])) {
-      setProvenanceMois(Array(12).fill('tapee'))
-    }
-    if (d.distributeur != null) setDistributeur(d.distributeur)
-    if (d.realBillMode != null) setRealBillMode(d.realBillMode)
-    if (d.realBillMad != null) setRealBillMad(d.realBillMad)
-    if (d.realBillKwh != null) setRealBillKwh(d.realBillKwh)
-    if (d.realBillSaisi != null) setRealBillSaisi(!!d.realBillSaisi)
-    if (d.distributeurChoisi != null) setDistributeurChoisi(!!d.distributeurChoisi)
-    // QJR99 — les champs du reducer se restaurent par dispatch. `REOUVERTURE`
-    // pose le compte de panneaux SANS le marquer « touché » (comportement
-    // historique : un brouillon restauré n'est pas une frappe) ; `SAISI panelW`
-    // n'a jamais eu de drapeau propre. `MARCHE_CHANGE` en origine
-    // `programme` ne marque pas le marché non plus — le lead peut encore le
-    // pré-régler, exactement comme avant.
-    if (d.panelW != null) dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: d.panelW })
-    if (d.nbPanneaux != null) dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: d.nbPanneaux } })
-    if (d.structureType != null) dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: d.structureType })
-    // STKCAT10 — le PRODUIT de structure se restaure comme le reste du
-    // brouillon : sans ça, reprendre un brouillon reperdait la pergola
-    // choisie et recomposait en acier, en silence.
-    if (d.structureProduitId != null) {
-      dispatchSizing({ type: 'SAISI', champ: 'structureProduit', valeur: d.structureProduitId })
-    }
-    if (d.dayUsage != null) setDayUsage(d.dayUsage)
-    if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
-    if (d.tauxTva != null) setTauxTva(d.tauxTva)
-    if (d.discountPct != null) setDiscountPct(d.discountPct)
-    if (d.multiMode != null) setMultiMode(d.multiMode)
-    if (d.nombreProprietes != null) setNombreProprietes(d.nombreProprietes)
-    if (Array.isArray(d.villaGroups)) setVillaGroups(d.villaGroups)
-    if (d.modeInstallation != null) {
-      dispatchSizing({ type: 'MARCHE_CHANGE', mode: d.modeInstallation, origine: 'programme' })
-    }
-    if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
-    if (d.categorieCommerciale != null) setCategorieCommerciale(d.categorieCommerciale)
-    if (d.commercialAnswers && typeof d.commercialAnswers === 'object') setCommercialAnswers(d.commercialAnswers)
-    if (d.tensionRaccordement != null) {
-      dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: d.tensionRaccordement })
-    }
-    if (d.profilCi && typeof d.profilCi === 'object') setProfilCi({ ...profilCiVide(), ...d.profilCi })
-    if (d.prixCible != null) setPrixCible(d.prixCible)
-    if (d.remiseMax != null) setRemiseMax(d.remiseMax)
-    if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
-    // OFFGRID — un choix déjà posé (brouillon local) est un choix EXPLICITE :
-    // il ferme `horsReseauTouched`, sinon un lead appliqué après restauration
-    // écraserait le raccordement que le vendeur avait retenu.
-    if (d.horsReseau != null) { setHorsReseau(d.horsReseau); setHorsReseauTouched(true) }
-    if (d.pompeCv != null) setPompeCv(d.pompeCv)
-    if (d.pompeType != null) setPompeType(d.pompeType)
-    if (d.pompeAlim != null) dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: d.pompeAlim })
-    if (d.pompeHmt != null) setPompeHmt(d.pompeHmt)
-    if (d.pompeDebit != null) setPompeDebit(d.pompeDebit)
-    if (d.pompeProfondeur != null) setPompeProfondeur(d.pompeProfondeur)
-    if (d.pompeDistance != null) setPompeDistance(d.pompeDistance)
-    // AGNR26 — `pompeHeures` d'un brouillon ancien est ignoré (champ retiré).
-    if (d.farmRegion != null) setFarmRegion(d.farmRegion)
-    if (d.farmCrop != null) setFarmCrop(d.farmCrop)
-    if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
-    if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
-    if (d.ecoPompage && typeof d.ecoPompage === 'object') setEcoPompage(d.ecoPompage)
-    if (d.attestationAgricole && typeof d.attestationAgricole === 'object') {
-      setAttestationAgricole(d.attestationAgricole)
-    }
-    if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
-    if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
-    if (d.pompageSaisie && typeof d.pompageSaisie === 'object') setPompageSaisie(d.pompageSaisie)
-  }
 
   useEffect(() => {
     // Les trois échecs réseau sont SURFACÉS (bannière) au lieu d'avaler l'erreur :
@@ -968,8 +774,10 @@ export default function DevisGenerator({
   // réellement FACTURÉ par les lignes (celui que le PDF dérive) alimente
   // prix/kWc, prix cible, études C&I et l'aperçu horaire. Repli sur la cible
   // sans ligne panneau.
-  const kwpLignes = kwcFactureDesLignes(lines, panelW, kwp)
-  const panneauxLignes = comptePanneauxOption(lines, 'sans')
+  // AGNR18 — watt de CHAQUE ligne panneau (fiche / désignation / produit lié),
+  // `panelW` seulement en repli d'une ligne au watt illisible.
+  const kwpLignes = kwcFactureDesLignes(lines, panelW, kwp, produits)
+  const panneauxLignes = comptePanneauxOption(lines, 'sans', produits)
 
   // L-2OPT — kWc PROPRE à l'option « Avec batterie ». `kwp` ci-dessus est le
   // compte de la branche SANS (le rechargement d'un brouillon exclut
@@ -983,11 +791,12 @@ export default function DevisGenerator({
   // nombre de panneaux) ⇒ `kwp` est renvoyé TEL QUEL : aucune re-dérivation
   // flottante, comportement byte-identique à l'historique.
   const kwpAvec = (() => {
-    const nSans = comptePanneauxOption(lines, 'sans')
-    const nAvec = comptePanneauxOption(lines, 'avec')
+    const nSans = comptePanneauxOption(lines, 'sans', produits)
+    const nAvec = comptePanneauxOption(lines, 'avec', produits)
     // QJR568 — non divergent : le kWc FACTURÉ des lignes (repli : la cible).
     if (nSans <= 0 || nAvec === nSans) return kwpLignes
-    return nAvec * (parseFloat(panelW) || 0) / 1000
+    // AGNR18 — même dérivation au watt de chaque ligne que la branche SANS.
+    return kwcPanneauxOption(lines, 'avec', panelW, produits) ?? 0
   })()
 
   // EZ5 — dimensionner en kWc. Les deux champs sont BIDIRECTIONNELS : taper une
@@ -1035,8 +844,9 @@ export default function DevisGenerator({
   // devis à deux options (panier filtré + règle QF9). Sans lui, le formulaire
   // chiffrait l'option AVEC avec les accessoires Huawei que le serveur retire.
   const totals = useMemo(
-    () => optionTotalsTTC(lines, discountPct, { scenario }),
-    [lines, discountPct, scenario],
+    // AGNR36 — chaque ligne classée sur désignation + produit lié.
+    () => optionTotalsTTC(lines, discountPct, { scenario, produits }),
+    [lines, discountPct, scenario, produits],
   )
 
   // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
@@ -1074,9 +884,9 @@ export default function DevisGenerator({
   // l'écart entre Σ lignes et le total affiché.
   const remiseParPanier = useMemo(
     () => lignesRemiseesParPanier(lines, discountPct, {
-      scenario, option: avecRec && showAvec ? 'avec' : 'sans',
+      scenario, option: avecRec && showAvec ? 'avec' : 'sans', produits,
     }),
-    [lines, discountPct, scenario, avecRec, showAvec],
+    [lines, discountPct, scenario, avecRec, showAvec, produits],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
@@ -1097,424 +907,23 @@ export default function DevisGenerator({
     [lines, multiMode, nombreProprietes, discountPct, scenario, avecRec, showAvec],
   )
 
-  // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
-  // restent instantanées (les champs gardent leurs valeurs exactes — rien
-  // n'est perdu ni arrondi), le recalcul lourd + recharts suit d'un souffle.
-  const dMonthly = useDeferredValue(monthly)
-  const dLines = useDeferredValue(lines)
-  const dTotals = useDeferredValue(totals)
-  const dKwp = useDeferredValue(kwp)
-  const dKwpLignes = useDeferredValue(kwpLignes)
-  const dKwpAvec = useDeferredValue(kwpAvec)
-  const dDayUsage = useDeferredValue(dayUsage)
-
-  // BAT5DEF (26/08/2026) — au moins une ligne batterie n'a pas de kWh lisible
-  // dans sa désignation : `batteryKwhFromLines` ne lui compte plus un défaut
-  // fabriqué de 5 kWh (RÈGLE FONDATEUR « zéro chiffre inventé »), donc la
-  // capacité utilisée en aval (ROI, étude horaire) peut être SOUS-estimée.
-  // Signalé à l'écran plutôt que tu — jamais un chiffre qu'on tairait.
-  const capaciteBatterieInconnue = useMemo(
-    () => batteryCapaciteInconnue(dLines), [dLines])
-
-  // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
-  // client (barème par tranche du distributeur choisi). Alimente à la fois
-  // etude_params (à l'enregistrement) et l'aperçu écran (roi ci-dessous) —
-  // UNE seule dérivation, jamais deux chiffres qui pourraient diverger.
-  const consoAnnuelleReelle = (() => {
-    if (realBillMode === 'kwh') {
-      const kwh = parseFloat(realBillKwh) || 0
-      return kwh > 0 ? Math.round(kwh * 12) : null
-    }
-    const mad = parseFloat(realBillMad) || 0
-    if (mad <= 0) return null
-    // AGNR14 — la « Facture réelle » est un montant de facture TOTALE
-    // (énergie + lignes fixes + TPPAN) : inversée au barème COMPLET, comme
-    // les 12 factures et le serveur (`kwh_from_bill(..., facture_totale=True)`),
-    // jamais par l'énergie seule (`kwhFromBill`, +40 % sur les petites factures).
-    const kwhAn = consoAnnuelleDepuisFactures(Array(12).fill(mad), distributeur,
-      baremeSociete?.tranches, baremeSociete?.chargesFixes)
-    return kwhAn > 0 ? kwhAn : null
-  })()
-
-  // N1/N4 — `monthly` démarre avec les valeurs D'EXEMPLE du simulateur
-  // (DEFAULT_MONTHLY_BILLS) : tant qu'aucune n'a été touchée (hiver/été,
-  // « Estimer 12 mois », ou une case du détail mensuel éditée à la main),
-  // AUCUNE vraie facture client n'existe encore. Sert à la fois à décider si
-  // le graphique écran peut se présenter comme un fait (N4) et si
-  // `etude_params.factures_mensuelles_reelles` doit être semé à
-  // l'enregistrement (N1) — jamais les valeurs d'exemple.
-  // AGNR13 — case par case : une seule case d'EXEMPLE suffit à bloquer
-  // l'envoi (taper Janvier seul n'envoie plus 11 mois d'exemple).
-  const facturesSaisies = provenanceMois.every(p => p !== 'exemple')
-  const moisNonSaisis = provenanceMois.some(p => p !== 'exemple')
-    ? CHART_MONTHS.filter((_, i) => provenanceMois[i] === 'exemple') : []
-
-  // AGNR24 — LA consommation que l'écran ENREGISTRE, un seul sélecteur :
-  // même cascade que `entreesReellesEcran` (usePersistanceDevis) — saisie
-  // réelle de la session → conso stockée relue (`?edit=` : mode kWh non
-  // retouché) → 12 factures réelles au barème → facture réelle. L'aperçu
-  // (`computeROI`) la reçoit : jamais « estimation » quand le corps
-  // enregistré porte une conso.
-  const consoEcran = (() => {
-    if (realBillSaisi && consoAnnuelleReelle > 0) return consoAnnuelleReelle
-    if (!realBillSaisi && realBillMode === 'kwh' && consoAnnuelleReelle > 0) return consoAnnuelleReelle
-    if (facturesSaisies) {
-      const derivee = consoAnnuelleDepuisFactures(monthly.map(v => parseFloat(v) || 0), distributeur,
-        baremeSociete?.tranches, baremeSociete?.chargesFixes)
-      if (derivee > 0) return derivee
-    }
-    return consoAnnuelleReelle > 0 ? consoAnnuelleReelle : null
-  })()
-
-  // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
-  // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
-  const leadsListe = (leadDuDevis
-    && !leads.some(l => String(l.id) === String(leadDuDevis.id)))
-    ? [leadDuDevis, ...leads] : leads
-  const selectedLead = leadsListe.find(l => String(l.id) === String(leadId))
-
-  // AGR421 / CIQ423 (D-AGR-9) — devis agricole, commercial ou industriel sur un
-  // lead d'un autre type : le bandeau PROPOSE, le commercial change le type à la
-  // main (jamais à l'enregistrement ni à l'envoi). C&I : seul l'écart que le
-  // serveur signale (`incoherence_segment`) ou un lead d'une autre famille.
-  const [typeLeadMisAJour, setTypeLeadMisAJour] = useState({})
-  const incoherenceSegment = selectedLead?.incoherence_segment || null
-  const typeLeadEffectif = selectedLead
-    ? (typeLeadMisAJour[selectedLead.id]
-      ?? incoherenceSegment?.segment_lead
-      ?? selectedLead.type_installation ?? '')
-    : ''
-  const marcheSegment = ['agricole', 'commercial', 'industriel'].includes(modeInstallation)
-    ? modeInstallation : ''
-  const bandeauSegment = Boolean(selectedLead) && Boolean(marcheSegment)
-    && typeLeadEffectif !== marcheSegment
-    && (marcheSegment === 'agricole'
-      || Boolean(incoherenceSegment)
-      || (typeLeadEffectif !== '' && !['commercial', 'industriel'].includes(typeLeadEffectif)))
-  // CIQ423 (D-CIQ-11) — rappel NON bloquant : l'ICE d'un client entreprise.
-  const clientDuDevis = clientsConnus.find(c => String(c.id) === String(clientId))
-  const identiteEntreprise = clientDuDevis?.identite_entreprise
-    ?? selectedLead?.identite_entreprise ?? null
-  const rappelIce = ['commercial', 'industriel'].includes(modeInstallation)
-    && Array.isArray(identiteEntreprise?.manquants)
-    && identiteEntreprise.manquants.some(m => m === 'ice' || m === 'raison_sociale')
-  const changerTypeLead = async () => {
-    if (!selectedLead) return
-    const ok = await confirm({
-      title: 'Changer le type du lead ?',
-      description: `Le lead passera en « ${marcheSegment} » : le script d'appel, le score et le suivi le traiteront comme un lead ${marcheSegment}.`,
-      confirmLabel: `Passer en ${marcheSegment}`,
-    })
-    if (!ok) return
-    try {
-      await crmApi.updateLead(selectedLead.id, { type_installation: marcheSegment })
-      setTypeLeadMisAJour(m => ({ ...m, [selectedLead.id]: marcheSegment }))
-    } catch {
-      toast.error('Le type du lead n’a pas pu être modifié.')
-    }
-  }
-
-  const roi = useMemo(() => {
-    if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
-    return computeROI({
-      kwp: dKwp,
-      factures: dMonthly.map(v => parseFloat(v) || 0),
-      dayUsagePct: parseInt(dDayUsage) || 50,
-      totalSans: dTotals.totalSans,
-      totalAvec: dTotals.totalAvec,
-      batteryKwh: batteryKwhFromLines(dLines),
-      // Q1 (fondateur 20/08/2026) — lignes RÉELLES pour la provision de
-      // remplacement onduleur (prix TTC de la ligne, jamais 8 % forfaitaires).
-      lines: dLines,
-      kwhPrice: quoteLogic.kwhPrice,
-      efficiency: quoteLogic.efficiency,
-      // QF5 — bascule sur le modèle « deux factures » par tranche (parité
-      // PDF) dès qu'une consommation réelle + un distributeur sont connus.
-      // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
-      consoAnnuelleKwh: consoEcran,
-      utility: distributeur,
-      bareme: baremeSociete,
-      // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
-      // avec le PDF/web) ; override société si renseigné ≠ 1600.
-      productible: productibleForCity(
-        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
-    })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete])
-
-  // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
-  // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
-  // pour mot sur `roi`, aucun second calcul, comportement d'hier. Quand les
-  // deux optimiseurs ont réellement rendu deux tailles, seuls les champs
-  // « avec » de CE résultat sont lus (l'option sans garde `roi`).
-  const roiAvec = useMemo(() => {
-    // QJR568 — « non divergent » se juge contre le kWc FACTURÉ des lignes
-    // (`kwpAvec` y retombe quand les options ne divergent pas).
-    if (dKwpAvec === dKwp || dKwpAvec === dKwpLignes) return null
-    if (dKwpAvec <= 0 || !dMonthly.some(v => v > 0)) return null
-    return computeROI({
-      kwp: dKwpAvec,
-      factures: dMonthly.map(v => parseFloat(v) || 0),
-      dayUsagePct: parseInt(dDayUsage) || 50,
-      totalSans: dTotals.totalSans,
-      totalAvec: dTotals.totalAvec,
-      batteryKwh: batteryKwhFromLines(dLines),
-      lines: dLines,
-      kwhPrice: quoteLogic.kwhPrice,
-      efficiency: quoteLogic.efficiency,
-      consoAnnuelleKwh: consoEcran,
-      utility: distributeur,
-      bareme: baremeSociete,
-      productible: productibleForCity(
-        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
-    })
-  }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete])
-
-  // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
-  const villeCalculLead = villeEffectiveLead(selectedLead)
-
-
-  // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
-  // les deux optimiseurs divergent, sinon `roi` (identique par construction).
-  const roiPourAvec = roiAvec || roi
-
-  // CJ2b — ORDRE FONDATEUR : « on ne voit ni l'économie réelle calculée, ni
-  // les données PVGIS — cette donnée devrait être comparée à la courbe de
-  // consommation ». Résidentiel UNIQUEMENT : appelle le moteur horaire
-  // serveur (intégration PVGIS réelle × consommation réelle, mois par mois)
-  // au lieu de ne montrer QUE le miroir local `roi` ci-dessus (conservé
-  // intact comme repli hors-ligne). `null` = rien à ancrer (aucune facture,
-  // aucun devis) : aucun appel réseau (règle d'honnêteté — on omet, on
-  // n'invente pas).
-  const etudeHoraireCorps = modeInstallation === 'residentiel'
-    ? construireCorpsPreview({
-        modeInstallation,
-        editId,
-        leadId,
-        fHiver,
-        fEte,
-        eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: villeCalculLead,
-        raccordement: selectedLead?.raccordement || '',
-        // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
-        kwp: kwpLignes,
-        batterieKwh: batteryKwhFromLines(lines),
-      })
-    : null
-  // L-2OPT — l'étude horaire de la branche AVEC porte SON PROPRE kWc. Le corps
-  // ci-dessus décrit la branche SANS (`kwp`) ; l'interroger avec les batteries
-  // de la composition AVEC produisait une chimère (kWc sans + batteries avec).
-  // `null` tant que rien ne diverge ⇒ AUCUN second appel réseau et l'écran lit
-  // le corps unique comme hier.
-  const etudeHoraireCorpsAvec = (modeInstallation === 'residentiel'
-      && kwpAvec !== kwpLignes)
-    ? construireCorpsPreview({
-        modeInstallation,
-        editId,
-        leadId,
-        fHiver,
-        fEte,
-        eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: villeCalculLead,
-        raccordement: selectedLead?.raccordement || '',
-        kwp: kwpAvec,
-        batterieKwh: batteryKwhFromLines(lines),
-      })
-    : null
-  // QJR99 — `useSizingMoteur` (QJR90) enrobe `useEtudeHorairePreview` : il rend
-  // les mêmes données réseau (aucun appel supplémentaire) PLUS une `decision`
-  // déjà prise par sa moitié pure. La garde de réponse PÉRIMÉE y couvre les
-  // DEUX branches : l'ancienne comparaison de clé en ligne ne valait que pour
-  // `donnees`, si bien que la branche d'ÉCHEC refermait l'attente et épinglait
-  // le refus d'une facture qu'on venait de remplacer (correctif intentionnel).
+  // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).
   const {
-    decision: decisionMoteur,
-    donnees: etudeHoraireDonnees,
-    chargement: etudeHoraireChargement,
-    erreur: etudeHoraireErreur,
-  } = useSizingMoteur(etudeHoraireCorps, {
-    attente: sizing.attenteMoteur,
-    toucheNbPanneaux: toucheNbPanneauxPourComposition(sizing),
+    capaciteBatterieInconnue, consoAnnuelleReelle, facturesSaisies, moisNonSaisis, leadsListe,
+    selectedLead, typeLeadEffectif, marcheSegment, bandeauSegment, rappelIce, changerTypeLead, roi,
+    villeCalculLead, etudeHoraireCorps, etudeHoraireDonnees, etudeHoraireChargement,
+    etudeHoraireErreur, etudeHoraireAnnuel, etudeHoraireSourceServeur, etudeHoraireAnnuelAvec,
+    etudeHoraireLignes, etudeHoraireSourceLabel, etudeHoraireFalaise, etudeHoraireGlitch,
+    etudeHoraireEstimationConso, ligneStockageOuverte, setLigneStockageOuverte,
+    apercuProductionKwh, apercuEcoSans, verdictBatterieServeur, batterieInvendableServeur,
+    apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
+    apercuPaybackAvecJamais, signerEcoOuRoi, chartData,
+  } = useApercuEtude({
+    monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
+    realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
+    leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
+    sizing, dispatchSizing, produits,
   })
-  const { donnees: etudeHoraireDonneesAvec } =
-    useEtudeHorairePreview(etudeHoraireCorpsAvec)
-  // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
-  // tool ») — LE SEUL remplaçant du repli `estimerPanneaux` (panneaux/900 MAD,
-  // supprimé du backend le même jour, cf. apps/ventes/dimensionnement.py).
-  // L'attente (`sizing.attenteMoteur`) est posée par applyLead /
-  // applySiteProfile / syncBillEstimator quand le résidentiel ne se dimensionne
-  // plus à l'écran : la recommandation du moteur horaire SERVEUR
-  // (`etudeHoraireDonnees`, déjà interrogé dès que fHiver/lead est posé — AUCUN
-  // appel réseau supplémentaire) la satisfait dès qu'elle répond. Un dry-run qui
-  // décline (ville manquante, catalogue incomplet…) affiche son message
-  // FRANÇAIS EXACT et ne préremplit RIEN — un vide honnête plutôt qu'une
-  // supposition sur 900 DH (règle #4 CLAUDE.md). Une frappe manuelle gagne
-  // toujours, comme partout ailleurs sur ce champ.
-  //
-  // QJR99 — la DÉCISION (appliquer / refuser / abandonner / attendre) est prise
-  // par `useSizingMoteur` ; il ne reste ici que sa traduction en transition. La
-  // garde de réponse périmée, les deux formes de motif (F4 :
-  // `avertissements[0]` PUIS `dimensionnement.motivation`, rendues VERBATIM) et
-  // la priorité de la frappe manuelle sont toutes dans la moitié pure, testée.
-  const actionMoteur = decisionMoteur.action
-  const recoMoteur = decisionMoteur.recommandation ?? null
-  const motifMoteurServeur = decisionMoteur.motif ?? null
-  useEffect(() => {
-    // dispatch SYNCHRONE dans l'effet, idiome MAISON (ProductTour.jsx,
-    // Avatar.jsx, FollowToggle.jsx…) : la valeur arrive d'un aller-retour
-    // réseau DÉJÀ asynchrone (`useEtudeHorairePreview`), et la différer encore
-    // d'une microtâche n'ajouterait qu'un tour de boucle entre la réponse et
-    // l'affichage. Aucune de ces valeurs n'est relue dans le MÊME rendu.
-     
-    if (actionMoteur === 'appliquer') {
-      dispatchSizing({ type: 'MOTEUR_A_REPONDU', recommandation: recoMoteur })
-    } else if (actionMoteur === 'refuser') {
-      dispatchSizing({ type: 'MOTEUR_A_REFUSE', motif: motifMoteurServeur })
-    } else if (actionMoteur === 'abandonner') {
-      // Une frappe manuelle a gagné : l'attente se referme sans rien appliquer.
-      dispatchSizing({ type: 'MOTEUR_A_REPONDU' })
-    }
-  }, [actionMoteur, recoMoteur, motifMoteurServeur])
-  // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
-  // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
-  const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null
-  const etudeHoraireSourceServeur = !!etudeHoraireAnnuel
-  // Réponse serveur à lire pour l'option AVEC. DIVERGENT : uniquement la
-  // sienne — tant qu'elle n'est pas revenue, l'écran retombe sur le miroir
-  // local `roiAvec` (au bon kWc) plutôt que de ré-afficher l'étude du kWc
-  // SANS, ce qui recréerait exactement le croisement corrigé ici. NON
-  // divergent : le corps unique, comme hier.
-  const etudeHoraireDonneesPourAvec = etudeHoraireCorpsAvec
-    ? etudeHoraireDonneesAvec
-    : etudeHoraireDonnees
-  const etudeHoraireAnnuelAvec =
-    etudeHoraireDonneesPourAvec?.etude?.annuel || null
-  const etudeHoraireLignes = useMemo(
-    () => lignesAffichables(etudeHoraireDonnees?.dimensionnement),
-    [etudeHoraireDonnees])
-  // Lignes de dimensionnement à interroger pour le VERDICT batterie : celles
-  // de l'étude de la branche AVEC (son kWc), jamais celles du kWc SANS.
-  const etudeHoraireLignesAvec = useMemo(
-    () => lignesAffichables(etudeHoraireDonneesPourAvec?.dimensionnement),
-    [etudeHoraireDonneesPourAvec])
-  const etudeHoraireSourceLabel = etudeHoraireDonnees?.consommation
-    ? etiquetteSource(etudeHoraireDonnees.consommation.source)
-    : null
-  // L-FRONT lot 4 — falaise tarifaire (palier visé + meilleure combinaison du
-  // balayage qui y passe), résumé annuel des impulsions équipements (glitch)
-  // et décomposition mensuelle de la consommation estimée : les trois `null`
-  // quand le moteur n'a rien calculé (mode non résidentiel, Z2, aucun
-  // équipement concentrable) — jamais un bloc affiché sur un chiffre absent.
-  const etudeHoraireFalaise = useMemo(
-    () => falaiseAffichable(etudeHoraireDonnees?.dimensionnement),
-    [etudeHoraireDonnees])
-  const etudeHoraireGlitch = useMemo(
-    () => glitchAnnuel(etudeHoraireDonnees?.etude),
-    [etudeHoraireDonnees])
-  const etudeHoraireEstimationConso = useMemo(
-    () => estimationConsoAffichable(etudeHoraireDonnees?.estimation_conso),
-    [etudeHoraireDonnees])
-  const [ligneStockageOuverte, setLigneStockageOuverte] = useState(null)
-
-  // CJ2b — chiffres AFFICHÉS dans le bloc « Aperçu de la Simulation »
-  // (Production / Économies / ROI) : le serveur horaire gagne dès qu'il a
-  // répondu, sinon repli SUR `roi` tel quel (miroir local inchangé — c'est
-  // uniquement la SOURCE de ce qui est montré à l'écran qui bascule). Le
-  // payback affiché en mode serveur est une simple division coût réel des
-  // lignes / économie réelle serveur — jamais un chiffre inventé.
-  const apercuProductionKwh = etudeHoraireSourceServeur
-    ? etudeHoraireAnnuel.production_kwh : roi?.production_annuelle_kwh
-  const apercuEcoSans = etudeHoraireSourceServeur
-    ? etudeHoraireAnnuel.economie_sans_mad : roi?.eco_annuelle_sans
-  // CJ2b — ORDRE FONDATEUR (« l'omission honnête, jamais un zéro inventé ») :
-  // le moteur dit, POUR LA TAILLE CHIFFRÉE, si l'option batterie est
-  // électriquement livrable. Quand elle ne l'est pas, les cartes « Avec
-  // batterie » n'affichent AUCUN montant — elles affichent la raison. C'est le
-  // trou catalogue RÉEL exhumé par CJ2a (panneau 710 Wc + hybride 5 kW
-  // monophasé : Isc 18,6 A > 17,0 A) : sans cette garde, l'écran promettait au
-  // vendeur l'économie d'une installation qu'on ne peut pas livrer.
-  // `null` (le moteur ne dit rien sur cette taille) ⇒ comportement d'avant.
-  // L-2OPT — verdict + économie « avec » lus sur l'étude de la branche AVEC,
-  // à SON kWc (`kwpAvec`). Non divergent : mêmes lignes, même taille, même
-  // résultat qu'hier.
-  const verdictBatterieServeur = etudeHoraireAnnuelAvec
-    ? verdictBatteriePourTaille(etudeHoraireLignesAvec, kwpAvec)
-    : null
-  const batterieInvendableServeur = verdictBatterieServeur
-    ? !verdictBatterieServeur.vendable : false
-  const apercuEcoAvec = etudeHoraireAnnuelAvec
-    ? (batterieInvendableServeur ? null : etudeHoraireAnnuelAvec.economie_avec_mad)
-    : roiPourAvec?.eco_annuelle_avec
-  // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN — branche serveur : le payback du
-  // MOTEUR (cashflow 25 ans QX39, `paybackMoteurHoraire`) sur l'économie
-  // servie, jamais une division coût ÷ économie. Un cumul qui ne croise jamais
-  // zéro s'affiche « Non rentabilisé sur 25 ans », jamais « 25 ans ».
-  const paybackServeurSans = etudeHoraireSourceServeur
-    ? paybackMoteurHoraire(totals.totalSans, apercuEcoSans, {
-        annuel: etudeHoraireAnnuel,
-        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierSans)),
-      })
-    : null
-  const paybackServeurAvec = etudeHoraireAnnuelAvec
-    ? paybackMoteurHoraire(totals.totalAvec, apercuEcoAvec, {
-        annuel: etudeHoraireAnnuelAvec,
-        rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
-        stockage: batteryKwhFromLines(lines) > 0,
-        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierAvec)),
-      })
-    : null
-  const apercuPaybackSans = etudeHoraireSourceServeur
-    ? (paybackServeurSans?.paybackYears ?? null)
-    : roi?.payback_sans
-  const apercuPaybackAvec = etudeHoraireAnnuelAvec
-    ? (paybackServeurAvec?.paybackYears ?? null)
-    : roiPourAvec?.payback_avec
-  const apercuPaybackSansJamais = etudeHoraireSourceServeur
-    ? !!paybackServeurSans?.jamaisRembourse : !!roi?.payback_sans_jamais
-  const apercuPaybackAvecJamais = etudeHoraireAnnuelAvec
-    ? !!paybackServeurAvec?.jamaisRembourse : !!roiPourAvec?.payback_avec_jamais
-
-  // QJR35 — au montage (roi tourne dès dKwp>0 && dMonthly.some(v=>v>0), vrai
-  // avec DEFAULT_MONTHLY_BILLS), les cartes Économies/ROI peuvent afficher un
-  // chiffre dérivé du MIROIR LOCAL sans qu'aucune facture réelle ni étude
-  // horaire serveur n'existe encore. Ni caché (le vendeur s'en sert comme
-  // repère) ni remplacé par un autre chiffre — étiqueté. QJR89/QJR90 rendent
-  // cette règle structurelle ; ceci est l'intérim minimal.
-  const apercuEstimationExemple = !facturesSaisies && !etudeHoraireSourceServeur
-  // QJR426 (DR5) — même discriminant que la puce ci-dessus, porté sur la
-  // VALEUR SIGNÉE des quatre cartes Économies/ROI : `apercu()` (puce
-  // `PUCE_APERCU`, strictement le même texte que le `badge` littéral
-  // remplacé) quand aucune donnée réelle n'appuie le chiffre, `moteur()`
-  // (aucune puce, comme aujourd'hui) dès qu'une facture réelle ou l'étude
-  // horaire serveur est là — rendu byte-identique à l'ancien `badge=`.
-  const signerEcoOuRoi = (v) => (apercuEstimationExemple ? apercu(v) : moteur(v))
-
-  const chartData = useMemo(() => {
-    // AGNR23 — le graphe sort du MODÈLE QUI PORTE LES CARTES : quand l'étude
-    // horaire serveur répond, ses 12 mois (Σ = la carte) ; sinon `roi`.
-    const moisServeur = etudeHoraireDonnees?.etude?.mois
-    if (etudeHoraireSourceServeur && Array.isArray(moisServeur) && moisServeur.length === 12) {
-      const moisAvec = etudeHoraireDonneesPourAvec?.etude?.mois
-      const avec = Array.isArray(moisAvec) && moisAvec.length === 12 ? moisAvec : moisServeur
-      return moisServeur.map((m, i) => ({
-        month: CHART_MONTHS[i],
-        facture: Math.round(Number(m.facture_avant_mad) || 0),
-        ecoSans: Math.round(Number(m.economie_sans_mad) || 0),
-        ecoAvec: Math.round(Number(avec[i]?.economie_avec_mad) || 0),
-      }))
-    }
-    if (!roi) return []
-    // L-2OPT — la courbe « avec batterie » suit le kWc de SA branche quand les
-    // deux optimiseurs divergent (`roiAvec`), sinon `roi` (identique).
-    const detailAvec = (roiAvec || roi).monthly_detail
-    return roi.monthly_detail.map((d, i) => ({
-      month: CHART_MONTHS[i],
-      facture: d.facture,
-      ecoSans: Math.round(d.eco_sans),
-      ecoAvec: Math.round((detailAvec[i] ?? d).eco_avec),
-    }))
-  }, [roi, roiAvec, etudeHoraireSourceServeur, etudeHoraireDonnees, etudeHoraireDonneesPourAvec])
 
   // ── QJR641 — Marché → autoconsommation diurne par défaut (simulateur) ──
   const appliquerPartDiurneDuMarche = (mode) => {
@@ -2115,12 +1524,13 @@ export default function DevisGenerator({
   } = usePersistanceDevis({
     navigate, confirm, setClients, setLeads, setSaving, setErrors, setWarnings,
     facturesEcartConfirmeRef, finish, editId, editDevis, jetonRef, forcerSansJetonRef,
-    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg,
+    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur, messageErreurOverrides, leadId, setLeadId, clientId,
     setClientId, dateValidite, note, echeancierSaisie, echeancierAEnvoyer, conditions,
     conditionsServies, monthly, distributeur, realBillMode, realBillSaisi, distributeurChoisi,
     consoStockee, nbPanneaux, scenario, modeInstallation, pompeAlim, lines, setLines, tauxTva,
     discountPct, setDiscountPct, multiMode, nombreProprietes, profilCi, tarifSaisie, ecoCi,
+    setMultiMode, setNombreProprietes,
     categorieCommerciale, commercialAnswers, prixCible, accessoiresOnly, pompeCv, pompeType,
     pompeHmt, pompeDebit, pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
@@ -2272,151 +1682,13 @@ export default function DevisGenerator({
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
-        {editDevis?.statut === 'envoye' && (
-          <div
-            data-testid="devis-envoye-banner"
-            role="status"
-            className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-          >
-            Devis envoyé{editDevis.date_envoi ? ` le ${formatDate(editDevis.date_envoi)}` : ''} :
-            vos corrections seront visibles sur le lien de la proposition ; un PDF déjà envoyé
-            par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
-          </div>
-        )}
-        {/* QJR549 (ex-DevisForm VX243c) — bannière NON bloquante : le devis a
-            été enregistré ailleurs pendant cette édition (409 devis_modifie). */}
-        {conflitVerrou && (
-          <div
-            data-testid="devis-verrou-banner"
-            role="alert"
-            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-          >
-            <span>
-              Modifié par {conflitVerrou.par || 'un autre utilisateur'}
-              {' '}pendant votre édition — vérifiez avant d'enregistrer.
-            </span>
-            <span className="flex gap-2">
-              <Button
-                type="button" size="sm" variant="outline"
-                onClick={() => { setConflitVerrou(null); clear(); setRechargeEdit(n => n + 1) }}
-              >
-                Revoir
-              </Button>
-              <Button
-                type="button" size="sm" variant="outline"
-                onClick={() => {
-                  forcerSansJetonRef.current = true
-                  setConflitVerrou(null)
-                  handleSubmit({ preventDefault: () => {} })
-                }}
-              >
-                Enregistrer quand même
-              </Button>
-            </span>
-          </div>
-        )}
-        {/* QJR540 (ex-DevisForm VX250) — lecture PURE du statut chargé : ne
-            change jamais un statut (règle #4). */}
-        {editDevis?.statut === 'envoye' && (
-          <p
-            data-testid="devis-attente-signature"
-            role="status"
-            className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
-          >
-            En attente de signature client
-          </p>
-        )}
-        {/* QJR540 (ex-DevisForm VX159/VX250) — compteurs dérivés du devis
-            déjà chargé : zéro appel réseau nouveau. */}
-        {editDevis?.id && (
-          <RelationCounters
-            counters={[
-              {
-                label: 'factures liées',
-                count: editDevis.factures_liees?.length ?? 0,
-                to: `/ventes/factures?q=${encodeURIComponent(editDevis.client_nom ?? '')}`,
-              },
-              { label: 'bon de commande', count: editDevis.bon_commande_etat ? 1 : 0 },
-              {
-                label: 'chantier',
-                count: editDevis.chantier ? 1 : 0,
-                to: editDevis.chantier ? `/chantiers?id=${editDevis.chantier.id}` : undefined,
-              },
-            ]}
-          />
-        )}
-        {brouillonProposable && (
-          <div
-            data-testid="draft-restore-banner"
-            className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between"
-          >
-            <span>
-              Un brouillon non enregistré du{' '}
-              {(() => {
-                try { return formatDateTime(restored.savedAt) }
-                catch { return 'précédent' }
-              })()}{' '}
-              a été retrouvé.
-            </span>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={handleRestoreDraft}>
-                Reprendre le brouillon
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={discard}>
-                Ignorer
-              </Button>
-            </div>
-          </div>
-        )}
-        {/* EZ4 — la confiance vient de la CONTINUITÉ VISIBLE (patron
-            Docs/Notion) : tant qu'on ne voit rien, on ne sait pas si le travail
-            est à l'abri. Discret, jamais bloquant. */}
-        {savedAt && (
-          <p
-            data-testid="draft-saved-indicator"
-            className="text-xs text-muted-foreground"
-            role="status"
-          >
-            Brouillon enregistré à{' '}
-            {(() => {
-              try {
-                return new Date(savedAt).toLocaleTimeString('fr-FR', {
-                  hour: '2-digit', minute: '2-digit',
-                })
-              } catch { return 'l’instant' }
-            })()}
-          </p>
-        )}
-        {refsLoading && (
-          <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-            Chargement des données (leads, clients, produits)…
-          </div>
-        )}
-        {loadFailed.length > 0 && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            Échec du chargement : {loadFailed.join(', ')}. Vérifiez votre connexion puis rechargez la page.
-          </div>
-        )}
-        {/* ZSAL9 — avertissements de vente (client/produits) : bannière non
-            intrusive ; un avertissement bloquant est signalé mais n'empêche pas
-            la saisie (le blocage réel est côté serveur à l'acceptation). */}
-        {saleWarnings.length > 0 && (
-          <div
-            data-testid="sale-warnings"
-            className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-          >
-            {saleWarnings.map(w => (
-              <div key={w.key}>
-                <span className="font-medium">{w.cible} :</span> {w.message}
-                {w.bloquant && (
-                  <span className="ml-1 font-medium">
-                    (bloquant — un responsable devra passer outre)
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <BandeauxEdition
+          editDevis={editDevis} conflitVerrou={conflitVerrou} setConflitVerrou={setConflitVerrou}
+          clear={clear} setRechargeEdit={setRechargeEdit} forcerSansJetonRef={forcerSansJetonRef}
+          handleSubmit={handleSubmit} brouillonProposable={brouillonProposable} restored={restored}
+          handleRestoreDraft={handleRestoreDraft} discard={discard} savedAt={savedAt}
+          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings}
+        />
         {/* ── Mode d'installation (marché) ── */}
         <Card>
           <GenCardHeader icon={Target} title="Marché / Mode d'installation" />
@@ -2634,767 +1906,50 @@ export default function DevisGenerator({
         />
 
         {/* ── Paramètres techniques ── */}
-        <Card>
-          <GenCardHeader icon={Zap} title="Paramètres Techniques" />
-          <CardContent className="pt-4">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {/* EZ5 — on DIMENSIONNE en kWc, pas en nombre de panneaux : le
-                  client et le commercial disent « 3 kWc », jamais « 5 panneaux
-                  de 550 W ». Le champ est BIDIRECTIONNEL — taper une puissance
-                  cible remplit les panneaux, changer les panneaux remet la
-                  cible à jour. La conversion réutilise `panneauxPourKwc`
-                  (features/ventes/solar.js), déjà employée par le
-                  pré-remplissage depuis le lead : rien n'est réécrit. */}
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-kwc-cible">Puissance cible (kWc)</Label>
-                <Input id="gen-kwc-cible" type="number" min="0" step="any"
-                       placeholder="ex: 3" value={kwcCible}
-                       data-testid="gen-kwc-cible"
-                       onChange={e => onKwcCibleChange(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-nbpanneaux" required>Nombre de panneaux</Label>
-                <Input id="gen-nbpanneaux" type="number" min="1" max="500" step="any"
-                       placeholder="ex: 14" value={nbPanneaux}
-                       onChange={e => onNbPanneauxChange(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
-                <Input id="gen-panelw" type="number" min="100" max="1000" step="any"
-                       value={panelW}
-                       onChange={e => dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: e.target.value })} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Puissance PV (kWp) — calculée</Label>
-                <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
-              </div>
-              {/* QJR568 — les lignes et la cible divergent (quantité panneau
-                  corrigée à la main) : on le DIT, sans recomposer d'office. */}
-              {panneauxLignes > 0 && (parseInt(nbPanneaux) || 0) > 0
-                && panneauxLignes !== (parseInt(nbPanneaux) || 0) && (
-                <p className="text-xs text-warning sm:col-span-2" data-testid="gen-divergence-panneaux">
-                  Les lignes portent {formatNumber(panneauxLignes)} panneaux, la cible en
-                  vise {formatNumber(parseInt(nbPanneaux) || 0)} — recomposer ? (Auto-remplir)
-                </p>
-              )}
-              {/* STKCAT10 (décision fondateur 16/09/2026) — le bouton
-                  acier/aluminium est remplacé par un sélecteur ouvert sur
-                  TOUTES les structures typées du catalogue (pergola, carport,
-                  bac lesté…). Le bouton d'hier reste le REPLI quand la société
-                  n'en a aucune : le sélecteur ne peut jamais naître vide. */}
-              <StructureSelector
-                id="gen-structure-produit"
-                label="Type de Structure"
-                produits={produits}
-                value={structureProduitId}
-                onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'structureProduit', valeur: v })}
-                fallback={(
-                  <div className="grid gap-1.5">
-                    <Label>Type de Structure</Label>
-                    <Segmented
-                      options={[
-                        { value: 'acier', label: 'Acier galvanisé' },
-                        { value: 'aluminium', label: 'Aluminium' },
-                      ]}
-                      value={structureType}
-                      onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: v })}
-                    />
-                  </div>
-                )}
-              />
-            </div>
-            {/* Règle fondateur du 18/08 — justifie la taille retenue par le
-                dimensionnement facture → paliers : palier de 5 kWc, besoin lu
-                sur la facture d'hiver, payback le plus court parmi les
-                paliers testés (`sizingInfo.paliers`). */}
-            {sizingInfo?.kwcOptimal > 0 && (() => {
-              // PVMRQ — REPLI : une marque épinglée introuvable au stock ampute
-              // CHAQUE palier (lignes placeholder à 0 MAD) ; leur payback serait
-              // FABRIQUÉ, donc aucun n'est comparable et la taille retombe sur
-              // le besoin lu sur la facture. On le DIT, jamais en silence — et
-              // surtout on ne prétend pas avoir classé par retour sur
-              // investissement.
-              if (sizingInfo.repliMarqueManquante) {
-                const mm = sizingInfo.marquesManquantes ?? []
-                return (
-                  <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-                    Taille retenue : palier de <strong>{sizingInfo.kwcOptimal} kWc</strong>
-                    {' '}— besoin lu sur la facture d'hiver ≈ {sizingInfo.besoinKwc} kWc.
-                    {' '}Le classement par retour sur investissement est <strong>suspendu</strong> :
-                    {' '}marque épinglée introuvable au stock
-                    {mm.length > 0 && (
-                      <> ({mm.map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')})</>
-                    )}, les paliers chiffrés seraient incomplets.
-                    {' '}Ajoutez le produit ou changez la marque dans Paramètres → Gammes.
-                  </div>
-                )
-              }
-              const retenu = sizingInfo.paliers?.find(p => p.kwc === sizingInfo.kwcOptimal)
-              return (
-                <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                  Taille retenue : palier de <strong>{sizingInfo.kwcOptimal} kWc</strong>
-                  {' '}— besoin lu sur la facture d'hiver ≈ {sizingInfo.besoinKwc} kWc,
-                  {' '}retour sur investissement le plus court parmi les paliers testés
-                  {Number.isFinite(retenu?.payback) && (
-                    <> (<strong>{retenu.payback} ans</strong>)</>
-                  )}.
-                </div>
-              )
-            })()}
-            {/* FOUNDER 26/08 — les DEUX valeurs de dimensionnement (L-2OPT),
-                toujours dérivées d'un calcul réel (serveur horaire si
-                disponible, sinon le même balayage local que ci-dessus —
-                jamais un chiffre inventé, et jamais la paire mixée depuis
-                deux sources différentes — voir deuxValeursDim/F3). Résidentiel
-                uniquement : l'option batterie n'existe nulle part ailleurs
-                (agricole = pompage, industriel/commercial ne la vendent
-                jamais). Mono-option (`showSans`/`showAvec`, scénario déjà
-                choisi) : seule la valeur réellement vendue sur CE devis
-                s'affiche.
-                F4 (revue adversariale 26/08) — le garde EXTÉRIEUR doit
-                refléter EXACTEMENT ce que le contenu va rendre : l'ancien
-                `(deuxValeursDim.sans || deuxValeursDim.avec)` pouvait être
-                vrai (ex. `sans` calculable) alors que `showSans` est FAUX
-                (scénario mono « Avec batterie ») ET `avec` encore `null` —
-                un wrapper vide (marge + data-testid orphelins) s'affichait
-                pour rien. Le garde reprend donc les DEUX conditions
-                (source ET scénario) que le contenu vérifie déjà.
-                F5 (revue adversariale 26/08) — « Recommandé » en tête : ce
-                sont des RECOMMANDATIONS de l'optimiseur, pas une description
-                des lignes composées — un nombre de panneaux TAPÉ À LA MAIN
-                peut diverger du dimensionnement optimal affiché ici. */}
-            {modeInstallation === 'residentiel'
-              && ((showSans && deuxValeursDim.sans) || (showAvec && deuxValeursDim.avec)) && (
-              <div className="mt-2 grid gap-0.5 text-sm text-foreground"
-                   data-testid="dimensionnement-deux-valeurs">
-                {showSans && deuxValeursDim.sans && (
-                  <div>
-                    Recommandé sans batterie : <strong>{deuxValeursDim.sans.nbPanneaux} panneaux</strong>
-                    {' '}· {formatNumber(deuxValeursDim.sans.kwc, { decimals: 2 })} kWc
-                  </div>
-                )}
-                {showAvec && deuxValeursDim.avec && (
-                  <div>
-                    Recommandé avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
-                    {' '}· {formatNumber(deuxValeursDim.avec.kwc, { decimals: 2 })} kWc
-                  </div>
-                )}
-              </div>
-            )}
-            {/* U3-900 — le moteur horaire serveur a décliné le dimensionnement
-                (donnée nommée : ville, facture…) au lieu de deviner une
-                taille : message FRANÇAIS EXACT, aucun panneau prérempli. */}
-            {modeInstallation === 'residentiel' && sizingServeurMessage && (
-              <div className="mt-2 text-xs text-warning" data-testid="sizing-serveur-refus">
-                {sizingServeurMessage}
-              </div>
-            )}
-            {/* QJR641 / CIQ126 — curseur du RÉSIDENTIEL seulement : en C&I le
-                profil de charge est celui déclaré au moteur serveur. */}
-            {modeInstallation === 'residentiel' && (
-              <div className="gen-slider-row" data-testid="curseur-part-diurne">
-                <span className="gen-slider-label">Consommation diurne (%)</span>
-                <input type="range" min="10" max="100" step="5" value={dayUsage}
-                       onChange={e => setDayUsage(e.target.value)} />
-                <span className="gen-slider-value">{dayUsage}%</span>
-              </div>
-            )}
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
-              {errors.recalcDim && <span className="text-xs text-destructive">{errors.recalcDim}</span>}
-              {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
-              {/* AGR128 — agricole : aucun devis plausible sans le besoin, la
-                  hauteur et le cas de pompe ; le message NOMME ce qui manque. */}
-              {pompageManquants.length > 0 && (
-                <span className="text-xs text-warning" data-testid="pompage-manquants">
-                  Auto-remplir indisponible — à renseigner : {pompageManquants.join(', ')}.
-                </span>
-              )}
-              {errors.autofillKwc && <span className="text-xs text-warning">{errors.autofillKwc}</span>}
-              {/* PVMRQ — même patron visuel que `errors.autofill` ci-dessus. */}
-              {errors.marquesManquantes && <span className="text-xs text-destructive">{errors.marquesManquantes}</span>}
-              {/* FOUNDER 26/08 — recalcule le dimensionnement (nombre de
-                  panneaux, sans ET avec batterie) depuis la facture ACTUELLE,
-                  puis recompose (même chemin qu'« Auto-remplir » ci-contre) :
-                  contrairement à ce dernier, qui recompose au nombre de
-                  panneaux COURANT sans jamais le redériver. Désactivé sans
-                  facture hiver exploitable, ou en agricole (dimensionnement
-                  pompage, aucune notion de facture → kWc). */}
-              <Button type="button" variant="outline"
-                      data-testid="btn-recalculer-dimensionnement"
-                      loading={autoFillLoading}
-                      disabled={modeInstallation === 'agricole' || (marcheCi
-                        ? !(Number(apercuCi.donnees?.taille?.nb_panneaux) > 0)
-                        : !(parseFloat(fHiver) > 0))}
-                      onClick={recalculerDimensionnement}>
-                <RefreshCw /> Recalculer le dimensionnement
-              </Button>
-              <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
-                      data-testid="btn-auto-remplir"
-                      disabled={pompageManquants.length > 0}
-                      loading={autoFillLoading} onClick={() => avecQuantitesFigees(handleAutoFill)}>
-                <Zap /> Auto-remplir depuis le stock
-              </Button>
-            </div>
-            {/* QJR577 (D-QJR5-9) — le dry-run serveur a échoué : AUCUNE
-                composition de secours, l'erreur est dite et « Réessayer »
-                rejoue le même dry-run. */}
-            {compositionErreur && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                   data-testid="composition-erreur" role="alert">
-                <span>{compositionErreur}</span>
-                <Button type="button" size="sm" variant="outline"
-                        data-testid="composition-reessayer"
-                        loading={autoFillLoading}
-                        onClick={() => avecQuantitesFigees(handleAutoFill)}>
-                  Réessayer
-                </Button>
-              </div>
-            )}
-            {/* QJR589 (contrat QJR505) — la dérive lead → devis, NOMMÉE et
-                RÉSOLUBLE : « Reprendre les valeurs du lead » / « Garder les
-                valeurs du devis ». Verdict serveur (`lead_valeurs_modifiees`)
-                — l'écran ne compare rien. Après succès, l'écran relit le devis. */}
-            <BandeauDeriveLead
-              devisId={editDevis?.id}
-              statut={editDevis?.statut}
-              champs={leadValeursModifiees}
-              onResolu={() => {
-                setLeadValeursModifiees([])
-                clear()
-                setRechargeEdit(n => n + 1)
-              }}
-            />
-            {onduleursIncomplets.length > 0 && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-                <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
-                incomplète, écartés de l'auto-remplissage (toujours
-                sélectionnables à la main) :
-                <ul className="mt-1 list-disc pl-5">
-                  {onduleursIncomplets.map(o => (
-                    <li key={o.id}>
-                      {o.nom} — à renseigner : {o.manquantes.join(', ')}
-                    </li>
-                  ))}
-                </ul>
-                Complétez leur fiche technique dans Stock pour les rendre
-                chiffrables.
-              </div>
-            )}
-            {modeInstallation === 'agricole' && pompageAutoFilled && apercuPompage?.donnees && (
-              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                   data-testid="pompage-auto-rempli">
-                Auto-remplissage effectué (kit calculé par le serveur) —
-                {' '}champ PV <strong>{apercuPompage.donnees.champ?.kwc ?? '—'} kWc</strong>
-                {' '}({apercuPompage.donnees.champ?.nb_panneaux ?? '—'} panneaux).
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <CarteParametresTechniques
+          kwcCible={kwcCible} onKwcCibleChange={onKwcCibleChange} nbPanneaux={nbPanneaux}
+          onNbPanneauxChange={onNbPanneauxChange} panelW={panelW} dispatchSizing={dispatchSizing}
+          kwp={kwp} panneauxLignes={panneauxLignes} produits={produits}
+          structureProduitId={structureProduitId} structureType={structureType}
+          sizingInfo={sizingInfo} modeInstallation={modeInstallation} showSans={showSans}
+          deuxValeursDim={deuxValeursDim} showAvec={showAvec}
+          sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage} setDayUsage={setDayUsage}
+          errors={errors} pompageManquants={pompageManquants} autoFillLoading={autoFillLoading}
+          marcheCi={marcheCi} apercuCi={apercuCi} fHiver={fHiver}
+          recalculerDimensionnement={recalculerDimensionnement}
+          avecQuantitesFigees={avecQuantitesFigees} handleAutoFill={handleAutoFill}
+          compositionErreur={compositionErreur} editDevis={editDevis}
+          leadValeursModifiees={leadValeursModifiees}
+          setLeadValeursModifiees={setLeadValeursModifiees} clear={clear}
+          setRechargeEdit={setRechargeEdit} onduleursIncomplets={onduleursIncomplets}
+          pompageAutoFilled={pompageAutoFilled} apercuPompage={apercuPompage}
+        />
 
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}
         {modeInstallation !== 'agricole' && (
-        <Card>
-          <GenCardHeader icon={BarChart3} title="Aperçu de la Simulation">
-            {/* Repliable sur téléphone uniquement (bouton caché sur bureau) */}
-            <Button type="button" size="sm" variant="outline" className="gen-preview-toggle"
-                    onClick={() => setPreviewCollapsed(v => !v)}>
-              {previewCollapsed ? 'Afficher' : 'Replier'}
-            </Button>
-          </GenCardHeader>
-          <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
-            {/* CJ2b — ORDRE FONDATEUR (20/08) : « on ne voit ni l'économie
-                réelle calculée, ni les données PVGIS — cette donnée devrait
-                être comparée à la courbe de consommation ». Résidentiel
-                uniquement, sous le bandeau de source (serveur vs estimation
-                locale, règle d'honnêteté #2/#4), le tableau de
-                dimensionnement (paliers candidats du moteur horaire, chacun
-                avec sa réalité batterie — règle #1) et le détail saisonnier
-                production × consommation. */}
-            {modeInstallation === 'residentiel' && etudeHoraireCorps && (
-              <div className="mb-4" data-testid="etude-horaire-block">
-                {etudeHoraireSourceServeur ? (
-                  <p className="mb-2 text-xs font-medium text-success" data-testid="etude-horaire-source">
-                    Chiffres du moteur horaire (serveur) — PVGIS réel × consommation réelle du client.
-                    {etudeHoraireSourceLabel?.estimation && (
-                      <> {' '}Détail mensuel : {etudeHoraireSourceLabel.libelle}.</>
-                    )}
-                  </p>
-                ) : (
-                  <p className="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">
-                    {etudeHoraireChargement
-                      ? 'Calcul du moteur horaire en cours…'
-                      : (etudeHoraireErreur
-                          || 'Estimation locale (hors ligne) — en attente du moteur horaire serveur.')}
-                  </p>
-                )}
-                {etudeHoraireDonnees?.avertissements?.length > 0 && (
-                  <ul className="mb-3 list-disc pl-5 text-xs text-warning" data-testid="etude-horaire-avertissements">
-                    {etudeHoraireDonnees.avertissements.map((a) => <li key={a}>{a}</li>)}
-                  </ul>
-                )}
-                {etudeHoraireLignes.length > 0 && (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="w-full border-collapse text-xs" data-testid="etude-horaire-dimensionnement">
-                      <thead>
-                        <tr className="border-b border-border text-left text-muted-foreground">
-                          <th className="py-1 pr-3 font-medium">kWc</th>
-                          <th className="py-1 pr-3 font-medium">Onduleur (règle 80 %)</th>
-                          <th className="py-1 pr-3 font-medium">Autoconso.</th>
-                          <th className="py-1 pr-3 font-medium">Couverture</th>
-                          <th className="py-1 pr-3 font-medium">Éco. sans (MAD/an)</th>
-                          <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an)</th>
-                          <th className="py-1 pr-3 font-medium">Payback</th>
-                          <th className="py-1 pr-3 font-medium">Résiduel après (kWh/mois)</th>
-                          <th className="py-1 pr-3 font-medium">Remplissage batterie</th>
-                          <th className="py-1" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {etudeHoraireLignes.map((ligne) => {
-                          const estRecommandee = etudeHoraireDonnees?.dimensionnement
-                            ?.recommandation?.panneaux === ligne.panneaux
-                          // L-2OPT (fondateur 24/08) — second optimiseur, même
-                          // patron : surligne DISTINCTEMENT le palier optimal
-                          // AVEC batterie (recommandation_avec, moteur horaire
-                          // serveur) — peut différer de `estRecommandee`
-                          // ci-dessus (les deux optima peuvent diverger).
-                          const estRecommandeeAvec = etudeHoraireDonnees?.dimensionnement
-                            ?.recommandation_avec?.panneaux === ligne.panneaux
-                          // L-FRONT lot 4 — résiduel/tranche après la meilleure option
-                          // chiffrée (avec batterie si vendable, sinon sans), et
-                          // remplissage moyen du stockage retenu pour cette taille.
-                          // `null`/absent -> cellule vide, jamais un calcul de repli.
-                          const residuelApres = ligne.batterieVendable
-                            ? (ligne.residuel_avec_kwh_mois ?? ligne.residuel_kwh_mois)
-                            : ligne.residuel_sans_kwh_mois
-                          const trancheApres = ligne.batterieVendable
-                            ? (ligne.tranche_apres_avec?.libelle ?? ligne.tranche_apres?.libelle)
-                            : ligne.tranche_apres_sans?.libelle
-                          const remplissageMoyen = ligne.remplissage?.moyen
-                          const paliersStockage = balayageStockageAffichable(ligne)
-                          const stockageOuvert = ligneStockageOuverte === ligne.panneaux
-                          return (
-                            <Fragment key={ligne.panneaux}>
-                              <tr
-                                  className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}${estRecommandeeAvec ? ' bg-info/10' : ''}`}>
-                                <td className="py-1.5 pr-3">
-                                  {formatNumber(ligne.kwc, { decimals: 2 })} kWc
-                                  {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé (sans)</span>}
-                                  {estRecommandeeAvec && <span className="gen-rec-badge" data-testid="etude-horaire-reco-avec"> ★ Recommandé (avec)</span>}
-                                </td>
-                                <td className="py-1.5 pr-3">
-                                  {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
-                                  {!ligne.regle_80_pct_respectee && (
-                                    <span className="text-warning"> (sous 80 %)</span>
-                                  )}
-                                </td>
-                                <td className="py-1.5 pr-3">{formatNumber(ligne.taux_autoconso_sans * 100, { decimals: 0 })} %</td>
-                                <td className="py-1.5 pr-3">{formatNumber(ligne.couverture_sans * 100, { decimals: 0 })} %</td>
-                                <td className="py-1.5 pr-3">{fmtNum(Math.round(ligne.economie_sans_mad))}</td>
-                                <td className="py-1.5 pr-3">
-                                  {ligne.batterieVendable
-                                    ? fmtNum(Math.round(ligne.economie_avec_mad))
-                                    : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
-                                </td>
-                                <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ligne.payback_sans_annees} ans` : 'N/A'}</td>
-                                <td className="py-1.5 pr-3" data-testid="etude-horaire-residuel">
-                                  {residuelApres != null
-                                    ? <>{fmtNum(Math.round(residuelApres))} kWh{trancheApres && <> — {trancheApres}</>}</>
-                                    : '—'}
-                                </td>
-                                <td className="py-1.5 pr-3" data-testid="etude-horaire-remplissage">
-                                  {remplissageMoyen != null
-                                    ? `${formatNumber(remplissageMoyen * 100, { decimals: 0 })} %`
-                                    : '—'}
-                                </td>
-                                <td className="py-1.5">
-                                  <div style={{ display: 'flex', gap: '0.375rem' }}>
-                                    <Button type="button" size="sm" variant="outline"
-                                            onClick={() => appliquerTailleDimensionnement(ligne)}>
-                                      Appliquer cette taille
-                                    </Button>
-                                    {paliersStockage.length > 0 && (
-                                      <Button type="button" size="sm" variant="ghost"
-                                              data-testid="etude-horaire-stockage-toggle"
-                                              onClick={() => setLigneStockageOuverte(
-                                                stockageOuvert ? null : ligne.panneaux)}>
-                                        {stockageOuvert ? 'Masquer stockage' : 'Détail stockage'}
-                                      </Button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                              {stockageOuvert && paliersStockage.length > 0 && (
-                                <tr className="border-b border-border">
-                                  <td colSpan={9} className="bg-muted/30 py-2 pr-3">
-                                    <div style={{ overflowX: 'auto' }}>
-                                      <table className="w-full border-collapse text-xs"
-                                             data-testid="etude-horaire-balayage-stockage">
-                                        <thead>
-                                          <tr className="text-left text-muted-foreground">
-                                            <th className="py-1 pr-3 font-medium">Batterie (kWh)</th>
-                                            <th className="py-1 pr-3 font-medium">Coût TTC</th>
-                                            <th className="py-1 pr-3 font-medium">Éco. (MAD/an)</th>
-                                            <th className="py-1 pr-3 font-medium">Éco. marginale</th>
-                                            <th className="py-1 pr-3 font-medium">Payback</th>
-                                            <th className="py-1 pr-3 font-medium">Résiduel (kWh/mois)</th>
-                                            <th className="py-1 pr-3 font-medium">Remplissage moyen</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {paliersStockage.map((p) => (
-                                            <tr key={p.capaciteKwh}>
-                                              <td className="py-1 pr-3">{fmtNum(p.capaciteKwh)} kWh</td>
-                                              <td className="py-1 pr-3">{p.coutTtc != null ? `${fmtNum(Math.round(p.coutTtc))} MAD` : '—'}</td>
-                                              <td className="py-1 pr-3">{p.economieMad != null ? fmtNum(Math.round(p.economieMad)) : '—'}</td>
-                                              <td className="py-1 pr-3">{p.economieMarginaleMad != null ? fmtNum(Math.round(p.economieMarginaleMad)) : '—'}</td>
-                                              <td className="py-1 pr-3">{p.paybackAnnees != null ? `${p.paybackAnnees} ans` : '—'}</td>
-                                              <td className="py-1 pr-3">
-                                                {p.residuelKwhMois != null
-                                                  ? <>{fmtNum(Math.round(p.residuelKwhMois))}{p.trancheApres && <> — {p.trancheApres}</>}</>
-                                                  : '—'}
-                                              </td>
-                                              <td className="py-1 pr-3">{p.remplissageMoyen != null ? `${formatNumber(p.remplissageMoyen * 100, { decimals: 0 })} %` : '—'}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </Fragment>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                    {etudeHoraireDonnees?.dimensionnement?.motivation && (
-                      <p className="mt-2 text-xs text-muted-foreground" data-testid="etude-horaire-motivation">
-                        {etudeHoraireDonnees.dimensionnement.motivation}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {etudeHoraireDonnees?.etude?.saisons && (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="etude-horaire-saisons">
-                    {Object.entries(SAISON_LABELS).map(([cle, libelle]) => {
-                      const s = etudeHoraireDonnees.etude.saisons[cle]
-                      if (!s) return null
-                      return (
-                        <div key={cle} className="rounded-lg border border-border p-2">
-                          <div className="text-xs font-medium">{libelle}</div>
-                          <div className="text-xs text-muted-foreground">
-                            Production {fmtNum(Math.round(s.production_kwh))} kWh
-                            {' · '}Consommation {fmtNum(Math.round(s.consommation_kwh))} kWh
-                            {' · '}Autoconsommé {fmtNum(Math.round(s.autoconsomme_sans_kwh))} kWh
-                            {' '}({formatNumber(s.taux_autoconso_sans * 100, { decimals: 0 })} %)
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                {/* L-FRONT lot 4 — falaise tarifaire : la marche du barème juste
-                    sous la consommation actuelle (« land frankly under the
-                    cliff »), + la meilleure combinaison du balayage qui y passe.
-                    Omis en bloc quand le moteur n'a rien calculé. */}
-                {etudeHoraireFalaise && (
-                  <div className="mt-3 rounded-lg border border-border p-3" data-testid="etude-horaire-falaise">
-                    <div className="text-xs font-medium">Falaise tarifaire</div>
-                    <div className="text-xs text-muted-foreground">
-                      Palier visé : {fmtNum(etudeHoraireFalaise.cibleKwhMois)} kWh/mois
-                      {etudeHoraireFalaise.trancheActuelle && (
-                        <> — actuellement en {etudeHoraireFalaise.trancheActuelle}</>
-                      )}
-                      {etudeHoraireFalaise.trancheVisee && (
-                        <>, marche visée : {etudeHoraireFalaise.trancheVisee}</>
-                      )}
-                      .
-                    </div>
-                    {etudeHoraireFalaise.meilleure && (
-                      <div className="mt-1 text-xs text-muted-foreground" data-testid="etude-horaire-meilleure-falaise">
-                        Meilleure combinaison sous la marche : {etudeHoraireFalaise.meilleure.panneaux} panneaux
-                        {etudeHoraireFalaise.meilleure.kwc != null && <> ({formatNumber(etudeHoraireFalaise.meilleure.kwc, { decimals: 2 })} kWc)</>}
-                        {etudeHoraireFalaise.meilleure.batterieKwh
-                          ? <> + {fmtNum(etudeHoraireFalaise.meilleure.batterieKwh)} kWh de batterie</>
-                          : ''}
-                        {etudeHoraireFalaise.meilleure.residuelKwhMois != null && (
-                          <> — résiduel {fmtNum(Math.round(etudeHoraireFalaise.meilleure.residuelKwhMois))} kWh/mois
-                            {etudeHoraireFalaise.meilleure.trancheApres && <> ({etudeHoraireFalaise.meilleure.trancheApres})</>}</>
-                        )}
-                        {etudeHoraireFalaise.meilleure.paybackAnnees != null && (
-                          <> — payback {etudeHoraireFalaise.meilleure.paybackAnnees} ans</>
-                        )}.
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* L-FRONT lot 4 — résumé annuel des impulsions équipements
-                    (glitch) : n'apparaît que si le moteur a vraiment déclaré au
-                    moins un équipement concentrable (part_glitch additif). */}
-                {etudeHoraireGlitch && (
-                  <div className="mt-3 rounded-lg border border-border p-3" data-testid="etude-horaire-glitch">
-                    <div className="text-xs font-medium">Pointes équipements ({etudeHoraireGlitch.couches.join(', ')})</div>
-                    <div className="text-xs text-muted-foreground">
-                      {fmtNum(Math.round(etudeHoraireGlitch.sansKwh))} kWh/an partent au réseau sans batterie
-                      {etudeHoraireGlitch.batterieKwh != null && (
-                        <>, dont {fmtNum(Math.round(etudeHoraireGlitch.batterieKwh))} kWh/an rattrapés par le stockage</>
-                      )}.
-                    </div>
-                  </div>
-                )}
-                {/* L-FRONT lot 4 — décomposition mensuelle de la consommation
-                    estimée (base + chaque équipement déclaré), pour que le
-                    commercial voie chaque ajout compté. Omise en bloc si la clé
-                    `estimation_conso` est absente du payload. */}
-                {etudeHoraireEstimationConso && (
-                  <div className="mt-3" style={{ overflowX: 'auto' }}>
-                    <div className="mb-1 text-xs font-medium">Décomposition mensuelle de la consommation (kWh)</div>
-                    <table className="w-full border-collapse text-xs" data-testid="etude-horaire-estimation-conso">
-                      <thead>
-                        <tr className="border-b border-border text-left text-muted-foreground">
-                          <th className="py-1 pr-3 font-medium">Poste</th>
-                          {LIBELLES_MOIS.map((m) => <th key={m} className="py-1 pr-2 font-medium">{m}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="border-b border-border">
-                          <td className="py-1 pr-3">Base</td>
-                          {etudeHoraireEstimationConso.base.map((v, i) => (
-                            <td key={LIBELLES_MOIS[i]} className="py-1 pr-2">{fmtNum(Math.round(v))}</td>
-                          ))}
-                        </tr>
-                        {etudeHoraireEstimationConso.ajouts.map((a) => (
-                          <tr key={a.cle} className="border-b border-border">
-                            <td className="py-1 pr-3">+ {a.libelle}</td>
-                            {a.valeurs.map((v, i) => (
-                              <td key={LIBELLES_MOIS[i]} className="py-1 pr-2">{fmtNum(Math.round(v))}</td>
-                            ))}
-                          </tr>
-                        ))}
-                        <tr className="font-medium">
-                          <td className="py-1 pr-3">Total</td>
-                          {etudeHoraireEstimationConso.total.map((v, i) => (
-                            <td key={LIBELLES_MOIS[i]} className="py-1 pr-2">{fmtNum(Math.round(v))}</td>
-                          ))}
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-            {/* CIQ223 — en C&I, aucune simulation JS : les économies sont celles
-                du moteur serveur (carte « Économies »). */}
-            {marcheCi ? (
-              <p className="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">
-                Économies C&amp;I : voir la carte « Économies » (moteur serveur).
-              </p>
-            ) : !roi ? (
-              <p className="text-center text-sm text-muted-foreground">
-                Renseignez le nombre de panneaux et les factures, puis la simulation
-                s'actualise automatiquement.
-              </p>
-            ) : (
-              <>
-                {/* QF5 — quand une facture/consommation réelle est capturée
-                    (QF4), l'écran affiche le MÊME calcul « deux factures » par
-                    tranche que le PDF (facture sans vs avec solaire) au lieu
-                    d'une estimation moyenne. */}
-                {etudeHoraireSourceServeur ? (
-                  // AGNR23 — le bandeau dit le modèle DES CARTES : l'étude
-                  // horaire du moteur quand elle répond.
-                  <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                       data-testid="bandeau-modele-cartes">
-                    Moteur horaire : facture ≈ <strong>{fmtNum(Math.round(etudeHoraireAnnuel.facture_avant_mad))} MAD/an</strong>
-                    {' '}sans solaire → avec solaire ≈{' '}
-                    <strong>
-                      {fmtNum(Math.round(sansRec || !showAvec
-                        ? etudeHoraireAnnuel.facture_apres_sans_mad
-                        : (etudeHoraireAnnuelAvec || etudeHoraireAnnuel).facture_apres_avec_mad))} MAD/an
-                    </strong>
-                    {' '}— chiffres des cartes (production horaire × consommation du client).
-                  </div>
-                ) : roi.savings_model === 'factures' ? (
-                  <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                    Facture réelle {distributeur.toUpperCase()} ≈ <strong>{fmtNum(roi.facture_sans)} MAD/an</strong>
-                    {' '}sans solaire → avec solaire ≈{' '}
-                    <strong>
-                      {fmtNum(sansRec || !showAvec ? roi.facture_avec_sans : roi.facture_avec_avec)} MAD/an
-                    </strong>
-                    {' '}— économie calculée par tranche (barème {distributeur.toUpperCase()}), pas une estimation.
-                  </div>
-                ) : (
-                  <div className="mb-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                    Estimation (production × autoconsommation × tarif moyen) — renseignez la
-                    facture réelle du client ci-dessus pour un calcul par tranche exact.
-                  </div>
-                )}
-                <div className="gen-metrics-grid">
-                  {/* CJ2b — Production/Autoconso/Couverture : le serveur
-                      horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
-                      sinon repli sur `roi` (miroir local, inchangé).
-                      QJR426 — aucune puce ici avant comme après : cette carte
-                      ne distingue déjà pas ses deux sources à l'écran (le
-                      repli `roi` reste, comme aujourd'hui, non étiqueté) —
-                      `moteur()` reproduit ce silence à l'octet, jamais un
-                      nouveau badge introduit au passage. */}
-                  {/* QA-FIGURES — `figure` pose `data-figure` (clés :
-                      apps/ventes/quote_engine/figures.py) : la parité écran /
-                      PDF / page publique / API est vérifiée par
-                      e2e/figures-parite.spec.js. */}
-                  <CarteMetrique label="Production annuelle"
-                                 valeur={moteur(fmtNum(Math.round(apercuProductionKwh)))}
-                                 unit="kWh / an" accent
-                                 figure="production_annuelle_kwh" />
-                  {etudeHoraireSourceServeur && (
-                    <>
-                      {/* QJR426 — ces deux cartes ne rendent QUE dans la
-                          branche serveur (`etudeHoraireSourceServeur`) :
-                          `moteur()` y est toujours exact, jamais un motif
-                          inventé. */}
-                      <CarteMetrique label="Taux d'autoconsommation (sans)"
-                                     valeur={moteur(`${formatNumber(etudeHoraireAnnuel.taux_autoconso_sans * 100, { decimals: 0 })} %`)}
-                                     unit="part de la production consommée" />
-                      <CarteMetrique label="Taux de couverture (sans)"
-                                     valeur={moteur(`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`)}
-                                     unit="part de la conso couverte"
-                                     figure="couverture_pct" figureOption="sans" />
-                    </>
-                  )}
-                </div>
-                {/* VX138 — comparateur Sans/Avec : 2 colonnes NOMMÉES au lieu
-                    d'une grille homogène de jusqu'à 6 cartes reliées par la
-                    seule étoile — la recommandation devient un liseré porté
-                    par TOUTE la colonne. */}
-                <div className="gen-compare-grid">
-                  {showSans && (
-                    <div className={`gen-compare-col${sansRec ? ' gen-compare-col-rec' : ''}`}>
-                      <div className="gen-compare-col-title">
-                        Sans batterie
-                        {sansRec && <span className="gen-rec-badge">★ Recommandé</span>}
-                      </div>
-                      {/* QJR426 — `signerEcoOuRoi` reproduit EXACTEMENT
-                          l'ancien `badge={apercuEstimationExemple ? ... :
-                          null}` : `apercu()` porte la même puce
-                          `PUCE_APERCU` (« estimation d'exemple », le même
-                          texte), `moteur()` n'en porte aucune. */}
-                      <CarteMetrique label="Économies"
-                                     valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoSans)))}
-                                     unit="MAD / an"
-                                     figure="economie_annuelle" figureOption="sans" />
-                      <CarteMetrique label="ROI"
-                                     valeur={signerEcoOuRoi(
-                                       apercuPaybackSansJamais ? 'Non rentabilisé sur 25 ans'
-                                         : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
-                                     unit="retour sur invest." accent
-                                     figure="payback_ans" figureOption="sans" />
-                      {/* QJR426 — le coût est celui, certain, des lignes du
-                          devis (`optionTotalsTTC`) : jamais de disclaimer
-                          avant, `moteur()` en garde l'absence à l'octet. */}
-                      <CarteMetrique label="Coût"
-                                     valeur={moteur(fmtNum(Math.round(totals.totalSans)))}
-                                     unit="MAD TTC"
-                                     figure="total_ttc" figureOption="sans" />
-                    </div>
-                  )}
-                  {showAvec && (
-                    <div className={`gen-compare-col${avecRec ? ' gen-compare-col-rec' : ''}`}>
-                      <div className="gen-compare-col-title">
-                        Avec batterie
-                        {avecRec && <span className="gen-rec-badge">★ Recommandé</span>}
-                      </div>
-                      {/* CJ2b — OMISSION HONNÊTE. Le moteur horaire dit que
-                          l'option batterie n'est pas livrable à cette taille :
-                          on affiche SA raison, jamais un montant — et surtout
-                          jamais le « 0 MAD » que produirait un arrondi sur une
-                          valeur absente. */}
-                      {batterieInvendableServeur ? (
-                        <p className="text-xs text-muted-foreground"
-                           data-testid="etude-horaire-batterie-invendable">
-                          Option batterie non livrable pour cette taille :{' '}
-                          {verdictBatterieServeur.raison}
-                        </p>
-                      ) : (
-                        <>
-                          <CarteMetrique label="Économies"
-                                         valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
-                                         unit="MAD / an"
-                                         figure="economie_annuelle" figureOption="avec" />
-                          <CarteMetrique label="ROI"
-                                         valeur={signerEcoOuRoi(
-                                           apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
-                                             : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
-                                         unit="retour sur invest." accent
-                                         figure="payback_ans" figureOption="avec" />
-                          <CarteMetrique label="Coût"
-                                         valeur={moteur(fmtNum(Math.round(totals.totalAvec)))}
-                                         unit="MAD TTC"
-                                         figure="total_ttc" figureOption="avec" />
-                          {/* BAT5DEF — au moins une ligne batterie n'a pas de
-                              kWh lisible : la capacité utilisée par le ROI et
-                              l'étude horaire est SOUS-estimée (0 kWh pour
-                              cette ligne, jamais un défaut inventé). Signalé
-                              à l'écran, jamais caché — même patron que
-                              gen-mt-manquant. */}
-                          {capaciteBatterieInconnue && (
-                            <p className="text-xs text-warning"
-                               data-testid="gen-battery-capacite-inconnue">
-                              Capacité batterie non lisible sur au moins une
-                              ligne (désignation sans kWh) : les économies et
-                              le payback « avec batterie » sont sous-estimés,
-                              renseignez le kWh dans la désignation.
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="gen-chart-title">Économies mensuelles estimées (MAD / mois)</div>
-                {/* N4 — tant qu'aucune facture RÉELLE n'a été saisie
-                    (facturesSaisies), `monthly` ne porte que les valeurs
-                    D'EXEMPLE du simulateur (DEFAULT_MONTHLY_BILLS) : le
-                    graphique « Facture ONEE » ne doit alors jamais se
-                    présenter comme une donnée du client — il est masqué au
-                    profit d'un message explicite. */}
-                {facturesSaisies ? (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ComposedChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.07)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }}
-                             label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }}
-                             tickFormatter={(v) => formatNumber(v)} />
-                      <Tooltip formatter={(v, name) => [`${formatMAD(v, { decimals: 0 })}`, name]} />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="facture" name="Facture ONEE (MAD)"
-                           fill="rgba(181,192,206,0.55)" stroke="rgba(181,192,206,0.8)" radius={[3, 3, 0, 0]} />
-                      {showSans && (
-                        <Line type="monotone" dataKey="ecoSans"
-                              name={'Option 1 – Sans batterie' + (sansRec ? ' ⭐' : '')}
-                              stroke="var(--gen-chart-sans)" strokeWidth={sansRec ? 3.5 : 2.2}
-                              dot={{ r: sansRec ? 5 : 4 }} />
-                      )}
-                      {showAvec && (
-                        <Line type="monotone" dataKey="ecoAvec"
-                              name={'Option 2 – Avec batterie' + (avecRec ? ' ⭐' : '')}
-                              stroke="var(--gen-chart-avec)" strokeWidth={avecRec ? 3.5 : 2.2}
-                              dot={{ r: avecRec ? 5 : 4 }} />
-                      )}
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="py-6 text-center text-sm text-muted-foreground" data-testid="chart-no-bills">
-                    Graphique masqué — exemple sans saisie réelle. Renseignez vos
-                    factures (hiver/été ou détail mensuel ci-dessus) pour voir vos
-                    économies mensuelles réelles.
-                  </p>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <ApercuSimulation
+          setPreviewCollapsed={setPreviewCollapsed} previewCollapsed={previewCollapsed}
+          modeInstallation={modeInstallation} etudeHoraireCorps={etudeHoraireCorps}
+          etudeHoraireSourceServeur={etudeHoraireSourceServeur}
+          etudeHoraireSourceLabel={etudeHoraireSourceLabel}
+          etudeHoraireChargement={etudeHoraireChargement} etudeHoraireErreur={etudeHoraireErreur}
+          etudeHoraireDonnees={etudeHoraireDonnees} etudeHoraireLignes={etudeHoraireLignes}
+          ligneStockageOuverte={ligneStockageOuverte}
+          appliquerTailleDimensionnement={appliquerTailleDimensionnement}
+          setLigneStockageOuverte={setLigneStockageOuverte}
+          etudeHoraireFalaise={etudeHoraireFalaise} etudeHoraireGlitch={etudeHoraireGlitch}
+          etudeHoraireEstimationConso={etudeHoraireEstimationConso} marcheCi={marcheCi} roi={roi}
+          etudeHoraireAnnuel={etudeHoraireAnnuel} sansRec={sansRec} showAvec={showAvec}
+          etudeHoraireAnnuelAvec={etudeHoraireAnnuelAvec} distributeur={distributeur}
+          apercuProductionKwh={apercuProductionKwh} showSans={showSans}
+          signerEcoOuRoi={signerEcoOuRoi} apercuEcoSans={apercuEcoSans}
+          apercuPaybackSansJamais={apercuPaybackSansJamais} apercuPaybackSans={apercuPaybackSans}
+          totals={totals} avecRec={avecRec} batterieInvendableServeur={batterieInvendableServeur}
+          verdictBatterieServeur={verdictBatterieServeur} apercuEcoAvec={apercuEcoAvec}
+          apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec}
+          capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
+          chartData={chartData}
+        />
         )}
 
         {/* ── Tailles Éco / Recommandé / Max (fondateur 26/08/2026) ──
@@ -3464,8 +2019,6 @@ export default function DevisGenerator({
             discountPct={discountPct}
             setDiscountPct={setDiscountPct}
             remiseMax={remiseMax}
-            tauxTva={tauxTva}
-            setTauxTva={setTauxTva}
             pkwc={pkwc}
             prixCible={prixCible}
             setPrixCible={setPrixCible}
@@ -3572,17 +2125,10 @@ export default function DevisGenerator({
         )}
         <Card>
           <CardContent className="pt-4 flex flex-col gap-3">
-            {marge != null && (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Marge indicative (interne)
-                </div>
-                <div className={`text-sm font-semibold ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-                  {formatMoney(marge)}
-                  {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
-                </div>
-              </div>
-            )}
+            {/* AGNR29 — même composant que le Rail : jamais un % sur un coût
+                partiel (« marge partielle : N ligne(s) sans prix d'achat »). */}
+            <MargeIndicative marge={marge} kpiTotal={kpiTotal}
+                             lignesSansAchat={buyDetail.sansAchat} variante="lateral" />
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
               <div className="text-sm text-foreground">

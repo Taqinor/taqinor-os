@@ -26,7 +26,7 @@
 //                        `current_fuel` / `fuel_spend_current`, plus jamais × 12.
 //                        AGR218 : `attestation` {attestee, le, signataire} →
 //                        `attestation_usage_agricole`.
-import { ttcFromHt, tauxTvaOf } from '../solar.js'
+import { ligneProduitCatalogue } from '../solar.js'
 
 const nombre = (v) => {
   const n = parseFloat(v)
@@ -375,12 +375,13 @@ export function lignesDepuisKit(kit, produits) {
     if (!Number.isFinite(quantite) || quantite <= 0) continue
     const p = (it.produit == null || it.prix_connu === false) ? null
       : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
-    rows.push({
-      produit: p ? String(p.id) : '',
-      designation: p ? p.nom : (it.designation || it.libelle || '') + (it.designation ? '' : ' — prix à renseigner'),
+    // ATOT28 — un produit tarifé : ligne catalogue (HT d'origine porté).
+    rows.push(p ? ligneProduitCatalogue(p, quantite) : {
+      produit: '',
+      designation: (it.designation || it.libelle || '') + (it.designation ? '' : ' — prix à renseigner'),
       quantite,
-      prix_unit_ttc: p ? ttcFromHt(p.prix_vente, tauxTvaOf(p)) : 0,
-      taux_tva: p ? tauxTvaOf(p) : 20,
+      prix_unit_ttc: 0,
+      taux_tva: 20,
     })
   }
   return rows

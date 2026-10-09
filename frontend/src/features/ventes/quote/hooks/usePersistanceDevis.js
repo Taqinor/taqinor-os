@@ -7,7 +7,7 @@
 import { erreursConditions } from '../../echeancierEdition'
 import {
   controlerFacturesSaisies,
-  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
+  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement,
   consoAnnuelleDepuisFactures,
   controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
 } from '../../solar'
@@ -21,7 +21,7 @@ import crmApi from '../../../../api/crmApi'
 import { fetchAllPages } from '../../../../utils/fetchAllPages'
 import { getApiError } from '../../../../lib/apiError'
 import { erreursBaseLegaleServeur, lignesServeurVersEcran } from '../lignesEcran'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { withKeys } from '../ligneFabrique.js'
 
 // AGNR33 — les champs d'en-tête dont un refus 400 se lit sous le champ.
@@ -47,12 +47,13 @@ export function usePersistanceDevis(ctx) {
   const {
     navigate, confirm, setClients, setLeads, setSaving, setErrors, setWarnings,
     facturesEcartConfirmeRef, finish, editId, editDevis, jetonRef, forcerSansJetonRef,
-    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg,
+    setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur, messageErreurOverrides, leadId, setLeadId, clientId,
     setClientId, dateValidite, note, echeancierSaisie, echeancierAEnvoyer, conditions,
     conditionsServies, monthly, distributeur, realBillMode, realBillSaisi, distributeurChoisi,
     consoStockee, nbPanneaux, scenario, modeInstallation, pompeAlim, lines, setLines, tauxTva,
     discountPct, setDiscountPct, multiMode, nombreProprietes, profilCi, tarifSaisie, ecoCi,
+    setMultiMode, setNombreProprietes,
     categorieCommerciale, commercialAnswers, prixCible, accessoiresOnly, pompeCv, pompeType,
     pompeHmt, pompeDebit, pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
@@ -122,7 +123,8 @@ export function usePersistanceDevis(ctx) {
       // main-d'œuvre seuls, ou toute composition hors calculateur), MÊME sur
       // un devis « Hors réseau » — cette garde ne dépend jamais de `horsReseau`.
       const usable = usableLines()
-      const has = (pred) => usable.some(l => pred(l.designation))
+      // AGNR36 — la garde classe chaque ligne sur désignation + produit lié.
+      const has = (pred) => usable.some(l => pred(texteClassement(l, produits)))
       if (modeInstallation === 'agricole') {
         // AGR130 — une pompe EXISTANTE n'a pas de ligne pompe (le kit n'en
         // pose pas) ; une pompe NEUVE exige une pompe ENREGISTRABLE — AGNR31 :
@@ -393,6 +395,26 @@ export function usePersistanceDevis(ctx) {
   // route (réseau) ; jamais une erreur de programmation côté écran.
   const refusDistant = (err) => Boolean(err?.response) || err?.code === 'ERR_NETWORK'
 
+  // AGNR40 — UNE `Idempotency-Key` par session de création : posée au premier
+  // essai, renvoyée telle quelle à chaque nouvel essai (le serveur rejoue le
+  // premier devis si la coupure est survenue APRÈS son commit), oubliée dès
+  // qu'une création a réussi (la session de création est finie).
+  const cleCreationRef = useRef(null)
+  const cleCreation = () => {
+    if (!cleCreationRef.current) {
+      cleCreationRef.current = globalThis.crypto?.randomUUID?.()
+        || `devis-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+    }
+    return cleCreationRef.current
+  }
+  // AGNR40 — issue INCONNUE : la requête a pu être enregistrée sans que la
+  // réponse arrive (coupure, délai, 5xx sans corps) ou la clé a déjà servi.
+  const issueInconnue = (err) => {
+    if (err?.response?.data?.code === 'idempotency_conflict') return true
+    if (!err?.response) return ['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT'].includes(err?.code)
+    return err.response.status >= 500 && !err.response.data?.detail
+  }
+
   const persisterDevis = async (surcharge = null) => {
     setSaving(true)
     // AGNR21 — trois issues : ok, PARTIEL (lignes écrites, étude ou registre
@@ -428,7 +450,10 @@ export function usePersistanceDevis(ctx) {
         // par `etatVersEcritures` quand il est propre au devis ou touché.
         const extra = {
           entete: surcharge?.entete ? { ...payload, ...surcharge.entete } : payload,
-          etude_params: surcharge?.etude_params ?? choixEcran(),
+          // AGNR22 — une version restaurée rejoue SON étude, telle que servie
+          // (clés écran absentes à null, AGNR9) ; jamais `choixEcran()` de
+          // l'écran d'avant (le ×4 posé depuis survivait à la restauration).
+          etude_params: surcharge ? surcharge.etude_params : choixEcran(),
         }
         // QJR549 — le jeton part avec l'édition ; « Enregistrer quand même »
         // (après un 409) renvoie UNE fois sans jeton.
@@ -459,7 +484,8 @@ export function usePersistanceDevis(ctx) {
         // repose les mêmes choix + les entrées réelles, sans bouger le total).
         const { data } = await ventesApi.createDevisAtomic({
           ...payload, etude_params: choixEcran(), lignes: lignesPayload,
-        })
+        }, { idempotencyKey: cleCreation() })
+        cleCreationRef.current = null
         devisId = data.id
         devisCree = data
         // AGNR21 — le devis EXISTE désormais : un nouvel essai (après une
@@ -575,6 +601,9 @@ export function usePersistanceDevis(ctx) {
         setErreursChamps(parChamp)
         msg = Object.entries(parChamp)
           .map(([champ, texte]) => `${LIBELLES_CHAMPS_ENTETE[champ]} : ${texte}`).join(' · ')
+      } else if (!editDevis && issueInconnue(err)) {
+        // AGNR40 — jamais « vérifiez les champs » quand le devis a pu être créé.
+        msg = 'La connexion a été interrompue — vérifiez la liste des devis avant de recréer.'
       } else if (typeof raw?.detail === 'string') {
         msg = raw.detail
       } else {
@@ -613,6 +642,12 @@ export function usePersistanceDevis(ctx) {
       return copie
     })
     if (!lignesSnap.length) return
+    // AGNR22 — un instantané ancien SANS étude n'est jamais fusionné avec
+    // l'état d'écran courant : la restauration est refusée, rien n'est écrit.
+    if (!contenu.etude || typeof contenu.etude !== 'object') {
+      toast.error('Version sans étude — restauration impossible.')
+      return
+    }
     const ok = await confirm({
       title: 'Revenir à cette version ?',
       description: 'Le devis reprend les lignes, la remise et l\'échéancier de cette '
@@ -627,9 +662,21 @@ export function usePersistanceDevis(ctx) {
     const entete = {}
     if (contenu.remise_globale != null) entete.remise_globale = contenu.remise_globale
     if (Array.isArray(contenu.echeancier)) entete.echeancier = contenu.echeancier
-    const etude = contenu.etude && Object.keys(contenu.etude).length ? contenu.etude : undefined
+    const etude = contenu.etude
     const res = await persisterDevis({ lignes: lignesSnap, entete, etude_params: etude })
     if (res && !res.reserve) {
+      // AGNR22 — l'écran suit l'étude de la version : le rechargement `?edit=`
+      // ne repose le mode multi-propriétés que si la clé existe ; une version
+      // mono (`nombre_proprietes` null) ramène l'écran à « Une seule ».
+      if (!lignesSnap.some((l) => l.groupe_index != null)) {
+        const n = parseInt(etude.nombre_proprietes, 10)
+        if (Number.isFinite(n) && n > 1) {
+          setMultiMode('multiplier')
+          setNombreProprietes(String(n))
+        } else {
+          setMultiMode('none')
+        }
+      }
       toast.success('Version restaurée et enregistrée.')
       clear()
       setVersionHistorique(n => n + 1)
