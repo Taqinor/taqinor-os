@@ -11,7 +11,7 @@ from authentication.models import Company
 
 from apps.installations import selectors
 from apps.installations.models import Installation
-from apps.ventes.models import Client
+from apps.crm.models import Client
 
 
 class ChantierClientTests(TestCase):

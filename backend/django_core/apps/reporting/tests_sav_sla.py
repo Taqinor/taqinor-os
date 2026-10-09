@@ -50,23 +50,21 @@ class TestSavSlaCompliance(SavSlaBase):
             priorite=Ticket.Priorite.URGENTE,
             statut=Ticket.Statut.CLOTURE,
             sla_due_at=today + timedelta(days=2),
+            sla_reponse_due_at=today + timedelta(days=2),
             date_resolution=today,
         )
-        # ASAV18 — la première réponse se mesure contre l'échéance de
-        # RÉPONSE (`sla_reponse_due_at`), plus contre `sla_due_at`.
         Ticket.objects.filter(pk=t1.pk).update(
-            date_premiere_reponse=today,
-            sla_reponse_due_at=today + timedelta(days=1))
+            date_premiere_reponse=today)
         # Répondu et résolu EN RETARD (sla_due_at dépassé).
         t2 = self._make_ticket(
             priorite=Ticket.Priorite.URGENTE,
             statut=Ticket.Statut.CLOTURE,
             sla_due_at=today - timedelta(days=1),
+            sla_reponse_due_at=today - timedelta(days=1),
             date_resolution=today,
         )
         Ticket.objects.filter(pk=t2.pk).update(
-            date_premiere_reponse=today,
-            sla_reponse_due_at=today - timedelta(days=1))
+            date_premiere_reponse=today)
 
         resp = self.api.get('/api/django/reporting/insights/sav-sla/')
         self.assertEqual(resp.status_code, 200)

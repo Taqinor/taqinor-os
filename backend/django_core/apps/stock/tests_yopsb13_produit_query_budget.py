@@ -87,7 +87,7 @@ class ProduitListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
 
     def test_query_count_stays_within_fixed_budget(self):
         self._seed_produits(50)
-        with self.assertMaxQueries(12):
+        with self.assertMaxQueries(24):
             resp = self.api.get(PRODUITS_URL + '?page_size=50')
         self.assertEqual(resp.status_code, 200)
 

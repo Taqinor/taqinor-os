@@ -53,7 +53,10 @@ class ReouvertureInterventionTests(TestCase):
         def _abonne(sender, **kwargs):
             self.evenements.append(kwargs)
 
-        intervention_completed.connect(_abonne, dispatch_uid='acht36-temoin')
+        # weak=False : _abonne est une fermeture locale, sinon ramassée (GC) dès la
+        # fin de setUp et l'événement n'arrive jamais.
+        intervention_completed.connect(
+            _abonne, dispatch_uid='acht36-temoin', weak=False)
         self.addCleanup(intervention_completed.disconnect,
                         dispatch_uid='acht36-temoin')
 

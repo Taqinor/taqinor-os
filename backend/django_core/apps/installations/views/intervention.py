@@ -2070,7 +2070,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         qs = qs.select_related(
             'technicien', 'installation', 'installation__client',
             'camionnette',
-        ).prefetch_related(*dispatch_prefetches()).order_by('date_prevue', 'id')
+        ).order_by('date_prevue', 'id')  # prefetch_related(dispatch) déjà posé par get_queryset
         # Regrouper par technicien
         from collections import defaultdict
         by_tech = defaultdict(list)

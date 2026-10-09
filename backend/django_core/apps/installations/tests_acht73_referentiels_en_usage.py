@@ -100,8 +100,10 @@ class ReferentielsEnUsageTests(TestCase):
 
     def test_ensure_fiche_releve_ne_supprime_pas_de_valeur(self):
         # Gabarit changé : la valeur de l'ancien champ reste en historique.
+        # (unique_together (company, type_intervention) : l'ancien gabarit du
+        # relevé est d'un AUTRE type que celui de l'intervention.)
         autre = FicheInterventionTemplate.objects.create(
-            company=self.company, nom='Autre', type_intervention='controle',
+            company=self.company, nom='Autre', type_intervention='depannage',
             actif=False)
         FicheInterventionChamp.objects.create(
             company=self.company, template=autre, cle='x', libelle='X',

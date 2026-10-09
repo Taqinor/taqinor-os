@@ -20,7 +20,7 @@ from authentication.models import Company
 
 from apps.installations import tasks
 from apps.installations.models import Installation, Intervention
-from apps.ventes.models import Client
+from apps.crm.models import Client
 
 User = get_user_model()
 

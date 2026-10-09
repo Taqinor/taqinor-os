@@ -74,6 +74,19 @@ class CategorieSerializer(serializers.ModelSerializer):
             return annotated
         if obj.pk is None:
             return 0
+        # Imbriqué (ProduitSerializer.categorie, ligne de liste) : une seule
+        # requête groupée par société et par requête HTTP au lieu d'un
+        # count() par produit (N+1, garde YOPSB13).
+        if self.parent is not None:
+            from django.db.models import Count
+            cache = self.root._context.setdefault('_nb_produits_par_categorie', {})
+            if obj.company_id not in cache:
+                cache[obj.company_id] = dict(
+                    Produit.objects.filter(
+                        company_id=obj.company_id, is_archived=False)
+                    .order_by().values_list('categorie_id')
+                    .annotate(n=Count('id')))
+            return cache[obj.company_id].get(obj.pk, 0)
         return obj.produits.filter(is_archived=False).count()
 
     def validate(self, attrs):
