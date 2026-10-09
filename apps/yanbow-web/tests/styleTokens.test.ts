@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const TOKENS = readFileSync(SRC + 'styles/tokens.css', 'utf-8');
 const GLOBAL = readFileSync(SRC + 'styles/global.css', 'utf-8');
+const SITE = readFileSync(SRC + 'styles/site.css', 'utf-8');
 const ORANGE = '#C8762B';
 const BLANC = '#FFFFFF';
 
@@ -68,6 +69,23 @@ const PAIRES: Paire[] = [
   { premier: '--accent-graphique', fond: '--fond', seuil: 3, usage: 'graphique / titre >= 24 px' },
   { premier: '--logo-arrow', fond: '--fond', seuil: 3, usage: 'flèche du logo' },
   { premier: '--logo-ink', fond: '--fond', seuil: 3, usage: 'logo' },
+  // YBW44 — jetons figés de la direction « A maison + bandes produit B ».
+  { premier: '--texte', fond: '--fond-alt', seuil: 4.5, usage: 'texte sur fond alterné' },
+  { premier: '--texte-attenue', fond: '--fond-alt', seuil: 4.5, usage: 'texte atténué sur fond alterné' },
+  { premier: '--focus', fond: '--fond', seuil: 3, usage: 'anneau de focus' },
+  { premier: '--bouton-fond', fond: '--fond', seuil: 3, usage: 'bouton sur le fond' },
+  { premier: '--capture-texte', fond: '--capture-fond', seuil: 4.5, usage: 'emplacement de capture' },
+  { premier: '--bande-texte', fond: '--bande-fond', seuil: 4.5, usage: 'bande finale' },
+  { premier: '--bande-attenue', fond: '--bande-fond', seuil: 4.5, usage: 'bande finale, texte atténué' },
+  { premier: '--bouton-fond', fond: '--bande-fond', seuil: 3, usage: 'bouton sur la bande finale' },
+  { premier: '--bande-logo-ink', fond: '--bande-fond', seuil: 3, usage: 'logo sur la bande finale' },
+  { premier: '--bande-accent', fond: '--bande-fond', seuil: 3, usage: 'graphique sur la bande finale' },
+  { premier: '--nuit-texte', fond: '--nuit-fond', seuil: 4.5, usage: 'bande produit nuit' },
+  { premier: '--nuit-attenue', fond: '--nuit-fond', seuil: 4.5, usage: 'bande produit nuit, texte atténué' },
+  { premier: '--nuit-accent-texte', fond: '--nuit-fond', seuil: 4.5, usage: 'bande produit nuit, accent texte' },
+  { premier: '--nuit-graphique', fond: '--nuit-fond', seuil: 3, usage: 'bande produit nuit, graphique' },
+  { premier: '--bouton-fond', fond: '--nuit-fond', seuil: 3, usage: 'bouton sur la bande produit' },
+  { premier: '--nuit-capture-texte', fond: '--nuit-capture-fond', seuil: 4.5, usage: 'emplacement de capture sur la nuit' },
 ];
 
 /** Violations de contraste d'un schéma. */
@@ -108,9 +126,7 @@ function fichiers(dir: string): string[] {
 /** Fichiers de src/ (hors tokens.css et pack logo) contenant un hex brut. */
 export function hexBruts(entrees: { rel: string; contenu: string }[]): string[] {
   return entrees
-    // Jetons des candidats du tour design (YBW42) : `styles/candidates/<id>.tokens.css` seulement,
-    // contrastes calculés par tests/designCandidates.test.ts.
-    .filter((f) => f.rel !== 'styles/tokens.css' && !/^styles\/candidates\/[a-z]\.tokens\.css$/.test(f.rel))
+    .filter((f) => f.rel !== 'styles/tokens.css')
     .filter((f) => !f.rel.startsWith('brand/') && /\.(css|astro|ts|tsx|mjs|js)$/.test(f.rel))
     .filter((f) => /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?(?:[0-9a-fA-F]{2})?\b/.test(f.contenu))
     .map((f) => f.rel);
@@ -123,13 +139,32 @@ describe('YBW38 — valeurs connues', () => {
     expect(contraste(ORANGE, '#FFFFFF').toFixed(2)).toBe('3.45');
   });
 
-  it('palette du plan', () => {
+  it('palette figée (YBW44, direction A « Encre et papier »)', () => {
     expect(racineClaire['--couleur-encre']).toBe('#1B1B1B');
     expect(racineClaire['--couleur-orange']).toBe(ORANGE);
     expect(racineClaire['--couleur-orange-texte']).toBe('#A6591A');
     expect(racineClaire['--couleur-papier']).toBe('#FAF7F2');
-    expect(racineClaire['--couleur-gris-texte']).toBe('#6B6B6B');
-    expect(racineClaire['--couleur-gris-sur-sombre']).toBe('#A3A3A3');
+    expect(racineClaire['--couleur-gris-texte']).toBe('#5E5A54');
+    expect(racineClaire['--couleur-gris-sur-sombre']).toBe('#A8A29A');
+  });
+
+  it('YBW44 : en sombre, la bande produit se détache de la page et est bordée (critique YBW43, B-1)', () => {
+    const s = SCHEMAS.sombre;
+    expect(resoudre('var(--nuit-fond)', s)).not.toBe(resoudre('var(--fond)', s));
+    expect(resoudre('var(--nuit-bord)', s)).not.toBe(resoudre('var(--nuit-fond)', s));
+  });
+
+  it('YBW44 : la capture reste CLAIRE sur la bande produit, dans les deux schémas (principe B)', () => {
+    for (const s of Object.values(SCHEMAS)) {
+      expect(resoudre('var(--nuit-capture-fond)', s)).toBe(resoudre('var(--couleur-capture)', s));
+      expect(contraste(resoudre('var(--nuit-capture-fond)', s), resoudre('var(--nuit-fond)', s))).toBeGreaterThan(3);
+    }
+  });
+
+  it('YBW44 : en sombre, l’orange posé sur la feuille de papier est l’orange foncé (critique YBW43, A-2)', () => {
+    const s = SCHEMAS.sombre;
+    expect(resoudre('var(--bande-accent)', s)).toBe('#A6591A');
+    expect(contraste(ORANGE, resoudre('var(--bande-fond)', s))).toBeLessThan(3.05);
   });
 });
 
@@ -151,6 +186,7 @@ describe('YBW38 — contrastes calculés, chaque schéma', () => {
 
 describe('YBW38 — règles interdites (feuilles réelles + pièges plantés)', () => {
   it('global.css : aucune violation', () => expect(violationsRegles(GLOBAL)).toEqual([]));
+  it('site.css (YBW44) : aucune violation', () => expect(violationsRegles(SITE)).toEqual([]));
 
   it('piège : texte #C8762B à 16 px sur clair', () => {
     expect(violationsRegles('.x { color: var(--couleur-orange); font-size: 1rem; }')).toEqual(['.x : texte #C8762B sous 24 px']);
@@ -179,7 +215,6 @@ describe('YBW38 — aucun hex brut hors tokens.css', () => {
   it('cas négatif : un hex planté dans un composant est détecté', () => {
     expect(hexBruts([{ rel: 'components/X.astro', contenu: '<style>.x{color:#C8762B}</style>' }])).toEqual(['components/X.astro']);
     expect(hexBruts([{ rel: 'styles/tokens.css', contenu: '--a:#fff;' }])).toEqual([]);
-    expect(hexBruts([{ rel: 'styles/candidates/a.tokens.css', contenu: '--a:#fff;' }])).toEqual([]);
-    expect(hexBruts([{ rel: 'styles/candidates/a.css', contenu: '.x{color:#fff}' }])).toEqual(['styles/candidates/a.css']);
+    expect(hexBruts([{ rel: 'styles/site.css', contenu: '.x{color:#fff}' }])).toEqual(['styles/site.css']);
   });
 });

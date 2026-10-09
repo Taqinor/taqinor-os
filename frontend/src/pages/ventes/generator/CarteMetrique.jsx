@@ -17,7 +17,10 @@
 // design system) : elle vit ici avec `CarteMetrique` pour que les morceaux
 // extraits (LigneTable, RailArgent, les quatre panneaux de marché) la
 // partagent au lieu d'en recopier le balisage — aucun double chemin.
+import { ChevronDown } from 'lucide-react'
 import { unwrap } from '../../../features/ventes/quote/valeur'
+import { Button } from '../../../ui'
+import { cn } from '../../../lib/cn'
 
 // QA-FIGURES — ancre `data-figure` (vocabulaire unique :
 // backend/django_core/apps/ventes/quote_engine/figures.py, FIGURE_KEYS) posée
@@ -35,13 +38,40 @@ function AncreFigure({ figure, option, contenu }) {
   )
 }
 
-/** En-tête de carte du générateur (style design system, repose sur Card). */
-export function GenCardHeader({ icon: Icon, title, children }) {
+/**
+ * En-tête de carte du générateur (style design system, repose sur Card).
+ *
+ * EDC9 — `repliable` ajoute le bouton « Replier / Déplier » (`aria-expanded`,
+ * `aria-controls` = `controle`, l'id du contenu) ; `replie` et `onBasculer`
+ * appartiennent à l'appelant. La carte n'est jamais masquée : seul son contenu
+ * se replie, l'en-tête reste (et perd son filet bas, sans doublon de bordure).
+ */
+export function GenCardHeader({
+  icon: Icon, title, children,
+  repliable = false, replie = false, onBasculer = null, controle = undefined,
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+    <div className={cn(
+      'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5',
+      repliable && replie && 'border-b-0',
+    )}>
       {Icon && <Icon className="size-4 text-primary" aria-hidden="true" />}
       <span className="font-display text-base font-semibold tracking-tight">{title}</span>
-      {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
+      {(children || repliable) && (
+        <div className="ml-auto flex items-center gap-2">
+          {children}
+          {repliable && (
+            <Button type="button" size="sm" variant="ghost" className="gen-carte-repli"
+                    aria-expanded={!replie} aria-controls={controle}
+                    aria-label={`${replie ? 'Déplier' : 'Replier'} « ${title} »`}
+                    onClick={onBasculer}>
+              <ChevronDown aria-hidden="true" className="gen-carte-repli-icone"
+                           data-replie={replie ? 'true' : 'false'} />
+              {replie ? 'Déplier' : 'Replier'}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

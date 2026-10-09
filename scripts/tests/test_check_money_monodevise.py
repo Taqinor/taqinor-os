@@ -110,9 +110,66 @@ class ScanRepoSmokeTests(unittest.TestCase):
         self.assertTrue(devis.has_devise)
         self.assertTrue(devis.has_rate)
 
-    def test_main_always_exits_zero(self):
-        # main() itself always returns 0 (advisory-only, never fails CI).
+    def test_main_exits_zero_when_no_finding(self):
+        # ENF13 — blocking: main() is 0 only because the repo has 0 finding.
+        self.assertEqual(cmf.find_violations(cmf.scan_money_models()), [])
         self.assertEqual(cmf.main(), 0)
+
+
+class ViolationsTests(unittest.TestCase):
+    """ENF13 — DEVISE_MONTANT / DEVISE_DEFAUT are blocking findings."""
+
+    def _violations(self, src):
+        info = cmf._scan_class("achats", "apps/achats/models.py", _first_class(src))
+        return cmf.find_violations([info])
+
+    def test_montant_en_devise_sans_devise_est_un_constat(self):
+        src = """
+class Ligne(models.Model):
+    prix_achat = models.DecimalField(max_digits=12, decimal_places=2)
+    prix_achat_devise = models.DecimalField(max_digits=12, decimal_places=2)
+"""
+        out = self._violations(src)
+        self.assertEqual(len(out), 1)
+        self.assertIn("DEVISE_MONTANT", out[0])
+
+    def test_accesseur_devise_satisfait_la_regle(self):
+        src = """
+class Ligne(models.Model):
+    prix_achat_devise = models.DecimalField(max_digits=12, decimal_places=2)
+
+    @property
+    def devise(self):
+        return self.parent.devise
+"""
+        self.assertEqual(self._violations(src), [])
+
+    def test_champ_devise_satisfait_la_regle(self):
+        src = """
+class Doc(models.Model):
+    montant_ttc_devise = models.DecimalField(max_digits=12, decimal_places=2)
+    devise = models.CharField(max_length=3, default='MAD')
+"""
+        self.assertEqual(self._violations(src), [])
+
+    def test_defaut_non_mad_est_un_constat(self):
+        src = """
+class Doc(models.Model):
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    devise = models.CharField(max_length=3, default='EUR')
+"""
+        out = self._violations(src)
+        self.assertEqual(len(out), 1)
+        self.assertIn("DEVISE_DEFAUT", out[0])
+
+    def test_defaut_mad_ou_vide_ou_enum_accepte(self):
+        for dflt in ("'MAD'", "''", "DeviseAchat.MAD"):
+            src = f"""
+class Doc(models.Model):
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    devise = models.CharField(max_length=3, default={dflt})
+"""
+            self.assertEqual(self._violations(src), [], dflt)
 
 
 if __name__ == "__main__":

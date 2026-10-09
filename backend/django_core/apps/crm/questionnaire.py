@@ -638,6 +638,7 @@ def _enregistrer_photo(lead, section, photo):
 _COLONNES_DERIVEES = {
     'email': ('email_normalise',),
     'telephone': ('phone_normalise',),
+    'whatsapp': ('whatsapp_normalise',),  # ACRM32
 }
 
 

@@ -1352,8 +1352,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # rendait l'étape de visite comme « plan déjà en cours » et aucun suivi
     # de proposition ne démarrait.
     ouvertes_deja = list(
-        deja.filter(statut=RelanceEtape.Statut.A_FAIRE)
-        .exclude(q_visite())
+        deja.filter(_q_plan_ouvert())  # ACRM46 — prédicat partagé
         .order_by('ordre', 'due_date'))
     if ouvertes_deja:
         return ouvertes_deja
@@ -2625,6 +2624,17 @@ def q_visite():
     return q_etape(*CLES_VISITE)
 
 
+def _q_plan_ouvert():
+    """ACRM46 — LE prédicat « plan ouvert » (TREADMILL-1538) : une touche
+    de cadence À FAIRE qui n'est pas un geste de visite. Partagé par
+    ``initialiser_plan_relance`` (idempotence) et le placement des anciens
+    leads (``deja_en_cadence``) : des touches toutes closes ne tiennent plus
+    un lead."""
+    from django.db.models import Q
+
+    return Q(statut=RelanceEtape.Statut.A_FAIRE) & ~q_visite()
+
+
 def q_filet():
     """``est_etape_de_filet`` en requête : les étapes du gabarit « Après
     l'appel » (par clé, ou libellé par défaut) et les deux hors gabarit."""
@@ -3883,7 +3893,7 @@ def _garde_cadence_contact(lead):
     doublons = [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
-            exclude_pk=lead.pk)
+            exclude_pk=lead.pk, whatsapp=lead.whatsapp)  # ACRM32
         if not autre.is_archived and not autre.perdu]
     # CAD128 — un homonyme SIGNÉ n'est pas un doublon vivant : c'est un CLIENT
     # qui revient, le meilleur lead du portefeuille. Il sort de la garde
@@ -4197,15 +4207,19 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
     pas faire retomber l'acceptation d'un devis déjà actée."""
     if not lead_id:
         return 0
+    from django.db import transaction
     try:
-        qs = Lead.objects.filter(pk=lead_id)
-        if company is not None:
-            qs = qs.filter(company=company)
-        lead = qs.first()
-        if lead is None:
-            return 0
-        return arreter_cadence(lead, user=user, motif=motif,
-                               cadences=cadences)
+        # ADEV54 — point de sauvegarde PROPRE : une erreur base pendant
+        # l'arrêt est annulée seule, jamais la signature du devis.
+        with transaction.atomic():
+            qs = Lead.objects.filter(pk=lead_id)
+            if company is not None:
+                qs = qs.filter(company=company)
+            lead = qs.first()
+            if lead is None:
+                return 0
+            return arreter_cadence(lead, user=user, motif=motif,
+                                   cadences=cadences)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
@@ -4732,7 +4746,7 @@ def find_duplicate_leads(lead, *, queryset=None):
 
 
 def find_duplicates_by_contact(company, *, phone=None, email=None,
-                               exclude_pk=None, queryset=None):
+                               exclude_pk=None, queryset=None, whatsapp=None):
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
@@ -4748,12 +4762,18 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     ``LeadViewSet.get_queryset()`` (société + portée équipe) — un lead hors
     portée n'est jamais rendu (ni ses PII). ``None`` = la société entière,
     voulu pour les chemins SYSTÈME (webhooks, imports, WhatsApp entrant,
-    DSR) qui doivent rapprocher sans utilisateur."""
+    DSR) qui doivent rapprocher sans utilisateur.
+
+    ACRM32 — un numéro est cherché sur ``phone_normalise`` OU
+    ``whatsapp_normalise`` (un lead connu seulement par son WhatsApp est
+    retrouvé) ; ``whatsapp`` (optionnel) ajoute un second numéro à chercher
+    de la même façon."""
     from django.db.models import Q
 
-    phone = normalize_phone(phone)
+    numeros = {k for k in (normalize_phone(phone), normalize_phone(whatsapp))
+               if k}
     email = normalize_email(email)
-    if not phone and not email:
+    if not numeros and not email:
         return []
     base = queryset if queryset is not None else Lead.objects.all()
     qs = base.filter(company=company)
@@ -4761,8 +4781,9 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
         qs = qs.exclude(pk=exclude_pk)
 
     q = Q()
-    if phone:
-        q |= Q(phone_normalise=phone)
+    if numeros:
+        q |= (Q(phone_normalise__in=numeros)
+              | Q(whatsapp_normalise__in=numeros))
     if email:
         q |= Q(email_normalise=email)
     return list(qs.filter(q))
@@ -6109,7 +6130,8 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     if telephone:
         lead.telephone = telephone
         lead.whatsapp = telephone
-        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise'])
+        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise',
+                                 'whatsapp_normalise'])
     return lead
 
 
@@ -7332,16 +7354,13 @@ def _build_lead_wa_reply_url(lead):
             or getattr(lead, 'telephone', None)
             or ''
         )
-        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        # ACRM39 — normaliseur sanctionné (E.164) : un numéro français reste
+        # 33…, « +212 (0)6… » perd son zéro ; non normalisable ⇒ pas de lien
+        # (jamais un numéro inventé).
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone_raw)
         if not digits:
             return None
-        # Format international marocain (wa.me exige l'indicatif pays).
-        if digits.startswith('00'):
-            digits = digits[2:]
-        if digits.startswith('0'):
-            digits = '212' + digits[1:]
-        elif not digits.startswith('212'):
-            digits = '212' + digits
         nom = (
             (getattr(lead, 'nom', '') or '').strip()
             or 'votre client'
@@ -9291,8 +9310,11 @@ def dispatch_appointment_reminder(appointment) -> bool:
             f'Rappel : votre visite est prévue le {date_str}. '
             f'Notre équipe sera présente. Merci !'
         )
-        if phone:
-            digits = ''.join(c for c in phone if c.isdigit())
+        # ACRM39 — même normaliseur E.164 que les autres liens wa.me ;
+        # numéro non normalisable ⇒ aucun lien.
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone) if phone else None
+        if digits:
             wa_url = (f'https://wa.me/{digits}?text='
                       f'{urllib.parse.quote(msg)}')
             _appt_logger.info(
@@ -9474,13 +9496,20 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
     conservant la trace « Créé depuis le ticket SAV … » sur le chatter du lead.
 
     Renvoie ``(lead, created)``."""
+    # ACRM43 — la docstring dit « non archivé » : un lead archivé n'est
+    # jamais réutilisé (nouveau lead à la place).
     existant = (
         Lead.objects
-        .filter(company=company, client=client)
+        .filter(company=company, client=client, is_archived=False)
         .exclude(stage=stages.COLD)
         .order_by('-date_creation')
         .first())
     if existant is not None:
+        contexte_existant = (contexte or '').strip()
+        if contexte_existant:
+            # ACRM43 — le contexte du ticket est tracé au chatter du lead
+            # réutilisé (note SYSTÈME, même règle QJ7 que la création).
+            activity.log_note(existant, None, contexte_existant)
         return existant, False
 
     lead = Lead.objects.create(
@@ -9821,6 +9850,14 @@ def update_lead_from_public_api(*, company, lead_id, fields):
     clean = {k: v for k, v in (fields or {}).items()
              if k in PUBLIC_LEAD_WRITABLE_FIELDS}
     stage = clean.get('stage')
+    # ACRM58 — ``stage`` présent mais vide (null comme '') : erreur SOUS LE
+    # CHAMP (400 ``{stage: [...]}``), jamais un IntegrityError (500). Une
+    # ValidationError DRF (pas un ValueError) pour que la vue publique la
+    # rende telle quelle, champ nommé ; l'import en masse l'inscrit en ligne
+    # en erreur.
+    if 'stage' in clean and stage in (None, ''):
+        raise DRFValidationError(
+            {'stage': ["L'étape ne peut pas être vide."]})
     if stage is not None and stage not in stages.STAGES:
         raise ValueError(
             f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
@@ -10475,6 +10512,13 @@ PLACEMENT_LOT_MAX = 200
 PLACEMENT_APERCU_MAX = 20
 
 
+#: ACRM47/ACRM61 — message de la réponse 503 ``{detail}`` (contrat
+#: ``placement_anciens_leads.json``, ``exemple_erreur``).
+PLACEMENT_DEVIS_ILLISIBLES = (
+    "Lecture des devis acceptés indisponible : placement suspendu, rien "
+    "n'a été appliqué")
+
+
 class PlacementImpossible(Exception):
     """Un lead retenu n'a finalement pas pu être placé (cadence vide, gabarit
     absent…). Comptée dans ``erreurs`` du rapport, jamais propagée : le
@@ -10511,19 +10555,21 @@ def _placement_devis_du_lot(company, lead_ids):
     (jamais ``ventes.models`` — frontière M3) : les leads à devis ACCEPTÉ (à
     écarter) et le dernier devis ENVOYÉ de chacun (qui date la cadence).
 
-    Best-effort : si ``ventes`` est illisible, le placement continue SANS
-    information de devis plutôt que d'échouer en bloc — les décisions
-    retombent alors sur l'étape et l'ancienneté."""
+    ACRM47 — échoue FERMÉ : si ``ventes`` est illisible, la garde « devis
+    accepté » ne peut plus écarter les signés — continuer enverrait au Froid
+    un client qui a dit oui. ``PlacementImpossible`` (message français) est
+    levée AVANT toute écriture : la vue répond 503 ``{detail}``, la commande
+    sort en erreur, rien n'est appliqué."""
     try:
         from apps.ventes.selectors import (
             dernier_devis_envoye_par_lead, leads_avec_devis_accepte)
         return (leads_avec_devis_accepte(company, lead_ids),
                 dernier_devis_envoye_par_lead(company, lead_ids))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — journalisé puis échec fermé
         logger.warning(
             'MRY30: devis illisibles (société %s)',
             getattr(company, 'pk', '?'), exc_info=True)
-        return set(), {}
+        raise PlacementImpossible(PLACEMENT_DEVIS_ILLISIBLES) from exc
 
 
 def _decider_placements(company, maintenant, gabarits=None,
@@ -10554,15 +10600,23 @@ def _decider_placements(company, maintenant, gabarits=None,
         base = base.filter(pk__in=leads_en_portee.values('pk'))
     candidats = list(base.order_by('pk'))
     total = len(candidats)
-    ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0}
+    # ACRM61/ACRM20 — ``rappel_manuel_a_venir`` : entier, jamais null.
+    ignores = {'deja_en_cadence': 0, 'devis_accepte_non_signe': 0,
+               'rappel_manuel_a_venir': 0}
     if not candidats:
         return [], ignores, total
+    # ACRM20 — date LOCALE du jour (Africa/Casablanca) du moment de décision.
+    aujourdhui = timezone.localtime(maintenant).date()
 
     ids = [lead.pk for lead in candidats]
     # Le moteur TIENT déjà ces dossiers : une seconde cadence dessus, ce sont
     # deux séries de messages parallèles à la même personne.
+    # ACRM46 — seul un plan OUVERT (touche À FAIRE, prédicat partagé avec
+    # ``initialiser_plan_relance``) tient le lead : des touches toutes closes
+    # (faites/sautées/annulées) le rendent candidat au placement.
     deja = set(RelanceEtape.objects.filter(
-        company=company, lead_id__in=ids).values_list('lead_id', flat=True))
+        _q_plan_ouvert(), company=company, lead_id__in=ids)
+        .values_list('lead_id', flat=True))
     acceptes, envoyes = _placement_devis_du_lot(company, ids)
 
     humaines = _placement_derniers_par_lead(
@@ -10582,6 +10636,12 @@ def _decider_placements(company, maintenant, gabarits=None,
             # relance : demander « alors, ce devis ? » à quelqu'un qui a dit
             # oui est le pire message du portefeuille.
             ignores['devis_accepte_non_signe'] += 1
+            continue
+        if lead.relance_date is not None and lead.relance_date >= aujourdhui:
+            # ACRM20 — un rappel MANUEL à venir (posé par la commerciale) tient
+            # le lead hors dormance : jamais de Froid, d'étiquette ni de
+            # Réveil, et sa ``relance_date`` n'est jamais remplacée.
+            ignores['rappel_manuel_a_venir'] += 1
             continue
         devis = envoyes.get(lead.pk)
         # L'ANCRE : le dernier signe de vie du dossier, quelle qu'en soit la
@@ -13357,7 +13417,7 @@ def homonymes_signes(lead):
     return [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
-            exclude_pk=lead.pk)
+            exclude_pk=lead.pk, whatsapp=lead.whatsapp)  # ACRM32 (jumeau)
         if not autre.is_archived and not autre.perdu
         and autre.stage == stages.SIGNED
     ]

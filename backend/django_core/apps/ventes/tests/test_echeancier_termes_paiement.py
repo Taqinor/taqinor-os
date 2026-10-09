@@ -61,8 +61,11 @@ class TermesPaiementDevis(TestCase):
                                               'solde': 10})
         self.assertEqual(Decimal(str(slots['acompte'])), Decimal('45'))
         self.assertEqual(Decimal(str(slots['solde'])), Decimal('55'))
-        # Créneau absent de l'échéancier : la société.
-        self.assertEqual(slots['materiel'], 60)
+        # AMOT70 — RÈGLE REMPLACÉE (jamais affaiblie) : un créneau absent de
+        # l'échéancier du devis vaut 0 — l'ancienne valeur (le défaut société,
+        # 60) imprimait 45 + 60 + 55 = 160 %.
+        self.assertEqual(slots['materiel'], 0)
+        self.assertEqual(sum(float(v) for v in slots.values()), 100)
 
     def test_sans_devis_la_societe_seule(self):
         from apps.ventes.utils.echeancier import termes_paiement_devis

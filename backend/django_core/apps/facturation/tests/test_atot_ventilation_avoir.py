@@ -139,7 +139,14 @@ class VentilationAvoirTests(TestCase):
         facture = self._acompte()
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
-            {}, format='json')
+            # AFAC32 — note PARTIELLE seulement (plus de copie de toute la
+            # facture) : une ligne saisie sans taux suit les paniers de la
+            # facture au prorata, exactement comme l'avoir partiel.
+            {'motif': 'Complément',
+             'lignes': [{'designation': 'Complément', 'quantite': '1',
+                         'prix_unitaire': '10000',
+                         'produit': self.produit.id}]}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         note = NoteDebit.objects.get(pk=r.data['id'])
-        self.assertEqual(_paniers(note), DEUX_PANIERS)
+        self.assertEqual(_paniers(note), [(Decimal('10.00'), Decimal('400.00')),
+                                          (Decimal('20.00'), Decimal('1200.00'))])

@@ -130,13 +130,18 @@
          et RC, chacun omis s'il est vide (jamais un tiret). #}
       {% if facture.client.type_client == 'entreprise' %}
       <div class="partie-nom">{{ facture.client.nom }}</div>
+      {% else %}
+      <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
+      {% endif %}
+      {# AFAC56 — ICE/IF/RC imprimés dès qu'ils sont renseignés (même règle
+         B2B que ``Facture._client_est_pro``), même pour un client de type
+         particulier. #}
+      {% if client_est_pro or facture.client.type_client == 'entreprise' or facture.client.ice or facture.client.if_fiscal or facture.client.rc %}
       <div class="partie-detail">
         {% if facture.client.ice %}ICE : {{ facture.client.ice }}<br />{% endif %}
         {% if facture.client.if_fiscal %}IF : {{ facture.client.if_fiscal }}<br />{% endif %}
         {% if facture.client.rc %}RC : {{ facture.client.rc }}<br />{% endif %}
       </div>
-      {% else %}
-      <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
       {% endif %}
       <div class="partie-detail">
         {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
@@ -315,6 +320,13 @@
   <div class="rib-block">
     <strong>Instructions de paiement</strong>
     <div style="white-space: pre-line;">{{ instructions_paiement }}</div>
+  </div>
+{% endif %}{% if facture.conditions_paiement %}
+  <!-- AFAC56 — conditions de paiement SAISIES sur la facture (retenue de
+       garantie comprise), distinctes des conditions générales du profil. -->
+  <div class="rib-block">
+    <strong>Conditions de paiement</strong>
+    <div style="white-space: pre-line;">{{ facture.conditions_paiement }}</div>
   </div>
 {% endif %}{% if conditions_generales %}
   <!-- Conditions générales (Feature B) — rendues seulement si renseignées. -->

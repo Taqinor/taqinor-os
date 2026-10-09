@@ -1,0 +1,42 @@
+---
+// Pied de page commun (YBW60) : nom (180 px), plan du site, liens juridiques
+// (YBW30 — rien tant que les pages juridiques sont incomplètes), slogan en
+// version lockup SEULEMENT à 420 px (masqué sous 768 px, jamais dans l'en-tête).
+import Logo from './Logo.astro';
+import LegalLinks from './LegalLinks.astro';
+import type { Locale } from '../i18n/config';
+import type { PageId } from '../i18n/pages';
+import { L, lecteur } from '../i18n/utils';
+import { fr } from '../i18n/components/chrome.fr';
+import { en } from '../i18n/components/chrome.en';
+import { PRODUITS } from '../lib/brand';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const tx = lecteur(fr, en, locale);
+const plan: { id: PageId; texte: string }[] = [
+  { id: 'solarbow', texte: PRODUITS.solarbow.nom },
+  { id: 'marketingbow', texte: PRODUITS.marketingbow.nom },
+  { id: 'surMesure', texte: tx('nav.surMesure') },
+  { id: 'societe', texte: tx('nav.societe') },
+  { id: 'rendezVous', texte: tx('nav.rdv') },
+];
+---
+<footer class="pied" aria-label={tx('pied.aria')}>
+  <div class="conteneur pied-int">
+    <div class="pied-marque">
+      <Logo variante="nom" taille={180} locale={locale} />
+      <nav class="pied-nav" aria-label={tx('pied.nav')}>
+        <ul>
+          {plan.map((e) => <li><a href={L(e.id, locale)}>{e.texte}</a></li>)}
+        </ul>
+      </nav>
+      <LegalLinks locale={locale} />
+    </div>
+    <div class="pied-slogan">
+      <Logo variante="slogan" taille={420} locale={locale} />
+    </div>
+  </div>
+</footer>

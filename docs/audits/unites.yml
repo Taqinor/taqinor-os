@@ -391,13 +391,13 @@ unites:
     I: 4
     score: 16
     niveau: L2
-    statut: audité
+    statut: construit
     groupe: ASTK
     plan: docs/plans/PLAN_AUDIT_STOCK.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md]
-    pr: 820
-    date: 2026-10-06
-    notes: "Audit L2 du 06/10/2026 (dossier docs/audits/2026-10-06-stock.md) : 55 constats (9 S1), 185 tâches ASTK, décisions D-ASTK-1..4 (D-ASTK-1 remplace la décision du 18/08 : seuls les devis BROUILLON suivent le catalogue). P re-scoré 3 → 4 : 106 défauts reproduits malgré les audits AUD2 (02/09) et STKCAT (16/09). possede aligné sur docs/ownership.yml (qui prime) ; crm/stock_selectors.py et core/events/stock.py y sont déclarés mais n'existent pas. Produit.prix_achat jamais client (tient) ; seed_catalogue additif sur prix/quantités (tient), mais il ré-écrit les fiches (question ASTK172)."
+    pr: 902
+    date: 2026-10-09
+    notes: "vérifie ASTK du 09/10/2026 (dossier docs/audits/2026-10-09-stock-verifie.md, PR 902) : 182 tâches cochées vérifiées (159 ok, 22 partiel, 1 faux), run live (26 écrans, S-A→S-F, 7 routes S-E), critique Fable ; 17 ERR-ASTK* + 1 GATED dans docs/ERROR_PLAN.md (1 S1 reproduit : comptage cyclique ASTK39 ; 1 S1 à confirmer : réservation après sortie partielle ASTK121 ; 6 S2 dont acompte tardif non imputé et annulation d'une réception facturée) → statut construit ; ASTK239 (acceptation live) jamais jouée par un plan-run. Audit L2 du 06/10/2026 (dossier docs/audits/2026-10-06-stock.md, PR 820) : 55 constats (9 S1), 185 tâches ASTK, décisions D-ASTK-1..4 (D-ASTK-1 remplace la décision du 18/08 : seuls les devis BROUILLON suivent le catalogue). P re-scoré 3 → 4 : 106 défauts reproduits malgré les audits AUD2 (02/09) et STKCAT (16/09). possede aligné sur docs/ownership.yml (qui prime) ; crm/stock_selectors.py et core/events/stock.py y sont déclarés mais n'existent pas. Produit.prix_achat jamais client (tient) ; seed_catalogue additif sur prix/quantités (tient), mais il ré-écrit les fiches (question ASTK172)."
 
   - id: J6
     rang: 12

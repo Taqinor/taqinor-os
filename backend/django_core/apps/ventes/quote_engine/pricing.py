@@ -169,7 +169,7 @@ class TrancheTable(list):
 #
 #   Les cinq autres tranches gardent leur valeur extrapolée : AUCUNE facture
 #   2026 ne les couvre, et on ne bouge pas un chiffre sans preuve (le conflit
-#   ouvert sur T6 est publié dans ``bareme.DIVERGENCES_PRICING``).
+#   ouvert sur T6 est noté dans le journal des divergences de ``bareme``).
 #
 # ÉDITABLE PAR SOCIÉTÉ (19/08/2026) — ces six valeurs restent le DÉFAUT codé
 # en dur ; une société peut les surcharger dans Paramètres → Tarification &
@@ -968,6 +968,43 @@ def compute_cashflow_payback(
     }
 
 
+def payback_publiable(investissement, economie_annee1, *, stockage=False,
+                      part_batterie=None, cout_onduleur_ttc=None,
+                      battery_roundtrip=None) -> dict:
+    """AMOT29 (C-AMOT-030) — LE payback qu'une surface CLIENT publie.
+
+    Une seule définition, celle du document : le croisement à zéro du
+    cashflow 25 ans (:func:`compute_cashflow_payback` — dégradation, provision
+    de remplacement de l'onduleur au prix RÉEL de sa ligne, part réellement
+    stockée), avec « jamais remboursé » dit comme tel. Le ratio simple
+    ``coût ÷ économie`` ne sert plus qu'au TRI interne des tailles.
+
+    Rend ``{'payback_years': float | None, 'jamais_rembourse': bool}`` :
+    ``payback_years`` vaut ``None`` quand il n'est pas chiffrable (prix ou
+    économie absents) OU quand le cumul ne croise jamais zéro
+    (``jamais_rembourse`` vrai) — jamais la sentinelle « 25 ans » publiée.
+    La clé reprend le vocabulaire de :func:`compute_cashflow_payback`
+    (``payback_years``) : le nom ``payback_annees`` reste aux blocs qui
+    PUBLIENT le chiffre (cartes, paliers) — garde QJR48.
+    """
+    try:
+        inv = float(investissement or 0)
+        eco = float(economie_annee1 or 0)
+    except (TypeError, ValueError):
+        return {"payback_years": None, "jamais_rembourse": False}
+    if inv <= 0 or eco <= 0:
+        return {"payback_years": None, "jamais_rembourse": False}
+    kwargs = {"battery": bool(stockage), "battery_share": part_batterie,
+              "inverter_replace_cost": cout_onduleur_ttc}
+    if battery_roundtrip:
+        kwargs["battery_roundtrip"] = float(battery_roundtrip)
+    cf = compute_cashflow_payback(inv, eco, **kwargs)
+    if cf.get("jamais_rembourse"):
+        return {"payback_years": None, "jamais_rembourse": True}
+    return {"payback_years": round(float(cf["payback_years"]), 2),
+            "jamais_rembourse": False}
+
+
 def _fr_pct(v) -> str:
     """0.5 -> '0,5' ; 2.0 -> '2' (French decimal comma, no trailing zero)."""
     s = f"{float(v):g}"
@@ -975,8 +1012,11 @@ def _fr_pct(v) -> str:
 
 
 def _fr_mad(v) -> str:
-    """12345 -> '12 345' (espace fine insécable, format des documents)."""
-    return f"{int(round(float(v))):,}".replace(",", " ")
+    """12345 -> '12 345' (espace fine insécable, format des documents).
+
+    AMOT26 — HALF_UP par ``montants.fmt_dirhams``."""
+    from .montants import fmt_dirhams
+    return fmt_dirhams(float(v))
 
 
 def cashflow_assumptions(inverter_replace_cost=None,
@@ -1266,10 +1306,32 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     }
 
 
-# Clé solaire saisonnière FIXE (somme = 1,000) : forme d'une économie annuelle
+# Clé solaire saisonnière (somme = 1) : forme d'une économie annuelle
 # répartie sur douze mois quand aucun moteur n'a calculé les mois un par un.
-CLE_SOLAIRE_MENSUELLE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                         0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
+# AMOT27 (C-AMOT-027) — DÉRIVÉE des poids GHI sourcés
+# (``constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS``, table verrouillée DC9) : la
+# MÊME forme que la production imprimée ; plus aucun littéral recopié.
+from .constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS as _POIDS_GHI  # noqa: E402
+
+CLE_SOLAIRE_MENSUELLE = tuple(_POIDS_GHI)
+
+
+def repartir_mensuel(total, cle=CLE_SOLAIRE_MENSUELLE):
+    """AMOT27 — ``total`` (MAD/an) réparti sur 12 mois ∝ ``cle``, au dirham,
+    Σ des mois = ``round(total)`` exactement (plus forts restes)."""
+    from decimal import Decimal as _D, ROUND_HALF_UP as _HALF_UP
+    cible = int(_D(str(float(total or 0))).quantize(
+        _D("1"), rounding=_HALF_UP))
+    poids = [float(p) for p in cle]
+    somme = sum(poids) or 1.0
+    bruts = [cible * p / somme for p in poids]
+    mois = [int(b) for b in bruts]
+    reste = cible - sum(mois)
+    ordre = sorted(range(len(bruts)), key=lambda i: bruts[i] - mois[i],
+                   reverse=True)
+    for i in ordre[:max(0, reste)]:
+        mois[i] += 1
+    return mois
 
 
 def repartir_economie_plafonnee(economie_annuelle, factures_mensuelles,
@@ -1387,6 +1449,13 @@ def calculate_savings_roi(
     # sortie byte-identique. C'est le seul chemin par lequel la note « douze
     # mois » devient atteignable depuis l'ERP.
     repartition_mensuelle=None,
+    # AMOT15 (C-AMOT-013) — économie annuelle SAISIE (étude du devis). Fournie
+    # (> 0), elle REMPLACE l'économie des deux options AVANT le cashflow : le
+    # payback de chaque option est le croisement de SA courbe (son prix, la
+    # dégradation, la provision onduleur), le gain net 25 ans en découle, la
+    # répartition mensuelle suit la clé de forme. Le chiffre saisi est NET (la
+    # perte de stockage n'est pas re-déduite). ``None`` ⇒ byte-identique.
+    economie_imposee: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1395,7 +1464,8 @@ def calculate_savings_roi(
     tariff is unpublished; adding it would fabricate income).
 
     Tariff resolution order (first wins):
-      1. ``tarif_kwh_override`` (explicit flat price — seller sets it)
+      1. ``tarif_kwh_override`` (explicit flat price — appel direct
+         seulement : AMOT47, aucun devis ne le pose plus)
       2. ``tranches_override`` (caller-supplied schedule)
       3. ``utility`` NOMMÉ → grille nationale (ONEE/Lydec/Redal, et depuis
          CAD167 tout autre nom : SRM, « autre ») — aucun distributeur ⇒ 4.
@@ -1608,6 +1678,16 @@ def calculate_savings_roi(
     _batt_part = 0.0
     if autoconso_avec > 0:
         _batt_part = max(0.0, (autoconso_avec - autoconso_sans_eff)) / autoconso_avec
+    # AMOT15 — une économie SAISIE entre dans LA chaîne de calcul : mêmes
+    # cashflows, mêmes paybacks par croisement, aucune copie après coup.
+    try:
+        _eco_imposee = float(economie_imposee or 0)
+    except (TypeError, ValueError):
+        _eco_imposee = 0.0
+    if _eco_imposee > 0:
+        economie_opt1 = economie_opt2 = int(round(_eco_imposee))
+        eco_monthly_reel = None
+        _batt_part = 0.0
     # M9 (audit du 19/08/2026) — l'abattement ne s'applique QU'À une option qui
     # porte RÉELLEMENT du stockage : ``battery=True`` était codé en dur, donc un
     # devis sans batterie subissait quand même la perte d'un équipement absent.
@@ -1618,6 +1698,16 @@ def calculate_savings_roi(
     # pourcentage du total ; aucune ligne onduleur ⇒ aucune provision.
     _stockage = (bool(battery_kwh and battery_kwh > 0)
                  if stockage_present is None else bool(stockage_present))
+    # ── AMOT58 (C-AMOT-024) — LE RENDEMENT ALLER-RETOUR DÉDUIT UNE FOIS ──────
+    # Modèle HORAIRE : l'énergie restituée par la batterie est DÉJÀ bornée
+    # par son rendement (``etude_horaire`` : restitué ≤ rendement × chargé) —
+    # le cashflow ne le re-déduit plus (``battery_share = 0``) : flux de
+    # l'année 1 de la courbe = économie annuelle imprimée. (Modèles
+    # « factures » / « estimation » : la perte Z5 reste appliquée au seul
+    # cashflow — leur économie imprimée est BRUTE ; volet laissé à une tâche
+    # dédiée, il re-chiffrerait des valeurs épinglées hors de cette lane.)
+    if _h:
+        _batt_part = 0.0
     # QJR158 (c) — UNE SEULE définition des paramètres de projection, employée
     # par le CALCUL (les deux appels ci-dessous) et par le bloc d'hypothèses
     # PUBLIÉ plus bas. Tant qu'elles étaient recopiées des constantes du module
@@ -1658,9 +1748,9 @@ def calculate_savings_roi(
     if eco_monthly_reel:
         eco_s_monthly, eco_a_monthly = eco_monthly_reel
     else:
-        _SF = CLE_SOLAIRE_MENSUELLE
-        eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
-        eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
+        # AMOT27 — la forme GHI de la production, Σ = annuel au dirham.
+        eco_s_monthly = repartir_mensuel(economie_opt1)
+        eco_a_monthly = repartir_mensuel(economie_opt2)
 
     return {
         "prod_kwh":         production_annuelle,

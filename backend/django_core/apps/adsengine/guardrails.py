@@ -56,23 +56,37 @@ class GuardrailInoperative(GuardrailViolation):
 THRESHOLD_CURRENCY = 'MAD'
 
 
-def mad_threshold_blocked_reason(company):
-    """Raison FR si un seuil/plafond en MAD n'est PAS comparable aux montants
-    du compte de ``company`` (instance ou pk) ; ``None`` si comparable."""
+def mad_threshold_blocked_reason(company, threshold_currency=''):
+    """Raison FR si un seuil/plafond n'est PAS comparable aux montants du
+    compte de ``company`` (instance ou pk) ; ``None`` si comparable.
+
+    AACQ3 (D-AACQ-1 = a) — ``threshold_currency`` = devise posée par le
+    serveur à la SAISIE du seuil. Comparable seulement si elle égale la devise
+    du compte ; vide (saisie antérieure à la décision) = sémantique MAD. Aucun
+    taux de change n'est jamais appliqué."""
     if company is None:
         return None
     from .rules_engine import account_currency
     currency = (account_currency(company) or THRESHOLD_CURRENCY).upper()
+    saisie = (threshold_currency or '').strip().upper()
+    if saisie:
+        if saisie == currency:
+            return None
+        return (f"Seuil saisi en {saisie}, compte facturé en {currency} : "
+                f"seuil non applicable — ressaisir le seuil dans la devise "
+                f"du compte (aucun taux inventé).")
     if currency == THRESHOLD_CURRENCY:
         return None
     return (f"Seuil en MAD, compte facturé en {currency} : seuil non "
-            f"applicable tant que la devise n'est pas décidée (aucun taux "
-            f"inventé).")
+            f"applicable — ressaisir le seuil dans la devise du compte "
+            f"(aucun taux inventé).")
 
 
-def assert_mad_comparable(company, *, alert_company=None):
+def assert_mad_comparable(company, *, alert_company=None,
+                          threshold_currency=''):
     """AACQ2 — Lève ``GuardrailInoperative`` (+ alerte) si la porte refuse."""
-    reason = mad_threshold_blocked_reason(company)
+    reason = mad_threshold_blocked_reason(
+        company, threshold_currency=threshold_currency)
     if reason:
         return _inoperative(alert_company, reason)
     return True
@@ -175,15 +189,18 @@ def check_daily_ceiling(config, daily_budget_mad, *, company=None):
             company, "Plafond quotidien non évaluable : budget quotidien "
                      "proposé illisible.")
     # AACQ2 — plafond MAD vs budget en devise du compte : fail-closed.
+    # AACQ3 — plafond saisi dans la devise du compte : comparable tel quel.
+    devise = (getattr(config, 'ceiling_currency', '') or '').upper()
     assert_mad_comparable(
         company if company is not None
         else getattr(config, 'company_id', None),
-        alert_company=company)
+        alert_company=company, threshold_currency=devise)
+    devise = devise or THRESHOLD_CURRENCY
     ceiling = config.daily_budget_ceiling_mad
     if budget > ceiling:
         msg = (
-            f"Budget quotidien {budget:g} MAD > plafond {ceiling} MAD "
-            f"(garde-fou société).")
+            f"Budget quotidien {budget:g} {devise} > plafond {ceiling} "
+            f"{devise} (garde-fou société).")
         if company is not None:
             emit_alert(company, alert_type=ALERT_GUARDRAIL, message=msg)
         raise GuardrailViolation(msg)

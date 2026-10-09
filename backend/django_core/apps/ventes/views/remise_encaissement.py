@@ -24,6 +24,20 @@ from ..serializers_facturation import RemiseEncaissementSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 
+#: AUD135 — une remise terrain ne collecte QUE de l'espèce et du chèque.
+MODES_REMISABLES = (Paiement.Mode.ESPECES, Paiement.Mode.CHEQUE)
+
+
+def paiements_remisables(qs):
+    """AFAC60 (C-AFAC-054) — LE prédicat « paiement remisable » : espèces ou
+    chèque, non rejeté, porté par AUCUNE remise. Lu par la résolution d'une
+    déclaration (``_resoudre_paiements``) ET par le filtre
+    ``GET paiements/?remisable=1`` : l'écran ne propose jamais un paiement que
+    la déclaration refuserait."""
+    return qs.filter(mode__in=MODES_REMISABLES).exclude(
+        statut=Paiement.Statut.REJETE).filter(
+        lignes_remise_encaissement__isnull=True)
+
 
 class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique. get_queryset /
@@ -56,7 +70,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
 
     #: AUD135 — une remise terrain ne collecte QUE de l'espèce et du chèque
     #: (le docstring du modèle l'annonçait, `perform_create` ne l'exigeait pas).
-    MODES_ELIGIBLES = (Paiement.Mode.ESPECES, Paiement.Mode.CHEQUE)
+    MODES_ELIGIBLES = MODES_REMISABLES
 
     def _resoudre_paiements(self, lignes, company):
         """Paiements éligibles du corps, ou ``ValidationError`` qui NOMME la cause.
@@ -79,6 +93,12 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
                 id=paiement_id, company=company).first()
             if paiement is None:
                 # Comportement historique : un id inconnu est ignoré.
+                continue
+            # AFAC60 — LE prédicat partagé avec le filtre de l'écran ; les
+            # refus ci-dessous ne font que NOMMER la cause.
+            if paiements_remisables(
+                    Paiement.objects.filter(pk=paiement.pk)).exists():
+                resolus.append(paiement)
                 continue
             if paiement.mode not in self.MODES_ELIGIBLES:
                 raise ValidationError({'lignes': (

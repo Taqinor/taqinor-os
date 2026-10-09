@@ -73,5 +73,39 @@ class TestDbInvariants(unittest.TestCase):
         self.assertEqual(cdi.checkconstraint_fields(cls), set())
 
 
+class TestBlocking(unittest.TestCase):
+    """ENF13 — l'outil échoue sur tout écart, vert sur le dépôt courant."""
+
+    def test_depot_courant_sans_ecart(self):
+        self.assertEqual(cdi.find_gaps(cdi.scan()), [])
+
+    def test_invariant_canonique_non_contraint_est_un_ecart(self):
+        rows = [("M", "app", set(), set(), ["quantite >= 0"])]
+        self.assertEqual(len(cdi.find_gaps(rows)), 1)
+
+    def test_invariant_python_seul_est_un_ecart(self):
+        rows = [("M", "app", {"montant"}, set(), [])]
+        self.assertEqual(len(cdi.find_gaps(rows)), 1)
+
+    def test_contrainte_presente_est_vert(self):
+        rows = [("M", "app", {"montant"}, {"montant"}, ["montant >= 0"])]
+        self.assertEqual(cdi.find_gaps(rows), [])
+
+    def test_classe_introuvable_non_parquee_est_un_ecart(self):
+        rows = [("M", "app", set(), cdi._INTROUVABLE, ["x >= 0"])]
+        self.assertEqual(len(cdi.find_gaps(rows)), 1)
+
+    def test_app_parquee_n_est_pas_un_ecart(self):
+        rows = [("LigneEcriture", "compta", set(), cdi._PARQUE, ["debit >= 0"])]
+        self.assertEqual(cdi.find_gaps(rows), [])
+
+    def test_compta_est_bien_parquee(self):
+        self.assertTrue(cdi._app_parquee("compta"))
+        self.assertFalse(cdi._app_parquee("stock"))
+
+    def test_main_check_vert(self):
+        self.assertEqual(cdi.main(["--check"]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

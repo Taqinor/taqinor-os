@@ -1628,8 +1628,10 @@ class TestNoInventedNumberGuard(TestCase):
         self.assertTrue(data["savings_estimated"])
         self.assertIn("tarif_kwh", data)
 
-    def test_builder_with_etude_params_tarif_kwh_not_estimated(self):
-        """When etude_params carries tarif_kwh, savings are not estimated."""
+    def test_builder_ignores_etude_params_tarif_kwh(self):
+        """AMOT47 (décision fondateur 09/10) — ``etude.tarif_kwh`` n'est plus lu
+        (clé qu'aucun écran n'écrit) : un prix saisi là ne rend JAMAIS les
+        économies « réelles » ni ne fixe le tarif. Garde contre son retour."""
         company = make_company()
         user = make_user(company)
         client_obj = make_client(company)
@@ -1641,8 +1643,8 @@ class TestNoInventedNumberGuard(TestCase):
         devis.save(update_fields=["etude_params"])
         from apps.ventes.quote_engine.builder import build_quote_data
         data = build_quote_data(devis)
-        self.assertFalse(data["savings_estimated"])
-        self.assertAlmostEqual(data["tarif_kwh"], 1.50, places=2)
+        self.assertTrue(data["savings_estimated"])
+        self.assertNotAlmostEqual(data["tarif_kwh"], 1.50, places=2)
 
     def test_builder_with_distributeur_onee_not_estimated(self):
         """etude_params distributeur='onee' → ONEE tranche table, not estimated."""

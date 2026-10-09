@@ -1,0 +1,8 @@
+---
+// Enveloppe mince (YBW61) : l'accueil anglais réutilise LE gabarit français.
+// Rendu seulement quand `en` est active (YBW70) — sinon rien (la route est en
+// plus retirée du build, astro.config.mjs).
+import Accueil from '../index.astro';
+import { estActive } from '../../i18n/config';
+---
+{estActive('en') && <Accueil locale="en" />}

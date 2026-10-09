@@ -223,6 +223,11 @@ def _courbes_declarees(calendrier, niveaux, talon_mode, talon_valeur, rapport_ta
             r = rapport_talon
             denominateur = HEURES * n_jours + (1.0 / r - 1.0) * somme_occ if r > 0 else 0
             talon = energie / denominateur if r > 0 and denominateur > 0 else 0.0
+            # CAD177 — mois SANS heure ouverte (fermeture du mois entier) : le
+            # rapport nuit/jour ne situe aucun talon, la facture du mois entier
+            # deviendrait le « talon » en silence. Contradiction dite, jamais tue.
+            if somme_occ <= 0 and energie > 1e-9:
+                incoherent = True
         reste = energie - talon * HEURES * n_jours
         if reste < 0 or somme_occ <= 0:
             if reste < -1e-9 or (somme_occ <= 0 and reste > 1e-9):
@@ -667,13 +672,13 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                 'Talon non déclaré : rapport nuit/jour de l’archétype sourcé (estimation).',
                 niveau='info'))
         else:
+            courbes_nul, incoherent_nul = _courbes_declarees(calendrier, niveaux, 'nul', None, None)
+            courbes_etale, incoherent_etale = _courbes_declarees(
+                calendrier, niveaux, 'etale', None, None)
+            incoherent = incoherent_nul or incoherent_etale
             bornes = {
-                'talon_nul': _jours_types(
-                    calendrier, _courbes_declarees(calendrier, niveaux, 'nul', None, None)[0],
-                    annee_reference),
-                'etale_24h': _jours_types(
-                    calendrier, _courbes_declarees(calendrier, niveaux, 'etale', None, None)[0],
-                    annee_reference),
+                'talon_nul': _jours_types(calendrier, courbes_nul, annee_reference),
+                'etale_24h': _jours_types(calendrier, courbes_etale, annee_reference),
             }
             alertes.append(_alerte(
                 'talon_non_declare', 'rythme.talon',
@@ -688,10 +693,15 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             retenue = _choisir_borne(bornes, production_jours_types)
             provenance['bornes'] = {'retenue': retenue, 'candidates': sorted(bornes)}
             provenance['talon'] = {'valeur': None, 'statut': 'borne_conservatrice'}
+            _alerte_talon_incoherent(incoherent, alertes)
             return bornes[retenue], provenance, alertes
+    _alerte_talon_incoherent(incoherent, alertes)
+    return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
+
+
+def _alerte_talon_incoherent(incoherent, alertes):
     if incoherent:
         alertes.append(_alerte(
             'talon_incoherent', 'rythme.talon',
             'Talon déclaré incompatible avec les kWh du mois (ou aucune heure de plage) : '
             'consommation du mois répartie à plat.'))
-    return _jours_types(calendrier, courbes, annee_reference), provenance, alertes

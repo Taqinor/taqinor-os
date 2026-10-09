@@ -122,6 +122,11 @@ def synthese_economies(data: dict) -> dict | None:
         # le document la porte, sinon l'option 1.
         _avec = bool(data.get("deux_options", True)) or bool(
             data.get("avec_ok", True))
+        # AMOT33 — deux options : les chiffres vedettes décrivent l'option
+        # RECOMMANDÉE par le serveur (jamais « avec » d'office).
+        if bool(data.get("deux_options", True)):
+            from ..figures import option_recommandee
+            _avec = option_recommandee(data) != "sans"
         eco_m = list(
             (data.get("eco_a_monthly") if _avec
              else (data.get("eco_s_monthly") or data.get("eco_a_monthly")))

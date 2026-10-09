@@ -47,7 +47,7 @@ test('formulaire → Worker → faux ERP : un lead, signé, conforme au contrat 
   page.on('pageerror', (e) => problemes.push(`pageerror : ${e.message}`));
   page.on('response', (r) => r.status() >= 400 && problemes.push(`HTTP ${r.status()} : ${r.url()}`));
 
-  await page.goto('/bonjour/?utm_source=e2e&utm_campaign=essai');
+  await page.goto('/rendez-vous/?utm_source=e2e&utm_campaign=essai');
   // D'abord les erreurs : sous chaque champ et nommées dans le bandeau, rien envoyé.
   await page.getByRole('button', { name: 'Envoyer la demande' }).click();
   await expect(page.locator('[data-bandeau]')).toBeVisible();
@@ -78,7 +78,7 @@ test('formulaire → Worker → faux ERP : un lead, signé, conforme au contrat 
     produit: 'sur_mesure',
     langue: 'fr',
     consentement: true,
-    page: '/bonjour/',
+    page: '/rendez-vous/',
     utm_source: 'e2e',
     utm_campaign: 'essai',
   });
@@ -89,7 +89,7 @@ test('formulaire → Worker → faux ERP : un lead, signé, conforme au contrat 
   expect(String(r.entetes['user-agent'] ?? '')).not.toBe(ua);
   expect(erp.leads.size).toBe(1);
 
-  problemes.push(...(await crawler(page, '/bonjour/')));
+  problemes.push(...(await crawler(page, '/rendez-vous/')));
   expect(problemes).toEqual([]);
 });
 
@@ -103,7 +103,7 @@ test('même demande deux fois (autre en-tête Idempotency-Key compris) → un se
     produit: 'solarbow',
     langue: 'fr',
     consentement: true,
-    page: '/bonjour/',
+    page: '/rendez-vous/',
   };
   const entetes = { 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
   const n = erp.requetes.length;

@@ -44,8 +44,8 @@ export function ecartsTypoFr(texte: string): string[] {
 }
 
 /**
- * Les 2 fichiers de police CRITIQUES préchargés (direction A provisoire :
- * Outfit pour les titres, Instrument Sans pour le texte — YBW42/YBW44).
+ * Les 2 fichiers de police CRITIQUES préchargés (direction figée au tour
+ * design, YBW44 : Outfit pour les titres, Instrument Sans pour le texte).
  * Noms versionnés écrits par scripts/build-fonts.mjs.
  */
 export const POLICES_PRECHARGEES = ['/fonts/outfit-latin-wght-5.3.0.woff2', '/fonts/instrument-sans-latin-wght-5.3.0.woff2'] as const;

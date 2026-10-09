@@ -35,48 +35,6 @@ const routesJuridiques = () => ({
 });
 
 /**
- * Page sonde « bonjour » (YBW10) : les fichiers `src/pages/_*.astro` ne sont pas
- * routés par Astro ; on injecte donc la sonde sous `/bonjour/` tant que son
- * fichier existe. YBW61 supprime le fichier → l'injection disparaît d'elle-même.
- * La sonde porte `noindex` et n'est liée nulle part.
- */
-const sondeBonjour = () => ({
-  name: 'yanbow:sonde-bonjour',
-  hooks: {
-    /** @param {{ injectRoute: (r: { pattern: string; entrypoint: string; prerender?: boolean }) => void }} p */
-    'astro:config:setup': ({ injectRoute }) => {
-      if (existsSync(new URL('./src/pages/_bonjour.astro', import.meta.url))) {
-        injectRoute({ pattern: '/bonjour', entrypoint: './src/pages/_bonjour.astro', prerender: true });
-      }
-      if (EN_ACTIVE && existsSync(new URL('./src/pages/en/_bonjour.astro', import.meta.url))) {
-        injectRoute({ pattern: '/en/bonjour', entrypoint: './src/pages/en/_bonjour.astro', prerender: true });
-      }
-    },
-  },
-});
-
-/**
- * Tour design (YBW42) : les trois accueils candidats sur des routes PRIVÉES
- * `/_design/a|b|c/` (FR) et `/_design/a|b|c/en/` (EN) — noindex, nofollow,
- * hors registre `pages.ts` (donc hors sitemap), liées nulle part. Les fichiers
- * `src/pages/_design/*.astro` ne sont pas routés par Astro (préfixe `_`) : on
- * les injecte tant qu'ils existent ; YBW44 les supprime → l'injection disparaît.
- */
-const candidatsDesign = () => ({
-  name: 'yanbow:candidats-design',
-  hooks: {
-    /** @param {{ injectRoute: (r: { pattern: string; entrypoint: string; prerender?: boolean }) => void }} p */
-    'astro:config:setup': ({ injectRoute }) => {
-      for (const c of ['a', 'b', 'c']) {
-        if (existsSync(new URL(`./src/pages/_design/${c}.astro`, import.meta.url))) {
-          injectRoute({ pattern: `/_design/${c}/[...langue]`, entrypoint: `./src/pages/_design/${c}.astro`, prerender: true });
-        }
-      }
-    },
-  },
-});
-
-/**
  * Langues actives (YBW13) : tant que `en` n'est pas dans LOCALES_ACTIVES
  * (src/i18n/config.ts), aucune route `/en/*` n'est publiée — le dossier
  * construit `dist/client/en/` est retiré après le build.
@@ -159,5 +117,5 @@ export default defineConfig({
     // Aucun script en ligne : la CSP est `script-src 'self'` (worker/headers.mjs).
     build: { assetsInlineLimit: 0 },
   },
-  integrations: [sondeBonjour(), candidatsDesign(), localesActives(), routesJuridiques(), workersDevRedirect()],
+  integrations: [localesActives(), routesJuridiques(), workersDevRedirect()],
 });

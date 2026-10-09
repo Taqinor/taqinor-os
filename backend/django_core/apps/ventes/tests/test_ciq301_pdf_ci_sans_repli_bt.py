@@ -36,8 +36,11 @@ except Exception:  # pragma: no cover - environnement sans PyMuPDF
 
 
 #: Fractions mensuelles RÉSIDENTIELLES de la branche « étude saisie ».
-_SF_RESIDENTIEL = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-                   0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+# AMOT27 — LA constante (poids GHI), plus une copie littérale.
+from apps.ventes.quote_engine.pricing import (  # noqa: E402
+    CLE_SOLAIRE_MENSUELLE as _CLE_GHI)
+
+_SF_RESIDENTIEL = list(_CLE_GHI)
 
 #: Ce que le générateur persiste pour un C&I (``etudeMarcheBloc.js``) :
 #: JAMAIS ``economies_annuelles`` ; un ``payback`` calculé côté écran.
@@ -184,8 +187,9 @@ class TestBuilderBrancheEtudeHorsCI(_DevisCIMixin, TestCase):
         etude = {'production_annuelle': 9000, 'economies_annuelles': 12000}
         data = self._data(self._devis('residentiel', 'DEV-CIQ301-RES', etude))
         self.assertEqual(data['eco_s_ann'], 12000)
-        self.assertEqual(data['eco_s_monthly'],
-                         [round(12000 * f) for f in _SF_RESIDENTIEL])
+        # AMOT27 — la forme GHI, Σ = annuel au dirham (LA fonction).
+        from apps.ventes.quote_engine.pricing import repartir_mensuel
+        self.assertEqual(data['eco_s_monthly'], repartir_mensuel(12000))
 
 
 class TestRenduHtmlReelCI(_DevisCIMixin, TestCase):

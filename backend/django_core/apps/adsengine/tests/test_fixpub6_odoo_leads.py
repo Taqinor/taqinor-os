@@ -282,7 +282,7 @@ class SearchReadPaginationTests(SimpleTestCase):
             self.offsets = []
 
         def search_read(self, model, domain=None, *, fields=None, order=None,
-                        limit=None, offset=None):
+                        limit=None, offset=None, context=None):
             self.offsets.append(offset)
             return self.rows[offset:offset + limit]
 

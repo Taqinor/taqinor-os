@@ -271,7 +271,36 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
+        if self.action == 'annuler':
+            return [IsAdminRole()]
         return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """AFAC32 (D-AFAC-C4) — annule une note de débit ÉMISE par un AVOIR de
+        note de débit (jamais en place) : le reste dû revient, chatter tracé.
+        Idempotente : rejouée, elle renvoie le même avoir (200, rien créé)."""
+        note_debit = self.get_object()
+        from ..domain.facturation_ops import (
+            AvoirRefuse, annuler_note_debit_par_avoir,
+        )
+        try:
+            avoir, cree = annuler_note_debit_par_avoir(
+                note_debit=note_debit, user=request.user)
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if cree:
+            try:
+                from ..utils.pdf import generate_avoir_pdf
+                generate_avoir_pdf(avoir.id)
+                avoir.refresh_from_db()
+            except Exception:  # noqa: BLE001 — PDF best-effort
+                pass
+        return Response(
+            {'note_debit': NoteDebitSerializer(note_debit).data,
+             'avoir': AvoirSerializer(avoir).data, 'cree': cree},
+            status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):

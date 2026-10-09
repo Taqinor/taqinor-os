@@ -34,9 +34,9 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
 # paquets premium ; même double chemin d'import.
 try:
-    from .montants import fmt_centimes, fmt_centimes_mad
+    from .montants import fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr
 except ImportError:  # exécution directe du moteur depuis son dossier
-    from montants import fmt_centimes, fmt_centimes_mad
+    from montants import fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -604,10 +604,50 @@ NOTE_CLIENT = ""
 CLAUSES_CGV = []
 
 
+#: AMOT20 — vrai pendant l'ajustement du une-page quand la note et les
+#: clauses ont dû être TRONQUÉES (avec renvoi déclaré) pour que le dernier
+#: bloc de la zone tienne. Remis à ``False`` en fin d'ajustement : aucun autre
+#: format n'est jamais tronqué.
+ONEPAGE_TEXTES_TRONQUES = False
+#: AMOT20 — longueurs gardées (texte BRUT, coupe au mot) quand on tronque.
+_ONEPAGE_NOTE_MAX = 220
+_ONEPAGE_CLAUSE_MAX = 90
+#: AMOT20 — le renvoi DÉCLARÉ qui remplace la suite d'un texte tronqué.
+_RENVOI_TEXTE_INTEGRAL = {
+    "fr": "texte int&#233;gral sur la proposition en ligne",
+    "en": "full text in the online proposal",
+    # À relire par le fondateur (patron CIQM22).
+    "ar": "\u0627\u0644\u0646\u0635 \u0627\u0644\u0643\u0627\u0645\u0644 "
+          "\u0641\u064a \u0627\u0644\u0639\u0631\u0636 "
+          "\u0639\u0628\u0631 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a",
+}
+
+
+def _renvoi_texte_integral():
+    return _RENVOI_TEXTE_INTEGRAL.get(LANGUE_SORTIE,
+                                      _RENVOI_TEXTE_INTEGRAL["fr"])
+
+
+def _tronquer_texte_echappe(texte, longueur):
+    """AMOT20 — tronque un texte DÉJÀ échappé sur son texte BRUT (au mot,
+    « … ») puis le ré-échappe : jamais une entité HTML coupée."""
+    # AMOT46 — LE helper unique de troncature (``textes.tronquer_au_mot``).
+    from .textes import tronquer_au_mot
+    return tronquer_au_mot(texte, longueur)
+
+
 def _clauses_cgv_html(font_pt="7.5"):
     """QJR668 — bloc « Clauses particulières », ou '' sans clause gelée."""
     from .clauses_cgv import bloc_clauses_html
-    return bloc_clauses_html(CLAUSES_CGV, couleur_titre=CN,
+    clauses = CLAUSES_CGV
+    if ONEPAGE_TEXTES_TRONQUES and clauses:
+        # AMOT20 — une-page trop dense : chaque clause garde son nom et le
+        # début de son texte, la suite est renvoyée à la proposition.
+        clauses = [dict(c, corps_texte=_tronquer_texte_echappe(
+            c.get("corps_texte"), _ONEPAGE_CLAUSE_MAX)) for c in clauses]
+        clauses.append({"nom": "", "corps_texte":
+                        "(" + _renvoi_texte_integral() + ")"})
+    return bloc_clauses_html(clauses, couleur_titre=CN,
                              couleur_texte=CG7, taille_pt=font_pt)
 
 
@@ -615,9 +655,14 @@ def _note_client_html(font_pt="8"):
     """QJR627 — le bloc « Note » du devis, ou '' quand le champ est vide."""
     if not NOTE_CLIENT:
         return ""
+    note = NOTE_CLIENT
+    if ONEPAGE_TEXTES_TRONQUES:
+        tronquee = _tronquer_texte_echappe(note, _ONEPAGE_NOTE_MAX)
+        if tronquee != note:
+            note = f"{tronquee} ({_renvoi_texte_integral()})"
     return (f'<div style="font-size:{font_pt}pt;color:{CN};white-space:pre-line;'
             f'margin-bottom:4px;"><b style="text-transform:uppercase;'
-            f'letter-spacing:.8px;margin-right:6px;">Note</b>{NOTE_CLIENT}</div>')
+            f'letter-spacing:.8px;margin-right:6px;">Note</b>{note}</div>')
 DATE_ACCEPTATION = ""
 # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple), posé
 # depuis data["savings_method"]. Vide → aucun bloc rendu (byte-identique).
@@ -849,9 +894,17 @@ def _pct_echeance(valeur, defaut):
     return int(f) if f == int(f) else round(f, 2)
 
 
+def _pct_nul(valeur):
+    """AMOT19 — un pourcentage d'échéancier NUL (créneau absent) ?"""
+    try:
+        return float(valeur) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _tva_note_par_defaut(tva_pct):
     """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
-    tva_lbl = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
+    tva_lbl = pct_fr(tva_pct)  # AMOT24
     return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
             f"travaux.")
 
@@ -870,6 +923,11 @@ def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
     du remplissage."""
     out = []
     for raw in bullets or ():
+        # AMOT19 — un créneau ABSENT de l'échéancier (deux tranches : matériel
+        # à 0) n'est jamais imprimé « 0 % à la réception du matériel » : la
+        # puce qui le porte est omise, comme les cases du « Devis final ».
+        if "{materiel}" in str(raw) and _pct_nul(materiel):
+            continue
         try:
             txt = raw.format(
                 acompte=acompte, materiel=materiel, solde=solde,
@@ -1005,10 +1063,12 @@ def fmt(v):
     \u00e9tiquet\u00e9 EUR aurait affich\u00e9 des dirhams sous un signe euro. L'\u00e9tiquette
     suit d\u00e9sormais la r\u00e9alit\u00e9 des montants.
     """
+    # AMOT26 — HALF_UP par ``montants.fmt_dirhams`` (même dirham que l'écran).
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
+        float(v)
     except Exception:
         return str(v)
+    return fmt_dirhams(v) + "\u00a0MAD"
 
 # QJR623 — ``_repartir_paiement`` (cases arrondies au millier, reliquat sur un
 # total arrondi au dirham — ERR120) est SUPPRIMÉE : les montants des cases
@@ -1523,7 +1583,7 @@ def _note_remise_par_ligne():
     """
     if DISCOUNT_PCT <= 0:
         return ""
-    pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+    pct = pct_fr(DISCOUNT_PCT)  # AMOT24
     return (f"Remise de {pct} % appliquée sur chaque ligne "
             f"— prix catalogue barrés, totaux après remise.")
 
@@ -1575,7 +1635,7 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     arrondi = totaux.get("arrondi") or 0
     rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
     if arrondi > 0:
@@ -1588,12 +1648,12 @@ def _totals_block_rows(totaux, colspan, ancres=None):
     buckets = totaux.get("tva_par_taux") or []
     if len(buckets) > 1:
         for b in buckets:
-            r = int(b["taux"]) if b["taux"] == int(b["taux"]) else b["taux"]
+            r = pct_fr(b["taux"])  # AMOT24
             rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]),
                         fig="tva_taux", taux=b["taux"])
     else:
         rate = buckets[0]["taux"] if buckets else TVA_PCT
-        tva_pct = int(rate) if rate == int(rate) else rate
+        tva_pct = pct_fr(rate)  # AMOT24
         rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva), fig="tva")
     # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
     # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
@@ -1788,7 +1848,7 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         tot_ht_s = (_cellule_prix_remise(qty * pu_ht, _item_total_ht_remise(it))
                     if pu_ht else dash)
         taux = it.get("taux_tva", TVA_PCT)
-        taux_s = f"{int(taux)}%" if taux == int(taux) else f"{taux}%"
+        taux_s = f"{pct_fr(taux)}%"  # AMOT24
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
                  f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
@@ -1930,7 +1990,7 @@ def page1():
         # d'arrondi que le total qu'il barre.
         _s_before = f"{int(round(TOTAL_SANS_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
         _a_before = f"{int(round(TOTAL_AVEC_BEFORE)):,}".replace(",", _s) + "\u00a0MAD"
-        _disc_str = f"\u2212{int(DISCOUNT_PCT)}\u202f%"
+        _disc_str = f"\u2212{pct_fr(DISCOUNT_PCT)}\u202f%"  # AMOT24
         _ts_price = (
             f'<div style="font-size:10pt;color:{CG4};text-decoration:line-through;'
             f'opacity:0.75;margin-bottom:1px;white-space:nowrap;">{_s_before}</div>'
@@ -2894,7 +2954,8 @@ def _bankable_pct(valeur):
 #: VENDUE. Même esprit que ``pricing._HORAIRE_TOLERANCE_KWC`` : 2 % absorbe les
 #: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
 #: panneau de plus pèse déjà bien davantage).
-TOLERANCE_KWC_SIMULATION = 0.02
+# AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
+from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402
 
 
 def _bankable_decrit_ce_champ(bank):
@@ -2906,28 +2967,11 @@ def _bankable_decrit_ce_champ(bank):
     zones absentes ou illisibles — rend ``False`` et le bloc est OMIS (jamais
     un productible de repli).
     """
-    if not isinstance(bank, dict):
+    # AMOT35 — LA règle partagée (``bankable.decrit_le_champ``).
+    from .bankable import decrit_le_champ
+    if PUISSANCE_INCONNUE:
         return False
-    try:
-        kwc_devis = float(KWC or 0)
-    except (TypeError, ValueError):
-        return False
-    if kwc_devis <= 0 or PUISSANCE_INCONNUE:
-        return False
-    zones = bank.get("zones")
-    if not isinstance(zones, (list, tuple)) or not zones:
-        return False
-    total = 0.0
-    for zone in zones:
-        if not isinstance(zone, dict):
-            return False
-        try:
-            total += float(zone.get("kwc"))
-        except (TypeError, ValueError):
-            return False
-    if total <= 0:
-        return False
-    return abs(total - kwc_devis) <= kwc_devis * TOLERANCE_KWC_SIMULATION
+    return decrit_le_champ(bank, KWC)
 
 
 #: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
@@ -2935,7 +2979,7 @@ def _bankable_decrit_ce_champ(bank):
 #: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
 #: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
 #: l'entier de la carte, jamais les ~10 % que produisait le double derate.
-TOLERANCE_PRODUCTION_PAGE = 0.01
+from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401
 
 
 def _bankable_concorde_avec_la_page(bank):
@@ -2971,20 +3015,9 @@ def _bankable_concorde_avec_la_page(bank):
     etude_page = globals().get("ETUDE")
     prod_page = (etude_page.get("production_annuelle")
                  if isinstance(etude_page, dict) else None)
-    if prod_page in (None, ""):
-        return True
-    pr = bank.get("pr") if isinstance(bank, dict) else None
-    p50 = pr.get("p50_kwh") if isinstance(pr, dict) else None
-    if p50 in (None, ""):
-        return True
-    try:
-        prod_page = float(prod_page)
-        p50 = float(p50)
-    except (TypeError, ValueError):
-        return False
-    if prod_page <= 0:
-        return False
-    return abs(p50 - prod_page) <= prod_page * TOLERANCE_PRODUCTION_PAGE
+    # AMOT35 — LA règle partagée (``bankable.concorde_avec_la_production``).
+    from .bankable import concorde_avec_la_production
+    return concorde_avec_la_production(bank, prod_page)
 
 
 def _bankable_block_html(bank):
@@ -3015,6 +3048,8 @@ def _bankable_block_html(bank):
     """
     if not isinstance(bank, dict) or not bank:
         return ""
+    # AMOT35 — ``bankable.bankable_imprimable`` (via les deux lecteurs du
+    # module, qui gardent les globaux de rendu KWC / ETUDE hors de la règle).
     if not _bankable_decrit_ce_champ(bank):
         return ""
     if not _bankable_concorde_avec_la_page(bank):
@@ -4220,7 +4255,7 @@ def page_onepage(items, tronquees=0):
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
                 f'padding-left:6px;">&#10003; {gar}</div>')
         _taux = it.get("taux_tva", TVA_PCT)
-        _taux_s = f"{int(_taux)}&#37;" if _taux == int(_taux) else f"{_taux}&#37;"
+        _taux_s = f"{pct_fr(_taux)}&#37;"  # AMOT24
         rows_html += (
             f'<tr style="background:{bg};">'
             f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
@@ -4274,7 +4309,7 @@ def page_onepage(items, tronquees=0):
     totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
                             fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
-        _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
+        _pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         totals_html += _tot_line(
             f"{_L('remise')} ({_pct}&#8201;%)",
             "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True, fig="remise")
@@ -4292,13 +4327,13 @@ def page_onepage(items, tronquees=0):
     _buckets = totaux.get("tva_par_taux") or []
     if len(_buckets) > 1:
         for _b in _buckets:
-            _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
+            _r = pct_fr(_b["taux"])  # AMOT24
             totals_html += _tot_line(
                 f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD",
                 fig="tva_taux", taux=_b["taux"])
     else:
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
-        _tva_pct = int(_rate) if _rate == int(_rate) else _rate
+        _tva_pct = pct_fr(_rate)  # AMOT24
         totals_html += _tot_line(f"{_L('tva')} ({_tva_pct}&#8201;%)",
                                  _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
@@ -4426,7 +4461,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
       <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
-      <span style="margin-right:20px;">&#183; {PAY_M}&#37; {_L("a_la_reception_materiel")}</span>
+      {'' if _pct_nul(PAY_M) else '<span style="margin-right:20px;">&#183; ' + str(PAY_M) + '&#37; ' + _L("a_la_reception_materiel") + '</span>'}
       <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
       <span>&#183; {TVA_NOTE}</span>
       {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
@@ -4560,6 +4595,12 @@ def _mesure_onepage(html):
                 bas = boite.position_y + boite.height
                 bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
             hauteurs.append(boite.height)
+        # AMOT20 — la postcondition porte sur le DERNIER bloc de la zone (la
+        # ligne Validité/Acompte/TVA ; le bon pour accord agricole est déjà
+        # dans ``formes``) : son bloc entier (toutes ses lignes) doit tenir.
+        bas_fin = _bas_bloc_fin(page)
+        if bas_fin is not None and bas_totaux is not None:
+            bas_totaux = max(bas_totaux, bas_fin)
         if bas_totaux is None:
             # CAD177 — le bloc de totaux est ABSENT de la page composée : ce
             # n'est PAS une mesure impossible. WeasyPrint arrête la composition
@@ -4611,7 +4652,48 @@ def _bas_totaux_page_haute(html_cls, html, formes):
         if any(forme in texte for forme in formes):
             bas = boite.position_y + boite.height
             bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
+    # AMOT20 — même ancre que la mesure A4 : le DERNIER bloc de la zone.
+    bas_fin = _bas_bloc_fin(pages[0])
+    if bas_fin is not None and bas_totaux is not None:
+        bas_totaux = max(bas_totaux, bas_fin)
     return bas_totaux
+
+
+def _formes_bloc_fin():
+    """AMOT20 — libellés de la ligne de conditions (dernier bloc de la zone
+    du une-page), dans la langue du document et en français (filet)."""
+    formes = []
+    for cle in ("acompte", "apres_mise_en_marche"):
+        for brut in (_L(cle), i18n_labels.libelle(cle, "fr")):
+            brut = html.unescape(brut or "")
+            if brut and brut not in formes:
+                formes.append(brut)
+    return tuple(formes)
+
+
+def _bas_bloc_fin(page):
+    """AMOT20 — bas du BLOC (div) qui porte la ligne de conditions du
+    une-page : la boîte de bloc ancêtre la plus proche d'un texte qui porte
+    l'un de ses libellés, toutes lignes comprises. ``None`` si introuvable."""
+    formes = _formes_bloc_fin()
+    bas = []
+
+    def _walk(box, ancetres):
+        texte = getattr(box, "text", None)
+        if texte and any(f in texte for f in formes):
+            for anc in reversed(ancetres):
+                if type(anc).__name__ == "BlockBox":
+                    _mh = getattr(anc, "margin_height", None)
+                    bas.append(anc.position_y
+                               + (_mh() if callable(_mh) else anc.height))
+                    break
+            else:
+                bas.append(box.position_y + box.height)
+        for child in (getattr(box, "children", None) or []):
+            _walk(child, ancetres + [box])
+
+    _walk(page._page_box, [])
+    return max(bas) if bas else None
 
 
 def _html_sans_base(html):
@@ -5081,8 +5163,9 @@ def render_html_for(data: dict) -> str:
 
 #: QJR161 — nombre maximum de passes de mesure. Chaque passe compose la page,
 #: donc on borne le coût ; la première correction est déjà dimensionnée par la
-#: mesure (dépassement ÷ hauteur de ligne).
-_ONEPAGE_PASSES = 3
+#: mesure (dépassement ÷ hauteur de ligne). AMOT20 — une passe de plus : la
+#: première correction peut être la troncature déclarée de la note/clauses.
+_ONEPAGE_PASSES = 4
 
 
 def _onepage_html_qui_tient(items):
@@ -5097,24 +5180,37 @@ def _onepage_html_qui_tient(items):
     en le DÉCLARANT (les totaux restent ceux du devis entier). Sans WeasyPrint,
     la mesure est impossible : le document reste EXACTEMENT celui d'aujourd'hui.
     """
+    global ONEPAGE_TEXTES_TRONQUES
     lignes = list(items or [])
     tronquees = 0
-    html = build_html_onepage(lignes, tronquees)
-    for _ in range(_ONEPAGE_PASSES):
-        mesure = _mesure_onepage(html)
-        if mesure is None:
-            return html
-        depassement, hauteur_ligne = mesure
-        if depassement <= 0 or len(lignes) <= 1:
-            return html
-        a_retirer = 1
-        if hauteur_ligne > 0:
-            a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
-        a_retirer = min(a_retirer, len(lignes) - 1)
-        lignes = lignes[:-a_retirer]
-        tronquees += a_retirer
+    ONEPAGE_TEXTES_TRONQUES = False
+    try:
         html = build_html_onepage(lignes, tronquees)
-    return html
+        for _ in range(_ONEPAGE_PASSES):
+            mesure = _mesure_onepage(html)
+            if mesure is None:
+                return html
+            depassement, hauteur_ligne = mesure
+            if depassement <= 0:
+                return html
+            # AMOT20 — d'abord la note et les clauses (textes longs) :
+            # tronquées au mot avec renvoi DÉCLARÉ, jamais effacées en silence.
+            if not ONEPAGE_TEXTES_TRONQUES and (NOTE_CLIENT or CLAUSES_CGV):
+                ONEPAGE_TEXTES_TRONQUES = True
+                html = build_html_onepage(lignes, tronquees)
+                continue
+            if len(lignes) <= 1:
+                return html
+            a_retirer = 1
+            if hauteur_ligne > 0:
+                a_retirer = max(1, int(depassement // hauteur_ligne) + 1)
+            a_retirer = min(a_retirer, len(lignes) - 1)
+            lignes = lignes[:-a_retirer]
+            tronquees += a_retirer
+            html = build_html_onepage(lignes, tronquees)
+        return html
+    finally:
+        ONEPAGE_TEXTES_TRONQUES = False
 
 
 def _render_premium_pdf(data: dict, out_path) -> str:

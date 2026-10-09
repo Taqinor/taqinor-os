@@ -1,5 +1,9 @@
 # Tour design — trois accueils candidats (YBW42 → YBW43)
 
+> **Clos le 09/10/2026.** Choix de Reda (YBWM12) : « A maison + bandes produit B ».
+> Jetons figés et routes `/_design/*` retirées par YBW44 — voir
+> [`DESIGN_RATIONALE.md`](DESIGN_RATIONALE.md). Les captures ci-dessous restent comme archive.
+
 Pages PRIVÉES `/_design/a|b|c/` (FR) et `/_design/a|b|c/en/` (EN) : noindex,
 nofollow, hors sitemap, liées nulle part. Texte = dictionnaire NEUTRE commun
 (`src/i18n/pages/design.*.ts`), aucun texte final, aucun chiffre ; seuls les

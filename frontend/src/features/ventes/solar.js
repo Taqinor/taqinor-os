@@ -379,27 +379,19 @@ export function computeCashflowPayback(investment, economieAnnee1, {
 // batterie sur la seule part stockée, remplacement onduleur au prix réel),
 // appliquée à l'économie servie par le serveur — jamais `coût ÷ économie`
 // (écran 13,43 / 8,95 ans contre 8,2 / 5,5 au document).
-// `annuel` = `etude.annuel` du serveur (taux d'autoconsommation, production,
-// consommation) : la part batterie se dérive comme dans `pricing` (plafond
-// sans ≤ conso/production, plancher avec ≥ sans). Rend
+// AMOT58 — l'économie servie par l'étude HORAIRE est DÉJÀ nette du rendement
+// aller-retour de la batterie : comme `pricing` en modèle horaire
+// (`battery_share = 0`), le cashflow ne le re-déduit plus — part batterie 0
+// (`annuel`, encore passé par l'écran, n'entre plus dans le calcul). Rend
 // `{ paybackYears, jamaisRembourse }`, ou `null` sans coût ni économie.
 export function paybackMoteurHoraire(total, ecoAnnuelle, {
-  annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
+  rendementBatterie = null, stockage = false, inverterReplaceCost = null,
 } = {}) {
   const t = parseFloat(total) || 0
   const eco = parseFloat(ecoAnnuelle) || 0
   if (!(t > 0) || !(eco > 0)) return null
-  let part = 0
-  if (stockage && annuel) {
-    const prod = parseFloat(annuel.production_kwh) || 0
-    const conso = parseFloat(annuel.consommation_kwh) || 0
-    let sansEff = parseFloat(annuel.taux_autoconso_sans) || 0
-    if (conso > 0 && prod > 0) sansEff = Math.min(sansEff, conso / prod)
-    const avecEff = Math.max(parseFloat(annuel.taux_autoconso_avec) || 0, sansEff)
-    part = avecEff > 0 ? Math.max(0, avecEff - sansEff) / avecEff : 0
-  }
   const cf = computeCashflowPayback(t, eco, {
-    battery: !!stockage, batteryShare: part, inverterReplaceCost,
+    battery: !!stockage, batteryShare: 0, inverterReplaceCost,
     batteryRoundtrip: rendementBatterie ?? BATTERY_ROUNDTRIP,
   })
   return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse }

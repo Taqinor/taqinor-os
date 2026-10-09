@@ -111,9 +111,14 @@ def _creer_contrat_maintenance_on_devis_accepted(sender, devis, user,
     récurrente ne déclenche rien. Best-effort : une erreur ici ne doit
     jamais remonter (l'acceptation, côté ventes, est déjà actée)."""
     try:
+        from django.db import transaction
+
         from .services import creer_contrat_depuis_devis_accepte
 
-        creer_contrat_depuis_devis_accepte(devis=devis, user=user)
+        # ADEV54 — point de sauvegarde PROPRE à l'abonné : une erreur base
+        # ici est annulée seule, la signature (transaction englobante) passe.
+        with transaction.atomic():
+            creer_contrat_depuis_devis_accepte(devis=devis, user=user)
     except Exception:  # pragma: no cover - défensif (best-effort)
         logger.warning(
             'sav: échec création contrat de maintenance sur devis accepté '

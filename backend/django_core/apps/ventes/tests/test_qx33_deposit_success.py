@@ -50,9 +50,14 @@ class Qx33DepositSuccessTests(TestCase):
             company=self.company, nom='Panneau', sku='QX33-PV',
             prix_vente=Decimal('1000'), quantite_stock=100)
 
-    @override_settings(COMPANY_RIB='001 TAQINOR BANK 1234567')
     def test_accept_success_payload_has_deposit(self):
         from apps.ventes.public.signature_views import empreinte_contenu
+        # AFAC59 — le RIB vient du profil de la SOCIÉTÉ émettrice (le réglage
+        # global n'existe pas).
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=self.company)
+        profile.rib = '001 TAQINOR BANK 1234567'
+        profile.save()
         resp = self.api.post(
             f'/api/django/public/proposal/{self.link.token}/accept/',
             {'nom': 'Client', 'consent_esign': True,

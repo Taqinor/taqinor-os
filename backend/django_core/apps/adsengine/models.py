@@ -160,6 +160,13 @@ class GuardrailConfig(TenantModel):
     # Fenêtre (heures) d'observation « dépense > 0 et 0 lead » → anomalie (ENG9).
     anomaly_window_hours = models.PositiveIntegerField(
         default=48, verbose_name="Fenêtre de détection d'anomalie (heures)")
+    # AACQ3 (D-AACQ-1 = a) — devise dans laquelle les plafonds/planchers
+    # ``*_mad`` ont été SAISIS, posée par le serveur (devise du compte Meta à
+    # la saisie), jamais lue du corps. Vide = saisie antérieure à la décision
+    # (sémantique MAD) : sur un compte non-MAD, non applicable.
+    ceiling_currency = models.CharField(
+        max_length=3, blank=True, default='',
+        verbose_name='Devise des plafonds (posée par le serveur)')
 
     # ── ENG8 — Toggles de capacités PAR société (motif HubSpot Breeze : « par
     # capacité, pas un interrupteur global »). Défaut False : rien ne s'auto-
@@ -1462,6 +1469,12 @@ class RulePolicy(TenantModel):
     # Cooldown de dédup PAR entité (heures) — 0 = défaut de la sévérité.
     cooldown_hours = models.PositiveIntegerField(
         default=0, verbose_name='Cooldown par entité (heures)')
+    # AACQ3 (D-AACQ-1 = a) — devise des seuils ``*_mad`` de ``params``,
+    # posée par le serveur à la saisie (devise du compte Meta). Vide = règle
+    # antérieure à la décision (sémantique MAD) : non applicable hors MAD.
+    threshold_currency = models.CharField(
+        max_length=3, blank=True, default='',
+        verbose_name='Devise des seuils (posée par le serveur)')
     # ADSDEEP39 — Selection Filter (Bïrch) : la règle cible DYNAMIQUEMENT les
     # objets (campagnes/ad sets/ads selon le scope du template) dont le NOM
     # matche ce motif glob insensible à la casse (ex. « PROSPECTION* »). Vide =

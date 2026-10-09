@@ -25,8 +25,6 @@ backend/django_core/apps/adminops/tasks.py
 backend/django_core/apps/installations/tasks.py::_deja_notifie_aujourdhui
 backend/django_core/apps/publicapi/tasks.py::deliver_webhook
 backend/django_core/apps/stock/tasks.py::_deja_notifie_aujourdhui
-backend/django_core/apps/ventes/scheduled.py::_check_promesses_expirees
-backend/django_core/apps/ventes/scheduled.py::releve_mensuel_reminders
 backend/django_core/apps/ventes/scheduled.py::engagement_followup_engine
 backend/django_core/apps/ventes/tasks.py::_societe_du_devis
 backend/django_core/apps/ventes/tasks.py::_content_version

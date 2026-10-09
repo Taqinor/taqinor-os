@@ -971,7 +971,8 @@ def _acceptance_deposit_block(devis, lignes=None):
     """QX33be — bloc texte « acompte + RIB » pour l'email de confirmation.
 
     Acompte = 1ʳᵉ tranche de l'échéancier (sur le TTC REMISÉ, chaîne QX1). RIB
-    depuis ``settings.COMPANY_RIB`` si configuré. Chaîne VIDE quand rien n'est
+    de la SOCIÉTÉ émettrice (AFAC59 : ``company_identity``) si renseigné.
+    Chaîne VIDE quand rien n'est
     configurable (pas de tranche, pas de RIB) → email inchangé. Best-effort."""
     from decimal import Decimal
     try:
@@ -983,8 +984,11 @@ def _acceptance_deposit_block(devis, lignes=None):
             return ''
         acompte = Decimal(str(tr['ttc']))
         montant_str = f'{acompte:,.2f}'.replace(',', ' ') + ' MAD'
-        from django.conf import settings
-        rib = (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+        # AFAC59 (C-AFAC-051) — RIB du profil de la société émettrice.
+        rib = ''
+        if getattr(devis, 'company', None) is not None:
+            from apps.parametres.selectors import company_identity
+            rib = (company_identity(devis.company).get('rib') or '').strip()
         lignes = [
             f"Pour démarrer votre installation, un acompte de {montant_str} "
             f"est à régler.",
@@ -1146,16 +1150,13 @@ def _build_acceptance_wa_url(*, devis):
             client = getattr(devis, 'client', None)
             if client is not None:
                 phone_raw = getattr(client, 'telephone', '') or ''
-        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        # ACRM39 — normaliseur sanctionné (E.164), jumeau de
+        # ``crm.services._build_lead_wa_reply_url`` ; non normalisable ⇒ pas
+        # de lien (jamais un numéro inventé).
+        from apps.ventes.utils.phone import normalize_phone_e164
+        digits = normalize_phone_e164(phone_raw)
         if not digits:
             return None
-        # Format international marocain (wa.me exige l'indicatif pays).
-        if digits.startswith('00'):
-            digits = digits[2:]
-        if digits.startswith('0'):
-            digits = '212' + digits[1:]
-        elif not digits.startswith('212'):
-            digits = '212' + digits
         nom = ''
         if lead is not None:
             nom = (getattr(lead, 'nom', '') or '').strip()

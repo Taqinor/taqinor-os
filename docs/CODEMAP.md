@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 82d048cef4238cb61291055226f5334c64b2e0cde03555d8f5eb61d802be827b
-Plan fingerprint: b17bde110bc7e3a5191e3014adf02edf95c201e1295ff1f96c083d5b73eeef36
+Structure fingerprint: 76a0663a9d2e4fccf2b34c178ef6fc1ec08086498a77171c0716682144d33c4c
+Plan fingerprint: 68f484446f744265167fb76ea2f5e6f233b283bc7d2c6731256f58021e1d6e06
 
 
 
@@ -463,8 +463,8 @@ Loaders share `ensureSession` (ADEP19): a `fetchMe` failure without 401/403 rend
 
 ### Pages (`frontend/src/pages`) — 22 folders
 
-`crm/` (ClientList, LeadsPage, ParrainagePage + `leads/`), `ventes/` (DevisList,
-DevisGenerator, FactureList, FactureForm, AvoirsPage, RelancesPage,
+`crm/` (ClientList, LeadsPage, ParrainagePage + `leads/` — `LeadDevisPanel.jsx` = the lead's quote panel, EDC : phase `chargement`, protected exits via `gesteHorsPanneau.js`), `ventes/` (DevisList,
+DevisGenerator — EDC (09/10/2026) : `generator/BarreActionsDevis.jsx` sticky top action bar, `generator/NavigationSections.jsx` section chips, `generator/clavierDevis.js` pure keyboard decisions (Enter never submits), `generator/cartesRepliees.js` per-user collapsed cards, `generator/LigneTable.jsx` wrapped in `ui/BarreDefilementCollante.jsx` (sticky horizontal proxy bar) —, FactureList, FactureForm, AvoirsPage, RelancesPage,
 BonCommandeList), `stock/`, `installations/`, `interventions/`, `outillage/`, `sav/`,
 `monitoring/`, `ged/`, `reporting/`, `approbations/`, `activities/`, `admin/`,
 `parametres/`, `preferences/`, `onboarding/`, `aide/`, `tiers/`, `visites/`, `ia/`,
@@ -577,7 +577,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1153)**
+**Done (1156)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1168,6 +1168,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ665` — Aller-retour EN DIRECT du parcours site MT : visite avec supplément MT → chantier MT →…
 - `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
+- `ENF1` — Harnais api-fuzz
+- `ENF13` — Gardes toujours vertes rendues bloquantes
+- `ENF14` — Exceptions permanentes signées
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1733,7 +1736,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (144)**
+**Open — to build (141)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1818,7 +1821,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
-- `ENF1` — Harnais api-fuzz
 - `ENF2` — Plateforme API (causes C2-C6)
 - `ENF3` — Schéma OpenAPI exact — installations
 - `ENF4` — Schéma OpenAPI exact — stock + achats
@@ -1830,8 +1832,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
 - `ENF11` — api-fuzz bloquant
 - `ENF12` — Plus aucun masque dans les workflows
-- `ENF13` — Gardes toujours vertes rendues bloquantes
-- `ENF14` — Exceptions permanentes signées
 - `ENF15` — Dettes moyennes à zéro
 - `ENF16` — Dette on_delete (573) à zéro
 - `ENF17` — Dette fk_scoping (332) à zéro

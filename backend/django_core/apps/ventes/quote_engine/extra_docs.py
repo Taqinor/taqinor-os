@@ -28,8 +28,9 @@ from pathlib import Path
 from .generate_devis_premium import (
     CA, CAL, CG1, CG2, CG4, CG7, CGR, CN,
     _DMSANS400, _DMSANS500, _DMSANS700, _DS400,
-    _font_face, fmt,
+    _font_face,
 )
+from .montants import fmt_centimes_mad
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -293,13 +294,19 @@ RELANCE_TONES = {
 
 
 def _facture_resume(facture):
-    """Résumé chiffré d'une facture pour la lettre (aucun prix d'achat)."""
+    """Résumé chiffré d'une facture pour la lettre (aucun prix d'achat).
+
+    AMOT60 (C-AMOT-036) — le montant réclamé est l'EXIGIBLE
+    (``recouvrement.montant_exigible`` : reste dû − retenue de garantie non
+    libérée), le MÊME que l'e-mail de relance et le rappel planifié — jamais
+    ``montant_du`` brut (une mise en demeure pour une retenue non échue)."""
+    from apps.ventes.recouvrement import montant_exigible
     return {
         "reference": facture.reference,
         "date_emission": _fr_date(getattr(facture, "date_emission", None)),
         "date_echeance": _fr_date(getattr(facture, "date_echeance", None)),
         "total_ttc": facture.total_ttc,
-        "montant_du": facture.montant_du,
+        "montant_du": montant_exigible(facture),
         "jours_retard": facture.jours_retard,
     }
 
@@ -361,7 +368,9 @@ def build_lettre_relance_html(ctx, client, resume, niveau, message=None):
         f'<span class="v">{escape(resume["date_echeance"] or "—")}</span></div>'
         f'{retard_row}'
         f'<div class="row due"><span>Montant restant dû</span>'
-        f'<span class="v">{escape(fmt(resume["montant_du"]))}</span></div>'
+        # AMOT26 — le montant RÉCLAMÉ s'imprime au centime.
+        f'<span class="v">{escape(fmt_centimes_mad(resume["montant_du"]))}'
+        f'</span></div>'
         f'</div>'
     )
     body = (

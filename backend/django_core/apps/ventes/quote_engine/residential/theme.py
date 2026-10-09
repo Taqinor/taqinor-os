@@ -211,12 +211,16 @@ def font_face_css() -> str:
 
 
 def fmt(n) -> str:
-    """1234567 -> '1 234 567' (thin-space groups, FR style)."""
+    """1234567 -> '1 234 567' (thin-space groups, FR style).
+
+    AMOT26 — arrondi HALF_UP par LE formateur du moteur
+    (``montants.fmt_dirhams``), jamais l'arrondi bancaire de ``round``."""
+    from ..montants import fmt_dirhams
     try:
-        n = round(float(n))
+        float(n)
     except (TypeError, ValueError):
         return str(n)
-    return f"{n:,.0f}".replace(",", " ")
+    return fmt_dirhams(n)
 
 
 # ── QRES5 — garanties canoniques (UNE source pour tout le document) ──────────
