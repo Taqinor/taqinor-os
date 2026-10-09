@@ -1,0 +1,83 @@
+{
+  "gabarit": "og-1",
+  "images": {
+    "accueil.fr": {
+      "fichier": "accueil-fr-ba00634e3b.png",
+      "titre": "YanBow — logiciels métier",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
+    "solarbow.fr": {
+      "fichier": "solarbow-fr-744a5ce88c.png",
+      "titre": "SolarBow — le logiciel des installateurs solaires",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 144
+      },
+      "tient": true
+    },
+    "marketingbow.fr": {
+      "fichier": "marketingbow-fr-b82f31d42d.png",
+      "titre": "MarketingBow — campagnes publicitaires validées par une personne",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 213
+      },
+      "tient": true
+    },
+    "surMesure.fr": {
+      "fichier": "surMesure-fr-282ae3c275.png",
+      "titre": "Logiciel sur mesure — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
+    "societe.fr": {
+      "fichier": "societe-fr-c5b259b75a.png",
+      "titre": "La société — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
+    "rendezVous.fr": {
+      "fichier": "rendezVous-fr-910c7eb24c.png",
+      "titre": "Prendre rendez-vous — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    }
+  }
+}

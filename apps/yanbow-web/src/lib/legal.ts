@@ -90,7 +90,7 @@ export const FORME_SARLAU: Record<Locale, string> = {
   en: "SARL d'associé unique (single-member limited liability company)",
 };
 
-const PARTIES: Record<PartieRoyaumeUni, Record<Locale, string>> = {
+export const PARTIES: Record<PartieRoyaumeUni, Record<Locale, string>> = {
   angleterre_galles: { fr: 'Angleterre et pays de Galles', en: 'England and Wales' },
   ecosse: { fr: 'Écosse', en: 'Scotland' },
   irlande_du_nord: { fr: 'Irlande du Nord', en: 'Northern Ireland' },

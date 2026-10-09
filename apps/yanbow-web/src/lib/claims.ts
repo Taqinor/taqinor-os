@@ -13,7 +13,7 @@
  * relire la preuve, corriger si besoin, puis avancer le sha.
  *
  * Amorcé depuis les « Faits établis » du plan (vérifiés le 06/10/2026), preuves
- * relues le 07/10/2026 au commit ci-dessous.
+ * relues le 07/10/2026, puis TOUTES relues le 09/10/2026 (SHA_PAGES).
  */
 
 export type Statut = 'construit' | 'construit_non_prouve' | 'prevu';
@@ -42,8 +42,13 @@ export interface Affirmation {
   verifie_a_sha: string;
 }
 
-const SHA = '595d068b92dcf9eeff7f00e0fe916238d110fb1a';
 const PLAN = 'docs/plans/PLAN_YANBOW_WEB.md';
+/**
+ * Commit auquel TOUTES les preuves ont été relues (09/10/2026, YBW61-67 : preuves
+ * déplacées par l'évolution du code re-pointées — packs France, création en
+ * pause, proposer/approuver, sens du nom).
+ */
+const SHA_PAGES = '0588a29c87b6596918e04533c2adb4f948c9c3f5';
 
 export const AFFIRMATIONS: Affirmation[] = [
   // ── SolarBow — parties prêtes pour la France (D-YBW-8) ─────────────────────
@@ -55,7 +60,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'neutre',
     publiable: true,
     preuves: ['backend/django_core/apps/crm/models.py:520', 'backend/django_core/apps/crm/models.py:1156'],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-CALEPINAGE-3D',
@@ -65,7 +70,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'neutre',
     publiable: true,
     preuves: ['frontend/src/features/calepinage/atelier/OutilsVue.jsx:46', 'backend/django_core/apps/calepinage/models.py:41'],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-PENTE-IGN',
@@ -75,7 +80,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'oui',
     publiable: true,
     preuves: ['backend/django_core/apps/calepinage/services/lidar_ign.py:61', 'backend/django_core/apps/calepinage/services/lidar_ign.py:127'],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-PACKS-FR',
@@ -84,8 +89,8 @@ export const AFFIRMATIONS: Affirmation[] = [
     statut: 'construit',
     france: 'oui',
     publiable: true,
-    preuves: ['backend/django_core/apps/calepinage/services/reglementaire.py:643', 'backend/django_core/apps/calepinage/services/reglementaire.py:247'],
-    verifie_a_sha: SHA,
+    preuves: ['backend/django_core/apps/calepinage/services/reglementaire.py:866', 'backend/django_core/apps/calepinage/services/reglementaire.py:918'],
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-DEVIS-PDF',
@@ -95,7 +100,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'neutre',
     publiable: true,
     preuves: ['backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py:49'],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-ENTREPRISE-REELLE',
@@ -105,7 +110,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'neutre',
     publiable: true,
     preuves: [`${PLAN}:63`],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-PRET-FRANCE',
@@ -116,7 +121,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     publiable: false,
     raison_non_publiable: 'Interdit par D-YBW-8 : montants en MAD, aucune règle tarifaire française (TURPE, obligation d’achat, aides) dans le code.',
     preuves: [`${PLAN}:105`],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'SB-NON-PUBLIABLES',
@@ -127,7 +132,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     publiable: false,
     raison_non_publiable: 'Non construit ou non prouvé (faits établis du 06/10 : ADOC63-68 ouverts, AANA/ADOC sécurité ouverts) ; section sécurité GATED (YBW92).',
     preuves: [`${PLAN}:105`],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   // ── MarketingBow — moteur de campagnes seulement (D-YBW-7) ─────────────────
   {
@@ -137,8 +142,8 @@ export const AFFIRMATIONS: Affirmation[] = [
     statut: 'construit',
     france: 'neutre',
     publiable: true,
-    preuves: ['backend/django_core/apps/adsengine/meta_client.py:32', 'backend/django_core/apps/adsengine/meta_client.py:695'],
-    verifie_a_sha: SHA,
+    preuves: ['backend/django_core/apps/adsengine/meta_client.py:32', 'backend/django_core/apps/adsengine/meta_client.py:741'],
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'MB-PROPOSE-APPROUVE',
@@ -147,8 +152,8 @@ export const AFFIRMATIONS: Affirmation[] = [
     statut: 'construit',
     france: 'neutre',
     publiable: true,
-    preuves: ['backend/django_core/apps/adsengine/models.py:714', 'backend/django_core/apps/adsengine/services.py:206'],
-    verifie_a_sha: SHA,
+    preuves: ['backend/django_core/apps/adsengine/services.py:228', 'backend/django_core/apps/adsengine/services.py:1880'],
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'MB-COUPE-CIRCUIT',
@@ -158,7 +163,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'neutre',
     publiable: true,
     preuves: ['backend/django_core/apps/adsengine/flightrunner.py:204'],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'MB-EN-SERVICE',
@@ -169,7 +174,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     publiable: false,
     raison_non_publiable: 'Jamais tourné de bout en bout en production via l’application (audit du 28/09) ; jamais dit « en service ».',
     preuves: [`${PLAN}:109`],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'MB-CREATIF-IA',
@@ -180,7 +185,157 @@ export const AFFIRMATIONS: Affirmation[] = [
     publiable: false,
     raison_non_publiable: 'Aucune clé active : jamais promise (faits établis du 06/10).',
     preuves: [`${PLAN}:110`],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
+  },
+  // ── SolarBow — page produit (YBW62) ─────────────────────────────────────────
+  {
+    id: 'SB-POUR-QUI',
+    produit: 'solarbow',
+    texte_fr: 'Le logiciel des installateurs solaires, du premier contact à la proposition commerciale.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [
+      'backend/django_core/apps/crm/models.py:520',
+      'backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py:49',
+      `${PLAN}:60`,
+    ],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'SB-INTERFACE-FR',
+    produit: 'solarbow',
+    texte_fr: 'L’interface est en français.',
+    statut: 'construit',
+    france: 'oui',
+    publiable: true,
+    preuves: [`${PLAN}:103`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'SB-WHATSAPP-LIEN',
+    produit: 'solarbow',
+    texte_fr: 'Une relance WhatsApp s’ouvre en un clic ; c’est l’installateur qui envoie le message.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['frontend/src/features/crm/relances/PanneauProposerVisite.jsx:73'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  // ── MarketingBow — page produit (YBW63) ─────────────────────────────────────
+  {
+    id: 'MB-POUR-QUI',
+    produit: 'marketingbow',
+    texte_fr: 'Un moteur de campagnes publicitaires Meta où une personne valide chaque changement.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['backend/django_core/apps/adsengine/meta_client.py:741', 'backend/django_core/apps/adsengine/services.py:1880'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'MB-OPTION',
+    produit: 'marketingbow',
+    texte_fr: 'Proposé en option, après une démonstration.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:59`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'MB-PERMISSIONS',
+    produit: 'marketingbow',
+    texte_fr: 'Consulter, préparer et approuver sont trois droits distincts.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['backend/django_core/apps/adsengine/views.py:166', 'backend/django_core/apps/adsengine/views.py:269', 'backend/django_core/apps/adsengine/views.py:1779'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'MB-CHIFFRES-CITES',
+    produit: 'marketingbow',
+    texte_fr:
+      'Un chiffre dans un texte généré doit correspondre à un fait que vous avez publié, sinon le texte est bloqué ; le texte attend ensuite une validation humaine.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['backend/django_core/apps/adsengine/claim_check.py:8', 'backend/django_core/apps/adsengine/groundedness.py:12'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'MB-PROPRIETE',
+    produit: 'marketingbow',
+    texte_fr: 'Vous gardez la propriété de votre Page et de votre compte publicitaire Meta : nous y travaillons avec un accès partenaire que vous nous accordez.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['docs/adsengine-tenant-onboarding.md:17', 'docs/adsengine-tenant-onboarding.md:20'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  // ── Sur mesure (YBW64) ──────────────────────────────────────────────────────
+  {
+    id: 'SM-OFFRE',
+    produit: 'sur_mesure',
+    texte_fr: 'Au-delà de nos deux produits, nous construisons des logiciels sur mesure pour les entreprises.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:54`, `${PLAN}:42`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'SM-DEMARCHE',
+    produit: 'sur_mesure',
+    texte_fr: 'On part du besoin réel, on montre un prototype, puis on met le logiciel en service et on l’exploite avec vous.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:54`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'YB-DEUX-PRODUITS',
+    produit: 'yanbow',
+    texte_fr: 'Nos deux produits, SolarBow et MarketingBow, sont construits.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:43`, 'backend/django_core/apps/adsengine/meta_client.py:741', 'backend/django_core/apps/crm/models.py:520'],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'YB-REPONSE-HUMAINE',
+    produit: 'yanbow',
+    texte_fr: 'Une personne de l’équipe lit votre demande et vous répond.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: ['backend/django_core/apps/crm/webhooks.py:3354', `${PLAN}:56`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  // ── YanBow — la société (YBW65) ─────────────────────────────────────────────
+  {
+    id: 'YB-METIER',
+    produit: 'yanbow',
+    texte_fr: 'Nous construisons des logiciels métier pour les entreprises.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:42`, `${PLAN}:54`],
+    verifie_a_sha: SHA_PAGES,
+  },
+  {
+    id: 'YB-POSITIONNEMENT',
+    produit: 'yanbow',
+    texte_fr:
+      'Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur mesure pour le reste.',
+    statut: 'construit',
+    france: 'neutre',
+    publiable: true,
+    preuves: [`${PLAN}:43`, `${PLAN}:44`, `${PLAN}:54`],
+    verifie_a_sha: SHA_PAGES,
   },
   // ── YanBow — le nom ─────────────────────────────────────────────────────────
   {
@@ -190,9 +345,9 @@ export const AFFIRMATIONS: Affirmation[] = [
     statut: 'construit',
     france: 'neutre',
     publiable: true,
-    preuves: [`${PLAN}:193`],
+    preuves: [`${PLAN}:198`],
     sources_externes: [{ url: 'https://en.wiktionary.org/wiki/ينبوع', releve: 'ينبوع (yanbūʕ) : « spring, creek, fountain »', lu_le: '2026-10-07' }],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'YB-NOM-YAN',
@@ -201,9 +356,9 @@ export const AFFIRMATIONS: Affirmation[] = [
     statut: 'construit',
     france: 'neutre',
     publiable: true,
-    preuves: [`${PLAN}:193`],
+    preuves: [`${PLAN}:198`],
     sources_externes: [{ url: 'https://en.wiktionary.org/wiki/yan', releve: 'tachelhit : yan (ⵢⴰⵏ, يان) « one »', lu_le: '2026-10-07' }],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
   {
     id: 'YB-SLOGAN',
@@ -213,7 +368,7 @@ export const AFFIRMATIONS: Affirmation[] = [
     france: 'neutre',
     publiable: true,
     preuves: [`${PLAN}:72`],
-    verifie_a_sha: SHA,
+    verifie_a_sha: SHA_PAGES,
   },
 ];
 

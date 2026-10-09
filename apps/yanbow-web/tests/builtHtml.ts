@@ -36,7 +36,7 @@ function fichiersHtml(dir: string): string[] {
   return out;
 }
 
-/** `bonjour/index.html` → `/bonjour/` ; `index.html` → `/` ; `404.html` → `/404.html`. */
+/** `societe/index.html` → `/societe/` ; `index.html` → `/` ; `404.html` → `/404.html`. */
 export function urlDeFichier(fichierRelatif: string): string {
   const posix = fichierRelatif.split(sep).join('/');
   if (posix === 'index.html') return '/';
@@ -44,12 +44,9 @@ export function urlDeFichier(fichierRelatif: string): string {
   return '/' + posix;
 }
 
-/**
- * Langue d'une URL : `en` sous `/en/`, et pour les candidats PRIVÉS du tour
- * design (YBW42) sous `/_design/<candidat>/en/` ; sinon `fr`.
- */
+/** Langue d'une URL : `en` sous `/en/`, sinon `fr`. */
 export function langueDeUrl(url: string): 'fr' | 'en' {
-  return url === '/en/' || url.startsWith('/en/') || /^\/_design\/[a-z]+\/en\//.test(url) ? 'en' : 'fr';
+  return url === '/en/' || url.startsWith('/en/') ? 'en' : 'fr';
 }
 
 /** Toutes les pages HTML construites (les deux langues si actives), triées par URL. */
