@@ -31,6 +31,14 @@ function initialiser(form: HTMLFormElement): void {
 
   const champ = (nom: string) => form.elements.namedItem(nom) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
 
+  // YBW66 — l'appel d'une page produit pré-sélectionne le sujet (`?produit=solarbow`) :
+  // une valeur du contrat seulement (option existante), jamais une donnée personnelle.
+  const produitUrl = new URLSearchParams(location.search).get('produit');
+  const sujet = champ('produit');
+  if (produitUrl && sujet instanceof HTMLSelectElement && [...sujet.options].some((o) => o.value !== '' && o.value === produitUrl)) {
+    sujet.value = produitUrl;
+  }
+
   function effacer(): void {
     for (const p of form.querySelectorAll<HTMLElement>('[data-erreur-pour]')) {
       p.textContent = '';

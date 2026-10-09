@@ -7,7 +7,9 @@
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+import RendezVous from '../src/pages/rendez-vous.astro';
 import Societe from '../src/pages/societe.astro';
+import { CLES_CHAMPS, POT_DE_MIEL } from '../src/lib/rdv/champs';
 import { LEGAL_COMPLET } from './fixtures/legal-complet';
 import { AFFIRMATIONS } from '../src/lib/claims';
 import { publiables, texteAffirmation } from '../src/lib/affirmer';
@@ -63,6 +65,29 @@ describe('YBW64 — Sur mesure', () => {
 
   it('aucun client cité, aucun délai ni prix', () => {
     expect(texte(p)).not.toMatch(/\bclients?\b|\bdélais?\b|\bsemaines?\b|\bjours?\b|\bprix\b/i);
+  });
+});
+
+describe('YBW66 — Rendez-vous', () => {
+  const p = pageRendue(PAGES.rendezVous.fr);
+  it('le formulaire YBW55, aucun champ hors registre', () => {
+    const form = p.document.querySelector('main form[data-rendez-vous]');
+    expect(form).not.toBeNull();
+    const noms = [...form!.querySelectorAll('[name]')].map((e) => e.getAttribute('name')!);
+    for (const n of noms) expect([...CLES_CHAMPS, POT_DE_MIEL] as string[], n).toContain(n);
+  });
+
+  it('ce qui se passe ensuite : une personne répond (registre), aucun délai promis', () => {
+    expect(affirmationsDe(p)).toEqual(['YB-REPONSE-HUMAINE']);
+    expect(texte(p)).not.toMatch(/\d+\s*(h|heures?|jours?|minutes?)\b|sous \d|dans les \d|immédiat|rapidement/i);
+  });
+
+  it('pas d’appel vers soi-même ; WhatsApp absent tant que le numéro manque, présent avec une fixture', async () => {
+    expect(p.document.querySelector('header .bouton-entete')).toBeNull();
+    expect(p.document.querySelector('[data-whatsapp-page]')).toBeNull();
+    const container = await AstroContainer.create();
+    const doc = new JSDOM(await container.renderToString(RendezVous, { props: { locale: 'fr', whatsapp: '33100000000' } })).window.document;
+    expect(doc.querySelector('[data-whatsapp-page]')?.getAttribute('href')).toBe('https://wa.me/33100000000');
   });
 });
 

@@ -26,6 +26,19 @@
         "h": 75
       },
       "tient": true
+    },
+    "rendezVous.fr": {
+      "fichier": "rendezVous-fr-910c7eb24c.png",
+      "titre": "Prendre rendez-vous — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
     }
   }
 }
