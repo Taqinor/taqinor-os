@@ -24,7 +24,7 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes
+from ..montants import deux_prix, fmt_centimes, lignes_remisees
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
@@ -499,6 +499,10 @@ def _lignes(d):
     structure = d.get("lignes_structure") or []
     seq = (sequence_affichage(items, structure) if structure
            else [("item", it) for it in items])
+    # AMOT45 — chaque ligne porte la remise globale (P.U. catalogue barré +
+    # P.U. remisé, Σ lignes = Total HT) ; règles d'origine : le catalogue.
+    remisees = {id(r["item"]): r for r in lignes_remisees(
+        items, catalogue_seul=bool(d.get("regles_calcul_origine")))}
     rows = []
     for kind, it in seq:
         if kind == "struct":
@@ -506,15 +510,16 @@ def _lignes(d):
                         f'</b></td></tr>')
             continue
         qte = _num(it.get("quantite")) or 0
-        pu = _num(it.get("prix_unit_ht")) or 0
         taux = _num(it.get("taux_tva")) or 0
+        r = remisees.get(id(it)) or lignes_remisees([it], catalogue_seul=True)[0]
         marque = (it.get("marque") or "").strip()
         mq = f' <span class="ag-mq">{marque}</span>' if marque else ""
         rows.append(
             f'<tr><td>{it.get("designation") or ""}{mq}</td>'
-            f'<td class="r">{qte:g}</td><td class="r">{fmt_centimes(pu)}</td>'
+            f'<td class="r">{qte:g}</td>'
+            f'<td class="r">{deux_prix(fmt_centimes, r["pu_catalogue"], r["pu"])}</td>'
             f'<td class="r">{taux:g} %</td>'
-            f'<td class="r t">{fmt_centimes(pu * qte)}</td></tr>')
+            f'<td class="r t">{deux_prix(fmt_centimes, r["total_catalogue"], r["total"])}</td></tr>')
     return "".join(rows)
 
 

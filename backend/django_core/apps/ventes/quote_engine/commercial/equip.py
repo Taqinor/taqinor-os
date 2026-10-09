@@ -7,6 +7,8 @@ whose markup is emitted by ``categories.category_block``). RULE #4 : jamais de
 prix_achat/marge — on ne rend que designation/quantité/P.U. HT/TVA %/Total HT.
 QJR615 — les lignes sont en HT (prix_unit_ht, remise de ligne déjà incluse par le
 builder) : la somme des Total HT imprimés est le « Sous-total HT » de la chaîne.
+AMOT45 — avec une remise GLOBALE, chaque ligne montre le P.U. catalogue barré et
+le P.U. remisé (``montants.lignes_remisees``) : Σ lignes remisées = Total HT.
 """
 from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
@@ -18,6 +20,7 @@ from ..ci.synthese import chiffres_cles
 from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
 from .. import premium_base
+from ..montants import deux_prix, lignes_remisees
 
 
 def _num(v, default=0.0):
@@ -159,6 +162,10 @@ def build(ctx):
     _structure = d.get("lignes_structure") or []
     seq = (sequence_affichage(items, _structure) if _structure
            else [("item", it) for it in items])
+    # AMOT45 — la remise globale portée sur chaque ligne (P.U. catalogue barré
+    # + P.U. remisé, Σ lignes = Total HT) ; règles d'origine : le catalogue.
+    _remisees = {id(r["item"]): r for r in lignes_remisees(
+        items, catalogue_seul=bool(d.get("regles_calcul_origine")))}
     rows = ""
     for kind, it in seq:
         if kind == "struct":
@@ -172,10 +179,13 @@ def build(ctx):
                          f'letter-spacing:.5px;background:{wash};">{txt}</td></tr>')
             continue
         qte = _num(it.get("quantite"))
-        # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité : la
-        # colonne s'additionne au « Sous-total HT » ; aucun calcul TTC par ligne.
-        pu_ht = _num(it.get("prix_unit_ht"))
-        total = pu_ht * qte
+        # QJR615 — P.U. HT (remise de LIGNE déjà incluse par le builder) ×
+        # quantité, aucun calcul TTC par ligne. AMOT45 — la remise GLOBALE est
+        # portée en plus (catalogue barré + remisé) : les Total HT imprimés
+        # s'additionnent au « Total HT » (le catalogue barré, au Sous-total).
+        _r = _remisees.get(id(it)) or lignes_remisees([it], catalogue_seul=True)[0]
+        pu_txt = deux_prix(fmt_mad, _r["pu_catalogue"], _r["pu"])
+        total_txt = deux_prix(fmt_mad, _r["total_catalogue"], _r["total"])
         taux = _num(it.get("taux_tva"))
         taux_txt = f"{taux:g}\u202f%"
         marque = (it.get("marque") or "").strip()
@@ -184,9 +194,9 @@ def build(ctx):
         rows += (
             f'<tr><td class="c2-d">{desig}{m}</td>'
             f'<td class="c2-q">{qte:g}</td>'
-            f'<td class="c2-p">{fmt_mad(pu_ht)}</td>'
+            f'<td class="c2-p">{pu_txt}</td>'
             f'<td class="c2-v">{taux_txt}</td>'
-            f'<td class="c2-t">{fmt_mad(total)}</td></tr>')
+            f'<td class="c2-t">{total_txt}</td></tr>')
 
     tot = d.get("totaux_all") or {}
     ht_brut = _num(tot.get("ht_brut"))

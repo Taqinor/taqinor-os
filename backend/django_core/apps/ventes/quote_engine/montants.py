@@ -38,6 +38,64 @@ def fmt_centimes(v):
     return f"{d:,.2f}".replace(",", " ").replace(".", ",")
 
 
+# ── AMOT45 — LA REMISE GLOBALE SUR CHAQUE LIGNE (QJRREM), UN SEUL HELPER ─────
+# Le builder pose sur chaque item ``pu_ht_remise`` / ``total_ht_remise``
+# (répartis par ``domain.argent.repartir_remise_par_ligne``, somme == Total HT
+# net au centime). Le résidentiel les affichait déjà ; l'agricole et la page
+# équipements commerciale / industrielle imprimaient le catalogue, si bien que
+# les lignes ne s'additionnaient pas au Total HT. Ces trois fonctions sont la
+# lecture UNIQUE de ces clés ; un item sans elles (bâti à la main, devis sans
+# remise) retombe sur le catalogue : page inchangée au caractère près.
+
+
+def pu_ht_remise(it):
+    """P.U. HT à afficher : après remise globale, ou le catalogue à défaut."""
+    valeur = it.get("pu_ht_remise")
+    if valeur is None:
+        return float(it.get("prix_unit_ht") or 0)
+    return float(valeur)
+
+
+def total_ht_remise(it):
+    """Total HT de la ligne à afficher : après remise globale, ou catalogue."""
+    valeur = it.get("total_ht_remise")
+    if valeur is None:
+        return float(it.get("prix_unit_ht") or 0) * float(it.get("quantite") or 0)
+    return float(valeur)
+
+
+def lignes_remisees(items, *, catalogue_seul=False):
+    """``[{item, pu_catalogue, pu, total_catalogue, total}]`` pour un tableau
+    d'équipements : ``pu`` / ``total`` = après remise globale (Σ ``total`` =
+    Total HT net). ``catalogue_seul`` (devis aux règles d'origine, décision
+    fondateur 08/10/2026) : les prix remisés valent le catalogue — l'affichage
+    d'hier, sans prix barré."""
+    out = []
+    for it in items or ():
+        pu_cat = float(it.get("prix_unit_ht") or 0)
+        total_cat = pu_cat * float(it.get("quantite") or 0)
+        out.append({
+            "item": it,
+            "pu_catalogue": pu_cat,
+            "pu": pu_cat if catalogue_seul else pu_ht_remise(it),
+            "total_catalogue": total_cat,
+            "total": total_cat if catalogue_seul else total_ht_remise(it),
+        })
+    return out
+
+
+def deux_prix(fmt, valeur_catalogue, valeur_remisee, cls_was="", cls_now=""):
+    """« <s>1 500</s> 1 425 » : le prix catalogue barré, puis le prix remisé.
+    Les deux nombres FORMATÉS sont comparés : identiques ⇒ un seul prix."""
+    catalogue = fmt(valeur_catalogue)
+    remise = fmt(valeur_remisee)
+    if catalogue == remise:
+        return remise
+    was = f' class="{cls_was}"' if cls_was else ''
+    now = f'<span class="{cls_now}">{remise}</span>' if cls_now else remise
+    return f'<s{was}>{catalogue}</s> {now}'
+
+
 def fmt_centimes_mad(v):
     """``fmt_centimes`` suffixé « MAD » — le format des lignes de total."""
     return fmt_centimes(v) + " MAD"
