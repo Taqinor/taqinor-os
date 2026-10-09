@@ -14,13 +14,15 @@ Test-du-test : remettre ``note=f'[Copie de {ref}] ' + …`` dans
 """
 import ast
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
 from django.test import Client as DjangoClient, TestCase
 from rest_framework.test import APIClient
 
-from apps.ventes.models import Devis, ShareLink
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.tests.test_proposal_data_shape import (
     make_client, make_company, make_devis, make_user)
 
@@ -44,13 +46,38 @@ class NoteClientSansMarqueurTests(TestCase):
         self.api.force_authenticate(self.user)
 
     def _note_client(self, devis):
-        token = str(uuid.uuid4())
-        ShareLink.objects.create(company=self.company, devis=devis,
-                                 token=token)
+        # ADEV11 (C-ADEV-004) — un BROUILLON n'est plus servi au jeton CLIENT
+        # (404 muet). Les copies/variantes/gammes/réserves naissent brouillon :
+        # on lit donc le payload par le jeton d'APERÇU INTERNE, servi au
+        # brouillon et « par ailleurs IDENTIQUE au jeton public »
+        # (L-INTPREV, ``public_views`` : même ``note_client``).
+        lien = ShareLink.objects.create(company=self.company, devis=devis,
+                                        token=str(uuid.uuid4()))
+        token = lien.jeton_interne_effectif()
         reponse = DjangoClient().get(
             f'/api/django/public/proposal/{token}/data/')
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
         return reponse.json().get('note_client', '')
+
+    def _completer(self, devis):
+        """Le devis de réserve naît SANS ligne (XFSM18 : « laissé à compléter
+        dans l'éditeur ») ; sans onduleur, le moteur refuse le document à
+        options (règle de sécurité ``build_quote_data``) et la charge utile
+        publique est un 404. On le complète comme le commercial le ferait —
+        la note (seul objet du test) n'est pas touchée."""
+        for designation, quantite, prix in [
+                ('Onduleur réseau Deye 8kW', '1', '14000'),
+                ('Panneau Canadian Solar 550W', '10', '1400')]:
+            produit = Produit.objects.create(
+                company=self.company, nom=designation,
+                sku=f'ADEV32-{devis.pk}-{designation[:8]}',
+                prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+                quantite_stock=50)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=designation,
+                quantite=Decimal(quantite), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'))
+        return devis
 
     def _assert_propre(self, copie, marqueur):
         copie.refresh_from_db()  # CLAUSE PERSISTANCE : relue en base
@@ -97,7 +124,8 @@ class NoteClientSansMarqueurTests(TestCase):
             id=1, company=self.company, description='',
             photo_id=4242,
             intervention=SimpleNamespace(installation=installation))
-        devis = create_devis_from_reserve(reserve=reserve, user=self.user)
+        devis = self._completer(
+            create_devis_from_reserve(reserve=reserve, user=self.user))
         self._assert_propre(devis, 'pièce jointe #4242')
 
     def test_reserve_garde_la_description(self):
@@ -109,7 +137,8 @@ class NoteClientSansMarqueurTests(TestCase):
         reserve = SimpleNamespace(
             id=2, company=self.company, description='Fissure du rail',
             photo_id=7, intervention=SimpleNamespace(installation=installation))
-        devis = create_devis_from_reserve(reserve=reserve, user=self.user)
+        devis = self._completer(
+            create_devis_from_reserve(reserve=reserve, user=self.user))
         note_publique = self._note_client(devis)
         self.assertIn('Fissure du rail', note_publique)
         self.assertNotIn('pièce jointe #', note_publique)
