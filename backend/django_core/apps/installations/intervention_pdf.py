@@ -20,8 +20,23 @@ def _nom_client_facing(user, company):
 
 
 def _equipe_payload(intervention):
-    noms = [_nom_client_facing(u, intervention.company)
-            for u in intervention.equipe.all()]
+    """ACHT42 — intervenants RÉELS (``selectors.membres_intervention`` :
+    technicien principal + équipe canonique ``equipe_ref``, repli sur le M2M
+    historique), technicien principal en tête (c'est lui que le bloc
+    « L'installateur » nomme), par leur NOM (APDF41). Source unique du PDF et
+    de la page publique."""
+    from django.contrib.auth import get_user_model
+
+    from .selectors import membres_intervention
+
+    ids = membres_intervention(intervention)
+    if not ids:
+        return []
+    users = {u.id: u for u in get_user_model().objects.filter(id__in=ids)}
+    ordre = [i for i in ([intervention.technicien_id]
+                         + sorted(ids - {intervention.technicien_id}))
+             if i in users]
+    noms = [_nom_client_facing(users[i], intervention.company) for i in ordre]
     return [n for n in noms if n]
 
 
