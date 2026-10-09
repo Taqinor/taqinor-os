@@ -235,6 +235,7 @@ from pathlib import Path
 
 from check_api_contract import scan_js
 
+TYPE_DE_CLE = "par_symbole"  # AMET81 — lu par audit_tache.py listes-figees : cle `forme|cible`
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE_PATH = ROOT / "scripts" / "taches_cablage_allow.txt"
 FRONT_SRC = ROOT / "frontend" / "src"

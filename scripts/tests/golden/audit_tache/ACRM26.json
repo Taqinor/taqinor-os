@@ -22,6 +22,17 @@
     "frontend/src/api/crmApi.js::saveEquipe"
    ]
   },
+  "assertions-existantes backend/django_core/apps/crm/views.py::EquipeCommercialeViewSet.get_permissions": {
+   "assertions": [
+    "backend/django_core/apps/crm/tests_acrm_equipes_admin.py::EquipesAdminTests::test_admin_ok",
+    "backend/django_core/apps/crm/tests_acrm_equipes_admin.py::EquipesAdminTests::test_commercial_refuse",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_commercial_peut_lire_mais_pas_creer",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_cross_company_404_sur_detail_update_delete",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_membres_et_nb_membres_reflete_la_composition",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_responsable_archive_une_equipe",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_responsable_cree_une_equipe_societe_forcee"
+   ]
+  },
   "ecrivains Lead.telephone_whatsapp": {
    "champ_existe": false,
    "ecrivains": []
@@ -43,6 +54,19 @@
   "lecteurs-front tranches_facturees": {
    "lecteurs": [
     "frontend/src/pages/ventes/devisList/DevisRow.jsx"
+   ]
+  },
+  "listes-figees backend/django_core/apps/crm/services.py": {
+   "gardes": [
+    "docs/get-or-create-audit.md <- scripts/check_get_or_create.py (par_symbole)",
+    "docs/ownership.yml <- scripts/check_ownership.py (par_symbole)",
+    "scripts/check_actions_atomiques.py <- scripts/check_actions_atomiques.py (par_symbole)",
+    "scripts/check_garde_contact.py <- scripts/check_garde_contact.py (par_symbole)",
+    "scripts/check_stages.py <- scripts/check_stages.py (par_symbole)",
+    "scripts/check_version_en_vigueur.py <- scripts/check_version_en_vigueur.py (par_symbole)",
+    "scripts/read_modify_write_allow.txt <- scripts/check_money_rounding.py (par_symbole)",
+    "scripts/read_modify_write_allow.txt <- scripts/check_read_modify_write.py (par_symbole)",
+    "scripts/services_appeles_allow.txt <- scripts/check_services_appeles.py (par_symbole)"
    ]
   }
  }

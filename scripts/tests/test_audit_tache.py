@@ -31,6 +31,7 @@ GOLDEN = ROOT / "scripts" / "tests" / "golden" / "audit_tache"
 ECRIRE = os.environ.get("AUDIT_TACHE_GOLDEN") == "ecrire"
 
 DJ = "backend/django_core/apps"
+FACTURE = f"{DJ}/ventes/views/facture.py::FactureViewSet.perform_update"
 # Les commandes rejouees par cas. La sortie projetee (sans lignes) EST le golden.
 CAS = {
     "ACRM26": [
@@ -38,20 +39,30 @@ CAS = {
         ("lecteurs-front", "tranches_facturees"),
         ("ecrivains", "Lead.whatsapp"),
         ("ecrivains", "Lead.telephone_whatsapp"),
+        ("assertions-existantes", f"{DJ}/crm/views.py::EquipeCommercialeViewSet.get_permissions"),
+        ("listes-figees", f"{DJ}/crm/services.py"),
     ],
     "ACHT22": [
         ("appelants", f"{DJ}/installations/views/livraison.py::LivraisonViewSet.bon_livraison"),
         ("appelants", f"{DJ}/installations/livraison_pdf.py::bon_livraison_pdf"),
+        ("assertions-existantes", f"{DJ}/installations/views/livraison.py::LivraisonViewSet.bon_livraison"),
+        ("lecteurs-sample", "roof_layout_v2.schema.json"),
     ],
     "AFAC47": [
         ("appelants", f"{DJ}/ventes/views/facture.py::FactureViewSet.perform_update"),
         ("appelants", f"{DJ}/ventes/utils/echeancier.py::tranches_normalisees"),
+        ("assertions-existantes", f"{DJ}/ventes/recouvrement.py::ParametrageRelanceClientViewSet.perform_update"),
+        ("assertions-existantes", f"{FACTURE} --anciens Montant figé"),
+        ("listes-figees", f"{DJ}/ventes/recouvrement.py"),
     ],
 }
 
 
 def executer(commande: str, argument: str) -> dict:
-    return at.COMMANDES[commande](argument)
+    """`argument` peut porter `--anciens <litteral>` (comme la CLI)."""
+    cible, _, ancien = argument.partition(" --anciens ")
+    options = {"anciens": [ancien]} if ancien else {}
+    return at.COMMANDES[commande](cible, **options)
 
 
 def projeter(commande: str, resultat: dict) -> dict:
@@ -163,6 +174,65 @@ class AppelantsTests(unittest.TestCase):
         # Meta, fusion (`_MERGE_FILL_FIELDS` + setattr), re-semis Odoo (`_FILL_FIELDS`).
         self.assertIn("_apply_meta_form_extras", symboles)
         self.assertTrue(any(e["via"].startswith("setattr dynamique") for e in sortie["ecrivains"]))
+
+
+class AssertionsTests(unittest.TestCase):
+    def test_ancien_litteral_trouve_le_test_qui_le_fige(self):
+        # Given de la tache : `--anciens "Montant fige"` sur FactureViewSet.perform_update.
+        sortie = _Golden.sortie(
+            "assertions-existantes",
+            f"{DJ}/ventes/views/facture.py::FactureViewSet.perform_update --anciens Montant figé")
+        par_litteral = [a for a in sortie["assertions"] if "littéral « Montant figé »" in a["via"]]
+        self.assertTrue(any(a["test"].startswith(
+            f"{DJ}/facturation/tests/test_atot_montants_figes.py::") for a in par_litteral), sortie["texte"])
+        for a in sortie["assertions"]:
+            self.assertEqual(a["verdict"], "")
+            self.assertRegex(a["test"], r"^\S+\.(?:py|jsx?|mjs|tsx?|json)(?:::.+)?$")
+        # Golden ACRM26 (R3_V3) : les tests de tests_zsal3_equipe_crud.py et leurs codes 201/200/404.
+        acrm = _Golden.sortie("assertions-existantes",
+                              f"{DJ}/crm/views.py::EquipeCommercialeViewSet.get_permissions")
+        codes = {c for a in acrm["assertions"] if "tests_zsal3_equipe_crud.py::" in a["test"] for c in a["codes"]}
+        self.assertTrue({201, 200, 404} <= codes, acrm["texte"])
+
+    def test_asec28_patch_seulement(self):
+        sortie = _Golden.sortie(
+            "assertions-existantes", f"{DJ}/ventes/recouvrement.py::ParametrageRelanceClientViewSet.perform_update")
+        asec28 = [a for a in sortie["assertions"] if "test_xfac_asec28" in a["test"]]
+        self.assertTrue(asec28, sortie["texte"])
+        self.assertEqual({v for a in asec28 for v in a["verbes"]}, {"PATCH"})
+
+    def test_lecteurs_sample_trouve_tests_et_front(self):
+        sortie = _Golden.sortie("lecteurs-sample", "roof_layout_v2.schema.json")
+        categories = {x["categorie"] for x in sortie["lecteurs"]}
+        self.assertIn("test-py", categories)
+        self.assertGreaterEqual(len(sortie["lecteurs"]), 10, sortie["texte"])
+
+    def test_listes_figees_nomment_garde_type_et_regeneration(self):
+        sortie = _Golden.sortie("listes-figees", f"{DJ}/crm/services.py")
+        gardes = {g["garde"]: g for g in sortie["gardes"]}
+        self.assertIn("scripts/check_get_or_create.py", gardes)
+        g = gardes["scripts/check_get_or_create.py"]
+        self.assertEqual(g["type_de_cle"], "par_symbole")
+        self.assertTrue(g["declare"])
+        self.assertIn("--write", g["regeneration"])
+
+    def test_type_de_cle_declare_par_les_quatre_gardes(self):
+        for garde in ("check_get_or_create", "check_naive_datetime", "check_duplicats_litteraux",
+                      "check_taches_cablage"):
+            texte = (ROOT / "scripts" / f"{garde}.py").read_text(encoding="utf-8")
+            self.assertRegex(texte, r'(?m)^TYPE_DE_CLE = "par_(?:ligne|symbole)"(?:  #.*)?$', garde)
+
+    def test_type_de_cle_absent_est_deduit(self):
+        depot = DepotJetable({
+            "scripts/check_x.py": '"""garde."""\nBASE = "x_allow.txt"\n# --write-baseline\n',
+            "scripts/x_allow.txt": "backend/app/a.py:12\n",
+            "backend/app/a.py": "def f():\n    return 1\n",
+        })
+        self.addCleanup(depot.fermer)
+        sortie = at.listes_figees("backend/app/a.py", racine=depot.racine)
+        g = sortie["gardes"][0]
+        self.assertEqual((g["garde"], g["type_de_cle"], g["declare"]), ("scripts/check_x.py", "par_ligne", False))
+        self.assertIn("TYPE_DE_CLE absent (déduit : par_ligne)", sortie["texte"])
 
 
 def _git(racine, *args):
