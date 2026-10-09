@@ -17,6 +17,7 @@ FG320), prélèvement (`vagues-picking/{id}/lignes/{l}/prelever/` NTWMS4),
 comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
+from ..openapi_helpers import INT, P, S, STR, corps  # noqa: F401
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -24,7 +25,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 
 
-@extend_schema(responses={
+@extend_schema(parameters=[P('code', STR, True, 'Code scanné')], responses={
     200: inline_serializer('StockScannerResoudreResultat', {
         'type': serializers.CharField(),
         'id': serializers.IntegerField(),
@@ -62,7 +63,7 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
-@extend_schema(request=None, responses={
+@extend_schema(request=corps('ScannerMouvementCorps', produit=S.IntegerField(), type_mouvement=S.CharField(), quantite=S.IntegerField(), bin_source=S.IntegerField(required=False, allow_null=True), bin_destination=S.IntegerField(required=False, allow_null=True), reference=S.CharField(required=False), note=S.CharField(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
         'id': serializers.IntegerField(),
         'produit': serializers.IntegerField(),
@@ -113,7 +114,7 @@ def scanner_mouvement_view(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(responses={
+@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU'), P('quantite', INT)], responses={
     200: inline_serializer('StockScannerRetourFournisseurLigne', {
         'produit': serializers.IntegerField(),
         'produit_nom': serializers.CharField(),

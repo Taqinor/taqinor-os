@@ -1,9 +1,13 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    BINARY, DATE, INT, LISTE, P, S, STR, XLSX, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -42,6 +46,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('type_mouvement', STR, False, 'Type de mouvement'), P('produit', INT, False, 'Produit (id)'), P('date_min', DATE), P('date_max', DATE)]))
 class MouvementStockViewSet(CompanyScopedModelViewSet):
     # ARC4 — sweep : base transverse unique (TenantMixin + ModelViewSet, via
     # CompanyScopedModelViewSet). get_queryset AJOUTE le garde-fou
@@ -94,6 +99,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(date__date__lte=date_max)
         return qs
 
+    @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'), P('produit', INT, False, 'Produit (id)'), P('date_min', DATE), P('date_max', DATE)], responses={XLSX: BINARY, 202: corps('MouvementsExportAsyncReponse', detail=S.CharField(), job_id=S.IntegerField(), statut=S.CharField(), status=S.CharField(), rows=S.IntegerField(), status_url=S.CharField())})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
@@ -139,6 +145,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             },
             status=status.HTTP_202_ACCEPTED)
 
+    @extend_schema(parameters=[P('group_by', STR, False, 'Regroupement', ['produit', 'type', 'mois', 'emplacement']), P('date_min', DATE), P('date_max', DATE), P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='agregation',
             permission_classes=[IsAnyRole])
     def agregation(self, request):

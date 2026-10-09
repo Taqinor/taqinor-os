@@ -1,7 +1,11 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
+from ..openapi_helpers import (  # noqa: F401
+    INT, LISTE, P, S, STR, corps,
+)
 from ..models import LotEntrepot
 from ..serializers import LotEntrepotSerializer
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -13,6 +17,7 @@ READ_ACTIONS = ['list', 'retrieve']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('produit', INT), P('avec_stock', STR, False, 'Seulement les lots avec stock restant')]))
 class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """XSTK6 — registre de LOTS en entrepôt (miroir de `SerieEntrepot`
     FG323). LECTURE SEULE : alimenté à la confirmation d'une réception,
@@ -42,6 +47,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(quantite_restante__gt=0)
         return qs
 
+    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('quantite', INT, False, 'Quantité (défaut 1)')], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='fefo',
             permission_classes=[IsAnyRole])
     def fefo(self, request):
@@ -76,6 +82,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             for p in plan
         ])
 
+    @extend_schema(request=corps('LotSortirCorps', quantite=S.IntegerField(), forcer=S.BooleanField(required=False), motif=S.CharField(required=False, allow_blank=True)), responses=LotEntrepotSerializer)
     @action(detail=True, methods=['post'], url_path='sortir')
     def sortir(self, request, pk=None):
         """XSTK6 — sort une quantité de CE lot. Bloque un lot périmé (garde

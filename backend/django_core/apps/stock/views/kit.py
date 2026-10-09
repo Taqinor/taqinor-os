@@ -5,10 +5,15 @@ ne porte aucun prix / marque / TVA propre ; l'action ``exploser`` le décompose
 en lignes composant avec prix/TVA/marque LUS sur chaque ``Produit`` au vol.
 Multi-tenant : querysets filtrés par société + ``company`` forcée côté serveur
 (TenantMixin)."""
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..openapi_helpers import (  # noqa: F401
+    BOOL, DATE, NUM, OBJET, P, S, corps,
+)
+from ..serializers import RevisionKitSerializer  # noqa: E402
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
@@ -23,6 +28,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
                  'remplacer_composant']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('avec_disponibilite', BOOL, False, 'Inclure la disponibilité potentielle')]), retrieve=extend_schema(parameters=[P('avec_disponibilite', BOOL, False, 'Inclure la disponibilité potentielle')]))
 class KitProduitViewSet(CompanyScopedModelViewSet):
     queryset = KitProduit.objects.all().prefetch_related('composants__produit')
     serializer_class = KitProduitSerializer
@@ -59,6 +65,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         return [IsAdminRole()]
 
+    @extend_schema(parameters=[P('quantite', NUM, False, 'Quantité de kits (défaut 1)')], responses=corps('KitExploserReponse', kit_id=S.IntegerField(), kit_nom=S.CharField(), quantite_kit=S.FloatField(), lignes=S.ListField(child=S.DictField())))
     @action(detail=True, methods=['get'], url_path='exploser')
     def exploser(self, request, *args, **kwargs):
         """Explose le kit en lignes composant (param ``quantite`` ≥ 1, défaut 1).
@@ -86,6 +93,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
             'lignes': lignes,
         })
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='structure')
     def structure(self, request, *args, **kwargs):
         """XMFG5 — nomenclature indentée + disponibilité + kits assemblables.
@@ -116,6 +124,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
                     data[_cle] = f'{data[_cle]:.2f}'
         return Response(data)
 
+    @extend_schema(responses=RevisionKitSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='revisions')
     def revisions(self, request, *args, **kwargs):
         """XMFG18 — historique des révisions de nomenclature de ce kit
@@ -126,6 +135,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         qs = kit.revisions.select_related('user').order_by('-numero')
         return Response(RevisionKitSerializer(qs, many=True).data)
 
+    @extend_schema(parameters=[P('date', DATE, True, 'Date (AAAA-MM-JJ)')], responses=RevisionKitSerializer)
     @action(detail=True, methods=['get'], url_path='composition-au')
     def composition_au(self, request, *args, **kwargs):
         """XMFG18 — « composition au JJ/MM/AAAA » : renvoie la révision en
@@ -155,6 +165,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return Response(RevisionKitSerializer(revision).data)
 
+    @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='disponibilite')
     def disponibilite(self, request, *args, **kwargs):
         """ZMFG9 — disponibilité multi-niveaux du kit : nombre de kits
@@ -172,6 +183,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data)
 
+    @extend_schema(request=corps('KitDupliquerCorps', facteur_echelle=S.DecimalField(max_digits=10, decimal_places=4, required=False, allow_null=True)), responses={201: KitProduitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):
         """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
@@ -189,6 +201,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         return Response(
             self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=corps('KitRemplacerComposantCorps', produit_ancien=S.IntegerField(), produit_nouveau=S.IntegerField(), ratio_quantite=S.DecimalField(max_digits=12, decimal_places=4, required=False, allow_null=True), dry_run=S.BooleanField(required=False)), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='remplacer-composant')
     def remplacer_composant(self, request):
         """XMFG19 — remplacement de MASSE d'un composant dans toutes les

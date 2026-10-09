@@ -1,6 +1,10 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from ..openapi_helpers import (  # noqa: F401
+    INT, P,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import RevalorisationStock
 from ..serializers import RevalorisationStockSerializer
@@ -11,6 +15,7 @@ from authentication.permissions import IsAdminRole
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('produit', INT)]))
 class RevalorisationStockViewSet(CompanyScopedModelViewSet):
     """XSTK14 — revalorisation manuelle du stock (document tracé). INTERNE,
     admin-only, jamais client-facing. Un brouillon peut être supprimé ; une
@@ -65,6 +70,7 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
 
+    @extend_schema(request=None, responses=RevalorisationStockSerializer)
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         """Valide la revalorisation : verrouille le document et devient la

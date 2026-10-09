@@ -10,9 +10,13 @@ INTERNE — admin uniquement ; les écarts de stock ne sont jamais exposés
 au client.
 """
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from ..openapi_helpers import (  # noqa: F401
+    OBJET,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import InventaireSession
@@ -54,6 +58,7 @@ class InventaireSessionViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             )
         create_with_reference(InventaireSession, 'INV', company, _save)
 
+    @extend_schema(request=None, responses=OBJET)
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         """Valide la session : émet les AJUSTEMENT de stock pour chaque écart."""
@@ -66,6 +71,7 @@ class InventaireSessionViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
+    @extend_schema(request=None, responses=InventaireSessionSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         """Annule une session en brouillon."""

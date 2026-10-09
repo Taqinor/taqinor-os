@@ -1,10 +1,13 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import (  # noqa: F401
+    P, S, STR, corps,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -43,6 +46,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
 class TransfertStockViewSet(CompanyScopedModelViewSet):
     """N15 — transferts de stock entre emplacements (le « transfer record »).
 
@@ -93,7 +97,7 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
 
     # ── NTRET7 — cycle en deux temps (OPT-IN, le direct reste inchangé) ────
 
-    @extend_schema(request=None, responses={201: TransfertStockSerializer})
+    @extend_schema(request=corps('TransfertDemanderCorps', produit=S.IntegerField(), source=S.IntegerField(), destination=S.IntegerField(), quantite=S.IntegerField(), note=S.CharField(required=False, allow_blank=True)), responses={201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='demander')
     def demander(self, request):
         """NTRET7 — ouvre un transfert EN DEUX TEMPS : rien n'a encore bougé.
@@ -131,7 +135,7 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
         transfert.refresh_from_db()
         return Response(self.get_serializer(transfert).data)
 
-    @extend_schema(request=None, responses={200: TransfertStockSerializer})
+    @extend_schema(request=corps('TransfertReceptionnerCorps', quantite_recue=S.IntegerField(required=False)), responses={200: TransfertStockSerializer})
     @action(detail=True, methods=['post'], url_path='receptionner')
     def receptionner(self, request, pk=None):
         """Arrivée : la destination n'incrémente QUE le réellement compté
