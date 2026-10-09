@@ -1,0 +1,6 @@
+# APAR63 - passif GELE de scripts/check_notify_point_unique.py : ecritures de
+# Notification hors apps/notifications/services.py. Format :
+#   chemin::fonction   # justification (obligatoire, sinon la garde refuse)
+# Releve du 2026-10-09 sur le depot reel : AUCUN site (APAR58 a fait passer
+# adsengine par notify_many). La liste ne peut que DECROITRE ; une entree
+# devenue conforme sans etre retiree fait echouer la garde.

@@ -250,6 +250,20 @@ GARDES = {
         ('Test the page-1-list checker itself (ADOC38)',
          'python -m unittest scripts.tests.test_check_liste_page1 -v',
          '.'),
+        # AACQ77 — écrans publicité : pas de liste lue sur la page 1, pas d'échec avalé.
+        ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
+         'python scripts/check_adsengine_ecrans.py',
+         '.'),
+        ('Test the adsengine-screens checker itself (AACQ77)',
+         'python -m unittest scripts.tests.test_check_adsengine_ecrans -v',
+         '.'),
+        # APAR63 — une seule voie d'écriture des notifications (notify/notify_many).
+        ('Check point unique d ecriture des notifications (APAR63)',
+         'python scripts/check_notify_point_unique.py',
+         '.'),
+        ('Test the notify-single-point checker itself (APAR63)',
+         'python -m unittest scripts.tests.test_check_notify_point_unique -v',
+         '.'),
         # ADOC147 — aucune route portail self-service sans ecran (porte bloquante).
         ('Check surfaces portail sans écran (route mes-*/mon-*/ma-*/client/* sans appelant, ADOC147)',
          'python scripts/check_portail_surfaces.py',

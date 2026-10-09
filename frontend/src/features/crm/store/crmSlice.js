@@ -16,6 +16,25 @@ function isStaleResourceUpdate(seqMap, id, requestId) {
   return seqMap[id] != null && seqMap[id] !== requestId
 }
 
+// ALEA21 — un lead MODIFIÉ localement (updateLead réussi) PENDANT un fetchLeads
+// en vol ne doit pas être écrasé par la page du fetch partie avant la
+// modification (étape déplacée pendant le chargement = revenue en arrière).
+// `leadsEditedDuringFetch[id]` retient la dernière version locale (écrite par
+// updateLead.fulfilled non périmé, donc cohérente avec `leadUpdateSeq`) ;
+// `leadsCreatedDuringFetch` les ids créés pendant le chargement.
+function surLesLocaux(state, results) {
+  const edites = state.leadsEditedDuringFetch
+  return results.map((l) => edites[l.id] ?? l)
+}
+
+function avecLesCreesLocaux(state, liste) {
+  const presents = new Set(liste.map((l) => l.id))
+  const crees = state.leads.filter(
+    (l) => state.leadsCreatedDuringFetch.includes(l.id) && !presents.has(l.id),
+  )
+  return crees.length ? [...crees, ...liste] : liste
+}
+
 // VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
 // clients : FAUX dès 101 clients. Toutes les pages sont désormais lues, en
 // parallèle borné.
@@ -168,6 +187,11 @@ const crmSlice = createSlice({
     // dispatché) est ignoré — fin du flicker de retour où un refetch lent
     // remplaçait `state.leads` au complet avec un snapshot périmé.
     fetchLeadsRequestId: null,
+    // ALEA21 — fetchLeads en vol + modifications/créations locales faites
+    // pendant ce vol (réinitialisées à chaque `fetchLeads.pending`).
+    fetchLeadsInFlight: false,
+    leadsEditedDuringFetch: {},
+    leadsCreatedDuringFetch: [],
   },
   reducers: {
     setSelectedClient(state, action) { state.selectedClient = action.payload },
@@ -221,6 +245,9 @@ const crmSlice = createSlice({
         state.leadsLoading = true
         state.error = null
         state.fetchLeadsRequestId = action.meta.requestId
+        state.fetchLeadsInFlight = true
+        state.leadsEditedDuringFetch = {}
+        state.leadsCreatedDuringFetch = []
       })
       // PERF-CRM — une page arrive (flux progressif) : la PREMIÈRE remplace
       // et lève le squelette, les suivantes s'ajoutent (dédup par id). Même
@@ -232,11 +259,11 @@ const crmSlice = createSlice({
         if (!Array.isArray(results)) return
         if (first) {
           state.leadsLoading = false
-          state.leads = results
+          state.leads = avecLesCreesLocaux(state, surLesLocaux(state, results))
           return
         }
         const dejaLa = new Set(state.leads.map((l) => l.id))
-        for (const lead of results) {
+        for (const lead of surLesLocaux(state, results)) {
           if (!dejaLa.has(lead.id)) state.leads.push(lead)
         }
       })
@@ -246,14 +273,20 @@ const crmSlice = createSlice({
         // récent a déjà été dispatché — même motif que isStaleResourceUpdate
         // ci-dessus, appliqué au fetch de liste plutôt qu'à une update).
         if (action.meta.requestId !== state.fetchLeadsRequestId) return
-        state.leads = action.payload.results ?? action.payload
+        const liste = action.payload.results ?? action.payload
+        state.leads = avecLesCreesLocaux(state, surLesLocaux(state, liste))
+        state.fetchLeadsInFlight = false
+        state.leadsEditedDuringFetch = {}
+        state.leadsCreatedDuringFetch = []
       })
       .addCase(fetchLeads.rejected, (state, action) => {
         state.leadsLoading = false
+        state.fetchLeadsInFlight = false
         state.error = action.payload
       })
       .addCase(createLead.fulfilled, (state, action) => {
         state.leads.unshift(action.payload)
+        if (state.fetchLeadsInFlight) state.leadsCreatedDuringFetch.push(action.payload.id)
       })
       .addCase(updateLead.pending, (state, action) => {
         state.leadUpdateSeq[action.meta.arg.id] = action.meta.requestId
@@ -262,6 +295,7 @@ const crmSlice = createSlice({
         if (isStaleResourceUpdate(state.leadUpdateSeq, action.payload.id, action.meta.requestId)) return
         const idx = state.leads.findIndex(l => l.id === action.payload.id)
         if (idx !== -1) state.leads[idx] = action.payload
+        if (state.fetchLeadsInFlight) state.leadsEditedDuringFetch[action.payload.id] = action.payload
       })
       .addCase(archiveLead.fulfilled, (state, action) => {
         const idx = state.leads.findIndex(l => l.id === action.payload.id)

@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, GitMerge, Users } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
+import { useConfirmDialog } from '../../../ui/confirm'
 import { STAGE_LABELS } from '../../../features/crm/stages'
 import {
   Button, Spinner, Checkbox, RadioGroup, RadioGroupItem, Badge, EmptyState,
@@ -19,6 +20,7 @@ const MATCH_KEY_LABELS = {
 }
 
 function ClusterCard({ cluster, onMerged }) {
+  const { confirm } = useConfirmDialog()
   // Survivant initial : la suggestion serveur, sauf si elle est archivée alors
   // qu'un membre actif existe (on ne garde jamais un archivé face à un actif).
   const initialSurvivor = (() => {
@@ -49,11 +51,17 @@ function ClusterCard({ cluster, onMerged }) {
   const doMerge = async () => {
     if (!others.length) return
     const survName = cluster.members.find(m => m.id === survivor)
-    if (!window.confirm(
-      `Fusionner ${others.length} doublon(s) dans « ${survName?.nom} `
-      + `${survName?.prenom || ''} » ? Les autres fiches seront ARCHIVÉES `
-      + `(jamais supprimées) et tout (devis, activités, historique) sera `
-      + `rattaché au survivant.`)) return
+    const ok = await confirm({
+      title: 'Fusionner ces doublons ?',
+      description: `Fusionner ${others.length} doublon(s) dans « ${survName?.nom} `
+        + `${survName?.prenom || ''} » ? Les autres fiches seront ARCHIVÉES `
+        + `(jamais supprimées) et tout (devis, activités, historique) sera `
+        + `rattaché au survivant.`,
+      confirmLabel: 'Fusionner',
+      cancelLabel: 'Annuler',
+      destructive: false,
+    })
+    if (!ok) return
     setBusy(true)
     setError(null)
     try {

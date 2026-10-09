@@ -23,7 +23,7 @@ test('zéro écriture serveur nouvelle : le seul PATCH est updateIntervention', 
     ['creerInterventionsStandard', 'updateIntervention'],
     'un appel d\'écriture inattendu est apparu dans la page')
   // …et cet endpoint existe déjà côté client (aucune route inventée).
-  assert.match(API, /updateIntervention: \(id, data\) => api\.patch\(/)
+  assert.match(API, /updateIntervention: \(id, data(?:, config)?\) => api\.patch\(/)
 })
 
 test('un dépôt sur un créneau passe par une CONFIRMATION avant d\'écrire', () => {

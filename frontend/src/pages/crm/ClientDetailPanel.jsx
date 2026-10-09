@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { MessageCircle } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import { toastError } from '../../lib/toast'
 import {
   Badge, Button, Spinner, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -108,7 +109,7 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
         wa_url: res.data?.wa_url ?? '',
       })
     } catch (err) {
-      alert(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
+      toastError(err?.response?.data?.detail ?? 'Envoi WhatsApp impossible.')
     } finally {
       setWaBusy(false)
     }

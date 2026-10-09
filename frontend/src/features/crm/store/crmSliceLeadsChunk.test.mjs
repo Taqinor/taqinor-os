@@ -37,7 +37,7 @@ test('PERF-CRM : le réducteur de page garde la MÊME garde anti-obsolescence LB
   const guardIdx = block.indexOf('if (requestId !== state.fetchLeadsRequestId) return')
   assert.ok(guardIdx > 0, 'garde requestId absente du réducteur de page')
   // La garde précède la première écriture d'état.
-  const writeIdx = block.indexOf('state.leads = results')
+  const writeIdx = block.indexOf('state.leads = avecLesCreesLocaux(')
   assert.ok(writeIdx > guardIdx, 'la garde doit précéder l’écriture de state.leads')
 })
 
