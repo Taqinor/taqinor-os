@@ -1,13 +1,16 @@
 # docs/audits/decisions.yml — décisions fondateur lisibles par machine (METHODE v3 §B.6, §C.4)
 #
 # Règle : une tâche ne dit JAMAIS « Si (a)/(b) » ; une tâche par option ; une tâche GATED nomme son D-id ;
-# quand la réponse arrive, les tâches dépendantes sont réécrites dans la même PR (`scripts/decisions.py appliquer`,
-# AMET, à construire) et `scripts/check_decisions.py` (AMET) refuse tout texte conditionnel sur une décision répondue.
+# quand la réponse arrive, les tâches dépendantes sont réécrites dans la même PR (`python scripts/decisions.py appliquer`)
+# et `python scripts/check_decisions.py` (CI, AMET94) refuse tout texte conditionnel sur une décision répondue.
 # Écrit UNIQUEMENT à partir d'un lot AskUserQuestion ; jamais une réponse inventée.
 #
-# Champs : id · question (une ligne) · options [{cle, texte}] · reponse (cle | ouverte) · date · source · taches [ids].
-# Les décisions antérieures au 09/10/2026 vivent dans docs/claude-memory/*decisions*.md (source de vérité historique) ;
-# elles sont référencées ici par pointeur, pas recopiées — l'inventaire complet est la tâche AMET « decisions ».
+# Champs : id · question (une ligne) · options (liste de blocs `- cle: x` + `texte:` : le mini-parseur de plan_lanes ne lit pas
+# les mappings en flux) · reponse (cle | ouverte) · date · source · taches [ids des tâches qui en dépendent].
+# Les options listent les branches CONNUES ; quand le fichier mémoire ne donne que la branche retenue, une seule option figure.
+# Un tag `(@decision: D-x=a)` dans une tâche doit viser l'option REPONDUE (check_decisions.py).
+# Inventaire historique (AMET94) : une entrée par décision des 10 fichiers docs/claude-memory/*decisions*.md ; id minté
+# préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
 date_maj: "2026-10-09"
@@ -17,9 +20,12 @@ decisions:
   - id: D-ECH-FIGE
     question: "Les conditions de paiement sont lues en direct depuis Paramètres pour un devis signé sans échéancier propre : que faire ?"
     options:
-      - {cle: a, texte: "figer l'échéancier sur le devis à l'acceptation ; devis déjà signés tamponnés avec les conditions du jour après dry-run"}
-      - {cle: b, texte: "figer à la signature, laisser les anciens signés en lecture directe"}
-      - {cle: c, texte: "garder la lecture directe comme choix produit"}
+      - cle: a
+        texte: "figer l'échéancier sur le devis à l'acceptation ; devis déjà signés tamponnés avec les conditions du jour après dry-run"
+      - cle: b
+        texte: "figer à la signature, laisser les anciens signés en lecture directe"
+      - cle: c
+        texte: "garder la lecture directe comme choix produit"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 (AskUserQuestion) ; constat C-AMET-003, sonde R3_V1"
@@ -28,8 +34,10 @@ decisions:
   - id: D-ATOT5
     question: "Un avoir émis avant la dernière échéance est refacturé dans cette échéance (avoir commercial 6 000 → solde +6 000) : quelle règle ?"
     options:
-      - {cle: a, texte: "l'avoir réduit le dû total ; seuls les avoirs de CORRECTION se nettent dans l'échéance suivante ; champ type d'avoir"}
-      - {cle: b, texte: "garder le re-net de tout avoir dans la dernière échéance"}
+      - cle: a
+        texte: "l'avoir réduit le dû total ; seuls les avoirs de CORRECTION se nettent dans l'échéance suivante ; champ type d'avoir"
+      - cle: b
+        texte: "garder le re-net de tout avoir dans la dernière échéance"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; constat C-AMET-004 ; test_solde_net_des_avoirs à réécrire"
@@ -38,9 +46,12 @@ decisions:
   - id: D-SIGN-AUTO
     question: "À la signature, rien n'est créé en aval (ni BC ni facture) : que doit déclencher l'acceptation ?"
     options:
-      - {cle: a, texte: "créer automatiquement la facture d'ACOMPTE en brouillon (éditable) depuis l'échéancier figé ; BC manuel"}
-      - {cle: b, texte: "créer BC et facture d'acompte en brouillon"}
-      - {cle: c, texte: "signature manuelle, choix produit explicite"}
+      - cle: a
+        texte: "créer automatiquement la facture d'ACOMPTE en brouillon (éditable) depuis l'échéancier figé ; BC manuel"
+      - cle: b
+        texte: "créer BC et facture d'acompte en brouillon"
+      - cle: c
+        texte: "signature manuelle, choix produit explicite"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; constat C-AMET-007"
@@ -49,9 +60,12 @@ decisions:
   - id: D-OWN-FUSION
     question: "Fusionner les propriétaires crm→lead et générateur→devis, déplacer 111 tâches TRANSVERSE verbatim, scinder 43 tâches multi-propriétaires, ordre correctifs-d'abord, TRANSVERSE = SPL atomiques seulement (casse l'append-only une fois) ?"
     options:
-      - {cle: a, texte: "approuvé ; atterrit en PR dédiée après restauration des 21 chemins et 34 prédécesseurs perdus, moitiés web sous BUILD QUEUE, correctif planner F1"}
-      - {cle: b, texte: "fusion des propriétaires seulement, tâches laissées en place"}
-      - {cle: c, texte: "différer"}
+      - cle: a
+        texte: "approuvé ; atterrit en PR dédiée après restauration des 21 chemins et 34 prédécesseurs perdus, moitiés web sous BUILD QUEUE, correctif planner F1"
+      - cle: b
+        texte: "fusion des propriétaires seulement, tâches laissées en place"
+      - cle: c
+        texte: "différer"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; R2_4 + R3_V6 ; constat C-AMET-024"
@@ -60,7 +74,8 @@ decisions:
   - id: D-FORMAT-V3
     question: "Format de tâche v3 (14 clauses calculées) obligatoire pour toute tâche nouvelle ; tâches v2 ouvertes gelées par id ?"
     options:
-      - {cle: a, texte: "oui — liste gelée scripts/taches_audit_v2.txt (ne fait que rétrécir), FORME 5 bi-format"}
+      - cle: a
+        texte: "oui — liste gelée scripts/taches_audit_v2.txt (ne fait que rétrécir), FORME 5 bi-format"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 ; constat C-AMET-021"
@@ -69,9 +84,12 @@ decisions:
   - id: D-SCOPE-0910
     question: "Que livre la session du 09/10 ?"
     options:
-      - {cle: a, texte: "méthode v3 + bascule de garde + tâches v3 (défauts vérifiés et outillage) ; les scripts sont construits par work on the plan audit_deploy"}
-      - {cle: b, texte: "idem + construction des scripts dans la session"}
-      - {cle: c, texte: "docs seulement"}
+      - cle: a
+        texte: "méthode v3 + bascule de garde + tâches v3 (défauts vérifiés et outillage) ; les scripts sont construits par work on the plan audit_deploy"
+      - cle: b
+        texte: "idem + construction des scripts dans la session"
+      - cle: c
+        texte: "docs seulement"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09"
@@ -80,8 +98,10 @@ decisions:
   - id: D-CLAUDEMD
     question: "Qui édite CLAUDE.md pour les quatre règles de plan-run (acceptation, rapport de merge, générateur sur v2, @after inter-lanes) ?"
     options:
-      - {cle: a, texte: "Claude, dans la même PR, en pesant quoi et comment changer"}
-      - {cle: b, texte: "Claude rédige, Reda colle"}
+      - cle: a
+        texte: "Claude, dans la même PR, en pesant quoi et comment changer"
+      - cle: b
+        texte: "Claude rédige, Reda colle"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09"
@@ -90,7 +110,8 @@ decisions:
   - id: D-PROVENANCE
     question: "Sept mécanismes « saisi par un humain » coexistent : lequel survit ?"
     options:
-      - {cle: a, texte: "le motif Devis.overrides / prix_negocie généralisé : primitive apps/records/provenance.py (ecrire_si_libre), 1 migration additive + backfill Lead ; core→apps interdit"}
+      - cle: a
+        texte: "le motif Devis.overrides / prix_negocie généralisé : primitive apps/records/provenance.py (ecrire_si_libre), 1 migration additive + backfill Lead ; core→apps interdit"
     reponse: a
     date: "2026-10-09"
     source: "routine orchestrateur ; R2_3 + R3_V5 ; critère C16"
@@ -99,8 +120,10 @@ decisions:
   - id: D-SPL-ATOMIQUE
     question: "Où vivent les déplacements SPL atomiques multi-propriétaires ?"
     options:
-      - {cle: a, texte: "dans PLAN_AUDIT_TRANSVERSE.md avec le tag (@atomique: <propriétaires>) — 13 lignes ouvertes après migration"}
-      - {cle: b, texte: "chez le propriétaire du fichier-dieu — 1 ligne"}
+      - cle: a
+        texte: "dans PLAN_AUDIT_TRANSVERSE.md avec le tag (@atomique: <propriétaires>) — 13 lignes ouvertes après migration"
+      - cle: b
+        texte: "chez le propriétaire du fichier-dieu — 1 ligne"
     reponse: a
     date: "2026-10-09"
     source: "routine orchestrateur ; R2_4 + R3_V6"
@@ -109,17 +132,1469 @@ decisions:
   - id: ADEP92
     question: "Variables d'environnement e-mail en prod : lecture des noms réels avant toute dérivation (ADEP91 (b) : Reda pose EMAIL_BACKEND lui-même)"
     options:
-      - {cle: a, texte: "lire les noms de variables sur le serveur puis trancher"}
+      - cle: a
+        texte: "lire les noms de variables sur le serveur puis trancher"
     reponse: ouverte
     date: "2026-10-08"
     source: "docs/claude-memory/decisions-audit-0810.md"
     taches: [ADEP92]
 
-# Pointeurs vers les décisions historiques (répondues, source de vérité = le fichier mémoire) :
-#   docs/claude-memory/decisions-audit-0810.md   — ASAV90-95, ACHT90/91/94/95, AFAC80-89, APDF92, AACQ90/95/96, AMOT1-7, ADEP90/91, AGNR4/43, ADEV61/62
-#   docs/claude-memory/asec-decisions-fondateur.md, astk-decisions-fondateur.md, ci-decisions-fondateur.md,
-#   agricole-decisions-fondateur.md, calepinage-decisions-fondateur.md, qjr5-decisions-fondateur.md, apdf-decisions-fondateur.md,
-#   apar-decisions-fondateur.md
-# Dépendants PÉRIMÉS mesurés le 09/10 (décision répondue (a), tâche encore « Si (a) » en GATED) : AMOT52, AMOT53, AMOT54,
-#   AMOT55, AMOT56 (ouvre sur « Si (b) » : garder la branche (a)), AMOT64, AMOT65, ADEV57, ADEV63 → réécrits par
-#   `scripts/decisions.py appliquer` (tâche AMET).
+  # --- Inventaire historique (AMET94) : docs/claude-memory/*decisions*.md ---
+
+  - id: D-AGR-1
+    question: "Moteur serveur du devis agricole ?"
+    options:
+      - cle: a
+        texte: "Moteur SERVEUR agricole ouvert maintenant (volet agricole de QJR113 : dimensionnement, composition, economies) ; QJR113 reste gate pour industriel/commercial."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-1)"
+    taches: [QJR113]
+
+  - id: D-AGR-2
+    question: "Quel document client pour l'agricole ?"
+    options:
+      - cle: a
+        texte: "Document client agricole dedie de 3 pages (eau et argent / comment ca marche / equipement, prix, garanties, signature) ; le une-page reste la version courte."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-2)"
+    taches: []
+
+  - id: D-AGR-3
+    question: "Comment dimensionner le volume d'eau ?"
+    options:
+      - cle: a
+        texte: "Volume declare par le client d'abord ; sinon besoin FAO-56 corrige, etiquete « besoin agronomique plein »."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-3)"
+    taches: []
+
+  - id: D-AGR-4
+    question: "Visite avant le devis agricole ?"
+    options:
+      - cle: a
+        texte: "Visite « releve du point d'eau » AVANT le devis quand le niveau d'eau ou le debit du forage est inconnu apres l'appel ; sinon devis comme aujourd'hui."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-4)"
+    taches: []
+
+  - id: D-AGR-5
+    question: "Comment calculer les economies agricoles ?"
+    options:
+      - cle: a
+        texte: "Economies = chiffres declares du client moins l'entretien solaire ; horizon 10 ans ; pompe remplacee a l'annee 7 ; variateur a la fin de sa garantie ; retour sans aide deduite ; bloc omis si rien n'est declare."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-5)"
+    taches: []
+
+  - id: D-AGR-6
+    question: "Que dire de l'aide FDA sur le devis ?"
+    options:
+      - cle: a
+        texte: "On imprime la regle (conditions, plafonds, accord avant travaux, versement apres), jamais un montant propre au client ; « jusqu'a 30 % » retire partout."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-6)"
+    taches: []
+
+  - id: D-AGR-7
+    question: "Pompe neuve ou existante ?"
+    options:
+      - cle: a
+        texte: "Deux cas : pompe neuve fournie OU pompe existante conservee (variateur et panneaux sur sa plaque)."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-7)"
+    taches: []
+
+  - id: D-AGR-8
+    question: "Composition du kit agricole ?"
+    options:
+      - cle: a
+        texte: "Kit « minimum + options » : d'office pompe (si neuve), variateur, panneaux, structure ; le reste en options nommees ; forage et genie civil « non inclus »."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-8)"
+    taches: []
+
+  - id: D-AGR-9
+    question: "Le devis agricole change-t-il le type du lead ?"
+    options:
+      - cle: a
+        texte: "Le type du lead n'est jamais change automatiquement par un devis agricole : un bandeau alerte."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-9)"
+    taches: []
+
+  - id: D-AGR-10
+    question: "Preuve de realisation pour le pompage ?"
+    options:
+      - cle: a
+        texte: "Aucune realisation de pompage reelle a ce jour : preuve J4 omise pour l'agricole, jamais un toit."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-10)"
+    taches: []
+
+  - id: D-AGR-11
+    question: "Darija pour les variantes pompage ?"
+    options:
+      - cle: a
+        texte: "Toutes les variantes pompage ecrites maintenant ; relecture par Reda apres."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-11)"
+    taches: []
+
+  - id: D-AGR-12
+    question: "Priorite du groupe agricole dans la file ?"
+    options:
+      - cle: a
+        texte: "Priorite normale dans la file."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-12)"
+    taches: []
+
+  - id: D-AGR-13
+    question: "Que faire des anciens devis agricoles ?"
+    options:
+      - cle: a
+        texte: "Les anciens devis agricoles sont OUBLIES : aucun essai a blanc, aucune reparation, aucune compatibilite ascendante."
+    reponse: a
+    date: "2026-10-02"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (D-AGR-13)"
+    taches: []
+
+  - id: D-AGR-14
+    question: "Contre quoi se mesure l'ecart de la recette pompage ?"
+    options:
+      - cle: a
+        texte: "AGR609 : l'ecart se mesure contre le debit PROMIS fige du devis ((mesure - promis) / promis), pas contre le debit attendu a la HMT mesuree."
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/agricole-decisions-fondateur.md (ajout du 08/10/2026)"
+    taches: [AGR609]
+
+  - id: D-CIQ-0
+    question: "Moteur serveur C&I ?"
+    options:
+      - cle: a
+        texte: "Chantier D10 ouvert pour l'industriel et le commercial : UN moteur SERVEUR C&I (volet I/C de QJR113) ; le JS ne garde que l'apercu via l'endpoint."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-0)"
+    taches: [QJR113]
+
+  - id: D-CIQ-1
+    question: "Comment calculer l'autoconsommation C&I (60 % ou 80 %) ?"
+    options:
+      - cle: a
+        texte: "Autoconsommation HEURE PAR HEURE : production du site x profil DECLARE du client ; profil type sourcé en repli seulement, etiquete « estimation » ; aucun taux fixe."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-1)"
+    taches: []
+
+  - id: D-CIQ-2
+    question: "Regle de taille du systeme C&I ?"
+    options:
+      - cle: a
+        texte: "Taille = la plus grande dont chaque tranche de 5 kWc se rembourse en 10 ans ou moins sur l'autoconsommation horaire, bornee par toit, puissance souscrite, onduleurs et 82-21 ; une taille explicite reste souveraine."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-2)"
+    taches: []
+
+  - id: D-CIQ-3
+    question: "TVA recuperable et chaine HT/TTC du C&I ?"
+    options:
+      - cle: a
+        texte: "Champ declare « TVA recuperable oui/non » : economies, retour et TRI en HT si oui, TTC si non ; le document garde la chaine HT, TVA, TTC ; saisie du generateur 100 % TTC."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-3)"
+    taches: []
+
+  - id: D-CIQ-4
+    question: "QXG6 (a)(c)(d) : constantes reglementaires ?"
+    options:
+      - cle: a
+        texte: "QXG6 (a)(c)(d) tranches par sources primaires et marques SOURCES : tarifs MT ONEE, TVA electricite 20 %, 82-21 et decret 2.25.100, plafond 20 %, rachat 18/21 cDH HT."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-4)"
+    taches: [QXG6]
+
+  - id: D-CIQ-5
+    question: "Visite avant le devis C&I ?"
+    options:
+      - cle: a
+        texte: "Visite AVANT le devis final si site MT ou si tension, puissance souscrite ou toit restent inconnus apres l'appel ; un BT aux faits connus recoit son devis directement ; devis indicatif « sous reserve de visite » possible."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-5)"
+    taches: []
+
+  - id: D-CIQ-6
+    question: "Tache 82-21 du playbook C&I ?"
+    options:
+      - cle: a
+        texte: "La tache 82-21 ne part que pour un site MT, un lead « regularisation 82-21 » ou un client qui veut revendre ; texte « raccordement et autorisations du site » ; un BT n'en recoit aucune."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-6)"
+    taches: [CAD125, CAD163]
+
+  - id: D-CIQ-7
+    question: "Premier appel professionnel ?"
+    options:
+      - cle: a
+        texte: "Premier appel pro en 5 etapes : facture MAD ou kWh ; BT/MT et puissance souscrite ; activite et rythme ; surface et type de toit ; qui decide."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-7)"
+    taches: []
+
+  - id: D-CIQ-8
+    question: "Etape « Affiner » du site public ?"
+    options:
+      - cle: a
+        texte: "Etape « Affiner » FACULTATIVE apres la porte de contact (BT/MT avec « je ne sais pas », puissance souscrite, kWh pour l'industriel) ; la coupe du 18/08 tient pour le parcours obligatoire."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-8)"
+    taches: []
+
+  - id: D-CIQ-9
+    question: "PDF commercial ?"
+    options:
+      - cle: a
+        texte: "PDF commercial : 3 pages, completees du retour (calcul serveur), de la production annuelle, de l'echeancier et de la validite."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-9)"
+    taches: []
+
+  - id: D-CIQ-10
+    question: "Page finance du PDF industriel ?"
+    options:
+      - cle: a
+        texte: "PDF industriel (4 pages, D-QJR5-12), page finance : 25 ans et jalons 5/10/15/20/25, TRI avec horizon, cout du kWh solaire vs tarif, VAN seulement sur le taux declare, sensibilites seulement avec valeurs saisies par Reda."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-10)"
+    taches: []
+
+  - id: D-CIQ-11
+    question: "Client entreprise (ICE) ?"
+    options:
+      - cle: a
+        texte: "Client « entreprise » (raison sociale, ICE, RC, siege) ; ICE demande au devis sans jamais bloquer, obligatoire a l'acceptation en ligne et a la facture ; case « cachet » sur le PDF signe."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-11)"
+    taches: []
+
+  - id: D-CIQ-12
+    question: "Garanties, suivi et O&M du C&I ?"
+    options:
+      - cle: a
+        texte: "Garanties fabricants et suivi de production avec delai saisi par Reda + option O&M nommee sur chaque devis C&I ; aucune garantie de production imprimee sans validation assureur/juriste."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-12)"
+    taches: []
+
+  - id: D-CIQ-13
+    question: "Echeanciers par defaut C&I ?"
+    options:
+      - cle: a
+        texte: "Commercial 40/50/10 (commande/livraison/mise en service) ; industriel 30/40/20/10 (+ reception definitive) ; variante credit-bail ; reglages societe, editables par devis."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-13)"
+    taches: []
+
+  - id: D-CIQ-14
+    question: "Retenue de garantie, caution, penalites ?"
+    options:
+      - cle: a
+        texte: "Retenue de garantie seulement a la demande du client ; caution et penalites au cas par cas, plafonnees, jamais par defaut ; liste des reserves et date de reception definitive."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-14)"
+    taches: []
+
+  - id: D-CIQ-15
+    question: "Bloc financement sur la proposition C&I ?"
+    options:
+      - cle: a
+        texte: "Bloc FACULTATIF construit uniquement depuis l'offre ECRITE d'un preteur/bailleur saisie par le vendeur ; jamais de taux invente ni de banque nommee sans son offre ; avis juridique avant toute mention du credit-bail."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-15)"
+    taches: []
+
+  - id: D-CIQ-16
+    question: "Offre tiers-investisseur / vente de kWh ?"
+    options:
+      - cle: a
+        texte: "Pas d'offre tiers-investisseur : le client est l'autoproducteur ; un montage loi 13-09 reste parque jusqu'a un avis juridique ; comparaison sourcee face a une offre concurrente."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-16)"
+    taches: []
+
+  - id: D-CIQ-17
+    question: "SR500 ?"
+    options:
+      - cle: a
+        texte: "SR500 : candidater d'abord (manuel) ; puis indicateur interne de pre-eligibilite ; la phrase client en dernier, jamais un montant ; jamais de cumul SR500 + autre aide + revente."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-17)"
+    taches: []
+
+  - id: D-CIQ-18
+    question: "Promesses du site : 82-21 et suivi de production ?"
+    options:
+      - cle: a
+        texte: "TAQINOR monte bien le dossier 82-21 ET assure le suivi de production des sites pros : les promesses du site restent, avec leur perimetre exact."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-18)"
+    taches: []
+
+  - id: D-CIQ-19
+    question: "Formulaire Meta « pour mon entreprise » ?"
+    options:
+      - cle: a
+        texte: "Reda modifie le formulaire Meta (activite + tranches de facture au-dela de 4 000 DH) ; l'ERP lit les nouvelles reponses et ne stocke jamais une tranche ouverte comme un montant."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-19)"
+    taches: []
+
+  - id: D-CIQ-20
+    question: "Responsable des leads pros ?"
+    options:
+      - cle: a
+        texte: "Reglage « responsable des leads commerciaux et industriels », vide par defaut ; notification plus visible pour un lead pro."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-20)"
+    taches: []
+
+  - id: D-CIQ-21
+    question: "Anciens devis C&I ?"
+    options:
+      - cle: a
+        texte: "Les anciens devis commerciaux/industriels sont OUBLIES : aucun essai a blanc, aucune reparation, aucune compatibilite ascendante."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-21)"
+    taches: []
+
+  - id: D-CIQ-22
+    question: "Place du groupe CIQ dans le plan ?"
+    options:
+      - cle: a
+        texte: "Le Groupe CIQ se place JUSTE AVANT le Groupe AGR dans docs/PLAN.md ; les couches generiques d'AGR que CIQ reutilise restent liees par @after."
+    reponse: a
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-22)"
+    taches: []
+
+  - id: D-CIQ-23
+    question: "Le lead pro porte-t-il son contrat d'electricite ?"
+    options:
+      - cle: a
+        texte: "CIQ127 : le lead commercial/industriel PORTE son contrat d'electricite declare (sinon le devis automatique C&I refuse « tarif omis »)."
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (ajouts du 08/10/2026)"
+    taches: [CIQ127, CIQ666]
+
+  - id: D-CIQ-24
+    question: "Documents HSE sur « montage mecanique » ?"
+    options:
+      - cle: a
+        texte: "CIQ623 : les 3 documents HSE restent NON bloquants par defaut (exiges avant « En cours » pour un site pro ; un Directeur peut rendre l'etape bloquante)."
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (ajouts du 08/10/2026)"
+    taches: [CIQ623]
+
+  - id: D-CIQ-25
+    question: "Definition du PR modelise C&I ?"
+    options:
+      - cle: a
+        texte: "CIQ627 : PR modelise = 1 - pertes_pct du moteur C&I, affiche « estimation moteur », valide."
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (ajouts du 08/10/2026)"
+    taches: [CIQ627]
+
+  - id: D-CIQ-26
+    question: "QXG6 (b) : bande de prix par kWc ?"
+    options:
+      - cle: a
+        texte: "Bande prix/kWc : reste au fondateur (non tranchee)."
+    reponse: ouverte
+    date: "2026-10-03"
+    source: "docs/claude-memory/ci-decisions-fondateur.md (D-CIQ-4, derniere phrase)"
+    taches: [QXG6]
+
+  - id: D-QJR5-612
+    question: "Recharge VE nocturne et plancher batterie ?"
+    options:
+      - cle: a
+        texte: "La recharge VE nocturne releve le plancher batterie ET le dimensionnement ajoute des panneaux pour que la batterie plus grosse se remplisse chaque jour (« batteries toujours pleines » = regle permanente)."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR612)"
+    taches: [QJR612]
+
+  - id: D-QJR5-659
+    question: "Partager le PDF depuis la liste = devis envoye ?"
+    options:
+      - cle: a
+        texte: "Partager le PDF depuis la liste de devis (feuille de partage native resolue) marque le devis envoye."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR659)"
+    taches: [QJR659]
+
+  - id: D-QJR5-660
+    question: "Cadence de relance apres correction sur place ?"
+    options:
+      - cle: a
+        texte: "Apres une correction sur place, les relances gardent la cadence ORIGINALE (pas de re-datation)."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR660)"
+    taches: [QJR660]
+
+  - id: D-QJR5-661
+    question: "Suppression d'un devis ?"
+    options:
+      - cle: a
+        texte: "Seul un brouillon peut etre supprime ; tout autre statut est archive."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR661)"
+    taches: [QJR661]
+
+  - id: D-QJR5-662
+    question: "Moteur C&I sans consommation saisie ?"
+    options:
+      - cle: a
+        texte: "Leads industriel/commercial : le moteur se rabat en lecture seule sur les kWh mensuels declares du site (bill_kwh) quand aucune conso n'est saisie ; jamais en residentiel."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR662)"
+    taches: [QJR662]
+
+  - id: D-QJR5-663
+    question: "Leads du site non livres ?"
+    options:
+      - cle: a
+        texte: "Les leads du site encore non livres apres relances vont dans un dead-letter Cloudflare KV (LEADS_DLQ, TTL 7 jours, renvoi cron) ; namespace cree par Reda, no-op en attendant."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR663)"
+    taches: [QJR663]
+
+  - id: D-QJR5-664
+    question: "Langues du graphique « Une journee type » ?"
+    options:
+      - cle: a
+        texte: "Le graphique « Une journee type » est montre en FR, EN et AR."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR664)"
+    taches: [QJR664]
+
+  - id: D-QJR5-665
+    question: "Consommation de l'etude C&I ?"
+    options:
+      - cle: a
+        texte: "L'etude C&I utilise la meme consommation tarif national que le balayage de dimensionnement (jamais factures / 1,75)."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR665)"
+    taches: [QJR665]
+
+  - id: D-QJR5-666
+    question: "Options du dialogue PDF en residentiel premium ?"
+    options:
+      - cle: a
+        texte: "Les options explicites du dialogue PDF sont ajoutees au gabarit residentiel premium (pas de repli sur l'ancien moteur)."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR666)"
+    taches: [QJR666]
+
+  - id: D-QJR5-667
+    question: "Multi-sites et BOQ electrique ?"
+    options:
+      - cle: a
+        texte: "Les lots multi-sites et « ajouter le BOQ electrique » recoivent des ecrans (contrat d'abord), pas une suppression."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR667)"
+    taches: [QJR667]
+
+  - id: D-QJR5-668
+    question: "Clauses CGV par affaire ?"
+    options:
+      - cle: a
+        texte: "Les clauses CGV par affaire sont cablees : figees a l'envoi, re-figees a chaque correction, imprimees."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR668)"
+    taches: [QJR668]
+
+  - id: D-QJR5-669
+    question: "Prix/kWc (BI) apres correction ?"
+    options:
+      - cle: a
+        texte: "Le prix/kWc (BI) suit le devis corrige et envoye."
+    reponse: a
+    date: "2026-09-30"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (QJR669)"
+    taches: [QJR669]
+
+  - id: D-QJR5-CV
+    question: "Changements visibles du client de M1, M2 et lots 3-4 ?"
+    options:
+      - cle: a
+        texte: "Les changements visibles client (montants au centime, copie signee, garde remise a chaque envoi, identite client suivant le lead, cartes de taille chiffrees avec le kit) ont ete confirmes par Reda avant chaque merge."
+    reponse: a
+    date: "2026-10-01"
+    source: "docs/claude-memory/qjr5-decisions-fondateur.md (Client-visible changes)"
+    taches: []
+
+  - id: D-ASEC-4
+    question: "Verrou de connexion : par compte, par IP ou par couple ?"
+    options:
+      - cle: a
+        texte: "Verrou par compte+IP : plancher plateforme 10 echecs consecutifs, 15 min, superuser compris ; le verrou societe opt-in garde le compte entier"
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/asec-decisions-fondateur.md (ASEC4)"
+    taches: [ASEC4]
+
+  - id: D-ASEC-14
+    question: "Reponse quand le compte est verrouille ?"
+    options:
+      - cle: a
+        texte: "Meme reponse que faux : le mot de passe n'est pas verifie, 401 generique identique, tentative comptee (API et admin Django)"
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/asec-decisions-fondateur.md (ASEC14)"
+    taches: [ASEC14]
+
+  - id: D-ASEC-11
+    question: "Droits par module : agenda ?"
+    options:
+      - cle: a
+        texte: "Rendre le calendrier seulement : Commercial et Technicien gardent la replanification de l'agenda ; rapports sauvegardes, config du tableau de bord et alertes KPI restent administrateur/responsable"
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/asec-decisions-fondateur.md (ASEC11)"
+    taches: [ASEC11]
+
+  - id: D-ASEC-10
+    question: "Gestion des comptes par Admin Ventes ?"
+    options:
+      - cle: a
+        texte: "Retirer a Admin Ventes : pas de users_gerer, lecture de la liste, toute ecriture /users/ refusee en 403 droit_manquant"
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/asec-decisions-fondateur.md (ASEC10)"
+    taches: [ASEC10]
+
+  - id: D-ASTK-37
+    question: "Ecart d'inventaire : stock de reference ?"
+    options:
+      - cle: a
+        texte: "Stock a la saisie : ecart = compte - stock AU MOMENT de la saisie (snapshot), pour session d'inventaire et comptage cyclique"
+    reponse: a
+    date: "2026-10-06"
+    source: "docs/claude-memory/astk-decisions-fondateur.md (ASTK37)"
+    taches: [ASTK37, ASTK39]
+
+  - id: D-ASTK-172
+    question: "seed_catalogue et fiches produit deja saisies ?"
+    options:
+      - cle: a
+        texte: "Ne remplir que le vide : marque, description, garantie, garantie_mois vides ; ecraser seulement a la main avec --reappliquer-fiches"
+    reponse: a
+    date: "2026-10-06"
+    source: "docs/claude-memory/astk-decisions-fondateur.md (ASTK172)"
+    taches: [ASTK172, ASTK176]
+
+  - id: D-ASTK-171
+    question: "RAS-TVA et acompte ?"
+    options:
+      - cle: a
+        texte: "Toute la TVA : retenue = TVA x taux de la facture, ventilee sur les reglements, le dernier portant le solde au centime ; aucun champ RAS sur l'acompte"
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/astk-decisions-fondateur.md (ASTK171)"
+    taches: [ASTK171, ASTK175]
+
+  - id: D-ASTK-173
+    question: "V2 acceptee et chantier ?"
+    options:
+      - cle: a
+        texte: "Realigner : tant que le chantier n'est pas Installe, la V2 acceptee realigne la nomenclature et les reservations non consommees"
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/astk-decisions-fondateur.md (ASTK173)"
+    taches: [ASTK173, ASTK177]
+
+  - id: D-ACAL-1
+    question: "Conception unique d'un devis ?"
+    options:
+      - cle: a
+        texte: "Le calepinage est la SEULE conception d'un devis : le devis 3D ouvre le calepinage lie ; le devis garde un instantane fige a l'envoi ; le miroir CAL39 est retire."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-1)"
+    taches: []
+
+  - id: D-ACAL-2
+    question: "Variante retenue ?"
+    options:
+      - cle: a
+        texte: "Retenir une variante en fait la conception courante (nouvelle version) ; tous les consommateurs lisent le calepinage."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-2)"
+    taches: []
+
+  - id: D-ACAL-3
+    question: "Reviser V2 et calepinage ?"
+    options:
+      - cle: a
+        texte: "Reviser V2 : le calepinage est re-lie a V2 ; V1 garde une version figee."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-3)"
+    taches: []
+
+  - id: D-ACAL-4
+    question: "Deux empreintes ?"
+    options:
+      - cle: a
+        texte: "Deux empreintes : « document » (versions, journal, brouillon, simulation) et « imprimee » (pans, champ au sol, exclusions, module, batterie, ombrage, environnement, horizon) ; hashes recalcules avec un dry-run fondateur."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-4)"
+    taches: []
+
+  - id: D-ACAL-5
+    question: "Champ au sol / ombriere ?"
+    options:
+      - cle: a
+        texte: "Champ au sol / ombriere = un pan complet partout (devis = toit + sol) ; module sans puissance = refus nomme."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-5)"
+    taches: []
+
+  - id: D-ACAL-6
+    question: "Production vue par le client ?"
+    options:
+      - cle: a
+        texte: "La production que voit un client est celle du moteur du devis ; la simulation du calepinage est l'etude technique (ecart montre en interne)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-6)"
+    taches: []
+
+  - id: D-ACAL-7
+    question: "Pertes manquantes ?"
+    options:
+      - cle: a
+        texte: "Pertes manquantes : P50 marque « borne haute », PR/P75/P90/P95 masques."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-7)"
+    taches: []
+
+  - id: D-ACAL-8
+    question: "Reglages societe figes ?"
+    options:
+      - cle: a
+        texte: "Reglages societe figes par resultat, toutes les simulations perimees au changement, le poste du calepinage l'emporte, PUT fusionne."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-8)"
+    taches: []
+
+  - id: D-ACAL-9
+    question: "Verdict electrique bloquant ?"
+    options:
+      - cle: a
+        texte: "Un verdict electrique « bloquant » bloque la publication, leve par une derogation tracee (calepinage_approuver)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-9)"
+    taches: []
+
+  - id: D-ACAL-10
+    question: "Module et onduleur par defaut ?"
+    options:
+      - cle: a
+        texte: "Module/onduleur par defaut = lignes du devis."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-10)"
+    taches: []
+
+  - id: D-ACAL-11
+    question: "Approbation et empreinte imprimee ?"
+    options:
+      - cle: a
+        texte: "L'approbation tombe quand l'empreinte imprimee change, jamais auto-approuvee, et conditionne chaque sortie quand elle est exigee."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-11)"
+    taches: []
+
+  - id: D-ACAL-12
+    question: "Calepinages ouverts par lead ?"
+    options:
+      - cle: a
+        texte: "UN seul calepinage OUVERT par lead."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-12)"
+    taches: []
+
+  - id: D-ACAL-13
+    question: "GPS corrige du lead ?"
+    options:
+      - cle: a
+        texte: "GPS corrige : automatique si le repere n'a jamais ete deplace a la main, sinon bandeau Recentrer/Garder."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-13)"
+    taches: []
+
+  - id: D-ACAL-14
+    question: "DSR et calepinage ?"
+    options:
+      - cle: a
+        texte: "Le DSR anonymise (repere local, photos supprimees)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-14)"
+    taches: []
+
+  - id: D-ACAL-15
+    question: "Modele de calepinage ?"
+    options:
+      - cle: a
+        texte: "Modele = reglages + disposition relative."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-15)"
+    taches: []
+
+  - id: D-ACAL-16
+    question: "Residus AO ?"
+    options:
+      - cle: a
+        texte: "Residus AO : CALX44 saute, colonne appel_offre_id gardee, champ d'API ecrivable et code mort retires."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-16)"
+    taches: []
+
+  - id: D-ACAL-17
+    question: "Fonctions serveur a moitie construites (1) ?"
+    options:
+      - cle: a
+        texte: "BRANCHER plutot que retirer chaque fonction serveur a moitie construite (edition SLD, simulation par variante, allees societe au comptage, flag USE_MOTEUR_CALEPINAGE OFF, dossiers reglementaires, parcelle/plan de masse, kits, purge de versions, IGN pente, pages d'apercu hors build prod, statut derive) - decision groupee D-ACAL-17 a 20."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-17)"
+    taches: []
+
+  - id: D-ACAL-18
+    question: "Fonctions serveur a moitie construites (2) ?"
+    options:
+      - cle: a
+        texte: "Idem D-ACAL-17 : brancher plutot que retirer (decision groupee 17 a 20)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-18)"
+    taches: []
+
+  - id: D-ACAL-19
+    question: "Fonctions serveur a moitie construites (3) ?"
+    options:
+      - cle: a
+        texte: "Idem D-ACAL-17 : brancher plutot que retirer (decision groupee 17 a 20)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-19)"
+    taches: []
+
+  - id: D-ACAL-20
+    question: "Fonctions serveur a moitie construites (4) ?"
+    options:
+      - cle: a
+        texte: "Idem D-ACAL-17 : brancher plutot que retirer (decision groupee 17 a 20)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-20)"
+    taches: []
+
+  - id: D-ACAL-21
+    question: "Empreintes : recalcul des hashes stockes ?"
+    options:
+      - cle: a
+        texte: "Idem D-ACAL-4 : deux empreintes, hashes stockes recalcules avec un dry-run fondateur (decision groupee 4/21)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-21)"
+    taches: []
+
+  - id: D-ACAL-22
+    question: "Ligne de kit retiree a la main ?"
+    options:
+      - cle: a
+        texte: "Une ligne de kit retiree a la main reste retiree."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-22)"
+    taches: []
+
+  - id: D-ACAL-23
+    question: "Le chantier lit quelle version ?"
+    options:
+      - cle: a
+        texte: "Le chantier lit l'instantane fige de la version ACCEPTEE en vigueur."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-23)"
+    taches: []
+
+  - id: D-ACAL-24
+    question: "Approbation et sorties ?"
+    options:
+      - cle: a
+        texte: "Idem D-ACAL-11 : l'approbation tombe quand l'empreinte imprimee change et conditionne chaque sortie (decision groupee 11/24)."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-24)"
+    taches: []
+
+  - id: D-ACAL-25
+    question: "Calepinage archive ?"
+    options:
+      - cle: a
+        texte: "Archive = lisible avec la mention « archive »."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-25)"
+    taches: []
+
+  - id: D-ACAL-26
+    question: "Fichier meteo ?"
+    options:
+      - cle: a
+        texte: "Bouton « Retirer le fichier meteo »."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-26)"
+    taches: []
+
+  - id: D-ACAL-27
+    question: "Capture multi-pans sur le site public ?"
+    options:
+      - cle: a
+        texte: "Capture multi-pans sur le site public."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-27)"
+    taches: []
+
+  - id: D-ACAL-28
+    question: "Chaine de releve ?"
+    options:
+      - cle: a
+        texte: "La chaine de releve recale le cote choisi."
+    reponse: a
+    date: "2026-10-04"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (D-ACAL-28)"
+    taches: []
+
+  - id: D-ACAL-29
+    question: "Approbation du calepinage : quand ?"
+    options:
+      - cle: a
+        texte: "Approbation exigee : retenir puis approuver ; la seule porte est la publication (generer/resynchroniser) ; remplace la regle de retenue de CALX348/ACAL114 ; un verdict electrique bloquant (ACAL172) refuse toujours une retenue."
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (note du 07/10/2026, approbation exigee)"
+    taches: [CALX348, ACAL114, ACAL172]
+
+  - id: D-ACAL-30
+    question: "Auto-approbation ?"
+    options:
+      - cle: a
+        texte: "Auto-approbation interdite sauf si l'auteur est le SEUL approbateur actif de la societe (journalisee « auto-approuve (seul approbateur) »)."
+    reponse: a
+    date: "2026-10-07"
+    source: "docs/claude-memory/calepinage-decisions-fondateur.md (note du 07/10/2026, auto-approbation)"
+    taches: []
+
+  - id: D-APAR-1
+    question: "Source du taux de TVA par defaut ?"
+    options:
+      - cle: a
+        texte: "Le profil tva_standard reste l'unique source ; le bouton « Par defaut » du referentiel est retire"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/claude-memory/apar-decisions-fondateur.md"
+    taches: [APAR1, APAR44]
+
+  - id: D-APAR-2
+    question: "Sort de l'ecran Parametres > Approbations ?"
+    options:
+      - cle: a
+        texte: "ecran retire, routes d'ecriture fermees"
+      - cle: b
+        texte: "requires_approval appele dans le chemin de remise"
+    reponse: ouverte
+    date: "2026-10-09"
+    source: "docs/claude-memory/apar-decisions-fondateur.md (reste gatee par D-APAR-2, APAR2)"
+    taches: [APAR2]
+
+  - id: D-APDF-1
+    question: "Bande legale du devis ?"
+    options:
+      - cle: a
+        texte: "Lue du seul profil societe, avec capital social et forme juridique ; AUCUN gerant imprime ; profil TAQINOR reel renseigne avant la suppression des litteraux"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/claude-memory/apdf-decisions-fondateur.md (D-APDF-1)"
+    taches: [APDF90]
+
+  - id: D-APDF-2
+    question: "Identifiants legaux sur les documents chantier ?"
+    options:
+      - cle: a
+        texte: "ICE / IF / RC / patente sur le BL chantier (FR et AR), le PV de reception et le dossier de remise"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/claude-memory/apdf-decisions-fondateur.md (D-APDF-2)"
+    taches: [APDF91]
+
+  - id: D-APDF-3
+    question: "Langue des documents derives ?"
+    options:
+      - cle: a
+        texte: "Avoir, note de debit, recu et relance traduits (client arabe) ; mention de repli ailleurs, y compris pour l'anglais"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/apdf-decisions-fondateur.md (D-APDF-3) ; docs/claude-memory/decisions-audit-0810.md (APDF92)"
+    taches: [APDF92]
+
+  - id: D-APDF-4
+    question: "Prestations dans le PV et le BL ?"
+    options:
+      - cle: a
+        texte: "Prestations (Installation, Transport) exclues du PV et du BL ; section « Prestations » sans garantie dans le dossier de remise ; recategorisation en type service au seed"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/claude-memory/apdf-decisions-fondateur.md (D-APDF-4)"
+    taches: [APDF93]
+
+  - id: D-YBW-1
+    question: "Entites YanBow ?"
+    options:
+      - cle: a
+        texte: "YanBow = societe BRITANNIQUE (Ltd, a creer) qui possede les produits et publie le site ; une SARLAU marocaine (nom a decider) signe et facture les clients marocains en MAD."
+    reponse: a
+    date: "2026-10-06"
+    source: "docs/claude-memory/yanbow-decisions-fondateur.md (Entites)"
+    taches: []
+
+  - id: D-YBW-2
+    question: "Nom de l'ERP ?"
+    options:
+      - cle: a
+        texte: "SolarBow REMPLACE Ancreto comme nom de l'ERP (vendu aux installateurs solaires francais) ; « Ancreto » abandonne."
+    reponse: a
+    date: "2026-10-06"
+    source: "docs/claude-memory/yanbow-decisions-fondateur.md (SolarBow)"
+    taches: []
+
+  - id: D-YBW-3
+    question: "Qu'est MarketingBow ?"
+    options:
+      - cle: a
+        texte: "MarketingBow = le module Publicite (apps/adsengine), qui contient la veille."
+    reponse: a
+    date: "2026-10-06"
+    source: "docs/claude-memory/yanbow-decisions-fondateur.md (MarketingBow)"
+    taches: []
+
+  - id: D-YBW-4
+    question: "Perimetre du site public YanBow ?"
+    options:
+      - cle: a
+        texte: "Site apps/yanbow-web : FR d'abord + EN ; societe + SolarBow + MarketingBow + sur mesure ; aucun prix ; action « prendre rendez-vous » + WhatsApp ; veille non montree avant un premier passage reel mesure ; sans nommer TAQINOR."
+    reponse: a
+    date: "2026-10-06"
+    source: "docs/claude-memory/yanbow-decisions-fondateur.md (Site public)"
+    taches: []
+
+  - id: D-YBW-5
+    question: "Design du site (YBWM12) ?"
+    options:
+      - cle: a
+        texte: "« A maison + bandes produit B » : candidat A « Encre et papier » pour tout le site ; principe de B pour les bandes produit SolarBow / MarketingBow, refait avec les jetons et polices de A."
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/claude-memory/yanbow-decisions-fondateur.md (Design du site, YBWM12)"
+    taches: [YBWM12]
+
+  - id: D-ASAV-1
+    question: "Garantie d'un equipement pose en remplacement (ASAV90) ?"
+    options:
+      - cle: a
+        texte: "La garantie repart a la date du remplacement, duree du neuf, au moins la fin restante de l'ancien"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV90)"
+    taches: [ASAV90]
+
+  - id: D-ASAV-2
+    question: "Garantie de pose / legale d'un chantier receptionne (ASAV91) ?"
+    options:
+      - cle: a
+        texte: "Affichage « garantie a confirmer » ; jamais facture d'office"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV91)"
+    taches: [ASAV91]
+
+  - id: D-ASAV-3
+    question: "Facturation recurrente des contrats de maintenance (ASAV92) ?"
+    options:
+      - cle: a
+        texte: "Retirer la case et les echeances de facturation recurrente ; le prix reste affiche"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV92)"
+    taches: [ASAV92]
+
+  - id: D-ASAV-4
+    question: "Monitoring SAV (ASAV93) ?"
+    options:
+      - cle: b
+        texte: "Les RENDRE UTILISABLES (API + ecran), une tache par fonction : ASAV100 a ASAV103 ; ASAV72 remplacee, a ne pas construire"
+    reponse: b
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV93)"
+    taches: [ASAV93, ASAV72, ASAV100, ASAV101, ASAV102, ASAV103]
+
+  - id: D-ASAV-5-Q1
+    question: "SLA d'un ticket rouvert (ASAV94 Q1) ?"
+    options:
+      - cle: a
+        texte: "Le delai repart de la reouverture"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV94 Q1)"
+    taches: [ASAV94]
+
+  - id: D-ASAV-5-Q2
+    question: "Interrupteur sla_breach_enabled (ASAV94 Q2) ?"
+    options:
+      - cle: a
+        texte: "L'interrupteur ne gouverne que les notifications ; l'echeance est toujours calculee"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV94 Q2)"
+    taches: [ASAV94]
+
+  - id: D-ASAV-6
+    question: "Couverture d'un ticket (ASAV95) ?"
+    options:
+      - cle: a
+        texte: "Jugee a la date d'ouverture du ticket"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ASAV95)"
+    taches: [ASAV95]
+
+  - id: D-ACHT-94
+    question: "Parc SAV a la reception (ACHT94) ?"
+    options:
+      - cle: a
+        texte: "Les biens a garantie sont suivis a l'unite"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ACHT94)"
+    taches: [ACHT94]
+
+  - id: D-AFAC-80
+    question: "Decision facturation AFAC80 ?"
+    options:
+      - cle: a
+        texte: "Annulation d'une facture qui porte de l'argent : refus 400 + choix impose (directive d'acompte)"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC80)"
+    taches: [AFAC80]
+
+  - id: D-AFAC-81
+    question: "Decision facturation AFAC81 ?"
+    options:
+      - cle: a
+        texte: "Paiement mal saisi : etat « annule (erreur de saisie) » + contre-ecriture"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC81)"
+    taches: [AFAC81]
+
+  - id: D-AFAC-82
+    question: "Decision facturation AFAC82 ?"
+    options:
+      - cle: b
+        texte: "Mandat de prelevement : GARDER visible et inerte (PAS parque)"
+    reponse: b
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC82)"
+    taches: [AFAC82]
+
+  - id: D-AFAC-83
+    question: "Decision facturation AFAC83 ?"
+    options:
+      - cle: a
+        texte: "Paiement en ligne : une seule pile (lien FG53)"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC83)"
+    taches: [AFAC83]
+
+  - id: D-AFAC-84
+    question: "Decision facturation AFAC84 ?"
+    options:
+      - cle: a
+        texte: "Note de debit emise : annulation par avoir + note de debit partielle"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC84)"
+    taches: [AFAC84]
+
+  - id: D-AFAC-85
+    question: "Decision facturation AFAC85 ?"
+    options:
+      - cle: a
+        texte: "Abandon de creance : enregistrement date cumulable"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC85)"
+    taches: [AFAC85]
+
+  - id: D-AFAC-86
+    question: "Decision facturation AFAC86 ?"
+    options:
+      - cle: a
+        texte: "Garde legale J+7 (CAD122) : sur tout encaissement, sous reserve du juriste (CADM3)"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC86)"
+    taches: [AFAC86]
+
+  - id: D-AFAC-87
+    question: "Decision facturation AFAC87 ?"
+    options:
+      - cle: a
+        texte: "Promesse de paiement partielle honoree : oui"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC87)"
+    taches: [AFAC87]
+
+  - id: D-AFAC-88
+    question: "Decision facturation AFAC88 ?"
+    options:
+      - cle: a
+        texte: "Generateur hors ERP : retirer tools/facture et le JSON client versionne"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC88)"
+    taches: [AFAC88]
+
+  - id: D-AFAC-89
+    question: "Decision facturation AFAC89 ?"
+    options:
+      - cle: a
+        texte: "Facture contestee : drapeau « contestee »"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AFAC89)"
+    taches: [AFAC89]
+
+  - id: D-AACQ-1
+    question: "Seuils/plafonds *_mad (AACQ90) ?"
+    options:
+      - cle: a
+        texte: "Devise du compte, sans taux de change ; regle refusee si la devise change"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AACQ90)"
+    taches: [AACQ90]
+
+  - id: D-AACQ-95
+    question: "Synchro Odoo (AACQ95 + AACQ96) ?"
+    options:
+      - cle: a
+        texte: "Synchro avec Odoo MANUELLE, jamais automatique ; l'ERP fait TOUJOURS foi ; Odoo ne modifie jamais un lead ERP ; construit par AACQ97 (AACQ31/33/34 doivent suivre)."
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AACQ95 + AACQ96)"
+    taches: [AACQ95, AACQ96, AACQ97, AACQ31, AACQ33, AACQ34]
+
+  - id: D-AMOT-1
+    question: "Langue des PDF residentiel 3 pages / legacy (AMOT1) ?"
+    options:
+      - cle: a
+        texte: "tout traduire : tous les libelles visibles passent par le catalogue i18n"
+      - cle: b
+        texte: "refuser en/ar sur ces formats avec un repli nomme"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT1)"
+    taches: [AMOT1, AMOT52]
+
+  - id: D-AMOT-2
+    question: "Une-page signe au domicile (AMOT2) ?"
+    options:
+      - cle: a
+        texte: "annexe de retractation en 2e page declaree"
+      - cle: b
+        texte: "une-page refuse avec repli nomme vers 3 pages + annexe"
+      - cle: c
+        texte: "n/a"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT2)"
+    taches: [AMOT2, AMOT53]
+
+  - id: D-AMOT-3
+    question: "Hypotheses ROI vs PVGIS (AMOT3) ?"
+    options:
+      - cle: a
+        texte: "productible_kwh_kwc nullable (vide = PVGIS ville), rendement_global retire de l'ecran"
+      - cle: b
+        texte: "rendement_global remplace les pertes du moteur"
+      - cle: c
+        texte: "mention « valeurs indicatives » a l'ecran"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT3)"
+    taches: [AMOT3, AMOT64]
+
+  - id: D-AMOT-4
+    question: "Horizon / degradation / actualisation (AMOT4) ?"
+    options:
+      - cle: a
+        texte: "reglages_economiques relit horizon 25 ans et degradation 0,5 % par an de pricing"
+      - cle: b
+        texte: "re-router en TRANSVERSE (champs societe apps/parametres)"
+      - cle: c
+        texte: "panneau omis sans saisie"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT4)"
+    taches: [AMOT4, AMOT54]
+
+  - id: D-AMOT-5
+    question: "Lettres de relance (AMOT5) ?"
+    options:
+      - cle: a
+        texte: "ni delai chiffre ni interets sauf reglages de relance de la societe"
+      - cle: b
+        texte: "texte actuel conserve avec relecture datee"
+      - cle: c
+        texte: "texte fourni"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT5)"
+    taches: [AMOT5, AMOT55]
+
+  - id: D-AMOT-6
+    question: "m3/jour par similitude (AMOT6) ?"
+    options:
+      - cle: a
+        texte: "imprime « estimation » + mois le plus serre"
+      - cle: b
+        texte: "le noyau retire l'etiquette avec sa justification ecrite"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT6)"
+    taches: [AMOT6, AMOT65]
+
+  - id: D-AMOT-7
+    question: "Pompe existante a debit declare (AMOT7) ?"
+    options:
+      - cle: a
+        texte: "garder la carte m3/jour « estimation, debit declare par vous » et ajouter la regle nocturne DOC_POMPAGE_M3_SANS_COURBE"
+      - cle: b
+        texte: "omettre la carte m3/jour pour toute pompe sans courbe, meme existante"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AMOT7) ; amende la regle CLAUDE.md Pompage sizing"
+    taches: [AMOT7, AMOT56]
+
+  - id: D-ACHT-90
+    question: "Montants estimes d'une demande d'achat (ACHT90) ?"
+    options:
+      - cle: a
+        texte: "Masques (meme regle que le prix d'achat, D-ASTK-2)"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ACHT90)"
+    taches: [ACHT90]
+
+  - id: D-ACHT-91
+    question: "Synchro terrain chantier (ACHT91) ?"
+    options:
+      - cle: a
+        texte: "Etendre /installations/sync/ (client_ts + base_updated_at, detection de conflit offlinesync/conflicts.py)"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ACHT91)"
+    taches: [ACHT91]
+
+  - id: D-ACHT-95
+    question: "Modele de checklist chantier (ACHT95) ?"
+    options:
+      - cle: a
+        texte: "Checklist figee a la creation"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ACHT95)"
+    taches: [ACHT95]
+
+  - id: D-ADEP-90
+    question: "Suites securite FastAPI (ADEP90) ?"
+    options:
+      - cle: a
+        texte: "Lane PR legere fastapi_ia"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ADEP90)"
+    taches: [ADEP90]
+
+  - id: D-ADEP-91
+    question: "E-mail en production (ADEP91) ?"
+    options:
+      - cle: b
+        texte: "NE RIEN DERIVER : Reda pose EMAIL_BACKEND lui-meme ; l'ERP affiche « e-mail non operationnel » tant qu'il manque"
+    reponse: b
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ADEP91)"
+    taches: [ADEP91]
+
+  - id: D-AGNR-1
+    question: "Devis avec deux factures hiver / ete (AGNR4) ?"
+    options:
+      - cle: a
+        texte: "Option recommandee : deux factures donnent factures_hiver_ete"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AGNR4)"
+    taches: [AGNR4, AGNR34]
+
+  - id: D-AGNR-2
+    question: "Curseur « Consommation diurne (%) » (AGNR43) ?"
+    options:
+      - cle: a
+        texte: "Retirer le curseur"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (AGNR43)"
+    taches: [AGNR43, AGNR44]
+
+  - id: D-ADEV-5
+    question: "Lead PERDU dont le client signe (ADEV61) ?"
+    options:
+      - cle: a
+        texte: "Lever Perdu vers Signe : dans l'abonne crm de devis_accepted, lever perdu avec entree de chatter avant l'avance d'etape"
+      - cle: b
+        texte: "refus de signature cote ventes"
+      - cle: c
+        texte: "avancer l'etape sans lever perdu"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ADEV61) ; options b/c : texte de ADEV63"
+    taches: [ADEV61, ADEV63]
+
+  - id: D-ADEV-6
+    question: "V2 d'un devis deja accepte (ADEV62) ?"
+    options:
+      - cle: a
+        texte: "Seulement une tache « faire signer l'avenant » : aucune cadence apres-devis"
+      - cle: b
+        texte: "n/a"
+      - cle: c
+        texte: "cadence courte dediee"
+    reponse: a
+    date: "2026-10-08"
+    source: "docs/claude-memory/decisions-audit-0810.md (ADEV62) ; options b/c : texte de ADEV57"
+    taches: [ADEV62, ADEV57]
+
+  - id: D-ADEV-1
+    question: "Sort de la V1 acceptee pendant et apres sa revision (ADEV3) ?"
+    options:
+      - cle: a
+        texte: "La V1 reste la vente signee en vigueur jusqu'a la signature de la V2 ; supprimer, archiver ou abandonner la V2 reactive la V1 dans la meme transaction"
+      - cle: b
+        texte: "interdire de supprimer ou archiver une V2 de revision (409), geste « Abandonner la revision » qui reactive la V1"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/plans/PLAN_AUDIT_DEVIS.md (ADEV3 consigne ; ADEV16 et ADEV46 portent « D-ADEV-1 = (a) »)"
+    taches: [ADEV3, ADEV16, ADEV46]
+
+  - id: D-ADEV-2
+    question: "Acceptation interne d'un devis BROUILLON (ADEV4) ?"
+    options:
+      - cle: a
+        texte: "accept_devis execute les gels de l'envoi via geler_document_engage(devis, user) quand l'ancien statut est BROUILLON"
+      - cle: b
+        texte: "409 « envoyez-le d'abord » sur l'acceptation d'un brouillon"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/plans/PLAN_AUDIT_DEVIS.md (ADEV4 consigne ; ADEV12 porte « D-ADEV-2 = (a) »)"
+    taches: [ADEV4, ADEV12]
+
+  - id: D-ADEV-4
+    question: "Tuile kWc conçus / signes du hub (ADEV6) ?"
+    options:
+      - cle: a
+        texte: "kwc_concu_devis compte le kWc du PROJET (x N villas)"
+      - cle: b
+        texte: "renommer la tuile « kWc par villa » sans changer le calcul"
+    reponse: a
+    date: "2026-10-09"
+    source: "docs/plans/PLAN_AUDIT_DEVIS.md (ADEV6 consigne ; ADEV40 porte « D-ADEV-4 = (a) »)"
+    taches: [ADEV6, ADEV40]

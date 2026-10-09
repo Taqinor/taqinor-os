@@ -424,7 +424,12 @@ GARDES = {
         ('Check onglets calepinage testés (un onglet du rail arrive avec son test, CALX383)',
          'python scripts/check_onglets_calepinage_testes.py',
          '.'),
-        # ANCRE-A6-decisions : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Check decisions : aucune tache conditionnelle sur une decision repondue (AMET94)',
+         'python scripts/check_decisions.py',
+         '.'),
+        ('Tests de la garde decisions (AMET94)',
+         'python -m unittest scripts.tests.test_check_decisions -v',
+         '.'),
         ('Test the onglets-tested checker itself (CALX383)',
          'python -m unittest scripts.tests.test_check_onglets_calepinage_testes -v',
          '.'),
