@@ -711,6 +711,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [previewBlob, setPreviewBlob] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewServerError, setPreviewServerError] = useState(false)
+  // ADOC73 — motif d'un refus serveur (409 {detail}) affiché au lieu d'un
+  // aperçu vide ; la réponse d'erreur d'un appel `blob` est elle-même un Blob.
+  const [previewErrorDetail, setPreviewErrorDetail] = useState('')
   const [previewNetworkFailed, setPreviewNetworkFailed] = useState(false)
   const [previewRenderFailed, setPreviewRenderFailed] = useState(false)
   const [previewReloadKey, setPreviewReloadKey] = useState(0)
@@ -748,6 +751,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewLoading(true)
     setPreviewServerError(false)
+    setPreviewErrorDetail('')
     setPreviewNetworkFailed(false)
     setPreviewRenderFailed(false)
     setPreviewBlob(null)
@@ -756,8 +760,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         if (cancelled) return
         setPreviewBlob(pdfBlob(res.data))
       })
-      .catch((err) => {
+      .catch(async (err) => {
+        let detail = ''
+        try {
+          const d = err?.response?.data
+          const brut = d && typeof d.text === 'function' ? JSON.parse(await d.text()) : d
+          detail = typeof brut?.detail === 'string' ? brut.detail : ''
+        } catch { /* corps illisible : message générique */ }
         if (cancelled) return
+        setPreviewErrorDetail(detail)
         if (classifyFetchError(err) === 'server') setPreviewServerError(true)
         else setPreviewNetworkFailed(true)
       })
@@ -813,8 +824,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   })
 
   // Ouvre l'aperçu d'un document après-vente standard (PV, bon de livraison…).
-  const openDocument = (kind, filename, title) =>
-    openPreview(title, filename, () => documentsApi[kind](current.id))
+  // ADOC73 — `type` (attestation : 'installation' | 'fin_travaux') est transmis
+  // tel quel au serveur ; les autres documents l'ignorent.
+  const openDocument = (kind, filename, title, type) =>
+    openPreview(title, filename, () => documentsApi[kind](current.id, type))
 
   // Fiche de remise / garantie après-vente PREMIUM (langage visuel du devis).
   const openFicheRemise = () =>
@@ -1849,9 +1862,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 {!pvReady && (
                   <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
                 )}
-                <Button size="sm" variant="outline"
-                        onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`, 'Attestation')}>
-                  Attestation
+                {/* ADOC73 — deux attestations distinctes, soumises à pvReady comme
+                    PV/BL/dossier ; le type part au serveur. */}
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('attestation', `attestation-installation-${current.reference}.pdf`, 'Attestation d’installation', 'installation')}>
+                  Attestation d’installation
+                </Button>
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('attestation', `attestation-fin-travaux-${current.reference}.pdf`, 'Attestation de fin de travaux', 'fin_travaux')}>
+                  Attestation de fin de travaux
                 </Button>
                 <Button size="sm" variant="outline"
                         onClick={() => navigate(`/reporting/archive/chantier/${current.id}`)}>
@@ -2006,7 +2025,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       className="ldp-fallback"
                       icon={TriangleAlert}
                       title="Aperçu indisponible"
-                      description="Le serveur n'a pas pu générer ce document. Réessayez."
+                      description={previewErrorDetail || "Le serveur n'a pas pu générer ce document. Réessayez."}
                       action={(
                         <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
                           <RotateCw /> Réessayer
