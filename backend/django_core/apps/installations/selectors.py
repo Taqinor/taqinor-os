@@ -771,6 +771,21 @@ def membres_intervention(interv):
     return membres
 
 
+def interventions_actives(company, debut, fin):
+    """ACHT39 — LA notion « ressource occupée » de la planification : les
+    interventions NON annulées de la société dont ``date_prevue`` tombe dans
+    [debut, fin] (inclusif), avec l'équipe canonique/ad-hoc préchargée
+    (``membres_intervention`` ne requête plus). Lue par ``conflits_affectation``,
+    ``plan_de_charge_equipes`` et ``suggerer_creneau`` : les trois vues donnent
+    la même charge. Renvoie un queryset (l'appelant ajoute ses ``only`` /
+    ``select_related``)."""
+    from .models import Intervention
+    return (Intervention.objects
+            .filter(company=company, annulee=False)
+            .filter(date_prevue__gte=debut, date_prevue__lte=fin)
+            .prefetch_related('equipe', 'equipe_ref__membres'))
+
+
 def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     """FG299 — plan de charge des équipes terrain : capacité vs affecté par
     technicien sur la fenêtre [debut, fin] inclusive, avec drapeau de
@@ -798,7 +813,6 @@ def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
       sur-réservation)."""
     from collections import OrderedDict
     from django.contrib.auth import get_user_model
-    from .models import Intervention
 
     try:
         heures_par_jour = float(heures_par_jour)
@@ -813,11 +827,8 @@ def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     # DC40 — on résout les membres via l'équipe terrain CANONIQUE
     # (``equipe_ref``) quand elle est posée, sinon via le M2M ad-hoc historique.
     # On prefetch les DEUX pour éviter tout N+1 (``membres_intervention``).
-    qs = (Intervention.objects
-          .filter(company=company, annulee=False)
-          .filter(date_prevue__gte=debut, date_prevue__lte=fin)
-          .prefetch_related('equipe', 'equipe_ref__membres')
-          .only('id', 'technicien_id', 'date_prevue', 'equipe_ref_id'))
+    qs = interventions_actives(company, debut, fin).only(
+        'id', 'technicien_id', 'date_prevue', 'equipe_ref_id')
 
     # {user_id|None: set(intervention_id)} — un set évite de compter deux fois
     # une intervention où un technicien est À LA FOIS principal et membre.
@@ -1159,7 +1170,6 @@ def conflits_affectation(company, debut, fin):
     est absente ou inversée, renvoie une liste vide (jamais d'exception)."""
     from collections import OrderedDict
     from django.contrib.auth import get_user_model
-    from .models import Intervention
 
     base = {
         'debut': debut.isoformat() if debut is not None else None,
@@ -1172,12 +1182,8 @@ def conflits_affectation(company, debut, fin):
         return base
 
     # DC40 — membres résolus via l'équipe CANONIQUE (repli M2M ad-hoc).
-    qs = (Intervention.objects
-          .filter(company=company)
-          .filter(date_prevue__gte=debut, date_prevue__lte=fin)
-          .filter(date_prevue__isnull=False)
+    qs = (interventions_actives(company, debut, fin)
           .select_related('camionnette')
-          .prefetch_related('equipe', 'equipe_ref__membres')
           .only('id', 'installation_id', 'type_intervention', 'statut',
                 'date_prevue', 'technicien_id', 'camionnette_id',
                 'equipe_ref_id', 'camionnette__nom'))
@@ -2442,7 +2448,6 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
     aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
     ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
     import datetime
-    from .models import Intervention
 
     chantier = installation_scoped(company, chantier_id)
     if chantier is None:
@@ -2460,6 +2465,33 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
     site_lat = getattr(chantier, 'gps_lat', None)
     site_lng = getattr(chantier, 'gps_lng', None)
 
+    # ACHT39 — occupation lue par LE sélecteur partagé (annulées exclues,
+    # équipe canonique résolue) : {jour: [interventions]} et
+    # {technicien: [jours occupés]}, chargés UNE fois pour toute la fenêtre.
+    try:
+        duree_jours = max(int(duree_jours or 1), 1)
+    except (TypeError, ValueError):
+        duree_jours = 1
+    fin_fenetre = date_cible + datetime.timedelta(days=14 + duree_jours * 2 + 4)
+    par_jour = {}
+    occupe = {}
+    for iv in interventions_actives(
+            company, date_cible, fin_fenetre).select_related('installation'):
+        par_jour.setdefault(iv.date_prevue, []).append(iv)
+        for membre_id in membres_intervention(iv):
+            occupe.setdefault(membre_id, []).append(iv.date_prevue)
+
+    def _bloc(depart):
+        # ACHT39 — un créneau de ``duree_jours`` s'étale sur autant de jours
+        # OUVRÉS (le jour de départ ouvre le bloc ; 1 jour = ce seul jour).
+        jours = [depart]
+        courant = depart
+        while len(jours) < duree_jours:
+            courant += datetime.timedelta(days=1)
+            if courant.weekday() < 5:
+                jours.append(courant)
+        return jours
+
     # Fenêtre de recherche : 14 jours calendaires à partir de date_cible.
     candidats = []
     jour = date_cible
@@ -2467,25 +2499,22 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
     while jours_testes < 14:
         # Interventions déjà planifiées CE JOUR (toute ressource confondue) —
         # sert de proxy de proximité : un technicien déjà dans le secteur ce
-        # jour-là minimise le trajet total. Chargé UNE fois par jour (hors
-        # boucle technicien) pour éviter un N+1.
-        interventions_du_jour = list(
-            Intervention.objects.filter(company=company, date_prevue=jour)
-            .select_related('installation'))
+        # jour-là minimise le trajet total.
+        interventions_du_jour = par_jour.get(jour, [])
+        bloc = _bloc(jour)
         for tech in eligibles:
-            if ressource_indisponible(company, tech.id, jour, jour):
+            # FG302 — indisponibilité sur TOUT le bloc.
+            if any(ressource_indisponible(company, tech.id, j, j)
+                   for j in bloc):
                 continue
-            deja_ce_jour = [
-                iv for iv in interventions_du_jour
-                if iv.technicien_id == tech.id]
-            if deja_ce_jour:
-                # FG300 — conflit : le technicien porte déjà une intervention
-                # ce jour-là → jamais proposé pour un NOUVEAU créneau ce jour.
+            # FG300 — conflit : le technicien (principal OU membre d'équipe)
+            # porte déjà une intervention active sur un jour du bloc →
+            # jamais proposé pour ce créneau.
+            if set(occupe.get(tech.id, ())) & set(bloc):
                 continue
-            charge = Intervention.objects.filter(
-                company=company, technicien_id=tech.id,
-                date_prevue__gte=jour,
-                date_prevue__lt=jour + datetime.timedelta(days=14)).count()
+            charge = sum(
+                1 for j in occupe.get(tech.id, ())
+                if jour <= j < jour + datetime.timedelta(days=14))
             # Distance au site la plus courte parmi les interventions déjà
             # planifiées CE JOUR (toute ressource) — 0 si aucune GPS
             # disponible (dépôt/site inconnu, jamais d'exception).
@@ -2543,9 +2572,9 @@ def intervention_public_payload(interv):
     technicien_nom = None
     technicien_avatar_url = None
     if technicien is not None:
-        technicien_nom = (
-            getattr(technicien, 'get_full_name', lambda: '')()
-            or technicien.username)
+        # APDF41 — page publique : jamais l'identifiant de connexion.
+        from apps.parametres.selectors import nom_intervenant
+        technicien_nom = nom_intervenant(technicien, interv.company) or None
         avatar_key = getattr(technicien, 'avatar_key', '')
         if avatar_key:
             from authentication.avatars import presign_avatar
@@ -2595,7 +2624,10 @@ def intervention_rapport_public_payload(interv):
         'date_realisee': (
             interv.date_realisee.isoformat() if interv.date_realisee else None),
         'equipe': intervention_pdf._equipe_payload(interv),
-        'photos': intervention_pdf._photos_payload(interv),
+        # APDF38 — URL tokenisées (route publique), plus le téléchargement
+        # authentifié de ``records``.
+        'photos': intervention_pdf._photos_payload(
+            interv, public_token=interv.lien_rapport_token),
         'serials': intervention_pdf._serials_payload(interv),
         'consommation': intervention_pdf._consommation_payload(interv),
         'reserves': intervention_pdf._reserves_payload(interv),
@@ -2949,6 +2981,29 @@ def chantier_ville(company, chantier_id):
     if chantier is None:
         return None
     return (getattr(chantier, 'site_ville', '') or '').strip() or None
+
+
+def nb_fiches_recette_instrument(company, outil_id):
+    """ACHT73 — nombre de fiches de recette IEC 62446-1 de la société dont
+    l'instrument est l'outil ``outil_id`` (``instrument_id`` entier, sans FK) ;
+    lecture seule, lue par la garde de suppression de l'outil."""
+    from .models import CommissioningRecord
+
+    return CommissioningRecord.objects.filter(
+        company=company, instrument_id=outil_id).count()
+
+
+def chantier_client_id(company, chantier_id):
+    """AACQ5 — id du client propriétaire d'un chantier (``Installation.client``),
+    ou ``None`` (chantier inconnu, d'une autre société, ou sans client).
+    Lecture seule, scopée société : permet à la créathèque de recouper un
+    consentement avec le propriétaire réel d'une photo de chantier sans
+    importer ``installations.models``."""
+    from .models import Installation
+
+    return (Installation.objects
+            .filter(pk=chantier_id, company=company)
+            .values_list('client_id', flat=True).first())
 
 
 # ── NTPRT9 — Prochain jalon de chantier (tableau de bord portail client) ────

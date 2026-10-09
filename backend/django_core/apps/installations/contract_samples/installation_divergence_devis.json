@@ -2,7 +2,7 @@
   "endpoint": "GET /api/django/installations/chantiers/<int:pk>/",
   "cle": "divergence_devis (cle additive du detail d'un chantier)",
   "forme_serveur": "partielle",
-  "forme_serveur_provisoire": "Cle pas encore servie : la tache backend qui la produit (ACHT66 pour divergence_devis, ACHT70 pour l op portant equipements) remet `forme_serveur: complete`.",
+  "forme_serveur_provisoire": "SERVIE depuis ACHT66 (InstallationSerializer.divergence_devis, detail d'un chantier) — mais le detail est servi par un ModelViewSet dont la forme n'est pas lisible statiquement : `forme_serveur: complete` serait refuse par check_api_shapes.py (la declaration ne verifierait rien). La cle de l'op portant equipements reste a ACHT70.",
   "pourquoi": "ACHT40 (Groupe ACHT, audit chantiers du 08/10/2026, C-ACHT-064) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui l'ecran recalcule lui-meme l'ecart entre la nomenclature gelee du chantier et les lignes du devis (frontend/src/pages/installations/InstallationDetail.jsx:372-390). La cle `divergence_devis` est CALCULEE PAR LE SERVEUR a partir de la nomenclature gelee (`services._freeze_bom` : produit_id, designation, quantite) comparee aux lignes du devis lie ; ACHT66 la sert dans le detail du chantier, ACHT67 fait lire l'ecran sur elle (ACHT70/ACHT71 consomment le contrat jumeau field_sync_cocher_checklist.json). `diverge` = false et `lignes` = [] quand la nomenclature et le devis concordent ; une ligne n'apparait que si `quantite_bom` != `quantite_devis` (null = produit absent d'un cote). Valeurs illustratives.",
   "exemple": {
     "divergence_devis": {

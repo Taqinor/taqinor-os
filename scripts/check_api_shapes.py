@@ -1324,8 +1324,9 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
     "installations/installation_divergence_devis.json":
         "cle ADDITIVE `divergence_devis` du detail d'un chantier (GET "
         "installations/chantiers/<pk>/), calculee par le serveur : servie "
-        "par un ModelViewSet (forme non lisible statiquement) et pas encore "
-        "produite — ACHT66 (calcul serveur) et ACHT67 (ecran) s'appuient "
+        "par un ModelViewSet (forme non lisible statiquement) ; "
+        "ACHT66 la produit (InstallationSerializer.divergence_devis) mais le "
+        "detail n'est pas lisible statiquement — ACHT67 (ecran) s'appuie "
         "sur CET exemple (ACHT40)",
     "installations/field_sync_cocher_checklist.json":
         "op hors-ligne `chantier.cocher_checklist` de POST installations/"

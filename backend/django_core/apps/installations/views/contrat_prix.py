@@ -35,7 +35,7 @@ class ContratPrixFournisseurViewSet(CompanyScopedModelViewSet):
     serveur ; `fournisseur` validé tenant. Filtrable par `fournisseur`,
     `statut`. Cycle de vie + lookup `prix-convenu`."""
     queryset = ContratPrixFournisseur.objects.select_related(
-        'fournisseur', 'created_by').prefetch_related('lignes').all()
+        'fournisseur', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = ContratPrixFournisseurSerializer
 
     def get_permissions(self):

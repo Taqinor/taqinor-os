@@ -25,8 +25,6 @@ backend/django_core/apps/compta/scheduled.py
 # sans active_companies() ni filtre company. Cle stable fichier::fonction. NE PEUT QUE
 # DECROITRE (une cle morte fait echouer la garde). Raison : balayage ou lecture par objet
 # a scoper ; tache qui la retire = C-AFAC-036 (recouvrement : AFAC43) ou le plan du proprietaire.
-backend/django_core/apps/installations/tasks.py::rappel_rdv_j1
-backend/django_core/apps/installations/tasks.py::meteo_planning_j3
 backend/django_core/apps/installations/tasks.py::_deja_notifie_aujourdhui
 backend/django_core/apps/publicapi/tasks.py::deliver_webhook
 backend/django_core/apps/stock/tasks.py::_deja_notifie_aujourdhui

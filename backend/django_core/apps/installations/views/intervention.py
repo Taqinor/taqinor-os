@@ -4,7 +4,7 @@ from rest_framework.response import Response  # noqa: F401
 
 from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
-    IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from django.db.models import F  # noqa: F401
@@ -36,6 +36,7 @@ from ..services import (  # noqa: F401
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
+from .. import field_sync  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -249,6 +250,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
+        # ACHT56 — `tool-return` : GET lecture, POST matérialise des lignes.
+        if (self.action == 'tool_return'
+                and self.request.method not in ('GET', 'HEAD', 'OPTIONS')):
+            return [IsResponsableOrAdmin()]
+        if self.action == 'commander_manques':
+            # ACHT54 — crée un BCF : `achats_commander` en plus du module.
+            return [IsResponsableOrAdmin(),
+                    HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS + [
             'historique', 'preparation', 'photos',
             # Lectures du module de capture F9–F19 + F23.
@@ -271,8 +280,6 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'suggerer_creneau',
             # FG303 — planning des camionnettes (capacité véhicule).
             'planning_camionnettes',
-            # FG69 — signature client.
-            'signer_client',
             # XFSM13 — historique des re-vérifications (lecture).
             'reverifications',
             # XFSM22 — durée & pièces suggérées par l'historique.
@@ -296,6 +303,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'cocher_safety', 'signer_safety',
             # FG78 — confirmation RDV.
             'confirmer_rdv',
+            # ACHT56 — FG69 signature client : une ÉCRITURE (un Viewer ne pose
+            # plus de signature), jamais rangée dans les lectures.
+            'signer_client',
             # XFSM3 — replanification en masse d'une journée.
             'replanifier_en_masse',
             # XFSM13 — enregistrement d'une re-vérification (écriture).
@@ -440,6 +450,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         )
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
+        intervention_activity.capturer_equipe(old)  # ACHT35
         nouveau_statut = serializer.validated_data.pop('statut', None)
         # Notification CHT9 : seulement quand le technicien CHANGE (pas de
         # bruit sur une simple modification d'une intervention déjà
@@ -457,6 +468,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             if technicien_change:
                 from ..services import _notifier_intervention_assignee
                 _notifier_intervention_assignee(interv, self.request.user)
+            # ACHT38 — un PATCH qui DÉPLACE une date déjà fixée est un report :
+            # compteur +1, confirmation remise à zéro (service unique).
+            if (old.date_prevue is not None
+                    and interv.date_prevue is not None
+                    and interv.date_prevue != old.date_prevue):
+                from ..services import enregistrer_report_rdv
+                enregistrer_report_rdv(
+                    interv, old.date_prevue, None, self.request.user)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : effets « édition » inchangés.
                 self._stamp_date_realisee(interv)
@@ -470,7 +489,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 return
             try:
                 changer_statut_intervention(
-                    interv, nouveau_statut, self.request.user)
+                    interv, nouveau_statut, self.request.user,
+                    etat_avant=old)
             except TransitionRefusee as exc:
                 raise ValidationError({'statut': exc.raisons})
 
@@ -628,8 +648,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             return Response({'detail': 'Ligne inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
         coche = bool(request.data.get('coche', True))
-        ligne.coche = coche
-        ligne.save(update_fields=['coche'])
+        # ACHT72 — cocher = sortir l'outil du parc (409 si perdu / en
+        # réparation / déjà sorti).
+        try:
+            field_services.cocher_outil_ligne(ligne, coche)
+        except field_services.OutilIndisponible as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         if not coche and prep.tout_charge:
             prep.tout_charge = False
             prep.save(update_fields=['tout_charge'])
@@ -692,19 +717,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         lien public « technicien en route » — aucune autre logique n'en
         dépend)."""
         interv = self.get_object()
-        interv.depart_depot_le = timezone.now()
-        fields = ['depart_depot_le']
-        lat, lng = request.data.get('lat'), request.data.get('lng')
-        if lat not in (None, '') and lng not in (None, ''):
-            try:
-                interv.depart_gps_lat = round(float(lat), 6)
-                interv.depart_gps_lng = round(float(lng), 6)
-                fields += ['depart_gps_lat', 'depart_gps_lng']
-            except (TypeError, ValueError):
-                pass
-        interv.save(update_fields=fields)
-        intervention_activity.log_note(
-            interv, request.user, "Départ dépôt enregistré.")
+        # ACHT43 — geste unique partagé avec la synchro terrain.
+        field_services.enregistrer_depart_depot(
+            interv, timezone.now(), request.data.get('lat'),
+            request.data.get('lng'), request.user)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
@@ -721,6 +737,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         `/intervention/<token>`, et l'`url` absolue est servie comme pour le
         suivi de ticket SAV (`sav.views.lien_client`, FG86)."""
         interv = self.get_object()
+        if interv.annulee:  # ACHT51
+            return Response(
+                {'detail': field_services.MESSAGE_INTERVENTION_ANNULEE},
+                status=status.HTTP_409_CONFLICT)
         token = interv.ensure_lien_client_token()
         path = f'/intervention/{token}'
         return Response({
@@ -736,33 +756,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         aucun service externe). On en dérive une distance-au-site indicative.
         Corps : {"lat": <num>, "lng": <num>}."""
         interv = self.get_object()
-        lat = request.data.get('lat')
-        lng = request.data.get('lng')
-        now = timezone.now()
-        interv.arrivee_site_le = now
-        fields = ['arrivee_site_le']
-        if lat not in (None, '') and lng not in (None, ''):
-            try:
-                interv.arrivee_gps_lat = round(float(lat), 6)
-                interv.arrivee_gps_lng = round(float(lng), 6)
-                fields += ['arrivee_gps_lat', 'arrivee_gps_lng']
-            except (TypeError, ValueError):
-                return Response({'detail': 'Coordonnées invalides.'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        # XFSM5 — ponctualité : dérivée de l'arrivée réelle vs la fenêtre
-        # promise (heure locale du serveur — cohérent avec `date_prevue`).
-        # None si aucune fenêtre n'est promise (comportement actuel inchangé).
-        if interv.fenetre_debut is not None and interv.fenetre_fin is not None:
-            heure_arrivee = timezone.localtime(now).time()
-            interv.arrivee_dans_fenetre = (
-                interv.fenetre_debut <= heure_arrivee <= interv.fenetre_fin)
-            fields.append('arrivee_dans_fenetre')
-        interv.save(update_fields=fields)
-        dist = field_services.distance_to_site(interv)
-        intervention_activity.log_note(
-            interv, request.user,
-            "Arrivée sur site enregistrée"
-            + (f" (≈ {dist} km du chantier)" if dist is not None else "") + ".")
+        # ACHT43 — geste unique partagé avec la synchro terrain (XFSM5 :
+        # ponctualité dérivée de l'instant vs la fenêtre promise).
+        try:
+            field_services.enregistrer_arrivee(
+                interv, timezone.now(), request.data.get('lat'),
+                request.data.get('lng'), request.user)
+        except field_services.CoordonneesInvalides as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
@@ -883,6 +885,30 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             'slot': slot_cle, 'phase': phase,
         }, status=status.HTTP_201_CREATED)
 
+    def _motif_suppression(self, interv):
+        """ACHT41 — motif de suppression d'une pièce de preuve. Renvoie
+        ``(motif, reponse_409)`` : sur une intervention terminée/validée le
+        motif est OBLIGATOIRE (409 sinon) ; en cours il reste optionnel."""
+        motif = (self.request.data.get('motif') or '').strip()
+        if not motif and interv.statut in (
+                Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE):
+            return motif, Response(
+                {'detail': 'Intervention terminée : indiquez le motif de '
+                           'la suppression.'},
+                status=status.HTTP_409_CONFLICT)
+        return motif, None
+
+    def _tracer_suppression(self, interv, libelle, motif):
+        """ACHT41 — ligne d'historique « <libellé> — motif : … — par <nom> »
+        (aucune suppression de preuve ne laisse l'historique muet)."""
+        user = self.request.user
+        nom = (getattr(user, 'get_full_name', lambda: '')()
+               or getattr(user, 'username', '?'))
+        corps = libelle
+        if motif:
+            corps += f" — motif : {motif}"
+        intervention_activity.log_note(interv, user, f"{corps} — par {nom}")
+
     @action(detail=True, methods=['post'], url_path='supprimer-photo',
             permission_classes=[IsResponsableOrAdmin])
     def supprimer_photo(self, request, pk=None):
@@ -899,8 +925,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
+        slot = field_services._slot_of_attachment(att)
         delete_attachment(att.file_key)
         att.delete()
+        self._tracer_suppression(
+            interv, f"Photo supprimée{(' — ' + slot) if slot else ''}", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F9 — n° de série par composant (+ OCR swappable no-op) ───────────────
@@ -930,6 +962,24 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from .. import swappable
         interv = self.get_object()
         company = interv.company
+        # ADEP44 — idempotence par `client_op_id` : le rejeu d'une op déjà
+        # appliquée (en ligne OU par la synchro) renvoie l'objet existant,
+        # AVANT toute autre garde (le doublon de série ne doit pas la bloquer).
+        op_id = (request.data.get('client_op_id') or '').strip()
+        try:
+            memorise = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.serial')
+        except field_sync.FieldOpError as exc:
+            return Response({'client_op_id': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        if memorise is not None:
+            existant = interv.serials.filter(
+                pk=memorise.get('serial')).first()
+            if existant is not None:
+                data = ComponentSerialSerializer(
+                    existant, context={'request': request}).data
+                data['replayed'] = True
+                return Response(data, status=status.HTTP_200_OK)
         produit = None
         produit_id = request.data.get('produit')
         if produit_id:
@@ -938,6 +988,11 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 return Response({'produit': 'Produit inconnu.'},
                                 status=status.HTTP_400_BAD_REQUEST)
         numero = (request.data.get('numero_serie') or '').strip()
+        # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
+        if field_capture.numero_serie_en_double(company, numero):
+            return Response(
+                {'numero_serie': field_capture.MESSAGE_SERIE_DOUBLON},
+                status=status.HTTP_400_BAD_REQUEST)
         serie_ocr = False
         plaque = None
         file = request.FILES.get('file')
@@ -960,15 +1015,36 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 if extracted:
                     numero = extracted.strip()
                     serie_ocr = True
-        serial = ComponentSerial.objects.create(
-            company=company, intervention=interv, produit=produit,
-            designation=(request.data.get('designation') or '').strip(),
-            slot_cle=(request.data.get('slot') or '').strip(),
-            numero_serie=numero, plaque_attachment=plaque,
-            serie_ocr=serie_ocr, created_by=request.user)
-        return Response(ComponentSerialSerializer(
-            serial, context={'request': request}).data,
-            status=status.HTTP_201_CREATED)
+        from django.db import IntegrityError, transaction
+        try:
+            with transaction.atomic():
+                serial = ComponentSerial.objects.create(
+                    company=company, intervention=interv, produit=produit,
+                    designation=(request.data.get('designation') or '').strip(),
+                    slot_cle=(request.data.get('slot') or '').strip(),
+                    numero_serie=numero, plaque_attachment=plaque,
+                    serie_ocr=serie_ocr, created_by=request.user)
+                field_sync.memoriser_op_en_ligne(
+                    company, request.user, op_id, 'intervention.serial',
+                    interv.id, {'serial': serial.id,
+                                'numero_serie': serial.numero_serie})
+        except IntegrityError:
+            # Course sur la clé : le gagnant a déjà créé l'objet — on le rend.
+            gagnant = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.serial')
+            existant = interv.serials.filter(
+                pk=(gagnant or {}).get('serial')).first()
+            if existant is None:
+                raise
+            data = ComponentSerialSerializer(
+                existant, context={'request': request}).data
+            data['replayed'] = True
+            return Response(data, status=status.HTTP_200_OK)
+        data = ComponentSerialSerializer(
+            serial, context={'request': request}).data
+        if op_id:
+            data['replayed'] = False
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='modifier-serial',
             permission_classes=[IsResponsableOrAdmin])
@@ -980,9 +1056,19 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if serial is None:
             return Response({'detail': 'Relevé inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # ACHT37 — un relevé déjà poussé au parc ne se corrige plus ici.
+        if serial.pousse_parc:
+            return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
+                            status=status.HTTP_409_CONFLICT)
         fields = []
         if 'numero_serie' in request.data:
-            serial.numero_serie = (request.data.get('numero_serie') or '').strip()
+            nouveau = (request.data.get('numero_serie') or '').strip()
+            if field_capture.numero_serie_en_double(
+                    interv.company, nouveau, exclude_id=serial.pk):
+                return Response(
+                    {'numero_serie': field_capture.MESSAGE_SERIE_DOUBLON},
+                    status=status.HTTP_400_BAD_REQUEST)
+            serial.numero_serie = nouveau
             serial.serie_ocr = False
             fields += ['numero_serie', 'serie_ocr']
         if 'designation' in request.data:
@@ -1002,7 +1088,15 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if serial is None:
             return Response({'detail': 'Relevé inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if serial.pousse_parc:  # ACHT37
+            return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
+                            status=status.HTTP_409_CONFLICT)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
+        numero = serial.numero_serie or '—'
         serial.delete()
+        self._tracer_suppression(interv, f"N° de série {numero} supprimé", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F10 — annotation d'une photo (dessin + légende) ─────────────────────
@@ -1123,7 +1217,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             ligne.justification_memo = memo
             fields.append('justification_memo')
         if fields:
-            ligne.save(update_fields=fields)
+            # ACHT32 — `auto_now` ne joue qu'avec le champ dans update_fields.
+            ligne.save(update_fields=fields + ['date_modification'])
         return Response(ConsommationLigneSerializer(ligne).data)
 
     @action(detail=True, methods=['post'],
@@ -1143,7 +1238,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Seules les lignes hors-nomenclature sont supprimables.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
+        designation = ligne.designation
         ligne.delete()
+        self._tracer_suppression(
+            interv, f"Ligne de consommation {designation} supprimée", motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='valider-consommation',
@@ -1309,10 +1410,14 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if memo is None:
             return Response({'detail': 'Mémo inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        motif, refus = self._motif_suppression(interv)  # ACHT41
+        if refus is not None:
+            return refus
         if memo.audio_id:
             delete_attachment(memo.audio.file_key)
             memo.audio.delete()
         memo.delete()
+        self._tracer_suppression(interv, 'Mémo vocal supprimé', motif)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── F15 — temps d'équipe ─────────────────────────────────────────────────
@@ -1378,6 +1483,22 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         description, [assignee], [photo], [memo], [creer_suivi], [creer_ticket]."""
         interv = self.get_object()
         company = interv.company
+        # ADEP44 — idempotence par `client_op_id` (voir `ajouter_serial`).
+        op_id = (request.data.get('client_op_id') or '').strip()
+        try:
+            memorise = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.reserve')
+        except field_sync.FieldOpError as exc:
+            return Response({'client_op_id': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
+        if memorise is not None:
+            existante = interv.reserves.filter(
+                pk=memorise.get('reserve')).first()
+            if existante is not None:
+                data = ReserveSerializer(
+                    existante, context={'request': request}).data
+                data['replayed'] = True
+                return Response(data, status=status.HTTP_200_OK)
         assignee = None
         if request.data.get('assignee'):
             from authentication.models import CustomUser
@@ -1392,11 +1513,28 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if request.data.get('memo'):
             memo = interv.voice_memos.filter(
                 id=request.data.get('memo')).first()
-        reserve = Reserve.objects.create(
-            company=company, intervention=interv,
-            description=(request.data.get('description') or '').strip(),
-            assignee=assignee, photo=photo, memo=memo,
-            created_by=request.user)
+        from django.db import IntegrityError, transaction
+        try:
+            with transaction.atomic():
+                reserve = Reserve.objects.create(
+                    company=company, intervention=interv,
+                    description=(request.data.get('description') or '').strip(),
+                    assignee=assignee, photo=photo, memo=memo,
+                    created_by=request.user)
+                field_sync.memoriser_op_en_ligne(
+                    company, request.user, op_id, 'intervention.reserve',
+                    interv.id, {'reserve': reserve.id})
+        except IntegrityError:
+            gagnante = field_sync.rejeu_op_en_ligne(
+                company, op_id, 'intervention.reserve')
+            existante = interv.reserves.filter(
+                pk=(gagnante or {}).get('reserve')).first()
+            if existante is None:
+                raise
+            data = ReserveSerializer(
+                existante, context={'request': request}).data
+            data['replayed'] = True
+            return Response(data, status=status.HTTP_200_OK)
         # Suivi optionnel : intervention de suivi (même chantier) et/ou ticket.
         if request.data.get('creer_suivi'):
             suivi = Intervention.objects.create(
@@ -1411,9 +1549,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             if ticket is not None:
                 reserve.ticket = ticket
                 reserve.save(update_fields=['ticket'])
-        return Response(ReserveSerializer(
-            reserve, context={'request': request}).data,
-            status=status.HTTP_201_CREATED)
+        data = ReserveSerializer(reserve, context={'request': request}).data
+        if op_id:
+            data['replayed'] = False
+        return Response(data, status=status.HTTP_201_CREATED)
 
     def _spawn_ticket_for_reserve(self, reserve, user):
         """F16 — crée un ticket SAV correctif pour une réserve, selon le design
@@ -1557,12 +1696,35 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         sortie en cours. Renvoie {outil_id: intervention_id} en conflit."""
         if not outil_ids:
             return {}
-        busy = (ToolReturn.objects
-                .filter(company=interv.company, outil_id__in=list(outil_ids),
-                        rendu=False, confirme_le__isnull=True)
-                .exclude(intervention=interv)
-                .values_list('outil_id', 'intervention_id'))
-        return {oid: iid for oid, iid in busy}
+        # ACHT72 — lit les outils réellement SORTIS (statut « En
+        # intervention ») que CETTE intervention n'a pas elle-même chargés.
+        from apps.outillage.models import Outillage
+        from ..models import PreparationOutilLigne
+        ids = list(outil_ids)
+        sortis_ici = set(PreparationOutilLigne.objects.filter(
+            preparation__intervention=interv, coche=True, outil_id__in=ids
+        ).values_list('outil_id', flat=True))
+        sortis = list(Outillage.objects.filter(
+            company=interv.company, id__in=ids,
+            statut=Outillage.Statut.EN_INTERVENTION,
+        ).exclude(id__in=sortis_ici).values_list('id', flat=True))
+        if not sortis:
+            return {}
+        par_qui = {}
+        for oid, iid in (PreparationOutilLigne.objects
+                         .filter(company=interv.company, outil_id__in=sortis,
+                                 coche=True)
+                         .exclude(preparation__intervention=interv)
+                         .order_by('id')
+                         .values_list('outil_id',
+                                      'preparation__intervention_id')):
+            par_qui[oid] = iid
+        for oid, iid in (ToolReturn.objects
+                         .filter(company=interv.company, outil_id__in=sortis)
+                         .exclude(intervention=interv).order_by('id')
+                         .values_list('outil_id', 'intervention_id')):
+            par_qui.setdefault(oid, iid)
+        return {oid: par_qui.get(oid) for oid in sortis}
 
     def _tool_return_response(self, interv):
         # Amorce les lignes de retour depuis les outils de la préparation, de
@@ -1573,10 +1735,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         conflicts = {}
         if prep is not None:
             existing = {tr.outil_id for tr in interv.tool_returns.all()}
-            wanted = [ol.outil_id for ol in prep.outils.all()
+            lignes = [ol for ol in prep.outils.all()
                       if ol.outil_id and ol.outil_id not in existing]
+            wanted = [ol.outil_id for ol in lignes]
             conflicts = self._checkout_conflicts(interv, wanted)
-            for outil_id in wanted:
+            # ACHT72 — seules les lignes CHARGÉES (cochées) ont un retour à
+            # suivre : un outil non chargé n'est jamais matérialisé.
+            for outil_id in [ol.outil_id for ol in lignes if ol.coche]:
                 if outil_id in conflicts:
                     continue
                 ToolReturn.objects.get_or_create(
@@ -1623,10 +1788,24 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from apps.outillage.models import Outillage
         interv = self.get_object()
         self._tool_return_response(interv)
+        retours = list(interv.tool_returns.select_related('outil').all())
+        # ACHT72 — une 2e confirmation périmée n'écrase jamais un retour plus
+        # récent (outil repris par une autre intervention depuis).
+        if retours and all(tr.confirme_le for tr in retours):
+            return Response({'detail': 'Retour déjà confirmé.'},
+                            status=status.HTTP_409_CONFLICT)
+        prep = getattr(interv, 'preparation', None)
+        charges = set(prep.outils.filter(coche=True).values_list(
+            'outil_id', flat=True)) if prep is not None else set()
         non_rendus = []
-        for tr in interv.tool_returns.select_related('outil').all():
+        for tr in retours:
             outil = tr.outil
-            if outil is None:
+            if outil is None or tr.confirme_le:
+                continue
+            # ACHT72 — ne traite QUE les outils sortis par CETTE intervention :
+            # jamais un outil non chargé, Perdu, En réparation ou disponible.
+            if (outil.id not in charges
+                    or outil.statut != Outillage.Statut.EN_INTERVENTION):
                 continue
             if tr.rendu:
                 outil.statut = Outillage.Statut.DISPONIBLE
@@ -1701,8 +1880,8 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from django.http import HttpResponse
         from .. import intervention_pdf
         interv = self.get_object()
-        # Pousse les n° de série relevés vers le parc installé (F9) avant le PDF.
-        field_capture.push_serials_to_parc(interv, request.user)
+        # ACHT37 — un GET n'écrit RIEN : la poussée des n° de série vers le
+        # parc installé (F9) se fait à la clôture de l'intervention.
         pdf_bytes = intervention_pdf.compte_rendu_pdf(interv)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
@@ -1834,30 +2013,30 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         `confirme=false`). Incrémente `rdv_reschedule_count` quand une nouvelle
         date est fournie avec `date_prevue` (reschedule). Métadonnées only —
         ne touche JAMAIS le statut de l'intervention."""
+        from ..services import replanifier
         interv = self.get_object()
         confirme = bool(request.data.get('confirme', True))
         new_date = request.data.get('date_prevue')
-        fields = ['rdv_confirme', 'rdv_confirme_le']
-        interv.rdv_confirme = confirme
-        interv.rdv_confirme_le = timezone.now() if confirme else None
-        is_reschedule = bool(
-            new_date and new_date != str(interv.date_prevue or ''))
-        if is_reschedule:
-            interv.date_prevue = new_date
-            fields += ['date_prevue']
-        interv.save(update_fields=fields)
-        if is_reschedule:
-            # AUD829 — F() atomic increment: a bare
-            # `interv.rdv_reschedule_count = (... or 0) + 1` then save()
-            # loses a concurrent reschedule under two racing requests on
-            # the same intervention.
-            type(interv).objects.filter(pk=interv.pk).update(
-                rdv_reschedule_count=F('rdv_reschedule_count') + 1)
-            interv.refresh_from_db(fields=['rdv_reschedule_count'])
+        # ACHT38 — report via le service unique (date parsée AVANT toute
+        # écriture : date invalide → 400 sous le champ, jamais de 500).
+        is_reschedule = False
+        if new_date:
+            try:
+                is_reschedule = replanifier(
+                    interv, new_date, request.data.get('motif'),
+                    request.user, confirme=confirme, trace=False)
+            except ValueError as exc:
+                return Response({'date_prevue': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            interv.rdv_confirme = confirme
+            interv.rdv_confirme_le = timezone.now() if confirme else None
+            interv.save(update_fields=['rdv_confirme', 'rdv_confirme_le'])
         msg = ("RDV confirmé." if confirme
                else "Confirmation RDV annulée.")
         if is_reschedule:
-            msg += f" Reporté au {new_date} (reschedule #{interv.rdv_reschedule_count})."
+            msg += (f" Reporté au {interv.date_prevue} "
+                    f"(reschedule #{interv.rdv_reschedule_count}).")
         intervention_activity.log_note(interv, request.user, msg)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
@@ -1872,11 +2051,13 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         interventions sans technicien sont groupées sous la clé `non_assigne`."""
         from django.contrib.auth import get_user_model
         User = get_user_model()
-        company = request.user.company
         params = request.query_params
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        qs = Intervention.objects.filter(company=company, annulee=False)
+        # ACHT50 — part du queryset du viewset (société + portée de
+        # visibilité Feature F) : un Technicien de portée équipe ne voit ici
+        # que ce que sa liste lui montre.
+        qs = self.get_queryset().filter(annulee=False)
         if date_from:
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
@@ -1974,7 +2155,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         from django.utils.timezone import localdate
         company = request.user.company
         jour = request.query_params.get('date') or str(localdate())
-        qs = (Intervention.objects
+        qs = (Intervention.objects.actives()  # ACHT51 — hors annulées
               .filter(company=company, technicien=request.user, date_prevue=jour)
               .select_related('installation', 'installation__client',
                               'technicien', 'camionnette')

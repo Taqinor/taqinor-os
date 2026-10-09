@@ -30,7 +30,8 @@ class PickListViewSet(CompanyScopedModelViewSet):
     lignes sont générées serveur depuis les réservations. Filtrable par
     `installation`, `statut`."""
     queryset = PickList.objects.select_related(
-        'installation', 'created_by').prefetch_related('lignes').all()
+        'installation', 'created_by').prefetch_related(
+        'lignes__produit', 'lignes__bin').all()
     serializer_class = PickListSerializer
 
     def get_permissions(self):
