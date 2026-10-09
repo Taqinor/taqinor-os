@@ -486,8 +486,39 @@ def _items(d):
             if isinstance(it, dict) and (_num(it.get("quantite")) or 0) > 0]
 
 
+#: AMOT37 (C-AMOT-046) — libellé DÉCLARÉ de la ligne de regroupement (le
+#: détail reste sur la proposition en ligne). en/ar à relire (CIQM22).
+_LIBELLE_REGROUPEMENT = {
+    "fr": "Autres équipements ({n} lignes) — détail sur la proposition en "
+          "ligne",
+    "en": "Other equipment ({n} lines) — details in the online proposal",
+    "ar": "معدات أخرى ({n} سطر) — التفاصيل في العرض عبر الإنترنت",
+}
+
+
+def _ligne_regroupee(reste, lg):
+    """AMOT37 — UNE ligne qui regroupe ``reste`` : total HT = Σ des lignes
+    regroupées (aucun dirham ne disparaît), TVA affichée si unique."""
+    total = sum((_num(it.get("prix_unit_ht")) or 0)
+                * (_num(it.get("quantite")) or 0) for it in reste)
+    taux = {(_num(it.get("taux_tva")) or 0) for it in reste}
+    taux_txt = f"{taux.pop():g} %" if len(taux) == 1 else "—"
+    libelle = _LIBELLE_REGROUPEMENT.get(lg, _LIBELLE_REGROUPEMENT["fr"])
+    return (f'<tr><td>{libelle.format(n=len(reste))}</td>'
+            f'<td class="r"></td><td class="r"></td>'
+            f'<td class="r">{taux_txt}</td>'
+            f'<td class="r t">{fmt_centimes(total)}</td></tr>')
+
+
 def _lignes(d):
     items = _items(d)
+    # AMOT37 — regroupement DÉCLARÉ posé par le renderer quand même la
+    # densité serrée ne tient pas en 3 pages : les ``garder`` premières
+    # lignes restent, la suite tient en UNE ligne au total exact.
+    garder = d.get("_regrouper_apres")
+    reste = []
+    if isinstance(garder, int) and 0 <= garder < len(items) - 1:
+        items, reste = items[:garder], items[garder:]
     structure = d.get("lignes_structure") or []
     seq = (sequence_affichage(items, structure) if structure
            else [("item", it) for it in items])
@@ -507,6 +538,8 @@ def _lignes(d):
             f'<td class="r">{qte:g}</td><td class="r">{fmt_centimes(pu)}</td>'
             f'<td class="r">{taux:g} %</td>'
             f'<td class="r t">{fmt_centimes(pu * qte)}</td></tr>')
+    if reste:
+        rows.append(_ligne_regroupee(reste, _langue(d)))
     return "".join(rows)
 
 
@@ -913,7 +946,9 @@ def build_ctx(d):
                   "sans": theme.FONT_SANS},
         "ident": ident,
         "nom_societe": (d.get("entreprise") or {}).get("nom"),
-        "compact": densite_compacte(d),
+        # AMOT37 — le renderer peut IMPOSER une densité plus serrée quand
+        # le contenu déborde de la bande de pied.
+        "compact": max(densite_compacte(d), int(d.get("_compact_min") or 0)),
     }
 
 
