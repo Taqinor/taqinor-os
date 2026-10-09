@@ -84,7 +84,20 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">Avoir au profit de</div>
+      {% if avoir.client.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ avoir.client.nom }}</div>
+      {% else %}
       <div class="partie-nom">{{ avoir.client.nom }} {{ avoir.client.prenom or '' }}</div>
+      {% endif %}
+      {# APDF27 (C-APDF-009) — même bloc client entreprise que la facture
+         (CIQ217 / AFAC56) : ICE, IF, RC chacun omis s'il est vide. #}
+      {% if avoir.client.type_client == 'entreprise' or avoir.client.ice or avoir.client.if_fiscal or avoir.client.rc %}
+      <div class="partie-detail">
+        {% if avoir.client.ice %}ICE : {{ avoir.client.ice }}<br />{% endif %}
+        {% if avoir.client.if_fiscal %}IF : {{ avoir.client.if_fiscal }}<br />{% endif %}
+        {% if avoir.client.rc %}RC : {{ avoir.client.rc }}<br />{% endif %}
+      </div>
+      {% endif %}
       <div class="partie-detail">
         {% if avoir.client.email %}{{ avoir.client.email }}<br />{% endif %}
         {% if avoir.client.telephone %}{{ avoir.client.telephone }}<br />{% endif %}

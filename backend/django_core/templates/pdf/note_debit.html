@@ -84,7 +84,20 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">Note de débit à charge de</div>
+      {% if note_debit.client.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ note_debit.client.nom }}</div>
+      {% else %}
       <div class="partie-nom">{{ note_debit.client.nom }} {{ note_debit.client.prenom or '' }}</div>
+      {% endif %}
+      {# APDF27 (C-APDF-009) — même bloc client entreprise que la facture
+         (CIQ217 / AFAC56) : ICE, IF, RC chacun omis s'il est vide. #}
+      {% if note_debit.client.type_client == 'entreprise' or note_debit.client.ice or note_debit.client.if_fiscal or note_debit.client.rc %}
+      <div class="partie-detail">
+        {% if note_debit.client.ice %}ICE : {{ note_debit.client.ice }}<br />{% endif %}
+        {% if note_debit.client.if_fiscal %}IF : {{ note_debit.client.if_fiscal }}<br />{% endif %}
+        {% if note_debit.client.rc %}RC : {{ note_debit.client.rc }}<br />{% endif %}
+      </div>
+      {% endif %}
       <div class="partie-detail">
         {% if note_debit.client.email %}{{ note_debit.client.email }}<br />{% endif %}
         {% if note_debit.client.telephone %}{{ note_debit.client.telephone }}<br />{% endif %}
