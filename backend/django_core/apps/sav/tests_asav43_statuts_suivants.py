@@ -58,6 +58,10 @@ class StatutsSuivantsTests(TestCase):
                 self.assertEqual(self.api.get(f'{BASE}/').status_code, 200)
             return len(ctx)
 
+        # Un premier ticket : les requêtes FIXES de page (caches de contrat,
+        # registre, droits, abonnés) ne partent que si la liste est non vide ;
+        # on mesure donc la croissance entre 1 et 11 tickets, pas depuis 0.
+        self._ticket('SAV-A43-L-base', Ticket.Statut.NOUVEAU)
         requetes()
         avant = requetes()
         for i in range(10):

@@ -39,16 +39,35 @@ class ContratOptionRetenueTests(TestCase):
         self.panneau = Produit.objects.create(
             company=self.company, nom='Panneau', sku='PAN-55', prix_achat=0,
             prix_vente=1000)
+        # Un VRAI devis à deux options (onduleur réseau d'un côté, hybride +
+        # batterie de l'autre) : sans cela le noyau ne filtre rien.
+        self.reseau = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau injection',
+            sku='OND-RES-55', prix_achat=0, prix_vente=9000)
+        self.batterie = Produit.objects.create(
+            company=self.company, nom='Batterie lithium 10 kWh',
+            sku='BAT-55', prix_achat=0, prix_vente=30000)
 
     def _devis(self, num, *, option, optionnelle=False):
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-{7000 + num}',
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
-            option_acceptee=option, taux_tva=Decimal('20'))
+            option_acceptee=option, taux_tva=Decimal('20'),
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
         LigneDevis.objects.create(
             devis=devis, produit=self.panneau, designation='Panneau',
             quantite=10, prix_unitaire=Decimal('1000'),
             taux_tva=Decimal('20'), variante='')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.reseau,
+            designation='Onduleur réseau injection', quantite=1,
+            prix_unitaire=Decimal('9000'), taux_tva=Decimal('20'),
+            variante='sans')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.batterie,
+            designation='Batterie lithium 10 kWh', quantite=1,
+            prix_unitaire=Decimal('30000'), taux_tva=Decimal('20'),
+            variante='avec')
         LigneDevis.objects.create(
             devis=devis, produit=self.recurrent, designation='Onduleur hybride',
             quantite=1, prix_unitaire=Decimal('28000'),
@@ -62,15 +81,15 @@ class ContratOptionRetenueTests(TestCase):
             company=self.company, notes__contains=f'[devis:{devis.pk}]')
 
     def test_sans_batterie_aucun_contrat_onduleur(self):
-        devis = self._devis(1, option='sans')
+        devis = self._devis(1, option='sans_batterie')
         self.assertEqual(self._contrats(devis).count(), 0)
 
     def test_avec_batterie_contrat_cree(self):
-        devis = self._devis(2, option='avec')
+        devis = self._devis(2, option='avec_batterie')
         contrats = list(self._contrats(devis))
         self.assertEqual(len(contrats), 1)
         self.assertEqual(contrats[0].prix, Decimal('33600.00'))
 
     def test_optionnelle_non_activee_exclue(self):
-        devis = self._devis(3, option='avec', optionnelle=True)
+        devis = self._devis(3, option='avec_batterie', optionnelle=True)
         self.assertEqual(self._contrats(devis).count(), 0)
