@@ -603,6 +603,13 @@ GARDES = {
         ('Test the actions-atomiques checker itself (ACRM54)',
          'python -m unittest scripts.tests.test_check_actions_atomiques -v',
          '.'),
+        # APRF28 — tout export XLSX/ZIP est borné (should_async_export / ids) ou en exception datée.
+        ('Check exports non bornes (should_async_export, APRF28)',
+         'python scripts/check_exports_bornes.py',
+         '.'),
+        ('Test the exports-bornes checker itself (APRF28)',
+         'python -m unittest scripts.tests.test_check_exports_bornes -v',
+         '.'),
         # ADOC79 — une seule primitive de lecture d'IP (core.throttling.ip_de_requete).
         ('Check lecture d IP hors primitive (ip_de_requete, ADOC79)',
          'python scripts/check_ip_primitive.py',
