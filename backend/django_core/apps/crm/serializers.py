@@ -1648,10 +1648,27 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def get_touche_en_retard(self, obj) -> bool:
         """MRY5 — une touche de cadence est-elle ÉCHUE sur ce lead ?
 
-        Lit l'annotation ``touche_en_retard_flag`` posée par
-        ``LeadViewSet.get_queryset`` (Exists) ; ``False`` quand l'annotation
-        est absente — jamais une requête supplémentaire par lead."""
-        return bool(getattr(obj, 'touche_en_retard_flag', False))
+        Lit l'annotation ``plus_ancienne_touche_ouverte`` posée par
+        ``LeadViewSet.get_queryset`` ; ``False`` quand l'annotation est
+        absente — jamais une requête supplémentaire par lead. ALEA32 : en
+        retard ssi cette échéance précède ``seuil_retard`` (la règle unique
+        des filtres) ; le seuil n'est lu que si l'échéance est déjà passée
+        (il ne dépasse jamais aujourd'hui), et une seule fois par requête
+        (mémo du contexte, partagé par toutes les lignes d'une liste)."""
+        echeance = getattr(obj, 'plus_ancienne_touche_ouverte', None)
+        if echeance is None:
+            return False
+        from core.dates import aujourd_hui_local
+        today = aujourd_hui_local()
+        if echeance >= today:
+            return False
+        from .controle_suivi import seuil_retard
+        memo = (self.context.setdefault('_alea32_seuil', {})
+                if isinstance(self.context, dict) else {})
+        cle = (obj.company_id, today)
+        if cle not in memo:
+            memo[cle] = seuil_retard(obj.company_id, today)
+        return echeance < memo[cle]
 
     def get_conception(self, obj):
         """PV78 — ``{kwc, image_url}`` de la conception 3D du lead.
