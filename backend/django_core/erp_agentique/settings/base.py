@@ -1193,6 +1193,8 @@ CELERY_TASK_ROUTES = {
     'core.beat_heartbeat': {'queue': 'scheduled'},
     'core.purge_idempotency_records': {'queue': 'scheduled'},
     'monitoring.balayage_quotidien': {'queue': 'scheduled'},
+    # ACHT75 — échéances de calibration d'outils (beat quotidien).
+    'outillage.calibrations_a_echeance': {'queue': 'scheduled'},
     'stock.expiration_alerts': {'queue': 'scheduled'},
     # NTWMS42 — alerte de sur-stockage par zone (quotidienne, heure creuse).
     'stock.alerter_surcapacite_zones': {'queue': 'scheduled'},
