@@ -5,7 +5,7 @@
 // `useFieldOutbox` câble le flush automatique au retour du réseau.
 
 import installationsApi from '../../../api/installationsApi'
-import { Outbox, BinaryOutbox, OutboxQuotaError } from './outbox'
+import { FieldOutbox, BinaryOutbox, OutboxQuotaError, conflitEnErreur } from './outbox'
 import { notifyOfflineOutboxChange, purgeModuleOutboxes } from '../../../lib/offlineOutbox'
 import { createFieldOutboxStore, createBinaryOutboxStore } from './idbStore'
 
@@ -29,10 +29,12 @@ export const FIELD_OPS = {
 // `sender` : envoie un paquet au point de synchro et renvoie {results}.
 async function sender(ops) {
   const r = await installationsApi.syncField(ops)
-  return r.data
+  // ACHT33 — une op `conflit` reste EN FILE (valeur serveur visible), elle
+  // n'est jamais comptée comme appliquée.
+  return conflitEnErreur(r.data)
 }
 
-export const fieldOutbox = new Outbox({
+export const fieldOutbox = new FieldOutbox({
   store: createFieldOutboxStore(),
   sender,
 })
@@ -128,14 +130,22 @@ if (typeof window !== 'undefined') {
 // serveur), met l'op en file pour synchro ultérieure et renvoie
 // { queued: true }. Une vraie erreur applicative (réponse 4xx du serveur) est
 // relancée — ce n'est pas un problème réseau, l'utilisateur doit la voir.
-export async function withOfflineFallback(onlineCall, opType, payload) {
+//
+// ACHT33 — l'op filée est horodatée à la SAISIE (`client_ts`, pris AVANT
+// l'appel en ligne : un timeout de 20 s ne décale pas l'instant du geste) ;
+// `meta.baseUpdatedAt` = `date_modification` de l'enregistrement chargé, pour
+// la détection de conflit côté serveur.
+export async function withOfflineFallback(onlineCall, opType, payload, meta = {}) {
+  const clientTs = new Date().toISOString()
   try {
     const data = await onlineCall()
     return { queued: false, data }
   } catch (err) {
     const isNetwork = !err?.response // axios : pas de réponse = réseau/timeout
     if (!isNetwork) throw err
-    const clientOpId = await fieldOutbox.enqueue(opType, payload)
+    const clientOpId = await fieldOutbox.enqueue(opType, payload, {
+      clientTs, baseUpdatedAt: meta?.baseUpdatedAt,
+    })
     // NTMOB24 — le badge d'en-tête ET les badges de liste se rafraîchissent
     // aussitôt (l'utilisateur voit sa modification « en attente » sur la ligne).
     notifyOfflineOutboxChange()
