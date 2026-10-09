@@ -37,7 +37,12 @@ def bon_livraison_pdf(livraison):
         'client_nom': (f"{client.nom} {client.prenom or ''}".strip()
                        if client else ''),
         'site_ville': getattr(inst, 'site_ville', '') or '' if inst else '',
-        'site_adresse': getattr(inst, 'site_adresse', '') or '' if inst else '',
+        # ACHT22 — l'adresse de livraison SAISIE sur la livraison prime ;
+        # repli sur l'adresse du chantier.
+        'site_adresse': ((livraison.adresse_site or '').strip()
+                         or (getattr(inst, 'site_adresse', '') or ''
+                             if inst else '')),
+        'annulee': livraison.statut == livraison.Statut.ANNULEE,
         'transporteur_nom': (
             livraison.transporteur.nom if livraison.transporteur_id
             else livraison.transporteur_nom or ''),

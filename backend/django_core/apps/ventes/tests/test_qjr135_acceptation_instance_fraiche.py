@@ -137,10 +137,13 @@ class LEcranPublicAnnonceCeQuiAEteSigne(_BaseDeuxOptions):
     def _signer_sans_batterie(self):
         link = ShareLink.objects.create(
             company=self.company, devis=self.devis, token=str(uuid.uuid4()))
+        from apps.ventes.public.signature_views import empreinte_contenu
         resp = self.api.post(
             f'/api/django/public/proposal/{link.token}/accept/',
             {'nom': 'M. Client', 'consent_esign': True,
-             'option': 'sans_batterie'}, format='json')
+             'option': 'sans_batterie',
+             'empreinte_contenu': empreinte_contenu(self.devis)},
+            format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         return resp
 

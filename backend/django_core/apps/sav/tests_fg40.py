@@ -193,5 +193,6 @@ class TestFG40SerializerFields(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn('facturation_active', r.data)
         self.assertIn('derniere_facturation', r.data)
-        self.assertIn('prochaine_facturation', r.data)
-        self.assertIn('facturation_due', r.data)
+        # ASAV73 (D-ASAV-3 a) — échéances de facturation retirées.
+        self.assertNotIn('prochaine_facturation', r.data)
+        self.assertNotIn('facturation_due', r.data)

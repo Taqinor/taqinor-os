@@ -1,0 +1,8 @@
+# Base de reference de check_resultat_ecrivain_unique.py (ACAL321).
+# Une ligne = `fichier::fonction` qui ecrit encore Calepinage.resultat hors
+# services/resultat.py::modifier_resultat. DETTE : ne peut que RETRECIR
+# (--write-baseline refuse d'ajouter ; --autoriser-croissance = fondateur).
+backend/django_core/apps/calepinage/services/electrique.py::journaliser_ecart_longueur  # ACAL321 : écrit Calepinage.resultat hors modifier_resultat
+backend/django_core/apps/calepinage/services/simulation.py::_ecrire_resultat_variante  # ACAL321 : écrit Calepinage.resultat hors modifier_resultat
+backend/django_core/apps/calepinage/services/sld.py::_Porteur.__init__  # ACAL321 : écrit Calepinage.resultat hors modifier_resultat
+backend/django_core/apps/calepinage/services/variantes.py::modifier_variante  # ACAL321 : écrit Calepinage.resultat hors modifier_resultat

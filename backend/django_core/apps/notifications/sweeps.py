@@ -202,35 +202,34 @@ def _sweep_maintenance_due(company):
 # ── SAV_TICKET_BREACHING sweep ────────────────────────────────────────────────
 
 def _sweep_sav_breaching(company):
-    """Tickets ouverts depuis ≥ BREACH_OPEN_DAYS jours sans résolution.
+    """ASAV20 — tickets EN RETARD SLA (drapeau de ``sav.selectors.
+    ticket_en_retard_sla``, pauses décomptées), seulement si la société a le
+    SLA activé ; UNE notification par ticket et par épisode de retard (le
+    drapeau ``sla_breach`` est la clé partagée avec ``scan_sla_breaches`` :
+    qui le pose le premier notifie).
 
     Notifie le technicien responsable ou les managers si absent."""
     try:
-        from apps.sav.models import Ticket
+        from apps.sav.services import signaler_tickets_en_retard
         today = date.today()
-        breach_date = today - timedelta(days=BREACH_OPEN_DAYS)
-        qs = Ticket.objects.filter(
-            company=company,
-            statut__in=Ticket.OPEN_STATUTS,
-            annule=False,
-            date_ouverture__isnull=False,
-            date_ouverture__lte=breach_date,
-        ).select_related('technicien_responsable', 'client')
+        qs = signaler_tickets_en_retard(company, today)
         count = 0
         for ticket in qs:
             try:
                 user = ticket.technicien_responsable
-                anciennete = (today - ticket.date_ouverture).days
+                anciennete = (
+                    (today - ticket.date_ouverture).days
+                    if ticket.date_ouverture else 0)
                 client_nom = (
                     getattr(ticket.client, 'nom', '')
                     or str(ticket.client_id)
                 )
-                title = 'Ticket SAV proche de son délai'
+                title = 'Ticket SAV en retard'
                 body = (
                     f"Le ticket SAV « {ticket.reference} » "
-                    f"({client_nom}) est ouvert depuis {anciennete} jours "
-                    f"sans résolution "
-                    f"(priorité : {ticket.get_priorite_display()})."
+                    f"({client_nom}) a dépassé son délai SLA "
+                    f"(ouvert depuis {anciennete} jours, "
+                    f"priorité : {ticket.get_priorite_display()})."
                 )
                 # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ;
                 # TicketsPage (`/sav`) consomme `?id=<pk>`.

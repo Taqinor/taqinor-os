@@ -35,8 +35,17 @@ const ENTREPRISE = {
   // ICE FACTICE de 15 chiffres (le même que l'exemple du contrat).
   ice: '000000000000000',
 }
+// CAD177 — la consommation DÉCLARÉE doit être cohérente avec la fermeture
+// déclarée : le niveau de la courbe est la facture du mois (CIQ108,
+// Σ charge = kWh déclaré). Avec 17 600 kWh en août (le pic de
+// KWH_COMMERCIAL) ET un mois d'août fermé, le moteur étalait la facture à
+// plat (23,7 kW jour et nuit, au-dessus des 20 kWc) : aucun surplus en août
+// (nocturne 37856987210). Un hôtel fermé tout août n'a pas de facture d'août
+// — même convention que le cas de référence « école fermée juillet-août »
+// (test_ciq122_cas_reference : factures d'été = talon seul).
+const KWH_AOUT_FERME = KWH_COMMERCIAL.map((kwh, i) => (i === 7 ? 0 : kwh))
 const devisIds = []
-const etat = { devisId: null, apercu: null, token: null, pdfTexte: null }
+const etat ={ devisId: null, apercu: null, token: null, pdfTexte: null }
 
 
 /** Un pourcentage (72.8) est-il imprimé, au format FR ou point, arrondi ou non ?
@@ -81,7 +90,7 @@ test('CIQ334 — créer (hôtel, dimanche fermé, août fermé), rouvrir, ré-en
     .getByRole('combobox').first().click()
   await page.getByRole('option', { name: /Hôtel/ }).click()
 
-  for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+  for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_AOUT_FERME[i]))
   // Lundi → samedi ouverts (dimanche FERMÉ), 8 h → 18 h, BT patenté.
   await declarerProfilCi(page)
   await expect(page.getByTestId('gen-ci-jour-6')).not.toBeChecked()
@@ -195,9 +204,12 @@ test('CIQ334 — page /proposition en FR et en AR (apps/web en dev, WEB_URL requ
 test('CIQ334 — signature entreprise : sans ICE refusée en nommant le champ, avec ICE acceptée et imprimée', async ({ request }) => {
   test.setTimeout(180_000)
   expect(etat.token, 'le test du lien doit précéder').toBeTruthy()
+  // ADEV51 — la signature renvoie l'empreinte du contenu LU (servie par /data/).
+  const lu = await lireJson(await request.get(`${API}/public/proposal/${etat.token}/data/`), 'lecture de la proposition')
   const corps = (entreprise) => ({
     nom: 'Karim E2E', option: '', consent_esign: true,
     signed_at_client: new Date().toISOString(), on_behalf_of: '', entreprise,
+    empreinte_contenu: lu.empreinte_contenu,
   })
   const sansIce = await request.post(`${API}/ventes/proposal/${etat.token}/accept/`,
     { data: corps({ ...ENTREPRISE, ice: '' }) })

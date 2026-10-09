@@ -112,10 +112,10 @@ class TrustedDeviceViewSet(TenantMixin,
 
 
 def _client_ip(request):
-    """Première IP de X-Forwarded-For (derrière proxy) sinon REMOTE_ADDR."""
-    meta = getattr(request, 'META', {}) or {}
-    fwd = (meta.get('HTTP_X_FORWARDED_FOR', '') or '').split(',')[0].strip()
-    return fwd or meta.get('REMOTE_ADDR', '') or ''
+    """IP de l'appelant — ASEC15 : LA primitive ``ip_de_requete`` (saut de
+    confiance), jamais le premier saut choisi par l'appelant."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request)
 
 
 def _banner_profile(request):

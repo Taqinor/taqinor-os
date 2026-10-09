@@ -130,8 +130,13 @@ class BrouillonNonServiTests(TestCase):
     def test_envoye_servi(self):
         Devis.objects.filter(pk=self.devis.pk).update(
             statut=Devis.Statut.ENVOYE)
-        self.assertEqual(self.http.get(self._url('data')).status_code, 200)
-        reponse = self._post('accept', CORPS_ACCEPT)
+        lecture = self.http.get(self._url('data'))
+        self.assertEqual(lecture.status_code, 200)
+        # ADEV51 — la signature renvoie l'empreinte du contenu LU (servie
+        # par ``data``) ; sans elle, 409 ``empreinte_perimee``.
+        reponse = self._post('accept', {
+            **CORPS_ACCEPT,
+            'empreinte_contenu': lecture.json()['empreinte_contenu']})
         self.assertEqual(reponse.status_code, 200, reponse.content)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)

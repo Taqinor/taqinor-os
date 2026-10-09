@@ -450,6 +450,10 @@ class TestToolReturn(_Base):
         prep.kit = kit
         prep.save()
         field_services._sync_outils(prep)
+        # ACHT72 — seul un outil CHARGÉ (ligne cochée) a un retour à suivre
+        # (le statut « En intervention » est posé ci-dessus, comme le ferait
+        # `cocher-outil`).
+        prep.outils.update(coche=True)
         return depot, outil
 
     def test_confirm_updates_tool(self):
@@ -564,11 +568,16 @@ class TestCompteRendu(_Base):
         self.assertFalse(any('prix_achat' in str(c) for c in cons))
 
     def test_compte_rendu_pushes_serials_to_parc(self):
+        # ACHT37 — un GET n'écrit plus au parc : la poussée se fait à la
+        # clôture de l'intervention (voir tests_acht_series_parc).
         from apps.sav.models import Equipement
         ComponentSerial.objects.create(
             company=self.company, intervention=self.interv,
             produit=self.onduleur, numero_serie='SN-X', created_by=self.user)
         self.api.get(f'{self.url}/compte-rendu/')
+        self.assertFalse(Equipement.objects.filter(
+            installation=self.inst, numero_serie='SN-X').exists())
+        field_capture.push_serials_to_parc(self.interv, self.user)
         self.assertTrue(Equipement.objects.filter(
             installation=self.inst, numero_serie='SN-X').exists())
 

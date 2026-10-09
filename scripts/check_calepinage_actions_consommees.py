@@ -288,6 +288,92 @@ def routes_par_action(backend: "contract.BackendRoutes",
     return out
 
 
+def actions_rattachees(module: str = "calepinage") -> set:
+    """ACAL338 — {(module pointe, fonction)} des ``@action`` MONTEES par un
+    assistant de rattachement (``_attacher(viewset_classe)`` /
+    ``rattacher(viewset)``) appele au niveau du module avec un ViewSet :
+    ``viewset_classe.archiver = archiver`` y pose l'action sur la classe, mais
+    ``BackendRoutes`` ne lit que l'affectation DIRECTE ``CalepinageViewSet.x =
+    f`` — ces actions-la etaient donc signalees « non routees » a tort
+    (archivage.py, io_layout.py). ``BackendRoutes`` n'est PAS modifie (utilise
+    par d'autres gardes) : l'extension vit ici."""
+    trouvees = set()
+    for chemin in profil(module)["fichiers"]():
+        try:
+            tree = ast.parse(chemin.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        assistants = {}
+        for node in tree.body:
+            if (isinstance(node, ast.FunctionDef) and node.args.args
+                    and ("attacher" in node.name or "rattacher" in node.name)):
+                parametre = node.args.args[0].arg
+                assistants[node.name] = [
+                    cible.attr for sub in ast.walk(node)
+                    if isinstance(sub, ast.Assign) for cible in sub.targets
+                    if isinstance(cible, ast.Attribute)
+                    and isinstance(cible.value, ast.Name)
+                    and cible.value.id == parametre
+                    and isinstance(sub.value, ast.Name)]
+        appeles = {
+            n.value.func.id for n in tree.body
+            if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+            and isinstance(n.value.func, ast.Name) and n.value.args
+            and isinstance(n.value.args[0], ast.Name)
+            and n.value.args[0].id.endswith("ViewSet")}
+        dotted = _module_dotted(chemin)
+        for nom in appeles & set(assistants):
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.FunctionDef)
+                        and node.name == nom):
+                    continue
+                for sub in ast.walk(node):
+                    if (isinstance(sub, ast.Assign)
+                            and isinstance(sub.value, ast.Name)):
+                        trouvees.add((dotted, sub.value.id))
+    return trouvees
+
+
+def servie_par_inventaire(url_path: str, endpoints: set, texte: str) -> bool:
+    """Vrai si ``url_path`` (point echappe retire) est un endpoint de
+    l'inventaire documents ET que le front le telecharge via ``.endpoint``."""
+    return (url_path.replace(chr(92), "").strip("/") in endpoints
+            and ".endpoint" in texte)
+
+
+def endpoints_inventaire_documents() -> set:
+    """ACAL338 — chemins servis par l'inventaire ``services/documents``
+    (``_DEFINITIONS_DOCUMENTS`` : 4e champ de chaque ligne ; ``AUTRES_FORMATS``) :
+    ``PanneauDocuments.jsx`` les telecharge via ``entree.endpoint`` — ils sont
+    donc CONSOMMES sans que leur nom litteral figure dans ``frontend/src``."""
+    chemin = (DJANGO_ROOT / "apps" / "calepinage" / "services" / "documents"
+              / "__init__.py")
+    try:
+        tree = ast.parse(chemin.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return set()
+    endpoints = set()
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            continue
+        nom = node.targets[0].id
+        if nom == "_DEFINITIONS_DOCUMENTS":
+            for ligne in getattr(node.value, "elts", []):
+                elts = getattr(ligne, "elts", [])
+                if (len(elts) >= 4 and isinstance(elts[3], ast.Constant)
+                        and isinstance(elts[3].value, str)):
+                    endpoints.add(elts[3].value.strip("/"))
+        elif nom == "AUTRES_FORMATS":
+            for sub in ast.walk(node.value):
+                if (isinstance(sub, ast.Tuple) and len(sub.elts) == 2
+                        and isinstance(sub.elts[1], ast.Constant)
+                        and isinstance(sub.elts[1].value, str)
+                        and sub.elts[1].value.endswith("/")):
+                    endpoints.add(sub.elts[1].value.strip("/"))
+    return endpoints
+
+
 # Un groupe nomme de convertisseur DRF (`(?P<id>[^/.]+)`) ne peut, par
 # construction, apparaitre TEL QUEL dans une source JS : le retirer laisse les
 # segments litteraux qui, eux, sont recopies mot pour mot cote client (avec ou
@@ -455,6 +541,7 @@ def analyse() -> tuple:
     backend = contract.BackendRoutes(DJANGO_ROOT)
     backend.build()
     texte = texte_frontend()
+    inventaire_docs = endpoints_inventaire_documents()
 
     constats, invalides, par_module = [], [], {}
     for nom in MODULES:
@@ -462,6 +549,7 @@ def analyse() -> tuple:
         routes = routes_par_action(backend, prof["prefix"])
         declarees = inventaire_actions_declarees(nom)
         ressources = inventaire_ressources(backend, nom)
+        rattachees = actions_rattachees(nom)
         compte = 0
         for item in declarees + ressources:
             if item["headless"] == "":
@@ -474,7 +562,11 @@ def analyse() -> tuple:
                 routee = bool(routes.get((item["module"], item["fonction"]))) or bool(
                     item.get("classe")
                     and routes.get(("classe", item["classe"], item["fonction"])))
-                consommee = routee and action_consommee(item["url_path"], texte)
+                routee = routee or (item["module"], item["fonction"]) in rattachees
+                consommee = routee and (
+                    action_consommee(item["url_path"], texte)
+                    or (nom == "calepinage" and servie_par_inventaire(
+                        item["url_path"], inventaire_docs, texte)))
             if consommee or item["headless"]:
                 continue
             constats.append(item)

@@ -11,18 +11,18 @@ from django.db import models
 # que l'entreprise n'a pas enregistré sa propre version (rien ne change sinon).
 MESSAGE_TEMPLATE_DEFAULTS = {
     'devis_unique':
-        'Bonjour {civilite} {nom}, voici votre devis Taqinor '
+        'Bonjour {civilite} {nom}, voici votre devis {marque} '
         '({reference}) : {lien}',
     'devis_multi_entete':
-        'Bonjour {civilite} {nom}, voici vos {n} devis Taqinor :',
+        'Bonjour {civilite} {nom}, voici vos {n} devis {marque} :',
     'devis_multi_ligne':
         '{reference} : {lien}',
     'facture':
-        'Bonjour {civilite} {nom}, voici votre facture Taqinor '
+        'Bonjour {civilite} {nom}, voici votre facture {marque} '
         '({reference}) : {lien}',
     'relance':
         'Bonjour {civilite} {nom}, petit rappel concernant votre facture '
-        'Taqinor ({reference}) : {lien}',
+        '{marque} ({reference}) : {lien}',
     # XSAV4 — transitions de ticket SAV (client). {lien} = lien-client FG86.
     'ticket_recu':
         'Bonjour {civilite} {nom}, votre ticket SAV {reference} a bien été '
@@ -116,7 +116,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'j4_preuve':
         "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : {lien_video_preuve}.",
     'j6_garanties':
-        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties",
+        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}.",
     'j9_validite':
         "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
     # CAD110 — porte de sortie (voir la note au-dessus de `je_classe_j7`) :
@@ -303,7 +303,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'j4_preuve':
         "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
     'j6_garanties':
-        "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties",
+        "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}.",
     'j9_validite':
         "العرض ديالكم صالح حتى {date_validite}. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.",
     # CAD110 — porte de sortie sur les deux dernières touches après-devis.
@@ -947,7 +947,7 @@ MESSAGE_TEMPLATE_FORMES_EMAIL = {
     'j6_garanties': {
         'objet': 'Les garanties de votre proposition {reference}',
         'corps':
-            "Bonjour {civilite} {prenom}, les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : {lien}. Ce qui est couvert, et pour combien d'années : https://taqinor.ma/garanties — {conseiller}, {marque}",
+            "Bonjour {civilite} {prenom}, les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : {lien}. — {conseiller}, {marque}",
     },
     'j9_validite': {
         'objet': 'Validité de votre proposition {reference}',

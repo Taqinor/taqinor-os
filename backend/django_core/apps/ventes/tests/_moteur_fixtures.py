@@ -71,3 +71,19 @@ def donnees_residentiel(variante="deux", **surcharges):
     d = dict(sample_data.build(variante))
     d.update(surcharges)
     return d
+
+
+def etude_ci_au_kwc_servi(data):
+    """AMOT62 — aligne l'étude C&I GREFFÉE (contrat ``etude_ci_preview.json``,
+    calculée pour 55 kWc) sur le kWc de l'option que ``data`` SERT : la
+    synthèse n'imprime production et taux que d'une étude qui décrit
+    l'installation servie (garde 2 %). Mute et renvoie ``data``."""
+    from apps.ventes.quote_engine.ci import synthese
+
+    etude_ci = (data.get("etude") or {}).get("etude_ci")
+    if etude_ci:
+        kwc = synthese._systeme(
+            data, {}, synthese._option_servie(data))["kwc"]
+        etude_ci["taille"] = dict(etude_ci.get("taille") or {},
+                                  retenue_kwc=kwc)
+    return data

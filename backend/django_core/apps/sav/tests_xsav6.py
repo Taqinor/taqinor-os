@@ -45,6 +45,11 @@ class XSAV6PreAlertEscalationTest(TestCase):
             email='xsav6-client@example.invalid')
         self.inst = Installation.objects.create(
             company=self.company, reference='CHT-XSAV6', client=self.client_obj)
+        # ASAV57 (D-ASAV-5 Q2 a) — l'interrupteur société gouverne les
+        # notifications : les balayages ne notifient que société activée.
+        _r = SavSlaSettings.get(self.company)
+        _r.sla_breach_enabled = True
+        _r.save(update_fields=['sla_breach_enabled'])
 
     def _ticket(self, sla_due_at, **kw):
         defaults = dict(

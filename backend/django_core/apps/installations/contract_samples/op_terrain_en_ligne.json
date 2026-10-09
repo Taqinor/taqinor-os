@@ -1,0 +1,79 @@
+{
+  "endpoint": "POST /api/django/installations/interventions/<int:pk>/ajouter-serial/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Les actions en ligne `ajouter-serial` et `ajouter-reserve` n'acceptent pas encore `client_op_id` et ne renvoient pas `replayed` : ADEP44 les rend idempotentes (cle inscrite dans `FieldOp` dans la meme transaction que l'effet) et affirme ce fichier.",
+  "pourquoi": "ADEP43 (Groupe ADEP, audit deploiement du 08/10/2026, C-ADEP-019) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Le journal de dedup `FieldOp` (contrainte `(company, client_op_id)`) ne connait aujourd'hui que le chemin `/installations/sync/` : un appel EN LIGNE dont la reponse expire, suivi du rejeu de la file par la synchro, cree 2 objets. Le terminal envoie la MEME cle `client_op_id` (UUID) dans le corps des actions en ligne `ajouter-serial` et `ajouter-reserve` ; le serveur l'inscrit dans `FieldOp` dans la meme transaction que l'effet. Un second appel avec la meme cle (en ligne ou par la synchro) renvoie l'objet existant avec `replayed: true`, sans second objet. Cle optionnelle : sans elle, comportement actuel inchange. Valeurs illustratives.",
+  "requete": {
+    "client_op_id": "c0ffee00-0000-4000-8000-000000000201",
+    "produit": 87,
+    "designation": "Onduleur hybride 5 kW",
+    "slot": "onduleur_1",
+    "numero_serie": "SN-OND-2026-0042"
+  },
+  "exemple": {
+    "id": 31,
+    "intervention": 41,
+    "produit": 87,
+    "produit_nom": "Onduleur hybride 5 kW",
+    "designation": "Onduleur hybride 5 kW",
+    "slot_cle": "onduleur_1",
+    "numero_serie": "SN-OND-2026-0042",
+    "plaque_attachment": null,
+    "plaque_url": null,
+    "serie_ocr": false,
+    "pousse_parc": false,
+    "date_creation": "2026-10-08T09:30:00Z",
+    "replayed": false
+  },
+  "exemple_rejeu": {
+    "id": 31,
+    "intervention": 41,
+    "produit": 87,
+    "produit_nom": "Onduleur hybride 5 kW",
+    "designation": "Onduleur hybride 5 kW",
+    "slot_cle": "onduleur_1",
+    "numero_serie": "SN-OND-2026-0042",
+    "plaque_attachment": null,
+    "plaque_url": null,
+    "serie_ocr": false,
+    "pousse_parc": false,
+    "date_creation": "2026-10-08T09:30:00Z",
+    "replayed": true
+  },
+  "ajouter_reserve": {
+    "endpoint": "POST /api/django/installations/interventions/<int:pk>/ajouter-reserve/",
+    "requete": {
+      "client_op_id": "c0ffee00-0000-4000-8000-000000000202",
+      "description": "Fixation du coffret a reprendre"
+    },
+    "exemple": {
+      "id": 12,
+      "intervention": 41,
+      "description": "Fixation du coffret a reprendre",
+      "photo": null,
+      "photo_url": null,
+      "memo": null,
+      "assignee": null,
+      "assignee_nom": null,
+      "statut": "ouverte",
+      "statut_display": "Ouverte",
+      "resolution": "",
+      "resolue_le": null,
+      "suivi_intervention": null,
+      "ticket": null,
+      "devis_repare_id": null,
+      "date_creation": "2026-10-08T09:31:00Z",
+      "installation": null,
+      "origine": "recette",
+      "bloquante": false,
+      "date_echeance": null,
+      "responsable": null,
+      "levee_par": null,
+      "replayed": false
+    },
+    "exemple_rejeu": {
+      "id": 12,
+      "replayed": true
+    }
+  }
+}

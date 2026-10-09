@@ -15,6 +15,7 @@ from unittest import mock
 from rest_framework.test import APIClient
 
 from apps.ventes.models import ShareLink
+from apps.ventes.public.signature_views import empreinte_contenu
 from apps.ventes.tests._gammes_offre_common import GammeBase, url_accept
 
 
@@ -57,6 +58,7 @@ class TestAcceptationSignature(GammeBase):
         lien_soeur = ShareLink.for_devis(soeur)
         APIClient().post(url_accept(lien_soeur.token), {
             'nom': 'Salma Alaoui', 'consent_esign': True,
+            'empreinte_contenu': empreinte_contenu(soeur),
         }, format='json')
         sig = DevisSignature.objects.filter(devis=soeur).first()
         self.assertIsNotNone(sig)

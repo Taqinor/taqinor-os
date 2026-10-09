@@ -42,6 +42,7 @@ from app.core.config import (
     ACTION_PROPOSAL_SECRET,
     ACTION_PROPOSAL_TTL,
     DJANGO_INTERNAL_URL,
+    internal_headers,
     REDIS_PROPOSAL_URL,
 )
 
@@ -154,6 +155,7 @@ def _django_call(
     url = DJANGO_INTERNAL_URL.rstrip("/") + path
     verb = (method or "POST").upper()
     headers = {
+        **internal_headers(),
         "Authorization": f"Bearer {ctx.token}",
         "Accept": "application/json",
     }

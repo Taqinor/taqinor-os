@@ -135,6 +135,22 @@ BROUILLON_REFUS = (
     "Cette proposition n'a pas encore été envoyée : elle ne peut pas être "
     'signée.')
 
+#: ADEV52 — le refus 409 ``expiree`` du contrat ``proposal_accept.json``.
+EXPIREE_REFUS = ('Cette offre a expiré : contactez votre conseiller pour une '
+                 'nouvelle proposition.')
+
+
+def _acceptation_par_le_client(user):
+    """ADEV52 — l'acceptation vient-elle du CLIENT (lien public : ``user``
+    absent ; portail client : utilisateur de portée « portail client ») ?
+    L'acceptation INTERNE (un commercial) reste libre d'enregistrer une
+    acceptation tardive."""
+    if user is None:
+        return True
+    from authentication.models import CustomUser
+    return (getattr(user, 'portee', None)
+            == CustomUser.PORTEE_PORTAIL_CLIENT)
+
 
 def activate_optional_line(*, devis, ligne_id, user=None):
     """XSAL5 — active une ligne OPTIONNELLE d'un devis (self-service client sur
@@ -1580,6 +1596,15 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # posé) reste régie par ERR33 ci-dessous (ADEV12, GATED D-ADEV-2).
         if user is None and devis.statut == Devis.Statut.BROUILLON:
             raise AcceptError(BROUILLON_REFUS, conflict=True, code='brouillon')
+
+        # ADEV52 (C-ADEV-019) — UNE règle d'expiration (``utils/expiry``, fin
+        # du dernier jour à l'heure du Maroc) appliquée au CLIENT (lien public
+        # et portail) : 409 ``expiree``, rien n'est écrit (règle #4 : aucun
+        # statut ne bouge). L'acceptation interne garde son comportement.
+        if _acceptation_par_le_client(user):
+            from apps.ventes.utils.expiry import is_expired
+            if is_expired(devis):
+                raise AcceptError(EXPIREE_REFUS, conflict=True, code='expiree')
 
         # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
         if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):

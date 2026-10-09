@@ -14,12 +14,31 @@ actif n'existe pour cette ``source`` — un admin l'active en créant un
 """
 import logging
 
-from django.db.models.signals import pre_delete
+from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 
 from core.events import document_produit
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender='authentication.Company',
+          dispatch_uid='ged_adoc75_routages_defaut_societe')
+def _semer_routages_defaut_societe(sender, instance, created, raw=False,
+                                   **kwargs):
+    """ADOC75 — une société NOUVELLE reçoit les routages ventes par défaut
+    (factures/avoirs/notes de débit/remises arrivent en GED sans réglage
+    manuel). Best-effort : ne bloque jamais la création de la société."""
+    if not created or raw:
+        return
+    try:
+        from . import services
+
+        services.semer_routages_defaut(instance)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        logger.exception(
+            "ADOC75 — échec du semis des routages par défaut (société %s)",
+            getattr(instance, 'pk', None))
 
 
 @receiver(pre_delete, sender='ged.Document',

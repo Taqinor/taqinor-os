@@ -26,7 +26,7 @@ class RetourLivraisonViewSet(CompanyScopedModelViewSet):
     tout rôle, écriture responsable/admin. Filtrable par `livraison`,
     `statut`."""
     queryset = RetourLivraison.objects.select_related(
-        'livraison', 'created_by').prefetch_related('lignes').all()
+        'livraison', 'created_by').prefetch_related('lignes__produit').all()
     serializer_class = RetourLivraisonSerializer
 
     def get_permissions(self):

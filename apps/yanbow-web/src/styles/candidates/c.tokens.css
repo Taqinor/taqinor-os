@@ -1,0 +1,71 @@
+/*
+ * Candidat C « Continuité du deck » (YBW42, corrigé YBW43 C-1) — jetons. CLAIR
+ * SEULEMENT (aucun bloc prefers-color-scheme: dark, `color-scheme: light`).
+ * SEUL fichier du candidat où une couleur est écrite. Contrastes CALCULÉS par
+ * tests/designCandidates.test.ts pour le schéma clair et la portée `.nuit`.
+ * UN SEUL accent : l'orange de la flèche du logo — en grands titres (>= 24 px)
+ * sur le bleu nuit (4,19:1) et en bouton (encre sur orange, 4,99:1), comme A
+ * et B. Ni ambre ni sarcelle (critique YBW43 : trois accents = trop).
+ */
+:root[data-candidat='c'] {
+  --c-nuit: #16294A;
+  --c-blanc: #FFFFFF;
+  --c-ivoire: #F6F4EF;
+  --c-texte: #2B3445;
+  --c-gris: #5B6577;
+  --c-gris-nuit: #B9C3D3;
+  --c-orange: #C8762B;
+  --c-encre: #1B1B1B;
+  --c-trait: #E1E4EA;
+  --c-trait-fort: #C3C9D3;
+  --c-capture: #EEF1F5;
+
+  --fond: var(--c-blanc);
+  --fond-surface: var(--c-blanc);
+  --fond-alt: var(--c-ivoire);
+  --texte: var(--c-texte);
+  --texte-titre: var(--c-nuit);
+  --texte-attenue: var(--c-gris);
+  --accent-texte: var(--c-nuit);
+  --accent-graphique: var(--c-nuit);
+  --bouton-fond: var(--c-nuit);
+  --bouton-texte: var(--c-blanc);
+  --logo-ink: var(--c-encre);
+  --logo-arrow: var(--c-orange);
+  --trait: var(--c-trait);
+  --trait-fort: var(--c-trait-fort);
+  --focus: var(--c-nuit);
+  --ombre: color-mix(in srgb, var(--c-nuit) 22%, transparent);
+  --ruban-fond: var(--c-nuit);
+  --ruban-texte: var(--c-blanc);
+  --capture-fond: var(--c-capture);
+  --capture-trait: var(--c-trait-fort);
+  --capture-texte: var(--c-gris);
+  --capture-grille: color-mix(in srgb, var(--c-nuit) 7%, transparent);
+
+  --police-titre: 'Fraunces', 'Fraunces repli', serif;
+  --police-texte: 'Plus Jakarta Sans', 'Plus Jakarta Sans repli', sans-serif;
+  --poids-titre: 560;
+  --rayon-bouton: var(--rayon-1);
+  --rayon-capture: var(--rayon-1);
+
+  color-scheme: light;
+}
+
+/* Diapositive bleu nuit : texte blanc, orange en grands titres, bouton encre sur orange. */
+:root[data-candidat='c'] .nuit {
+  --fond: var(--c-nuit);
+  --fond-surface: var(--c-nuit);
+  --fond-alt: var(--c-nuit);
+  --texte: var(--c-blanc);
+  --texte-titre: var(--c-blanc);
+  --titre-grand: var(--c-orange);
+  --texte-attenue: var(--c-gris-nuit);
+  --accent-texte: var(--c-gris-nuit);
+  --accent-graphique: var(--c-orange);
+  --bouton-fond: var(--c-orange);
+  --bouton-texte: var(--c-encre);
+  --logo-ink: var(--c-blanc);
+  --logo-arrow: var(--c-orange);
+  --focus: var(--c-orange);
+}

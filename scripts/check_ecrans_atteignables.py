@@ -174,6 +174,17 @@ from check_api_contract import rapport_plancher, scan_js, write_inventory
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONT_SRC = ROOT / "frontend" / "src"
+
+
+def _rel_parts(path, base=FRONT_SRC):
+    """ADEP27 - parties du chemin RELATIVES a la racine du depot : un depot
+    range sous un dossier nomme `build/`, `dist/` ou `tests/` doit donner le
+    meme verdict (jamais tester les dossiers du chemin absolu)."""
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return path.parts
+
 FEATURES = FRONT_SRC / "features"
 # PACT149 : deuxieme dossier inventorie, au meme titre que FEATURES — voir
 # PORTEE ci-dessus. Route directement par router/index.jsx, jamais par un
@@ -253,7 +264,7 @@ def lire(path: Path) -> tuple:
 def est_test(path: Path) -> bool:
     if any(marker in path.name for marker in TEST_MARKERS):
         return True
-    return any(part in TEST_DIRS for part in path.parts)
+    return any(part in TEST_DIRS for part in _rel_parts(path))
 
 
 def resoudre(spec: str, importateur: Path) -> Path | None:

@@ -245,7 +245,9 @@ UNGUARDED_ACTION_BASELINE = {
     # une app moins endettée que son baseline fait baisser le baseline). Restent
     # ``ApprobationBCFViewSet.approuver`` et
     # ``ReceptionNonFactureeViewSet.lettrer``.
-    "installations": 2,
+    # CI #890 — 2 -> 1 : ``ReceptionNonFactureeViewSet`` n'existe plus dans ce
+    # lot ; reste ``ApprobationBCFViewSet.approuver`` (réel mesuré : 1).
+    "installations": 1,
     # NTSRV19 — 34 -> 35 : `KbArticleViewSet.creer_depuis_ticket` (POST,
     # pré-remplit un article KB depuis un ticket SAV résolu) rejoint les 30
     # autres @action de la même classe déjà comptées dans ce baseline —

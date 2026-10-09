@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """GARDE CI (stage-names) — ADOC38 : classe « liste lue sur la page 1 ».
 
-Un écran de ``frontend/src/features/**`` qui lit ``.results`` d'un appel de
+Un écran de ``frontend/src/features/**`` (et, depuis AFAC95/ASAV77,
+``pages/**`` et ``store/**``) qui lit ``.results`` d'un appel de
 LISTE paginée DRF sans ``fetchAllPages`` (``utils/fetchAllPages``) ni lecture de
 ``next`` n'affiche que la PREMIÈRE page (le PAGE_SIZE du serveur) : au-delà, les
 lignes manquent en silence (VX54 : StockList/DevisList/FactureList étaient faux
@@ -60,13 +61,22 @@ def _rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
+def _racines() -> list:
+    """AFAC95/ASAV77 : ``features/**`` ET ``pages/**`` ET ``store/**`` (les écrans
+    de ``pages/`` et les slices du store lisaient ``.results`` sans que la garde
+    ne les voie). Relu à l'appel : les tests déplacent ``FRONTEND_FEATURES``."""
+    src = FRONTEND_FEATURES.parent
+    return [FRONTEND_FEATURES, src / "pages", src / "store"]
+
+
 def _iter_sources():
-    if not FRONTEND_FEATURES.is_dir():
-        return
-    for path in sorted(FRONTEND_FEATURES.rglob("*")):
-        if path.suffix not in (".js", ".jsx") or ".test." in path.name:
+    for racine in _racines():
+        if not racine.is_dir():
             continue
-        yield path
+        for path in sorted(racine.rglob("*")):
+            if path.suffix not in (".js", ".jsx") or ".test." in path.name:
+                continue
+            yield path
 
 
 def _declarations(lignes: list) -> list:
@@ -91,7 +101,7 @@ def segments_non_pagines() -> set:
     reg_re = re.compile(r"register\(\s*r?['\"]([^'\"]+)['\"]\s*,\s*(\w+)")
     for path in sorted(BACKEND.rglob("*.py")):
         if any(p in ("migrations", "tests", "node_modules", "parked")
-               for p in path.parts):
+               for p in path.relative_to(BACKEND).parts):
             continue
         try:
             texte = path.read_text(encoding="utf-8")

@@ -123,7 +123,7 @@ class NoOnlineProvider(PaymentProvider):
             "status": "indisponible",
             "message": (
                 "Le paiement en ligne n'est pas encore disponible. "
-                "Votre conseiller Taqinor vous contactera pour les modalités de paiement."
+                "Votre conseiller vous contactera pour les modalités de paiement."
             ),
         }
 
