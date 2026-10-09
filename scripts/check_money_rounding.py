@@ -338,6 +338,23 @@ def load_allowlist(path: Path = ALLOWLIST_PATH):
     return entries
 
 
+def fichiers_morts(cles, root=None):
+    """ADEP26 — clés d'allowlist dont le fichier n'existe plus (app sortie
+    du périmètre) : une ligne morte est un faux acquis, la garde la refuse."""
+    root = ROOT if root is None else root
+    morts = []
+    for cle in sorted(cles):
+        chemin = cle.split("#")[0].split("|")[0].split("::")[0].strip()
+        if chemin and not (root / chemin).exists():
+            morts.append(cle)
+    return morts
+
+
+def _morts_offenders(cles):
+    return [f"{c} — ligne d'allowlist morte (fichier absent) : retirez-la"
+            for c in fichiers_morts(cles)]
+
+
 def evaluate(sites, allowed_keys):
     """Rend (sites nouveaux, cles orphelines) pour un scan COMPLET."""
     live = {site.key for site in sites}
@@ -442,6 +459,14 @@ def main(argv=None):
           f"d'apparence monetaire et {n_quantize} site(s) quantize() sans "
           "rounding= dans les modules de prix/taxe/rendu.")
     _print_sites(sites)
+
+    morts = _morts_offenders(allowed)
+    if morts:
+        print("\ncheck_money_rounding: ligne(s) MORTE(S) dans "
+              f"{_rel(ALLOWLIST_PATH)} (fichier absent) :")
+        for line in morts:
+            print(f"  - {line}")
+        return 1
 
     if orphans:
         print("\ncheck_money_rounding: entree(s) ORPHELINE(S) dans "

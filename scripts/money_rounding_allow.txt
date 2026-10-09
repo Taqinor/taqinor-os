@@ -89,68 +89,16 @@ backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::f1a9e
 backend/django_core/apps/ventes/selectors.py::decomposition_remise_volume::413bb24e793f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/compta/services.py
-backend/django_core/apps/compta/services.py::ecriture_pour_facture_fournisseur::bad552556a54 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::controler_solde_releve_ocr::dcb479e6315a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::controler_solde_releve_ocr::fb74268d1599 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::appliquer_modele_rapprochement::b1bcef313881 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::fichier_virement::4e2ce1d78ddf | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::refacturer_frais_client::187c63ed2d8f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::_pourcentage_avancement::b74fd7a928ff | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::constater_avancement::07acdcf26544 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::constater_avancement::6f5b21624eb0 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::roi_campagne::f5573d337c53 | ROI en POURCENTAGE d'une campagne, pas un montant.
-backend/django_core/apps/compta/services.py::roi_campagne::db0a0a3deffb | Cout par lead d'AFFICHAGE (cout / nombre de leads) dans le reporting ; jamais persiste.
-backend/django_core/apps/compta/services.py::reporting_campagnes::07de69138218 | POURCENTAGE de clics dans le reporting campagnes.
-backend/django_core/apps/compta/services.py::reporting_campagnes::9bcb61d08cad | POURCENTAGE de delivrabilite dans le reporting campagnes.
-backend/django_core/apps/compta/services.py::evaluer_session_guided_selling::6adc6877400f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::score_nps::3f0f929a3010 | Score NPS (promoteurs - detracteurs sur total), un score, pas un montant.
-backend/django_core/apps/compta/services.py::constater_ecart_change::0bb400ba1363 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::reevaluer_cloture::ec99e62be48b | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::calculer_score_enquete::fb0eb5e6b226 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::taux_completion_enquete::5f05f07ebb51 | POURCENTAGE de completion d'une enquete.
-backend/django_core/apps/compta/services.py::kpi_campagne_mere::80cea040fbbb | ROI en POURCENTAGE de la campagne mere.
-backend/django_core/apps/compta/services.py::convertir_entite::17772f9561eb | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::convertir_entite::09614fdd62ef | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::eliminer_marge_interne::1a9b19c8f550 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::calculer_interets_minoritaires::110918c58ce6 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::calculer_interets_minoritaires::55cb124f72a4 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::executer_allocation::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::executer_allocation::8332d66ee023 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::engager::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::liquider::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::verifier_disponible_engagement::e0e9d4aa5d9c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::reprendre_depreciation_immobilisation::fff5094adab9 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::allouer_prix_transaction::ba1a556de2b7 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::generer_echeancier_reconnaissance::50eba9e4a8af | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/services.py::simuler_consolidation::5ba99f26853c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/compta/selectors.py
-backend/django_core/apps/compta/selectors.py::_ecart_pct::ec244917b4cb | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::_taux_tva::712ce5a813ff | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::budget_vs_realise::9761138c079c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::pilotage_financier::261dc6da7c4f | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::pilotage_financier::fa032537d517 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::pilotage_financier::9b29dac24c2c | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::disponible_budgetaire::c6a964d09797 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::analyse_variation::04b7f094f08e | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::cockpit_cloture::d53fca1c0a4a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::_vnc_lineaire::6c49e59827dd | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::_vnc_lineaire::21c3ab12dfd9 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::projection_dotations::c7ef350084d5 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::projection_dotations::66b6ead4d3b9 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::variation_capitaux_consolides::1868b52b8ce0 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/compta/selectors.py::comparatif_entites::b4123f7a42c6 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/gestion_projet/services.py
-backend/django_core/apps/gestion_projet/services.py::_arrondir_duree_heures::a815c66c85f3 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
-backend/django_core/apps/gestion_projet/services.py::arrondir_duree::6d31a49446c0 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/facturation/models.py
 backend/django_core/apps/facturation/models.py::Facture.escompte_mention::836de5ba1034 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 backend/django_core/apps/facturation/models.py::Facture.calcul_escompte::a9ec1744e68a | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/credit/services.py
-backend/django_core/apps/credit/services.py::_lire_lignes_limites_csv::1ee174e79532 | AUD189 reprise -- quantize sans rounding= present a la capture ; A RELIRE (ROUND_HALF_UP via core.money.quantize_mad).
 
 # --- backend/django_core/apps/ventes/domain/composition.py
 backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.

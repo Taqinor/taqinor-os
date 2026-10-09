@@ -6,12 +6,10 @@
 # scopes strictly to the calling user (services.get_or_create_status(request
 # .user, company)); it never exposes a company-wide queryset, so the static
 # get_queryset company filter does not apply. Reviewed safe 2026-07-13.
-backend/django_core/apps/chat/views.py::UserChatStatusViewSet
 # ExtensionPackageCatalogueView (NTEXT13): read-only ListAPIView over the GLOBAL
 # extension catalogue (extensions.ExtensionPackage, a shared reference table with
 # no company FK — see tenant_exempt_models.txt). No per-tenant rows are exposed;
 # there is no create/update surface. Reviewed safe 2026-07-16.
-backend/django_core/apps/extensions/views.py::ExtensionPackageCatalogueView
 #
 # AUD828 (M-07) — core/authentication were entirely UNSCANNED before this
 # fix (the guard excluded them by path); widening the surface to its full
@@ -37,4 +35,3 @@ backend/django_core/core/views.py::OutboxEventViewSet
 # NTMIG20 — gabarit CSV STATIQUE par (source, entite) : contenu 100% code
 # (kits), aucune donnee tenant lue ; permission IsDirecteurOuAdmin.
 # Reviewed safe 2026-09-12 (fold vague 1 drain NT).
-backend/django_core/apps/migration/views.py::GabaritKitView

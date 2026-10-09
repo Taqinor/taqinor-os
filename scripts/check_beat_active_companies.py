@@ -239,10 +239,28 @@ def check_file(path: Path):
     return findings
 
 
+def fichiers_morts(cles, root=None):
+    """ADEP26 — clés d'allowlist dont le fichier n'existe plus (app sortie
+    du périmètre) : une ligne morte est un faux acquis, la garde la refuse."""
+    root = ROOT if root is None else root
+    morts = []
+    for cle in sorted(cles):
+        chemin = cle.split("#")[0].split("|")[0].split("::")[0].strip()
+        if chemin and not (root / chemin).exists():
+            morts.append(cle)
+    return morts
+
+
+def _morts_offenders(cles):
+    return [f"{c} — ligne d'allowlist morte (fichier absent) : retirez-la"
+            for c in fichiers_morts(cles)]
+
+
 def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
     offenders, listed = [], []
+    offenders += _morts_offenders(allow)
     modeles = modeles_a_company()
     cles_vues = set()
     for path in _iter_source_files():

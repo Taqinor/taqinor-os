@@ -34,14 +34,6 @@ KEY_RE = re.compile(r"""['"]?key['"]?\s*[:=]\s*['"]([A-Za-z0-9_]+)['"]""")
 # (e.g. an "advanced" nav grouping over the same backend app). These documented
 # aliases map a frontend module.config key to the backend manifest key it uses.
 FRONTEND_KEY_ALIASES = {
-    'ged_advanced': 'ged',
-    # Nav-groupings frontend batch-4 par-dessus des apps backend existantes
-    # (pas de nouvelle app backend) : magasin (casiers/put-away/pick/colisage)
-    # + logistique (livraisons/transferts/comptages) = surface `stock` ;
-    # workflow (BPM/jobs) = surface `automation`.
-    'magasin': 'stock',
-    'logistique': 'stock',
-    'workflow': 'automation',
     # ARC54 — regroupement nav "admin" (utilisateurs/rôles/console tenants) migré
     # depuis index.jsx vers features/admin/module.config.jsx ; pas de nouvelle app
     # backend, la surface d'administration RBAC vit dans `roles`.
@@ -103,6 +95,15 @@ def main() -> int:
     frontend = frontend_config_keys()
 
     errors = []
+    # ADEP26 — un alias dont le module.config.jsx a disparu est mort.
+    toutes_cles = set(frontend)
+    for cfg in FRONTEND_FEATURES.glob("*/module.config.jsx"):
+        toutes_cles |= set(KEY_RE.findall(cfg.read_text(encoding="utf-8")))
+    for alias in sorted(FRONTEND_KEY_ALIASES):
+        if alias not in toutes_cles:
+            errors.append(
+                f"  alias '{alias}' sans module.config.jsx : le retirer de "
+                "FRONTEND_KEY_ALIASES.")
     for key, path in sorted(frontend.items()):
         backend_key = FRONTEND_KEY_ALIASES.get(key, key)
         if backend_key not in backend:
