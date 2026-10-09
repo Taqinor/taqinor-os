@@ -37,7 +37,9 @@ def devis_deux_options(slug, etude_params=None, statut='envoye'):
         username=f'{slug}_u', password='x', company=company)
     client_obj = Client.objects.create(company=company, nom=f'Client {slug}')
     if etude_params is None:
-        etude_params = {'factures_mensuelles': [1800] * 12,
+        # Ancrage RÉEL (Z2) : le builder ne lit que ``factures_mensuelles_reelles``
+        # (sans elle, tarif de repli ⇒ économies omises de la page publique).
+        etude_params = {'factures_mensuelles_reelles': [1800] * 12,
                         'distributeur': 'onee', 'ville': 'casablanca'}
     devis = Devis.objects.create(
         company=company, reference=f'DEV-{slug.upper()}-01',
