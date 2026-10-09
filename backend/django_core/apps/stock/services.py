@@ -4052,27 +4052,65 @@ def rotation_report(company, jours=180):
 
 # ── FG60 — Export xlsx mouvements ─────────────────────────────────────────────
 
+#: APRF34 — en-têtes et nom de l'export des mouvements : UNE seule définition
+#: pour la voie synchrone et la voie asynchrone (même fichier des deux côtés).
+MOUVEMENTS_EXPORT_HEADERS = ['Référence', 'Type', 'Produit', 'Quantité',
+                             'Avant', 'Après', 'Note', 'Créé par', 'Date']
+MOUVEMENTS_EXPORT_FILENAME = 'mouvements-stock.xlsx'
+MOUVEMENTS_EXPORT_SHEET = 'Mouvements'
+#: APRF34 — type logique du ``BackgroundJob`` de l'export asynchrone.
+MOUVEMENTS_EXPORT_JOB_KIND = 'stock_export_mouvements_xlsx'
+
+
+def _mouvement_export_row(m):
+    return [
+        m.reference or '',
+        m.get_type_mouvement_display(),
+        m.produit.nom,
+        m.quantite,
+        m.quantite_avant,
+        m.quantite_apres,
+        m.note or '',
+        m.created_by.username if m.created_by else '',
+        m.date.strftime('%d/%m/%Y %H:%M') if m.date else '',
+    ]
+
+
+def mouvements_export_rows(qs):
+    """APRF34 — lignes de l'export des mouvements (ordre du queryset)."""
+    return [_mouvement_export_row(m)
+            for m in qs.select_related('produit', 'created_by')]
+
+
 def export_mouvements_xlsx(company, qs):
     """Export Excel de la liste filtrée des mouvements de stock (INTERNE).
     Prix d'achat jamais inclus."""
     from apps.crm.exports import build_xlsx_response
-    headers = ['Référence', 'Type', 'Produit', 'Quantité',
-               'Avant', 'Après', 'Note', 'Créé par', 'Date']
-    rows = []
-    for m in qs.select_related('produit', 'created_by'):
-        rows.append([
-            m.reference or '',
-            m.get_type_mouvement_display(),
-            m.produit.nom,
-            m.quantite,
-            m.quantite_avant,
-            m.quantite_apres,
-            m.note or '',
-            m.created_by.username if m.created_by else '',
-            m.date.strftime('%d/%m/%Y %H:%M') if m.date else '',
-        ])
-    return build_xlsx_response('mouvements-stock.xlsx', headers, rows,
-                               sheet_title='Mouvements')
+    return build_xlsx_response(MOUVEMENTS_EXPORT_FILENAME,
+                               MOUVEMENTS_EXPORT_HEADERS,
+                               mouvements_export_rows(qs),
+                               sheet_title=MOUVEMENTS_EXPORT_SHEET)
+
+
+def export_mouvements_xlsx_bytes(company_id, mouvement_ids):
+    """APRF34 — octets de l'export des mouvements ``mouvement_ids`` DANS CET
+    ORDRE (celui de la liste filtrée au moment de la demande), bornés à la
+    société ``company_id``. Même en-têtes, mêmes lignes, même neutralisation
+    que la voie synchrone (``workbook_bytes`` neutralise par défaut)."""
+    from apps.records.xlsx import workbook_bytes
+    from .models import MouvementStock
+
+    ids = [int(i) for i in (mouvement_ids or [])]
+    par_id = {}
+    for debut in range(0, len(ids), 2000):
+        par_id.update(
+            (m.pk, m) for m in MouvementStock.objects.filter(
+                company_id=company_id, produit__company_id=company_id,
+                pk__in=ids[debut:debut + 2000],
+            ).select_related('produit', 'created_by'))
+    rows = [_mouvement_export_row(par_id[i]) for i in ids if i in par_id]
+    return workbook_bytes(MOUVEMENTS_EXPORT_HEADERS, rows,
+                          sheet_title=MOUVEMENTS_EXPORT_SHEET)
 
 
 # ── FG58 — Comparaison fournisseurs ───────────────────────────────────────────

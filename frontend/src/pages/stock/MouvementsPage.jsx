@@ -146,13 +146,22 @@ export default function MouvementsPage() {
   // les mêmes filtres que la vue (type + produit) que le backend applique.
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState(null)
+  // APRF34 — au-delà du seuil NTPLT30 le serveur répond 202 (job de fond) :
+  // aucun fichier à télécharger, on affiche « export en préparation » ; la
+  // notification « export prêt » portera le lien du fichier.
+  const [exportNotice, setExportNotice] = useState(null)
   const exportXlsx = async () => {
-    setExportBusy(true); setExportError(null)
+    setExportBusy(true); setExportError(null); setExportNotice(null)
     try {
       const params = {}
       if (activeTab !== 'tous') params.type_mouvement = activeTab
       if (produitParam) params.produit = produitParam
       const res = await stockApi.exportMouvementsXlsx(params)
+      if (res.status === 202) {
+        setExportNotice('Export en préparation : le fichier est volumineux. '
+          + 'Une notification vous préviendra dès qu’il sera prêt à télécharger.')
+        return
+      }
       downloadBlob(res.data, stampedFilename('mouvements-stock', 'xlsx', societe))
     } catch {
       setExportError('Export indisponible. Réessayez.')
@@ -354,6 +363,11 @@ export default function MouvementsPage() {
       {exportError && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {exportError}
+        </div>
+      )}
+      {exportNotice && (
+        <div role="status" className="rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm">
+          {exportNotice}
         </div>
       )}
 
