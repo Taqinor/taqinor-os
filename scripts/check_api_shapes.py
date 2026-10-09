@@ -1328,12 +1328,6 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "ACHT66 la produit (InstallationSerializer.divergence_devis) mais le "
         "detail n'est pas lisible statiquement — ACHT67 (ecran) s'appuie "
         "sur CET exemple (ACHT40)",
-    "installations/field_sync_cocher_checklist.json":
-        "op hors-ligne `chantier.cocher_checklist` de POST installations/"
-        "sync/ portant `equipements` (meme forme que le corps en ligne de "
-        "`cocher-checklist`) : le handler de synchro n'est pas une vue "
-        "lisible statiquement — ACHT70 (handler) et ACHT71 (ecran) "
-        "s'appuient sur CET exemple (ACHT40)",
 }
 
 

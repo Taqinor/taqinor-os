@@ -331,8 +331,12 @@ def _h_terminer(company, user, payload):
 
 def _h_cocher_checklist(company, user, payload):
     """N91 — coche/décoche une étape de la checklist CHANTIER (last-write-wins).
-    Ne fait PAS la capture de série ici (les séries passent par op `serial`)."""
-    from .services import ensure_checklist_items
+    ACHT70 — accepte `equipements` ([{produit, numero_serie}], forme du corps
+    en ligne de `cocher-checklist`) et crée les équipements par le MÊME
+    service (`services.enregistrer_series_lot` → écrivain unique du parc) ;
+    sans `equipements` (files déjà en attente) l'op coche seulement. Le rejeu
+    ne recrée rien : une série déjà au parc ressort en `doublon`."""
+    from .services import ensure_checklist_items, enregistrer_series_lot
     inst = _chantier(company, payload, user)
     ensure_checklist_items(inst)
     item = inst.checklist.filter(cle=payload.get('cle')).first()
@@ -343,6 +347,10 @@ def _h_cocher_checklist(company, user, payload):
     item.fait_par = user if fait else None
     item.fait_le = _instant_saisie(payload) if fait else None
     item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    lignes = [eq for eq in (payload.get('equipements') or [])
+              if isinstance(eq, dict) and eq.get('produit')]
+    if lignes:
+        enregistrer_series_lot(inst, lignes, user=user)
     return {'cle': item.cle, 'fait': item.fait}
 
 
