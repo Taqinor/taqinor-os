@@ -385,7 +385,9 @@ GARDES = {
          '(ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES)',
          'python -m unittest scripts.tests.test_check_frontend_test_runner_coverage -v',
          '.'),
-        # ANCRE-A5-sondes : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Tests du lanceur de sondes (AMET93)',
+         'python -m unittest scripts.tests.test_sonde -v',
+         '.'),
         ('Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)',
          'python -m unittest scripts.tests.test_ci_changes_filter -v',
          '.'),
