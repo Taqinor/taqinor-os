@@ -596,6 +596,13 @@ GARDES = {
         ('Test the version-en-vigueur checker itself (ACRM51)',
          'python -m unittest scripts.tests.test_check_version_en_vigueur -v',
          '.'),
+        # ACRM54 — toute @action crm à écritures multiples est atomique.
+        ('Check actions crm multi-ecritures atomiques (ACRM54)',
+         'python scripts/check_actions_atomiques.py',
+         '.'),
+        ('Test the actions-atomiques checker itself (ACRM54)',
+         'python -m unittest scripts.tests.test_check_actions_atomiques -v',
+         '.'),
         # ADOC79 — une seule primitive de lecture d'IP (core.throttling.ip_de_requete).
         ('Check lecture d IP hors primitive (ip_de_requete, ADOC79)',
          'python scripts/check_ip_primitive.py',
