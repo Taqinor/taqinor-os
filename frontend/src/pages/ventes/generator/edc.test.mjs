@@ -65,3 +65,25 @@ test('EDC2 : le rail du générateur ne porte plus aucune classe `lg:` ni de `to
   assert.match(gen, /className="gen-ttc-condense /)
   assert.doesNotMatch(gen, /lg:hidden/)
 })
+
+test('EDC4 : barre d’actions collante au palier --z-sticky, repli de hauteur 3.25rem', () => {
+  const b = blocEdc(4)
+  assert.match(b, /\.gen-root \{ --gen-barre-h: 3\.25rem; \}/)
+  assert.match(b, /\.gen-barre-actions \{[^}]*position: sticky;[^}]*top: calc\(var\(--header-h, 0px\) \+ var\(--gen-colle-decalage, 0px\)\);[^}]*z-index: var\(--z-sticky\);/)
+  // Jamais au-dessus des popovers Radix : aucun palier overlay/modal/popover.
+  assert.doesNotMatch(b, /\.gen-barre-actions \{[^}]*z-index: var\(--z-(overlay|modal|popover)/)
+  // La barre de progression VX136 colle au même haut que la barre.
+  assert.match(b, /\.gen-root > \.scroll-progress-bar \{[^}]*top: calc\(var\(--header-h, 0px\) \+ var\(--gen-colle-decalage, 0px\)\);/)
+})
+
+test('EDC4 : la barre est rendue HORS du formulaire et son Enregistrer vise form="gen-form"', () => {
+  const gen = lire('../DevisGenerator.jsx')
+  const barre = gen.indexOf('<BarreActionsDevis')
+  assert.ok(barre > 0, 'la barre doit être montée par le générateur')
+  assert.ok(barre < gen.indexOf('<form id="gen-form"'), 'la barre précède le formulaire, hors de lui')
+  const composant = lire('./BarreActionsDevis.jsx')
+  assert.match(composant, /type="submit" form=\{formId\}/)
+  assert.match(composant, /formId = 'gen-form'/)
+  assert.match(composant, /role="toolbar"/)
+  assert.match(composant, /aria-label="Actions du devis"/)
+})

@@ -203,6 +203,8 @@ import {
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
 // d'argent (totaux, remise, TVA, prix cible, marge interne).
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
+// EDC4 — barre d'actions collante EN TÊTE (le pied `gen-actions-sticky` reste).
+import BarreActionsDevis from './generator/BarreActionsDevis'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
 import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
@@ -416,6 +418,9 @@ function IndicationRegistre({ chemin, busy, onRegenerer }) {
  * @param {number}   editId      Éditer un brouillon existant (embarqué)
  * @param {function} onDone      Appelé avec l'id du devis créé/enregistré
  * @param {function} onCancel    Appelé sur Annuler
+ * @param {function} onVoirPdf   EDC4 (contrat EDC, optionnel) — « Voir le PDF »
+ *                               de la barre d'actions, en embarqué et sur un
+ *                               devis existant seulement : le panneau décide.
  */
 export default function DevisGenerator({
   embedded = false,
@@ -425,6 +430,7 @@ export default function DevisGenerator({
   editId: editIdProp = null,
   onDone = null,
   onCancel = null,
+  onVoirPdf = null,
 } = {}) {
   const navigate = useNavigate()
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
@@ -3868,6 +3874,22 @@ export default function DevisGenerator({
           )}
         />
       )}
+
+      {/* EDC4 — barre d'actions COLLÉE en haut du défileur (panneau ou page),
+          HORS du <form> (les ancres `#gen-form` des e2e ne la voient pas) :
+          son Enregistrer est `form="gen-form"`, même chemin que le pied.
+          « Voir le PDF » : embarqué + devis existant + prop du panneau. */}
+      <BarreActionsDevis
+        reference={editDevis?.reference ?? null}
+        statut={editDevis?.statut ?? null}
+        chargement={Boolean(editId) && !editDevis}
+        enEdition={Boolean(editDevis)}
+        dirty={dirty}
+        totalTtc={kpiTotal}
+        saving={saving}
+        onAnnuler={cancel}
+        onVoirPdf={embedded && editDevis && onVoirPdf ? () => onVoirPdf() : null}
+      />
 
       {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
           un rail récapitulatif STICKY à droite. Sur mobile/tablette, layout
