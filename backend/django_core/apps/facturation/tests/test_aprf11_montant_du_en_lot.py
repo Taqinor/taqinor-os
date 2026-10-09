@@ -45,12 +45,17 @@ class MontantDuEnLotTests(TestCase):
             AffectationPaiement, Avoir, Facture, LigneAvoir, LigneFacture,
             LigneNoteDebit, NoteDebit, Paiement, RetenueSubie,
         )
+        from apps.stock.models import Produit
         n = _nxt()
+        produit = Produit.objects.create(
+            company=company, nom='Ligne', sku=f'APRF11-P-{n}',
+            prix_vente=Decimal('10000'))
         f = Facture.objects.create(
             company=company, reference=f'FAC-APRF11-{n}', client=client,
             statut=Facture.Statut.EMISE, taux_tva=Decimal('20'))
         LigneFacture.objects.create(
-            facture=f, designation='Ligne', quantite=Decimal('1'),
+            facture=f, produit=produit, designation='Ligne',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('10000'), taux_tva=Decimal('20'))
         p = Paiement.objects.create(
             company=company, facture=f, montant=Decimal('1000'),

@@ -60,7 +60,8 @@ class CaClientsEnLotTests(TestCase):
                     client=self.client_obj, devis=devis,
                     statut=Facture.Statut.EMISE, taux_tva=Decimal('20'))
                 LigneFacture.objects.create(
-                    facture=f, designation='Panneau', quantite=Decimal('2'),
+                    facture=f, produit=self.produit, designation='Panneau',
+                    quantite=Decimal('2'),
                     prix_unitaire=Decimal('1000'), taux_tva=Decimal('20'))
 
     def _mesurer(self):
