@@ -40,9 +40,12 @@ from .scoring import compute_score, score_label, score_reasons
 # l'enveloppe uniforme ARC9).
 #: CAD144 — + le téléphone du contact SECONDAIRE (co-associé, technicien) :
 #: un numéro reste une PII, qu'il soit le premier ou le second de la fiche.
+#: ACRM5 — + la clé normalisée du numéro (``phone_normalise``, exposée par
+#: ``fields='__all__'``) : le numéro masqué ressortait en clair sous sa forme
+#: de dédoublonnage.
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
                    'gps_lat', 'gps_lng', 'lien_maps',
-                   'contact_secondaire_telephone')
+                   'contact_secondaire_telephone', 'phone_normalise')
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'

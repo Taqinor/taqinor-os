@@ -227,4 +227,6 @@ class ChatterPiiMasqueTests(TestCase):
         # localise son domicile, PII au même titre que gps_lat/gps_lng.
         # CAD144 (21/09/2026) : + `contact_secondaire_telephone` — le numéro
         # du second interlocuteur (coopérative, comité) est une PII.
-        self.assertEqual(len(LEAD_PII_FIELDS), 8)
+        # ACRM5 (09/10/2026) : + `phone_normalise` — la clé normalisée du
+        # numéro est le numéro lui-même.
+        self.assertEqual(len(LEAD_PII_FIELDS), 9)
