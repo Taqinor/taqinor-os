@@ -22,7 +22,10 @@ devis client ne sort d'ici, il passe uniquement par ``/proposal``.
 import json
 
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_field,
+)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -73,6 +76,11 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(actif=True)
         return qs
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'cible_id', OpenApiTypes.STR, OpenApiParameter.QUERY,
+            required=True, description='Identifiant de la fiche à rendre.')],
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='rendre')
     def rendre(self, request, code=None):
         """Rend le gabarit pour ``?cible_id=<id>`` et streame le PDF."""
@@ -103,6 +111,7 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
             f'inline; filename="{gabarit.code}-{cible_id}.pdf"')
         return reponse
 
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='apercu')
     def apercu(self, request, code=None):
         """NTEXT39 — aperçu de mise en page avec des données FACTICES.

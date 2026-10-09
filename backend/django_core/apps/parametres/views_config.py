@@ -17,7 +17,15 @@ HORS périmètre de cet outil : ils ont leur propre amorçage et ne sont pas
 touchés ici (on ne franchit pas la frontière d'une autre app pour les écrire).
 """
 from django.db import transaction
-from rest_framework.decorators import api_view, permission_classes
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
@@ -171,6 +179,7 @@ def _serialize_statuts(company):
     ]
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([IsAdminOrResponsableTier])
 def config_export(request):
@@ -504,8 +513,31 @@ def _import_statuts(company, rows, overwrite, user=None):
     return created, updated
 
 
+_CREE_MAJ = inline_serializer('ConfigImportCompte', {
+    'created': serializers.IntegerField(),
+    'updated': serializers.IntegerField(),
+})
+
+
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'mode', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+        enum=['merge', 'overwrite'],
+        description='merge (défaut, additif) ou overwrite.')],
+    request=OpenApiTypes.OBJECT,
+    responses=inline_serializer('ConfigImportResultat', {
+        'mode': serializers.CharField(),
+        'roles': _CREE_MAJ,
+        'message_templates': _CREE_MAJ,
+        'email_templates': _CREE_MAJ,
+        'automation_rules': _CREE_MAJ,
+        'statuts': _CREE_MAJ,
+        'profile_fields_changed': serializers.JSONField(),
+        'document_template_fields_changed': serializers.JSONField(),
+    }))
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def config_import(request):
     """Importe une configuration dans la société de l'appelant (additif).
 

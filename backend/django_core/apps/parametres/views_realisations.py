@@ -11,6 +11,9 @@ Même schéma de permission que les autres réglages de Paramètres
 ``company`` est filtrée ET forcée côté serveur par
 ``CompanyScopedModelViewSet`` (socle ARC2) — jamais lue du corps.
 """
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
+
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
@@ -18,11 +21,12 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models_realisations import Realisation
 from .serializers_realisations import RealisationSerializer
-from .views_common import SettingsAuditedMixin
+from .views_common import ACTIF_PARAM, SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
+@extend_schema_view(list=extend_schema(parameters=[ACTIF_PARAM]))
 class RealisationViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
     """Catalogue des installations réelles de la société. ``?actif=true``.
 
@@ -31,6 +35,7 @@ class RealisationViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
     queryset = Realisation.objects.all()
     serializer_class = RealisationSerializer
     audit_section = 'realisations'
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     audit_libelle = 'Réalisation'
 
     def get_permissions(self):

@@ -13,6 +13,9 @@ corps de la requête. L'action e-mail de l'automation reste sur son sujet codé 
 dur : le câblage est laissé à une autre lane (on ne fournit ici que le
 modèle + l'API + l'aide ``EmailTemplate.get_template``).
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
+from rest_framework.parsers import JSONParser
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -32,6 +35,26 @@ from .serializers_email import EmailTemplateSerializer
 from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
+
+_EMAILS_EFFECTIFS = inline_serializer('EmailTemplatesEffectifs', {
+    'results': inline_serializer('EmailTemplateEffectif', {
+        'cle': serializers.CharField(),
+        'label': serializers.CharField(),
+        'sujet': serializers.CharField(),
+        'corps': serializers.CharField(),
+        'sujet_defaut': serializers.CharField(),
+        'corps_defaut': serializers.CharField(),
+        'personnalise': serializers.BooleanField(),
+        'placeholders': serializers.ListField(child=serializers.CharField()),
+    }, many=True),
+})
+_EMAILS_BULK_REQUEST = inline_serializer('EmailTemplatesBulkRequest', {
+    'templates': inline_serializer('EmailTemplatesBulkLigne', {
+        'cle': serializers.CharField(),
+        'sujet': serializers.CharField(required=False, allow_null=True),
+        'corps': serializers.CharField(required=False, allow_null=True),
+    }, many=True),
+})
 
 
 def effective_email_templates(company):
@@ -72,6 +95,7 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
     """
     queryset = EmailTemplate.objects.all()
     serializer_class = EmailTemplateSerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     # APAR28 — CRUD direct journalisé (le ``bulk`` garde son propre audit).
     audit_section = 'emails'
     audit_libelle = "Modèle d'e-mail"
@@ -94,12 +118,15 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
             company=company, user=self.request.user, section='emails',
             field=field, field_label=label, old=old, new=new)
 
+    @extend_schema(responses=_EMAILS_EFFECTIFS)
     @action(detail=False, methods=['get'])
     def effective(self, request):
         """Liste effective (défauts fusionnés avec les versions société)."""
         company = request.user.company if request.user.company_id else None
         return Response({'results': effective_email_templates(company)})
 
+    @extend_schema(request=_EMAILS_BULK_REQUEST,
+                   responses=_EMAILS_EFFECTIFS)
     @action(detail=False, methods=['put'])
     def bulk(self, request):
         """Upsert en masse des modèles d'e-mail (sujet/corps), par clé.

@@ -14,7 +14,15 @@ Deux endpoints de calcul (lecture seule, tout rôle) exposent le service :
 import math
 
 from django.db.models import F
-from rest_framework.decorators import api_view, permission_classes
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import serializers
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -74,6 +82,7 @@ def _float_fini(valeur):
     return nombre
 
 
+@extend_schema(responses=TariffSettingsSerializer)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_tariff_settings(request):
@@ -81,7 +90,10 @@ def get_tariff_settings(request):
     return Response(TariffSettingsSerializer(obj).data)
 
 
+@extend_schema(request=TariffSettingsSerializer,
+               responses=TariffSettingsSerializer)
 @api_view(['PUT', 'PATCH'])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 # ASEC31 — écriture des réglages société : palier ET droit
 # `parametres_modifier` (D-ASEC-4/5 : Admin RH, Technicien responsable
 # n'y touchent plus).
@@ -130,8 +142,31 @@ def _num(data, key, default=0):
         return default
 
 
+_ROI_REQUEST = inline_serializer('CalculRoiRequest', {
+    'kwc': serializers.FloatField(required=False),
+    'conso_mensuelle_kwh': serializers.FloatField(required=False),
+    'cout_total_ttc': serializers.FloatField(required=False),
+    'classe': serializers.CharField(required=False),
+    'autoconsommation_pct': serializers.FloatField(
+        required=False, allow_null=True),
+    'productible_kwh_kwc': serializers.FloatField(
+        required=False, allow_null=True),
+})
+
+
+def _q(nom, type_, description):
+    return OpenApiParameter(
+        nom, type_, OpenApiParameter.QUERY, required=False,
+        description=description)
+
+
+@extend_schema(
+    request=_ROI_REQUEST,
+    responses=serializers.DictField(
+        child=serializers.CharField(allow_null=True)))
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def compute_roi(request):
     """Calcule la facture ONEE mensuelle + le ROI conservateur.
 
@@ -161,6 +196,15 @@ def compute_roi(request):
     return Response(out)
 
 
+@extend_schema(
+    parameters=[
+        _q('lat', OpenApiTypes.DOUBLE, 'Latitude (degrés).'),
+        _q('lon', OpenApiTypes.DOUBLE, 'Longitude (degrés).'),
+        _q('peakpower', OpenApiTypes.DOUBLE, 'Puissance crête (kWc).'),
+        _q('tilt', OpenApiTypes.INT, 'Inclinaison (degrés).'),
+        _q('azimuth', OpenApiTypes.INT, 'Azimut (degrés).'),
+    ],
+    responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_productible(request):

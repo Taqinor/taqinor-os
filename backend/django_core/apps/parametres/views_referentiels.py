@@ -12,7 +12,12 @@ n'avaient aucune exposition REST : cet écran les rend consultables/éditables.
 ``company`` est filtrée et forcée côté serveur (``TenantMixin``) — jamais lue
 du corps. Aucune clé canonique (code TVA/unité) ne migre (garde au sérialiseur).
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view,
+)
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
@@ -24,7 +29,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models_payment_terms import ConditionPaiement
 from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
 from .models_taxes import TauxTVA
-from .views_common import SettingsAuditedMixin
+from .views_common import ACTIF_PARAM, SettingsAuditedMixin
 from .models_units import UniteMesure
 from .serializers_referentiels import (
     CadenceRelanceEtapeSerializer,
@@ -42,6 +47,8 @@ class _ReferentielViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
     APAR28 — chaque écriture est journalisée (``SettingsAuditedMixin``)."""
 
     audit_section = 'referentiels'
+    # ENF8 (D2) — aucun upload ici : JSON uniquement.
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -53,6 +60,7 @@ class _ReferentielViewSet(SettingsAuditedMixin, CompanyScopedModelViewSet):
                 HasPermissionOrLegacy('parametres_modifier')()]
 
 
+@extend_schema_view(list=extend_schema(parameters=[ACTIF_PARAM]))
 class TauxTVAViewSet(_ReferentielViewSet):
     """Référentiel des taux de TVA (ARC23). ``?actif=true`` pour filtrer."""
 
@@ -67,6 +75,7 @@ class TauxTVAViewSet(_ReferentielViewSet):
             qs = qs.filter(actif=True)
         return qs
 
+    @extend_schema(request=None, responses=TauxTVASerializer)
     @action(detail=True, methods=['post'])
     def set_defaut(self, request, pk=None):
         """Désigne ce taux comme STANDARD par défaut (un seul par société).
@@ -91,6 +100,7 @@ class TauxTVAViewSet(_ReferentielViewSet):
         return Response(self.get_serializer(taux).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[ACTIF_PARAM]))
 class ConditionPaiementViewSet(_ReferentielViewSet):
     """Référentiel des conditions de paiement (ARC24). ``?actif=true``."""
 
@@ -106,6 +116,7 @@ class ConditionPaiementViewSet(_ReferentielViewSet):
         return qs
 
 
+@extend_schema_view(list=extend_schema(parameters=[ACTIF_PARAM]))
 class UniteMesureViewSet(_ReferentielViewSet):
     """Référentiel des unités de mesure (ARC27). ``?actif=true``."""
 
@@ -121,6 +132,12 @@ class UniteMesureViewSet(_ReferentielViewSet):
         return qs
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    ACTIF_PARAM,
+    OpenApiParameter(
+        'cadence', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+        enum=list(Cadence.values),
+        description='Ne garder que les étapes de cette cadence.')]))
 class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
     """RELANCE FOUNDATION — gabarit de cadence de relance par défaut
     (délai/canal/libellé), consommé par
