@@ -33,7 +33,10 @@ import { cn } from '../lib/cn'
    ignoré si `scrollbar-width` ≠ `auto` — d'où `scrollbar-width: auto` sur la
    barre. Aucune règle métier, aucune dépendance.
    ========================================================================== */
-export function BarreDefilementCollante({ bottom = 0, className, children, ...props }) {
+// `bottom` : optionnel — sans lui, la feuille de style décide (`.bdc-proxy`
+// vaut `bottom: 0` ; dans le générateur, `--gen-pied-h` la pose au-dessus du
+// pied collant, bloc EDC3 d'index.css).
+export function BarreDefilementCollante({ bottom, className, children, ...props }) {
   const wrapRef = useRef(null)
   const barreRef = useRef(null)
   const [dims, setDims] = useState({ scroll: 0, client: 0, barre: 0 })
@@ -110,7 +113,7 @@ export function BarreDefilementCollante({ bottom = 0, className, children, ...pr
         aria-hidden="true"
         tabIndex={-1}
         hidden={!deborde}
-        style={{ position: 'sticky', bottom }}
+        style={bottom == null ? { position: 'sticky' } : { position: 'sticky', bottom }}
       >
         <div className="bdc-proxy-piste" style={{ width: largeurPiste, height: 1 }} />
       </div>

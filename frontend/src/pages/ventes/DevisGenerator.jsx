@@ -1041,6 +1041,41 @@ export default function DevisGenerator({
   // (sorties protégées EDC6, « Voir le PDF » EDC11) : appelée à chaque
   // changement de `dirty`, jamais une valeur déduite côté panneau.
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
+  // EDC6 (suite, orchestrateur 09/10/2026) — « Annuler » (barre en tête, pied,
+  // rail) sur un écran MODIFIÉ : on le dit avant d'abandonner, comme Échap et
+  // le voile du panneau (EDC6). Sans modification : sortie directe, comme
+  // avant. `cancel()` reste le chemin brut (refus du chargeur, écran vierge).
+  const annuler = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Abandonner les modifications ?',
+        description: "Les modifications de ce devis n'ont pas été enregistrées : "
+          + 'elles seront perdues si vous quittez.',
+        confirmLabel: 'Abandonner',
+        cancelLabel: 'Rester',
+      })
+      if (!ok) return
+    }
+    cancel()
+  }
+  // EDC3 (suite) — hauteur du pied collant `gen-actions-sticky`, posée sur la
+  // racine (`--gen-pied-h`) : la barre horizontale proxy (BarreDefilementCollante)
+  // se colle AU-DESSUS du pied, jamais derrière lui (les deux sont `bottom: 0`
+  // sinon, et le pied, plus haut dans l'empilement, la recouvrait).
+  useEffect(() => {
+    const pied = document.getElementById('gen-form')?.querySelector('.gen-actions-sticky')
+    const racine = pied?.closest('.gen-root')
+    if (!pied || !racine) return undefined
+    const mesurer = () => {
+      const h = pied.getBoundingClientRect().height
+      racine.style.setProperty('--gen-pied-h', `${Math.ceil(h)}px`)
+    }
+    mesurer()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observateur = new ResizeObserver(mesurer)
+    observateur.observe(pied)
+    return () => observateur.disconnect()
+  }, [])
   // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
   // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
   // d'avant QJR581 sans version) il est purgé, avec une notice.
@@ -3964,7 +3999,7 @@ export default function DevisGenerator({
         dirty={dirty}
         totalTtc={kpiTotal}
         saving={saving}
-        onAnnuler={cancel}
+        onAnnuler={annuler}
         onVoirPdf={embedded && editDevis && onVoirPdf ? () => onVoirPdf() : null}
       />
 
@@ -5552,7 +5587,7 @@ export default function DevisGenerator({
                   <RotateCcw /> Réinitialiser
                 </Button>
               )}
-              <Button type="button" variant="ghost" onClick={cancel}>
+              <Button type="button" variant="ghost" onClick={annuler}>
                 Annuler
               </Button>
               <Button type="submit" loading={saving}>
@@ -5643,7 +5678,7 @@ export default function DevisGenerator({
                 {saving ? 'Enregistrement...'
                   : (editDevis ? <><Sun /> Enregistrer</> : <><Sun /> Créer le devis</>)}
               </Button>
-              <Button type="button" variant="ghost" onClick={cancel}>Annuler</Button>
+              <Button type="button" variant="ghost" onClick={annuler}>Annuler</Button>
             </div>
           </CardContent>
         </Card>
