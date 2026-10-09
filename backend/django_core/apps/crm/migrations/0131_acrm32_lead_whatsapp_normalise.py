@@ -1,6 +1,7 @@
 # ACRM32 (C-ACRM-027) — clé normalisée du WhatsApp du lead, indexée, et
 # backfill des lignes existantes. Additive, revertable : l'inverse du
-# backfill est un no-op (la colonne et l'index sont simplement retirés).
+# backfill est un no-op (la colonne est simplement retirée). L'index
+# (société, whatsapp_normalise) est posé CONCURREMMENT par 0132 (YOPSB6).
 
 import re
 
@@ -52,11 +53,6 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 blank=True, default='', max_length=20,
                 verbose_name='WhatsApp normalisé (dédup)'),
-        ),
-        migrations.AddIndex(
-            model_name='lead',
-            index=models.Index(fields=['company', 'whatsapp_normalise'],
-                               name='crm_lead_wa_norm_idx'),
         ),
         migrations.RunPython(backfill_whatsapp_normalise, noop_reverse),
     ]

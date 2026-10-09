@@ -1352,7 +1352,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # rendait l'étape de visite comme « plan déjà en cours » et aucun suivi
     # de proposition ne démarrait.
     ouvertes_deja = list(
-        deja.filter(q_plan_ouvert())  # ACRM46 — prédicat partagé
+        deja.filter(_q_plan_ouvert())  # ACRM46 — prédicat partagé
         .order_by('ordre', 'due_date'))
     if ouvertes_deja:
         return ouvertes_deja
@@ -2624,7 +2624,7 @@ def q_visite():
     return q_etape(*CLES_VISITE)
 
 
-def q_plan_ouvert():
+def _q_plan_ouvert():
     """ACRM46 — LE prédicat « plan ouvert » (TREADMILL-1538) : une touche
     de cadence À FAIRE qui n'est pas un geste de visite. Partagé par
     ``initialiser_plan_relance`` (idempotence) et le placement des anciens
@@ -10615,7 +10615,7 @@ def _decider_placements(company, maintenant, gabarits=None,
     # ``initialiser_plan_relance``) tient le lead : des touches toutes closes
     # (faites/sautées/annulées) le rendent candidat au placement.
     deja = set(RelanceEtape.objects.filter(
-        q_plan_ouvert(), company=company, lead_id__in=ids)
+        _q_plan_ouvert(), company=company, lead_id__in=ids)
         .values_list('lead_id', flat=True))
     acceptes, envoyes = _placement_devis_du_lot(company, ids)
 

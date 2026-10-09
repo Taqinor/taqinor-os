@@ -1,5 +1,5 @@
 """ACRM46 — ``deja_en_cadence`` du placement ne compte qu'un lead portant une
-touche À FAIRE (prédicat partagé ``q_plan_ouvert`` d'``initialiser_plan_
+touche À FAIRE (prédicat partagé ``_q_plan_ouvert`` d'``initialiser_plan_
 relance``, TREADMILL-1538) : un lead aux touches toutes closes redevient
 candidat — rejoue la sonde LSVC4-8.
 
