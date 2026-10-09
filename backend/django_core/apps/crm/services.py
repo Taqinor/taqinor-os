@@ -531,7 +531,7 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
 
 # ── ACRM35 — un geste de cadence à la fois par lead ─────────────────────────
 
-def verrouiller_lead(lead):
+def _verrouiller_lead(lead):
     """ACRM35 (C-ACRM-030) — pose un verrou de LIGNE sur ``lead``
     (``SELECT … FOR UPDATE``) dans la transaction en cours : deux gestes de
     cadence sur le MÊME lead (double clic, deux onglets, récepteur + clic)
@@ -545,7 +545,7 @@ def verrouiller_lead(lead):
 
 def _sous_verrou_du_lead(lead_de):
     """ACRM35 — décorateur : exécute la fonction dans ``transaction.atomic()``
-    APRÈS ``verrouiller_lead`` sur le lead que ``lead_de(*args, **kwargs)``
+    APRÈS ``_verrouiller_lead`` sur le lead que ``lead_de(*args, **kwargs)``
     désigne. Les lectures d'idempotence de la fonction (touches ouvertes,
     cadences actives, ordres déjà pris) se font donc APRÈS le verrou : deux
     initialisations concurrentes ne créent qu'un plan."""
@@ -556,7 +556,7 @@ def _sous_verrou_du_lead(lead_de):
         def enveloppe(*args, **kwargs):
             from django.db import transaction
             with transaction.atomic():
-                verrouiller_lead(lead_de(*args, **kwargs))
+                _verrouiller_lead(lead_de(*args, **kwargs))
                 return fonction(*args, **kwargs)
         return enveloppe
     return decorer
@@ -1585,7 +1585,7 @@ def materialiser_touche_suivante(etape_close, user=None, *, avec_raison=False):
     panne ici n'empoisonne pas la transaction de l'appelant."""
     from django.db import transaction
     with transaction.atomic():
-        verrouiller_lead(getattr(etape_close, 'lead', None))
+        _verrouiller_lead(getattr(etape_close, 'lead', None))
         etape, raison = _materialiser_touche_suivante(etape_close, user)
     return (etape, raison) if avec_raison else etape
 

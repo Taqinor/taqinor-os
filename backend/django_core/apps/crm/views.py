@@ -2660,8 +2660,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     Client.objects.filter(company=lead.company),
                     request.user))
         except ClientIntrouvable as exc:
-            return Response({'client_id': [str(exc)]},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # LEVÉ, pas renvoyé (même motif que `placement_cadences`) : le
+            # contrat de la vue reste la forme de son 200 ; DRF rend le 400
+            # ``{client_id: [...]}``.
+            raise DRFValidationError({'client_id': [str(exc)]})
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -5253,8 +5255,8 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             lead = (leads_en_portee(request.user).filter(pk=lead_id).first()
                     if str(lead_id).isdigit() else None)
             if lead is None:
-                return Response({'lead': ['Lead introuvable.']},
-                                status=status.HTTP_400_BAD_REQUEST)
+                # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
+                raise DRFValidationError({'lead': ['Lead introuvable.']})
         if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
             from .services import public_booking_url
             try:
