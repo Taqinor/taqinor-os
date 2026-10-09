@@ -25,6 +25,7 @@ import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { formatMAD } from '../../lib/format'
+import { frenchError } from '../../lib/frenchError'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
 
@@ -61,6 +62,9 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [clients, setClients]           = useState([])
   const [produits, setProduits]         = useState([])
   const [bonsCommande, setBonsCommande] = useState([])
+  const [bcBusy, setBcBusy] = useState(false)
+  const [bcErreur, setBcErreur] = useState('')
+  const [factureCreee, setFactureCreee] = useState(null)
   const [saving, setSaving]             = useState(false)
   // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
   const { errors, setErrors, setFromResponse, clearField } = useServerFieldErrors()
@@ -189,33 +193,29 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
   const setField = (k, v) => { setDirty(true); clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
-  const onBcChange = async (bcId) => {
+  // AFAC67 — plus AUCUNE recopie JS devis → facture : un BC issu d'un devis se
+  // facture par la porte unique `creer-facture` (copier_devis_sur_facture), si bien
+  // que l'écran ne peut plus produire une facture différente du devis signé.
+  const onBcChange = (bcId) => {
     setField('bon_commande', bcId)
+    setBcErreur('')
     if (!bcId) return
     const bc = bonsCommande.find(b => String(b.id) === String(bcId))
     if (bc) setField('client', String(bc.client))
-    // Source unique devis → BC → facture : recopie les lignes du devis lié
-    // (produit/désignation/qté/PU/remise/taux_tva) à la création seulement,
-    // pour ne pas écraser des lignes déjà saisies en édition.
-    if (!isEdit && bc?.devis) {
-      try {
-        const res = await ventesApi.getDevisById(bc.devis)
-        const devisLignes = res.data?.lignes ?? []
-        if (devisLignes.length) {
-          setDirty(true)
-          setLines(devisLignes.map(l => ({
-            _key: newKey(),
-            id: null,
-            produit: String(l.produit),
-            designation: l.designation,
-            quantite: String(l.quantite),
-            prix_unitaire: String(l.prix_unitaire),
-            remise: String(l.remise),
-            taux_tva: l.taux_tva != null ? String(l.taux_tva) : '',
-          })))
-        }
-      } catch { /* prefill best-effort */ }
-    }
+  }
+  const bcSelectionne = bonsCommande.find(b => String(b.id) === String(fields.bon_commande))
+  const modeBcDevis = !isEdit && !!bcSelectionne?.devis
+  const creerDepuisBc = async () => {
+    if (!bcSelectionne) return
+    setBcBusy(true); setBcErreur('')
+    try {
+      const res = await ventesApi.creerFactureBC(bcSelectionne.id)
+      setFactureCreee(res.data)
+      setDirty(false)
+      onSaved?.()
+    } catch (err) {
+      setBcErreur(frenchError(err, 'Création de la facture depuis le bon de commande impossible.'))
+    } finally { setBcBusy(false) }
   }
 
   const setLine = (key, k, v) => {
@@ -455,13 +455,39 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   <SelectValue placeholder="— Aucun BC —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {bonsCommande.map(bc => (
+                  {/* AFAC67 — un BC déjà facturé (facture vivante) n'est plus proposé. */}
+                  {bonsCommande
+                    .filter(bc => !bc.facture_active || String(bc.id) === String(fields.bon_commande))
+                    .map(bc => (
                     <SelectItem key={bc.id} value={String(bc.id)}>
                       {bc.reference} — {bc.client_nom}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {modeBcDevis && (
+                <div className="mt-2 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  {factureCreee ? (
+                    <p role="status" className="m-0">
+                      Facture <strong>{factureCreee.reference}</strong> créée — Total TTC{' '}
+                      <strong>{formatMAD(factureCreee.montant_ttc)}</strong>, identique au devis signé.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="m-0 mb-2">
+                        Ce bon de commande est issu du devis {bcSelectionne.devis_reference || ''} :
+                        la facture est créée à l&apos;identique du devis signé, sans ressaisie.
+                      </p>
+                      <Button type="button" loading={bcBusy} onClick={creerDepuisBc}>
+                        Créer la facture depuis ce BC
+                      </Button>
+                    </>
+                  )}
+                  {bcErreur && (
+                    <p role="alert" className="mt-2 text-destructive">{bcErreur}</p>
+                  )}
+                </div>
+              )}
             </FormField>
 
             <FormField label="Date d'échéance" htmlFor="fc-echeance">
@@ -755,7 +781,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button type="submit" loading={saving}>
+            <Button type="submit" loading={saving} disabled={modeBcDevis}
+                    title={modeBcDevis ? 'Utilisez « Créer la facture depuis ce BC »' : undefined}>
               {isEdit ? 'Mettre à jour' : 'Créer la facture'}
             </Button>
           </FormActions>
