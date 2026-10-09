@@ -22,6 +22,7 @@ côté front, quels widgets sont forables.
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -40,6 +41,7 @@ LIMITE_DEFAUT = 200
 class DrillDownView(APIView):
     """Enregistrements sous-jacents d'un point de graphe / d'une cellule."""
 
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAnyRole]
 
     @extend_schema(
@@ -53,8 +55,8 @@ class DrillDownView(APIView):
     @extend_schema(
         request=inline_serializer('DrillRequete', {
             'dataset': drf_serializers.CharField(),
-            'group_by': drf_serializers.JSONField(required=False),
-            'filtres': drf_serializers.JSONField(required=False),
+            'group_by': drf_serializers.DictField(required=False),
+            'filtres': drf_serializers.DictField(required=False),
             'limite': drf_serializers.IntegerField(required=False),
         }),
         responses=inline_serializer('DrillReponse', {

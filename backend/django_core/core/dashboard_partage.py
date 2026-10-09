@@ -16,7 +16,9 @@ Aucune liste nominative ni ``prix_achat``/marge n'est jamais servie au lien
 public — seul le ``layout`` déjà agrégé du dashboard (JSON opaque à `core`)
 est renvoyé, exactement comme il l'est à l'écran interne.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, viewsets
+from rest_framework.parsers import JSONParser
 from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -52,6 +54,15 @@ def resolve_dashboard_partage_public(token):
     return PARTAGE_OK, partage
 
 
+@extend_schema(responses={
+    200: inline_serializer('DashboardPublic', {
+        'titre': serializers.CharField(),
+        'description': serializers.CharField(allow_blank=True),
+        'layout': serializers.JSONField(),
+    }),
+    410: inline_serializer('DashboardPublicExpire', {
+        'detail': serializers.CharField()}),
+})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -139,6 +150,7 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     (``dashboard_public`` résout par le SEUL jeton)."""
     serializer_class = PartageDashboardSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = PartageDashboard.objects.all()
 
     def perform_create(self, serializer):
@@ -181,6 +193,7 @@ class DashboardPartageInterneViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer (``DashboardScopeMixin`` → 400)."""
     serializer_class = DashboardPartageInterneSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = DashboardPartageInterne.objects.all()
 
 
@@ -204,6 +217,13 @@ def user_can_view_dashboard(user, dashboard):
     ).filter(Q(utilisateur=user) | Q(role=role)).exists()
 
 
+@extend_schema(responses=inline_serializer('DashboardsTv', {
+    'dashboards': inline_serializer('DashboardTv', {
+        'id': serializers.IntegerField(),
+        'titre': serializers.CharField(),
+        'layout': serializers.JSONField(),
+    }, many=True),
+}))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_tv(request):
