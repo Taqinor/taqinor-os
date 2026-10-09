@@ -11,6 +11,9 @@ import { Table } from '../reporting/Table'
 import { formatMAD, formatDate, toNumber } from '../../lib/format'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { toast, useConfirmDialog } from '../../ui/confirm'
+// AFAC61 — raison serveur affichée ; liste des paiements remisables lue sur TOUTES les pages.
+import { frenchError } from '../../lib/frenchError'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* ============================================================================
    PACT46 — Remises d'encaissement terrain (XFSM19).
@@ -53,6 +56,7 @@ export default function RemisesEncaissementPage() {
   const [paiements, setPaiements] = useState([])
   const [selection, setSelection] = useState({})
   const [creationBusy, setCreationBusy] = useState(false)
+  const [creationErreur, setCreationErreur] = useState('')
 
   const charger = () => api.get('/ventes/remises-encaissement/')
     .then((r) => {
@@ -69,13 +73,16 @@ export default function RemisesEncaissementPage() {
 
   const ouvrirCreation = async () => {
     setCreationOuverte(true)
+    setCreationErreur('')
     setDateCollecte(aujourdhui())
     setMontantDeclare('')
     setNote('')
     setSelection({})
     try {
-      const res = await api.get('/ventes/paiements/')
-      const data = res.data
+      // `?remisable=1` : le SERVEUR ne rend que les paiements qu'une remise peut
+      // encore porter (AFAC60) ; toutes les pages, jamais les 50 premiers.
+      const data = await fetchAllPages((page) => api.get('/ventes/paiements/',
+        { params: { remisable: 1, page, page_size: 200 } }).then((r) => r.data))
       const liste = Array.isArray(data) ? data : (data?.results || [])
       // Seuls les encaissements TERRAIN (espèces / chèque) sont remisables.
       setPaiements(liste.filter((p) => MODES_TERRAIN.includes(p.mode)))
@@ -98,7 +105,7 @@ export default function RemisesEncaissementPage() {
   const ecartPrevisionnel = (toNumber(montantDeclare) || 0) - totalSelection
 
   const creer = async () => {
-    setCreationBusy(true)
+    setCreationBusy(true); setCreationErreur('')
     try {
       // `company`, `reference`, `created_by` sont imposés par le serveur.
       await api.post('/ventes/remises-encaissement/', {
@@ -113,8 +120,8 @@ export default function RemisesEncaissementPage() {
       setCreationOuverte(false)
       setLoading(true)
       await charger()
-    } catch {
-      toast.error('Déclaration de la remise impossible.')
+    } catch (err) {
+      setCreationErreur(frenchError(err, 'Déclaration de la remise impossible.'))
     } finally { setCreationBusy(false) }
   }
 
@@ -140,8 +147,8 @@ export default function RemisesEncaissementPage() {
       }
       setLoading(true)
       await charger()
-    } catch {
-      toast.error('Clôture impossible.')
+    } catch (err) {
+      toast.error(frenchError(err, 'Clôture impossible.'))
     } finally { setBusyId(null) }
   }
 
@@ -345,6 +352,9 @@ export default function RemisesEncaissementPage() {
                         onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
+          {creationErreur && (
+            <p role="alert" className="text-sm text-destructive">{creationErreur}</p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreationOuverte(false)}>
               Annuler

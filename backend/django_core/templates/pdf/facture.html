@@ -10,7 +10,25 @@
   'total_ttc': 'Total TTC', 'note': 'Note',
   'coordonnees_bancaires': 'Coordonnées bancaires',
   'signature_cachet': 'Signature & Cachet',
-}[cle] }}{% endif %}{% endmacro %}
+  'deja_paye': 'Déjà payé',
+  'total_deja_paye': 'Total déjà payé',
+  'facture_soldee': 'Facture soldée',
+  'reste_a_payer': 'Reste à payer',
+  'arrondi_commercial': 'Arrondi commercial',
+  'base_ht': 'Base HT',
+  'arrondi_especes': 'Arrondi espèces',
+  'periode_service': 'Période de service',
+  'votre_commande': 'Votre commande',
+  'tel': 'Tél',
+  'instructions_paiement': 'Instructions de paiement',
+  'conditions_generales': 'Conditions générales',
+  'conditions_paiement': 'Conditions de paiement',
+  'facture_generee_le': 'Facture générée automatiquement le',
+  'note_debit': 'Note de débit',
+  'voir_ventilation': 'voir ventilation',
+  'date_livraison': 'Date de livraison / prestation',
+  'page': 'Page',
+}.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
 <html lang="{{ langue_document or 'fr' }}" {% if langue_document == 'ar' %}dir="rtl"{% endif %}>
@@ -91,10 +109,45 @@
        n'affecte jamais la mise en page existante quand absent). */
     .footer-qr { display: flex; justify-content: center; margin-bottom: 8px; }
     .footer-qr img, .footer-qr svg { width: 64px; height: 64px; }
+    {% if langue_document == 'ar' %}
+    /* AFAC57 (C-AFAC-050) — rendu RTL : en-têtes et colonnes chiffrées
+       alignés côté RTL, bloc des totaux SANS marge automatique (elle le
+       poussait hors de la page : x1 = 598 > 595 pt, « Reste à payer »
+       rogné) et montants en segment LTR à police latine (chiffres
+       lisibles « 1200.00 MAD »). Rendu français : bloc absent, inchangé. */
+    thead th { text-align: right; }
+    .text-right { text-align: left; }
+    .company-info { text-align: left; }
+    .totaux { margin-left: 0; margin-right: 0; width: 300px; max-width: 100%; }
+    .totaux-row span:last-child, td.text-right {
+      direction: ltr; unicode-bidi: embed; white-space: nowrap;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+    {% endif %}
+    /* APDF28 (C-APDF-010) — règle @page commune (facture, avoir, note de
+       débit, bon de commande) : CHAQUE page porte l'émetteur, son ICE, la
+       référence du document et « Page i / N » — une page isolée reste
+       rattachable à son document. */
+    @page {
+      @top-left {
+        content: "{{ (entreprise_nom or '')|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}{% if entreprise_ice %} — ICE {{ entreprise_ice|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}{% endif %}";
+        font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
+      }
+      @top-right {
+        content: "{{ (facture.reference or '')|replace('\\', '')|replace('"', "'")|replace('<', '')|replace('>', '')|replace('\n', ' ')|replace('\r', ' ')|safe }}";
+        font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8px; color: #64748b;
+      }
+      @bottom-right {
+        content: "{{ _L('page') }} " counter(page) " / " counter(pages);
+        font-size: 8px; color: #64748b;
+      }
+    }
   </style>
 </head>
 <body>
 <div class="page">
+  {# APDF31 (D-APDF-3) — document non traduit dans la langue du client : la mention de repli est IMPRIMÉE, jamais silencieuse. #}
+  {% if mention_repli %}<div style="margin-bottom: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 10px; color: #475569;">{{ mention_repli }}</div>{% endif %}
 
   <!-- En-tête -->
   <div class="header">
@@ -108,7 +161,7 @@
     <div class="company-info">
       <strong>{{ entreprise_nom }}</strong><br />
       {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
-      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_telephone %}{{ _L('tel') }} : {{ entreprise_telephone }}<br />{% endif %}
       {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
       {% if entreprise_tva_intra %}TVA : {{ entreprise_tva_intra }}{% endif %}
     </div>
@@ -148,7 +201,7 @@
         {% if facture.client.telephone %}{{ facture.client.telephone }}<br />{% endif %}
         {% if facture.client.adresse %}{{ facture.client.adresse }}{% endif %}
         {# CIQ216 — numéro de commande du client, seulement s'il est rempli. #}
-        {% if facture.reference_commande_client %}<br />Votre commande : {{ facture.reference_commande_client }}{% endif %}
+        {% if facture.reference_commande_client %}<br />{{ _L('votre_commande') }} : {{ facture.reference_commande_client }}{% endif %}
       </div>
     </div>
   </div>
@@ -167,15 +220,24 @@
       <strong>{{ _L('tva') }}</strong>
       {# CIQ215 — plusieurs taux : aucun « taux mélangé » (il n'existe pas
          dans la loi), la ventilation est imprimée dans les totaux. #}
-      {% if facture.tva_par_taux|length > 1 %}<span>voir ventilation</span>{% else %}<span>{{ facture.taux_tva }}%</span>{% endif %}
+      {% if facture.tva_par_taux|length > 1 %}<span>{{ _L('voir_ventilation') }}</span>{% else %}<span>{{ facture.taux_tva }}%</span>{% endif %}
     </div>
     <div class="meta-item">
       <strong>{{ _L('statut') }}</strong>
-      <span class="statut-badge">{{ facture.get_statut_display() }}</span>
+      <span class="statut-badge">{{ _L(facture.get_statut_display()) }}</span>
     </div>
+    {# APDF26 (C-APDF-008) — la date contrôlée par ``mentions_manquantes``
+       et exportée à la DGI (TaxPointDate) est celle que le client lit ;
+       sans date : ni libellé ni case vide. #}
+    {% if facture.date_livraison %}
+    <div class="meta-item">
+      <strong>{{ _L('date_livraison') }}</strong>
+      <span>{{ facture.date_livraison.strftime('%d/%m/%Y') }}</span>
+    </div>
+    {% endif %}
     {% if facture.periode_service_debut and facture.periode_service_fin %}
     <div class="meta-item">
-      <strong>Période de service</strong>
+      <strong>{{ _L('periode_service') }}</strong>
       <span>{{ facture.periode_service_debut.strftime('%d/%m/%Y') }} — {{ facture.periode_service_fin.strftime('%d/%m/%Y') }}</span>
     </div>
     {% endif %}
@@ -240,8 +302,8 @@
     {{ chaine_totaux(totaux, facture.remise_globale, {
          'sous_total': _L('sous_total_ht'),
          'remise_globale': _L('remise_globale'),
-         'arrondi': 'Arrondi commercial', 'total_ht': _L('total_ht'),
-         'tva': _L('tva'), 'total_ttc': _L('total_ttc'), 'base_ht': 'Base HT',
+         'arrondi': _L('arrondi_commercial'), 'total_ht': _L('total_ht'),
+         'tva': _L('tva'), 'total_ttc': _L('total_ttc'), 'base_ht': _L('base_ht'),
        }, ventilation=facture.ventilation_tva) }}
     {# ZFAC11 — mention « Arrondi espèces » quand un écart d'arrondi de caisse a
        été appliqué (règlement espèces arrondi au pas société). Conditionnel :
@@ -250,7 +312,7 @@
        du bloc ci-dessous (une seule impression, jamais deux). #}
     {% if facture.abandon_motif == 'arrondi_caisse' and facture.abandon_montant and not reglements %}
     <div class="totaux-row remise">
-      <span>Arrondi espèces</span>
+      <span>{{ _L('arrondi_especes') }}</span>
       <span>−{{ "%.2f"|format(facture.abandon_montant) }} MAD</span>
     </div>
     {% endif %}
@@ -263,36 +325,36 @@
        payé » pour que Facturé + ND − Déjà payé − Abandon = Reste à payer. #}
     {% for nd in reglements.notes_debit %}
     <div class="totaux-row">
-      <span>Note de débit{% if nd.reference %} · {{ nd.reference }}{% endif %}</span>
+      <span>{{ _L('note_debit') }}{% if nd.reference %} · {{ nd.reference }}{% endif %}</span>
       <span>+{{ "%.2f"|format(nd.montant) }} MAD</span>
     </div>
     {% endfor %}
     <div class="totaux-row deja-paye-titre">
-      <span>Déjà payé</span>
+      <span>{{ _L('deja_paye') }}</span>
       <span></span>
     </div>
     {% for r in reglements.lignes %}
     <div class="totaux-row reglement">
-      <span>{{ r.date }} · {{ r.mode }}{% if r.reference %} · {{ r.reference }}{% endif %}</span>
+      <span>{{ r.date }} · {{ _L(r.mode) }}{% if r.reference %} · {{ r.reference }}{% endif %}</span>
       <span>{{ "%.2f"|format(r.montant) }} MAD</span>
     </div>
     {% endfor %}
     <div class="totaux-row">
-      <span>Total déjà payé</span>
+      <span>{{ _L('total_deja_paye') }}</span>
       <span>{{ "%.2f"|format(reglements.total_deja_paye) }} MAD</span>
     </div>
     {% if reglements.abandon %}
     <div class="totaux-row remise">
-      <span>{{ reglements.abandon.libelle }}</span>
+      <span>{{ _L(reglements.abandon.libelle) }}</span>
       <span>−{{ "%.2f"|format(reglements.abandon.montant) }} MAD</span>
     </div>
     {% endif %}
     <div class="totaux-row reste-a-payer">
       {% if reglements.soldee %}
-      <span>Facture soldée</span>
+      <span>{{ _L('facture_soldee') }}</span>
       <span>0.00 MAD</span>
       {% else %}
-      <span>Reste à payer</span>
+      <span>{{ _L('reste_a_payer') }}</span>
       <span>{{ "%.2f"|format(reglements.reste_a_payer) }} MAD</span>
       {% endif %}
     </div>
@@ -318,20 +380,20 @@
 {% if instructions_paiement %}
   <!-- Instructions de paiement (Feature B) — rendues seulement si renseignées. -->
   <div class="rib-block">
-    <strong>Instructions de paiement</strong>
+    <strong>{{ _L('instructions_paiement') }}</strong>
     <div style="white-space: pre-line;">{{ instructions_paiement }}</div>
   </div>
 {% endif %}{% if facture.conditions_paiement %}
   <!-- AFAC56 — conditions de paiement SAISIES sur la facture (retenue de
        garantie comprise), distinctes des conditions générales du profil. -->
   <div class="rib-block">
-    <strong>Conditions de paiement</strong>
+    <strong>{{ _L('conditions_paiement') }}</strong>
     <div style="white-space: pre-line;">{{ facture.conditions_paiement }}</div>
   </div>
 {% endif %}{% if conditions_generales %}
   <!-- Conditions générales (Feature B) — rendues seulement si renseignées. -->
   <div style="margin-top: 16px; background: #f8fafc; border-radius: 6px; padding: 14px 16px; font-size: 10.5px; line-height: 1.6; border-left: 3px solid #cbd5e1; color: #475569;">
-    <strong style="display: block; margin-bottom: 4px; color: #1e293b; font-size: 12px;">Conditions générales</strong>
+    <strong style="display: block; margin-bottom: 4px; color: #1e293b; font-size: 12px;">{{ _L('conditions_generales') }}</strong>
     <div style="white-space: pre-line;">{{ conditions_generales }}</div>
   </div>
 {% endif %}
@@ -365,7 +427,7 @@
       {% if entreprise_siret %} | SIRET : {{ entreprise_siret }}{% endif %}
       {% if entreprise_tva_intra %} | TVA : {{ entreprise_tva_intra }}{% endif %}
       {% if rib %} | RIB : {{ rib }}{% if banque %} ({{ banque }}){% endif %}{% endif %}
-      <br />Facture générée automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+      <br />{{ _L('facture_generee_le') }} {{ now.strftime('%d/%m/%Y à %H:%M') }}
     </div>
   </div>
 
