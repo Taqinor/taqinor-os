@@ -18,16 +18,20 @@ via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
+    parser_classes,
     permission_classes,
     throttle_classes,
     action,
 )
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import (
     SAFE_METHODS, AllowAny, BasePermission, IsAuthenticated,
 )
@@ -104,18 +108,47 @@ from .serializers import (
 )
 
 
+def _q(nom, type_, description, required=False, **kw):
+    """ENF8 — paramètre de requête lu par la vue."""
+    return OpenApiParameter(
+        nom, type_, OpenApiParameter.QUERY, required=required,
+        description=description, **kw)
+
+
+_XLSX = ('application/vnd.openxmlformats-officedocument.'
+         'spreadsheetml.sheet')
+_DETAIL = inline_serializer('CoreDetail', {
+    'detail': drf_serializers.CharField(),
+})
+_OBJET = {'type': 'object', 'additionalProperties': True}
+_LISTE_OBJETS = {'type': 'array', 'items': _OBJET}
+_PERIODE_TYPE = {
+    'type': 'string', 'pattern': r'^\d{4}-(0[1-9]|1[0-2])$'}
+
+
 class ScheduledJobViewSet(viewsets.ViewSet):
     """Jobs Celery Beat (infra globale, admin uniquement).
 
     Sans modèle : la source de vérité est la configuration Celery, pas une
     table métier. Pas de scoping société (infra transverse).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAdminRole]
 
+    @extend_schema(responses=ScheduledJobSerializer(many=True))
     def list(self, request):
         data = jobs_infra.list_jobs()
         return Response(ScheduledJobSerializer(data, many=True).data)
 
+    @extend_schema(
+        request=inline_serializer('ScheduledJobRunRequest', {
+            'task': drf_serializers.CharField(),
+        }),
+        responses={202: inline_serializer('ScheduledJobRunReponse', {
+            'task': drf_serializers.CharField(),
+            'task_id': drf_serializers.CharField(),
+            'status': drf_serializers.CharField(),
+        })})
     @action(detail=False, methods=['post'])
     def run(self, request):
         """Déclenche manuellement un job planifié.
@@ -149,6 +182,15 @@ class ScheduledJobViewSet(viewsets.ViewSet):
         )
 
 
+_WORKFLOW_INSTALLE = inline_serializer('WorkflowInstalle', {
+    'code': drf_serializers.CharField(),
+    'nom': drf_serializers.CharField(),
+    'definition_id': drf_serializers.IntegerField(),
+    'created': drf_serializers.BooleanField(),
+    'nb_etapes': drf_serializers.IntegerField(),
+})
+
+
 class WorkflowTemplateViewSet(viewsets.ViewSet):
     """FG369 — bibliothèque de modèles de workflow installables en un clic.
 
@@ -167,6 +209,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
     données ``core.workflow_templates`` (qui ne touche que les modèles FG366).
     ``core`` reste une couche de base (import-linter).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_permissions(self):
         # Lecture : tout utilisateur authentifié ; install : admin/responsable.
@@ -174,10 +217,19 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
             return [IsAdminOrResponsableTier()]
         return [IsAuthenticated()]
 
+    @extend_schema(responses=WorkflowTemplateSerializer(many=True))
     def list(self, request):
         data = workflow_templates.liste_modeles_workflow()
         return Response(WorkflowTemplateSerializer(data, many=True).data)
 
+    @extend_schema(
+        request=inline_serializer('WorkflowInstallerRequest', {
+            'code': drf_serializers.CharField(),
+        }),
+        responses={
+            (200, 'application/json'): _WORKFLOW_INSTALLE,
+            (201, 'application/json'): _WORKFLOW_INSTALLE,
+        })
     @action(detail=False, methods=['post'])
     def installer(self, request):
         """Installe un modèle de workflow pour la société de l'utilisateur.
@@ -230,6 +282,7 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     comme à la mise à jour (jamais lue du corps). Écriture réservée au palier
     admin/responsable ; lecture ouverte à tout utilisateur authentifié. Les
     étapes sont créées / remplacées via la liste imbriquée ``steps``."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = WorkflowDefinitionSerializer
     queryset = WorkflowDefinition.objects.all().prefetch_related('steps')
@@ -240,6 +293,7 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
+    @extend_schema(request=None, responses={201: WorkflowDefinitionSerializer})
     @action(detail=True, methods=['post'])
     def dupliquer(self, request, pk=None):
         """NTWFL27 — ``POST core/workflow-definitions/{id}/dupliquer/``.
@@ -262,6 +316,7 @@ class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
     comme à la mise à jour (jamais lue du corps). Écriture réservée au palier
     admin/responsable ; lecture ouverte à tout utilisateur authentifié (les
     écrans d'approbation ont besoin de savoir quelle chaîne s'applique)."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = MatriceApprobationSerializer
     queryset = MatriceApprobation.objects.all()
@@ -276,6 +331,7 @@ class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
 class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     """NTWFL12 — CRUD admin des formulaires dynamiques (rattachables aux
     étapes de workflow via ``WorkflowStepDefinition.formulaire``)."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = FormulaireDefinitionSerializer
     queryset = FormulaireDefinition.objects.all()
@@ -289,6 +345,7 @@ class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
 
 class FormulaireChampReutilisableViewSet(TenantMixin, viewsets.ModelViewSet):
     """NTWFL13 — bibliothèque de champs de formulaire réutilisables."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = FormulaireChampReutilisableSerializer
     queryset = FormulaireChampReutilisable.objects.all()
@@ -308,6 +365,7 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
     scopé par la société de sa ``definition``. Le queryset filtre donc sur
     ``definition__company`` et le sérialiseur refuse toute étape rattachée à
     une définition d'un autre tenant. Écriture réservée admin/responsable."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = WorkflowStepDefinitionSerializer
     pagination_class = None
@@ -340,7 +398,7 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
         name='ApprobationGroupeeRequest',
         fields={
             'step_ids': drf_serializers.ListField(
-                child=drf_serializers.IntegerField()),
+                child=drf_serializers.IntegerField(), allow_empty=False),
             'commentaire': drf_serializers.CharField(required=False),
         },
     ),
@@ -355,6 +413,7 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
 )
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def approuver_etapes_en_masse(request):
     """NTWFL16 — ``POST core/workflows/approuver-en-masse/``.
 
@@ -420,7 +479,10 @@ def approuver_etapes_en_masse(request):
     })
 
 
-@extend_schema(responses={200: inline_serializer(
+_P_PERIODE = [_q('periode', OpenApiTypes.STR, 'Période AAAA-MM.')]
+
+
+@extend_schema(parameters=_P_PERIODE, responses={200: inline_serializer(
     name='AnalyseGoulotsResponse',
     fields={
         'definition_id': drf_serializers.IntegerField(),
@@ -479,7 +541,12 @@ def mes_processus_view(request):
     return Response(seaux)
 
 
-@extend_schema(responses={200: inline_serializer(
+_P_CHARGE = [
+    _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+    _q('seuil', OpenApiTypes.INT, 'Seuil de surcharge (entier positif).')]
+
+
+@extend_schema(parameters=_P_CHARGE, responses={200: inline_serializer(
     name='ChargeApprobateursResponse',
     fields={
         'seuil': drf_serializers.IntegerField(),
@@ -532,7 +599,13 @@ _COLONNES_CONFORMITE = [
 ]
 
 
-@extend_schema(responses={200: inline_serializer(
+_P_CONFORMITE = [
+    _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+    _q('export', OpenApiTypes.STR, 'xlsx : classeur téléchargeable.',
+       enum=['xlsx'])]
+
+
+@extend_schema(parameters=_P_CONFORMITE, responses={200: inline_serializer(
     name='RapportConformiteResponse',
     fields={
         'periode': drf_serializers.CharField(allow_null=True),
@@ -617,6 +690,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     personnels d'autrui restent privés). ``owner`` est positionné à
     l'utilisateur courant à la création (jamais lu du corps).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DashboardSerializer
     permission_classes = [IsAuthenticated]
     queryset = Dashboard.objects.all()
@@ -640,6 +714,10 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
         # Ne jamais réécrire company/owner depuis le corps.
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(
+        parameters=[_q('filtre', OpenApiTypes.STR,
+                       'Filtres globaux (JSON) remplaçant ceux du layout.')],
+        responses=_OBJET)
     @action(detail=True, methods=['get'])
     def donnees(self, request, pk=None):
         """NTDATA32 — données de TOUS les widgets sous les filtres globaux.
@@ -693,6 +771,7 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
     L'écriture passe désormais par ``marquer_paye``. La garde d'écriture monte
     au palier responsable/admin : encaisser n'est pas une action de lecture.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = PaymentTransactionSerializer
     permission_classes = [IsAuthenticated]
     queryset = PaymentTransaction.objects.all()
@@ -711,6 +790,7 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
         transaction = serializer.save(company=self.request.user.company)
         payment_infra.initier(transaction)
 
+    @extend_schema(request=None, responses=PaymentTransactionSerializer)
     @action(detail=True, methods=['post'])
     def rafraichir(self, request, pk=None):
         """Interroge le PSP et synchronise le statut (no-op si non configuré).
@@ -741,6 +821,11 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(transaction).data)
 
 
+_ROWS = inline_serializer('SavedQueryRows', {
+    'rows': drf_serializers.JSONField(),
+})
+
+
 class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
 
@@ -754,6 +839,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
       * ``POST …/saved-queries/run/``      — exécute une spec ad-hoc (corps
         ``{"dataset": "...", "spec": {...}}``) sans sauvegarder.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = SavedQuerySerializer
     permission_classes = [IsAuthenticated]
     queryset = SavedQuery.objects.all()
@@ -773,6 +859,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(responses=_LISTE_OBJETS)
     @action(detail=False, methods=['get'])
     def datasets(self, request):
         # NTDATA5 — le catalogue porte désormais, par champ, un `label` FR et
@@ -797,11 +884,18 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'rows': rows})
 
+    @extend_schema(request=None, responses=_ROWS)
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         obj = self.get_object()
         return self._execute(obj.dataset, obj.spec)
 
+    @extend_schema(
+        request=inline_serializer('SavedQueryAdhocRequest', {
+            'dataset': drf_serializers.CharField(),
+            'spec': drf_serializers.JSONField(required=False),
+        }),
+        responses=_ROWS)
     @action(detail=False, methods=['post'], url_path='run')
     def run_adhoc(self, request):
         dataset = (request.data or {}).get('dataset')
@@ -826,6 +920,7 @@ class DataExplorerDatasetsView(APIView):
     pas le droit d'interroger ne lui sont jamais PROPOSÉS non plus (AUD801) :
     l'acteur est transmis au catalogue.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     permission_classes = [IsAuthenticated]
 
@@ -848,6 +943,7 @@ class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
     """Meme vue, route detail — operation_id distinct pour que le schema
     OpenAPI ne fonde pas liste et detail dans un seul identifiant (collision
     d'operationId relevee par la garde YAPIC6)."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     @extend_schema(
         responses=inline_serializer('DataExplorerDatasetSchema', {
@@ -889,18 +985,24 @@ class DataExplorerRunView(APIView):
     Réservée au palier responsable/admin (``IsResponsableOrAdmin``) : une
     requête libre sur un dataset entier n'est pas une lecture d'écran.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     permission_classes = [IsResponsableOrAdmin]
 
     @extend_schema(
         request=inline_serializer('DataExplorerRunRequete', {
             'dataset': drf_serializers.CharField(),
-            'select': drf_serializers.JSONField(required=False),
-            'filters': drf_serializers.JSONField(required=False),
-            'group_by': drf_serializers.JSONField(required=False),
-            'aggregates': drf_serializers.JSONField(required=False),
-            'order': drf_serializers.JSONField(required=False),
-            'limit': drf_serializers.IntegerField(required=False),
+            'select': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
+            'filters': drf_serializers.DictField(required=False),
+            'group_by': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
+            'aggregates': drf_serializers.ListField(
+                child=drf_serializers.DictField(), required=False),
+            'order': drf_serializers.ListField(
+                child=drf_serializers.CharField(), required=False),
+            'limit': drf_serializers.IntegerField(
+                required=False, min_value=1, max_value=5000),
         }),
         responses=inline_serializer('DataExplorerRunReponse', {
             'dataset': drf_serializers.CharField(),
@@ -971,6 +1073,7 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
       * ``POST …/scheduled-exports/{id}/executer/`` — exécute l'extrait
         maintenant (no-op si la destination n'est pas configurée).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = ScheduledExportSerializer
     queryset = ScheduledExport.objects.all()
     pagination_class = None
@@ -980,6 +1083,7 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
+    @extend_schema(request=None, responses=ScheduledExportSerializer)
     @action(detail=True, methods=['post'])
     def executer(self, request, pk=None):
         export = self.get_object()
@@ -987,6 +1091,8 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(export).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('undo', OpenApiTypes.STR, "Fenêtre d'« annuler » seulement.")]))
 class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """FG388 — corbeille par société + restauration + fenêtre d'undo.
 
@@ -1006,6 +1112,7 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     la brique du dépôt qui empêche un ``get_permissions`` de jeter en silence
     ce que le décorateur annonce). La LISTE reste ouverte à tout authentifié.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DeletionRecordSerializer
     permission_classes = [IsAuthenticated]
     queryset = DeletionRecord.objects.all()
@@ -1028,6 +1135,11 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(id__in=list(ids))
         return qs
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'CorbeilleRestauree', {
+            'restored': drf_serializers.BooleanField(),
+            'record': DeletionRecordSerializer(),
+        }))
     @action(detail=True, methods=['post'],
             permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
@@ -1063,6 +1175,7 @@ class BulkEditViewSet(viewsets.ViewSet):
     garde (``permission=`` de ``register_bulk_target``), et un lot appliqué émet
     ``bulk_edit_applied`` — journalisé par ``apps/audit/receivers.py``.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
@@ -1089,10 +1202,21 @@ class BulkEditViewSet(viewsets.ViewSet):
         # qui déclare ses PROPRES permissions ci-dessus n'est pas concernée.
         return [IsAdminOrResponsableTier(), PeutExecuterEditionMasse()]
 
+    @extend_schema(responses=_OBJET)
     @action(detail=False, methods=['get'])
     def targets(self, request):
         return Response(bulk_edit_infra.list_bulk_targets())
 
+    @extend_schema(
+        request=inline_serializer('BulkEditAppliquerRequest', {
+            'target': drf_serializers.CharField(),
+            'ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField(), required=False),
+            'changes': drf_serializers.DictField(required=False),
+        }),
+        responses=inline_serializer('BulkEditAppliquerReponse', {
+            'modifies': drf_serializers.IntegerField(),
+        }))
     @action(detail=False, methods=['post'])
     def appliquer(self, request):
         body = request.data or {}
@@ -1131,6 +1255,7 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
     OBLIGATOIREMENT par ``/core/modules/{key}/activer|desactiver/``, seul
     émetteur de l'événement et seul évaluateur de la fermeture de dépendances.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = ModuleToggleSerializer
     queryset = ModuleToggle.objects.all()
     pagination_class = None
@@ -1157,17 +1282,21 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
     écriture réservée au palier admin/responsable. ``company`` toujours côté
     serveur, jamais du body.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_permissions(self):
         if self.action in ('list',):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
+    @extend_schema(responses=_LISTE_OBJETS)
     def list(self, request):
         from . import feature_flags
         company = request.user.company
         return Response(feature_flags.catalogue_modules(company))
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ModuleActives', {'actives': drf_serializers.JSONField()}))
     @action(detail=True, methods=['post'], url_path='activer')
     def activer(self, request, pk=None):
         from . import feature_flags
@@ -1182,6 +1311,13 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'actives': actives})
 
+    @extend_schema(
+        request=None,
+        parameters=[_q('cascade', OpenApiTypes.STR,
+                       'Désactiver aussi les modules dépendants.',
+                       enum=['1', 'true'])],
+        responses=inline_serializer(
+            'ModuleDesactives', {'desactives': drf_serializers.JSONField()}))
     @action(detail=True, methods=['post'], url_path='desactiver')
     def desactiver(self, request, pk=None):
         from . import feature_flags
@@ -1196,6 +1332,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response({'desactives': desactives})
 
+    @extend_schema(responses=_OBJET)
     @action(detail=False, methods=['get'], url_path='journal')
     def journal(self, request):
         """ODY25 — journal d'installation de la société de l'appelant.
@@ -1224,6 +1361,7 @@ class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
 
     Aucune importation d'app domaine : ``core`` reste fondation.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = TenantThemeSerializer
     queryset = TenantTheme.objects.all()
 
@@ -1232,6 +1370,8 @@ class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
             return [IsAdminOrResponsableTier()]
         return [IsAuthenticated()]
 
+    @extend_schema(request=TenantThemeSerializer,
+                   responses=TenantThemeSerializer)
     @action(detail=False, methods=['get', 'put', 'patch'], url_path='courant')
     def courant(self, request):
         company = request.user.company
@@ -1260,6 +1400,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
       * ``POST …/branded-templates/{id}/preview/`` — rend le modèle avec un
         contexte d'exemple (corps ``{"context": {...}}``).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = BrandedTemplateSerializer
     queryset = BrandedTemplate.objects.all()
     pagination_class = None
@@ -1269,6 +1410,14 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
+    @extend_schema(
+        request=inline_serializer('BrandedPreviewRequest', {
+            'context': drf_serializers.DictField(required=False),
+        }),
+        responses=inline_serializer('BrandedPreviewReponse', {
+            'sujet': drf_serializers.CharField(),
+            'corps': drf_serializers.CharField(),
+        }))
     @action(detail=True, methods=['post'])
     def preview(self, request, pk=None):
         from . import templating
@@ -1297,6 +1446,7 @@ class ConsentRecordViewSet(TenantMixin, viewsets.ModelViewSet):
     ``granted=False``, jamais une réécriture), et le modèle ajouté à
     ``apps.audit.signals.TRACKED_MODELS``.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = ConsentRecordSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = ConsentRecord.objects.all()
@@ -1320,12 +1470,15 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     vie légitime passe par l'action ``traiter`` (le statut et le résultat sont
     déjà en lecture seule au sérialiseur), jamais par un DELETE.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DataSubjectRequestSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = DataSubjectRequest.objects.all()
     # AUD809 — append-only ; ``traiter`` (POST) reste le seul chemin d'évolution.
     http_method_names = ['get', 'post', 'head', 'options']
 
+    @extend_schema(request=None, responses={
+        200: DataSubjectRequestSerializer, 409: _DETAIL})
     @action(detail=True, methods=['post'])
     def traiter(self, request, pk=None):
         from . import dsr
@@ -1342,6 +1495,7 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=409)
         return Response(self.get_serializer(dsr_request).data)
 
+    @extend_schema(request=None, responses=DataSubjectRequestSerializer)
     @action(detail=True, methods=['post'], url_path='prendre-en-charge')
     def prendre_en_charge(self, request, pk=None):
         """NTGRC3 — passe la demande en VÉRIFICATION D'IDENTITÉ.
@@ -1358,6 +1512,9 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'statut': str(exc)}, status=400)
         return Response(self.get_serializer(dsr_request).data)
 
+    @extend_schema(responses=inline_serializer('DsrEnRetard', {
+        'results': DataSubjectRequestSerializer(many=True),
+    }))
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):
         """NTGRC3 — demandes dont l'échéance légale (30 j) est dépassée."""
@@ -1388,6 +1545,7 @@ class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
     l'écran n'est pas recâblé sur une création de nouvelle version. Hors
     périmètre de cette tâche (Files: backend uniquement).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = RegistreTraitementSerializer
     permission_classes = [IsAdminOrResponsableTier]
     queryset = RegistreTraitement.objects.all()
@@ -1395,6 +1553,7 @@ class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
     # AUD809 — append-only : lecture + création, jamais PUT/PATCH/DELETE.
     http_method_names = ['get', 'post', 'head', 'options']
 
+    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.STR})
     @action(detail=False, methods=['get'], url_path='export-csv')
     def export_csv(self, request):
         import csv
@@ -1457,6 +1616,7 @@ class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
         tracé tant que le pipeline n'est pas branché — jamais d'écriture aveugle).
       * ``POST …/sauvegardes/{id}/relancer/`` → ré-exécute l'opération.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = BackupRunSerializer
     permission_classes = [FiabiliteBackupPermission]
     queryset = BackupRun.objects.all()
@@ -1474,6 +1634,7 @@ class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
         else:
             backup.executer_sauvegarde(run)
 
+    @extend_schema(request=None, responses=BackupRunSerializer)
     @action(detail=True, methods=['post'])
     def relancer(self, request, pk=None):
         run = self.get_object()
@@ -1492,8 +1653,14 @@ class SystemStatusViewSet(viewsets.ViewSet):
 
       * ``GET …/status/``  — santé des services + état global + incidents.
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses=inline_serializer('EtatSysteme', {
+        'global': drf_serializers.CharField(),
+        'services': drf_serializers.JSONField(),
+        'incidents': drf_serializers.JSONField(),
+    }))
     def list(self, request):
         from . import health
         services = health.check_services()
@@ -1511,6 +1678,11 @@ class SystemStatusViewSet(viewsets.ViewSet):
 # de router une requête (évite les 502 après recréation de conteneur, notés
 # en mémoire projet). Exemptés d'auth ET de throttle (DRF @api_view avec
 # AllowAny + authentication_classes=[] court-circuite l'auth par défaut).
+@extend_schema(responses={
+    200: inline_serializer('SanteLive', {
+        'status': drf_serializers.CharField()}),
+    403: _DETAIL,  # politique réseau de la société (middleware)
+})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
@@ -1523,6 +1695,14 @@ def health_live(request):
     return Response({'status': 'live'})
 
 
+@extend_schema(responses={
+    200: inline_serializer('SantePret', {
+        'status': drf_serializers.CharField()}),
+    403: _DETAIL,
+    503: inline_serializer('SanteNonPrete', {
+        'status': drf_serializers.CharField(),
+        'detail': drf_serializers.CharField()}),
+})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
@@ -1550,6 +1730,7 @@ class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
       * ``PUT/PATCH …/api-usage/plan/``  — met à jour le plan (admin/responsable).
       * ``GET …/api-usage/analytics/``   — analytics d'usage (par clé + total).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = ApiUsagePlanSerializer
     queryset = ApiUsagePlan.objects.all()
 
@@ -1558,6 +1739,8 @@ class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
             return [IsAdminOrResponsableTier()]
         return [IsAuthenticated()]
 
+    @extend_schema(request=ApiUsagePlanSerializer,
+                   responses=ApiUsagePlanSerializer)
     @action(detail=False, methods=['get', 'put', 'patch'], url_path='plan')
     def plan(self, request):
         from . import api_usage
@@ -1573,6 +1756,7 @@ class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
         serializer.save(company=company)
         return Response(serializer.data)
 
+    @extend_schema(responses=_OBJET)
     @action(detail=False, methods=['get'])
     def analytics(self, request):
         from . import api_usage
@@ -1601,6 +1785,7 @@ class ChangelogViewSet(viewsets.ModelViewSet):
     clé), ou supprimer les notes de l'éditeur. ``('core', 'ChangelogEntry')``
     est par ailleurs suivi par le Journal d'activité (``TRACKED_MODELS``).
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = ChangelogEntrySerializer
     pagination_class = None
 
@@ -1629,6 +1814,8 @@ class ChangelogViewSet(viewsets.ModelViewSet):
         ctx['entries_lues'] = ids
         return ctx
 
+    @extend_schema(responses=inline_serializer('ChangelogNonLues', {
+        'non_lues': drf_serializers.IntegerField()}))
     @action(detail=False, methods=['get'])
     def non_lues(self, request):
         lues = set(
@@ -1638,12 +1825,16 @@ class ChangelogViewSet(viewsets.ModelViewSet):
             pk__in=lues).count()
         return Response({'non_lues': total})
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ChangelogLu', {'lu': drf_serializers.BooleanField()}))
     @action(detail=True, methods=['post'])
     def marquer_lu(self, request, pk=None):
         entry = self.get_object()
         ChangelogRead.objects.get_or_create(user=request.user, entry=entry)
         return Response({'lu': True})
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'ChangelogToutLu', {'non_lues': drf_serializers.IntegerField()}))
     @action(detail=False, methods=['post'])
     def marquer_tout_lu(self, request):
         entries = ChangelogEntry.objects.filter(publie=True)
@@ -1656,6 +1847,10 @@ class ChangelogViewSet(viewsets.ModelViewSet):
 # YHARD5 — tableau « Secrets & rotation », admin-only. Ne renvoie JAMAIS la
 # valeur d'un secret — seulement le fournisseur, le nom de variable
 # d'environnement (secret_ref) et l'échéance de rotation. Company-scopée.
+@extend_schema(responses=inline_serializer('SecretsRotation', {
+    'count': drf_serializers.IntegerField(),
+    'results': drf_serializers.JSONField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def secrets_rotation_due(request):
@@ -1690,6 +1885,8 @@ def _client_ip(request):
 # ``settings.METRICS_ALLOWED_IPS`` (scrape Prometheus sans session). Vide par
 # défaut = admin-only (aucune IP autorisée). Ne plante jamais : une IP hors
 # liste + non-admin reçoit 403, jamais une 500.
+@extend_schema(responses={
+    (200, 'text/plain'): OpenApiTypes.STR, 403: _DETAIL})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
@@ -1734,6 +1931,7 @@ class _IsSuperUser(BasePermission):
 
 
 # ── NTPLT19 — Endpoint superuser des statistiques DB (introspection READ-ONLY) ─
+@extend_schema(responses=_OBJET)
 @api_view(['GET'])
 @permission_classes([_IsSuperUser])
 def db_stats_view(request):
@@ -1745,6 +1943,9 @@ def db_stats_view(request):
     return Response(db_stats.collect_db_stats())
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('company', OpenApiTypes.INT, 'Identifiant de société.'),
+    _q('jour', OpenApiTypes.DATE, 'Jour AAAA-MM-JJ.')]))
 class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
     """NTPLT6 — instantanés d'usage par tenant (lecture seule, SUPERUSER only).
 
@@ -1758,6 +1959,7 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
       * ``GET  usage/{id}/``      — un instantané
       * ``POST usage/snapshot/``  — calcule/rafraîchit l'instantané du jour
     """
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = TenantUsageSnapshotSerializer
     permission_classes = [_IsSuperUser]
 
@@ -1772,6 +1974,8 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(jour=jour)
         return qs
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'UsageSnapshotFait', {'companies': drf_serializers.IntegerField()}))
     @action(detail=False, methods=['post'])
     def snapshot(self, request):
         """Calcule/rafraîchit l'instantané du jour pour toutes les sociétés."""
@@ -1779,6 +1983,18 @@ class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
         done = usage.snapshot_all()
         return Response({'companies': len(done)}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        parameters=[
+            _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+            _q('format', OpenApiTypes.STR, 'xlsx : export tableur.',
+               enum=['xlsx'])],
+        responses={
+            (200, 'application/json'): inline_serializer('UsageCouts', {
+                'periode': drf_serializers.CharField(allow_null=True),
+                'tenants': drf_serializers.JSONField(),
+            }),
+            (200, _XLSX): OpenApiTypes.BINARY,
+        })
     @action(detail=False, methods=['get'])
     def couts(self, request):
         """NTPLT45 — rapport de coût par tenant (SUPERUSER only).
@@ -1828,6 +2044,9 @@ def _couts_xlsx_response(rows, periode):
 # ── NTPLT10 — Supervision de l'outbox (superuser : liste, filtre, rejeu) ─────
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('statut', OpenApiTypes.STR, "Statut de l'événement."),
+    _q('event', OpenApiTypes.STR, "Nom de l'événement.")]))
 class OutboxEventViewSet(viewsets.ReadOnlyModelViewSet):
     """NTPLT10 — supervision de l'outbox transactionnel (SUPERUSER only).
 
@@ -1837,6 +2056,7 @@ class OutboxEventViewSet(viewsets.ReadOnlyModelViewSet):
       * ``POST core/outbox/{id}/rejouer/``  — re-livre l'événement aux handlers
 
     Vue transverse à toutes les sociétés, réservée à l'exploitant."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = OutboxEventSerializer
     permission_classes = [_IsSuperUser]
@@ -1852,6 +2072,7 @@ class OutboxEventViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(event_name=event)
         return qs
 
+    @extend_schema(request=None, responses=_OBJET)
     @action(detail=True, methods=['post'])
     def rejouer(self, request, pk=None):
         """Re-livre l'événement aux handlers durables (dédup préservée)."""
@@ -1874,6 +2095,7 @@ class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
     lui-même — un utilisateur ne voit jamais les jobs d'un collègue. Les jobs
     sont créés par ``core.jobs.submit`` (company/user forcés server-side), pas
     par cette API (lecture seule)."""
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = BackgroundJobSerializer
     permission_classes = [IsAuthenticated]
@@ -1888,8 +2110,19 @@ class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
 # ── NTPLT55 — Bascule superuser du mode maintenance (lecture seule) ──────────
 
 
+@extend_schema(
+    request=inline_serializer('MaintenanceBasculeRequest', {
+        'actif': drf_serializers.BooleanField(),
+        'message': drf_serializers.CharField(
+            required=False, allow_null=True),
+    }),
+    responses=inline_serializer('MaintenanceEtat', {
+        'actif': drf_serializers.BooleanField(),
+        'message': drf_serializers.CharField(allow_blank=True),
+    }))
 @api_view(['GET', 'POST'])
 @permission_classes([_IsSuperUser])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def maintenance_toggle(request):
     """État / bascule du mode maintenance (SUPERUSER only).
 
@@ -1917,7 +2150,8 @@ TRUST_CENTER_PDF_CACHE_KEY = 'core:trust_center_export_pdf:v1'
 TRUST_CENTER_PDF_CACHE_TTL = 3600
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={
+    (200, 'application/pdf'): OpenApiTypes.BINARY, 403: _DETAIL})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicExportThrottle])
@@ -1953,7 +2187,13 @@ def _est_directeur_ou_admin(user):
     return bool(role and role.nom in ('Directeur', 'Administrateur'))
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(
+    parameters=[
+        _q('periode_debut', _PERIODE_TYPE, 'Début AAAA-MM.',
+           required=True),
+        _q('periode_fin', _PERIODE_TYPE, 'Fin AAAA-MM (>= début).',
+           required=True)],
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def registre_fiabilite_export_pdf(request):
@@ -2078,7 +2318,13 @@ def _sla_export_xlsx_response(snapshots, incidents):
     return resp
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(
+    parameters=[_q('export', OpenApiTypes.STR,
+                   'xlsx : classeur ; sinon CSV.', enum=['csv', 'xlsx'])],
+    responses={
+        (200, 'text/csv'): OpenApiTypes.STR,
+        (200, _XLSX): OpenApiTypes.BINARY,
+    })
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sla_export_csv(request):
