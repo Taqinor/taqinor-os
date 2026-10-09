@@ -34,6 +34,7 @@ import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
+import TicketClotureWizard from '../../components/sav/TicketClotureWizard'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 // PACT174 — tags de l'enregistrement (records.TaggedItem, FG9), voisin direct
 // d'AttachmentsPanel : même contrat `model`/`id`, même feuille de style
@@ -94,6 +95,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
   Form, FormSection, FormField, FormActions, useDirtyGuard, confirmLeaveIfDirty,
   DataTable,
   toast,
@@ -444,8 +446,15 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     // WIR233 — distinct de `description` (motif signalé) et du chatter
     // (notes) : instructions D'INTERVENTION, éditables.
     instructions: current.instructions ?? '',
+    // ASAV54 — cause / remède de la panne (XSAV14), saisissables à la fiche.
+    cause: current.cause ? String(current.cause) : '',
+    remede: current.remede ? String(current.remede) : '',
   }), [current])
 
+  // ASAV54 — référentiels cause / remède + assistant de résolution/clôture.
+  const [causes, setCauses] = useState([])
+  const [remedes, setRemedes] = useState([])
+  const [clotureCible, setClotureCible] = useState(null)
   const [fields, setFields] = useState(initialFields)
   const set = (k, v) => setFields((f) => ({ ...f, [k]: v }))
   const [saving, setSaving] = useState(false)
@@ -583,6 +592,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     }
     // Liste des techniciens — best effort (réservé admin) ; sinon dropdown vide.
     api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // ASAV54 — référentiels cause / remède (tolère les mocks partiels).
+    const liste = (rep) => (Array.isArray(rep?.data) ? rep.data : (rep?.data?.results ?? []))
+    savApi.getCausesDefaillance?.()?.then((r) => setCauses(liste(r))).catch?.(() => {})
+    savApi.getRemedesDefaillance?.()?.then((r) => setRemedes(liste(r))).catch?.(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -646,6 +659,14 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   }
 
   const save = async () => {
+    // ASAV54 — passage à Résolu / Clôturé sans cause + remède : l'assistant
+    // s'ouvre (transition d'abord, champs ensuite — ordre d'ASAV42).
+    if (fields.statut !== current.statut
+        && ['resolu', 'cloture'].includes(fields.statut)
+        && !(fields.cause && fields.remede)) {
+      setClotureCible(fields.statut)
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
@@ -661,6 +682,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         // une chaîne vide est une valeur normale (comme `description` avant
         // `nullable()`).
         instructions: fields.instructions ?? '',
+        cause: fields.cause === '' ? null : Number(fields.cause),
+        remede: fields.remede === '' ? null : Number(fields.remede),
       }
       // ASAV42 — l'action de statut d'abord (le serveur pose date_resolution,
       // ASAV14) ; le PATCH des champs seulement si elle a réussi.
@@ -1133,6 +1156,26 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 </SelectContent>
               </Select>
             </FormField>
+            <FormField label="Cause">
+              <Select value={fields.cause || '__none'}
+                      onValueChange={(v) => set('cause', v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Cause (fiche)"><SelectValue placeholder="— Cause —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Cause —</SelectItem>
+                  {causes.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Remède">
+              <Select value={fields.remede || '__none'}
+                      onValueChange={(v) => set('remede', v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Remède (fiche)"><SelectValue placeholder="— Remède —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Remède —</SelectItem>
+                  {remedes.map((r) => <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
             <FormField label="Date de résolution">
               <Input value={formatDateFR(current.date_resolution)} readOnly />
             </FormField>
@@ -1520,6 +1563,26 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
         </FormActions>
+
+        <Dialog open={!!clotureCible} onOpenChange={(o) => { if (!o) setClotureCible(null) }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader><DialogTitle>Assistant de {clotureCible === 'resolu' ? 'résolution' : 'clôture'}</DialogTitle></DialogHeader>
+            {clotureCible && (
+              <TicketClotureWizard
+                ticket={current}
+                statutCible={clotureCible}
+                onAnnuler={() => setClotureCible(null)}
+                onTermine={async () => {
+                  setClotureCible(null)
+                  toast.success('Ticket mis à jour')
+                  await reloadAll()
+                  loadHistorique()
+                  onSaved?.()
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
 
         <AlertDialog open={annulerOpen} onOpenChange={setAnnulerOpen}>
           <AlertDialogContent>

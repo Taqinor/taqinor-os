@@ -56,7 +56,7 @@ import { TicketDetail } from './TicketsPage'
 beforeEach(() => {
   serveur.ticket = { ...CONTRAT.exemple, type: 'correctif', description: 'avant',
     sous_garantie: 'non', couverture: 'a_determiner', devis_id_ext: null,
-    facture_id_ext: null, instructions: '' }
+    facture_id_ext: null, instructions: '', cause: 1, remede: 7 }
   serveur.journal.length = 0
   serveur.refus = false
 })
