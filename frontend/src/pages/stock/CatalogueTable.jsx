@@ -129,6 +129,14 @@ const validatePositif = (v) => {
   return null
 }
 
+// ERR-ASTK209 — la cellule « Stock » pose un comptage d'inventaire : seul un
+// ENTIER est accepté (7,5 ne doit jamais être tronqué en 7 en silence).
+const validateEntierPositif = (v) => {
+  const base = validatePositif(v)
+  if (base) return base
+  return Number.isInteger(Number(v)) ? null : 'Entier requis'
+}
+
 export function CatalogueTable({
   produits,
   loading = false,
@@ -382,7 +390,7 @@ export function CatalogueTable({
               row={p}
               align="right"
               inputType="number"
-              validate={validatePositif}
+              validate={validateEntierPositif}
               onSave={(v, r) => onAjusterStock(r, v)}
             />
           )
