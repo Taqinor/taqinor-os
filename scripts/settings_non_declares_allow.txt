@@ -4,9 +4,6 @@
 # proprietaires retirent leurs lignes : ADEP32, ADEP35-ADEP40...).
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_GRAPH_EOL_ALERT_MONTHS  # ADEP20 clé non déclarée
 backend/django_core/apps/adsengine/tasks.py::ADSENGINE_ROLLUP_AFTER_MONTHS  # ADEP20 clé non déclarée
-backend/django_core/apps/adsengine/whatsapp_webhook.py::WHATSAPP_CLOUD_APP_SECRET  # ADEP20 clé non déclarée
-backend/django_core/apps/adsengine/whatsapp_webhook.py::WHATSAPP_CLOUD_COMPANY_ID  # ADEP20 clé non déclarée
-backend/django_core/apps/adsengine/whatsapp_webhook.py::WHATSAPP_CLOUD_VERIFY_TOKEN  # ADEP20 clé non déclarée
 backend/django_core/apps/automation/actions.py::CONTACT_FROM_EMAIL  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::ESIGN_ENABLED  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::ESIGN_PROVIDER  # ADEP20 clé non déclarée
@@ -14,11 +11,8 @@ backend/django_core/apps/ged/services.py::GED_OFFICE_URL  # ADEP20 clé non déc
 backend/django_core/apps/ged/services.py::GED_PADES_CERT_PATH  # ADEP20 clé non déclarée
 backend/django_core/apps/ged/services.py::GED_PADES_KEY_PATH  # ADEP20 clé non déclarée
 backend/django_core/apps/identity/anomaly.py::GEOIP2_CITY_DB  # ADEP20 clé non déclarée
-backend/django_core/apps/identity/anomaly.py::GEOIP_PATH  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_MINUTES_OUVREES  # ADEP20 clé non déclarée
 backend/django_core/apps/notifications/sweeps.py::HOT_LEAD_SCORE_THRESHOLD  # ADEP20 clé non déclarée
-backend/django_core/apps/notifications/views_whatsapp_bsp.py::WHATSAPP_ACCESS_TOKEN  # ADEP20 clé non déclarée
-backend/django_core/apps/notifications/views_whatsapp_bsp.py::WHATSAPP_ENABLED  # ADEP20 clé non déclarée
 backend/django_core/apps/portail/services.py::CMI_ENABLED  # ADEP20 clé non déclarée
 backend/django_core/apps/portail/services.py::CMI_MERCHANT_KEY  # ADEP20 clé non déclarée
 backend/django_core/apps/publicapi/edi/x12.py::PUBLICAPI_EDI_ACTIF  # ADEP20 clé non déclarée
@@ -37,6 +31,4 @@ backend/django_core/authentication/password_policy.py::LOGIN_PLANCHER_VERROU_MIN
 backend/django_core/core/ai/services.py::AI_GUARD_MAX_CHARS  # ADEP20 clé non déclarée
 backend/django_core/core/ai/services.py::AI_TOXIC_TERMS  # ADEP20 clé non déclarée
 backend/django_core/core/bi_cache.py::BI_WIDGET_CACHE_TTL  # ADEP20 clé non déclarée
-backend/django_core/core/search_backend.py::OPENSEARCH_URL  # ADEP20 clé non déclarée
 backend/django_core/core/tenant_ratelimit.py::TENANT_TASK_RATE_LIMITS  # ADEP20 clé non déclarée
-backend/django_core/core/throttling.py::CF_CONNECTING_IP_TRUSTED  # ADEP20 clé non déclarée
