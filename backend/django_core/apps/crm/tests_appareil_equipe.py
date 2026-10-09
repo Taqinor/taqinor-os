@@ -358,7 +358,7 @@ class TestApiVisitesExternesEtAppareilEquipe(TestCase):
     def test_marquer_puis_demarquer_un_appareil(self):
         creation = self.api1.post('/api/django/crm/appareils-equipe/', {
             'appareil_id': APPAREIL_EQUIPE, 'libelle': 'Téléphone test',
-        })
+        }, format='json')
         self.assertEqual(creation.status_code, 201, creation.data)
         self.assertTrue(AppareilEquipe.objects.filter(
             company=self.co1, appareil_id=APPAREIL_EQUIPE).exists())
@@ -374,11 +374,11 @@ class TestApiVisitesExternesEtAppareilEquipe(TestCase):
     def test_marquage_est_idempotent_pas_derreur_400(self):
         premier = self.api1.post('/api/django/crm/appareils-equipe/', {
             'appareil_id': APPAREIL_EQUIPE, 'libelle': 'Première fois',
-        })
+        }, format='json')
         self.assertEqual(premier.status_code, 201, premier.data)
         second = self.api1.post('/api/django/crm/appareils-equipe/', {
             'appareil_id': APPAREIL_EQUIPE, 'libelle': 'Deuxième fois',
-        })
+        }, format='json')
         self.assertEqual(second.status_code, 200, second.data)
         self.assertEqual(
             AppareilEquipe.objects.filter(
@@ -393,7 +393,7 @@ class TestApiVisitesExternesEtAppareilEquipe(TestCase):
         api_lecture.force_authenticate(self.lecture1)
         resp = api_lecture.post('/api/django/crm/appareils-equipe/', {
             'appareil_id': APPAREIL_EQUIPE,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 403)
         self.assertFalse(AppareilEquipe.objects.filter(
             company=self.co1, appareil_id=APPAREIL_EQUIPE).exists())

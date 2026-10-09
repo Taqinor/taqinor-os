@@ -61,7 +61,7 @@ class ForecastEntryApiTests(TestCase):
         for lead, cat in zip(leads, categories):
             resp = self.client_api.post('/api/django/crm/forecast-entries/', {
                 'lead': lead.pk, 'categorie': cat,
-            })
+            }, format='json')
             self.assertEqual(resp.status_code, 201, resp.data)
 
         resp = self.client_api.get('/api/django/crm/forecast-entries/')

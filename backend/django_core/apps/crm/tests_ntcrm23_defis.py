@@ -73,7 +73,7 @@ class DefiApiTests(TestCase):
         resp = self.api.post('/api/django/crm/defis/', {
             'nom': 'Défi RDV', 'metrique': 'nb_rdv',
             'periode_debut': str(today), 'periode_fin': str(today),
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         defi_id = resp.data['id']
         resp2 = self.api.get(f'/api/django/crm/defis/{defi_id}/classement/')

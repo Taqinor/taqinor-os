@@ -53,7 +53,7 @@ class NoterAttachmentTests(TestCase):
         self.company = make_company('vx111-a', 'A')
         self.user = make_user(self.company, 'vx111-user')
         self.api = auth(self.user)
-        resp = self.api.post('/api/django/crm/leads/', {'nom': 'VX111 Lead'})
+        resp = self.api.post('/api/django/crm/leads/', {'nom': 'VX111 Lead'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.lead_id = resp.data['id']
 
