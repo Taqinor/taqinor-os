@@ -14,6 +14,8 @@ from django.db import models
 from django.utils import timezone
 from django.utils.functional import cached_property
 
+from core.models import TenantModel
+
 from .models import (
     Devis,
     LigneDevis,
@@ -578,14 +580,17 @@ class RetenueSubie(models.Model):
         return f'RAS {self.montant} MAD — {self.facture.reference}'
 
 
-class AbandonCreance(models.Model):
+class AbandonCreance(TenantModel):
     """AFAC34 (C-AFAC-030, D-AFAC-C6 option a) — un abandon de créance est un
     ENREGISTREMENT daté, cumulable et réversible (miroir de ``RetenueSubie``),
     plus un champ unique écrasé à chaque geste. ``Facture.abandon_montant``
     reste la SOMME des abandons actifs (``annule_le`` vide), tenue à jour par
     le service ``abandonner_solde_facture`` / ``reprendre_abandon_creance`` :
     ``decomposition_du``/``montant_du`` la lisent sans requête de plus. La
-    reprise est MANUELLE, jamais automatique (D-AFAC-C6)."""
+    reprise est MANUELLE, jamais automatique (D-AFAC-C6).
+
+    SCA4 — hérite du socle ``core.models.TenantModel`` (timestamps) ; ``company``
+    est redéclaré (motif ARC1) pour garder ``null=True`` + son ``related_name``."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='abandons_creance')
@@ -1033,12 +1038,15 @@ class LigneLivraisonBC(models.Model):
         return f'{self.livraison_id} / ligne {self.ligne_devis_id} = {self.quantite_livree}'
 
 
-class FacturePenalite(models.Model):
+class FacturePenalite(TenantModel):
     """AFAC50 (C-AFAC-040 a) — liaison DURABLE entre une facture d'origine et
     LA facture de pénalités de retard émise pour un niveau de relance :
     ``facturer-penalites`` est idempotent par (facture, niveau). Une facture
     de pénalités ANNULÉE libère le niveau (la liaison est re-pointée sur la
-    nouvelle) ; un niveau supérieur ouvre une nouvelle liaison."""
+    nouvelle) ; un niveau supérieur ouvre une nouvelle liaison.
+
+    SCA4 — hérite du socle ``core.models.TenantModel`` (timestamps) ; ``company``
+    est redéclaré (motif ARC1) pour garder ``null=True`` + son ``related_name``."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='factures_penalite')
