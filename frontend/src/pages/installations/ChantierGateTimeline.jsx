@@ -793,6 +793,9 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [blockedReasons, setBlockedReasons] = useState(null)
+  // ACHT60 — dérogation « acompte non reçu » : étape refusée à rejouer + motif.
+  const [derniereCle, setDerniereCle] = useState(undefined)
+  const [motifAcompte, setMotifAcompte] = useState('')
 
   // CH3 — recette de mise en service (IEC 62446-1).
   const [recette, setRecette] = useState(null)
@@ -834,11 +837,15 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   const idx = stages.findIndex((s) => s.courante)
   const suivante = idx >= 0 ? stages[idx + 1] : undefined
 
-  const avancer = async (cle) => {
+  const avancer = async (cle, motif) => {
     setBusy(true)
     setBlockedReasons(null)
+    setDerniereCle(cle)
     try {
-      await installationsApi.avancerEtape(installationId, cle)
+      await (motif
+        ? installationsApi.avancerEtape(installationId, cle, motif)
+        : installationsApi.avancerEtape(installationId, cle))
+      setMotifAcompte('')
       load()
       onAdvanced?.()
     } catch (err) {
@@ -1072,6 +1079,18 @@ export default function ChantierGateTimeline({ installationId, installation, onA
           <ul className="flex flex-col gap-0.5">
             {blockedReasons.map((r) => <li key={r}>• {r}</li>)}
           </ul>
+          {blockedReasons.some((r) => /acompte/i.test(r)) && (
+            <div className="mt-1 flex flex-col gap-1 text-foreground">
+              <label htmlFor="ch6-motif-acompte">Motif (acompte non reçu)</label>
+              <input id="ch6-motif-acompte" value={motifAcompte}
+                     className="rounded-md border border-input bg-background px-2 py-1"
+                     onChange={(e) => setMotifAcompte(e.target.value)} />
+              <Button size="sm" variant="outline" disabled={busy || !motifAcompte.trim()}
+                      onClick={() => avancer(derniereCle, motifAcompte.trim())}>
+                Réessayer avec ce motif
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
