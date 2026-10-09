@@ -9,54 +9,44 @@ pose une note chatter ARC8 (``records.services.log_note``) sur le
 ``crm.Client`` lié au ticket, sans jamais importer ``apps.sav``.
 """
 import logging
-from urllib.parse import quote
 
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    appointment_effectue, devis_acceptation_annulee, devis_accepted,
-    devis_refused, devis_sent,
-    facture_emise, layout_finalise, lead_created, lead_stage_changed,
-    salle_vente_signal_interet, ticket_resolu, visite_planifiee,
-    visite_terminee, visite_validee,
+    appointment_effectue,
+    devis_acceptation_annulee,
+    devis_accepted,
+    devis_refused,
+    devis_sent,
+    facture_emise,
+    layout_finalise,
+    lead_created,
+    lead_stage_changed,
+    salle_vente_signal_interet,
+    ticket_resolu,
+    visite_planifiee,
+    visite_terminee,
+    visite_validee,
 )
 
-from . import stages
-from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
-from .models import Appointment, Lead, LeadActivity
+from . import receivers_cadence, receivers_clients
+from .models import (
+    Appointment,
+    Lead,
+    LeadActivity,
+)
 from .services import (
     _CONTACT_KINDS,
-    _recaler_file,
-    CAUSE_RDV_REFUS,
-    annuler_etapes_moteur_ouvertes,
-    annuler_rendez_vous_sur_arret,
-    appliquer_retour_visite,
-    appliquer_visite_planifiee,
-    ecrire_retour_lead_visite,
-    journaliser_visite,
     arreter_cadence,
-    arreter_cadence_du_lead_id,
-    CADENCES_ARRETEES_PAR_ISSUE,
     ISSUES_CLIENT_JOINT,
-    OUTCOME_VISITE_ACCEPTEE,
-    assurer_prochaine_etape_apres_succes,
-    avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
-    est_cloture_d_etape_visite,
-    est_derniere_touche_du_suivi,
     est_note_de_report,
     est_note_de_touche_sautee,
-    generer_playbook_progress,
-    initialiser_plan_relance,
     marquer_premier_contact,
-    phrase_notification_retour_visite,
-    poser_filet_visite_a_planifier,
-    q_visite,
     signaler_mismatch_signe_sur_refus,
-    touche_close_de,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,77 +86,14 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
 
 @receiver(devis_accepted,
           dispatch_uid="crm_stop_relance_on_devis_accepted")
-def _arreter_cadence_on_devis_accepted(sender, devis, user, ancien_statut,
-                                       **kwargs):
-    """MRY9 (a) — un devis accepté ARRÊTE toutes les cadences du lead.
-
-    Sans cela, le client qui vient de signer continue de recevoir les
-    messages « votre proposition est valable jusqu'au … » : la faute la plus
-    visible qu'un CRM puisse commettre. Best-effort — jamais d'exception vers
-    l'acceptation, qui est déjà actée."""
-    arreter_cadence_du_lead_id(
-        getattr(devis, 'lead_id', None), company=getattr(devis, 'company', None),
-        user=user, motif='devis accepté')
+def _relais_arreter_cadence_on_devis_accepted(**kwargs):
+    return receivers_cadence._arreter_cadence_on_devis_accepted(**kwargs)
 
 
 @receiver(devis_accepted, dispatch_uid="crm_deal_commission_on_devis_accepted")
 @_point_de_sauvegarde
-def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
-                                                ancien_statut, **kwargs):
-    """NTCRM22 — À l'acceptation d'un devis lié à un ``DealEnregistre``
-    APPROUVE, calcule la commission due (taux × montant HT accepté), la pose
-    sur ``montant_commission_du`` et passe le deal à À_PAYER. N'émet plus
-    aucun événement (ALEA3, D-ALEA-3) — jamais d'écriture comptable
-    automatique ici (frontière compta respectée).
-
-    QJR22 — Décision fondateur D3 (29/08/2026) : la commission est un
-    pourcentage du total NET de l'OPTION ACCEPTÉE, jamais du total BRUT ni,
-    sur un devis à deux options, de la somme des deux (un montant qui ne
-    correspond à aucune vente réelle). ``devis.option_acceptee`` est déjà
-    posé quand ce signal se déclenche (``services.accept_devis`` l'écrit en
-    base avant d'émettre ``devis_accepted``) : on route donc sur la chaîne
-    canonique par option (``apps.ventes.utils.options.option_totaux``, la
-    même que l'échéancier/bon de commande) plutôt que sur ``devis.total_ht``
-    (brut, toutes lignes, aucune option). Cross-app : lecture via un
-    utilitaire de ``ventes`` (pas d'import de ``models``), comme le reste de
-    ce fichier.
-    """
-    from apps.ventes.utils.options import option_totaux
-
-    from .models import DealEnregistre
-
-    if devis.lead_id is None:
-        return
-    deal = (DealEnregistre.objects
-            .filter(lead_id=devis.lead_id, statut=DealEnregistre.Statut.APPROUVE)
-            .select_related('apporteur')
-            .first())
-    if deal is None:
-        # QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : la commission
-        # encore À_PAYER (calculée sur la V1) est RECALCULÉE sur l'option
-        # acceptée de la V2 ; jamais une commission déjà payée.
-        from apps.ventes.selectors import devis_predecesseurs_revision_ids
-        if not devis_predecesseurs_revision_ids(devis):
-            return
-        deal = (DealEnregistre.objects
-                .filter(lead_id=devis.lead_id,
-                        statut=DealEnregistre.Statut.A_PAYER)
-                .select_related('apporteur')
-                .first())
-        if deal is None:
-            return
-    taux = deal.apporteur.taux_commission_pct
-    if not taux:
-        return
-    try:
-        total_net_option = option_totaux(devis)['ht']
-        montant = (total_net_option * taux) / 100
-    except Exception:  # noqa: BLE001 — jamais bloquer l'acceptation du devis
-        logger.exception('NTCRM22 — échec calcul commission deal %s', deal.pk)
-        return
-    deal.montant_commission_du = montant
-    deal.statut = DealEnregistre.Statut.A_PAYER
-    deal.save(update_fields=['montant_commission_du', 'statut'])
+def _relais_calculer_commission_deal_on_devis_accepted(**kwargs):
+    return receivers_clients._calculer_commission_deal_on_devis_accepted(**kwargs)
     # ALEA3 (D-ALEA-3) — plus aucune émission de ``deal_commission_due`` : le
     # signal n'avait AUCUN abonné (le module compta est parqué). Le comptable
     # lit les commissions dues par ``deals-enregistres/a-payer/`` (inchangé).
@@ -254,138 +181,14 @@ def _defaire_acceptation_on_acceptation_annulee(sender, devis, user,
 
 @receiver(devis_sent, dispatch_uid="crm_plan_apres_devis_on_devis_sent")
 @_point_de_sauvegarde
-def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
-                                         **kwargs):
-    """MRY7 — L'ENVOI d'un devis bascule le lead sur la cadence « après devis ».
-
-    Deux gestes, dans cet ordre : la prise de contact s'ARRÊTE (son but est
-    atteint — le prospect a son chiffrage), puis le suivi de proposition
-    DÉMARRE, daté depuis la date d'envoi réelle et non depuis maintenant.
-
-    UNE SEULE cadence après-devis par LEAD à la fois : quand plusieurs devis
-    d'un même lead partent ensemble (``whatsapp_devis`` boucle sur la
-    sélection), le deuxième ne crée rien — sinon le client recevrait deux
-    séries de messages parallèles pour un seul dossier. Le fait est journalisé
-    plutôt que silencieux.
-
-    Best-effort : ne fait jamais retomber un envoi déjà acté."""
-    lead_id = getattr(devis, 'lead_id', None)
-    if not lead_id:
-        return
-    try:
-        from .models import Lead
-        lead = Lead.objects.filter(
-            pk=lead_id, company=getattr(devis, 'company', None)).first()
-        if lead is None:
-            return
-        # RELANCE-SUITE (08/09/2026) — l'envoi ferme aussi l'étape générique
-        # « préparer et envoyer le devis » / « appeler le client » devenue
-        # sans objet : le plan après-devis prend la suite.
-        arreter_cadence(lead, user=user, motif='devis envoyé',
-                        cadences=['contact', 'generique'])
-        # SUIVI E1 (30/09/2026) — l'étape « Préparer le devis modifié »
-        # encore ouverte a rempli son office : le devis modifié part.
-        if annuler_etapes_moteur_ouvertes(lead, CLE_DEVIS_MODIFIE,
-                                          note='devis envoyé'):
-            # SUIVI I6 — l'annulation passe par un ``update()`` : sans
-            # recalage, ``relance_date`` pointait encore sur l'étape annulée
-            # quand elle était la plus proche (``initialiser_plan_relance``
-            # ne l'avance que si elle est plus TARDIVE que sa première
-            # touche).
-            _recaler_file(lead, user)
-        # SUIVI E1 — seuls les BARREAUX du protocole après-devis sont « un
-        # suivi en cours » : une étape de VISITE ouverte (planifier,
-        # confirmer, débrief — cadence `apres_devis`, devis souvent NULL, donc
-        # jamais écartée par `.exclude(devis_id=…)`) bloquait le démarrage du
-        # suivi de proposition, et le devis partait sans aucune relance.
-        barreaux_ouverts = lead.relance_etapes.filter(
-            cadence='apres_devis', statut='a_faire').exclude(q_visite())
-        deja = barreaux_ouverts.exclude(devis_id=devis.pk).first()
-        # QJR561 — la RÉVISION envoyée reprend le suivi de la version qu'elle
-        # remplace : les barreaux ouverts des prédécesseurs (sélecteur ventes,
-        # jamais ses modèles) sont RE-POINTÉS sur ce devis, sans redater. La
-        # branche « aucune seconde série » reste pour un AUTRE devis du lead.
-        if deja is not None and deja.devis_id:
-            from apps.ventes.selectors import (
-                devis_predecesseurs_revision_ids)
-            predecesseurs = devis_predecesseurs_revision_ids(devis)
-            if deja.devis_id in predecesseurs:
-                barreaux_ouverts.filter(
-                    devis_id__in=predecesseurs).update(devis_id=devis.pk)
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=user,
-                    kind=LeadActivity.Kind.NOTE,
-                    body=('Suivi repris sur la révision '
-                          f'{getattr(devis, "reference", "") or "?"}.'))
-                deja = barreaux_ouverts.exclude(devis_id=devis.pk).first()
-                if deja is None:
-                    return
-        if deja is not None:
-            reference = getattr(deja.devis, 'reference', '') or '?'
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=user,
-                kind=LeadActivity.Kind.NOTE,
-                body=('Cadence après devis déjà en cours pour '
-                      f'{reference} — aucune seconde série lancée.'))
-            return
-        # QJR660 (décision fondateur 01/10/2026) — le MÊME devis déjà suivi
-        # (corrigé sur place, D-QJR5-1) garde la cadence d'ORIGINE, ancrée sur
-        # son premier envoi : rien n'est proposé, rien n'est redaté.
-        if barreaux_ouverts.filter(devis_id=devis.pk).exists():
-            return
-        etapes = initialiser_plan_relance(
-            lead, user, cadence='apres_devis',
-            depart=getattr(devis, 'date_envoi', None), devis=devis)
-        # M2 (revue Fable 07/09/2026) — société sans gabarit après-devis (ou
-        # barreaux tous écartés) : le plan est vide et la prise de contact
-        # vient d'être arrêtée — sans filet, le lead sortait de toutes les
-        # files. L'étape générique tient l'invariant Froid-ou-Signé.
-        if not any(getattr(e, 'statut', '') == 'a_faire' for e in etapes):
-            assurer_prochaine_etape_apres_succes(lead, user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            "MRY7: cadence après devis non planifiée (devis #%s)",
-            getattr(devis, 'pk', '?'), exc_info=True)
+def _relais_planifier_apres_devis_on_devis_sent(**kwargs):
+    return receivers_cadence._planifier_apres_devis_on_devis_sent(**kwargs)
 
 
 @receiver(devis_refused, dispatch_uid="crm_stop_apres_devis_on_devis_refused")
 @_point_de_sauvegarde
-def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
-                                          **kwargs):
-    """MRY7 — Un devis REFUSÉ arrête sa cadence de suivi, même quand le lead
-    n'est PAS marqué perdu.
-
-    C'est le cas par défaut (`marquer_lead_perdu` non coché) : le lead reste
-    vivant — on lui refera peut-être une offre — mais continuer à lui demander
-    « alors, ce PDF ? » sur une proposition qu'il vient de refuser serait
-    absurde. Distinct du receveur « perdu », qui ne se déclenche pas ici."""
-    lead_id = getattr(devis, 'lead_id', None)
-    if not lead_id:
-        return
-    try:
-        from .models import Lead, RelanceEtape
-        lead = Lead.objects.filter(
-            pk=lead_id, company=getattr(devis, 'company', None)).first()
-        if lead is None:
-            return
-        if RelanceEtape.objects.filter(
-                devis_id=devis.pk,
-                statut=RelanceEtape.Statut.A_FAIRE).exists():
-            arreter_cadence(lead, user=user,
-                            motif=(motif_refus or 'devis refusé'),
-                            cadences=['apres_devis'])
-        # QJ-INVARIANT — le lead reste VIVANT après ce refus (pas marqué
-        # perdu) : une étape « décider la suite » le garde dans les files —
-        # sa liste de relances ne se termine que par Froid ou Signé. Jamais
-        # le plan après-devis (relancer la proposition refusée).
-        # PARAM-CADENCE — l'étape « décider la suite » est une CLÉ du
-        # gabarit « Après l'appel » : la société la renomme dans Paramètres.
-        assurer_prochaine_etape_apres_succes(
-            lead, user, cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
-            getattr(devis, 'pk', '?'), exc_info=True)
+def _relais_arreter_apres_devis_on_devis_refused(**kwargs):
+    return receivers_cadence._arreter_apres_devis_on_devis_refused(**kwargs)
 
 
 @receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")
@@ -484,160 +287,13 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
 
 
 @receiver(devis_accepted, dispatch_uid="crm_flip_parrainage_converti_on_devis_accepted")
-def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_statut,
-                                                **kwargs):
-    """QX35 — Quand le devis d'un FILLEUL est accepté, le parrainage passe
-    ``en_attente`` → ``converti`` (la récompense reste versée manuellement,
-    hors périmètre ici). Même bus que l'avance de funnel ci-dessus — aucun
-    import de ``ventes`` (le devis n'est manipulé qu'au travers des kwargs du
-    signal). No-op si le devis ne désigne ni lead ni client, si aucun
-    Parrainage ``en_attente`` ne le référence, ou s'il est déjà ``converti``/
-    ``recompense_versee`` (jamais reculé).
-
-    CRX34 — LE FILLEUL DÉJÀ CONVERTI EN CLIENT ÉTAIT LAISSÉ DE CÔTÉ. Le
-    modèle ``Parrainage`` porte DEUX désignations du filleul (``filleul_lead``
-    ET ``filleul_client``) parce qu'un filleul peut arriver comme prospect,
-    comme client, ou devenir client entre-temps. Le récepteur, lui, ne
-    consultait que ``filleul_lead_id`` : un parrainage enregistré sur le seul
-    ``filleul_client`` restait ÉTERNELLEMENT « en attente » alors que la vente
-    était signée — et le parrain n'était jamais récompensé. On apparie
-    désormais sur l'une OU l'autre désignation."""
-    from django.db.models import Q
-
-    lead_id = getattr(devis, 'lead_id', None)
-    client_id = getattr(devis, 'client_id', None)
-    if not lead_id and not client_id:
-        return
-    from .models import Parrainage
-    appariement = Q(pk__in=[])
-    if lead_id:
-        appariement |= Q(filleul_lead_id=lead_id)
-    if client_id:
-        appariement |= Q(filleul_client_id=client_id)
-    parrainage = Parrainage.objects.filter(
-        appariement, company=devis.company,
-        statut=Parrainage.Statut.EN_ATTENTE,
-    ).first()
-    if parrainage is None:
-        return
-    parrainage.statut = Parrainage.Statut.CONVERTI
-    parrainage.save(update_fields=['statut'])
-    _suggerer_graine_pub_parrainage(parrainage, user)
+def _relais_flip_parrainage_converti_on_devis_accepted(**kwargs):
+    return receivers_clients._flip_parrainage_converti_on_devis_accepted(**kwargs)
 
 
 @receiver(devis_accepted, dispatch_uid="crm_lien_parrainage_on_devis_accepted")
-def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
-                                                ancien_statut, **kwargs):
-    """CRX38 — LE LIEN DE PARRAINAGE POST-SIGNATURE ATTEINT ENFIN QUELQU'UN.
-
-    ``ventes.services.installation_share_link`` (PUB69) existe, est testé, et
-    fabrique le lien « mon installation » d'un devis ACCEPTÉ — celui que le
-    client peut faire suivre, porteur des UTM ``parrainage_whatsapp`` qui
-    mesurent le bouche-à-oreille organique. Personne ne l'appelait : la
-    capacité était complète et ORPHELINE, donc le canal de parrainage
-    n'existait que sur le papier.
-
-    Au moment exact de l'enchantement — la signature — le commercial reçoit
-    donc le lien DÉJÀ PRÊT à envoyer en WhatsApp, plus le message tout fait.
-    Aucun envoi automatique au client : c'est un humain qui décide (même
-    doctrine que la suggestion de graine pub PUB65 ci-dessous).
-
-    FRONTIÈRE CROSS-APP : le lien est demandé à la porte publique de
-    ``ventes`` (``services.installation_share_link``), jamais à ses modèles.
-    Best-effort de bout en bout — ce câblage ne fait JAMAIS échouer une
-    acceptation : l'appel prend son propre point de sauvegarde (une erreur
-    base ne peut pas empoisonner la transaction d'acceptation, cf. QJR421) et
-    la notification part par ``transaction.on_commit`` (jamais un envoi
-    synchrone sous les verrous de l'acceptation, cf. QJR422)."""
-    from django.db import transaction
-
-    try:
-        from apps.ventes.services import installation_share_link
-        with transaction.atomic():
-            _, url = installation_share_link(devis)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'CRX38 : lien de parrainage indisponible pour le devis %s',
-            getattr(devis, 'reference', '?'), exc_info=True)
-        return
-    if not url:
-        # Devis non accepté (garde PUB69) — rien à proposer.
-        return
-
-    destinataire = _commercial_du_devis(devis)
-    if destinataire is None:
-        return
-
-    reference = getattr(devis, 'reference', '') or ''
-    client_nom = (getattr(getattr(devis, 'client', None), 'nom', '')
-                  or '').strip()
-    message = (
-        f"Merci pour votre confiance {client_nom} ! Voici le lien de votre "
-        f"installation, à partager autour de vous : {url}").strip()
-    wa_url = 'https://wa.me/?text=' + quote(message)
-    corps = '\n'.join([
-        (f'Le devis {reference} de {client_nom} est signé.'
-         if client_nom else f'Le devis {reference} est signé.'),
-        'Lien « mon installation » à faire suivre au client :',
-        url,
-        f'Envoyer en WhatsApp : {wa_url}',
-    ])
-    company = getattr(devis, 'company', None)
-    lien_interne = f'/ventes/devis/{devis.pk}'
-
-    def _envoyer():
-        try:
-            from apps.notifications.services import notify
-            notify(
-                user=destinataire,
-                event_type='devis_accepted',
-                title=f'Lien de parrainage prêt — {reference}',
-                body=corps,
-                link=lien_interne,
-                company=company,
-            )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'CRX38 : notification de lien de parrainage échouée '
-                'pour le devis %s', reference, exc_info=True)
-
-    transaction.on_commit(_envoyer)
-
-
-def _commercial_du_devis(devis):
-    """CRX38 — LE commercial à qui le lien est utile : le propriétaire du lead
-    d'origine, à défaut le créateur du devis. ``None`` si ni l'un ni l'autre —
-    on ne notifie alors personne plutôt que de choisir au hasard."""
-    lead = getattr(devis, 'lead', None)
-    owner = getattr(lead, 'owner', None) if lead is not None else None
-    if owner is not None:
-        return owner
-    return getattr(devis, 'created_by', None)
-
-
-def _suggerer_graine_pub_parrainage(parrainage, user):
-    """PUB65 — Poste, sur la fiche du PARRAIN, une note chatter suggérant une
-    graine publicitaire géo/lookalike autour de lui (jamais une action
-    automatique — un humain doit déclencher via
-    ``apps.adsengine.audiences``). Best-effort : n'échoue JAMAIS la
-    conversion du parrainage elle-même."""
-    parrain = getattr(parrainage, 'parrain', None)
-    if parrain is None:
-        return
-    try:
-        from apps.adsengine.audiences import referral_seed_suggestion
-        from apps.records.services import log_note
-
-        nom_complet = f'{parrain.nom} {parrain.prenom or ""}'.strip() or 'parrain'
-        suggestion = referral_seed_suggestion(
-            parrain_nom=nom_complet,
-            parrain_localisation=getattr(parrain, 'adresse', None))
-        log_note(parrain, user, suggestion['reason_fr'],
-                 company=parrainage.company)
-    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais la conversion
-        logger.warning(
-            'PUB65 : suggestion de graine pub échouée pour parrainage #%s',
-            getattr(parrainage, 'pk', '?'), exc_info=True)
+def _relais_proposer_lien_parrainage_on_devis_accepted(**kwargs):
+    return receivers_clients._proposer_lien_parrainage_on_devis_accepted(**kwargs)
 
 
 @receiver(devis_refused, dispatch_uid="crm_signal_signe_sans_devis_actif")
@@ -711,153 +367,19 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=LeadActivity,
           dispatch_uid="crm_stop_contact_cadence_on_outcome")
-def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
-    """MRY9 (e) — l'ISSUE d'un appel arrête la bonne cadence, et elle seule.
-
-    * `joint` / `interesse` → arrête `contact` : le but de la prise de contact
-      est atteint. La cadence APRÈS DEVIS, elle, continue — un client joint
-      reste à relancer sur sa proposition. RELANCE-SUITE (fondateur
-      08/09/2026) : la suite posée par le filet suit le CANAL de la touche —
-      message répondu → « appeler le client » ; appel fait → « préparer et
-      envoyer le devis » ; le plan après-devis attend l'ENVOI du devis.
-      SUIVI E22 (30/09/2026) — sur la DERNIÈRE touche du suivi de
-      proposition (lue sur la touche close, ``touche_close_de``) : « décider
-      la suite », pour demain, jamais l'étape devis d'un devis déjà parti.
-    * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
-      « perdu » est une décision humaine qui exige un motif (MRY22), pas un
-      effet de bord d'un appel.
-    * `visite_acceptee` (décision fondateur du 24/09/2026) → arrête `contact`
-      et `reveil` exactement comme `joint` (un dormant qui accepte la visite
-      sort du Froid), mais la suite n'est pas l'étape générique : c'est
-      « Planifier la visite technique convenue », pour aujourd'hui.
-
-    Seule une activité créée par un HUMAIN compte (``user`` non nul) — une
-    ligne système ne décide pas d'un arrêt."""
-    if not created or instance.user is None:
-        return
-    issue = (instance.outcome or '').strip()
-    # M1 (revue Fable 07/09/2026) — la cadence ``reveil`` est arrêtée comme
-    # les autres : un client JOINT au réveil J30 ne doit pas recevoir le J60,
-    # et un refus au réveil termine les réveils (le dossier reste au Froid).
-    # CAD1 — la liste des cadences arrêtées est lue dans `services`
-    # (``CADENCES_ARRETEES_PAR_ISSUE``), d'où la matérialisation réactive la
-    # lit aussi : une seule table, donc plus de divergence possible entre
-    # « ce que l'arrêt fait » et « ce que la suite croit qu'il a fait ».
-    cadences = list(CADENCES_ARRETEES_PAR_ISSUE.get(issue, ()))
-    if not cadences:
-        return
-    if issue in ('joint', 'interesse'):
-        motif = 'joint'
-    elif issue == OUTCOME_VISITE_ACCEPTEE:
-        motif = 'visite acceptée'
-    else:
-        motif = 'refus au téléphone'
-    try:
-        arreter_cadence(instance.lead, user=instance.user, motif=motif,
-                        cadences=cadences)
-        # QJ-INVARIANT — si l'arrêt (ou l'absence de toute cadence) laisse le
-        # lead SANS prochaine étape, le filet en pose une : un client joint ne
-        # disparaît jamais des files, et un REFUS téléphonique laisse une
-        # étape « décider la suite » — la décision (perdu + motif, MRY22)
-        # reste humaine, mais le dossier reste visible en attendant.
-        if issue in ('joint', 'interesse', OUTCOME_VISITE_ACCEPTEE):
-            # M1 — un client joint pendant un RÉVEIL sort du parking : COLD
-            # est rangé SOUS toute étape active (rang -1), l'avance vers
-            # CONTACTED est donc légitime et réactive le dossier — sans quoi
-            # la garde COLD du filet le laisserait figé au Froid sans suite.
-            # 24/09/2026 — même chose pour un dormant qui ACCEPTE LA VISITE :
-            # resté au Froid, plus aucun filet ne le relèverait après elle.
-            instance.lead.refresh_from_db(fields=['stage'])
-            if instance.lead.stage == stages.COLD:
-                avancer_stage_lead_vers(
-                    instance.lead, instance.user, stages.CONTACTED)
-        if issue == OUTCOME_VISITE_ACCEPTEE:
-            # 24/09/2026 — la seule suite utile est de CALER la visite, pour
-            # aujourd'hui (no-op si un rendez-vous est déjà calé). Posée ICI
-            # pour que l'issue saisie au journal d'appel de la fiche (aucune
-            # touche close) ait la même suite qu'au « Fait » d'une touche ;
-            # sur ce second chemin, ``marquer_etape_relance`` repasse derrière
-            # (idempotent par libellé : l'étape est déplacée, jamais doublée).
-            poser_filet_visite_a_planifier(instance.lead, instance.user)
-        elif issue in ('joint', 'interesse'):
-            # RELANCE-SUITE (08/09/2026) — la suite dépend du CANAL de la
-            # touche : message répondu → l'appeler ; appel fait → préparer
-            # et envoyer le devis. Le plan après-devis, lui, ne démarre qu'à
-            # l'ENVOI du devis (jamais sur un brouillon).
-            # CAD2 — la clôture d'une étape de VISITE (débrief, confirmation,
-            # devis modifié) ne DÉMARRE jamais le suivi de proposition : le
-            # filet le poursuit s'il a déjà servi, sinon il pose son étape.
-            # SUIVI E4 (30/09/2026) — et elle n'est jamais « il a répondu au
-            # message » : une confirmation de visite close par WhatsApp ne
-            # fait pas poser « Appeler le client — il a répondu au message »
-            # (le canal de la touche ne décide pas de sa suite).
-            if est_derniere_touche_du_suivi(touche_close_de(instance)):
-                # SUIVI E22 (décision fondateur du 30/09/2026) — client joint
-                # sur la DERNIÈRE touche du suivi de proposition : le devis
-                # est déjà parti, « Préparer et envoyer le devis » (ou
-                # « l'appeler ») n'a plus de sens. « Décider la suite » est
-                # posée pour demain, comme après un refus — sans plan devis ;
-                # le dossier garde son étape (« Relance »).
-                assurer_prochaine_etape_apres_succes(
-                    instance.lead, instance.user,
-                    cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
-            else:
-                visite = est_cloture_d_etape_visite(instance)
-                assurer_prochaine_etape_apres_succes(
-                    instance.lead, instance.user,
-                    canal_touche=None if visite else instance.kind,
-                    demarrer_plan=not visite)
-        elif issue == 'refuse':
-            # SUIVI E21 (30/09/2026) — le refus arrête les relances ET le
-            # rendez-vous de visite en attente : le technicien ne se déplace
-            # pas chez un client qui vient de refuser (best-effort, note au
-            # chatter quand un rendez-vous est réellement annulé).
-            annuler_rendez_vous_sur_arret(
-                instance.lead, instance.user, cause=CAUSE_RDV_REFUS)
-            assurer_prochaine_etape_apres_succes(
-                instance.lead, instance.user,
-                cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",
-            issue, getattr(instance, 'lead_id', '?'), exc_info=True)
+def _relais_arreter_cadence_on_outcome(**kwargs):
+    return receivers_cadence._arreter_cadence_on_outcome(**kwargs)
 
 
 @receiver(lead_stage_changed,
           dispatch_uid="crm_stop_relance_on_stage_signed_or_cold")
-def _arreter_cadence_on_stage_change(sender, lead, old_stage, new_stage, user,
-                                     **kwargs):
-    """MRY9 (b) — SIGNED arrête TOUT ; COLD arrête `contact` et `apres_devis`.
-
-    COLD est un PARKING, pas une perte : les réveils J30/J60 y sont posés par
-    MRY11 — on ne les arrête donc pas ici, sinon un lead mis au froid ne
-    serait plus jamais réveillé. Best-effort : ne bloque jamais la transition
-    d'étape déjà actée par l'émetteur."""
-    try:
-        if new_stage == stages.SIGNED:
-            arreter_cadence(lead, user=user, motif='lead signé')
-        elif new_stage == stages.COLD:
-            arreter_cadence(lead, user=user, motif='lead passé en froid',
-                            cadences=['contact', 'apres_devis'])
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            "MRY9: arrêt de cadence échoué au changement d'étape du lead #%s",
-            getattr(lead, 'pk', '?'), exc_info=True)
+def _relais_arreter_cadence_on_stage_change(**kwargs):
+    return receivers_cadence._arreter_cadence_on_stage_change(**kwargs)
 
 
 @receiver(lead_stage_changed, dispatch_uid="crm_generate_playbook_progress_on_stage_change")
-def _generer_playbook_progress_on_stage_change(sender, lead, old_stage,
-                                               new_stage, user, **kwargs):
-    """NTCRM12 — À CHAQUE changement d'étape d'un lead, génère la progression
-    des tâches obligatoires/optionnelles du(des) playbook(s) actif(s) portant
-    une étape sur ``new_stage``. Best-effort : ne bloque jamais la transition
-    de stage déjà actée par l'émetteur."""
-    try:
-        generer_playbook_progress(lead, new_stage)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'NTCRM12: génération de la progression playbook échouée '
-            'pour le lead #%s', getattr(lead, 'pk', '?'), exc_info=True)
+def _relais_generer_playbook_progress_on_stage_change(**kwargs):
+    return receivers_clients._generer_playbook_progress_on_stage_change(**kwargs)
 
 
 @receiver(ticket_resolu, dispatch_uid="crm_chatter_on_ticket_resolu")
@@ -967,62 +489,8 @@ def _emit_lead_created(sender, instance, created, **kwargs):
 # de visite est un layer DOCUMENT interne.
 
 @receiver(visite_validee, dispatch_uid="crm_retour_lead_on_visite_validee")
-def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
-                                   **kwargs):
-    """Pose ``visite_effectuee`` + le récap sur la fiche, et la note chatter.
-
-    Idempotence reconduite à l'identique : le récap n'est APPENDU que s'il
-    n'est pas déjà présent (``recap not in existantes``), donc une
-    re-validation ne le duplique pas et une note écrite à la main n'est jamais
-    écrasée. L'auteur de la note est l'utilisateur AGISSANT, transporté par
-    l'événement — jamais déduit.
-
-    Best-effort : la visite est DÉJÀ validée quand on arrive ici ; un retour
-    lead en échec ne doit pas défaire une décision humaine actée.
-    """
-    from .models import Lead
-
-    try:
-        lead = Lead.objects.filter(pk=lead_id).first()
-        if lead is not None:
-            ecrire_retour_lead_visite(
-                lead, recap, visite_id=getattr(visite, "pk", None))
-        journaliser_visite(visite, user, 'validee')
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'VTA5 : retour lead du feu vert de visite échoué pour le lead '
-            '#%s', lead_id, exc_info=True)
-    # AGR413 — les mesures du point d'eau (kwarg ``mesures_point_eau``, vide
-    # pour une visite toiture) remontent sur les colonnes du lead : la mesure
-    # remplace la déclaration. Lead borné à la société de la visite.
-    # Best-effort comme VTA5 : la visite est déjà validée.
-    mesures = kwargs.get('mesures_point_eau')
-    if mesures:
-        try:
-            from .services import appliquer_mesures_point_eau
-            lead = Lead.objects.filter(
-                pk=lead_id, company_id=visite.company_id).first()
-            if lead is not None:
-                appliquer_mesures_point_eau(lead, mesures, user)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'AGR413 : retour des mesures du point d\'eau échoué pour le '
-                'lead #%s', lead_id, exc_info=True)
-    # CIQ607 — le relevé C&I (kwarg ``releve_ci``, vide hors gabarit ``ci``)
-    # remonte au lead : la mesure remplace la déclaration, avec sa
-    # provenance. Lead borné à la société de la visite ; best-effort.
-    releve_ci = kwargs.get('releve_ci')
-    if releve_ci:
-        try:
-            from .services import appliquer_releve_ci
-            lead = Lead.objects.filter(
-                pk=lead_id, company_id=visite.company_id).first()
-            if lead is not None:
-                appliquer_releve_ci(lead, releve_ci, user)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'CIQ607 : retour du relevé C&I échoué pour le lead #%s',
-                lead_id, exc_info=True)
+def _relais_retour_lead_on_visite_validee(**kwargs):
+    return receivers_cadence._retour_lead_on_visite_validee(**kwargs)
 
 
 # ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────
@@ -1042,139 +510,21 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
 # DOCUMENT interne, jamais une étape de funnel.
 
 @receiver(visite_planifiee, dispatch_uid="crm_suivi_on_visite_planifiee")
-def _suivi_on_visite_planifiee(sender, visite, lead_id, user, date_prevue,
-                               commercial_nom='', **kwargs):
-    """Un rendez-vous est posé (ou déplacé) : la cadence s'y recale.
-
-    AMENDEMENT FONDATEUR (15/09/2026) — « recale » veut dire DÉCALE, pas
-    annule : le plan après-devis glisse jusqu'après le débrief et le lead garde
-    sa position exacte dans le protocole. Aucune cadence n'est jamais
-    redémarrée."""
-    try:
-        lead = Lead.objects.filter(pk=lead_id).first()
-        if lead is None:
-            return
-        appliquer_visite_planifiee(
-            lead, user, date_prevue, commercial_nom=commercial_nom)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'VISITE-CADENCE : recalage du suivi échoué à la planification '
-            'du lead #%s', lead_id, exc_info=True)
+def _relais_suivi_on_visite_planifiee(**kwargs):
+    return receivers_cadence._suivi_on_visite_planifiee(**kwargs)
 
 
 @receiver(visite_terminee, dispatch_uid="crm_suivi_on_visite_terminee")
-def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
-                              qualification=None, **kwargs):
-    """Le technicien est reparti : son retour redescend, et on rappelle.
-
-    Sa QUALIFICATION du client ouvre la note (amendement fondateur n°2) et
-    décide de la suite : le débrief se cale sur le moment de rappel qu'il a
-    convenu sur place, et devient « préparer le devis modifié » quand le devis
-    doit être repris.
-
-    Le retour TEXTE LIBRE entre dans l'historique du lead (il est souvent la
-    seule trace de ce que le client a dit sur place), ``visite_effectuee`` est
-    posé, et le RESPONSABLE du lead reçoit la notification « rappeler sous
-    24-48 h ».
-
-    La notification part du CRM et de lui seul : c'est lui qui connaît le
-    ``owner`` d'un lead — ``apps.visites`` n'a aucun moyen (ni aucun droit) de
-    le savoir."""
-    try:
-        lead = Lead.objects.filter(pk=lead_id).first()
-        if lead is None:
-            return
-        auteur = ''
-        if user is not None:
-            auteur = (user.get_full_name() or user.username or '')
-        etape = appliquer_retour_visite(lead, user, retour, auteur=auteur,
-                                        qualification=qualification)
-        _notifier_responsable_retour_visite(lead, user, etape)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'VISITE-CADENCE : retour terrain non traité pour le lead #%s',
-            lead_id, exc_info=True)
-
-
-def _notifier_responsable_retour_visite(lead, acteur, etape=None):
-    """Prévient le RESPONSABLE du lead de la suite du retour terrain.
-
-    ``etape`` : ce que ``appliquer_retour_visite`` a RENDU — le texte le lit
-    (``services.phrase_notification_retour_visite``) : « rappeler sous
-    24-48 h » après un devis parti, « préparer et envoyer le devis pour le
-    JJ/MM » sans devis (décision fondateur du 24/09/2026, relevé du 25/09).
-
-    Personne d'autre : ni la direction (ce n'est pas une alerte), ni le
-    commercial terrain (il vient de faire la visite). Lead sans responsable, ou
-    responsable = l'acteur ⇒ rien à envoyer, pas une notification à soi-même.
-    Best-effort — une cloche en échec ne défait pas une visite terminée."""
-    destinataire = getattr(lead, 'owner', None)
-    if destinataire is None:
-        return None
-    if acteur is not None and getattr(acteur, 'id', None) == destinataire.id:
-        return None
-    try:
-        from apps.notifications.services import notify
-
-        return notify(
-            destinataire, 'visite_retour_terrain',
-            f'Retour de visite — {lead}',
-            body=phrase_notification_retour_visite(etape),
-            link=f'/crm/leads/{lead.pk}', company=lead.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'VISITE-CADENCE : notification de retour de visite non envoyée '
-            '(lead #%s)', getattr(lead, 'pk', '?'), exc_info=True)
-        return None
+def _relais_suivi_on_visite_terminee(**kwargs):
+    return receivers_cadence._suivi_on_visite_terminee(**kwargs)
 
 
 # ── CAD-E ── CAD61 — une facture ÉMISE ne déclenche AUCUNE relance ─────────
 
-#: Le texte de la trace, tel que la commerciale le lit au chatter.
-FACTURE_EMISE_TRACE = (
-    'Facture {reference} émise — hors protocole de suivi : aucune touche de '
-    'relance n’est ouverte (la facture part après la signature).')
-
 
 @receiver(facture_emise, dispatch_uid="crm_cad61_trace_facture_emise")
-def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
-    """CAD61 — la facture envoyée se contente d'UNE LIGNE au chatter.
-
-    [TRANCHÉ 21/09/2026] Une facture partie hors cadence ne produisait ni
-    événement, ni réponse, ni touche : le dossier restait muet. Mais elle ne
-    doit rien DÉCLENCHER non plus — elle part APRÈS la signature, donc hors du
-    protocole de suivi. La décision fondateur est exactement celle-ci : une
-    trace, rien de plus.
-
-    L'autre moitié de la décision — « le client envoie quelque chose » — se
-    traite par le geste « pièce reçue » de CAD101 (il attache le document,
-    clôt la touche ouverte et pose « préparer le devis »). Il n'est PAS
-    dupliqué ici : ce récepteur n'ouvre, ne clôt et ne modifie aucune touche.
-
-    Garde-fou : la note est SYSTÈME (``user=None``) — une note portée par un
-    utilisateur compterait comme un contact manuel (QJ7) et ferait bouger le
-    funnel sur un simple envoi de facture. Best-effort : ne fait jamais
-    retomber une émission déjà actée.
-    """
-    client_id = getattr(instance, 'client_id', None)
-    if not client_id or company is None:
-        return
-    try:
-        lead = (Lead.objects
-                .filter(company=company, client_id=client_id,
-                        is_archived=False)
-                .order_by('-date_creation', '-id').first())
-        if lead is None:
-            return
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body=FACTURE_EMISE_TRACE.format(
-                reference=getattr(instance, 'reference', '') or '?'))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'CAD61: trace de facture non écrite (facture #%s)',
-            getattr(instance, 'pk', '?'), exc_info=True)
+def _relais_tracer_facture_emise_sur_le_lead(**kwargs):
+    return receivers_cadence._tracer_facture_emise_sur_le_lead(**kwargs)
 
 
 # ── ALEA3 (D-ALEA-3) — salle de vente : l'intérêt signalé NOTIFIE le responsable
