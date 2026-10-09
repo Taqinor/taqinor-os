@@ -110,9 +110,9 @@ EXCEPTIONS: dict = {
     "backend/django_core/apps/stock/services.py::export_inventaire_annuel_xlsx": (
         "2026-10-09",
         "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/services.py::export_mouvements_xlsx": (
+    "backend/django_core/apps/stock/services.py::export_mouvements_xlsx_bytes": (
         "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
+        "constructeur d'octets d'APRF34 : seul appelant = la tâche stock.export_mouvements_xlsx, soumise par la vue APRES should_async_export (views/mouvement.py) — borné en amont ; la garde ne suit pas l'appel via core.jobs.submit"),
     "backend/django_core/apps/stock/services.py::export_prix_fournisseur_xlsx": (
         "2026-10-09",
         "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
