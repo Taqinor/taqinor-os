@@ -66,14 +66,12 @@ function ecrireDernierMode(v) {
   }
 }
 
-export default function PaiementDialog({ facture: factureProp, onOpenChange, onSaved }) {
-  // AFAC65 — la facture est RELUE (GET /ventes/factures/<id>/) à l'ouverture et après
-  // chaque paiement : l'en-tête Payé/Dû, la liste des paiements et le montant
-  // prérempli viennent de la facture fraîche, quelle que soit la forme passée
-  // par l'appelant (la ligne Relances n'a ni `montant_paye` ni `paiements`).
+// AFAC65 — enveloppe : la facture est RELUE (GET /ventes/factures/<id>/) à l'ouverture
+// et après chaque paiement ; l'en-tête Payé/Dû, la liste des paiements et le montant
+// prérempli viennent de la facture fraîche, quelle que soit la forme passée par
+// l'appelant (la ligne Relances n'a ni `montant_paye` ni `paiements`).
+export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
   const [fraiche, setFraiche] = useState(null)
-  const facture = factureProp && fraiche?.id === factureProp.id
-    ? { ...factureProp, ...fraiche } : factureProp
   const relireFacture = async (id) => {
     try {
       const res = await Promise.resolve().then(() => ventesApi.getFacture(id))
@@ -83,6 +81,14 @@ export default function PaiementDialog({ facture: factureProp, onOpenChange, onS
       return null // l'instantané de l'appelant reste affiché
     }
   }
+  const factureLue = facture && fraiche?.id === facture.id ? { ...facture, ...fraiche } : facture
+  return (
+    <CorpsPaiementDialog facture={factureLue} relireFacture={relireFacture}
+                         onOpenChange={onOpenChange} onSaved={onSaved} />
+  )
+}
+
+function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) {
   const [paySaving, setPaySaving] = useState(false)
   const [payMontant, setPayMontantBrut] = useState('')
   const { errors: erreursSrv, setFromResponse, clearField, clearAll } = useServerFieldErrors()
@@ -116,7 +122,6 @@ export default function PaiementDialog({ facture: factureProp, onOpenChange, onS
     if (!facture) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)init form on facture change
     setPayMontant(facture.montant_du ?? '')
-    setFraiche(null)
     relireFacture(facture.id).then((fr) => {
       // Prérempli = dû de la facture fraîche, sauf si l'utilisateur a déjà tapé.
       if (fr?.montant_du != null) {
