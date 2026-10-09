@@ -1316,13 +1316,15 @@ class DispatchTests(unittest.TestCase):
         code, sortie, _ = self._main(plan, "--json")
         self.assertEqual(code, 0)
         avec = json.loads(sortie)
-        self.assertEqual(len(avec["lanes"]), 4)
+        # AMET89 : ZQ1 `(@acceptation)` est hors lane même sans --sans-pile.
+        self.assertEqual(len(avec["lanes"]), 3)
+        self.assertEqual([a["id"] for a in avec["acceptation"]], ["ZQ1"])
         self.assertNotIn("sans_pile", avec)
         code, sortie, _ = self._main(plan, "--json", "--sans-pile")
         sans = json.loads(sortie)
         construites = {tid for ids in sans["lanes"].values() for tid in ids}
         self.assertEqual(construites, {"ZQ3", "ZQ4"})
-        self.assertEqual([t["id"] for t in sans["sans_pile"]], ["ZQ1", "ZQ2"])
+        self.assertEqual([t["id"] for t in sans["sans_pile"]], ["ZQ2"])
         self.assertEqual(sans["after_blocked"] + sans["pairing_blocked"], [])
         _, rendu, _ = self._main(plan, "--sans-pile")
         self.assertIn("--sans-pile", rendu)
@@ -1342,6 +1344,46 @@ class DispatchTests(unittest.TestCase):
                              "- [ ] ZS2 — front. (@lane: s/b) (@after: ZS1)")
         _, _, journal = self._main(sain, "--check")
         self.assertIn("0 violation(s) inter-lanes", journal)
+
+
+class AcceptationTests(unittest.TestCase):
+    """AMET89 (C-AMET-020) — une tâche `(@acceptation)` n'entre JAMAIS dans une
+    lane ni dans le compte constructible, n'est jamais refusée (même avec un
+    `@after` vers une BLOCKED), et est listée « Acceptation (orchestrateur) »
+    avec son groupe et sa couverture ; `--check` refuse son `@after`."""
+
+    _main = DispatchTests._main
+    _plan_md = DispatchTests._plan_md
+
+    def test_tache_acceptation_hors_lane_et_listee(self):
+        plan = self._plan_md(
+            "- [x] ZK1 — fait. (@lane: k/a)",
+            "- [ ] ZK2 — écran. (@lane: k/a)",
+            "- [BLOCKED: attend Reda] ZK9 — bloquée. (@lane: k/b)",
+            "- [ ] ZK3 — acceptation live. (@acceptation) (@after: ZK9) (@lane: k/acc)",
+            "- [ ] ZK4 — cite `(@acceptation)` en prose. (@lane: k/prose)")
+        code, sortie, _ = self._main(plan, "--json")
+        self.assertEqual(code, 0)
+        res = json.loads(sortie)
+        construites = {tid for ids in res["lanes"].values() for tid in ids}
+        self.assertEqual(construites, {"ZK2", "ZK4"})
+        refusees = res["after_blocked"] + res["pairing_blocked"] + res["wave_blocked"]
+        self.assertNotIn("ZK3", json.dumps(refusees))
+        self.assertEqual(res["acceptation"], [{
+            "id": "ZK3", "groupe": "ZK", "cochees": 1, "total": 5,
+            "couverture": "n/d"}])
+        _, rendu, _ = self._main(plan)
+        section = rendu.split("Acceptation (orchestrateur)", 1)[1]
+        self.assertIn("`ZK3` : ZK — 1/5 cochées, couverture n/d", section)
+        self.assertNotIn("ZK3", rendu.split("Acceptation (orchestrateur)", 1)[0])
+        # `--check` : une tâche @acceptation ne porte pas d'@after.
+        code, _, journal = self._main(plan, "--check")
+        self.assertEqual(code, 1)
+        self.assertIn("ZK3", journal)
+        sain = self._plan_md("- [ ] ZL1 — a. (@lane: l/a)",
+                             "- [ ] ZL2 — acceptation. (@acceptation) (@lane: l/acc)")
+        code, _, _ = self._main(sain, "--check")
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

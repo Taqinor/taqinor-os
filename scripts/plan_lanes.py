@@ -128,6 +128,7 @@ dans le seau ``after_blocked`` (motif en français). Une dépendance introuvable
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import sys
@@ -284,10 +285,13 @@ _AT_LANE_RE = re.compile(r"@(?:lane|files):\s*(?P<key>[^@()\n]+)", re.IGNORECASE
 # est la parenthèse NUE : cité en prose entre backticks, ce n'en est pas un.
 _AT_ATOMIQUE_RE = re.compile(r"(?<!`)\(@atomique:\s*(?P<owners>[^@()`\n]+)\)",
                              re.IGNORECASE)
+# AMET89 — `(@acceptation)` nu (pas cité entre backticks) : jamais en lane ni
+# refusée, listée « Acceptation (orchestrateur) » (règle 3-bis).
+_AT_ACCEPTATION_RE = re.compile(r"(?<!`)\(@acceptation\)", re.IGNORECASE)
 # AMET97 — tâche à preuve EN DIRECT (pile locale) : `(@acceptation)` nu ou
 # « Preuve en direct : P<n> ». `--sans-pile` la sort des lanes (règle 3-bis).
 _PREUVE_EN_DIRECT_RE = re.compile(
-    r"(?<!`)\(@acceptation\)|Preuve en direct\s*:\s*P\d", re.IGNORECASE)
+    _AT_ACCEPTATION_RE.pattern + r"|Preuve en direct\s*:\s*P\d", re.IGNORECASE)
 _AFTER_RE = re.compile(r"@after:\s*(?P<ids>[A-Z0-9,\s-]+)", re.IGNORECASE)
 _GATE_TOKEN_RE = re.compile(r"\b(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST|GALLERY)\b")
 _DEP_TOKEN_RE = re.compile(r"DEP:\s*([A-Za-z0-9_-]+)")
@@ -825,6 +829,35 @@ def _deps(label: str) -> set[str]:
     return out
 
 
+@functools.lru_cache(maxsize=1)
+def _couverture_acceptation():
+    """(module, ids cochés à preuve, ids couverts) — ~4 s, lu une fois."""
+    try:
+        import check_acceptation as ca
+        return ca, set(ca.taches_a_preuve()), ca.enregistrements([])
+    except Exception:  # module absent ou illisible : couverture « n/d »
+        return None, set(), set()
+
+
+def etat_acceptation(taches: list[dict], paths: list[Path]) -> list[dict]:
+    """AMET89 — groupe, cochées/total et couverture (``check_acceptation``)."""
+    import plan_progress
+    plans = {p.resolve() for p in paths}
+    plans |= {p.resolve() for p in (ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md")}
+    compte = plan_progress.aggregate(sorted(plans))
+    ca, a_preuve, couverts = _couverture_acceptation()
+    out = []
+    for t in taches:
+        g = t["prefix"]
+        ids = {i for i in a_preuve if ca.groupe_de(i) == g} if ca else set()
+        out.append({"id": t["id"], "groupe": g,
+                    "cochees": compte.get(g, {}).get("done", 0),
+                    "total": compte.get(g, {}).get("total", 0),
+                    "couverture": (f"{round(100 * len(ids & couverts) / len(ids))} %"
+                                   if ids else "n/d")})
+    return out
+
+
 def proprietaires_atomiques(label: str) -> set[str] | None:
     """Propriétaires nommés par `(@atomique: …)` ; ``None`` sans le tag."""
     m = _AT_ATOMIQUE_RE.search(label)
@@ -1202,6 +1235,8 @@ def parse_tasks(path: Path) -> list[dict]:
             # AMET97 — idem : clé posée seulement pour une preuve en direct.
             **({"preuve_en_direct": True}
                if _PREUVE_EN_DIRECT_RE.search(label) else {}),
+            # AMET89 — idem : clé posée seulement avec le tag `(@acceptation)`.
+            **({"acceptation": True} if _AT_ACCEPTATION_RE.search(label) else {}),
         })
     return tasks
 
@@ -1916,6 +1951,11 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
                 f"{len(plan['sans_pile'])} tâche(s) listée(s), jamais confiée(s) — "
                 f"l'orchestrateur d'une session AVEC pile les joue (règle 3-bis)"]
         out += [f"- `{t['id']}`  [{t['lane']}]" for t in plan["sans_pile"]]
+    if plan.get("acceptation"):
+        out += ["", "## Acceptation (orchestrateur) — jamais en lane ni refusée, "
+                "jouée sur la pile locale avant le push (règle 3-bis, AMET89)"]
+        out += [f"- `{a['id']}` : {a['groupe']} — {a['cochees']}/{a['total']} "
+                f"cochées, couverture {a['couverture']}" for a in plan["acceptation"]]
     if plan.get("inter_lane_violations"):
         out += ["", "## Violations inter-lanes (cycle d'@after entre deux lanes "
                 "entières : dans la même vague, l'agent attend le FOLD de la "
@@ -2070,6 +2110,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    # AMET89 — AVANT toute porte : une tâche `(@acceptation)` n'est jamais
+    # refusée ni comptée constructible (même mécanique que _NON_QUEUE_SECTION).
+    acceptation = [t for t in tasks if "acceptation" in t]
+    tasks = [t for t in tasks if "acceptation" not in t]
+
     build_order_path = Path(args.build_order)
     if not build_order_path.is_absolute():
         build_order_path = ROOT / build_order_path
@@ -2137,6 +2182,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.sans_pile:
         plan["sans_pile"] = sans_pile
+    if acceptation:
+        plan["acceptation"] = etat_acceptation(acceptation, paths)
     if portee is not None:
         plan["scope"] = {
             "selectors": portee,
@@ -2173,6 +2220,13 @@ def main(argv: list[str] | None = None) -> int:
               + "".join(f"\n- {t} (vague {vt}) attend {d} (vague {vd})"
                         for t, d, vt, vd in plan["inter_lane_violations"]),
               file=sys.stderr)
+
+    avec_after = [t["id"] for t in acceptation if t["deps"]]
+    if args.check and avec_after:
+        print(f"\n{len(avec_after)} tâche(s) (@acceptation) portent un @after "
+              "(jouée à la couverture, pas à l'ordre — retirer le @after) : "
+              + ", ".join(avec_after), file=sys.stderr)
+        check_failed = True
 
     if args.check:
         # ADEP28 : CHAQUE fichier du pool, pas seulement le premier — une ligne
