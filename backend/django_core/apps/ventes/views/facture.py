@@ -1017,17 +1017,24 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def telecharger_pdf(self, request, pk=None):
         facture = self.get_object()
-        if not facture.fichier_pdf:
+        # AFAC41 (C-AFAC-042) — le téléchargement interne (et l'aperçu inline
+        # de la liste) sert le PDF GARANTI à jour par `cle_facture_pdf_a_jour`,
+        # exactement comme le lien public : après un paiement, le « Reste à
+        # payer » imprimé est le courant ; une facture jamais rendue se rend à
+        # la volée. Si le rafraîchissement échoue, le fichier stocké est servi
+        # tel quel (même repli que le lien public).
+        from ..utils.pdf import cle_facture_pdf_a_jour, download_pdf
+        try:
+            cle = cle_facture_pdf_a_jour(facture)
+        except Exception:  # noqa: BLE001
+            cle = facture.fichier_pdf
+        if not cle:
             return Response(
-                {'detail': (
-                    'PDF non disponible. '
-                    'Cliquez d\'abord sur « Générer PDF ».'
-                )},
+                {'detail': 'PDF indisponible pour le moment. Réessayez.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
-            from ..utils.pdf import download_pdf
-            pdf_bytes = download_pdf(facture.fichier_pdf)
+            pdf_bytes = download_pdf(cle)
         except Exception:
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
