@@ -25,7 +25,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, KWH_COMMERCIAL, choisirMarche, declarerProfilCi, executerDansDjango,
-  lireJson, listeDe, textePdf,
+  lireJson, listeDe, nombrePagesPdf, textePdf,
 } from './helpers'
 
 const ANNEE = new Date().getFullYear()
@@ -38,16 +38,13 @@ const ENTREPRISE = {
 const devisIds = []
 const etat = { devisId: null, apercu: null, token: null, pdfTexte: null }
 
-/** Nombre de pages d'un PDF, lu sur ses objets /Type /Page (pas /Pages). */
-function nombrePages(octets) {
-  const texte = Buffer.from(octets).toString('latin1')
-  return (texte.match(/\/Type\s*\/Page(?![s\w])/g) || []).length
-}
 
-/** Un pourcentage (72.8) est-il imprimé, au format FR ou point, arrondi ou non ? */
+/** Un pourcentage (72.8) est-il imprimé, au format FR ou point, arrondi ou non ?
+ *  CAD177 — pdfjs rend « 100   % » (items joints par une espace autour de
+ *  l'espace insécable imprimée) : `\s*`, plus `\s?` (nocturne 37843456809). */
 function pctImprime(texte, pct) {
   const formes = new Set([pct.toFixed(1).replace('.', ','), pct.toFixed(1), String(Math.round(pct))])
-  return [...formes].some((f) => new RegExp(`(^|[^\\d,.])${f.replace('.', '\\.')}\\s?%`).test(texte))
+  return [...formes].some((f) => new RegExp(`(^|[^\\d,.])${f.replace('.', '\\.')}\\s*%`).test(texte))
 }
 
 async function premierLead(request) {
@@ -101,8 +98,16 @@ test('CIQ334 — créer (hôtel, dimanche fermé, août fermé), rouvrir, ré-en
   await auto
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  // CAD177 — l'étude C&I part APRÈS la création, par la fusion
+  // `PATCH …/etude-params/` (QJR66, DevisGenerator) : relire le devis avant
+  // cette réponse lisait un etude_params réduit aux choix d'écran (nocturne
+  // 37792898726) — même attente que devis-ci-serveur.spec.js.
+  const etudeEcrite = page.waitForResponse((r) => r.request().method() === 'PATCH'
+    && /\/ventes\/devis\/\d+\/etude-params\/$/.test(new URL(r.url()).pathname)
+    && r.status() < 300, { timeout: 60_000 })
   await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   const cree = await (await creation).json()
+  await etudeEcrite
   etat.devisId = cree.id ?? cree.devis?.id
   expect(etat.devisId, 'identifiant du devis créé').toBeTruthy()
   devisIds.push(etat.devisId)
@@ -134,7 +139,10 @@ test('CIQ334 — PDF : 3 pages avec ou sans étude, taux = dernier aperçu, dima
     const pdf = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full${suffixe}`)
     expect(pdf.status(), `/proposal${suffixe}`).toBe(200)
     const octets = await pdf.body()
-    expect(nombrePages(octets), `document commercial${suffixe} : 3 pages`).toBe(3)
+    // CAD177 — le moteur sert du PDF 1.7 à flux d'objets compressés : la
+    // regex « /Type /Page » comptait 0 (nocturne 37827548643) ; pdfjs lit
+    // le vrai nombre de pages, comme ci-site-mt-recette / devis-agricole.
+    expect(await nombrePagesPdf(octets), `document commercial${suffixe} : 3 pages`).toBe(3)
     if (!suffixe) etat.pdfTexte = await textePdf(octets)
   }
   const bilan = etat.apercu.bilan

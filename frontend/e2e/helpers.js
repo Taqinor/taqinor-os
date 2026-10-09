@@ -141,6 +141,18 @@ export async function uiLogin(page, { username, password } = ADMIN) {
   await page.getByRole('button', { name: 'Se connecter →' }).click()
 }
 
+/** CAD177 — connexion UI À FROID qui doit aboutir sur `/apps`, même quand le
+ *  throttle « login » (5/min/IP, règle produit jamais assouplie — tout le
+ *  run e2e partage 127.0.0.1) répond 429 « Requête ralentie » : la tentative
+ *  est rejouée à intervalles jusqu'à l'arrivée sur `/apps` — une condition
+ *  observée, comme `connexionApi`, jamais une pause aveugle. */
+export async function uiLoginJusquAuxApps(page, identifiants = ADMIN) {
+  await expect(async () => {
+    await uiLogin(page, identifiants)
+    await expect(page).toHaveURL(/\/apps/, { timeout: 10_000 })
+  }).toPass({ intervals: [5_000, 10_000, 15_000], timeout: 90_000 })
+}
+
 // ── Leads ─────────────────────────────────────────────────────────────────
 // Le nom « + Nouveau lead » est porte par TROIS controles selon l'etat :
 // le bouton d'en-tete (desktop), le bouton flottant (mobile) et l'action

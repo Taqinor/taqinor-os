@@ -421,6 +421,31 @@ class TestAvoirLineValidation(TestCase):
         self.assertEqual(Avoir.objects.count(), 1)
         self.assertEqual(Avoir.objects.first().lignes.count(), 1)
 
+    def test_cad177_montants_hors_bornes_400_jamais_500(self):
+        # CAD177 — le marcheur aléatoire a tapé un montant énorme : l'INSERT
+        # levait DataError (numeric field overflow) → 500. Toute valeur hors
+        # des bornes des colonnes est désormais un 400 nommé, rien n'est créé.
+        base = {'produit': self.produit.id, 'designation': 'X',
+                'quantite': '1', 'prix_unitaire': '100', 'taux_tva': '20'}
+        for champ, valeur in [
+            ('prix_unitaire', '999999999999'), ('quantite', '100000000'),
+            ('prix_unitaire', 'NaN'), ('quantite', 'Infinity'),
+            ('remise', '1000'), ('remise', '-5'), ('taux_tva', '5000'),
+        ]:
+            with self.subTest(champ=champ, valeur=valeur):
+                r = self._avoir([{**base, champ: valeur}])
+                self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+                self.assertIn('Ligne 1', r.data['detail'])
+        self.assertEqual(Avoir.objects.count(), 0)
+
+    def test_cad177_note_debit_montant_hors_bornes_400(self):
+        r = self.api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/creer-note-debit/',
+            {'lignes': [{'produit': self.produit.id, 'designation': 'X',
+                         'quantite': '1', 'prix_unitaire': '1e12'}]},
+            format='json')
+        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+
     def test_dc10_line_without_produit_rejected(self):
         # DC10 — une nouvelle ligne d'avoir SANS produit est refusée (400).
         r = self._avoir([

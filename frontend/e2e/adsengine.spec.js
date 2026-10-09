@@ -20,13 +20,37 @@ import { test, expect } from '@playwright/test'
 
 const API = '/api/django/adsengine'
 const createdActionIds = []
+// CAD177 — la connexion Meta d'AVANT ce spec ({id: enabled}). Le test de
+// connexion enregistre un faux jeton, ce qui ACTIVE la connexion (lecture
+// Meta) : laissée telle quelle dans la base partagée, le marcheur aléatoire
+// cliquait plus tard « Synchroniser » sur /publicite/campagnes et Meta
+// refusait le faux jeton → 502 voulu par sync-now (nocturne 37803204581).
+let connexionsAvant = null
+const liste = (corps) => (Array.isArray(corps) ? corps : (corps?.results || []))
 
 test.describe('ADSENGINT3: console Publicité (contrat front↔back réel)', () => {
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${API}/connexions/`)
+    expect(res.ok(), `GET connexions → ${res.status()}`).toBeTruthy()
+    connexionsAvant = Object.fromEntries(
+      liste(await res.json()).map((c) => [c.id, c.enabled]))
+  })
+
   test.afterAll(async ({ request }) => {
     // Nettoyage best-effort : une suppression en échec ne bloque pas les autres.
     await Promise.all(createdActionIds.map((id) => (
       request.delete(`${API}/actions/${id}/`).catch(() => null)
     )))
+    // CAD177 — la connexion revient à son état d'avant : créée ici →
+    // supprimée ; préexistante → `enabled` restauré.
+    if (connexionsAvant) {
+      const res = await request.get(`${API}/connexions/`).catch(() => null)
+      const apres = res?.ok() ? liste(await res.json()) : []
+      await Promise.all(apres.map((c) => (c.id in connexionsAvant
+        ? request.patch(`${API}/connexions/${c.id}/`,
+          { data: { enabled: connexionsAvant[c.id] } })
+        : request.delete(`${API}/connexions/${c.id}/`)).catch(() => null)))
+    }
   })
 
   test('Connexion Meta : identifiants write-only, statut lu du vrai back', async ({ page }) => {
