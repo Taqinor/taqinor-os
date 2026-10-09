@@ -202,6 +202,41 @@ def recalculer_parcours_vague(vague):
     return vague
 
 
+def _verifier_sources_besoins(company, besoins, modele_ligne):
+    """ERR-ASTK6 — chaque ``installation_id`` / ``bon_commande_id`` d'un
+    besoin doit désigner un objet de ``company`` ; sinon ``ValueError``
+    « objet inexistant », identique pour un id étranger, absent ou mal
+    formé. Modèles atteints par nos propres string-FK (aucun import des
+    modèles d'installations/achats)."""
+    champs = (('installation_id', 'installation', 'Chantier'),
+              ('bon_commande_id', 'bon_commande', 'Bon de commande'))
+    for cle, champ, libelle in champs:
+        valeurs = [b.get(cle) for b in besoins
+                   if isinstance(b, dict) and b.get(cle) not in (None, '')]
+        if not valeurs:
+            continue
+        ids = set()
+        for valeur in valeurs:
+            try:
+                ids.add(int(valeur))
+            except (TypeError, ValueError):
+                raise ValueError(f'{libelle} : objet inexistant.')
+        modele = modele_ligne._meta.get_field(champ).related_model
+        connus = set(modele.objects.filter(
+            company=company, id__in=ids).values_list('id', flat=True))
+        if ids - connus:
+            raise ValueError(f'{libelle} : objet inexistant.')
+    # Les ids validés sont réécrits en entiers (jamais la chaîne brute).
+    for besoin in besoins:
+        if not isinstance(besoin, dict):
+            continue
+        for cle, _champ, _libelle in champs:
+            if besoin.get(cle) not in (None, ''):
+                besoin[cle] = int(besoin[cle])
+            else:
+                besoin[cle] = None
+
+
 def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
                                installations=None, note=''):
     """Crée UNE vague regroupant plusieurs besoins, ordonnée par le parcours.
@@ -241,6 +276,12 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
 
     if not besoins:
         raise ValueError('Aucun besoin à regrouper dans cette vague.')
+
+    # ERR-ASTK6 — les sources d'un besoin (chantier / BCF) sont des string-FK
+    # cross-app : relues ICI bornées à la société. Un id étranger et un id
+    # absent répondent la MÊME erreur « objet inexistant » (avant : l'id
+    # étranger était recopié tel quel → 201, l'absent violait la FK → 500).
+    _verifier_sources_besoins(company, besoins, LignePicking)
 
     # Regroupement multi-source : un même produit demandé par deux sources
     # reste DEUX lignes (chaque source doit être servie et tracée), mais la
