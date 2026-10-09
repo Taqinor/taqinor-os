@@ -134,6 +134,58 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(_verdicts(ACTION_SANS_PERMISSIONS), {})
 
 
+def _divergences(src):
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / 'views.py'
+        path.write_text(src, encoding='utf-8')
+        return [(classe, action, sens)
+                for _l, classe, action, _d, _r, sens in guard.divergences(path)]
+
+
+REPLI_PLUS_STRICT = '''
+class ClientViewSet(viewsets.ModelViewSet):
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAnyRole])
+    def segments(self, request):
+        return None
+'''
+
+REPLI_EGAL = REPLI_PLUS_STRICT.replace('[IsAdminRole()]', '[IsAnyRole()]')
+
+
+class DivergenceTests(unittest.TestCase):
+    def test_repli_plus_strict_detecte(self):
+        """ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole."""
+        self.assertEqual(_divergences(REPLI_PLUS_STRICT),
+                         [('ClientViewSet', 'segments', 'plus strict')])
+
+    def test_repli_plus_faible_detecte(self):
+        src = REPLI_PLUS_STRICT.replace('permission_classes=[IsAnyRole]',
+                                        'permission_classes=[IsAdminRole]'
+                                        ).replace('return [IsAdminRole()]',
+                                                  'return [IsAnyRole()]')
+        self.assertEqual(_divergences(src),
+                         [('ClientViewSet', 'segments', 'plus faible')])
+
+    def test_repli_identique_accepte(self):
+        self.assertEqual(_divergences(REPLI_EGAL), [])
+
+    def test_allowlist_sans_raison_propre_refusee(self):
+        for raison in ('', 'ok', 'vérifiées bénignes par le sweep AUD403'):
+            self.assertTrue(
+                len(raison) < guard.RAISON_MIN
+                or guard.RAISON_COLLECTIVE in raison.lower(), raison)
+        raisons = guard._load_allowlist_raisons()
+        self.assertTrue(raisons)
+        for cle, raison in raisons.items():
+            self.assertGreaterEqual(len(raison), guard.RAISON_MIN, cle)
+            self.assertNotIn(guard.RAISON_COLLECTIVE, raison.lower(), cle)
+
+
 class PerimetreTests(unittest.TestCase):
     def test_les_tests_et_migrations_sont_hors_perimetre(self):
         for chemin in ('apps/ventes/tests/test_devis.py',
@@ -151,11 +203,11 @@ class AllowlistTests(unittest.TestCase):
     def test_la_ligne_de_base_du_sweep_est_gelee(self):
         allow = guard._load_allowlist()
         self.assertGreaterEqual(
-            len(allow), 25,
-            'la ligne de base du sweep AUD403 a été vidée : la garde '
-            'échouerait sur des classes déjà vérifiées bénignes.')
+            len(allow), 20,
+            'les écarts motivés (ACRM48) ont été vidés : la garde '
+            'échouerait sur des actions dont le repli est plus strict.')
         self.assertIn(
-            'backend/django_core/apps/ventes/views/devis.py::DevisViewSet',
+            'backend/django_core/apps/crm/views.py::DefiViewSet.export_xlsx',
             allow)
 
     def test_le_patron_d_or_reel_est_detecte_sans_allowlist(self):

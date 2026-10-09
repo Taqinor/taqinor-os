@@ -93,15 +93,121 @@ def _rel(path: Path) -> str:
     return str(path.relative_to(ROOT)).replace("\\", "/")
 
 
-def _load_allowlist():
+def _load_allowlist_raisons():
+    """{clé: raison}. Ligne ``clé  # raison`` ; clé = ``chemin.py::Classe``
+    (toute la classe) ou ``chemin.py::Classe.action`` (une seule action)."""
     if not ALLOWLIST_PATH.exists():
-        return set()
-    out = set()
+        return {}
+    out = {}
     for line in ALLOWLIST_PATH.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        out.add(line)
+        cle, _, raison = line.partition("#")
+        out[cle.strip()] = raison.strip()
+    return out
+
+
+def _load_allowlist():
+    return set(_load_allowlist_raisons())
+
+
+#: Phrase collective interdite (ACRM48) : chaque ligne porte SA raison.
+RAISON_COLLECTIVE = "vérifiées bénignes"
+RAISON_MIN = 12
+
+#: Rang de rigueur des permissions de rôle connues (plus grand = plus strict).
+RANG = {"IsAnyRole": 1, "IsResponsableOrAdmin": 2, "IsAdminRole": 3}
+
+
+def _norm_permission(elt):
+    """``IsAdminRole()`` / ``IsAdminRole`` -> 'IsAdminRole' ;
+    ``HasPermissionOrLegacy('x')()`` / ``HasPermissionOrLegacy('x')`` ->
+    ``HasPermissionOrLegacy('x')``."""
+    if isinstance(elt, ast.Call) and not elt.args and not elt.keywords:
+        elt = elt.func
+    return ast.unparse(elt)
+
+
+def _permissions_liste(node):
+    """Ensemble normalisé d'une liste/tuple littérale, sinon None."""
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return frozenset(_norm_permission(e) for e in node.elts)
+    return None
+
+
+def _repli_atteint(fonction):
+    """Permissions du repli (dernier ``return [..]`` de plus haut niveau)."""
+    corps = [n for n in fonction.body
+             if not (isinstance(n, ast.Expr)
+                     and isinstance(n.value, ast.Constant))]
+    if corps and isinstance(corps[-1], ast.Return) and corps[-1].value:
+        return _permissions_liste(corps[-1].value)
+    return None
+
+
+def _permissions_declarees(fonction):
+    for deco in fonction.decorator_list:
+        if not isinstance(deco, ast.Call):
+            continue
+        if (_nom_appele(deco) or "").split(".")[-1] != "action":
+            continue
+        for kw in deco.keywords:
+            if kw.arg == "permission_classes":
+                return _permissions_liste(kw.value)
+    return None
+
+
+def _comparer(declare, repli):
+    """'plus strict' | 'plus faible' | 'different' | 'indetermine' | None."""
+    if declare is None or repli is None:
+        return "indetermine"
+    if declare == repli:
+        return None
+    rd = [RANG.get(n) for n in declare]
+    rr = [RANG.get(n) for n in repli]
+    if None in rd or None in rr:
+        return "different"
+    if max(rr) > max(rd):
+        return "plus strict"
+    if max(rr) < max(rd):
+        return "plus faible"
+    return "different"
+
+
+def divergences(path: Path):
+    """[(ligne, classe, action, declare, repli, sens)] : actions à découvert
+    dont le repli atteint DIFFÈRE de la permission déclarée (ACRM48)."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    constantes = _constantes_de_module(tree)
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        get_perms, actions = None, {}
+        for m in node.body:
+            if not isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if m.name == "get_permissions":
+                get_perms = m
+            elif _action_avec_permissions(m):
+                actions[m.name] = m
+        if get_perms is None or not actions:
+            continue
+        if _utilise_le_patron_d_or(get_perms) or _delegue_au_repli(get_perms):
+            continue
+        couvertes = _actions_couvertes(get_perms, constantes)
+        repli = _repli_atteint(get_perms)
+        for nom, m in sorted(actions.items()):
+            if nom in couvertes:
+                continue
+            declare = _permissions_declarees(m)
+            sens = _comparer(declare, repli)
+            if sens:
+                out.append((node.lineno, node.name, nom, declare, repli, sens))
     return out
 
 
@@ -237,18 +343,28 @@ def check_file(path: Path):
 
 def main(argv):
     list_mode = "--list" in argv
-    allow = _load_allowlist()
+    raisons = _load_allowlist_raisons()
+    allow = set(raisons)
     offenders, listed = [], []
+    for cle, raison in sorted(raisons.items()):
+        if len(raison) < RAISON_MIN or RAISON_COLLECTIVE in raison.lower():
+            offenders.append(
+                f"allowlist : la ligne `{cle}` n'a pas sa raison propre "
+                f"(ni vide, ni « {RAISON_COLLECTIVE} » collectif)")
     for path in _iter_source_files():
         rel = _rel(path)
         for lineno, classe, verdict, decouvertes in check_file(path):
             listed.append(f"{rel}:{lineno}  {classe}  [{verdict}]"
                           + (f"  à découvert : {', '.join(decouvertes)}"
                              if decouvertes else ""))
-            if verdict == "NU" and f"{rel}::{classe}" not in allow:
-                offenders.append(
-                    f"{rel}:{lineno}  {classe} — action(s) à découvert : "
-                    f"{', '.join(decouvertes)}")
+        for lineno, classe, nom, declare, repli, sens in divergences(path):
+            cle = f"{rel}::{classe}"
+            if cle in allow or f"{cle}.{nom}" in allow:
+                continue
+            offenders.append(
+                f"{rel}:{lineno}  {classe}.{nom} — repli {sens} que la "
+                f"déclaration (déclaré {sorted(declare or [])}, repli "
+                f"{sorted(repli) if repli is not None else 'non analysable'})")
 
     if list_mode:
         for line in listed:
@@ -256,9 +372,9 @@ def main(argv):
         return 0
 
     if offenders:
-        print("check_action_permission_override : get_permissions() à "
-              "branchement brut sur une classe qui déclare pourtant une "
-              "@action(permission_classes=...) :")
+        print("check_action_permission_override : la permission atteinte "
+              "par une @action n'est pas celle qu'elle déclare "
+              "(get_permissions() à branchement brut) :")
         for line in offenders:
             print(f"  - {line}")
         print(
@@ -268,9 +384,9 @@ def main(argv):
             "ventes/views/devis.py). Terminez par "
             "`return super().get_permissions()`, ou passez par "
             f"`{HELPER_DECLARE}(...)` (patron d'or, apps/ventes/views/paiement.py). "
-            "Exception assumée et vérifiée : ajouter `chemin.py::Classe` à "
-            "scripts/action_permission_override_allow.txt avec sa "
-            "justification."
+            "Exception assumée : ajouter `chemin.py::Classe[.action]  # raison` "
+            "à scripts/action_permission_override_allow.txt (une raison propre "
+            "par ligne)."
         )
         return 1
 
