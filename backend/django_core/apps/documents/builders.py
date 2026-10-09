@@ -193,8 +193,23 @@ def _ligne_composant(designation, quantite, produit, marque=''):
     }
 
 
-def _composants(chantier):
+def _est_service(produit, nature=None):
+    """APDF33 — une ligne est une prestation (Installation, Transport…) si sa
+    nature gelée (``Installation.bom[].nature``, APDF40) vaut ``service`` ; à
+    défaut de nature (nomenclature ancienne), lue sur la catégorie du produit."""
+    if nature:
+        return nature == 'service'
+    categorie = getattr(produit, 'categorie', None) if produit else None
+    return getattr(categorie, 'type_equipement', None) == 'service'
+
+
+def _composants(chantier, services=False):
     """Matériel vendu du chantier (PV, BL FR/AR, garanties du dossier).
+
+    APDF33 (D-APDF-4) — les prestations (nature « service ») sont EXCLUES du
+    matériel (PV, BL, garanties) ; ``services=True`` renvoie à l'inverse
+    uniquement ces prestations (section « Prestations » du dossier de remise,
+    sans garantie constructeur).
 
     ADOC60 — source = la nomenclature GELÉE du chantier (``Installation.bom``,
     figée à la création par ``installations.services._freeze_bom`` : option
@@ -233,6 +248,8 @@ def _composants(chantier):
                     except (TypeError, ValueError):
                         cache[produit_id] = None
                 produit = cache[produit_id]
+            if _est_service(produit, row.get('nature')) != services:
+                continue
             items.append(_ligne_composant(
                 row.get('designation'), quantite, produit,
                 row.get('marque') or ''))
@@ -258,6 +275,8 @@ def _composants(chantier):
             continue
         quantite = _quantite_affichee(brute)
         if quantite is None:
+            continue
+        if _est_service(getattr(ligne, 'produit', None)) != services:
             continue
         items.append(_ligne_composant(
             ligne.designation, quantite, getattr(ligne, 'produit', None)))
@@ -917,6 +936,7 @@ def generate_dossier_remise(chantier):
     """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
+    ctx['prestations'] = _composants(chantier, services=True)
     ctx['guidance'] = DEFAULT_OPERATING_GUIDANCE
     pack = _handover_pack_summary(chantier)
     if pack is not None:
