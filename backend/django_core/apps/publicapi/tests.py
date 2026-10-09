@@ -987,11 +987,15 @@ class StockThresholdWebhookTests(TestCase):
             secret='s3cret', events=[EVENT_STOCK_SEUIL_ATTEINT], enabled=True)
 
     def _mouvement(self, avant, apres):
-        from apps.stock.services import record_stock_movement, mouvement_type_sortie
+        from apps.stock.services import (record_stock_movement, mouvement_type_entree,
+                                         mouvement_type_sortie)
+        # Une remontée de stock est une ENTRÉE : la quantité d'un mouvement est
+        # toujours positive (contrainte ENF13 mouvementstock_quantite_non_negative).
+        type_mvt = mouvement_type_sortie() if apres <= avant else mouvement_type_entree()
         return record_stock_movement(
             company=self.co, produit=self.produit,
-            type_mouvement=mouvement_type_sortie(),
-            quantite=avant - apres, quantite_avant=avant, quantite_apres=apres,
+            type_mouvement=type_mvt,
+            quantite=abs(avant - apres), quantite_avant=avant, quantite_apres=apres,
             reference='TEST', note='', created_by=None,
         )
 

@@ -544,7 +544,7 @@ def render_allowlist(sites, existing_reasons=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Garde advisory sur les ecritures de chemins du registre "
+        description="Garde bloquante sur les ecritures de chemins du registre "
                     "d'override.")
     parser.add_argument("--list", action="store_true", dest="list_mode",
                         help="imprime chaque site vu, avec sa cle")
@@ -621,7 +621,7 @@ def main(argv=None):
               "puis ecrire la raison).")
         return 1
 
-    print("\ncheck_override_registry: OK (advisory -- tous les sites sont "
+    print("\ncheck_override_registry: OK (bloquant -- tous les sites sont "
           "dans la base).")
     return 0
 
