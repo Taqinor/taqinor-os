@@ -16,7 +16,7 @@ import { Badge, Button, Input, Select, SelectTrigger, SelectValue, SelectContent
  * plus suivre). Regroupés dans un seul panneau pour limiter la surface du
  * fichier TicketsPage.jsx (déjà volumineux).
  */
-export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
+export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
   const ticketId = ticket.id
 
   // ── ZSAV9 — suivre/ne plus suivre ──
@@ -67,6 +67,8 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
       await savApi.fusionnerTicket(ticketId, doublonId)
       toast.success('Ticket fusionné')
       setDoublonId('')
+      // ASAV59 — la fiche (pièces, historique) et la liste se rechargent.
+      await onSaved?.()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Fusion impossible.')
     } finally { setFusionBusy(false) }

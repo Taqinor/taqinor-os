@@ -1239,7 +1239,17 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,
              triage IA, macros, prêts équipement, conversion lead, suivre). ── */}
         <CollapsibleSection icon={Sparkles} title="Actions avancées">
-          <TicketAdvancedPanel ticket={current} onNoteInsert={insererMacro} />
+          <TicketAdvancedPanel
+            ticket={current}
+            onNoteInsert={insererMacro}
+            onSaved={async () => {
+              // ASAV59 — après une fusion : fiche, pièces, historique et liste.
+              await reloadAll()
+              loadPieces()
+              loadPiecesUnifiees()
+              loadHistorique()
+              onSaved?.()
+            }} />
         </CollapsibleSection>
 
         {/* ── Interventions (L313 — repliable) ── */}
