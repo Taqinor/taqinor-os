@@ -74,3 +74,28 @@ export class FieldOutbox extends Outbox {
     }))
   }
 }
+
+// ADEP45 — cœur PUR du repli hors-ligne (testable sans bundler) : la clé
+// d'idempotence est générée AVANT l'appel en ligne, transmise à cet appel
+// (`onlineCall(clientOpId)`), puis RÉUTILISÉE pour la mise en file : si la
+// réponse en ligne expire APRÈS l'effet, le rejeu de la file porte la MÊME clé
+// et le serveur répond `replayed` au lieu de créer un doublon. `client_ts` est
+// pris avant l'appel (instant du geste). Une erreur applicative (réponse HTTP)
+// est relancée, jamais mise en file.
+export async function repliHorsLigne({
+  outbox, onlineCall, opType, payload, meta = {}, apresMiseEnFile,
+}) {
+  const clientTs = new Date().toISOString()
+  const clientOpId = makeOpId()
+  try {
+    const data = await onlineCall(clientOpId)
+    return { queued: false, data }
+  } catch (err) {
+    if (err?.response) throw err // axios : pas de réponse = réseau/timeout
+    await outbox.enqueue(opType, payload, {
+      clientOpId, clientTs, baseUpdatedAt: meta?.baseUpdatedAt,
+    })
+    await apresMiseEnFile?.()
+    return { queued: true, clientOpId }
+  }
+}

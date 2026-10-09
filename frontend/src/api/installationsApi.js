@@ -217,8 +217,10 @@ const installationsApi = {
 
   // ── F9 — N° de série par composant (+ OCR swappable no-op) ──
   getSerials: (id) => api.get(`/installations/interventions/${id}/serials/`),
-  ajouterSerial: (id, { produit, designation, slot, numero_serie, file }) => {
+  ajouterSerial: (id, { produit, designation, slot, numero_serie, file, client_op_id }) => {
     const fd = new FormData()
+    // ADEP45 — clé d'idempotence (contrat op_terrain_en_ligne.json).
+    if (client_op_id) fd.append('client_op_id', client_op_id)
     if (produit) fd.append('produit', produit)
     if (designation) fd.append('designation', designation)
     if (slot) fd.append('slot', slot)

@@ -85,8 +85,9 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       // de l'intervention ; si même ça échoue, on le DIT en français plutôt
       // que de laisser croire qu'elle est partie.
       const r = await withOfflineFallback(
-        () => installationsApi.ajouterSerial(id, {
-          designation, numero_serie: numero, file }),
+        // ADEP45 — la clé d'idempotence de l'appel en ligne est celle de l'op filée.
+        (clientOpId) => installationsApi.ajouterSerial(id, {
+          designation, numero_serie: numero, file, client_op_id: clientOpId }),
         FIELD_OPS.SERIAL, { intervention: id, designation, numero_serie: numero })
       let photoFilee = true
       if (r.queued && file) {
@@ -401,8 +402,9 @@ export function ReservesPanel({ intervention, onChanged }) {
     setBusy(true)
     try {
       const r = await withOfflineFallback(
-        () => installationsApi.ajouterReserve(id, {
-          description: desc, creer_ticket: creerTicket, creer_suivi: creerSuivi }),
+        (clientOpId) => installationsApi.ajouterReserve(id, {
+          description: desc, creer_ticket: creerTicket, creer_suivi: creerSuivi,
+          client_op_id: clientOpId }),
         FIELD_OPS.RESERVE, { intervention: id, description: desc })
       setDesc(''); setCreerTicket(false); setCreerSuivi(false)
       if (r.queued) toast.success(QUEUED_MSG)

@@ -5,7 +5,7 @@
 // `useFieldOutbox` câble le flush automatique au retour du réseau.
 
 import installationsApi from '../../../api/installationsApi'
-import { FieldOutbox, BinaryOutbox, OutboxQuotaError, conflitEnErreur } from './outbox'
+import { FieldOutbox, BinaryOutbox, OutboxQuotaError, conflitEnErreur, repliHorsLigne } from './outbox'
 import { notifyOfflineOutboxChange, purgeModuleOutboxes } from '../../../lib/offlineOutbox'
 import { createFieldOutboxStore, createBinaryOutboxStore } from './idbStore'
 
@@ -136,22 +136,18 @@ if (typeof window !== 'undefined') {
 // `meta.baseUpdatedAt` = `date_modification` de l'enregistrement chargé, pour
 // la détection de conflit côté serveur.
 export async function withOfflineFallback(onlineCall, opType, payload, meta = {}) {
-  const clientTs = new Date().toISOString()
-  try {
-    const data = await onlineCall()
-    return { queued: false, data }
-  } catch (err) {
-    const isNetwork = !err?.response // axios : pas de réponse = réseau/timeout
-    if (!isNetwork) throw err
-    const clientOpId = await fieldOutbox.enqueue(opType, payload, {
-      clientTs, baseUpdatedAt: meta?.baseUpdatedAt,
-    })
-    // NTMOB24 — le badge d'en-tête ET les badges de liste se rafraîchissent
-    // aussitôt (l'utilisateur voit sa modification « en attente » sur la ligne).
-    notifyOfflineOutboxChange()
-    requestBackgroundSync()
-    return { queued: true, clientOpId }
-  }
+  // ADEP45 — `onlineCall(clientOpId)` reçoit la clé d'idempotence, réutilisée
+  // pour la mise en file (voir `repliHorsLigne`). Les appels qui ne l'utilisent
+  // pas (last-write-wins) l'ignorent : comportement inchangé.
+  return repliHorsLigne({
+    outbox: fieldOutbox, onlineCall, opType, payload, meta,
+    apresMiseEnFile: () => {
+      // NTMOB24 — le badge d'en-tête ET les badges de liste se rafraîchissent
+      // aussitôt (l'utilisateur voit sa modification « en attente » sur la ligne).
+      notifyOfflineOutboxChange()
+      requestBackgroundSync()
+    },
+  })
 }
 
 // Demande au navigateur une Background Sync : il rejouera l'outbox au retour du
