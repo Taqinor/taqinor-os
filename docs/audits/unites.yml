@@ -439,10 +439,10 @@ unites:
     groupe: ADOC
     plan: docs/plans/PLAN_AUDIT_DOCUMENTS.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/WEB_PLAN.md]
-    pr: 806
+    pr: 925
     date: 2026-10-09
     dossier: docs/audits/2026-10-05-documents.md
-    notes: "vérifie ADOC du 09/10/2026 (clôture, 101/104 cochées ; dossier docs/audits/2026-10-09-documents-verifie.md) : 28 tâches échantillonnées (graine 1a186a82c) — 22 ok, 1 déjà-présente, 5 partielles ; 3 écarts S2 reproduits par sonde (docs/audits/sondes/ADOC/C-ADOC-VER-001..003 : lien de signature lisible hors visibilité, faux « Présente » de la checklist, nouvelle version pendant une signature) + 1 S3 (tests affaiblis) → ADOC173-ADOC176 dans PLAN_AUDIT_DOCUMENTS ; aucun S1, pas de Fable ; statut inchangé (audité) tant que ADOC173-176 et ADOC170 (acceptation live, BLOCKED) restent ouvertes. Mots v1 : ged, portail. Audit L2 du 05/10/2026 (dossier docs/audits/2026-10-05-documents.md) : 66 constats (3 S1), 103 tâches ADOC, décisions D-ADOC-1..4. apps/web suivi retiré de possede (propriétaire web, ownership.yml prime). Comptes portail créés en local pour le run (aucun seedé)."
+    notes: "vérifie ADOC du 09/10/2026 (PR 925, clôture, 101/104 cochées ; dossier docs/audits/2026-10-09-documents-verifie.md) : 28 tâches échantillonnées (graine 1a186a82c) — 22 ok, 1 déjà-présente, 5 partielles ; 3 écarts S2 reproduits par sonde (docs/audits/sondes/ADOC/C-ADOC-VER-001..003 : lien de signature lisible hors visibilité, faux « Présente » de la checklist, nouvelle version pendant une signature) + 1 S3 (tests affaiblis) → ADOC173-ADOC176 dans PLAN_AUDIT_DOCUMENTS ; aucun S1, pas de Fable ; statut inchangé (audité) tant que ADOC173-176 et ADOC170 (acceptation live, BLOCKED) restent ouvertes. Mots v1 : ged, portail. Audit L2 du 05/10/2026 (dossier docs/audits/2026-10-05-documents.md) : 66 constats (3 S1), 103 tâches ADOC, décisions D-ADOC-1..4. apps/web suivi retiré de possede (propriétaire web, ownership.yml prime). Comptes portail créés en local pour le run (aucun seedé)."
 
   - id: X3
     rang: 13
