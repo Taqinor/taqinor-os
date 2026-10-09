@@ -18,9 +18,9 @@ import { generateur } from './mocksApiDevis.js'
    (ACAL345) refuse tout bloc de ≥ 6 lignes significatives copié dans deux
    fichiers. Chaque test garde SES `vi.mock(...)` (hissés, chemins relatifs à
    lui) — leurs fabriques viennent de `./mocksApiDevis.js` (ventesApiPanneauMock,
-   stockApiMock, generateurSimule), le seul module sans import d'API ni du panneau. */
-
-export { generateur }
+   stockApiMock, generateurSimule), le seul module sans import d'API ni du panneau.
+   Le porteur des props du générateur (`generateur`) s'importe de ce même module,
+   pas d'ici : une ré-exportation arrivait `undefined` côté test sous Vitest. */
 
 export const LEAD = { id: 77, nom: 'Khalid' }
 

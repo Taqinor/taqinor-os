@@ -11,20 +11,9 @@ import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
-vi.mock('../../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    // Aperçu jamais résolu : seul l'état des boutons est sous test.
-    getProposalPdf: vi.fn(() => new Promise(() => {})),
-    reviserDevis: vi.fn(),
-    // CIQ127 — le devis automatique C&I part au serveur.
-    creerDevisAuto: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../../api/ventesApi', async () => (await import('../../../test/mocksApiDevis.js')).ventesApiPanneauMock())
+vi.mock('../../../api/stockApi', async () => (await import('../../../test/mocksApiDevis.js')).stockApiMock())
 // EDC8 — `montageGenerateur` compte chaque rendu du générateur : « jamais monté »
 // se prouve par 0 appel, pas par un test fait après coup sur le DOM.
 const { montageGenerateur } = vi.hoisted(() => ({ montageGenerateur: vi.fn() }))

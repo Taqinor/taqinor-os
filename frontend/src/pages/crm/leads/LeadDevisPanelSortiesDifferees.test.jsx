@@ -19,81 +19,26 @@
 // la ferme après).
 // Run : npx vitest run src/pages/crm/leads/LeadDevisPanelSortiesDifferees.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
 
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import ConfirmProvider from '../../../providers/ConfirmProvider'
-import authReducer from '../../../features/auth/store/authSlice'
+import { preparerApisPanneau, ouvrirEdition } from '../../../test/panneauDevis'
 
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 
-vi.mock('../../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getProposalPdf: vi.fn(() => new Promise(() => {})),
-    reviserDevis: vi.fn(),
-    creerDevisAuto: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-
-const { generateur } = vi.hoisted(() => ({ generateur: { props: null } }))
-vi.mock('../../ventes/DevisGenerator', () => ({
-  default: (props) => {
-    generateur.props = props
-    return <div data-testid="generateur-monte"><input aria-label="Qté" defaultValue="1" /></div>
-  },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../../api/ventesApi', async () => (await import('../../../test/mocksApiDevis.js')).ventesApiPanneauMock())
+vi.mock('../../../api/stockApi', async () => (await import('../../../test/mocksApiDevis.js')).stockApiMock())
+vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/mocksApiDevis.js'))
+  .generateurSimule(() => <input aria-label="Qté" defaultValue="1" />))
 
 import ventesApi from '../../../api/ventesApi'
-import LeadDevisPanel from './LeadDevisPanel'
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
 
-const LEAD = { id: 77, nom: 'Khalid' }
-const envoye = () => ({
-  data: exempleContrat('ventes', 'devis_modifiabilite', 'exemple_envoye'),
-})
-
-function rendre(props = {}) {
-  const onClose = vi.fn()
-  const store = configureStore({
-    reducer: { auth: authReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Magasinier', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-  render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ConfirmProvider>
-          <LeadDevisPanel lead={LEAD} mode="edit" existingDevisId={413}
-                          onClose={onClose} {...props} />
-        </ConfirmProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-  return { onClose }
-}
-
-async function ouvrirEditionModifiee() {
-  const rendu = rendre()
-  await screen.findByTestId('generateur-monte')
-  await act(async () => { await new Promise((r) => setTimeout(r, 5)) })
-  await act(async () => { generateur.props.onDirtyChange(true) })
-  return rendu
-}
+// Magasinier (store `auth`), éditeur ouvert avec des modifications non enregistrées.
+const ouvrirEditionModifiee = () => ouvrirEdition({ auth: true, dirty: true })
 
 /** Tap tactile : pointerdown « touch » (Radix diffère au click) puis click. */
 async function tapTactile(el) {
@@ -103,12 +48,7 @@ async function tapTactile(el) {
   await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
 }
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  generateur.props = null
-  ventesApi.getProposalPdf.mockImplementation(() => new Promise(() => {}))
-  ventesApi.getDevisById.mockResolvedValue(envoye())
-})
+beforeEach(() => preparerApisPanneau({ ventesApi }))
 
 describe('EDC6 (suite) — « Rester » au doigt ferme la boîte, et elle reste fermée', () => {
   it('tap tactile sur « Rester » : plus de boîte, éditeur conservé, panneau ouvert', async () => {

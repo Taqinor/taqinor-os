@@ -6,91 +6,35 @@
 // ouvert ne ferme QUE le popover (pile de DismissableLayer), sans confirmation.
 // Run : npx vitest run src/pages/crm/leads/LeadDevisPanelSorties.test.jsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import ConfirmProvider from '../../../providers/ConfirmProvider'
-import authReducer from '../../../features/auth/store/authSlice'
 import ProduitPicker from '../../../components/ProduitPicker'
+import {
+  preparerApisPanneau, rendrePanneau, ouvrirEdition as ouvrirEditionPanneau,
+} from '../../../test/panneauDevis'
 
 // jsdom n'implémente pas scrollIntoView (utilisé par le picker).
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 
-vi.mock('../../../api/ventesApi', () => ({
-  default: {
-    getDevisById: vi.fn(),
-    getProposalPdf: vi.fn(() => new Promise(() => {})),
-    reviserDevis: vi.fn(),
-    creerDevisAuto: vi.fn(),
-    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/stockApi', () => ({
-  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+// EDC (gardes CI) : fabriques partagées — src/test/mocksApiDevis.js.
+vi.mock('../../../api/ventesApi', async () => (await import('../../../test/mocksApiDevis.js')).ventesApiPanneauMock())
+vi.mock('../../../api/stockApi', async () => (await import('../../../test/mocksApiDevis.js')).stockApiMock())
 
 const PRODUITS = [
   { id: 1, nom: 'Onduleur Hybride Deye 6kW', prix_vente: 8000, tva: 20, is_archived: false },
   { id: 3, nom: 'Panneau Solaire 550W', prix_vente: 900, tva: 10, is_archived: false },
 ]
-const { generateur } = vi.hoisted(() => ({ generateur: { props: null } }))
-vi.mock('../../ventes/DevisGenerator', () => ({
-  default: (props) => {
-    generateur.props = props
-    return (
-      <div data-testid="generateur-monte">
-        <ProduitPicker produits={PRODUITS} value="" onChange={() => {}} />
-      </div>
-    )
-  },
-}))
+// Le générateur simulé garde ses props dans `generateur` et porte un VRAI picker.
+vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/mocksApiDevis.js'))
+  .generateurSimule(() => <ProduitPicker produits={PRODUITS} value="" onChange={() => {}} />))
 
 import ventesApi from '../../../api/ventesApi'
-import LeadDevisPanel from './LeadDevisPanel'
 
-const LEAD = { id: 77, nom: 'Khalid' }
-const envoye = () => ({
-  data: exempleContrat('ventes', 'devis_modifiabilite', 'exemple_envoye'),
-})
-
-function rendre(props = {}) {
-  const onClose = vi.fn()
-  const store = configureStore({
-    reducer: { auth: authReducer },
-    preloadedState: {
-      auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Magasinier', permissions: [],
-        isAuthenticated: true, loading: false,
-      },
-    },
-  })
-  render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ConfirmProvider>
-          <LeadDevisPanel lead={LEAD} mode="edit" existingDevisId={413}
-                          onClose={onClose} {...props} />
-        </ConfirmProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-  return { onClose }
-}
-
-// Ouvre l'éditeur ; `dirty` = ce que le générateur annonce via onDirtyChange.
-async function ouvrirEdition({ dirty = false, ...props } = {}) {
-  const rendu = rendre(props)
-  await screen.findByTestId('generateur-monte')
-  // Radix n'écoute `pointerdown` sur le document qu'après un tour de timer.
-  await act(async () => { await new Promise((r) => setTimeout(r, 5)) })
-  if (dirty) await act(async () => { generateur.props.onDirtyChange(true) })
-  return rendu
-}
+// Ces tests montent un Magasinier dans le store (`auth: true`).
+const rendre = (props) => rendrePanneau(props, { auth: true })
+const ouvrirEdition = (options) => ouvrirEditionPanneau({ auth: true, ...options })
 
 const voile = () => document.querySelector('[class*="inset-0"]')
 const cliquerVoile = () => userEvent.click(voile())
@@ -100,12 +44,7 @@ const boiteQuitter = () => screen.findByRole('alertdialog')
 const enEdition = () => screen.queryByTestId('generateur-monte') !== null
 const enApercu = () => screen.queryByRole('button', { name: /Télécharger le PDF/ }) !== null
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  generateur.props = null
-  ventesApi.getProposalPdf.mockImplementation(() => new Promise(() => {}))
-  ventesApi.getDevisById.mockResolvedValue(envoye())
-})
+beforeEach(() => preparerApisPanneau({ ventesApi }))
 
 describe('EDC6 — sans modification (dirty === false) : on sort directement', () => {
   it('Échap sur un devis existant ⇒ aperçu, sans confirmation, sans fermer', async () => {
@@ -322,17 +261,10 @@ describe('EDC6 — les autres phases gardent leur comportement actuel', () => {
 
   it('erreur (création automatique échouée) : Échap ferme le panneau', async () => {
     ventesApi.creerDevisAuto.mockRejectedValueOnce({ response: { status: 422, data: { detail: 'Données insuffisantes.' } } })
-    const onClose = vi.fn()
-    render(
-      <Provider store={configureStore({ reducer: { r: (s = {}) => s } })}>
-        <MemoryRouter>
-          <ConfirmProvider>
-            <LeadDevisPanel lead={{ id: 91, nom: 'Usine', type_installation: 'industriel' }}
-                            mode="auto" onClose={onClose} />
-          </ConfirmProvider>
-        </MemoryRouter>
-      </Provider>,
-    )
+    const { onClose } = rendrePanneau({
+      lead: { id: 91, nom: 'Usine', type_installation: 'industriel' },
+      mode: 'auto', existingDevisId: undefined,
+    })
     await screen.findByText('Données insuffisantes.')
     await act(async () => { await new Promise((r) => setTimeout(r, 5)) })
     await echap()

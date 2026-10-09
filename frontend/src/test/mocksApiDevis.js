@@ -68,6 +68,7 @@ export function ventesApiPanneauMock() {
       // Aperçu jamais résolu : seul le passage de phase est sous test.
       getProposalPdf: vi.fn(() => new Promise(() => {})),
       reviserDevis: vi.fn(),
+      // CIQ127 — le devis automatique C&I part au serveur.
       creerDevisAuto: vi.fn(),
       getParametresGammes: vi.fn(vide),
     },
