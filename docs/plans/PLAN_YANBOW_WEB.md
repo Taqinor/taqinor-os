@@ -115,6 +115,7 @@ du nom « YanBow » (marques, OMPIC) reste NON faite et n'est pas lancée par ce
   (portée sur un éditeur étranger non tranchée). Points non vérifiés à la source = question au conseil (YBWM9).
 
 ## DONE LOG
+- 2026-10-09 — YBWM12 (design : A maison + bandes produit B) : décisions fondateur gravées (dev-all-10).
 - 2026-10-09 — YBW43 (vague 10 « loop work on all plans » (dev-all-10) — tests Django validés par la CI du merge).
 - 2026-10-09 — YBW42 (vague 10 « loop work on all plans » (dev-all-10) — tests Django validés par la CI du merge).
 - 2026-10-07 — vague 5 « work on all plans » (dev-all) : YBW51, YBW52, YBW53, YBW54, YBW55, YBW56, YBW27 — construites (tests Django validés par la CI du merge) ; ERR-BC-LIVRER-PARTIEL-DOUBLE-SORTIE trouvé par la garde ASTK129 et corrigé dans la même vague ; YanBow : formulaire de rendez-vous + récepteur ERP (secrets à poser par Reda : SITE_RDV_CLES serveur, YANBOW_RDV_* Cloudflare) ; YBW41 kit de captures livré mais NON coché (captures réelles à faire).
@@ -232,7 +233,7 @@ Les fichiers `*.en.ts` et `en/*.astro` cités par ces tâches sont des SQUELETTE
 - YBWM9 — Relecture par un conseil (Maroc, France, Royaume-Uni) des pages juridiques et du dossier CNDP (dépense : votre accord d'abord) ; décision sur un représentant UE (RGPD art. 27).
 - YBWM10 — Domaine : `yanbow.com` est pris ; choisir et acheter le domaine (votre action) ; d'ici là le site reste sur workers.dev, fermé.
 - YBWM11 — Coloration du slogan : A (Y, A, N et « Bow » orange, le 1 en encre) ou B (tout « 1Bow » orange).
-- YBWM12 — Choisir le candidat design (YBW43, captures à l'appui).
+- YBWM12 — Choisir le candidat design (YBW43, captures à l'appui). **TRANCHÉ le 09/10/2026 : « A maison + bandes produit B »** (choisi par Reda via la question interactive du 09/10/2026) : candidat A « Encre et papier » pour tout le site ; le principe de B (capture claire flottante sur nuit) pour les bandes produit SolarBow / MarketingBow, refait avec les jetons et polices de A (jamais Urbanist/Geist mélangés à Outfit/Instrument). Critique Fable YBW43 : A > B > C.
 - YBWM13 — Approuver le texte français (YBW67) avant toute traduction.
 - YBWM14 — Avant tout lancement public : décider s'il faut faire la vérification du nom « YanBow » (marques, OMPIC) — non faite, arrêtée sur votre ordre.
 - YBWM15 — (Plus tard) Montrer la veille sur la page MarketingBow quand PLAN_VEILLE VEIL46 est mesuré (voir GATED).
