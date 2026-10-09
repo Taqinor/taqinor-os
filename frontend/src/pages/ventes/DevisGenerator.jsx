@@ -5512,7 +5512,7 @@ export default function DevisGenerator({
         )}
 
         {/* ── Création ── */}
-        <Card id="gen-sec-enregistrer" data-nav-libelle="Enregistrer">
+        <Card id="gen-sec-enregistrer" data-nav-libelle="Enregistrement">
           <GenCardHeader icon={FileText}
                          title={editDevis ? `Modification du devis ${editDevis.reference}` : 'Création du Devis'} />
           <CardContent className="pt-4">

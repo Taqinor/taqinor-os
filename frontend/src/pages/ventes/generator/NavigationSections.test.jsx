@@ -107,7 +107,7 @@ describe('EDC9 — puces = cartes rendues', () => {
   it('création : Document → Enregistrer, sans Échéancier (carte absente en création)', async () => {
     rendre()
     await waitFor(() => expect(puces()).toEqual([
-      'Document', 'Lead & Client', 'Technique', 'Simulation', 'Lignes', 'Texte client', 'Enregistrer',
+      'Document', 'Lead & Client', 'Technique', 'Simulation', 'Lignes', 'Texte client', 'Enregistrement',
     ]))
     // Chaque puce mène à une carte qui existe.
     for (const id of ['gen-sec-document', 'gen-sec-lignes', 'gen-sec-enregistrer']) {
@@ -129,7 +129,7 @@ describe('EDC9 — puces = cartes rendues', () => {
     await waitFor(() => expect(puces()).toContain('Échéancier'))
     expect(puces()).toEqual([
       'Document', 'Lead & Client', 'Technique', 'Simulation', 'Lignes', 'Échéancier',
-      'Texte client', 'Enregistrer',
+      'Texte client', 'Enregistrement',
     ])
   })
 })
