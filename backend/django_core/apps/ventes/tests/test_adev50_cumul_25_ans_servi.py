@@ -39,7 +39,12 @@ def devis_deux_options(slug, etude_params=None, statut='envoye'):
     if etude_params is None:
         # Ancrage RÉEL (Z2) : le builder ne lit que ``factures_mensuelles_reelles``
         # (sans elle, tarif de repli ⇒ économies omises de la page publique).
-        etude_params = {'factures_mensuelles_reelles': [1800] * 12,
+        # L'alternative DÉCLARÉE (``scenario``) fait des deux onduleurs deux
+        # VRAIES options : sans elle, le builder rend l'artefact PV86 (une
+        # seule présentation « Avec batterie », ``nb_options`` = 1) et la vue
+        # retire légitimement ``totaux_sans`` — plus de cumul « sans ».
+        etude_params = {'scenario': 'Les deux (Sans + Avec)',
+                        'factures_mensuelles_reelles': [1800] * 12,
                         'distributeur': 'onee', 'ville': 'casablanca'}
     devis = Devis.objects.create(
         company=company, reference=f'DEV-{slug.upper()}-01',
