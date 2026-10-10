@@ -39,6 +39,7 @@ FICHIERS = [
     "backend/django_core/apps/crm/roof_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
     "backend/django_core/apps/crm/stock_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
     "backend/django_core/apps/crm/attribution_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/fiche_selectors.py",  # SPL89 : dernier morceau de selectors.py
     "backend/django_core/apps/crm/services.py",
     "backend/django_core/apps/crm/views.py",
     "backend/django_core/apps/ventes/scheduled.py",
@@ -64,7 +65,7 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/attribution_selectors.py::attribution_comparaison_devis":
         "attribution d'un devis donné (argument) : le caller fournit la "
         "version ; ne lit pas un ensemble de devis",
-    "backend/django_core/apps/crm/selectors.py::leads_signes_sans_devis_accepte":
+    "backend/django_core/apps/crm/fiche_selectors.py::leads_signes_sans_devis_accepte":
         "détecte un lead SIGNED dont AUCUN devis n'est accepté, toutes "
         "versions confondues (drapeau de cohérence, décidé par ACRM10)",
     "backend/django_core/apps/crm/services.py::lead_signe_sans_devis_actif":
