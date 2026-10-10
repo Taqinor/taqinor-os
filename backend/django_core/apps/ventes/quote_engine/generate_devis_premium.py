@@ -911,24 +911,33 @@ def _tva_note_par_defaut(tva_pct, langue=None):
             f"travaux.")
 
 
-def cgv_bullets_defaut(langue=None):
+def cgv_bullets_defaut(langue=None, mode=None):
     """APDF10 — puces CGV PAR DÉFAUT dans la langue du document : fr →
     ``DEFAULT_DOC_TEXTS['cgv_bullets']`` (octet pour octet) ; en/ar → les clés
-    ``cgv_*`` d'``i18n_labels``, mêmes marqueurs, mêmes pourcentages."""
+    ``cgv_*`` d'``i18n_labels``, mêmes marqueurs, mêmes pourcentages.
+
+    APDF13 × AGR310 — un devis AGRICOLE ne cite aucun barème ONEE/SRM
+    (« aucune mécanique résidentielle ») : la dernière puce par défaut
+    (« Tarifs de référence ») est retirée pour ce mode, sur le PDF comme sur
+    la page publique (même fonction)."""
     if i18n_labels.normaliser(langue) == "fr":
-        return DEFAULT_DOC_TEXTS["cgv_bullets"]
-    return ["{validite_offre}"] + [
-        i18n_labels.libelle(cle, langue) for cle in (
-            "cgv_acompte_commande", "cgv_reception_materiel",
-            "cgv_mise_en_marche")] + [
-        "{tva_note}", i18n_labels.libelle("cgv_tarifs_reference", langue)]
+        puces = DEFAULT_DOC_TEXTS["cgv_bullets"]
+    else:
+        puces = ["{validite_offre}"] + [
+            i18n_labels.libelle(cle, langue) for cle in (
+                "cgv_acompte_commande", "cgv_reception_materiel",
+                "cgv_mise_en_marche")] + [
+            "{tva_note}", i18n_labels.libelle("cgv_tarifs_reference", langue)]
+    if (mode or "").strip().lower() == "agricole":
+        return puces[:-1]
+    return puces
 
 
-def _puces_cgv(bullets, langue):
+def _puces_cgv(bullets, langue, mode=None):
     """APDF10 — puces saisies (souveraines) ou, à défaut, celles du moteur
-    dans la langue du document."""
+    dans la langue du document (et du mode, APDF13 × AGR310)."""
     if not bullets or bullets == DEFAULT_DOC_TEXTS["cgv_bullets"]:
-        return cgv_bullets_defaut(langue)
+        return cgv_bullets_defaut(langue, mode)
     return bullets
 
 
@@ -984,7 +993,8 @@ def cgv_bullets_remplies(data):
     surcharges = data.get("doc_texts") or {}
     langue = data.get("langue_sortie")
     bullets = _puces_cgv(surcharges.get("cgv_bullets")
-                         if isinstance(surcharges, dict) else None, langue)
+                         if isinstance(surcharges, dict) else None, langue,
+                         data.get("mode_installation"))
     terms = data.get("payment_terms") or {}
     try:
         tva_pct = float(data.get("taux_tva", 20) or 20)
@@ -1037,7 +1047,8 @@ def _cgv_bullets_html():
     :func:`remplir_cgv_bullets`, la fonction que la page publique appelle
     aussi. Défaut → puces identiques au caractère près.
     """
-    bullets = _puces_cgv(_doc_text("cgv_bullets"), LANGUE_SORTIE)
+    bullets = _puces_cgv(_doc_text("cgv_bullets"), LANGUE_SORTIE,
+                         globals().get("MODE_INSTALLATION"))
     out = ""
     for txt in remplir_cgv_bullets(
             bullets, acompte=PAY_A, materiel=PAY_M, solde=PAY_S,

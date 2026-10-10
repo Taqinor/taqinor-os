@@ -159,7 +159,11 @@ class CgvTousFormatsHtmlTests(SimpleTestCase):
     def test_defaut_tarifs_de_reference(self):
         for nom, html in _html_formats().items():
             with self.subTest(gabarit=nom):
-                self.assertIn('Tarifs de référence', html)
+                if nom == 'agricole':
+                    # AGR310 — aucun barème ONEE/SRM sur un devis agricole.
+                    self.assertNotIn('ONEE', html)
+                else:
+                    self.assertIn('Tarifs de référence', html)
 
     def test_residentiel_plus_de_ligne_paiement_composee(self):
         html = _html_formats()['residentiel']
