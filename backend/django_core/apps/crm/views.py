@@ -531,7 +531,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """NTUX13 — Duplique cette fiche client (suffixe « (copie) », email/
         ICE vidés — voir ``services.dupliquer_client``)."""
         source = self.get_object()
-        from .services import dupliquer_client
+        from .clients_identite import dupliquer_client
         copie = dupliquer_client(source, user=request.user)
         return Response(
             ClientSerializer(copie, context={'request': request}).data,
@@ -1503,7 +1503,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
                      'ville', 'societe', 'fonction_contact', 'ice', 'rc',
                      'if_fiscal', 'adresse_siege', 'tva_recuperable'}:
-            from .services import synchroniser_identite_client
+            from .clients_identite import synchroniser_identite_client
             try:
                 synchroniser_identite_client(new_lead, old, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1963,7 +1963,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         fiche client » : recopie TOUT l'écart d'identité du lead vers SA fiche
         Client (``lead.client`` seulement, jamais un id du corps). 200
         ``{client_ecart, champs_mis_a_jour}`` | 400 ``{detail}``."""
-        from .services import client_ecart, synchroniser_identite_client
+        from .clients_identite import client_ecart, synchroniser_identite_client
 
         lead = self.get_object()
         if not lead.client_id:
@@ -2689,7 +2689,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         mode = (request.data.get('mode') or '').strip()
         client_id = request.data.get('client_id')
-        from .services import ClientIntrouvable, convertir_lead_en_client
+        from .clients_identite import ClientIntrouvable, convertir_lead_en_client
         try:
             # ACRM7 — le client à lier est cherché dans la PORTÉE de
             # l'appelant (même règle que ``ClientViewSet.get_queryset``).

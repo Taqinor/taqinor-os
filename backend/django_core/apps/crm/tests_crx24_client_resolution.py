@@ -19,7 +19,7 @@ from unittest.mock import patch
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
-from apps.crm import services
+from apps.crm import clients_identite
 from apps.crm import leads_doublons
 from apps.crm.models import Client, Lead
 from authentication.models import Company
@@ -73,7 +73,7 @@ class ResolutionParEmailTests(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Alaoui', email='CONTACT@EXEMPLE.MA')
 
-        resolu = services.resolve_client_for_lead(lead)
+        resolu = clients_identite.resolve_client_for_lead(lead)
 
         self.assertEqual(resolu.pk, client.pk)
         self.assertEqual(Client.objects.filter(company=self.company).count(), 1)
@@ -111,8 +111,8 @@ class ResolutionParTelephoneTests(TestCase):
         second = Lead.objects.create(
             company=self.company, nom='Rachid', telephone='+212612345678')
 
-        client_1 = services.resolve_client_for_lead(premier)
-        client_2 = services.resolve_client_for_lead(second)
+        client_1 = clients_identite.resolve_client_for_lead(premier)
+        client_2 = clients_identite.resolve_client_for_lead(second)
 
         self.assertEqual(client_1.pk, client_2.pk)
         self.assertEqual(Client.objects.filter(company=self.company).count(), 1)
@@ -124,12 +124,12 @@ class VerrouConsultatifTests(TestCase):
             nom='Taqinor CRX24 verrou', slug='taqinor-crx24-verrou')
 
     def test_cle_vide_est_un_no_op(self):
-        with services._verrou_client_par_telephone(self.company.pk, '') as pris:
+        with clients_identite._verrou_client_par_telephone(self.company.pk, '') as pris:
             self.assertFalse(pris)
 
     def test_cle_renseignee_prend_le_verrou_sur_postgres(self):
         attendu = connection.vendor == 'postgresql'
-        with services._verrou_client_par_telephone(
+        with clients_identite._verrou_client_par_telephone(
                 self.company.pk, '612345678') as pris:
             self.assertEqual(pris, attendu)
 
@@ -138,7 +138,7 @@ class VerrouConsultatifTests(TestCase):
         deux résolutions successives dans la même requête ne se bloquent
         jamais l'une l'autre."""
         for _ in range(2):
-            with services._verrou_client_par_telephone(
+            with clients_identite._verrou_client_par_telephone(
                     self.company.pk, '612345678'):
                 pass
 
@@ -199,7 +199,7 @@ def _espionner_verrou(test_case, lead):
     par le verrou CRX24 (le vrai verrou est bien pris — on l'enveloppe, on ne
     le remplace pas)."""
     appels = []
-    vrai_verrou = services._verrou_client_par_telephone
+    vrai_verrou = clients_identite._verrou_client_par_telephone
 
     @contextlib.contextmanager
     def _espion(company_id, cle):
@@ -207,6 +207,6 @@ def _espionner_verrou(test_case, lead):
         with vrai_verrou(company_id, cle) as pris:
             yield pris
 
-    with patch.object(services, '_verrou_client_par_telephone', _espion):
-        services.resolve_client_for_lead(lead)
+    with patch.object(clients_identite, '_verrou_client_par_telephone', _espion):
+        clients_identite.resolve_client_for_lead(lead)
     return appels

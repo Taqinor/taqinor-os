@@ -131,7 +131,7 @@ class LeCheminVivantDeLaProvenance(TestCase):
     """
 
     def setUp(self):
-        from apps.crm.services import resolve_client_for_lead
+        from apps.crm.clients_identite import resolve_client_for_lead
         from apps.ventes.models import Devis
 
         self.company = Company.objects.get_or_create(

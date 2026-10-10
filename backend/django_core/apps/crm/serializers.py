@@ -1890,7 +1890,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_client_ecart(self, obj):
         """QJR590 — ``[nom|prenom|email|telephone|adresse]`` divergents."""
-        from .services import client_ecart
+        from .clients_identite import client_ecart
         return client_ecart(obj)
 
     def get_devis(self, obj):
