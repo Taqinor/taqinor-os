@@ -40,6 +40,23 @@ inputs:
       le chemin qu'emprunte encore `e2e-shard`, qui n'est pas conteneurise.
     required: false
     default: 'false'
+  testdb-save:
+    description: >-
+      WOW8-ONCE (09/10/2026) — 'true' UNIQUEMENT dans le job constructeur
+      (`backend-testdb` de ci.yml) et dans les lanes push/nocturnes de
+      release-verify : l'action re-dumpe alors la base migree et la SAUVE sous
+      la cle exacte, quel que soit l'evenement (PR comprise — le constructeur
+      est le seul ecrivain, donc plus de course entre 8 shards + 2 lanes e2e,
+      et un dump de PR reste dans la portee de cache de sa branche). A 'false'
+      (defaut, toutes les lanes de tests) : restauration seulement, jamais de
+      re-dump ni de sauvegarde — exactement l'ancien chemin « run de PR ».
+      Pourquoi : run 37959792590 (09/10/2026), une migration editee sur place a
+      impose le replay froid (~65 min) dans CHACUN des 8 shards, soit 8 des 20
+      creneaux de l'organisation (plan Free) pendant plus d'une heure, et toutes
+      les PR des autres postes en file d'attente. Avec WOW8-ONCE ce replay
+      tourne UNE fois, dans UN job, puis les lanes restaurent le dump exact.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -513,8 +530,8 @@ runs:
         # comportement est identique au precedent.
         if [ "$EXACT" = 'true' ]; then
           echo "Exact hit — DB already current, no re-dump needed."
-        elif [ "${{ github.event_name }}" = 'pull_request' ]; then
-          echo "Run de PR — la sauvegarde du cache est desactivee ici, donc on ne re-dumpe pas (le dump serait jete)."
+        elif [ "${{ inputs.testdb-save }}" != 'true' ]; then
+          echo "Pas le job constructeur (testdb-save=false) — ni re-dump ni sauvegarde ici : WOW8-ONCE, le dump est construit et sauve UNE fois par backend-testdb."
         else
           # LES DEUX fichiers restaures doivent etre SUPPRIMES avant reecriture,
           # pas ecrases (incident du 24/08/2026, runs push 32744147678 et
@@ -532,9 +549,19 @@ runs:
           rm -f /tmp/testdb.dump /tmp/testdb.manifest
           pgtool pg_dump -h "$PGHOST" -U "$PGUSER" -Fc -f /tmp/testdb.dump "$TARGET"
           manifest > /tmp/testdb.manifest
-          echo "Re-dumped + manifest under the new key — the save step below persists it (push runs only, first save wins)."
+          echo "Re-dumped + manifest under the new key — the save step below persists it (job constructeur WOW8-ONCE : seul ecrivain)."
         fi
-    - name: Save the pre-migrated DB dump (push runs only — never from a PR)
+    - name: Save the pre-migrated DB dump (WOW8-ONCE — builder job only)
+      # WOW8-ONCE (09/10/2026) — la regle « push runs only » du 16/07 ci-dessous
+      # visait la COURSE de 10 lanes qui sauvaient le meme dump depuis une PR.
+      # Desormais un SEUL job (`backend-testdb`, ci.yml) passe `testdb-save:
+      # 'true'` ; les lanes de tests ne sauvent jamais. Un dump de PR reste dans
+      # la portee de cache de sa branche (GitHub resout la cle sur la branche
+      # courante puis sur main) ; une PR qui REVERT une migration retombe sur
+      # son propre dump superset -> garde manifeste -> rebuild propre, mais
+      # UNE fois dans le constructeur, plus 10 fois. Le gain mesure : un run de
+      # PR a migrations nouvelles paie le delta/rebuild une fois par ensemble
+      # de migrations, pas a chaque push dans chaque lane.
       # WOW-CI (2026-07-16): PR runs must NOT save. A PR-scoped dump shadows
       # main's clean dump in cache resolution (current-branch scope wins), and a
       # PR that reverts one of its own migrations then keeps restoring a stale
@@ -544,7 +571,7 @@ runs:
       # migration-adding PRs pay a small delta-migrate per run instead, and
       # revert-PRs exact-hit main's dump again. Cache advances post-merge on the
       # main push run. Skipped on an exact hit (nothing new to save).
-      if: ${{ inputs.testdb-cache-into != '' && github.event_name != 'pull_request' && steps.testdb-cache.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.testdb-cache-into != '' && inputs.testdb-save == 'true' && steps.testdb-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: |
