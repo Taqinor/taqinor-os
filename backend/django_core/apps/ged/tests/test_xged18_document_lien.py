@@ -95,7 +95,7 @@ class GuardTests(XGed18Base):
             'document': doc.pk,
             'file': SimpleUploadedFile(
                 'x.pdf', b'%PDF-1.4 lien', content_type='application/pdf'),
-        })
+        }, format='multipart')
         self.assertEqual(resp.status_code, 400)
 
     def test_demander_signature_refuse_400(self):

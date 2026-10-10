@@ -664,6 +664,10 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = int(
 
 # Django REST Framework
 REST_FRAMEWORK = {
+    # ENF (D2, décision fondateur 09/10) : les vues sans fichier n'acceptent
+    # que du JSON — le client de test envoie donc du JSON par défaut ; les
+    # tests d'upload fixent explicitement format='multipart'.
+    'TEST_REQUEST_DEFAULT_FORMAT': 'json',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'authentication.cookie_auth.CookieJWTAuthentication',
     ),
