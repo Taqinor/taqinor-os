@@ -1,0 +1,250 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_owner_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_telephone",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_whatsapp",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_langue",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_score",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_priorite",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "cadence",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "due_date",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "due_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "canal",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "libelle",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "template_cle",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "statut",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "note",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "overdue",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "devis",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "devis_reference",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "traite_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "traite_par_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "statut_libelle",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "message_ouvert_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "canal_adapte",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_est_junk",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "suites",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_contact_preference",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_pii_masquee",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "cle",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "visite_prevue_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "visite_id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "visite_retour_disponible",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_email",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "type_etape",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "est_tache",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "nb_reports",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "due_initial_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "posee_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lead_segment",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

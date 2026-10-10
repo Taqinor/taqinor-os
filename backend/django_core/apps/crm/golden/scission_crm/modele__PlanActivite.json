@@ -1,0 +1,66 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "plans_activite",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 120
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": true
+   },
+   "nom": "actif",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_planactivite",
+ "label": "crm.PlanActivite",
+ "relations_inverses": [
+  "etapes"
+ ]
+}

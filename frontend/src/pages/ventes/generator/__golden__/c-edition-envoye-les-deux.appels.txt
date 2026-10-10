@@ -1,0 +1,153 @@
+{
+  "replaceLignesDevis": [
+    [
+      31,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "8",
+          "prix_unitaire": "1200.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 102,
+          "designation": "Onduleur réseau 5kW Monophasé",
+          "quantite": "1",
+          "prix_unitaire": "9000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "sans",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 103,
+          "designation": "Onduleur hybride Deye 6kW",
+          "quantite": "1",
+          "prix_unitaire": "14000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 2,
+          "variante": "avec",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 104,
+          "designation": "Batterie lithium 5kWh",
+          "quantite": "1",
+          "prix_unitaire": "16000.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 3,
+          "variante": "avec",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 105,
+          "designation": "Structures acier",
+          "quantite": "8",
+          "prix_unitaire": "375.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 4,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "residentiel",
+          "taux_tva": "20.00",
+          "remise_globale": "0",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Les deux (Sans + Avec)",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ]
+  ],
+  "createDevisAtomic": [],
+  "patchEtudeParams": [
+    [
+      31,
+      {
+        "scenario": "Les deux (Sans + Avec)",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "factures_mensuelles_reelles": [
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000,
+          3000
+        ],
+        "conso_annuelle": 21149,
+        "distributeur": "onee"
+      }
+    ]
+  ],
+  "poserOverrides": [],
+  "regenererOverride": []
+}

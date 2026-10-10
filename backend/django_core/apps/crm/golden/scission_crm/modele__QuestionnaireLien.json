@@ -1,0 +1,127 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "questionnaire_liens",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "questionnaire_liens",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_questionnaire_token",
+    "editable": false,
+    "max_length": 64,
+    "unique": true
+   },
+   "nom": "token",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_questionnaire_token",
+    "editable": false,
+    "max_length": 64,
+    "unique": true
+   },
+   "nom": "token_interne",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "questionnaire_liens_crees",
+    "to": "authentication.customuser"
+   },
+   "nom": "created_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": "callable:_default_questionnaire_expiry"
+   },
+   "nom": "expires_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:dict",
+    "verbose_name": "Sections demandées"
+   },
+   "nom": "questions",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:dict",
+    "verbose_name": "Sections déjà répondues"
+   },
+   "nom": "sections_repondues",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Dernière réponse du client"
+   },
+   "nom": "derniere_reponse_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_questionnairelien",
+ "label": "crm.QuestionnaireLien",
+ "relations_inverses": []
+}

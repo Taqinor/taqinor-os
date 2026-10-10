@@ -18,11 +18,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
-const DG = read('DevisGenerator.jsx')
+const DG = lireSourceGenerateur()
 const ROW = read('DevisLineRow.jsx')
 // QJR100 — la table (thead + lines.map + le cablage de DevisLineRow) est
 // extraite dans generator/LigneTable.jsx ; `moveLine` (la mutation d'ordre)

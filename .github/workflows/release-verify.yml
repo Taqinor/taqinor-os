@@ -158,7 +158,7 @@ jobs:
       # un service Actions, mais s'atteint desormais par son NOM (`redis`) et
       # non plus `localhost`, une fois le job conteneurise.
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -255,7 +255,7 @@ jobs:
       # dans le conteneur, via `backend-env`), `redis` reste un service mais
       # s'atteint par son NOM (`redis`), plus par `localhost`.
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -461,7 +461,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: mirror.gcr.io/pgvector/pgvector:pg16
         env:
           POSTGRES_DB: erp_db
           POSTGRES_USER: erp_user
@@ -474,7 +474,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:
@@ -558,7 +558,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     services:
       redis:
-        image: redis:7.4-alpine
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
         ports:
           - 6379:6379
     env:

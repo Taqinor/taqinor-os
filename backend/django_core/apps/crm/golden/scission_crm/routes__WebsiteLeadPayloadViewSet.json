@@ -1,0 +1,50 @@
+[
+ {
+  "actions_map": {
+   "get": "list"
+  },
+  "motif": "^website-lead-payloads/$",
+  "nom": "websiteleadpayload-list",
+  "vue": "WebsiteLeadPayloadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "retrieve"
+  },
+  "motif": "^website-lead-payloads/(?P<pk>[^/.]+)/$",
+  "nom": "websiteleadpayload-detail",
+  "vue": "WebsiteLeadPayloadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "replay"
+  },
+  "motif": "^website-lead-payloads/(?P<pk>[^/.]+)/replay/$",
+  "nom": "websiteleadpayload-replay",
+  "vue": "WebsiteLeadPayloadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "replay"
+  },
+  "motif": "^website-lead-payloads/(?P<pk>[^/.]+)/replay\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "websiteleadpayload-replay",
+  "vue": "WebsiteLeadPayloadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "retrieve"
+  },
+  "motif": "^website-lead-payloads/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "websiteleadpayload-detail",
+  "vue": "WebsiteLeadPayloadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list"
+  },
+  "motif": "^website-lead-payloads\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "websiteleadpayload-list",
+  "vue": "WebsiteLeadPayloadViewSet"
+ }
+]

@@ -713,8 +713,10 @@ describe('DevisList — WR2/QJR531 : copier le lien de proposition = envoi (D-QJ
       // L'URL complète est reconstruite depuis le path renvoyé (/proposition/<token>).
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/proposition/tok123'))
     })
-    // Le statut a bougé côté serveur : la liste est rechargée.
-    await waitFor(() => { expect(fetchDevis.mock.calls.length).toBeGreaterThan(fetchAvant) })
+    // APRF8 — le statut a bougé côté serveur : la SEULE ligne touchée est relue
+    // (GET devis/<id>/), jamais la liste entière.
+    await waitFor(() => { expect(ventesApi.getDevisById).toHaveBeenCalledWith(40) })
+    expect(fetchDevis.mock.calls.length).toBe(fetchAvant)
   })
 
   it('« Copier l\'aperçu interne » reste SANS envoi', async () => {

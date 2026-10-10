@@ -1,0 +1,64 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "categorie",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "categorie_display",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "montant_prevu",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "montant_effectif",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "owner_id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "commentaire",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "mis_a_jour_par",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "mis_a_jour_le",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

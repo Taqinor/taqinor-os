@@ -1,0 +1,58 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^points-contact/$",
+  "nom": "pointcontact-list",
+  "vue": "PointContactViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^points-contact/(?P<pk>[^/.]+)/$",
+  "nom": "pointcontact-detail",
+  "vue": "PointContactViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^points-contact/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "pointcontact-detail",
+  "vue": "PointContactViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "attribution"
+  },
+  "motif": "^points-contact/attribution/$",
+  "nom": "pointcontact-attribution",
+  "vue": "PointContactViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "attribution"
+  },
+  "motif": "^points-contact/attribution\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "pointcontact-attribution",
+  "vue": "PointContactViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^points-contact\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "pointcontact-list",
+  "vue": "PointContactViewSet"
+ }
+]

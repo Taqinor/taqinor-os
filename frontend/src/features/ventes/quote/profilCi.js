@@ -11,7 +11,7 @@
 // n'est arrondi ; aucun jour n'est coché d'office (le week-end n'est jamais
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
-import { ttcFromHt, tauxTvaOf } from '../solar.js'
+import { ligneProduitCatalogue } from '../solar.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -126,11 +126,19 @@ function consommationEtat(p) {
   return { kwh_mensuels: [...(p.kwhMensuels || [])], kwh_annuel: null, factures_mad: [], registres_mt: registres }
 }
 
-function plagesEtat(p) {
+function plagesEtat(p, stockees) {
   const out = {}
   for (const { cle } of TYPES_JOUR) {
     const pl = (p.plages || {})[cle] || {}
     if (vide(pl.debut) && vide(pl.fin)) continue
+    // AGNR7 — l'écran n'édite que la PREMIÈRE plage : inchangée, la liste
+    // stockée (plages suivantes comprises) repart telle quelle.
+    const liste = stockees && Array.isArray(stockees[cle]) ? stockees[cle] : null
+    const premiere = liste && Array.isArray(liste[0]) ? liste[0] : null
+    if (premiere && String(premiere[0]) === String(pl.debut) && String(premiere[1]) === String(pl.fin)) {
+      out[cle] = liste
+      continue
+    }
     out[cle] = [[pl.debut, pl.fin]]
   }
   return Object.keys(out).length ? out : null
@@ -142,13 +150,33 @@ function plagesEtat(p) {
  */
 export function etatCorpsDepuisProfil(profil, ctx = {}) {
   const p = { ...profilCiVide(), ...(profil || {}) }
+  // AGNR7 — les feuilles que l'écran N'ÉDITE PAS repartent avec leur valeur
+  // STOCKÉE (relevé de visite, devis auto, API) : `etude_schema.ecrire`
+  // fusionne au PREMIER niveau, un `null` posé ici effacerait la donnée.
+  const s = p.stocke && typeof p.stocke === 'object' ? p.stocke : {}
+  const sSite = s.site || {}
+  const sToit = s.toit || {}
+  const sContraintes = s.contraintes || {}
+  const sOptions = s.options || {}
+  const sRythme = s.rythme || {}
+  const memeNombre = (a, b) => !vide(a) && !vide(b) && Number(a) === Number(b)
   const jours = Array.isArray(p.joursOuverts) && p.joursOuverts.some(Boolean)
     ? p.joursOuverts.map(Boolean) : null
+  const talonStocke = sRythme.talon && typeof sRythme.talon === 'object' ? sRythme.talon : null
+  let talon = null
+  if (p.talonInconnu) talon = { kw: null, part_pct: null, inconnu: true }
+  else if (!vide(p.talonKw)) {
+    talon = {
+      kw: p.talonKw,
+      part_pct: talonStocke && memeNombre(talonStocke.kw, p.talonKw) ? (talonStocke.part_pct ?? null) : null,
+      inconnu: false,
+    }
+  }
   return {
     mode: ctx.mode,
     lead: ctx.lead ?? null,
     devis: ctx.devis ?? null,
-    site: { ville: ctx.ville || null, lat: null, lon: null },
+    site: { ville: ctx.ville || sSite.ville || null, lat: sSite.lat ?? null, lon: sSite.lon ?? null },
     tension: p.tension || null,
     phases: p.phases || null,
     puissance_souscrite_kva: p.puissanceSouscrite,
@@ -156,14 +184,12 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
     tarif: ctx.tarif ?? null,
     rythme: {
       jours_ouverts: jours,
-      plages: plagesEtat(p),
+      plages: plagesEtat(p, sRythme.plages),
       equipes: p.equipes || null,
       debut_equipe_h: p.debutEquipeH,
       fermetures: (p.fermetures || []).map((f) => ({ du: f?.du, au: f?.au, motif: f?.motif })),
-      ramadan: null,
-      talon: p.talonInconnu
-        ? { kw: null, part_pct: null, inconnu: true }
-        : (vide(p.talonKw) ? null : { kw: p.talonKw, part_pct: null, inconnu: false }),
+      ramadan: sRythme.ramadan ?? null,
+      talon,
       categorie_commerciale: ctx.categorie || null,
       reponses_categorie: ctx.reponses && Object.keys(ctx.reponses).length ? ctx.reponses : null,
     },
@@ -171,22 +197,24 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
     toit: {
       type_pose: p.typePose || null,
       surface_utile_m2: p.surfaceUtile,
-      surface_type: vide(p.surfaceUtile) ? null : 'declaree',
-      pente_deg: null,
-      azimut_deg: null,
+      surface_type: vide(p.surfaceUtile) ? null
+        : (memeNombre(sToit.surface_utile_m2, p.surfaceUtile) && sToit.surface_type
+          ? sToit.surface_type : 'declaree'),
+      pente_deg: sToit.pente_deg ?? null,
+      azimut_deg: sToit.azimut_deg ?? null,
       couverture: p.couverture || null,
-      charge_admissible_kg_m2: null,
-      charge_admissible_source: null,
+      charge_admissible_kg_m2: sToit.charge_admissible_kg_m2 ?? null,
+      charge_admissible_source: sToit.charge_admissible_source ?? null,
     },
     contraintes: {
       revente_choisie: p.tension === 'mt' ? Boolean(p.revente) : false,
-      nb_points_raccordement: null,
-      longueur_dc_m: null,
-      longueur_ac_m: null,
-      besoin_cellule_mt: null,
+      nb_points_raccordement: sContraintes.nb_points_raccordement ?? null,
+      longueur_dc_m: sContraintes.longueur_dc_m ?? null,
+      longueur_ac_m: sContraintes.longueur_ac_m ?? null,
+      besoin_cellule_mt: sContraintes.besoin_cellule_mt ?? null,
     },
     tva_recuperable: ctx.tvaRecuperable ?? null,
-    options: { batterie_souhaitee: null, om: null },
+    options: { batterie_souhaitee: sOptions.batterie_souhaitee ?? null, om: sOptions.om ?? null },
     taille_explicite_kwc: p.tailleExplicite,
   }
 }
@@ -274,6 +302,15 @@ export function profilDepuisEtude(e) {
   p.puissanceSouscrite = texte(etude.puissance_souscrite_kva)
   p.revente = etude.contraintes?.revente_choisie === true
   p.tailleExplicite = texte(etude.taille_explicite_kwc)
+  // AGNR7 — les sous-objets STOCKÉS, gardés tels quels : les feuilles que
+  // l'écran n'édite pas en repartent à l'enregistrement.
+  p.stocke = JSON.parse(JSON.stringify({
+    site: etude.site ?? null,
+    toit: etude.toit ?? null,
+    contraintes: etude.contraintes ?? null,
+    options: etude.options ?? null,
+    rythme: etude.rythme ?? null,
+  }))
   return p
 }
 
@@ -293,12 +330,13 @@ export function lignesDepuisCompositionCi(composition, produits) {
     if (!Number.isFinite(quantite) || quantite <= 0) continue
     const p = (it.produit == null || it.prix_connu === false) ? null
       : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
-    rows.push({
-      produit: p ? String(p.id) : '',
-      designation: p ? p.nom : `${it.designation || 'Article C&I'} — prix à renseigner`,
+    // ATOT28 — un produit tarifé : ligne catalogue (HT d'origine porté).
+    rows.push(p ? ligneProduitCatalogue(p, quantite) : {
+      produit: '',
+      designation: `${it.designation || 'Article C&I'} — prix à renseigner`,
       quantite,
-      prix_unit_ttc: p ? ttcFromHt(p.prix_vente, tauxTvaOf(p)) : 0,
-      taux_tva: p ? tauxTvaOf(p) : 20,
+      prix_unit_ttc: 0,
+      taux_tva: 20,
     })
   }
   return rows

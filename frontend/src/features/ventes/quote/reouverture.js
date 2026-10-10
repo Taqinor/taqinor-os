@@ -11,7 +11,7 @@
 // Fonction PURE (node --test) ; mêmes prédicats que l'écran (solar.js).
 import {
   parseWatt, structureRoleForName, classifyProduct,
-  isPanel, isOffgridInverter, isReseauInverter, isHybridInverter, isPompe,
+  isPanel, isOffgridInverter, isReseauInverter, isHybridInverter, isPompe, texteClassement,
 } from '../solar.js'
 
 const quantite = (l) => parseFloat(l?.quantite) || 0
@@ -26,10 +26,12 @@ const typeLigne = (l) => l?.typeLigne ?? l?.type_ligne ?? 'produit'
  *   accessoiresOnly: boolean}}
  *   `null` = rien de lisible sur les lignes → l'écran garde son défaut.
  */
-export function deriverReouverture(lignes, { mode } = {}) {
+export function deriverReouverture(lignes, { mode, catalogue = [] } = {}) {
   const produits = (Array.isArray(lignes) ? lignes : [])
     .filter(l => typeLigne(l) === 'produit' && quantite(l) > 0)
-  const des = (l) => l.designation || ''
+  // AGNR36 — chaque ligne classée sur désignation + nom du produit lié
+  // (`texteClassement`, miroir de `utils/options.texte_classement`).
+  const des = (l) => texteClassement(l, catalogue)
 
   // Wattage : celui de la ligne panneau DOMINANTE (le plus grand compte),
   // même règle que domain/scenario.py `ligne_panneau_dominante`.

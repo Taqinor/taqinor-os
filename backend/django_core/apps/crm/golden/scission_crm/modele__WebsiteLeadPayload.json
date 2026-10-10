@@ -1,0 +1,103 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "website",
+      "Site web"
+     ],
+     [
+      "meta_lead_ads",
+      "Meta Lead Ads"
+     ]
+    ],
+    "db_index": true,
+    "default": "website",
+    "max_length": 32
+   },
+   "nom": "source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "website_lead_payloads",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {},
+   "nom": "payload",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 64,
+    "null": true
+   },
+   "nom": "remote_addr",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "received_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "processed",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "error",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "website_payloads",
+    "to": "crm.lead"
+   },
+   "nom": "lead",
+   "type": "ForeignKey"
+  }
+ ],
+ "db_table": "crm_websiteleadpayload",
+ "label": "crm.WebsiteLeadPayload",
+ "relations_inverses": []
+}

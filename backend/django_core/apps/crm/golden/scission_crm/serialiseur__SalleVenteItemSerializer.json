@@ -1,0 +1,46 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "salle",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "reference",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "titre",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

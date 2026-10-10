@@ -40,6 +40,19 @@ class CheckTestsSourceRegexTests(unittest.TestCase):
         self.assertIn("autoQuote.NouveauTruc.test.mjs", offenders[0])
         self.assertIn("QJR239", offenders[0])
 
+    def test_lecteur_unique_du_generateur_est_vu_comme_lecture_de_source(self):
+        # SPL42 — `lireSourceGenerateur(` / `lireSourceCoquille(` remplacent
+        # readFileSync : un nouveau lecteur reste visible du cliquet.
+        for lecteur in ("lireSourceGenerateur()", "lireSourceCoquille()"):
+            offenders = self._scan({
+                "pages/ventes/DevisGeneratorNouveau.test.mjs": (
+                    "import { lireSourceGenerateur } from './DevisGeneratorSource.js'\n"
+                    f"const DG = {lecteur}\n"
+                    "assert.match(DG, /quelque chose/)\n"
+                ),
+            })
+            self.assertEqual(len(offenders), 1, (lecteur, offenders))
+
     def test_meme_fichier_dans_lallowlist_ne_rougit_pas(self):
         rel = "features/ventes/autoQuote.NouveauTruc.test.mjs"
         offenders = self._scan(
@@ -94,7 +107,7 @@ class CheckTestsSourceRegexTests(unittest.TestCase):
                 name.startswith(guard.FAMILY_PREFIXES),
                 f"{rel} n'est pas de la famille DevisGenerator*/solar*/autoQuote*")
             self.assertRegex(
-                p.read_text(encoding="utf-8"), r"readFileSync",
+                p.read_text(encoding="utf-8"), guard.RE_READFILESYNC,
                 f"{rel} ne lit plus de source via readFileSync - a retirer de l'allowlist")
 
     def test_allowlist_a_une_raison_non_vide_par_entree(self):

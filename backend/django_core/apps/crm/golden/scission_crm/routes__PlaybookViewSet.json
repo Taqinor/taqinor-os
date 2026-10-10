@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^playbooks/$",
+  "nom": "playbook-list",
+  "vue": "PlaybookViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^playbooks/(?P<pk>[^/.]+)/$",
+  "nom": "playbook-detail",
+  "vue": "PlaybookViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^playbooks/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "playbook-detail",
+  "vue": "PlaybookViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^playbooks\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "playbook-list",
+  "vue": "PlaybookViewSet"
+ }
+]

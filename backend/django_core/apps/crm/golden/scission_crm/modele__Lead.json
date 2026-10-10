@@ -1,0 +1,3583 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "db_index": true,
+    "default": false,
+    "verbose_name": "Supprimé"
+   },
+   "nom": "is_deleted",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Supprimé le"
+   },
+   "nom": "deleted_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "authentication.customuser",
+    "verbose_name": "Supprimé par"
+   },
+   "nom": "deleted_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "leads",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 255
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 255,
+    "null": true
+   },
+   "nom": "prenom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "M.",
+      "M."
+     ],
+     [
+      "Mme",
+      "Mme"
+     ]
+    ],
+    "help_text": "Question au premier appel, seulement en cas de doute : « Je vous note Monsieur ou Madame ? » — facultative : vide, les messages disent « Bonjour [prénom] », jamais un genre supposé.",
+    "max_length": 4,
+    "null": true,
+    "verbose_name": "Civilité"
+   },
+   "nom": "civilite",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Quelle est la raison sociale de votre entreprise ? » (vide = pas encore posée).",
+    "max_length": 255,
+    "null": true
+   },
+   "nom": "societe",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 254,
+    "null": true
+   },
+   "nom": "email",
+   "type": "EmailField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 50,
+    "null": true
+   },
+   "nom": "telephone",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "adresse",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 120,
+    "null": true
+   },
+   "nom": "ville",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Co-associé de coopérative, technicien d’usine, membre du comité… Aucune relance automatique ne lui est adressée.",
+    "max_length": 255,
+    "null": true,
+    "verbose_name": "Contact secondaire (nom)"
+   },
+   "nom": "contact_secondaire_nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Numéro du second interlocuteur — jamais utilisé par la cadence : le contacter reste un geste manuel.",
+    "max_length": 50,
+    "null": true,
+    "verbose_name": "Contact secondaire (téléphone)"
+   },
+   "nom": "contact_secondaire_telephone",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "leads",
+    "to": "crm.client"
+   },
+   "nom": "client",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Fiche du répertoire unifié reflétant ce prospect (stade amont). Renseignée automatiquement (miroir).",
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "leads",
+    "to": "tiers.tiers",
+    "verbose_name": "Tiers (répertoire unifié)"
+   },
+   "nom": "tiers",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Votre facture d'électricité, elle est de combien ? Elle couvre un mois ou deux mois ? » — le montant ENREGISTRÉ est toujours MENSUEL : une facture de deux mois est divisée par deux à la saisie.",
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "facture_hiver",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "facture_ete",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "ete_differente",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 50,
+    "null": true
+   },
+   "nom": "whatsapp",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "fr",
+      "Français"
+     ],
+     [
+      "darija",
+      "Darija"
+     ]
+    ],
+    "max_length": 10,
+    "null": true
+   },
+   "nom": "langue_preferee",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 6,
+    "max_digits": 9,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       -90
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     },
+     {
+      "args": [
+       90
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ]
+   },
+   "nom": "gps_lat",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 6,
+    "max_digits": 9,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       -180
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     },
+     {
+      "args": [
+       180
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ]
+   },
+   "nom": "gps_lng",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 500,
+    "verbose_name": "Lien Google Maps"
+   },
+   "nom": "lien_maps",
+   "type": "URLField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 120,
+    "verbose_name": "Ville ERP de rattachement"
+   },
+   "nom": "ville_reference",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "leads_assignes",
+    "to": "authentication.customuser"
+   },
+   "nom": "owner",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "meta_ads",
+      "Publicité Meta"
+     ],
+     [
+      "whatsapp_ctwa",
+      "WhatsApp/CTWA"
+     ],
+     [
+      "site_web",
+      "Site web"
+     ],
+     [
+      "google_ads",
+      "Google Ads"
+     ],
+     [
+      "reference",
+      "Référence"
+     ],
+     [
+      "telephone",
+      "Téléphone"
+     ],
+     [
+      "walk_in",
+      "Visite/Walk-in"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "canal",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "basse",
+      "Basse"
+     ],
+     [
+      "normale",
+      "Normale"
+     ],
+     [
+      "haute",
+      "Haute"
+     ]
+    ],
+    "default": "normale",
+    "max_length": 10
+   },
+   "nom": "priorite",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 500,
+    "null": true
+   },
+   "nom": "tags",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "perdu",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 255,
+    "null": true
+   },
+   "nom": "motif_perte",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "relance_date",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "verbose_name": "Ne plus contacter"
+   },
+   "nom": "ne_plus_contacter",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "residentiel",
+      "Résidentiel"
+     ],
+     [
+      "commercial",
+      "Commercial"
+     ],
+     [
+      "industriel",
+      "Industriel"
+     ],
+     [
+      "agricole",
+      "Agricole"
+     ]
+    ],
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "type_installation",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Estimation libre du commercial avant devis — contribue au forecast pondéré tant qu'aucun devis actif n'existe.",
+    "max_digits": 12,
+    "null": true,
+    "verbose_name": "Montant estimé (MAD)"
+   },
+   "nom": "montant_estime",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Date de clôture prévue"
+   },
+   "nom": "date_cloture_prevue",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Votre consommation du mois dernier, en kWh ? Elle est sur la facture. » (vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Consommation mensuelle (kWh)"
+   },
+   "nom": "conso_mensuelle_kwh",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 100,
+    "null": true
+   },
+   "nom": "tranche_onee",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "monophase",
+      "Monophasé"
+     ],
+     [
+      "triphase",
+      "Triphasé"
+     ],
+     [
+      "inconnu",
+      "Je ne sais pas"
+     ],
+     [
+      "aucun",
+      "Non raccordé (site isolé)"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Votre compteur est-il monophasé ou triphasé ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "raccordement",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "regularisation_8221",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "present",
+      "Présent en journée"
+     ],
+     [
+      "absent",
+      "Absent en journée"
+     ],
+     [
+      "partiel",
+      "Présence partielle (télétravail/mi-temps)"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? » (Présent/Absent/Présence partielle — vide = pas encore posée). Renseigné : PILOTE la silhouette de consommation servie (apps/ventes/courbes_journalieres.py _occupation) — sinon repli sur le défaut fondateur actuel, inchangé.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Présence en journée"
+   },
+   "nom": "occupation_jour",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Avez-vous une piscine ? » (Oui/Non — laisser vide tant que la question n'a pas été posée : vide ≠ Non).",
+    "null": true,
+    "verbose_name": "Piscine"
+   },
+   "nom": "equip_piscine",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Puissance de la pompe de filtration (kW, plaque signalétique du moteur). Aucune valeur par défaut : le mémo ne cite aucune puissance fiable pour ce parc — à relever sur place ou à demander au client, sinon laisser vide (aucune couche piscine sans cette valeur).",
+    "max_digits": 5,
+    "null": true,
+    "verbose_name": "Puissance pompe piscine (kW)"
+   },
+   "nom": "equip_piscine_pompe_kw",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Avez-vous ou prévoyez-vous un véhicule électrique ? » (Oui/Non — vide = pas encore posée).",
+    "null": true,
+    "verbose_name": "Véhicule électrique"
+   },
+   "nom": "equip_voiture_electrique",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Combien de km parcourez-vous par semaine avec ce véhicule ? » SAISIE OBLIGATOIRE pour chiffrer la recharge (aucun défaut : mémo étage 2 — conversion ADEME 19,8 kWh/100 km, sans hypothèse de kilométrage).",
+    "null": true,
+    "verbose_name": "VE — km parcourus/semaine"
+   },
+   "nom": "equip_ve_km_semaine",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Avez-vous la climatisation ? » (Oui/Non — vide = pas encore posée).",
+    "null": true,
+    "verbose_name": "Climatisation"
+   },
+   "nom": "equip_clim",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Combien de pièces/unités climatisées ? » (chaque unité ≈ 1,4 kWh/h pour un split 12000 BTU non-inverter — mémo étage 2).",
+    "null": true,
+    "verbose_name": "Clim — nombre de pièces/unités"
+   },
+   "nom": "equip_clim_pieces",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Votre chauffe-eau est-il électrique ? » Champ INFORMATIF uniquement : le mémo ne donne qu'un ordre de grandeur kWh/personne/an (aucun champ « nombre de personnes » collecté) — il n'ajuste AUCUNE courbe (omission plutôt qu'un défaut inventé).",
+    "null": true,
+    "verbose_name": "Chauffe-eau électrique"
+   },
+   "nom": "equip_chauffe_eau_electrique",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Puissance de la résistance du chauffe-eau électrique (kW, plaque signalétique). Avec le créneau ci-dessous : compose une couche « impulsion » sur ce créneau. Seule, ne produit rien.",
+    "max_digits": 5,
+    "null": true,
+    "verbose_name": "Puissance chauffe-eau (kW)"
+   },
+   "nom": "equip_chauffe_eau_kw",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "matin",
+      "Matin"
+     ],
+     [
+      "soir",
+      "Soir"
+     ],
+     [
+      "nuit",
+      "Nuit"
+     ],
+     [
+      "journee",
+      "Toute la journée"
+     ]
+    ],
+    "help_text": "Question à l'appel : « À quel moment le chauffe-eau chauffe-t-il le plus (matin/soir/nuit/toute la journée) ? » Avec la puissance ci-dessus : compose une couche « impulsion » sur ce créneau. Seul, ne produit rien.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Créneau de chauffe du chauffe-eau"
+   },
+   "nom": "equip_chauffe_eau_creneau",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Puissance du chargeur du véhicule électrique (kW, prise renforcée/wallbox). Avec le créneau ci-dessous : borne la fenêtre de recharge à l'énergie hebdomadaire ÷ cette puissance, au lieu de la fenêtre 21h-6h par défaut. Seule, ne change rien.",
+    "max_digits": 5,
+    "null": true,
+    "verbose_name": "Puissance chargeur VE (kW)"
+   },
+   "nom": "equip_ve_chargeur_kw",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "nuit",
+      "Nuit"
+     ],
+     [
+      "jour",
+      "Jour"
+     ],
+     [
+      "soir",
+      "Soir"
+     ]
+    ],
+    "help_text": "Question à l'appel : « À quel moment rechargez-vous le véhicule (nuit/jour/soir) ? » Avec la puissance ci-dessus : borne la fenêtre de recharge réelle. Seul, ne change rien.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Créneau de recharge du VE"
+   },
+   "nom": "equip_ve_creneau",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Puissance totale RÉELLE de la climatisation (kW, relevée sur plaque signalétique), quand elle est connue : remplace l'estimation par défaut (pièces × 1,4 kWh/h non-inverter). Vide : la couche clim reste composée depuis le nombre de pièces.",
+    "max_digits": 5,
+    "null": true,
+    "verbose_name": "Puissance clim déclarée (kW)"
+   },
+   "nom": "equip_clim_kw",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 1,
+    "help_text": "Durée réelle de filtration déclarée (h/jour), quand elle est connue : remplace la durée par défaut du mémo (8h, bloc 10h-18h). Vide : la couche piscine reste composée avec la fenêtre par défaut.",
+    "max_digits": 4,
+    "null": true,
+    "verbose_name": "Piscine — heures de filtration/jour"
+   },
+   "nom": "equip_piscine_heures_jour",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "matin",
+      "Matin"
+     ],
+     [
+      "apres_midi",
+      "Après-midi"
+     ],
+     [
+      "soir",
+      "Soir"
+     ],
+     [
+      "journee",
+      "Toute la journée"
+     ]
+    ],
+    "help_text": "Question à l'appel : « À quel moment la climatisation tourne-t-elle le plus (matin/après-midi/soir/toute la journée) ? » Avec la puissance déclarée (ou à défaut l'estimation par pièces) : place la couche « clim » sur ce créneau au lieu du bloc 13h-21h par défaut. Seul, ne change rien.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Créneau de fonctionnement de la clim"
+   },
+   "nom": "equip_clim_creneau",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "matin",
+      "Matin"
+     ],
+     [
+      "apres_midi",
+      "Après-midi"
+     ],
+     [
+      "soir",
+      "Soir"
+     ],
+     [
+      "journee",
+      "Toute la journée"
+     ]
+    ],
+    "help_text": "Question à l'appel : « À quel moment la pompe de filtration tourne-t-elle le plus (matin/après-midi/soir/toute la journée) ? » Change l'heure de DÉPART de la fenêtre (equip_piscine_heures_jour en contrôle toujours la longueur). Seul, ne change rien.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Créneau de filtration de la piscine"
+   },
+   "nom": "equip_piscine_creneau",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Votre pompe actuelle fait combien de chevaux ? C'est écrit sur sa plaque. » (vide = pas encore posée).",
+    "max_digits": 6,
+    "null": true,
+    "verbose_name": "Pompe actuelle (CV)"
+   },
+   "nom": "pompe_actuelle_cv",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Connaissez-vous la hauteur totale de pompage, en mètres ? » (HMT, vide = pas encore posée).",
+    "max_digits": 8,
+    "null": true
+   },
+   "nom": "pompe_hmt_m",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quel débit voulez-vous, en m³ par heure ? » (débit SOUHAITÉ, vide = pas encore posée). Servi à côté du débit livré, il ne fixe jamais seul le besoin.",
+    "max_digits": 8,
+    "null": true
+   },
+   "nom": "pompe_debit_m3h",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "puits",
+      "Puits"
+     ],
+     [
+      "forage",
+      "Forage"
+     ],
+     [
+      "bassin",
+      "Bassin"
+     ],
+     [
+      "riviere",
+      "Rivière"
+     ]
+    ],
+    "help_text": "Question à l'appel : « L'eau vient d'où : un puits, un forage, un bassin ou une rivière ? » (vide = pas encore posée).",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Source d'eau"
+   },
+   "nom": "source_eau",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « À quelle profondeur est l'eau quand la pompe est arrêtée ? » (mètres, vide = pas encore posée).",
+    "max_digits": 7,
+    "null": true,
+    "verbose_name": "Niveau de l'eau, pompe arrêtée (m)"
+   },
+   "nom": "niveau_statique_m",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "declare",
+      "Déclaré par le client"
+     ],
+     [
+      "site_web",
+      "Saisi sur le site"
+     ],
+     [
+      "mesure_visite",
+      "Mesuré en visite"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Provenance du niveau statique"
+   },
+   "nom": "niveau_statique_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quelle est la profondeur totale du forage ? » (mètres, vide = pas encore posée).",
+    "max_digits": 7,
+    "null": true,
+    "verbose_name": "Profondeur du forage (m)"
+   },
+   "nom": "profondeur_forage_m",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Le débit de votre forage est-il connu (essai, foreur) ? Combien d'eau peut-il donner par heure ? » (m³/h, vide = pas encore posée).",
+    "max_digits": 8,
+    "null": true,
+    "verbose_name": "Débit du forage (m³/h)"
+   },
+   "nom": "debit_forage_m3h",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "essai",
+      "Essai de pompage"
+     ],
+     [
+      "foreur",
+      "Donné par le foreur"
+     ],
+     [
+      "client",
+      "Estimation du client"
+     ],
+     [
+      "mesure_visite",
+      "Mesuré en visite"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Provenance du débit du forage"
+   },
+   "nom": "debit_forage_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien de m³ d'eau par jour en pleine saison ? » (vide = pas encore posée).",
+    "max_digits": 9,
+    "null": true,
+    "verbose_name": "Besoin en eau (m³/jour)"
+   },
+   "nom": "besoin_eau_m3j",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "client",
+      "Déclaré par le client"
+     ],
+     [
+      "site_web",
+      "Saisi sur le site"
+     ],
+     [
+      "pompe_actuelle",
+      "Calculé depuis la pompe actuelle"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Provenance du besoin en eau"
+   },
+   "nom": "besoin_eau_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Qu'est-ce que vous cultivez ? » (vide = pas encore posée).",
+    "max_length": 120,
+    "null": true,
+    "verbose_name": "Culture"
+   },
+   "nom": "culture",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien d'hectares irriguez-vous ? » (vide = pas encore posée).",
+    "max_digits": 9,
+    "null": true,
+    "verbose_name": "Surface irriguée (ha)"
+   },
+   "nom": "surface_irriguee_ha",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "goutte",
+      "Goutte-à-goutte"
+     ],
+     [
+      "aspersion",
+      "Aspersion"
+     ],
+     [
+      "gravitaire",
+      "Gravitaire (à la raie)"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Vous arrosez comment : goutte-à-goutte, aspersion ou à la raie ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Méthode d'irrigation"
+   },
+   "nom": "irrigation_methode",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "souss-massa",
+      "Souss-Massa"
+     ],
+     [
+      "doukkala",
+      "Doukkala"
+     ],
+     [
+      "tadla",
+      "Tadla"
+     ],
+     [
+      "saiss",
+      "Saïss"
+     ],
+     [
+      "oriental",
+      "Oriental"
+     ],
+     [
+      "draa-tafilalet",
+      "Drâa-Tafilalet"
+     ],
+     [
+      "gharb-loukkos",
+      "Gharb-Loukkos"
+     ],
+     [
+      "haouz",
+      "Haouz"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Dans quelle région se trouve l'exploitation ? » (vide = pas encore posée).",
+    "max_length": 16,
+    "null": true,
+    "verbose_name": "Région agricole"
+   },
+   "nom": "region_agricole",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "immergee",
+      "Immergée"
+     ],
+     [
+      "surface",
+      "De surface"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Votre pompe actuelle est-elle immergée dans le forage, ou en surface ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Pompe actuelle — type"
+   },
+   "nom": "pompe_actuelle_type",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien d'eau votre pompe actuelle sort-elle par heure ? » (m³/h, vide = pas encore posée). Avec les heures de la pompe actuelle, donne le volume déclaré.",
+    "max_digits": 8,
+    "null": true,
+    "verbose_name": "Pompe actuelle — débit (m³/h)"
+   },
+   "nom": "pompe_actuelle_debit_m3h",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 1,
+    "help_text": "Question à l'appel : « Combien de bouteilles de butane par jour en saison ? » (bouteilles de 12 kg par jour d'irrigation, vide = pas encore posée).",
+    "max_digits": 5,
+    "null": true,
+    "verbose_name": "Butane — bouteilles par jour"
+   },
+   "nom": "butane_bouteilles_jour",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Vous la payez combien, la bouteille (ou le litre de gasoil) ? » (MAD, vide = pas encore posée). Prix PAYÉ déclaré, jamais pré-rempli.",
+    "max_digits": 8,
+    "null": true,
+    "verbose_name": "Prix payé (bouteille ou litre, MAD)"
+   },
+   "nom": "carburant_prix_unitaire_mad",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Prix du carburant déclaré le"
+   },
+   "nom": "carburant_prix_declare_le",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien dépensez-vous en carburant par mois ? » (MAD/mois, vide = pas encore posée). Information : jamais convertie en consommation.",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Dépense carburant (MAD/mois)"
+   },
+   "nom": "depense_carburant_mad_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Vous irriguez quels mois ? » (liste de mois 1 à 12, vide = pas encore posée).",
+    "null": true,
+    "validators": [
+     "callable:valider_mois_irrigation"
+    ],
+    "verbose_name": "Mois d'irrigation"
+   },
+   "nom": "mois_irrigation",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « À quelle distance du forage peut-on poser les panneaux ? » (mètres, vide = pas encore posée).",
+    "max_digits": 8,
+    "null": true,
+    "verbose_name": "Distance forage — panneaux (m)"
+   },
+   "nom": "distance_forage_champ_m",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucune",
+      "Aucune"
+     ],
+     [
+      "monophase",
+      "Monophasé"
+     ],
+     [
+      "triphase",
+      "Triphasé"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Y a-t-il l'électricité au forage : monophasé, triphasé ou rien ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Électricité au forage"
+   },
+   "nom": "electricite_sur_place",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "oui",
+      "Oui"
+     ],
+     [
+      "non",
+      "Non"
+     ],
+     [
+      "en_cours",
+      "En cours"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Avez-vous l'autorisation de l'Agence de bassin (ABH) pour ce point d'eau ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Autorisation de prélèvement (ABH)"
+   },
+   "nom": "autorisation_prelevement",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Quel est le numéro de cette autorisation ? » (vide = pas encore posée).",
+    "max_length": 60,
+    "null": true,
+    "verbose_name": "Numéro de l'autorisation"
+   },
+   "nom": "autorisation_numero",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quel débit l'autorisation vous accorde-t-elle, en litres par seconde ? » (vide = pas encore posée).",
+    "max_digits": 8,
+    "null": true,
+    "verbose_name": "Débit autorisé (L/s)"
+   },
+   "nom": "autorisation_debit_l_s",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quel volume par an l'autorisation vous accorde-t-elle ? » (vide = pas encore posée).",
+    "max_digits": 12,
+    "null": true,
+    "verbose_name": "Volume autorisé (m³/an)"
+   },
+   "nom": "autorisation_volume_m3_an",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Avez-vous un compteur d'eau ? » (vide = pas encore posée).",
+    "null": true,
+    "verbose_name": "Compteur d'eau"
+   },
+   "nom": "compteur_eau",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "existant",
+      "Remplacer une pompe existante"
+     ],
+     [
+      "nouveau_forage",
+      "Nouveau forage"
+     ]
+    ],
+    "help_text": "Question à l'appel : « C'est un puits/forage qui existe, ou un forage à creuser ? » (vide = pas encore posée).",
+    "max_length": 16,
+    "null": true,
+    "verbose_name": "Projet de pompage"
+   },
+   "nom": "projet_pompage",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Avez-vous déjà reçu une aide FDA pour un pompage solaire sur cette exploitation ? » (vide = pas encore posée). Information interne : jamais un verdict client.",
+    "null": true,
+    "verbose_name": "Déjà bénéficiaire FDA"
+   },
+   "nom": "deja_beneficiaire_fda",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "declaree",
+      "Déclarée"
+     ],
+     [
+      "site_web",
+      "Saisie sur le site"
+     ]
+    ],
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Provenance de la HMT"
+   },
+   "nom": "pompe_hmt_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "non_concerne",
+      "Non concerné"
+     ],
+     [
+      "a_deposer",
+      "À déposer"
+     ],
+     [
+      "depose",
+      "Déposé"
+     ],
+     [
+      "accorde",
+      "Accordé (approbation préalable)"
+     ],
+     [
+      "refuse",
+      "Refusé"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Dossier de subvention (FDA)"
+   },
+   "nom": "dossier_subvention",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Date de l’état du dossier de subvention"
+   },
+   "nom": "dossier_subvention_le",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "terrasse_beton",
+      "Terrasse béton"
+     ],
+     [
+      "tole_metal",
+      "Tôle/Métal"
+     ],
+     [
+      "tuiles",
+      "Tuiles"
+     ],
+     [
+      "bac_acier",
+      "Bac acier"
+     ],
+     [
+      "fibrociment",
+      "Fibrociment"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Comment est faite votre toiture : terrasse béton, tôle, tuiles, bac acier, fibrociment ? » (vide = pas encore posée).",
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "type_toiture",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quelle surface est libre pour les panneaux, en m² ? » (vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Surface disponible pour les panneaux (m²)"
+   },
+   "nom": "surface_toiture_m2",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "sud",
+      "Sud"
+     ],
+     [
+      "sud_est",
+      "Sud-Est"
+     ],
+     [
+      "sud_ouest",
+      "Sud-Ouest"
+     ],
+     [
+      "est",
+      "Est"
+     ],
+     [
+      "ouest",
+      "Ouest"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "orientation",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 5,
+    "null": true
+   },
+   "nom": "inclinaison_deg",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucun",
+      "Aucun"
+     ],
+     [
+      "partiel",
+      "Partiel"
+     ],
+     [
+      "important",
+      "Important"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "ombrage",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "ombrage_notes",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 6,
+    "null": true
+   },
+   "nom": "nb_etages",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "acier",
+      "Acier"
+     ],
+     [
+      "aluminium",
+      "Aluminium"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "structure_pref",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Produit de structure retenu pour ce lead (une fiche du catalogue dont la catégorie est typée « Structure »). Vide = c'est « Préférence de structure » (acier / aluminium) qui décide, exactement comme avant.",
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "+",
+    "to": "stock.produit",
+    "verbose_name": "Structure choisie (catalogue)"
+   },
+   "nom": "structure_produit",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "taille_souhaitee_kwc",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "sans",
+      "Sans batterie"
+     ],
+     [
+      "avec",
+      "Avec batterie"
+     ],
+     [
+      "les_deux",
+      "Les deux options"
+     ]
+    ],
+    "max_length": 12,
+    "null": true
+   },
+   "nom": "batterie_souhaitee",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "visite_prevue_le",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "visite_effectuee",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "visite_notes",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "NEW",
+      "Nouveau"
+     ],
+     [
+      "CONTACTED",
+      "Contacté"
+     ],
+     [
+      "QUOTE_SENT",
+      "Devis envoyé"
+     ],
+     [
+      "FOLLOW_UP",
+      "Relance"
+     ],
+     [
+      "SIGNED",
+      "Signé"
+     ],
+     [
+      "COLD",
+      "Froid"
+     ]
+    ],
+    "default": "NEW",
+    "max_length": 20
+   },
+   "nom": "stage",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "os_native",
+      "Créé dans TAQINOR"
+     ],
+     [
+      "odoo_import_test",
+      "Import Odoo"
+     ],
+     [
+      "site_web",
+      "Site web"
+     ],
+     [
+      "meta_lead_ads",
+      "Meta Lead Ads"
+     ]
+    ],
+    "default": "os_native",
+    "max_length": 32
+   },
+   "nom": "source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 50,
+    "null": true
+   },
+   "nom": "external_system",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 100,
+    "null": true
+   },
+   "nom": "external_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "lt800",
+      "Moins de 800 MAD"
+     ],
+     [
+      "800-1000",
+      "800 – 1 000 MAD"
+     ],
+     [
+      "1000-1500",
+      "1 000 – 1 500 MAD"
+     ],
+     [
+      "1500-3000",
+      "1 500 – 3 000 MAD"
+     ],
+     [
+      "3000-5000",
+      "3 000 – 5 000 MAD"
+     ],
+     [
+      "5000-10000",
+      "5 000 – 10 000 MAD"
+     ],
+     [
+      "gt10000",
+      "Plus de 10 000 MAD"
+     ]
+    ],
+    "max_length": 20,
+    "null": true
+   },
+   "nom": "bill_range_bucket",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 30,
+    "null": true
+   },
+   "nom": "roof_type",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "roof_point",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "roof_outline",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 10,
+    "null": true
+   },
+   "nom": "bill_kwh",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "db_index": true,
+    "default": "callable:uuid4",
+    "editable": false,
+    "unique": true
+   },
+   "nom": "token",
+   "type": "UUIDField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 200,
+    "null": true
+   },
+   "nom": "roi_band",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "whatsapp_opt_in",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "whatsapp_only",
+      "WhatsApp uniquement"
+     ],
+     [
+      "phone_ok",
+      "Rappel téléphonique OK"
+     ]
+    ],
+    "max_length": 16,
+    "null": true,
+    "verbose_name": "Préférence de contact"
+   },
+   "nom": "contact_preference",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "contact_preference_set_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "consent_timestamp",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 500,
+    "null": true
+   },
+   "nom": "fbclid",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 255
+   },
+   "nom": "gclid",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 300,
+    "null": true
+   },
+   "nom": "utm_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 300,
+    "null": true
+   },
+   "nom": "utm_medium",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 300,
+    "null": true
+   },
+   "nom": "utm_campaign",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 300,
+    "null": true
+   },
+   "nom": "utm_content",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 300,
+    "null": true
+   },
+   "nom": "utm_term",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 64,
+    "null": true
+   },
+   "nom": "meta_ad_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 64,
+    "null": true
+   },
+   "nom": "meta_adset_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 64,
+    "null": true
+   },
+   "nom": "meta_campaign_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 64,
+    "null": true
+   },
+   "nom": "meta_form_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "srm_tanger",
+      "SRM Tanger-Tétouan-Al Hoceïma"
+     ],
+     [
+      "srm_oriental",
+      "SRM de l’Oriental"
+     ],
+     [
+      "srm_fes",
+      "SRM Fès-Meknès"
+     ],
+     [
+      "srm_rabat",
+      "SRM Rabat-Salé-Kénitra"
+     ],
+     [
+      "srm_beni_mellal",
+      "SRM Béni Mellal-Khénifra"
+     ],
+     [
+      "srm_casablanca",
+      "SRM Casablanca-Settat"
+     ],
+     [
+      "srm_marrakech",
+      "SRM Marrakech-Safi"
+     ],
+     [
+      "srm_draa",
+      "SRM Drâa-Tafilalet"
+     ],
+     [
+      "srm_souss",
+      "SRM Souss-Massa"
+     ],
+     [
+      "srm_guelmim",
+      "SRM Guelmim-Oued Noun"
+     ],
+     [
+      "srm_laayoune",
+      "SRM Laâyoune-Sakia El Hamra"
+     ],
+     [
+      "srm_dakhla",
+      "SRM Dakhla-Oued Ed-Dahab"
+     ],
+     [
+      "onee",
+      "ONEE (historique)"
+     ],
+     [
+      "lydec",
+      "Lydec (historique)"
+     ],
+     [
+      "redal",
+      "Redal (historique)"
+     ],
+     [
+      "amendis",
+      "Amendis (historique)"
+     ],
+     [
+      "autre",
+      "Autre (historique)"
+     ]
+    ],
+    "help_text": "Question à l'appel : AUCUNE — la SRM se DÉDUIT de la ville du lead (règle CAD167). Le champ reste saisissable pour corriger une déduction, et les libellés historiques (ONEE, Lydec, Redal, Amendis) restent lisibles sur les fiches déjà remplies. La valeur ne change AUCUN prix : le barème est national et unique.",
+    "max_length": 20,
+    "null": true,
+    "verbose_name": "Distributeur d'électricité"
+   },
+   "nom": "distributeur",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Âge de la toiture (ans)"
+   },
+   "nom": "roof_age",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "proprietaire",
+      "Propriétaire"
+     ],
+     [
+      "locataire",
+      "Locataire"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Statut d'occupation"
+   },
+   "nom": "ownership",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "immediat",
+      "Dès que possible"
+     ],
+     [
+      "3_mois",
+      "Moins de 3 mois"
+     ],
+     [
+      "6_mois",
+      "3 à 6 mois"
+     ],
+     [
+      "plus_tard",
+      "Plus tard / je me renseigne"
+     ]
+    ],
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Horizon du projet"
+   },
+   "nom": "project_timeline",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "cash",
+      "Comptant"
+     ],
+     [
+      "credit",
+      "Crédit / financement"
+     ],
+     [
+      "indecis",
+      "Pas encore décidé"
+     ],
+     [
+      "credit_bail",
+      "Crédit-bail (interne)"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Pensez-vous payer comptant, ou passer par un financement ? » (vide = pas encore posée). « Crédit-bail » est une valeur INTERNE, jamais imprimée avant l'avis juridique (D-CIQ-15).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Financement envisagé"
+   },
+   "nom": "financing_intent",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Liste parmi 'clim', 've', 'pompe'.",
+    "null": true,
+    "verbose_name": "Charges futures prévues"
+   },
+   "nom": "futures_charges",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "bureau",
+      "Bureau"
+     ],
+     [
+      "entrepot",
+      "Entrepôt"
+     ],
+     [
+      "usine",
+      "Usine"
+     ],
+     [
+      "commerce",
+      "Commerce"
+     ],
+     [
+      "agricole",
+      "Agricole"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Type de site (pro)"
+   },
+   "nom": "facility_type",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "1",
+      "1 site"
+     ],
+     [
+      "2-5",
+      "2 à 5 sites"
+     ],
+     [
+      "6+",
+      "6 sites ou plus"
+     ]
+    ],
+    "max_length": 4,
+    "null": true,
+    "verbose_name": "Nombre de sites (pro)"
+   },
+   "nom": "site_count",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "matin",
+      "Matin"
+     ],
+     [
+      "apres_midi",
+      "Après-midi"
+     ]
+    ],
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Créneau de visite préféré"
+   },
+   "nom": "visit_window_part",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "cette_semaine",
+      "Cette semaine"
+     ],
+     [
+      "semaine_prochaine",
+      "Semaine prochaine"
+     ]
+    ],
+    "max_length": 20,
+    "null": true,
+    "verbose_name": "Semaine de visite préférée"
+   },
+   "nom": "visit_window_week",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 24,
+    "null": true,
+    "verbose_name": "Référence client (générée navigateur)"
+   },
+   "nom": "client_ref",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 24,
+    "null": true,
+    "verbose_name": "Référence provisoire affichée par le site"
+   },
+   "nom": "client_ref_provisoire",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Numéro étranger (diaspora/MRE)"
+   },
+   "nom": "phone_is_foreign",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 300,
+    "null": true,
+    "verbose_name": "Page de landing (first-touch)"
+   },
+   "nom": "page",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:dict",
+    "verbose_name": "Questionnaire web (quote-journey)"
+   },
+   "nom": "web_questionnaire",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "classe:dict",
+    "verbose_name": "Estimation montrée (web)"
+   },
+   "nom": "web_estimate",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "note",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "verbose_name": "Premier contact à"
+   },
+   "nom": "first_contacted_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "is_archived",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "custom_data",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "leads_archives",
+    "to": "authentication.customuser"
+   },
+   "nom": "archived_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true
+   },
+   "nom": "archived_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "leads_modifies",
+    "to": "authentication.customuser"
+   },
+   "nom": "updated_by",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "date_creation",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "date_modification",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Quand ce dossier est-il né chez le système qui nous l'a transmis (Odoo, import) ? Vide si créé ici.",
+    "null": true,
+    "verbose_name": "Date de création dans le système d'origine"
+   },
+   "nom": "date_creation_origine",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Score 0–100 calculé automatiquement (voir scoring.py).",
+    "null": true,
+    "verbose_name": "Score de qualité"
+   },
+   "nom": "score",
+   "type": "IntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Delta (positif ou négatif) ajouté au score calculé. Survit aux recalculs. Vide = aucun ajustement.",
+    "null": true,
+    "verbose_name": "Ajustement du score"
+   },
+   "nom": "score_ajustement",
+   "type": "SmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Horodatage de la première assignation automatique déclenchée par le franchissement du seuil MQL (XMKT21).",
+    "null": true,
+    "verbose_name": "Assigné MQL le"
+   },
+   "nom": "mql_assigned_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "db_index": true,
+    "default": "",
+    "max_length": 20,
+    "verbose_name": "Téléphone normalisé (dédup)"
+   },
+   "nom": "phone_normalise",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "db_index": true,
+    "default": "",
+    "max_length": 254,
+    "verbose_name": "Email normalisé (dédup)"
+   },
+   "nom": "email_normalise",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 20,
+    "verbose_name": "WhatsApp normalisé (dédup)"
+   },
+   "nom": "whatsapp_normalise",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "max_length": 64,
+    "null": true,
+    "verbose_name": "Identifiant d’appareil (traçage)"
+   },
+   "nom": "appareil_id",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "crm_leads",
+    "to": "entites.entite",
+    "verbose_name": "Entité"
+   },
+   "nom": "entite",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "villa",
+      "Villa"
+     ],
+     [
+      "appartement",
+      "Appartement"
+     ],
+     [
+      "immeuble",
+      "Immeuble"
+     ],
+     [
+      "riad",
+      "Riad"
+     ],
+     [
+      "ferme",
+      "Ferme"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "help_text": "Question à l'appel : « De quel type de bien s'agit-il — villa, appartement, immeuble, riad, ferme ? » (vide = pas encore posée). Remplace l'idée de faire saisir le type de toit au téléphone : ce chemin-là est fermé depuis la décision du 18/08/2026.",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Type de bien"
+   },
+   "nom": "type_bien",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "facture",
+      "Baisser la facture"
+     ],
+     [
+      "secours_coupures",
+      "Tenir pendant les coupures"
+     ],
+     [
+      "autonomie",
+      "Gagner en autonomie"
+     ],
+     [
+      "injection_8221",
+      "Revendre le surplus (si le client en parle)"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Qu'est-ce qui compte le plus pour vous — baisser la facture, tenir pendant les coupures, gagner en autonomie ? » (vide = pas encore posée). « Revendre le surplus » ne se coche QUE si le client en parle lui-même : ce n’est jamais proposé à l’appel. « Tenir pendant les coupures » est un ARGUMENT : aucun dimensionnement de secours n’en découle.",
+    "max_length": 16,
+    "null": true,
+    "verbose_name": "Objectif du projet"
+   },
+   "nom": "objectif_projet",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "seul",
+      "Décide seul"
+     ],
+     [
+      "conjoint_famille",
+      "Avec le conjoint / la famille"
+     ],
+     [
+      "associe_direction",
+      "Avec un associé / la direction"
+     ],
+     [
+      "proprietaire_tiers",
+      "Le propriétaire (un tiers) décide"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Qui décide avec vous de ce projet ? » (vide = pas encore posée). Renseigné à « avec le conjoint / la famille » ou « avec un associé / la direction », il pose l’étiquette « Décision à plusieurs » qui pilote la touche du dimanche en famille. Question ORALE uniquement : jamais dans le questionnaire envoyé au client.",
+    "max_length": 20,
+    "null": true,
+    "verbose_name": "Qui décide"
+   },
+   "nom": "decideur",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "non",
+      "Non, aucun autre devis"
+     ],
+     [
+      "en_attente",
+      "En attente d’un autre devis"
+     ],
+     [
+      "recu",
+      "A déjà reçu un autre devis"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Avez-vous déjà reçu ou demandé un autre devis ? » (vide = pas encore posée). État de la comparaison EN COURS — le post-mortem d’une affaire perdue reste, lui, dans la fiche « concurrent ». Question ORALE uniquement.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Autres devis en cours"
+   },
+   "nom": "devis_concurrents",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "possede",
+      "Véhicule déjà là"
+     ],
+     [
+      "prevu",
+      "Véhicule seulement prévu"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Ce véhicule électrique, vous l'avez déjà, ou c'est un projet ? » (vide = pas encore posée). Précise le « avez-vous OU prévoyez-vous » du champ véhicule électrique : une voiture seulement PRÉVUE reste comptée, et le devis comme la proposition portent alors l’étiquette « avec votre future voiture » — sans elle, le chiffre mentirait.",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Véhicule électrique — déjà là ou prévu ?"
+   },
+   "nom": "equip_ve_statut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 1,
+    "help_text": "Question à l'appel : « Combien d'heures par jour la pompe ACTUELLE tourne-t-elle ? » (h/jour, vide = pas encore posée). Heures de la pompe ACTUELLE : elles servent seulement à estimer un volume déclaré (débit actuel × heures), jamais des heures de pompage solaire. Colonne dédiée de la réponse que le site envoie déjà sous « heures de pompage ».",
+    "max_digits": 4,
+    "null": true,
+    "verbose_name": "Pompage — heures par jour"
+   },
+   "nom": "pompage_heures_jour",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucune",
+      "Aucune pompe"
+     ],
+     [
+      "diesel",
+      "Diesel"
+     ],
+     [
+      "butane",
+      "Butane"
+     ],
+     [
+      "electrique",
+      "Électrique (réseau)"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n’en avez pas ? » (vide = pas encore posée). Colonne dédiée de la réponse déjà émise par le site, butane compris.",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Pompe actuelle — alimentation"
+   },
+   "nom": "pompe_alim_actuelle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien de litres de carburant la pompe consomme-t-elle par mois ? » (litres/mois, vide = pas encore posée). C’est l’unité qui manquait à côté de la dépense en dirhams : l’économie de carburant se calcule sur ce que le client DÉCLARE, aucun prix de gasoil de référence n’est écrit nulle part.",
+    "max_digits": 9,
+    "null": true,
+    "verbose_name": "Carburant consommé (litres/mois)"
+   },
+   "nom": "carburant_litres_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Combien de personnes vivent dans ce logement ? » (vide = pas encore posée). Le moteur dit lui-même que son absence l'empêche de chiffrer le chauffe-eau par ordre de grandeur : sans ce nombre, la couche est OMISE plutôt qu’inventée.",
+    "null": true,
+    "verbose_name": "Nombre de personnes au foyer"
+   },
+   "nom": "nb_personnes_foyer",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel, APRÈS l'envoi du devis seulement (décision fondateur du 21/09/2026) : « Quel budget aviez-vous en tête ? » (vide = pas encore posée). DISTINCT du montant estimé, qui est l'estimation du COMMERCIAL et nourrit le forecast pondéré. Question ORALE : jamais dans le questionnaire envoyé au client.",
+    "max_digits": 12,
+    "null": true,
+    "verbose_name": "Budget annoncé par le client (MAD)"
+   },
+   "nom": "budget_client_mad",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucun",
+      "Aucun frein"
+     ],
+     [
+      "prix",
+      "Prix"
+     ],
+     [
+      "compare",
+      "Compare d’autres devis"
+     ],
+     [
+      "timing",
+      "Timing"
+     ],
+     [
+      "technique",
+      "Technique"
+     ],
+     [
+      "confiance",
+      "Confiance"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Qu'est-ce qui vous retient aujourd’hui ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite, pour que le terrain et le téléphone se relisent. Question ORALE.",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Frein principal"
+   },
+   "nom": "frein_principal",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "economies",
+      "Les économies"
+     ],
+     [
+      "coupures",
+      "Les coupures / l’autonomie"
+     ],
+     [
+      "ecologie",
+      "L’écologie"
+     ],
+     [
+      "technologie",
+      "La technologie"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Ce qui a accroché"
+   },
+   "nom": "declencheur",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. » (vide = pas encore posée).",
+    "max_digits": 7,
+    "null": true,
+    "verbose_name": "Puissance souscrite du compteur (kVA)"
+   },
+   "nom": "compteur_puissance_kva",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Vous chauffez-vous à l'électricité en hiver ? » (Oui/Non — vide = pas encore posée). Champ INFORMATIF : décision fondateur du 21/09/2026 — aucune couche de chauffage d'hiver n'est composée, donc il n’ajuste AUCUNE courbe.",
+    "null": true,
+    "verbose_name": "Chauffage électrique en hiver"
+   },
+   "nom": "chauffage_electrique_hiver",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "bt",
+      "Basse tension (BT)"
+     ],
+     [
+      "mt",
+      "Moyenne tension (MT)"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave. » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Tension de raccordement"
+   },
+   "nom": "tension_raccordement",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "declare",
+      "Déclarée"
+     ],
+     [
+      "site_web",
+      "Saisie sur le site"
+     ],
+     [
+      "site_defaut_visible",
+      "Défaut visible du site"
+     ],
+     [
+      "facture",
+      "Lue sur la facture"
+     ],
+     [
+      "mesure_visite",
+      "Mesurée en visite"
+     ]
+    ],
+    "max_length": 20,
+    "null": true,
+    "verbose_name": "Provenance de la tension"
+   },
+   "nom": "tension_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "bt_domestique",
+      "BT domestique"
+     ],
+     [
+      "bt_patente",
+      "BT patenté"
+     ],
+     [
+      "bt_force_motrice",
+      "BT force motrice"
+     ],
+     [
+      "mt_general",
+      "MT (Tarif Général)"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. » (CIQ666 ; vide = pas encore posée, « ne sait pas » = aucun contrat transmis au devis automatique).",
+    "max_length": 20,
+    "null": true,
+    "verbose_name": "Contrat d'électricité"
+   },
+   "nom": "contrat_electricite",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "normale",
+      "Option normale (tranches)"
+     ],
+     [
+      "bi_horaire",
+      "Option bi-horaire (HP / HN)"
+     ]
+    ],
+    "help_text": "Question à l'appel : « En force motrice, êtes-vous en option normale ou en option bi-horaire ? » (CIQ666 ; seule la force motrice ouvre le bi-horaire ; vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Option tarifaire BT"
+   },
+   "nom": "option_tarifaire_bt",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "declare",
+      "Déclarée"
+     ],
+     [
+      "facture",
+      "Lue sur la facture"
+     ],
+     [
+      "contrat",
+      "Lue sur le contrat"
+     ],
+     [
+      "site_web",
+      "Saisie sur le site"
+     ],
+     [
+      "mesure_visite",
+      "Mesurée en visite"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Provenance de la puissance souscrite"
+   },
+   "nom": "puissance_souscrite_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "hotel",
+      "Hôtel / riad"
+     ],
+     [
+      "restaurant",
+      "Restaurant / café"
+     ],
+     [
+      "commerce",
+      "Commerce / supermarché"
+     ],
+     [
+      "bureau",
+      "Bureaux"
+     ],
+     [
+      "sante",
+      "Santé (clinique, cabinet)"
+     ],
+     [
+      "ecole",
+      "École"
+     ],
+     [
+      "hammam",
+      "Hammam / spa / salle de sport"
+     ],
+     [
+      "boulangerie",
+      "Boulangerie"
+     ],
+     [
+      "froid",
+      "Froid / entrepôt frigorifique"
+     ],
+     [
+      "autre",
+      "Autre"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Activité (catégorie commerciale)"
+   },
+   "nom": "categorie_commerciale",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Les questions propres à votre activité » (chambres, couverts, chambres froides…), posées juste après l'activité. Clés FERMÉES par catégorie (``REPONSES_CATEGORIE_CLES``).",
+    "null": true,
+    "verbose_name": "Réponses propres à l'activité"
+   },
+   "nom": "reponses_categorie",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Que fabriquez-vous ou que transformez-vous sur ce site ? » (vide = pas encore posée).",
+    "max_length": 120,
+    "null": true,
+    "verbose_name": "Secteur industriel"
+   },
+   "nom": "secteur_industriel",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "oui",
+      "Oui"
+     ],
+     [
+      "non",
+      "Non"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Exportez-vous une partie de votre production vers l'Union européenne ? » (vide = pas encore posée).",
+    "max_length": 3,
+    "null": true,
+    "verbose_name": "Exporte vers l'Union européenne"
+   },
+   "nom": "export_ue_declare",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "1x8",
+      "Une équipe (1×8)"
+     ],
+     [
+      "2x8",
+      "Deux équipes (2×8)"
+     ],
+     [
+      "3x8",
+      "Trois équipes (3×8)"
+     ],
+     [
+      "continu",
+      "En continu"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Travaillez-vous en une équipe de jour, en deux équipes, en trois équipes, ou en continu ? » (vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "Régime des équipes"
+   },
+   "nom": "regime_equipes",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Quels jours de la semaine êtes-vous ouverts ou en production ? » (entiers 1 = lundi à 7 = dimanche ; vide = pas encore posée).",
+    "null": true,
+    "validators": [
+     "callable:valider_jours_ouverture"
+    ],
+    "verbose_name": "Jours d'ouverture"
+   },
+   "nom": "jours_ouverture",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « À quelle heure commence votre journée de travail ? » (0-24 ; vide = pas encore posée).",
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       24
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ],
+    "verbose_name": "Heure de début de journée"
+   },
+   "nom": "heure_debut",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Et à quelle heure se termine-t-elle ? » (0-24 ; vide = pas encore posée).",
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       24
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ],
+    "verbose_name": "Heure de fin de journée"
+   },
+   "nom": "heure_fin",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ? » (entiers 1-12 ; vide = pas encore posée).",
+    "null": true,
+    "validators": [
+     "callable:valider_fermeture_mois"
+    ],
+    "verbose_name": "Mois de fermeture"
+   },
+   "nom": "fermeture_mois",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "toiture",
+      "Toiture"
+     ],
+     [
+      "ombriere",
+      "Ombrière de parking"
+     ],
+     [
+      "terrain",
+      "Terrain"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Où pourrait-on poser les panneaux : sur la toiture, sur une ombrière de parking, ou sur un terrain ? » (vide = pas encore posée).",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Type de surface"
+   },
+   "nom": "type_surface",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "declare",
+      "Déclarée"
+     ],
+     [
+      "site_web",
+      "Saisie sur le site"
+     ],
+     [
+      "calepinage",
+      "Calepinage"
+     ],
+     [
+      "mesure_visite",
+      "Mesurée en visite"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Provenance de la surface"
+   },
+   "nom": "surface_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "oui",
+      "Oui"
+     ],
+     [
+      "non",
+      "Non"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Avez-vous un groupe électrogène sur le site ? » (vide = pas encore posée).",
+    "max_length": 3,
+    "null": true,
+    "verbose_name": "Groupe électrogène"
+   },
+   "nom": "groupe_electrogene",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quelle est sa puissance, en kVA ? » (vide = pas encore posée).",
+    "max_digits": 8,
+    "null": true,
+    "verbose_name": "Groupe électrogène — puissance (kVA)"
+   },
+   "nom": "groupe_kva",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien de litres de gasoil consomme-t-il par mois ? » (vide = pas encore posée).",
+    "max_digits": 9,
+    "null": true,
+    "verbose_name": "Groupe électrogène — gasoil (L/mois)"
+   },
+   "nom": "groupe_litres_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Combien dépensez-vous en gasoil pour le groupe chaque mois ? » (DÉCLARÉ seulement, jamais un prix pré-rempli — Q17 ; vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Groupe électrogène — dépense (MAD/mois)"
+   },
+   "nom": "groupe_depense_mad_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Avez-vous déjà des panneaux solaires installés ? De quelle puissance ? » (vide = pas encore posée).",
+    "max_digits": 9,
+    "null": true,
+    "verbose_name": "Photovoltaïque existant (kWc)"
+   },
+   "nom": "pv_existant_kwc",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 3,
+    "help_text": "Question à l'appel : « Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? » (jamais supposé ; vide = pas encore posée).",
+    "max_digits": 4,
+    "null": true,
+    "validators": [
+     "callable:valider_cos_phi"
+    ],
+    "verbose_name": "Cos φ"
+   },
+   "nom": "cos_phi",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "facture",
+      "Lu sur la facture"
+     ],
+     [
+      "site_web",
+      "Saisi sur le site"
+     ],
+     [
+      "mesure_visite",
+      "Mesuré en visite"
+     ]
+    ],
+    "max_length": 14,
+    "null": true,
+    "verbose_name": "Provenance du cos φ"
+   },
+   "nom": "cos_phi_source",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Pouvez-vous nous envoyer vos dernières factures d'électricité ? Jusqu'à douze mois nous aident à être précis. » (au plus 12 mois, jamais exigés tous les douze ; vide = pas encore posée).",
+    "null": true,
+    "validators": [
+     "callable:valider_releve_conso"
+    ],
+    "verbose_name": "Relevé mensuel de consommation"
+   },
+   "nom": "releve_conso",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "oui",
+      "Oui"
+     ],
+     [
+      "non",
+      "Non"
+     ],
+     [
+      "ne_sait_pas",
+      "Ne sait pas"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Votre entreprise récupère-t-elle la TVA sur ses achats ? » (D-CIQ-3 ; vide = pas encore posée).",
+    "max_length": 12,
+    "null": true,
+    "verbose_name": "TVA récupérable"
+   },
+   "nom": "tva_recuperable",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Pouvez-vous nous donner l'ICE de l'entreprise ? Il figurera sur le devis et la facture. » (texte libre ; demandé, jamais bloquant au devis — D-CIQ-11).",
+    "max_length": 30,
+    "null": true,
+    "verbose_name": "ICE"
+   },
+   "nom": "ice",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Et son numéro de registre de commerce ? » (vide = pas encore posée).",
+    "max_length": 30,
+    "null": true,
+    "verbose_name": "Registre de commerce (RC)"
+   },
+   "nom": "rc",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Et l'identifiant fiscal ? » (vide = pas encore posée).",
+    "max_length": 30,
+    "null": true,
+    "verbose_name": "Identifiant fiscal (IF)"
+   },
+   "nom": "if_fiscal",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Quelle est l'adresse du siège, si elle diffère de celle du site ? » (vide = pas encore posée).",
+    "null": true,
+    "verbose_name": "Adresse du siège"
+   },
+   "nom": "adresse_siege",
+   "type": "TextField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Quelle est votre fonction dans l'entreprise ? » (vide = pas encore posée).",
+    "max_length": 120,
+    "null": true,
+    "verbose_name": "Fonction du contact"
+   },
+   "nom": "fonction_contact",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Qui d'autre décide avec vous ? Quelle est sa fonction ? » (CAD144 : sans automatisation ; vide = pas encore posée).",
+    "max_length": 120,
+    "null": true,
+    "verbose_name": "Contact secondaire (fonction)"
+   },
+   "nom": "contact_secondaire_fonction",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Pouvons-nous lui envoyer le devis par e-mail ? À quelle adresse ? » (jamais utilisé par la cadence ; vide = pas encore posée).",
+    "max_length": 254,
+    "null": true,
+    "verbose_name": "Contact secondaire (e-mail)"
+   },
+   "nom": "contact_secondaire_email",
+   "type": "EmailField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Votre facture mensuelle se situe dans quelle tranche ? » — D-CIQ-19 : une tranche OUVERTE (« plus de 4 000 DH ») n'est JAMAIS stockée comme un montant.",
+    "null": true,
+    "validators": [
+     "callable:valider_facture_tranche_declaree"
+    ],
+    "verbose_name": "Tranche de facture déclarée"
+   },
+   "nom": "facture_tranche_declaree",
+   "type": "JSONField"
+  }
+ ],
+ "db_table": "crm_lead",
+ "label": "crm.Lead",
+ "relations_inverses": [
+  "activites",
+  "appointments",
+  "bons_commande_directs",
+  "booking_links",
+  "chat_sessions_publiques",
+  "concurrents_perte",
+  "deal_enregistre",
+  "devis",
+  "documents_portail",
+  "factures_directes",
+  "forecast_entry",
+  "installations",
+  "parrainages",
+  "playbook_progress",
+  "points_contact",
+  "questionnaire_liens",
+  "relance_etapes",
+  "salles_vente",
+  "visites_externes",
+  "visites_terrain",
+  "website_payloads"
+ ]
+}

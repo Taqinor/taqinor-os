@@ -1,0 +1,74 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^defis/$",
+  "nom": "crm-defi-list",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^defis/(?P<pk>[^/.]+)/$",
+  "nom": "crm-defi-detail",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "classement"
+  },
+  "motif": "^defis/(?P<pk>[^/.]+)/classement/$",
+  "nom": "crm-defi-classement",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "classement"
+  },
+  "motif": "^defis/(?P<pk>[^/.]+)/classement\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-defi-classement",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "export_xlsx"
+  },
+  "motif": "^defis/(?P<pk>[^/.]+)/export-xlsx/$",
+  "nom": "crm-defi-export-xlsx",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "export_xlsx"
+  },
+  "motif": "^defis/(?P<pk>[^/.]+)/export-xlsx\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-defi-export-xlsx",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^defis/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-defi-detail",
+  "vue": "DefiViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^defis\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "crm-defi-list",
+  "vue": "DefiViewSet"
+ }
+]

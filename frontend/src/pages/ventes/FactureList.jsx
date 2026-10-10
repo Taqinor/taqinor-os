@@ -22,7 +22,7 @@ import api from '../../api/axios'
 import importApi from '../../api/importApi'
 import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
-import FactureRow from './factureList/FactureRow'
+import FactureRow, { AnnulationFactureDialog } from './factureList/FactureRow'
 // SPL212 — exports comptables (état, gestes, dialogues) extraits en factureList/.
 import useFactureCompta from './factureList/useFactureCompta.js'
 import ComptaDialogs from './factureList/ComptaDialogs.jsx'
@@ -624,6 +624,40 @@ export default function FactureList() {
     }
   }
 
+  // AFAC13 — annulation : confirmation simple sans argent rattaché, dialogue
+  // « transférer / rembourser » sinon (ou si le serveur exige la directive).
+  const [annulTarget, setAnnulTarget] = useState(null)
+  const [annulErreur, setAnnulErreur] = useState(null)
+  const [annulBusy, setAnnulBusy] = useState(false)
+  const demanderAnnulation = async (f) => {
+    if (toNumber(f.montant_paye) > 0) {
+      setAnnulErreur(null); setAnnulTarget(f); return
+    }
+    if (!(await confirm({ title: `Annuler la facture ${f.reference} ?` }))) return
+    setActionId(f.id)
+    try {
+      await dispatch(annulerFacture(f.id)).unwrap()
+    } catch (err) {
+      if (err?.code === 'directive_acompte_requise') {
+        setAnnulErreur(err.detail || null); setAnnulTarget(f)
+      } else {
+        toast.error(errorMessageFrom({ response: { data: err } }, 'Action impossible.'))
+      }
+    } finally { setActionId(null) }
+  }
+  const confirmerAnnulation = async (directive) => {
+    setAnnulBusy(true); setAnnulErreur(null)
+    try {
+      await dispatch(annulerFacture({ id: annulTarget.id, directive })).unwrap()
+      toast.success(`Facture ${annulTarget.reference} annulée.`)
+      setAnnulTarget(null)
+      dispatch(fetchFactures())
+    } catch (err) {
+      setAnnulErreur(err?.detail
+        || errorMessageFrom({ response: { data: err } }, 'Annulation impossible.'))
+    } finally { setAnnulBusy(false) }
+  }
+
   const handleGenererPdf = async (f) => {
     setPdfGenerating(prev => ({ ...prev, [f.id]: true }))
     try {
@@ -762,7 +796,8 @@ export default function FactureList() {
       if (url && navigator.clipboard?.writeText) {
         pending.win?.close?.()
         await navigator.clipboard.writeText(url)
-        toast.success(`Lien de paiement copié — ${formatMAD(data.montant)}.`)
+        // AFAC26 — le montant annoncé est CE QUE LE CLIENT PAIERA (reste exigible), jamais le `montant` figé.
+        toast.success(`Lien de paiement copié — ${formatMAD(data.montant_a_payer ?? data.montant)}.`)
       } else if (url) {
         if (pending.win && !pending.win.closed) {
           pending.win.location = url
@@ -922,6 +957,7 @@ export default function FactureList() {
     canManage, wir183Busy,
     handleRemettreBrouillon, handleFacturerPenalites,
     openAbandonSolde, openRetourClient,
+    demanderAnnulation,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
@@ -1245,6 +1281,10 @@ export default function FactureList() {
           </FormActions>
         </DialogContent>
       </Dialog>
+
+      <AnnulationFactureDialog facture={annulTarget} factures={factures}
+        busy={annulBusy} erreur={annulErreur}
+        onConfirm={confirmerAnnulation} onClose={() => setAnnulTarget(null)} />
 
       {/* ══ WIR183/XFAC13 — Abandon du solde (motif OBLIGATOIRE serveur) ══ */}
       <Dialog open={!!abandonTarget} onOpenChange={(o) => { if (!o) setAbandonTarget(null) }}>

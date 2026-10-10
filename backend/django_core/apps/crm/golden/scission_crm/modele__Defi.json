@@ -1,0 +1,133 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "defis",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 200,
+    "verbose_name": "Nom du défi"
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "verbose_name": "Début"
+   },
+   "nom": "periode_debut",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "verbose_name": "Fin"
+   },
+   "nom": "periode_fin",
+   "type": "DateField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "nb_leads",
+      "Nombre de leads"
+     ],
+     [
+      "nb_contacts",
+      "Leads contactés"
+     ],
+     [
+      "nb_devis",
+      "Nombre de devis"
+     ],
+     [
+      "ca_signe",
+      "CA signé (MAD TTC)"
+     ],
+     [
+      "nb_rdv",
+      "Rendez-vous effectués"
+     ]
+    ],
+    "max_length": 12,
+    "verbose_name": "Métrique"
+   },
+   "nom": "metrique",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "max_digits": 14,
+    "null": true,
+    "verbose_name": "Cible d'équipe (optionnelle)"
+   },
+   "nom": "cible_equipe",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 300,
+    "verbose_name": "Récompense"
+   },
+   "nom": "recompense",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": true
+   },
+   "nom": "actif",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_defi",
+ "label": "crm.Defi",
+ "relations_inverses": []
+}

@@ -1,0 +1,163 @@
+{
+  "replaceLignesDevis": [
+    [
+      34,
+      [
+        {
+          "produit": 101,
+          "designation": "Panneau Canadien Solar 715W",
+          "quantite": "16",
+          "prix_unitaire": "1200.00",
+          "remise": "0",
+          "taux_tva": "10",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 0,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 201,
+          "designation": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+          "quantite": "1",
+          "prix_unitaire": "12500.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 1,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 202,
+          "designation": "VARIATEUR VEICHI SI23 7.5KW 380V",
+          "quantite": "1",
+          "prix_unitaire": "3333.33",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 2,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        },
+        {
+          "produit": 203,
+          "designation": "AFFICHEUR VARIATEUR SI22",
+          "quantite": "1",
+          "prix_unitaire": "350.00",
+          "remise": "0",
+          "taux_tva": "20",
+          "groupe_index": null,
+          "groupe_label": "",
+          "optionnelle": false,
+          "type_ligne": "produit",
+          "ordre": 3,
+          "variante": "",
+          "prix_manuel": false,
+          "quantite_manuelle": false,
+          "role_devis": "",
+          "lot": null,
+          "ligne_composee": true,
+          "tva_base_legale": ""
+        }
+      ],
+      {
+        "entete": {
+          "date_validite": "2026-11-07",
+          "note": null,
+          "mode_installation": "agricole",
+          "taux_tva": "20.00",
+          "remise_globale": "0",
+          "prix_cible_kwc": null
+        },
+        "etude_params": {
+          "scenario": "Sans batterie",
+          "recommended_option": "Sans batterie",
+          "nombre_proprietes": null
+        }
+      }
+    ]
+  ],
+  "createDevisAtomic": [],
+  "patchEtudeParams": [
+    [
+      34,
+      {
+        "scenario": "Sans batterie",
+        "recommended_option": "Sans batterie",
+        "nombre_proprietes": null,
+        "mode_pompe": null,
+        "plaque": null,
+        "besoin": {
+          "mode": null,
+          "volume_m3_jour": null,
+          "debit_souhaite_m3h": null,
+          "mois_pointe": null,
+          "debit_actuel_m3h": null,
+          "heures_actuelles_jour": null,
+          "cultures": [],
+          "region": null
+        },
+        "source": {
+          "debit_exploitation_m3h": null,
+          "debit_exploitation_origine": null,
+          "debit_exploitation_date": null,
+          "debit_autorise_m3h": null,
+          "volume_annuel_autorise_m3": null,
+          "compteur": null,
+          "niveau_dynamique_m": null,
+          "diametre_tubage_mm": null,
+          "profondeur_calage_m": null,
+          "volume_reservoir_m3": null,
+          "niveau_statique_m": null,
+          "rabattement_m": null,
+          "profondeur_forage_m": null
+        },
+        "hmt_entrees": {
+          "saisie_m": null,
+          "denivele_m": null,
+          "conduite": null,
+          "pertes_singulieres_m": null,
+          "pression_service_bar": null
+        },
+        "alim": null,
+        "type_pompe": null,
+        "localisation": {
+          "ville": null,
+          "lat": null,
+          "lon": null
+        },
+        "distance_champ_m": null,
+        "options_cochees": [],
+        "taille": null,
+        "saisies_economie_pompage": null,
+        "attestation_usage_agricole": null
+      }
+    ]
+  ],
+  "poserOverrides": [],
+  "regenererOverride": []
+}

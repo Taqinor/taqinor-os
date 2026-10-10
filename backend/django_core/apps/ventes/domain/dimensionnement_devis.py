@@ -362,11 +362,18 @@ def lignes_vendues(devis, option=None):
         lignes = list(devis.lignes.all())
     except Exception:  # noqa: BLE001 — devis détaché / sans lignes
         return []
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    # Décision fondateur 08/10/2026 — devis envoyé avant AMOT31
+    # (``regles_calcul = 1``) : toute ligne produit compte, optionnelle
+    # comprise, comme hier.
+    _corrige = calcul_corrige(devis)
     autre = {'sans': 'avec', 'avec': 'sans'}.get(option)
     vendues = []
     for ligne in lignes:
         compte = getattr(ligne, 'compte_dans_totaux', None)
-        if compte is None:
+        if not _corrige:
+            compte = getattr(ligne, 'est_ligne_produit', True)
+        elif compte is None:
             compte = (getattr(ligne, 'est_ligne_produit', True)
                       and not getattr(ligne, 'optionnelle', False))
         if not compte:
@@ -742,6 +749,10 @@ def _cibles_au_dessus_du_plancher_ve(cibles, equipements):
 
 def _echelle_paliers_batterie(devis):
     """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
+    from apps.ventes.domain.regles_calcul import calcul_corrige
+    # Décision fondateur 08/10/2026 — devis envoyé avant AMOT29/AMOT59
+    # (``regles_calcul = 1``) : prix et payback des paliers d'hier.
+    _corrige = calcul_corrige(devis)
     from apps.parametres.pvgis_profils import productible_mensuel
     from apps.ventes.etude_horaire import balayer_stockage_horaire
     from apps.ventes.horaire.batterie_lignes import (
@@ -957,8 +968,12 @@ def _echelle_paliers_batterie(devis):
         # est brute, le devis est remisé. Sans ce facteur, l'écart entre deux
         # pilules d'un devis remisé était faux (bases mélangées).
         # AMOT59 — LE prix de vente partagé (remise du devis + palier).
-        cout = prix_client_composition(vue.get('cout_ttc'),
-                                       facteur=facteur_remise) or 0.0
+        if _corrige:
+            cout = prix_client_composition(vue.get('cout_ttc'),
+                                           facteur=facteur_remise) or 0.0
+        else:
+            # Règles d'origine (avant AMOT59) : coût × remise, sans palier.
+            cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
         # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :
@@ -982,8 +997,12 @@ def _echelle_paliers_batterie(devis):
             # provision d'onduleur au prix remisé de SA ligne) ; ``None``
             # quand non chiffrable ou jamais remboursé — jamais le ratio
             # simple, qui ne sert plus qu'au tri interne.
-            'payback_annees': _payback_publie_palier(
-                cout, economie, vue.get('lignes'), facteur_remise),
+            'payback_annees': (
+                _payback_publie_palier(
+                    cout, economie, vue.get('lignes'), facteur_remise)
+                if _corrige
+                # Règles d'origine (avant AMOT29) : le ratio simple d'hier.
+                else _arrondi(_payback(cout, economie))),
             'remplissage_ok': bool(remplissage_ok),
             'retenu': bool(capacite_retenue is not None
                            and abs(capacite - _num(capacite_retenue)) < 0.05),
@@ -1061,8 +1080,10 @@ from apps.ventes.dimensionnement import (  # noqa: E402
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
     MAX_PANNEAUX_BALAYAGE,
+    _arrondi,
     _lire_composition,
     _num,
+    _payback,
     capacite_utile_batterie,
     paliers_stockage_candidats,
 )

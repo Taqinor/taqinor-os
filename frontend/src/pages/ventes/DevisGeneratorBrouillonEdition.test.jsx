@@ -173,4 +173,27 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
     await waitFor(() => expect(quitterBloque()).toBe(false))
   }, 15000)
+
+  // ATOT20 — DEV-DEMO-0001 : lignes SANS taux (`taux_tva` null), panneau
+  // produit 10 %, devis 20 %. Le serveur les chiffre au taux du DEVIS ; l'écran
+  // aussi (jamais `produit_tva`) : ouvrir puis enregistrer sans toucher écrit
+  // '20' et ne déclenche aucune garde de sortie, ni à l'ouverture ni après.
+  it('ouvrir puis enregistrer sans toucher : aucun beforeunload, ni à l’ouverture ni après l’enregistrement', async () => {
+    const d = devis42()
+    d.data.lignes = d.data.lignes.map(l => ({ ...l, taux_tva: null, produit_tva: l.produit === PANNEAU.id ? '10.00' : '20.00' }))
+    ventesApi.getDevisById.mockResolvedValue(d)
+    ventesApi.replaceLignesDevis.mockResolvedValue({ data: { updated_at: '2026-09-30T10:05:00Z' } })
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(7))
+    await new Promise(r => setTimeout(r, 2200))
+    expect(quitterBloque()).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, lignes] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(lignes.map(l => l.taux_tva)).toEqual(['20', '20'])
+    await new Promise(r => setTimeout(r, 1200))
+    expect(quitterBloque()).toBe(false)
+    expect(window.localStorage.getItem(CLE)).toBeNull()
+  }, 20000)
 })

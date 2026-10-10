@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^site-profiles/$",
+  "nom": "siteprofile-list",
+  "vue": "SiteProfileViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^site-profiles/(?P<pk>[^/.]+)/$",
+  "nom": "siteprofile-detail",
+  "vue": "SiteProfileViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^site-profiles/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "siteprofile-detail",
+  "vue": "SiteProfileViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^site-profiles\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "siteprofile-list",
+  "vue": "SiteProfileViewSet"
+ }
+]

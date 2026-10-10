@@ -1,0 +1,90 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^salles-vente/$",
+  "nom": "salle-vente-list",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/$",
+  "nom": "salle-vente-detail",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "analytics"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/analytics/$",
+  "nom": "salle-vente-analytics",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "analytics"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/analytics\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "salle-vente-analytics",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "ajouter_item"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/items/$",
+  "nom": "salle-vente-ajouter-item",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "retirer_item"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/items/(?P<item_id>\\d+)/$",
+  "nom": "salle-vente-retirer-item",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "retirer_item"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/items/(?P<item_id>\\d+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "salle-vente-retirer-item",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "ajouter_item"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)/items\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "salle-vente-ajouter-item",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^salles-vente/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "salle-vente-detail",
+  "vue": "SalleVenteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^salles-vente\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "salle-vente-list",
+  "vue": "SalleVenteViewSet"
+ }
+]

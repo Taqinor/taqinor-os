@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^plans-activite/$",
+  "nom": "planactivite-list",
+  "vue": "PlanActiviteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^plans-activite/(?P<pk>[^/.]+)/$",
+  "nom": "planactivite-detail",
+  "vue": "PlanActiviteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^plans-activite/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "planactivite-detail",
+  "vue": "PlanActiviteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^plans-activite\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "planactivite-list",
+  "vue": "PlanActiviteViewSet"
+ }
+]

@@ -1,0 +1,58 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^message-templates/$",
+  "nom": "messagetemplate-list",
+  "vue": "MessageTemplateViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^message-templates/(?P<pk>[^/.]+)/$",
+  "nom": "messagetemplate-detail",
+  "vue": "MessageTemplateViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "render_template"
+  },
+  "motif": "^message-templates/(?P<pk>[^/.]+)/render/$",
+  "nom": "messagetemplate-render-template",
+  "vue": "MessageTemplateViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "render_template"
+  },
+  "motif": "^message-templates/(?P<pk>[^/.]+)/render\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "messagetemplate-render-template",
+  "vue": "MessageTemplateViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^message-templates/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "messagetemplate-detail",
+  "vue": "MessageTemplateViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^message-templates\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "messagetemplate-list",
+  "vue": "MessageTemplateViewSet"
+ }
+]

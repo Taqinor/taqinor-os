@@ -8,7 +8,9 @@ import { formatMAD } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
-import { ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques } from './remise.js'
+import {
+  ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques, repartirRemiseParLigne,
+} from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
@@ -379,14 +381,19 @@ export function computeCashflowPayback(investment, economieAnnee1, {
 // batterie sur la seule part stockée, remplacement onduleur au prix réel),
 // appliquée à l'économie servie par le serveur — jamais `coût ÷ économie`
 // (écran 13,43 / 8,95 ans contre 8,2 / 5,5 au document).
-// AMOT58 — l'économie servie par l'étude HORAIRE est DÉJÀ nette du rendement
-// aller-retour de la batterie : comme `pricing` en modèle horaire
-// (`battery_share = 0`), le cashflow ne le re-déduit plus — part batterie 0
-// (`annuel`, encore passé par l'écran, n'entre plus dans le calcul). Rend
-// `{ paybackYears, jamaisRembourse }`, ou `null` sans coût ni économie.
+// `annuel` = `etude.annuel` du serveur (taux d'autoconsommation, production,
+// consommation) : la part batterie se dérive comme dans `pricing` (plafond
+// sans ≤ conso/production, plancher avec ≥ sans). Rend
+// `{ paybackYears, jamaisRembourse, netGain }`, ou `null` sans coût ni économie.
+// AMOT72 — miroir du moteur CORRIGÉ (AMOT58, `rendement_une_fois`) : en modèle
+// horaire, le rendement aller-retour de la batterie est DÉJÀ dans l'économie
+// servie (`etude_horaire` borne le restitué) ; la part batterie du cashflow
+// vaut donc 0 — plus de seconde déduction. Flux année 1 = économie servie.
+// `annuel` et `rendementBatterie` restent acceptés (appelants inchangés).
 export function paybackMoteurHoraire(total, ecoAnnuelle, {
-  rendementBatterie = null, stockage = false, inverterReplaceCost = null,
+  annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
 } = {}) {
+  void annuel
   const t = parseFloat(total) || 0
   const eco = parseFloat(ecoAnnuelle) || 0
   if (!(t > 0) || !(eco > 0)) return null
@@ -394,7 +401,7 @@ export function paybackMoteurHoraire(total, ecoAnnuelle, {
     battery: !!stockage, batteryShare: 0, inverterReplaceCost,
     batteryRoundtrip: rendementBatterie ?? BATTERY_ROUNDTRIP,
   })
-  return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse }
+  return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse, netGain: cf.netGain }
 }
 
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
@@ -407,12 +414,18 @@ export function paybackMoteurHoraire(total, ecoAnnuelle, {
 export function computeROI({
   kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
   consoAnnuelleKwh, utility, productible,
+  // AGNR35 — barème EFFECTIF de la société (`baremeDepuisProfil`) : grille et
+  // redevance réglées ; absent ⇒ constantes nationales (inchangé).
+  bareme = null,
   // Q1 (fondateur 20/08/2026) — lignes RÉELLES du devis, pour retrouver le
   // prix TTC de l'onduleur de chaque option (provision de remplacement à
   // l'année 12). Optionnel : sans lignes, aucune provision (jamais un
   // pourcentage de repli) — comportement inchangé pour un appelant qui ne les
   // fournit pas (encore).
   lines = [],
+  // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation +
+  // nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
+  produits = [],
 }) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
@@ -540,8 +553,10 @@ export function computeROI({
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
-    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility)
-    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility)
+    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility,
+      bareme?.tranches, bareme?.chargesFixes)
+    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility,
+      bareme?.tranches, bareme?.chargesFixes)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
       autoconsoSansEff = autoconsoSansPlaf
@@ -551,6 +566,44 @@ export function computeROI({
       factureSans = tbSans.factureSans
       factureAvecSans = tbSans.factureAvec
       factureAvecAvec = tbAvec.factureAvec
+      // AGNR23 — la série mensuelle est RÉPARTIE depuis l'annuel FINAL (clé
+      // de répartition = la forme de production de la série estimée, comme
+      // la clé solaire mensuelle du serveur) : Σ des 12 points = la carte.
+      const repartir = (serie, cible) => {
+        const somme = serie.reduce((s, v) => s + v, 0)
+        if (!(somme > 0)) return
+        for (let i = 0; i < 12; i++) serie[i] = serie[i] * (cible / somme)
+      }
+      repartir(ecoSansMonthly, ecoAnnuelleSans)
+      repartir(ecoAvecMonthly, ecoAnnuelleAvec)
+      for (let i = 0; i < 12; i++) {
+        monthlyDetail[i].eco_sans = ecoSansMonthly[i]
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
+    }
+  }
+
+  // AGNR25 — chemin « estimation » : l'apport batterie se calcule sur
+  // l'ANNÉE par `autoconsoAvecRatio` (part diurne + capacité × 1 cycle/jour ×
+  // 365, plafonné production / conso), exactement `calculate_savings_roi`
+  // (production arrondie × taux × tarif) — plus la borne MENSUELLE du
+  // stockable, qui sous-estimait les grosses batteries (12 408 au lieu de
+  // 12 854 MAD/an). La série mensuelle « avec » est répartie depuis l'annuel.
+  if (savingsModel === 'estimation' && (parseFloat(batteryKwh) || 0) > 0 && productionCanonique > 0) {
+    const ratioAvec = Math.max(
+      autoconsoAvecRatio(productionCanonique, batteryKwh, { base: dayPct, consoAnnuelleKwh }),
+      autoconsoSansEff)
+    // Invariant « avec ≥ sans » (la part sans batterie de l'écran porte la
+    // production non arrondie).
+    ecoAnnuelleAvec = Math.max(productionCanonique * ratioAvec * PRICE, ecoAnnuelleSans)
+    batteryShiftAnnuel = Math.max(0, (ratioAvec - autoconsoSansEff) * productionCanonique)
+    autoconsoAvecEff = ratioAvec
+    const sommeAvec = ecoAvecMonthly.reduce((acc, v) => acc + v, 0)
+    if (sommeAvec > 0) {
+      for (let i = 0; i < 12; i++) {
+        ecoAvecMonthly[i] = ecoAvecMonthly[i] * (ecoAnnuelleAvec / sommeAvec)
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
     }
   }
 
@@ -565,10 +618,10 @@ export function computeROI({
   // contradiction avec builder.py où la déclaration prime). Seule une ligne
   // SANS `variante` (tout devis hors « Les deux ») retombe sur les mots-clés,
   // exactement comme avant.
-  const linesSans = lines.filter(l => appartientAuPanierSans(l))
-  const linesAvec = lines.filter(l => appartientAuPanierAvec(l))
-  const inverterCostSans = inverterCostFromLines(linesSans)
-  const inverterCostAvec = inverterCostFromLines(linesAvec)
+  const linesSans = lines.filter(l => appartientAuPanierSans(l, produits))
+  const linesAvec = lines.filter(l => appartientAuPanierAvec(l, produits))
+  const inverterCostSans = inverterCostFromLines(linesSans, produits)
+  const inverterCostAvec = inverterCostFromLines(linesAvec, produits)
 
   // M9 — l'option 2 porte-t-elle RÉELLEMENT du stockage ? Dérivé des VRAIES
   // lignes (`batteryKwh` = `batteryKwhFromLines(...)` chez l'appelant), jamais
@@ -718,6 +771,26 @@ export const ONEE_TRANCHES = trancheTable([
                      // 1,15142 HT × TVA 20% ; voir la note ci-dessus
   [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
+// AGNR35 — le barème EFFECTIF de la société, servi par le profil
+// (`bareme_effectif`, contrat parametres/bareme_effectif.json) → la forme de
+// l'écran : `{ tranches, chargesFixes }`, ou `null` en `national` (les
+// constantes ci-dessous restent alors seules en jeu, chiffres inchangés).
+export function baremeDepuisProfil(baremeEffectif) {
+  const b = baremeEffectif
+  if (!b || b.source !== 'societe') return null
+  let tranches = null
+  if (b.tranches && Array.isArray(b.tranches.pairs) && b.tranches.pairs.length) {
+    const pairs = b.tranches.pairs.map(([plafond, prix]) => [plafond == null ? null : Number(plafond), Number(prix)])
+    const seuil = parseFloat(b.tranches.selective_threshold)
+    tranches = trancheTable(pairs, seuil > 0
+      ? { seuil, tolerance: parseFloat(b.tranches.boundary_tolerance) || 0 } : null)
+  }
+  const redevance = parseFloat(b.redevance_compteur_mad_mois)
+  const chargesFixes = Number.isFinite(redevance) && redevance >= 0 ? redevance : null
+  if (!tranches && chargesFixes == null) return null
+  return { tranches, chargesFixes }
+}
+
 // Q7 (decision fondateur du 20/08/2026) — UN SEUL BAREME NATIONAL. Les grilles
 // « approximatives » Lydec et Redal disparaissent : elles etaient inventees
 // (trois paliers ronds « a confirmer ») et faisaient diverger l'ecran du
@@ -829,6 +902,9 @@ function kwhFromBillBisect(bill, tranches) {
 // QF1 — inverse EXACT du barème : facture mensuelle (MAD TTC) → kWh/mois.
 // Miroir kwh_from_bill (analytique si progressif, dichotomie si sélectif).
 // Retourne { kwhMensuel, approximatif, estimation }.
+// AGNR14 — inverse de la facture d'ÉNERGIE SEULE : jamais pour un montant de
+// facture TOTALE (lignes fixes + TPPAN comprises) — celui-là passe par
+// `kwhDepuisFactureMad` / `consoAnnuelleDepuisFactures`.
 export function kwhFromBill(billMad, utility, tranchesOverride) {
   const bill = parseFloat(billMad) || 0
   if (bill <= 0) return { kwhMensuel: 0, approximatif: false, estimation: true }
@@ -869,10 +945,10 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
 // la borne de boucle.
 const PLAFOND_DICHOTOMIE_KWH = 1e6
 export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
-  jours = TPPAN_JOURS_REFERENCE) {
+  jours = TPPAN_JOURS_REFERENCE, chargesFixes = null) {
   const montant = parseFloat(totalMad) || 0
   if (montant <= 0) return 0
-  const total = (k) => factureMad(k, tranches, jours).totalMad
+  const total = (k) => factureMad(k, tranches || ONEE_TRANCHES, jours, chargesFixes).totalMad
   if (montant <= total(0)) return 0
   let bas = 0
   let haut = 1000
@@ -896,12 +972,15 @@ export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
 // `utility` n'est plus lu (gardé pour la signature des appelants) ;
 // `tranchesOverride` = grille vendeur. Un mois non inversable ⇒ 0 (le serveur
 // omet toute la série). 0 quand aucune facture exploitable — l'appelant OMET.
-export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride) {
+// AGNR35 — `chargesFixes` : la redevance de compteur RÉGLÉE par la société
+// (`bareme_effectif.redevance_compteur_mad_mois`) ; absente ⇒ lignes fixes
+// nationales.
+export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride, chargesFixes = null) {
   if (!Array.isArray(factures) || !factures.length) return 0
   const table = tranchesOverride && tranchesOverride.length ? tranchesOverride : ONEE_TRANCHES
   let total = 0
   for (const bill of factures) {
-    const kwh = kwhDepuisFactureMad(bill, table)
+    const kwh = kwhDepuisFactureMad(bill, table, TPPAN_JOURS_REFERENCE, chargesFixes)
     if (kwh === null) return 0
     total += kwh
   }
@@ -924,11 +1003,16 @@ function consoAnnuelleEnergieSeule(factures, utility) {
 // réafficher comme des kWh tapés puis de la réécrire à l'identique (le
 // 165 000 kWh de DEV-202609-0113 revenait à chaque enregistrement). Tolérance
 // 12 kWh/an : la dérive ×12 de l'aller-retour kWh/mois (110 000 → 110 004).
-export function consoDescendDesFactures(conso, factures, distributeur) {
+export function consoDescendDesFactures(conso, factures, distributeur, bareme = null) {
   const c = parseFloat(conso) || 0
   if (c <= 0 || !Array.isArray(factures) || !factures.length) return false
   const derivee = consoAnnuelleDepuisFactures(factures)
   if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
+  // AGNR35 — une conso dérivée au barème SOCIÉTÉ reste reconnue.
+  if (bareme) {
+    const societe = consoAnnuelleDepuisFactures(factures, null, bareme.tranches, bareme.chargesFixes)
+    if (societe > 0 && Math.abs(c - societe) <= 12) return true
+  }
   for (const d of new Set([distributeur || undefined, 'onee', undefined])) {
     const ancienne = consoAnnuelleEnergieSeule(factures, d)
     if (ancienne > 0 && Math.abs(c - ancienne) <= 12) return true
@@ -992,8 +1076,9 @@ export function chargesFixesTtc() {
 //     s'écarte de plus de 25 % de la facture d'hiver du lead ⇒
 //     `{ serie, lead }`, à faire CONFIRMER, jamais corrigé en silence.
 export const ECART_FACTURE_LEAD_MAX = 0.25
-export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
-  const plancher = chargesFixesTtc()
+export function controlerFacturesSaisies(factures, { factureHiverLead, chargesFixes = null } = {}) {
+  // AGNR35 — plancher = la redevance société quand elle est réglée.
+  const plancher = Number.isFinite(parseFloat(chargesFixes)) ? parseFloat(chargesFixes) : chargesFixesTtc()
   const serie = Array.isArray(factures) ? factures.map(v => Number(v) || 0) : []
   const sousPlancher = []
   serie.forEach((v, i) => { if (v > 0 && v < plancher) sousPlancher.push(i + 1) })
@@ -1018,12 +1103,12 @@ const RATIO_KWH_FACTURE_MAX = 2
 export const MESSAGE_KWH_INCOHERENT =
   'kWh déclarés incohérents avec les factures — corriger la fiche du lead'
 export function controlerKwhDeclare(kwhMensuel, { factureHiver, factureEte, eteDifferente } = {},
-  tranches = ONEE_TRANCHES) {
+  tranches = ONEE_TRANCHES, chargesFixes = null) {
   const kwh = parseFloat(kwhMensuel) || 0
   const factures = [factureHiver, eteDifferente ? factureEte : null]
     .map(v => parseFloat(v) || 0).filter(v => v > 0)
   if (!(kwh > 0) || !factures.length) return null
-  const factureBareme = factureMad(kwh, tranches).totalMad
+  const factureBareme = factureMad(kwh, tranches || ONEE_TRANCHES, TPPAN_JOURS_REFERENCE, chargesFixes).totalMad
   const ratios = factures.map(f => factureBareme / f)
   return {
     factureBareme,
@@ -1059,10 +1144,12 @@ export function tppanMad(kwhMensuel, jours = TPPAN_JOURS_REFERENCE) {
 // dans l'ordre de la vraie facture. Jumeau de bareme.facture_mad. Une
 // consommation nulle ne doit RIEN en énergie ni en TPPAN, mais les lignes
 // fixes restent dues : c'est la réalité d'un abonnement.
-export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) {
+// AGNR35 — `chargesFixes` (MAD TTC/mois) REMPLACE en bloc les deux lignes
+// fixes nationales, exactement comme le serveur (`charges_fixes_mad`).
+export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE, chargesFixes = null) {
   const kwh = parseFloat(kwhMensuel) || 0
   const energie = kwh > 0 ? monthlyBillFromKwh(kwh, tranches) : 0
-  const fixes = chargesFixesTtc()
+  const fixes = Number.isFinite(parseFloat(chargesFixes)) ? parseFloat(chargesFixes) : chargesFixesTtc()
   const taxe = tppanMad(kwh, jours)
   return {
     energieMad: energie,
@@ -1080,14 +1167,15 @@ export function factureMad(kwhMensuel, tranches, jours = TPPAN_JOURS_REFERENCE) 
 // comme le serveur depuis QJR157 : le mois reste l'unité de tarification (le
 // seuil des marches est MENSUEL), on ne divise jamais l'année après avoir
 // tarifé. Mois MOYEN, comme le repli serveur sans répartition mensuelle.
-export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
+export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride,
+  chargesFixes = null) {
   const { table } = resolveTranches(utility, tranchesOverride)
   if (!table) return null
   const conso = parseFloat(consoAnnuelleKwh) || 0
   const prod = parseFloat(productionKwh) || 0
   const ratio = parseFloat(autoconsoRatio) || 0
   if (conso <= 0 || prod <= 0 || ratio <= 0) return null
-  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table).totalMad * 12
+  const factureAnnuelle = (consoAn) => factureMad(consoAn / 12, table, TPPAN_JOURS_REFERENCE, chargesFixes).totalMad * 12
   const factureSans = Math.round(factureAnnuelle(conso))
   const autoconsoKwh = Math.min(prod * ratio, conso)
   const residuel = Math.max(0, conso - autoconsoKwh)
@@ -1189,27 +1277,38 @@ export const isPanel = (d, produitNom = '') => {
 // le PDF la facturait dans ce panier (F14 : écran et PDF divergeaient). Une
 // ligne SANS `variante` ('' — tout devis hors « Les deux ») retombe sur les
 // mots-clés, mot pour mot comme avant.
-export function appartientAuPanierSans(l) {
+// AGNR36 — LE texte qui classe une LIGNE : désignation + nom du produit lié,
+// miroir exact de `apps/ventes/utils/options.texte_classement` (QJR301). Une
+// désignation retouchée à la main (« Stockage Dyness 5 kWh ») ne fait plus
+// sortir la ligne de son panier. `produits` : catalogue de l'écran ; absent
+// (ou non tableau — un `.filter(fn)` passe l'index) ⇒ désignation seule.
+export function texteClassement(l, produits) {
+  const nom = (Array.isArray(produits) ? _produitDeLigne(l, produits)?.nom : null)
+    || l?.produit_nom || ''
+  return `${l?.designation ?? ''} ${nom}`
+}
+
+export function appartientAuPanierSans(l, produits) {
   const v = l?.variante
   if (v === 'avec') return false
   if (v === 'sans') return true
-  return !isBattery(l?.designation) && !isHybridInverter(l?.designation)
-    && !isOffgridInverter(l?.designation)
+  const t = texteClassement(l, produits)
+  return !isBattery(t) && !isHybridInverter(t) && !isOffgridInverter(t)
 }
-export function appartientAuPanierAvec(l) {
+export function appartientAuPanierAvec(l, produits) {
   const v = l?.variante
   if (v === 'sans') return false
   if (v === 'avec') return true
-  return !isReseauInverter(l?.designation)
+  return !isReseauInverter(texteClassement(l, produits))
 }
 
 // Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou `null` si aucune
 // identifiable. Miroir exact de builder.py `_cout_onduleur` : Σ qty × prix
 // unitaire TTC des lignes onduleur — jamais un pourcentage de repli.
-export function inverterCostFromLines(lines) {
+export function inverterCostFromLines(lines, produits) {
   let total = 0
   for (const l of lines || []) {
-    if (!isAnyInverter(l.designation)) continue
+    if (!isAnyInverter(texteClassement(l, produits))) continue
     const qty = parseFloat(l.quantite) || 0
     const pu = parseFloat(l.prix_unit_ttc) || 0
     if (qty > 0 && pu > 0) total += qty * pu
@@ -1449,9 +1548,38 @@ export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
 // par unité) était multipliée par la quantité (36 828 à l'écran contre
 // 36 873,11 au devis) puis PERSISTÉE au ré-enregistrement. Au centime,
 // `htFromTtc` retrouve exactement le HT d'origine (erreur < 0,005 ÷ (1 + t)).
+// ATOT28 — le TTC affiché est le PLUS SIMPLE (entier, puis dixième, puis
+// centime) que `htFromTtc` ramène EXACTEMENT au HT : un TTC entier tapé
+// (1 160 @10 % → 1 054,55 HT) se rouvre 1 160, jamais 1 160,01 ; un prix
+// catalogue 1 234,56 HT s'affiche 1 481,47 et revient 1 234,56.
 export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
-  const factor = 1 + tauxTvaOuDefaut(tauxTva) / 100
-  return Math.round((parseFloat(prixHt) || 0) * factor * 100) / 100
+  const taux = tauxTvaOuDefaut(tauxTva)
+  const factor = 1 + taux / 100
+  const ht = parseFloat(prixHt) || 0
+  const brut = ht * factor
+  const htAttendu = ht.toFixed(2)
+  for (const echelle of [1, 10]) {
+    const candidat = Math.round(brut * echelle) / echelle
+    if (htFromTtc(candidat, taux) === htAttendu) return candidat
+  }
+  return Math.round(brut * 100) / 100
+}
+
+// ATOT28 — LA ligne d'écran née d'un produit du catalogue : TTC affiché au
+// centime (`ttcExactFromHt`) et HT d'origine PORTÉ (`prixHtOrigine`), renvoyé
+// tel quel à l'enregistrement tant que le vendeur n'a pas tapé de prix
+// (`lignesEcranVersPayload`) — un prix catalogue repris sans retouche est
+// stocké exactement et n'est pas « négocié ».
+export function ligneProduitCatalogue(p, quantite) {
+  const taux = tauxTvaOf(p)
+  return {
+    produit: String(p.id),
+    designation: p.nom,
+    quantite,
+    prix_unit_ttc: ttcExactFromHt(p.prix_vente, taux),
+    taux_tva: taux,
+    prixHtOrigine: (parseFloat(p.prix_vente) || 0).toFixed(2),
+  }
 }
 
 // Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
@@ -1479,16 +1607,17 @@ export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
 // lisible contribuait un défaut FABRIQUÉ de 5,0 kWh (jamais dérivé d'aucune
 // donnée réelle). Elle contribue désormais 0 — voir `batteryCapaciteInconnue`
 // ci-dessous pour SIGNALER ce cas à l'écran plutôt que de le taire.
-export function batteryKwhFromLines(lines) {
+export function batteryKwhFromLines(lines, produits) {
   return lines.reduce((sum, l) => {
-    if (!isBattery(l.designation)) return sum
+    const t = texteClassement(l, produits)
+    if (!isBattery(t)) return sum
     // L-2OPT — une ligne taguée 'sans' (voir fusionnerVariantes) porte une
     // quantité issue de la composition SANS batterie, jamais destinée à
     // compter dans quelque capacité que ce soit ; sans tag (comportement
     // historique) ce garde-fou est un no-op (`undefined !== 'sans'`).
     if (l.variante === 'sans') return sum
     const qty = parseFloat(l.quantite) || 0
-    return sum + qty * (parseKwh(l.designation) ?? 0)
+    return sum + qty * (parseKwh(t) ?? 0)
   }, 0)
 }
 
@@ -1499,10 +1628,11 @@ export function batteryKwhFromLines(lines) {
 // défaut inventé). Sert à afficher un avertissement honnête plutôt que de
 // laisser croire que le chiffre est complet. `false` = soit aucune ligne
 // batterie, soit toutes lisibles : comportement historique inchangé.
-export function batteryCapaciteInconnue(lines) {
-  return (lines || []).some(l =>
-    isBattery(l.designation) && l.variante !== 'sans'
-    && parseKwh(l.designation) == null)
+export function batteryCapaciteInconnue(lines, produits) {
+  return (lines || []).some(l => {
+    const t = texteClassement(l, produits)
+    return isBattery(t) && l.variante !== 'sans' && parseKwh(t) == null
+  })
 }
 
 // L-2OPT — nombre de PANNEAUX d'une option, avec la MÊME règle d'exclusion
@@ -1512,13 +1642,52 @@ export function batteryCapaciteInconnue(lines) {
 // `fusionnerVariantes`) compte dans les DEUX. Sert à dériver le kWc PROPRE à
 // chaque option depuis les lignes — sans quoi l'écran chiffre l'économie
 // d'une composition avec le kWc de l'autre.
-export function comptePanneauxOption(lines, option) {
+export function comptePanneauxOption(lines, option, produits = []) {
   const exclu = option === 'avec' ? 'sans' : 'avec'
   return (lines || []).reduce((sum, l) => {
-    if (!/panneau/i.test(l?.designation || '')) return sum
+    // AGNR18 — `isPanel` (désignation + nom du produit lié, comme
+    // `builder.panneaux_et_watt_lu`), jamais le seul `/panneau/i` qui
+    // ignorait « JA Solar 550 Wc ».
+    if (!isPanel(l?.designation || '', _produitDeLigne(l, produits)?.nom || '')) return sum
     if (l.variante === exclu) return sum
     return sum + (parseFloat(l.quantite) || 0)
   }, 0)
+}
+
+// AGNR18 — le produit lié d'une ligne d'écran (catalogue chargé), sinon null.
+function _produitDeLigne(l, produits) {
+  if (!l?.produit || !Array.isArray(produits) || !produits.length) return null
+  return produits.find(p => String(p.id) === String(l.produit)) || null
+}
+
+// AGNR18 — watt UNITAIRE LU d'une ligne panneau, même ordre que le serveur
+// (`builder.panneaux_et_watt_lu`) : fiche technique du produit
+// (Pmax) puis désignation puis nom du produit. `null` si illisible.
+function _wattLigne(l, produits) {
+  const p = _produitDeLigne(l, produits)
+  const fiche = parseFloat(p?.fiche_technique?.pmax_wc ?? p?.pmax_wc ?? p?.puissance_wc)
+  if (fiche > 0) return fiche
+  return parseWatt(l?.designation || '') || parseWatt(p?.nom || '') || null
+}
+
+// AGNR18 — kWc des lignes panneau d'une option : somme quantité × watt LU de
+// CHAQUE ligne ; `panelW` n'est que le repli d'une ligne au watt illisible.
+// `null` sans ligne panneau ou sans aucun watt (lu ou repli).
+export function kwcPanneauxOption(lines, option, panelW, produits = []) {
+  const exclu = option === 'avec' ? 'sans' : 'avec'
+  const repliW = parseFloat(panelW) || 0
+  let n = 0
+  let watts = 0
+  for (const l of lines || []) {
+    if (!isPanel(l?.designation || '', _produitDeLigne(l, produits)?.nom || '')) continue
+    if (l.variante === exclu) continue
+    const q = parseFloat(l.quantite) || 0
+    const w = _wattLigne(l, produits) || repliW
+    if (!(q > 0) || !(w > 0)) continue
+    n += q
+    watts += q * w
+  }
+  return n > 0 ? watts / 1000 : null
 }
 
 // QJR568 — le kWc réellement FACTURÉ par les lignes (branche SANS : commun +
@@ -1526,11 +1695,11 @@ export function comptePanneauxOption(lines, option) {
 // panneaux » reste la CIBLE du dimensionnement (dry-run) ; ce kWc-ci alimente
 // prix/kWc, prix cible, études C&I et l'aperçu horaire. `repli` (la cible)
 // quand aucune ligne panneau ou aucun wattage lisible — jamais un 0 inventé.
-export function kwcFactureDesLignes(lines, panelW, repli) {
-  const n = comptePanneauxOption(lines, 'sans')
-  const w = parseFloat(panelW) || 0
-  if (!(n > 0) || !(w > 0)) return repli
-  return n * w / 1000
+// AGNR18 — le watt de CHAQUE ligne (fiche / désignation / produit), `panelW`
+// seulement pour une ligne au watt illisible.
+export function kwcFactureDesLignes(lines, panelW, repli, produits = []) {
+  const kwc = kwcPanneauxOption(lines, 'sans', panelW, produits)
+  return kwc != null && kwc > 0 ? kwc : repli
 }
 
 // ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────
@@ -1556,12 +1725,12 @@ const _estAccessoireHuawei = (d) => isSmartMeter(d) || isWifiDongle(d)
 // de `_panier_sert_huawei` : sans onduleur identifiable → False (on n'affiche
 // pas ces accessoires par défaut) ; le moindre onduleur non-Huawei dans le
 // panier suffit à les retirer (conservateur).
-function _panierSertHuawei(rows) {
-  const onduleurs = rows.filter(l => isAnyInverter(l?.designation))
+function _panierSertHuawei(rows, produits) {
+  const onduleurs = rows.filter(l => isAnyInverter(texteClassement(l, produits)))
   if (onduleurs.length === 0) return false
   let huaweiVu = false
   for (const l of onduleurs) {
-    if (_norm(l?.designation).includes('huawei')) {
+    if (_norm(texteClassement(l, produits)).includes('huawei')) {
       huaweiVu = true
     } else {
       return false
@@ -1572,9 +1741,9 @@ function _panierSertHuawei(rows) {
 
 // `rows` privé de ses accessoires Huawei orphelins — miroir exact de
 // `retirer_accessoires_huawei`.
-function _retirerAccessoiresHuawei(rows) {
-  if (_panierSertHuawei(rows)) return rows
-  return rows.filter(l => !_estAccessoireHuawei(l?.designation))
+function _retirerAccessoiresHuawei(rows, produits) {
+  if (_panierSertHuawei(rows, produits)) return rows
+  return rows.filter(l => !_estAccessoireHuawei(texteClassement(l, produits)))
 }
 
 // ── ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — miroir EXACT de
@@ -1626,12 +1795,12 @@ export const SCENARIOS_ALTERNATIVE = SCENARIOS_VALIDES
 // paniers (onduleur réseau d'un côté ; hybride avec batterie ou réseau, ou
 // autonome avec batterie, de l'autre). Seules les lignes produit non
 // optionnelles de quantité > 0 comptent, comme au noyau.
-export function alternativeDeclareeServable(lines, scenario) {
+export function alternativeDeclareeServable(lines, scenario, produits) {
   if (!SCENARIOS_ALTERNATIVE.includes(scenario)) return false
   const d = (lines || [])
     .filter(l => (parseFloat(l?.quantite) || 0) > 0 && !l?.optionnelle
       && l?.typeLigne !== 'section' && l?.typeLigne !== 'note')
-    .map(l => l.designation)
+    .map(l => texteClassement(l, produits))
   const hasReseau = d.some(isReseauInverter)
   const hasHybride = d.some(isHybridInverter)
   const hasOffgrid = d.some(isOffgridInverter)
@@ -1642,7 +1811,7 @@ export function alternativeDeclareeServable(lines, scenario) {
 
 // `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
 // comportement historique inchangé (QF9 réservée aux lignes variantées).
-export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
+export function optionTotalsTTC(lines, discountPct, { scenario, produits } = {}) {
   // QJR567 — MÊME population que le noyau (`ligne_compte_dans_totaux`) : une
   // ligne optionnelle (add-on non activé) et les sections / notes ne
   // comptent JAMAIS — sans ce filtre le rail, le prix/kWc, la marge et
@@ -1653,8 +1822,8 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   // miroir exact de builder.py `_repartir_options` et de
   // `apps/ventes/utils/options.py`). Une ligne SANS `variante` retombe sur
   // les mots-clés, mot pour mot comme avant.
-  let linesSans = lines.filter(appartientAuPanierSans)
-  let linesAvec = lines.filter(appartientAuPanierAvec)
+  let linesSans = lines.filter(l => appartientAuPanierSans(l, produits))
+  let linesAvec = lines.filter(l => appartientAuPanierAvec(l, produits))
   // QJR402/QJR300 — QF9 ne s'applique QUE sur un VRAI devis à deux options
   // DÉCLARÉES (miroir de `deux_options`/`alternative_declaree` au noyau) :
   // la seule trace, côté lignes, d'une alternative déclarée est `variante`
@@ -1669,9 +1838,9 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   // Meter + la clé Wi-Fi Huawei que le noyau et le PDF retirent (3 000 MAD
   // d'écart mesurés entre le formulaire et le devis persisté).
   if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')
-      || alternativeDeclareeServable(lines, scenario)) {
-    linesSans = _retirerAccessoiresHuawei(linesSans)
-    linesAvec = _retirerAccessoiresHuawei(linesAvec)
+      || alternativeDeclareeServable(lines, scenario, produits)) {
+    linesSans = _retirerAccessoiresHuawei(linesSans, produits)
+    linesAvec = _retirerAccessoiresHuawei(linesAvec, produits)
   }
   // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — LA CHAÎNE CANONIQUE DU NOYAU, plus
   // une somme de TTC arrondis ligne à ligne remisée ensuite. Le chiffre facturé
@@ -1691,6 +1860,69 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   const totalSans = totauxCanoniquesTtc(linesSans, pct, pas)
   const totalAvec = totauxCanoniquesTtc(linesAvec, pct, pas)
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
+}
+
+// ATOT25 — LA REMISE « PAR LIGNE » DE L'ÉCRAN = CELLE DU PDF, PAR PANIER.
+// Miroir de `builder._annoter_remise` : chaque option (panier Sans / Avec,
+// même population que `optionTotalsTTC`) répartit SA remise sur les HT
+// PERSISTÉS de ses lignes (`htFromTtc` au centime × quantité × remise de
+// ligne), par `repartirRemiseParLigne` (miroir de
+// `argent.repartir_remise_par_ligne`, plus fort reste), puis chaque part HT
+// passe au TTC à son propre taux, au centime. L'« Arrondi commercial » est ce
+// qui sépare la somme des lignes affichées du total (palier ARRONDI-100) :
+// Σ lignes + arrondi = total affiché, toujours.
+//
+// Rend `{ parLigne, sans: {total, sommeLignes, arrondi}, avec: {...} }` ;
+// `parLigne` est ALIGNÉ sur `lines` (montant TTC remisé, ou `null` pour une
+// ligne qui ne compte pas) — une ligne des deux paniers prend la valeur du
+// panier de l'option effective (`option`).
+export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans', produits } = {}) {
+  const tous = lines || []
+  const comptees = tous.filter(ligneCompteDansTotaux)
+  let lignesSans = comptees.filter(l => appartientAuPanierSans(l, produits))
+  let lignesAvec = comptees.filter(l => appartientAuPanierAvec(l, produits))
+  if (comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+      || alternativeDeclareeServable(comptees, scenario, produits)) {
+    lignesSans = _retirerAccessoiresHuawei(lignesSans, produits)
+    lignesAvec = _retirerAccessoiresHuawei(lignesAvec, produits)
+  }
+  const pct = parseFloat(discountPct) || 0
+  const centimes = (v) => BigInt(Math.round((Number(v) || 0) * 100))
+  const panier = (rows) => {
+    const valeurs = new Map()
+    if (pct > 0) {
+      const parts = repartirRemiseParLigne(rows.map((l) => {
+        const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
+        const htC = BigInt(Math.round(parseFloat(htFromTtc(l?.prix_unit_ttc, l?.taux_tva ?? TVA_STANDARD_DEFAUT)) * 100))
+        const remH = BigInt(Math.round((parseFloat(l?.remise) || 0) * 100))
+        // q ×100 · HT centimes · (1 − remise) ×10 000 = 1e-8 MAD → MAD
+        return { totalHt: Number(qH * htC * (10000n - remH)) / 1e8 }
+      }), pct)
+      rows.forEach((l, k) => {
+        const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
+        const t = Number.isFinite(taux) ? taux : TVA_STANDARD_DEFAUT
+        // TTC = q(part HT × (1 + taux)), moitié vers le haut, en centimes entiers.
+        const partC = centimes(parts[k])
+        const num = partC * BigInt(Math.round((100 + t) * 100))
+        const ttcC = num >= 0n ? (num + 5000n) / 10000n : -((-num + 5000n) / 10000n)
+        valeurs.set(l, Number(ttcC) / 100)
+      })
+    } else {
+      rows.forEach((l) => {
+        valeurs.set(l, Math.round((parseFloat(l?.quantite) || 0) * (parseFloat(l?.prix_unit_ttc) || 0) * 100) / 100)
+      })
+    }
+    const total = totauxCanoniquesTtc(rows, pct, PAS_ARRONDI_DEVIS)
+    const sommeC = [...valeurs.values()].reduce((acc, v) => acc + centimes(v), 0n)
+    return { valeurs, total, sommeLignes: Number(sommeC) / 100, arrondi: Number(centimes(total) - sommeC) / 100 }
+  }
+  const sans = panier(lignesSans)
+  const avec = panier(lignesAvec)
+  const [premier, second] = option === 'avec' ? [avec, sans] : [sans, avec]
+  const parLigne = tous.map((l) => (premier.valeurs.has(l) ? premier.valeurs.get(l)
+    : (second.valeurs.has(l) ? second.valeurs.get(l) : null)))
+  const resume = ({ total, sommeLignes, arrondi }) => ({ total, sommeLignes, arrondi })
+  return { parLigne, sans: resume(sans), avec: resume(avec) }
 }
 
 // ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────
@@ -1807,10 +2039,24 @@ export function fusionnerRecomposition(anciennes, generees) {
   const fusionnees = gens.map((g, gi) => {
     const file = g?.produit ? files.get(String(g.produit)) : null
     const oi = file && file.length ? file.shift() : null
-    const base = { ...g, compose: true }
-    if (oi == null) return base
+    if (oi == null) return { ...g, compose: true }
     appariee.set(oi, gi)
     const o = olds[oi]
+    // AGNR20 — la ligne ANCIENNE appariée est la base : la composition
+    // n'écrase que ce qu'elle POSSÈDE — le produit, la quantité (si elle
+    // n'est pas figée), la variante et le prix (s'il n'est pas tapé). Taux
+    // de TVA (0 % + base légale), désignation, remise de ligne, groupe villa,
+    // lot, rôle… restent ceux du vendeur. Une clé que seule la composition
+    // porte est reprise d'elle.
+    const base = {
+      ...g,
+      ...o,
+      compose: true,
+      produit: g.produit,
+      variante: g.variante ?? '',
+      quantite: g.quantite,
+      prix_unit_ttc: g.prix_unit_ttc,
+    }
     if (o.prixManuel) {
       base.prix_unit_ttc = o.prix_unit_ttc
       base.prixManuel = true
@@ -1892,13 +2138,28 @@ export function fusionnerVariantes(lignesSans, lignesAvec) {
 //       HT→TVA→TTC (backend, qui reste la source AUTORITAIRE au moment du PDF).
 // Retourne null quand aucun des deux modes n'est utilisé (aperçu inchangé).
 const _foisN = (ttc, n) => (Math.round((Number(ttc) || 0) * 100) * n) / 100
-export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct } = {}) {
+// ATOT24 — l'aperçu suit la CHAÎNE DU RAIL : (A) l'option EFFECTIVE (celle
+// que le rail affiche) et le scénario (même population que `optionTotalsTTC`
+// du rail : accessoires Huawei retirés d'un « Les deux ») ; (B) chaque villa =
+// totaux canoniques de SES lignes (HT → remise → TVA → TTC, option exclue),
+// les lignes sans groupe forment le groupe « Hors groupe », et le total
+// général est la chaîne canonique de TOUTES les lignes au palier
+// ARRONDI-100 — exactement `multi_villa_totaux` (selectors.py).
+export function multiPropertyPreviewTTC(lines, {
+  nombreProprietes, discountPct, scenario, option,
+} = {}) {
   const n = parseInt(nombreProprietes, 10)
   if (Number.isFinite(n) && n > 1) {
-    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct)
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario })
+    const opt = option === 'avec' || option === 'sans'
+      ? option : (scenario === 'Avec batterie' ? 'avec' : 'sans')
+    const totalUnitaire = opt === 'avec' ? totalAvec : totalSans
     return {
       mode: 'multiplicateur',
       nombreProprietes: n,
+      option: opt,
+      totalUnitaire,
+      totalMulti: _foisN(totalUnitaire, n),
       totalUnitaireSans: totalSans, totalUnitaireAvec: totalAvec,
       // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N AU CENTIME, comme le backend
       // (`selectors.totaux_multi_proprietes` / `builder._scale_tot`) : ce
@@ -1909,10 +2170,11 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
     }
   }
 
-  const grouped = lines.filter(l => l.groupeIndex != null)
+  const tous = lines || []
+  const grouped = tous.filter(l => l.groupeIndex != null)
   if (!grouped.length) return null
 
-  const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  const pct = parseFloat(discountPct) || 0
   const byIndex = new Map()
   for (const l of grouped) {
     const idx = l.groupeIndex
@@ -1923,14 +2185,17 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
   }
   const groupes = [...byIndex.keys()].sort((a, b) => a - b).map(idx => {
     const bucket = byIndex.get(idx)
-    const totalTtc = bucket.lignes.reduce((s, l) => s + ttc(l), 0)
     return {
       index: idx,
       label: bucket.label || (idx === 0 ? 'Équipement commun' : `Villa ${idx}`),
-      totalTtc: Math.round(totalTtc),
+      totalTtc: totauxCanoniquesTtc(bucket.lignes, pct, 0),
     }
   })
-  const grandTotalTtc = Math.round(groupes.reduce((s, g) => s + g.totalTtc, 0))
+  const horsGroupe = tous.filter(l => l.groupeIndex == null && ligneCompteDansTotaux(l))
+  if (horsGroupe.length) {
+    groupes.push({ index: null, label: 'Hors groupe', totalTtc: totauxCanoniquesTtc(horsGroupe, pct, 0) })
+  }
+  const grandTotalTtc = totauxCanoniquesTtc(tous, pct, PAS_ARRONDI_DEVIS)
   return { mode: 'villas', groupes, grandTotalTtc }
 }
 
@@ -2128,15 +2393,16 @@ function indexProduits(produits) {
   return byType
 }
 
-const lineFrom = (p, quantite, ttcOverride = null) => ({
-  produit: p ? String(p.id) : '',
-  designation: p ? p.nom : '',
-  quantite,
-  prix_unit_ttc: p || ttcOverride != null
-    ? (ttcOverride != null ? ttcOverride : ttcFromHt(p.prix_vente, tauxTvaOf(p)))
-    : 0,
-  taux_tva: p ? tauxTvaOf(p) : 20,
-})
+const lineFrom = (p, quantite, ttcOverride = null) => ((p && ttcOverride == null)
+  // ATOT28 — prix catalogue repris tel quel (HT d'origine porté).
+  ? ligneProduitCatalogue(p, quantite)
+  : {
+      produit: p ? String(p.id) : '',
+      designation: p ? p.nom : '',
+      quantite,
+      prix_unit_ttc: p || ttcOverride != null ? ttcOverride : 0,
+      taux_tva: p ? tauxTvaOf(p) : 20,
+    })
 
 // Ligne vide placeholder (désignation canonique, pas de produit)
 const placeholder = (designation, quantite) => ({
@@ -2152,10 +2418,13 @@ const placeholder = (designation, quantite) => ({
 // byte-identique à l'historique (voir `orderLinesByRolePreference`).
 export function defaultProductLines(produits, ordreLignes) {
   const byType = indexProduits(produits)
-  const first = (type) => (byType[type] ?? [])[0] ?? null
+  // AGNR27 — garde « aucun produit sans prix » : un rôle pointe le premier
+  // produit PRIX CONNU, ou reste sans produit (placeholder) — jamais un
+  // article à 0 MAD (ex. « Structure bac acier C&I » du seed C&I).
+  const first = (type) => (byType[type] ?? []).find(_hasPrix) ?? null
   const exactOr = (type, needle) => {
     const pool = byType[type] ?? []
-    return pool.find(p => _norm(p.nom).includes(needle)) ?? null
+    return pool.find(p => _hasPrix(p) && _norm(p.nom).includes(needle)) ?? null
   }
   const row = (p, designation, quantite) =>
     p ? lineFrom(p, quantite) : placeholder(designation, quantite)
@@ -2216,404 +2485,11 @@ export function structureChoisie(produits, structureProduitId) {
     (p) => String(p?.id) === cible && _hasPrix(p)) ?? null
 }
 
-// ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
-// Retourne la table complète dans l'ordre canonique du simulateur (ou l'ordre
-// PVORD `ordreLignes` s'il est fourni — voir `orderLinesByRolePreference`),
-// lignes à quantité nulle comprises (elles s'affichent mais ne sont pas
-// enregistrées).
-// `mpptPaires` (PVCBL, 19/08) — nombre de paires de câble DC (voir
-// `metreCableDcParPaires`) ; absent = repli fondateur à 1 paire.
-// OFFGRID — composition hors réseau (site isolé), UNE SEULE option (panneaux
-// + onduleur hors réseau + batterie), jamais fusionnée avec réseau/hybride :
-// `offgrid: true` réutilise TOUT le pipeline de `autoFillLines` (structures,
-// câblage, accessoires, sélection batterie) en substituant seulement la
-// famille d'onduleur retenue — `offgrid` absent/faux reste BYTE-IDENTIQUE au
-// comportement historique (aucune branche ci-dessous ne s'active).
-// STKCAT10 — `structureProduitId` (optionnel) est LE PRODUIT DE STRUCTURE
-// choisi à l'écran dans le catalogue : il est PRIORITAIRE sur `structureType`
-// (devenu l'alias déprécié), les deux ne se combinent JAMAIS, et il fait
-// émettre UNE SEULE ligne structure au lieu de la paire acier/alu figée.
-// Absent ⇒ comportement BYTE-IDENTIQUE à l'historique (paire acier + alu,
-// l'une à `nbPanneaux`, l'autre à 0) — épinglé par test.
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires, offgrid, structureProduitId }) {
-  if (!kwp || kwp <= 0) return []
-  const byType = indexProduits(produits)
-  // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
-  // est absent/vide et le comportement reste byte-identique à l'historique.
-  // `marquesManquantes` consigne chaque rôle épinglé sans AUCUN candidat en
-  // stock (même patron que `onduleursIncomplets`) — jamais un repli silencieux.
-  const marquesManquantes = []
-  const vuMarqueManquante = new Set()
-  const parMarque = (pool, role) =>
-    _filtrerParMarque(pool, role, marques, marquesManquantes, vuMarqueManquante)
-
-  // QX19 — nombre de panneaux : override explicite (dérivé d'une taille kWc
-  // souhaitée) sinon dérivé de la puissance. Le kWc RÉEL est recalculé plus bas
-  // depuis la puissance du panneau EFFECTIVEMENT retenu (jamais une divergence
-  // silencieuse 550W-pour-710W).
-  // U1 (fondateur 20/08/2026) — dérivation AU PLAFOND, même règle que
-  // `panneauxPourKwc` : 5 kWc en 710 Wc font 8 panneaux, jamais 7. Un compte
-  // fourni explicitement (`nbOverride`) est déjà un ENTIER de panneaux : il
-  // garde son arrondi au plus proche (il ne dérive d'aucune puissance).
-  const nbPanneaux = (Number(nbOverride) > 0)
-    ? Math.round(Number(nbOverride))
-    : Math.max(1, plafondPanneaux(kwp * 1000 / panelW))
-  const threshold = kwp * 0.8
-
-  // PVOND — VERROU DE COMPLÉTUDE : un onduleur auquel il manque une variable
-  // du CONTRAT (puissance AC, phases, MPPT, tensions, courant, rendement,
-  // plage batterie, garantie) est EXCLU de l'auto-composition et remonté à
-  // l'écran avec son motif — exactement le patron de « prix à renseigner » :
-  // on ne chiffre pas un appareil qu'on ne sait pas dimensionner, et on DIT
-  // pourquoi. Il reste sélectionnable à la main.
-  const onduleursIncomplets = []
-  const vuIncomplet = new Set()
-  const retenirIncomplet = (p) => {
-    const manquantes = onduleurSpecsManquantes(p)
-    if (!manquantes.length) return false
-    if (!vuIncomplet.has(p.id)) {
-      vuIncomplet.add(p.id)
-      onduleursIncomplets.push({ id: p.id, nom: p.nom, manquantes })
-    }
-    return true
-  }
-
-  // Sélection onduleur : plus petit modèle >= 80 % de la puissance, sinon le
-  // plus gros du catalogue ; à puissance égale, Triphasé si >= 10 kW sinon Mono.
-  const pickInverter = (pool) => {
-    const cands = (pool ?? [])
-      .filter(p => !retenirIncomplet(p))
-      .map(p => ({ p, kw: parseKw(p.nom), tri: parsePhaseIsTri(p.nom) }))
-      .filter(x => x.kw != null && x.kw > 0)
-      .sort((a, b) => a.kw - b.kw || a.p.id - b.p.id)
-    if (!cands.length) return null
-    let valid = cands.filter(x => x.kw >= threshold)
-    if (!valid.length) valid = [cands[cands.length - 1]]
-    const bestPower = valid[0].kw
-    const same = valid.filter(x => x.kw === bestPower)
-    const preferTri = bestPower >= 10
-    const preferred = same.filter(x => x.tri === preferTri)
-    return (preferred[0] ?? same[0])
-  }
-  const inverterQty = (kw) =>
-    (!kw || kw >= threshold) ? 1 : Math.max(1, Math.ceil(kwp / kw))
-
-  // OFFGRID — une composition hors réseau ne pose JAMAIS d'onduleur réseau ni
-  // hybride (troisième famille exclusive des deux autres) : ces deux picks
-  // restent `null` plutôt que de polluer `onduleursIncomplets` avec des
-  // onduleurs qu'on ne va de toute façon pas composer.
-  const reseau = offgrid ? null : pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
-  const hybride = offgrid ? null : pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
-  // OFFGRID — même sélection (plus petit modèle >= 80 % de la cible), MAIS
-  // jamais un produit SANS PRIX (règle fondateur « zéro chiffre inventé » —
-  // même patron que `_hasPrix`/`selectPompeByCurve` pour le pompage) : un
-  // onduleur hors réseau non tarifé au catalogue ne doit jamais se retrouver
-  // composé à 0 MAD sur un devis.
-  const offgridInv = offgrid
-    ? pickInverter(parMarque(
-        (byType.onduleur_offgrid ?? []).filter(p => (parseFloat(p.prix_vente) || 0) > 0),
-        'onduleur_offgrid'))
-    : null
-  if (offgrid && !offgridInv) {
-    const vide = []
-    // Incident fondateur 01/09 round 2 — le motif seul (« Aucun onduleur
-    // hors réseau… ») laissait le vendeur deviner POURQUOI un produit qu'il
-    // voit bien au catalogue (ex. « Deye off-Grid 6kw ») n'est pas trouvé :
-    // le plus souvent, ce produit n'a simplement AUCUN prix de vente renseigné
-    // (filtré ci-dessus AVANT ce message). Le rappel du contrat de nommage
-    // partagé avec le backend (OFFGRID_KEYWORDS) rend l'erreur actionnable.
-    vide.offgridErreur = 'Aucun onduleur hors réseau avec prix au catalogue. '
-      + 'Le NOM du produit doit contenir « off-grid », « off grid », '
-      + '« hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW »), '
-      + 'avec un prix de vente.'
-    vide.onduleursIncomplets = onduleursIncomplets
-    return vide
-  }
-
-  // Panneaux : wattage saisi (défaut 710 → Canadien Solar 710 du catalogue)
-  // PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
-  // wattage : la substitution « wattage le plus proche » ne joue donc plus que
-  // DANS le vivier de la marque retenue, jamais hors d'elle.
-  const panels = parMarque(byType.panneau, 'panneau')
-    .map(p => ({ p, w: parseWatt(p.nom) }))
-    .filter(x => x.w != null)
-  let panel = panels.filter(x => x.w === parseFloat(panelW))
-    .sort((a, b) => (_norm(a.p.nom).includes('canadien') ? -1 : 1) - (_norm(b.p.nom).includes('canadien') ? -1 : 1))[0]
-  if (!panel && panels.length) {
-    panel = [...panels].sort((a, b) =>
-      Math.abs(a.w - panelW) - Math.abs(b.w - panelW))[0]
-  }
-
-  // Batteries : cible = kWc arrondi au multiple de 5 (min 5 kWh),
-  // ligne 1 = Dyness 5 kWh (qté nb_5), ligne 2 = Dyness 10 kWh (qté nb_10).
-  // TOLÉRANCE DEUX ORTHOGRAPHES (miroir exact de services.py) : la marque
-  // s'écrit « Dyness » (correction fondateur 2026-08-18) ; un produit encore
-  // nommé « Deyness » (base non migrée, saisie manuelle) reste reconnu, sans
-  // quoi le vivier retomberait sur TOUTES les batteries du catalogue.
-  const target = Math.max(5, Math.round(kwp / 5) * 5)
-  // PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le garde par mot-clé
-  // PVG4 ; miroir EXACT de `_batterie_compatible` côté backend
-  // apps/ventes/services.py). Une batterie n'entre au vivier que si sa TENSION
-  // NOMINALE tombe dans la PLAGE BATTERIE déclarée par l'onduleur HYBRIDE
-  // retenu ci-dessus — c'est la vraie règle électrique, pas un nom de produit.
-  // Repli intégral sur le mot-clé « haute tension » dès qu'une des deux données
-  // manque : un catalogue non renseigné se comporte exactement comme hier.
-  // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
-  // batterie écartée reste sélectionnable à la main.
-  // OFFGRID — la batterie s'accroche à l'onduleur HORS RÉSEAU retenu ci-dessus
-  // (même règle électrique, même donnée `specs_solaire.plage_batterie_v`),
-  // jamais à l'hybride qui est `null` dans cette branche.
-  const plageBatterie = plageBatterieOnduleur(offgrid ? offgridInv?.p : hybride?.p)
-  // PVMRQ — la compatibilité ÉLECTRIQUE (plage de tension) reste calculée sur
-  // le vivier COMPLET (elle alimente aussi `avertissementsBatterie` ci-dessous,
-  // un motif distinct de « marque introuvable ») ; la marque épinglée ne
-  // restreint le vivier électriquement compatible QU'APRÈS, jamais avant — même
-  // ordre que le backend `_pick_product` (garde métier avant marque).
-  const batsCompatibles = (byType.batterie ?? [])
-    .filter(p => batterieCompatible(p, plageBatterie))
-  const bats = parMarque(batsCompatibles, 'batterie')
-    .map(p => ({ p, cap: parseKwh(p.nom) }))
-  const dyness = bats.filter(x => {
-    const n = _norm(x.p.nom)
-    return n.includes('dyness') || n.includes('deyness')
-  })
-  const batPool = dyness.length ? dyness : bats
-  // Le vivier peut être VIDE alors que le catalogue porte des batteries : elles
-  // sont toutes incompatibles avec l'onduleur hybride retenu. Le dire vaut
-  // mieux que livrer un kit silencieusement sans stockage (miroir de
-  // `avertissement_vivier_batterie_vide`, apps/ventes/services.py).
-  const avertissementsBatterie = []
-  if (!batPool.length && (byType.batterie ?? []).length
-      && Array.isArray(plageBatterie) && plageBatterie[1] > 0) {
-    avertissementsBatterie.push(
-      `Aucune batterie compatible tarifée pour cet onduleur `
-      + `(plage ${plageBatterie[0]}-${plageBatterie[1]} V) : `
-      + `la composition part SANS batterie. Ajoutez une batterie compatible `
-      + `au catalogue, ou changez d'onduleur.`)
-  }
-  // BATHOMO (fondateur 26/08/2026, F4 — revue adversariale) — MIROIR EXACT de
-  // `composition_residentielle` (apps/ventes/services.py) : l'ancien calcul
-  // (`nb10 = floor(cible/10)` + `nb5 = 1` si le reste ≥ 5) composait une
-  // banque MÉLANGÉE 5+10 kWh en parallèle — électriquement interdit, le MÊME
-  // incident qui a fait retirer le Dyness 10 kWh du stock de production côté
-  // serveur. Cet écran étant l'« Auto-remplir » de secours au premier échec
-  // du dry-run serveur (jamais un devis existant qu'on re-dénomme — pas de
-  // pin ici, seulement une NOUVELLE sélection), la RÈGLE ÉCONOMIQUE
-  // s'applique directement, comme le repli économique serveur :
-  //   1. EN STOCK SEULEMENT (`quantite_stock` — un module à 0 en stock n'est
-  //      composable ni serveur ni écran) ;
-  //   2. UNE candidate homogène par calibre : le plus petit N de modules
-  //      IDENTIQUES qui ATTEINT OU DÉPASSE la cible (jamais un manque) ;
-  //   3. plafonnée par `specs_solaire.max_modules_par_banc` (le plafond
-  //      fondateur — REJETÉE si dépassée, jamais tronquée) ;
-  //   4. le prix TTC TOTAL le plus bas gagne, égalité tranchée par le moins
-  //      de modules — jamais une préférence de calibre fixe.
-  const enStock = (p) => (Number(p?.quantite_stock) || 0) > 0
-  const batPoolStock = batPool.filter(x => enStock(x.p))
-  const bat5Stock = batPoolStock.find(x => x.cap === 5)
-  const bat10Stock = batPoolStock.find(x => x.cap === 10)
-  const candidatBatterie = (cap, entry) => {
-    if (!entry) return null
-    const n = Math.max(1, Math.ceil(target / cap - 1e-9))
-    const plafond = Number(entry.p?.specs_solaire?.max_modules_par_banc)
-    if (Number.isFinite(plafond) && plafond > 0 && n > plafond) return null
-    const puTtc = ttcFromHt(entry.p.prix_vente, tauxTvaOf(entry.p))
-    return { cap, n, prixTtc: puTtc * n, entry }
-  }
-  const candidatsBatterie = [
-    candidatBatterie(5, bat5Stock),
-    candidatBatterie(10, bat10Stock),
-  ].filter(Boolean)
-  candidatsBatterie.sort((a, b) => (a.prixTtc - b.prixTtc) || (a.n - b.n))
-  const batterieRetenue = candidatsBatterie[0] ?? null
-  // OFFGRID — « un système hors réseau porte toujours sa batterie » (ordre
-  // fondateur) : sans candidate retenue — OU une candidate à prix TOTAL nul
-  // (aucune batterie du calibre gagnant n'est réellement tarifée : `prixTtc`
-  // vaut 0 puisqu'il dérive du prix unitaire) — on N'INVENTE PAS un kit sans
-  // stockage réel (contrairement au repli hybride ci-dessus, qui compose
-  // quand même avec un avertissement) : on arrête, motif FRANÇAIS clair,
-  // jamais un repli silencieux sur un onduleur hybride ni une ligne à 0 MAD.
-  if (offgrid && !(batterieRetenue?.prixTtc > 0)) {
-    const vide = []
-    vide.offgridErreur = 'Aucune batterie compatible tarifée au catalogue pour cet onduleur hors réseau.'
-    vide.onduleursIncomplets = onduleursIncomplets
-    vide.avertissementsBatterie = avertissementsBatterie
-    return vide
-  }
-  const nb5 = batterieRetenue?.cap === 5 ? batterieRetenue.n : 0
-  const nb10 = batterieRetenue?.cap === 10 ? batterieRetenue.n : 0
-  // `bat5`/`bat10` restent les produits du vivier COMPATIBLE (comme avant ce
-  // correctif) — jamais restreints au seul calibre RETENU : la ligne du
-  // calibre perdant reste une VRAIE ligne produit à quantité 0 (le tableau
-  // éditable de l'écran doit pouvoir la faire remonter à la main), jamais un
-  // placeholder générique.
-  const bat5 = batPool.find(x => x.cap === 5)
-  const bat10 = batPool.find(x => x.cap === 10)
-  // F3/F5 — un vivier compatible NON VIDE qui n'aboutit quand même à AUCUNE
-  // candidate (rupture de stock des deux calibres, ou plafond qui rejette la
-  // seule candidate possible) reste HONNÊTE : même canal d'avertissement,
-  // jamais un hybride sans batterie composé en silence.
-  if (batPool.length && !batterieRetenue) {
-    avertissementsBatterie.push(
-      `Batterie(s) compatibles indisponibles pour la cible visée (rupture `
-      + `de stock, ou plafond de modules par banc dépassé) : la composition `
-      + `part SANS batterie. Réapprovisionnez, augmentez le plafond, ou `
-      + `choisissez un autre module.`)
-  }
-
-  // Structures : type choisi par radio, 1 par panneau (prix catalogue).
-  // PVMRQ — deux rôles DISTINCTS (`structure_acier`/`structure_alu`, comme
-  // PRODUCT_CATEGORIES) : chacun a sa propre marque épinglée, appliquée sur le
-  // sous-vivier déjà filtré par mot-clé acier/alu (même patron que les câbles
-  // ci-dessous).
-  // STKCAT10 — L'ID EXPLICITE D'ABORD (miroir de `composition.py` : « un
-  // choix explicite ne se re-choisit pas »), le bouton acier/alu ensuite.
-  // Avec un id, NI le filtre par mot-clé NI la marque épinglée du rôle ne
-  // s'appliquent — le serveur n'appelle `par_marque` que dans SA branche
-  // `else`, donc il ne consigne aucune « marque introuvable » pour la
-  // structure quand le commercial a déjà choisi son produit. On ne l'appelle
-  // donc pas non plus ici : sinon une marque épinglée sans candidat acier
-  // ferait REFUSER un devis à pergola, pour un rôle qu'il n'utilise pas.
-  const structureExplicite = structureChoisie(produits, structureProduitId)
-  const structures = structureExplicite ? [] : (byType.structure ?? [])
-  const structuresAcier = structureExplicite ? [] : parMarque(
-    structures.filter(p => _norm(p.nom).includes('acier')), 'structure_acier')
-  const structuresAlu = structureExplicite ? [] : parMarque(
-    structures.filter(p => _norm(p.nom).includes('alu')), 'structure_alu')
-  const structChosen = (structureType === 'aluminium' ? structuresAlu : structuresAcier)[0] ?? null
-  const structOther = (structureType === 'aluminium' ? structuresAcier : structuresAlu)[0] ?? null
-
-  // L-FORFAIT (fondateur 24/08/2026) — Accessoires / Tableau / Installation
-  // se cotent AU PANNEAU : partie fixe + par-panneau, MIROIR TTC des champs
-  // Stock seedés (HT : installation 2 000 + 250×n ; accessoires 52,0833×n ;
-  // tableau 203,125×n — TVA 20 % sur ces items). Repli d'écran hors-ligne :
-  // si le fondateur édite les champs dans Stock, c'est l'aperçu SERVEUR qui
-  // fait foi (CJ2b — les chiffres serveur priment à l'écran).
-  const prixAccessoires = 62.5 * nbPanneaux
-  const prixTableau = 243.75 * nbPanneaux
-  const prixInstallation = 2400 + 300 * nbPanneaux
-  // Le MÉTRAGE du câble de terre reste indexé sur les blocs de 5 kWc :
-  // l'ordre forfaits-au-panneau ne couvrait qu'Installation/Tableau/
-  // Accessoires — les métrés de câble sont inchangés.
-  const blocks = Math.max(1, Math.round(kwp / 5))
-
-  // QF8 — Smart Meter + Clé Wifi : UNIQUEMENT quand l'onduleur retenu (réseau
-  // OU hybride) est de marque Huawei (miroir du garde `info_hw` de l'ancien
-  // simulateur Python). Un onduleur Deye — ou toute autre marque — ne les
-  // ajoute jamais : qté 0. Vérifie `marque` (catalogue seedé) ET le nom (les
-  // fixtures/anciens produits sans champ `marque` structuré) pour ne rien
-  // manquer.
-  const isHuawei = (p) => !!p && (
-    _norm(p.marque).includes('huawei') || _norm(p.nom).includes('huawei'))
-  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p) || isHuawei(offgridInv?.p)
-  const smQty = huaweiRetenu ? 1 : 0
-  const wifiQty = huaweiRetenu ? 1 : 0
-
-  // PVMRQ — `first(type)` sert socle/smart_meter/wifi_dongle/accessoires/
-  // tableau/installation/transport/suivi : le rôle épingle exactement la
-  // MÊME clé que la catégorie (`type`), donc une seule ligne suffit à couvrir
-  // les huit.
-  const first = (type) => parMarque(byType[type], type)[0] ?? null
-  const row = (p, designation, quantite, ttcOverride = null) =>
-    p ? lineFrom(p, quantite, ttcOverride)
-      : { ...placeholder(designation, quantite), prix_unit_ttc: ttcOverride ?? 0 }
-
-  // Câbles : on préfère le NEXANS explicitement (marque confirmée fondateur
-  // — un fournisseur, pas la préférence de gamme), sinon le premier câble du
-  // type QUI PORTE UN PRIX. PVMRQ — la marque épinglée (si réglée pour
-  // cable_dc/cable_terre) restreint le vivier avant cette préférence Nexans.
-  // PVCBL (fondateur 19/08/2026) — VERROU DE CONDITIONNEMENT : le câble est
-  // TOUJOURS acheté/vendu AU MÈTRE (le métrage plus bas est en MÈTRES), donc
-  // un produit conditionné en rouleau/touret (ex. « Câble solaire 6mm²
-  // (100m) ») ne doit JAMAIS entrer au vivier — même chiffré, même moins
-  // cher, même seul candidat. Sans candidat « au mètre », le vivier est VIDE
-  // et la ligne part en placeholder à 0 (même patron que « prix à
-  // renseigner ») — jamais un repli silencieux sur un autre conditionnement.
-  const chiffre = (p) => !!p && parseFloat(p.prix_vente) > 0
-  const auMetre = (p) => _norm(p?.nom).includes('au metre')
-  const pickCable = (type) => {
-    const pool = parMarque((byType[type] ?? []).filter(chiffre).filter(auMetre), type)
-    return pool.find(p => _norm(p.nom).includes('nexans')) ?? pool[0] ?? null
-  }
-  const cableDc = pickCable('cable_dc')
-  const cableTerre = pickCable('cable_terre')
-
-  const acierRow = structureType === 'aluminium'
-    ? row(structOther, 'Structures acier', 0)
-    : row(structChosen, 'Structures acier', nbPanneaux)
-  const aluRow = structureType === 'aluminium'
-    ? row(structChosen, 'Structures aluminium', nbPanneaux)
-    : row(structOther, 'Structures aluminium', 0)
-  // STKCAT10 — UNE SEULE ligne quand le produit est choisi (son libellé est
-  // le NOM du produit, son rôle suit ce nom comme côté serveur) ; sinon la
-  // paire acier/alu d'hier, inchangée au caractère près.
-  const lignesStructure = structureExplicite
-    ? [[structureRoleForName(structureExplicite.nom, structureType),
-        row(structureExplicite, structureExplicite.nom, nbPanneaux)]]
-    : [['structure_acier', acierRow], ['structure_alu', aluRow]]
-
-  // PVORD — chaque ligne est TAGUÉE de son rôle avant l'assemblage final :
-  // `orderLinesByRolePreference` réordonne selon `ordreLignes`
-  // (`ParametresGammes.ordre_lignes`) si fourni, sinon renvoie EXACTEMENT
-  // cet ordre canonique — comportement historique inchangé.
-  // OFFGRID — UNE seule ligne onduleur (famille hors réseau), jamais réseau
-  // ni hybride sur cette composition (mirroir : task 2, « compose ONE option »).
-  const inverterRows = offgrid
-    ? [['onduleur_offgrid', row(offgridInv?.p ?? null, 'Onduleur hors réseau',
-        offgridInv ? Math.max(1, inverterQty(offgridInv.kw)) : 1)]]
-    : [
-        ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
-        ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
-      ]
-  const lignesTaguees = [
-    ...inverterRows,
-    ['smart_meter', row(first('smart_meter'), 'Smart Meter', smQty)],
-    ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', wifiQty)],
-    ['panneau', row(panel?.p ?? null, 'Panneaux', nbPanneaux)],
-    ['batterie', row(bat5?.p ?? null, 'Batterie', nb5)],
-    ['batterie', row(bat10?.p ?? null, 'Batterie', nb10)],
-    ...lignesStructure,
-    ['socle', row(first('socle'), 'Socles', nbPanneaux * 2)],
-    // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
-    // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
-    // auto-composition (même patron que « prix à renseigner »).
-    // PVCBL (19/08) — métrage PAR PAIRE de MPPT (voir metreCableDcParPaires),
-    // plus lié au palier de 5 kWc. Quantité éditable à la main ensuite,
-    // jamais re-forcée (aucun effet ne rejoue l'auto-composition après une
-    // frappe manuelle sur le champ Qté).
-    ['cable_dc', row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDcParPaires(mpptPaires) : 0)],
-    ['cable_terre', row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0)],
-    ['accessoires', row(first('accessoires'), 'Accessoires', 1, prixAccessoires)],
-    ['tableau', row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau)],
-    ['installation', row(first('installation'), 'Installation', 1, prixInstallation)],
-    ['transport', row(first('transport'), 'Transport', 1)],
-    ['suivi', row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0)],
-  ]
-  const lignes = orderLinesByRolePreference(lignesTaguees, ordreLignes)
-  // QX19 — puissance du panneau EFFECTIVEMENT retenu (peut différer de panelW
-  // quand le catalogue n'a pas exactement panelW → substitution la plus proche)
-  // + nb de panneaux : l'écran recalcule le kWc RÉEL depuis ces valeurs plutôt
-  // que d'afficher un kWc théorique divergent. Métadonnées portées sur le
-  // tableau (les consommateurs qui itèrent les lignes ne les voient pas).
-  // PVORD — rattachées APRÈS le tri : `orderLinesByRolePreference` renvoie un
-  // tableau NEUF (jamais les métadonnées attachées à `lignesTaguees`, qui n'en
-  // porte aucune de toute façon).
-  lignes.actualPanelW = panel?.w ?? panelW
-  lignes.nbPanneaux = nbPanneaux
-  lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100
-  // PVOND — les onduleurs ÉCARTÉS faute de contrat complet, avec leur motif.
-  // Métadonnée portée par le tableau (les consommateurs qui itèrent les lignes
-  // ne la voient pas), lue par le générateur pour afficher le bandeau.
-  lignes.onduleursIncomplets = onduleursIncomplets
-  // PVOND — vivier batterie VIDE sous un onduleur à plage déclarée : même
-  // métadonnée, même patron que les onduleurs incomplets ci-dessus.
-  lignes.avertissementsBatterie = avertissementsBatterie
-  // PVMRQ — rôles dont la marque épinglée n'a AUCUN candidat en stock (jamais
-  // un repli silencieux sur une autre marque) : même patron de métadonnée que
-  // ci-dessus, lue par le générateur pour afficher le bandeau dédié.
-  lignes.marquesManquantes = marquesManquantes
-  return lignes
-}
+// ADEV69 — `autoFillLines`, le second composeur résidentiel (sans appelant de
+// production depuis CIQ126/CIQ128), est SUPPRIMÉ : D-QJR5-9 « un seul
+// composeur, côté serveur » — le survivant est `apps/ventes/domain/composition.py`
+// (dry-run `POST /ventes/devis/composition/`, appliqué par useCompositionEcran).
+// Son absence est épinglée par `solar.codeMortAdev69.test.mjs`.
 
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
 
@@ -2623,10 +2499,8 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
-// Heures de pompage effectives par défaut (champ 1.4× surdimensionné →
-// la pompe tourne à régime nominal bien au-delà des heures équivalentes
-// plein-soleil ; ~7 h/jour est l'hypothèse marché retenue — modifiable).
-export const HEURES_POMPAGE_DEFAUT = 7
+// AGNR26 — `HEURES_POMPAGE_DEFAUT` retiré : plus rien ne le lisait depuis
+// AGR114/AGR130 (production heure par heure côté serveur).
 
 // QJR546 — exporté : le générateur saute (et nomme) les lignes d'un modèle
 // dont le produit n'a plus de prix, avec la MÊME garde que l'auto-remplissage.
@@ -2690,12 +2564,14 @@ export function computeBuyCost(lines, produits) {
 export const MAX_HYBRID_UNITS = 8
 
 export function avecBatterieAvailability(lines, produits, kwp) {
+  // AGNR36 — chaque ligne classée sur désignation + nom du produit lié.
+  const t = (l) => texteClassement(l, produits)
   const hasHyb = lines.some(l =>
-    isHybridInverter(l.designation) && parseFloat(l.quantite) > 0)
+    isHybridInverter(t(l)) && parseFloat(l.quantite) > 0)
   const hasBat = lines.some(l =>
-    isBattery(l.designation) && parseFloat(l.quantite) > 0)
+    isBattery(t(l)) && parseFloat(l.quantite) > 0)
   const hasRes = lines.some(l =>
-    isReseauInverter(l.designation) && parseFloat(l.quantite) > 0)
+    isReseauInverter(t(l)) && parseFloat(l.quantite) > 0)
   if (hasHyb && hasBat) return { available: true, batterieDifferee: false }
   // BAT-DIFF (fondateur, 17/09/2026) — même règle que le noyau
   // (`utils.options.familles_servables`, testée là-bas et ici par
