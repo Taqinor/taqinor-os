@@ -27,19 +27,6 @@ def sonde(ctx):
     u = CustomUser.objects.get(username='demo_admin')
     co = u.company
 
-    # --- rollback checks of the previous probes (read only) ---
-    f8 = Facture.objects.get(pk=8)
-    print('[RB] facture 8 note contains probe marker:', '[probe]' in (f8.note or ''), '| retenue_garantie_mad', f8.retenue_garantie_mad)
-    print('[RB] AV-PROBE avoir exists:', Avoir.objects.filter(reference='AV-PROBE-R3V1').exists())
-    print('[RB] devis 637/643 factures:', Facture.objects.filter(devis_id__in=[637, 643]).count())
-    print('[RB] company payment_terms:', CompanyProfile.get(company=co).payment_terms)
-    # --- why devis 313 is "already invoiced" with tranches_facturees 0 ---
-    fd = Facture.objects.filter(reference='FAC-DEMO-0001').first()
-    if fd:
-        print('[313] FAC-DEMO-0001 devis_id', fd.devis_id, 'bon_commande_id', fd.bon_commande_id,
-              'bc.devis_id', fd.bon_commande.devis_id if fd.bon_commande_id else None, 'type', fd.type_facture, 'statut', fd.statut)
-
-
     def row_predicate(statut, s):
         if statut != 'accepte':
             return ['Generer facture (disabled)']
@@ -57,16 +44,31 @@ def sonde(ctx):
                 + ['Generer la facture' if gt else 'Facturer par tranches (acompte...)'])
 
 
+    obs = {}
     try:
         with transaction.atomic():
-            d = Devis.objects.get(pk=683, company=co)
+            # Données choisies dynamiquement (la session du 09/10 visait le devis 683 de SA base) :
+            # premier devis ACCEPTÉ de la société démo sans aucune facture.
+            # premier devis ACCEPTÉ que la règle métier laisse facturer en entier (savepoint par essai).
+            d = facture = None
+            for x in Devis.objects.filter(company=co, statut='accepte').order_by('id'):
+                try:
+                    with transaction.atomic():
+                        facture, paiements = facturer_devis_complet(devis=x, user=u, company=co, paiements=[])
+                    d = x
+                    break
+                except Exception:
+                    continue
+            if d is None:
+                return 'STATIQUE : aucun devis accepté facturable en entier dans la base locale'
             print('[C2] devis', d.id, d.statut, 'factures before', Facture.objects.filter(devis=d).count(),
                   'BC', BonCommande.objects.filter(devis=d).count())
-            facture, paiements = facturer_devis_complet(devis=d, user=u, company=co, paiements=[])
             print('[C2] facturer_devis_complet ->', facture.reference, facture.type_facture, facture.statut,
                   'devis_id', facture.devis_id, 'ttc', facture.total_ttc)
-            d = Devis.objects.get(pk=683)
+            d = Devis.objects.get(pk=d.pk)
             s = DevisSerializer(d).data['solde']
+            obs = {'devis': d.pk, 'tranches_facturees': s.get('tranches_facturees'),
+                   'tranches_total': s.get('tranches_total'), 'porte_facturation': s.get('porte_facturation')}
             print('[C2] served solde after COMPLETE invoice:', dict(s))
             print('[C2] DevisRow buttons ->', row_predicate(d.statut, s))
             print('[C2] DevisTab buttons ->', tab_predicate(d.statut, s))
@@ -80,3 +82,5 @@ def sonde(ctx):
             raise R()
     except R:
         print('ROLLED BACK')
+    # REPRO = le défaut du constat : facture COMPLÈTE émise, le solde servi dit encore 0 tranche facturée.
+    return dict(obs, repro=float(obs['tranches_facturees'] or 0) == 0)

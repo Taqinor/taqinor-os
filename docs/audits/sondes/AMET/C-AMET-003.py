@@ -90,6 +90,8 @@ def sonde(ctx):
                           .filter(Q(echeancier__isnull=True) | Q(echeancier=[])).distinct().order_by('id')[:6])
             print('accepted devis w/o facture and w/o own echeancier:', [(d.id, d.mode_installation) for d in libres])
             # ===== CLAIM 2 (ATOT2) =====
+            if len(libres) < 3:
+                return 'STATIQUE : données insuffisantes (%d devis acceptés sans facture ni échéancier propre, 3 requis)' % len(libres)
             d1 = libres[0]
             st, s = list_solde(d1.id)
             print('[C2] before: statut', st, 'solde', s)

@@ -34,6 +34,7 @@ from django.conf import settings
 from django.db import transaction
 from django.apps import apps
 settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+settings.ALLOWED_HOSTS = list(getattr(settings, 'ALLOWED_HOSTS', [])) + ['testserver', 'localhost']
 settings.CELERY_TASK_ALWAYS_EAGER = False
 _CEL = []
 def _noop(self, *a, **k):
