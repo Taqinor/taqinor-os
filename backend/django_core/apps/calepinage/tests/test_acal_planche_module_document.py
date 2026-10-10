@@ -9,7 +9,7 @@ import copy
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.export_dxf import document_dxf
+from apps.calepinage.services.export_dxf import _document_dxf
 from apps.calepinage.services.io_layout import module_du_pan
 from apps.calepinage.services.planche import (
     dimensions_module, geometrie_de_planche, svg_de_planche,
@@ -77,7 +77,7 @@ class CotesDuModuleDuPanTest(SimpleTestCase):
         self.assertNotIn('r="0.7"', svg)
 
     def test_le_dxf_cote_chaque_pan_avec_son_module(self):
-        document = document_dxf(geometrie_de_planche(layout_a_deux_pans()))
+        document = _document_dxf(geometrie_de_planche(layout_a_deux_pans()))
         polylignes = list(document.modelspace().query(
             'LWPOLYLINE[layer=="MODULES"]'))
         largeurs = sorted(round(max(p[0] for p in e.get_points())
