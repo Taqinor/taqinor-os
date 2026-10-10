@@ -6,7 +6,6 @@ from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import (
     Annonce,
-    AnnonceLecture,
     Holiday,
     MessageAccueil,
     Notification,
@@ -232,23 +231,3 @@ class MessageAccueilSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError('Le corps du message est requis.')
         return value
-
-
-class AnnonceLectureSerializer(SameCompanyFKSerializerMixin,
-                               serializers.ModelSerializer):
-    """XKB6 — Accusé de lecture obligatoire."""
-    # ENF17 — l'annonce d'une AUTRE société = id absent (400).
-    same_company_fields = ('annonce',)
-    utilisateur_username = serializers.CharField(
-        source='utilisateur.username', read_only=True)
-
-    class Meta:
-        model = AnnonceLecture
-        fields = [
-            'id', 'annonce', 'utilisateur', 'utilisateur_username',
-            'date_lecture', 'relances_envoyees', 'derniere_relance_le',
-        ]
-        read_only_fields = [
-            'id', 'utilisateur', 'utilisateur_username', 'date_lecture',
-            'relances_envoyees', 'derniere_relance_le',
-        ]

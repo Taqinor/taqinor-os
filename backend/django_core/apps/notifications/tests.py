@@ -16,7 +16,7 @@ from .models import (
     NotificationPreference,
     NotificationRoutingRule,
 )
-from .serializers import AnnonceLectureSerializer, NotificationRoutingRuleSerializer
+from .serializers import NotificationRoutingRuleSerializer
 from .types_evenements import EventType
 from .services import merged_preferences, notify, notify_many, resolve_recipients
 from apps.notifications.serializers import AnnonceSerializer, NotificationSerializer
@@ -876,7 +876,7 @@ class NotificationsSchemaTests(SimpleTestCase):
 
 # ── ENF17 — FK des sérialiseurs notifications bornées société ──────────
 # ``NotificationRoutingRuleSerializer.target_user`` (une règle ne cible plus
-# le compte d'une autre société) et ``AnnonceLectureSerializer.annonce`` :
+# le compte d'une autre société) (``AnnonceLectureSerializer``, mort et cassé — champs absents du modèle — a été retiré) :
 # id d'ailleurs = id absent (400), id de la société accepté.
 
 
@@ -929,10 +929,6 @@ class FkNotificationsBorneesSocieteTests(TestCase):
     def test_regle_routage_target_user(self):
         self._assert_borne(NotificationRoutingRuleSerializer, 'target_user',
                            self.user_a, self.user_b)
-
-    def test_accuse_lecture_annonce(self):
-        self._assert_borne(AnnonceLectureSerializer, 'annonce',
-                           self.annonce_a, self.annonce_b)
 
     def test_post_regle_target_user_etranger_400(self):
         api = _api(self.admin_a)
