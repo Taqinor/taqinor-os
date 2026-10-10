@@ -40,7 +40,7 @@ from apps.calepinage.services.lidar_ign import (
     _ajuster_plan,
     _altitudes_de_la_reponse,
     accepter_suggestion,
-    libelle_source,
+    _libelle_source,
     refuser_suggestion,
     service_disponible,
     suggerer_pentes,
@@ -301,14 +301,14 @@ class DecisionHumaineTest(SimpleTestCase):
     def test_libelle_apres_validation(self):
         pan = accepter_suggestion({}, self._suggestion(),
                                   maintenant='2026-03-12T11:00:00+00:00')
-        self.assertEqual(libelle_source(pan['pitchSuggestion']),
+        self.assertEqual(_libelle_source(pan['pitchSuggestion']),
                          'source IGN (suggestion validée le 12/03/2026)')
 
     def test_aucun_libelle_avant_decision_ni_apres_refus(self):
-        self.assertEqual(libelle_source(self._suggestion()), '')
+        self.assertEqual(_libelle_source(self._suggestion()), '')
         pan = refuser_suggestion({}, self._suggestion(),
                                  maintenant='2026-03-12')
-        self.assertEqual(libelle_source(pan['pitchSuggestion']), '')
+        self.assertEqual(_libelle_source(pan['pitchSuggestion']), '')
 
 
 class EndpointTest(TestCase):
