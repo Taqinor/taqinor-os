@@ -60,7 +60,7 @@ EXCEPTIONS: dict = {
     _C + "selectors.py::cadences_echues_a_clore":
         "seuil de CLÔTURE de cadence (touche ouverte depuis plus de N jours), "
         "distinct du retard affiché ; N est un paramètre de la clôture",
-    _C + "services.py::touche_traitee_en_avance":
+    _C + "cadence_reperes.py::touche_traitee_en_avance":
         "mesure l'AVANCE (traitée avant l'échéance), c'est le complément du "
         "retard et non sa définition",
     _C + "services.py::_placer_cadence_positionnee":
