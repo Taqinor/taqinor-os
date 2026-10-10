@@ -8199,6 +8199,12 @@ def notify_client_contact_request(devis_reference: str, lead,
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=note)
 
+        # ACRM63 (D-ACRM-5 (3)=(a)) — la personne « ne plus contacter » qui
+        # demande ELLE-MÊME un rappel lève son opposition (note datée +
+        # registre), AVANT de poser la touche.
+        if canal_key == 'rappel':
+            lever_opposition_a_la_demande_du_client(lead)
+
         # QW5/QW4 — un rappel demandé DEPUIS LA PROPOSITION est la même
         # obligation qu'un rappel demandé à la capture : pose la préférence si
         # absente et route vers la notification distincte + SLA rappel.
@@ -8247,6 +8253,36 @@ def notify_client_contact_request(devis_reference: str, lead,
         logging.getLogger(__name__).warning(
             'QJ27: notify_client_contact_request échoué pour lead #%s '
             'devis %s : %s', getattr(lead, 'pk', '?'), devis_reference, exc)
+
+
+#: ACRM63 — source de registre et libellé de chatter d'une opposition levée
+#: PAR la personne elle-même (demande de rappel depuis sa proposition).
+CONSENT_SOURCE_OPPOSITION_LEVEE_CLIENT = (
+    'opposition levée à la demande du client (rappel demandé)')
+NOTE_OPPOSITION_LEVEE_CLIENT = 'opposition levée à la demande du client'
+
+
+def lever_opposition_a_la_demande_du_client(lead) -> bool:
+    """ACRM63 — D-ACRM-5 (3)=(a) : un lead ``ne_plus_contacter`` dont la
+    personne demande elle-même un rappel passe à ``False``, avec une note de
+    chatter datée « opposition levée à la demande du client » et les lignes
+    ``ConsentRecord`` accordées (réutilise ``tracer_levee_opposition_registre``
+    via ``_ecrire_registre_contact`` — aucune seconde écriture du registre).
+    Un lead non opposé : rien. Renvoie ``True`` si l'opposition a été levée."""
+    if lead is None or not getattr(lead, 'ne_plus_contacter', False):
+        return False
+    maintenant = timezone.now()
+    lead.ne_plus_contacter = False
+    lead.save(update_fields=['ne_plus_contacter'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'{NOTE_OPPOSITION_LEVEE_CLIENT} '
+              f'({timezone.localtime(maintenant):%d/%m/%Y %H:%M})'))
+    _ecrire_registre_contact(
+        lead, granted=True, source=CONSENT_SOURCE_OPPOSITION_LEVEE_CLIENT,
+        occurred_at=maintenant)
+    return True
 
 
 #: QW4 — marqueur de note système : posé UNE FOIS par lead pour éviter de
