@@ -26,6 +26,13 @@ société identifiée sans logo → bandeau neutre ; aucun profil → TAQINOR.
 Seul le stockage est local (``utils.pdf._download``). Test-du-test : faire
 renvoyer à ``theme.logo_imprime_b64`` l'asset sans lire
 ``entreprise['logo_uri']`` ⇒ ``test_logo_societe_tous_formats`` échoue.
+
+APDF5 — liens de site (``LiensSiteTests``) : une société identifiée SANS site
+n'imprime aucun lien taqinor.ma (réalisations, produits, garanties, pied) ;
+AVEC site, les siens ; le lien tokenisé de la proposition reste. Test-du-test :
+remettre ``or _DEFAULT_SITE`` au site de ``theme.company_identity`` (ou le
+repli « taqinor.ma » de ``renderer._augment``) ⇒
+``test_tenant_sans_site_aucun_lien_taqinor`` échoue.
 """
 from unittest import mock
 
@@ -371,3 +378,64 @@ class LogoRegleTests(SimpleTestCase):
         G._apply_entreprise(ent)
         self.assertIn(b64, G.logo_html())
         self.assertIn(b64, G.logo_p1_dark())
+
+
+def texte_et_liens(octets):
+    """(texte, URI des annotations de lien) du PDF."""
+    import fitz
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        texte = '\n'.join(page.get_text() for page in doc)
+        uris = [lien.get('uri') or '' for page in doc
+                for lien in page.get_links()]
+        return texte, uris
+    finally:
+        doc.close()
+
+
+@tag('pdf')
+class LiensSiteTests(TestCase):
+    """APDF5 (C-APDF-001) — aucun lien vers le site d'une autre société."""
+
+    CHEMINS = ('taqinor.ma/realisations', 'taqinor.ma/produits',
+               'taqinor.ma/garanties')
+
+    def setUp(self):
+        from apps.ventes.models import ShareLink
+        self.company = make_company(slug='apdf5-co', nom='APDF5')
+        profil(self.company, nom='SOLAIRE EXEMPLE SARL',
+               ice='001111111000011', site_web='')
+        self.devis = devis_residentiel(self.company, 'DEV-APDF5-1')
+        # Lien de signature : devis ENVOYÉ dont le lien a été frappé (AMOT13).
+        type(self.devis).objects.filter(pk=self.devis.pk).update(
+            statut='envoye')
+        self.devis.refresh_from_db()
+        self.lien = ShareLink.for_devis(self.devis)
+
+    def test_tenant_sans_site_aucun_lien_taqinor(self):
+        texte, uris = texte_et_liens(rendre_pdf(self.devis))
+        for chemin in self.CHEMINS:
+            self.assertNotIn(chemin, texte)
+            self.assertFalse([u for u in uris if chemin in u], chemin)
+        # Hors lien de proposition, plus aucun « taqinor.ma » (pied compris).
+        self.assertNotIn('taqinor.ma', texte.replace(
+            'taqinor.ma/proposition', ''))
+        self.assertFalse([u for u in uris
+                          if 'taqinor.ma' in u and '/proposition/' not in u])
+
+    def test_tenant_avec_site_ses_liens(self):
+        profil(self.company, site_web='solaire-exemple.ma')
+        texte, uris = texte_et_liens(rendre_pdf(self.devis))
+        self.assertIn('solaire-exemple.ma', texte)
+        self.assertTrue([u for u in uris
+                         if 'solaire-exemple.ma/realisations' in u])
+        for chemin in self.CHEMINS:
+            self.assertFalse([u for u in uris if chemin in u], chemin)
+
+    def test_lien_proposition_conserve(self):
+        for site in ('', 'solaire-exemple.ma'):
+            with self.subTest(site=site):
+                profil(self.company, site_web=site)
+                _texte, uris = texte_et_liens(rendre_pdf(self.devis))
+                self.assertTrue([u for u in uris if '/proposition/' in u
+                                 and self.lien.token in u], uris)

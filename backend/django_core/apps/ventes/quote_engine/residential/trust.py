@@ -469,7 +469,9 @@ def build(ctx) -> str:
     # restent sur la proposition en ligne) : la page garde sa hauteur.
     paiement_html = _bloc_paiement(d, ctx, ident) if d.get("devis_final") else ""
     # Sans « Devis final », le bloc est rendu au caractère près comme avant.
-    preuve_html = "" if paiement_html else (
+    # APDF5 — société sans site : aucun lien de preuve, donc aucun bloc (pas
+    # de titre « La preuve, en ligne » au-dessus d'une bande vide).
+    preuve_html = "" if (paiement_html or not trust_html) else (
         '<div class="p3-block">\n'
         '    <div class="p3-h">La preuve, en ligne</div>\n'
         f'    <div class="p3-trust">{trust_html}</div>\n'
