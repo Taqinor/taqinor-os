@@ -1,0 +1,19 @@
+{
+ "appel": "GET relance-etapes chaine-commerciale",
+ "corps": {
+  "devis_a_preparer": {
+   "leads": [],
+   "total": 0
+  },
+  "joints_sans_devis": {
+   "leads": [],
+   "total": 0
+  },
+  "limite": 5,
+  "visites_a_venir": {
+   "leads": [],
+   "total": 0
+  }
+ },
+ "statut": 200
+}

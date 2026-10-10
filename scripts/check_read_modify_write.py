@@ -78,6 +78,24 @@ def _iter_services_files():
             for f in sorted(svc_pkg.glob("*.py")):
                 if f.name != "__init__.py":
                     yield f
+    # SPL3 — la scission de crm/services.py (SPL3-SPL26) déplace ses écritures
+    # dans des modules thématiques : sans ce balayage, une fonction déplacée
+    # sortirait SILENCIEUSEMENT de la garde.
+    crm_dir = APPS_DIR / "crm"
+    if crm_dir.is_dir():
+        vus = set()
+        for motif in _MODULES_SCISSION_CRM:
+            for f in sorted(crm_dir.glob(motif)):
+                if f.name not in vus:
+                    vus.add(f.name)
+                    yield f
+
+
+#: SPL3 — modules issus de la scission de ``apps/crm/services.py``.
+_MODULES_SCISSION_CRM = (
+    "leads_*.py", "fiche_*.py", "clients_*.py", "visites_rdv.py",
+    "visites_retour_lead.py", "cadence_*.py", "devis_chatter.py",
+)
 
 
 def _rel(path: Path) -> str:

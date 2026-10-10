@@ -1,0 +1,14 @@
+{
+ "appel": "GET leads kpi-premier-contact",
+ "corps": {
+  "mediane_minutes_calendaires": null,
+  "mediane_minutes_ouvrees": null,
+  "nb_leads": 3,
+  "nb_nuit": 0,
+  "nb_nuit_rappeles_avant_930": 0,
+  "nb_sous_objectif": 0,
+  "objectif_minutes": 5,
+  "pct_sous_objectif": 0.0
+ },
+ "statut": 200
+}
