@@ -400,7 +400,8 @@ ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
 # de profil est fourni — plus de fuite du contact fondateur sur la page étude).
 ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
 # Ligne légale du footer page 3 — APDF3 : repli « aucun profil » (identite).
-ENT_LEGAL_LINE = LEGALE_TAQINOR_LEGACY
+_ENT_DEFAULT_LEGAL_LINE = LEGALE_TAQINOR_LEGACY
+ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
 # Ligne RIB (bénéficiaire · banque · RIB · BIC) — APDF2 : LA règle unique de
 # ``quote_engine.identite`` (un seul littéral, partagé avec le résidentiel).
 
@@ -419,7 +420,6 @@ ENT_RIB_LINE = _ligne_rib_identite(None, gras=_gras_rib_legacy)
 _ENT_DEFAULT_NOM_MARQUE = ENT_NOM_MARQUE
 _ENT_DEFAULT_CONTACT_LINE = ENT_CONTACT_LINE
 _ENT_DEFAULT_ETUDE_CONTACT = ENT_ETUDE_CONTACT
-_ENT_DEFAULT_LEGAL_LINE = ENT_LEGAL_LINE
 _ENT_DEFAULT_RIB_LINE = ENT_RIB_LINE
 #: APDF4 — logo d'en-tête de la société (``theme.logo_societe_b64``) ; None =
 #: aucun profil → l'asset TAQINOR historique.
@@ -4847,6 +4847,23 @@ def generate_premium_pdf(data: dict, out_path) -> str:
         return _render_premium_pdf(data, out_path)
 
 
+def _conditions_echappees(data):
+    """QJR668 / APDF13 — ``(clauses de l'affaire, conditions générales
+    imprimées)``, textes SAISIS échappés ici (ERR37) : clauses gelées et
+    variante C&I ; les puces société gardent leurs entités (le moteur ne les
+    échappe pas)."""
+    clauses = [
+        {"nom": _esc(str(c.get("nom") or "")),
+         "corps_texte": _esc(str(c.get("corps_texte") or ""))}
+        for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
+    cgv_data = dict(data)
+    if isinstance(data.get("cgv_ci"), list):
+        cgv_data["cgv_ci"] = [_esc(p) for p in data["cgv_ci"]]
+    if data.get("cgv_ci_titre"):
+        cgv_data["cgv_ci_titre"] = _esc(data["cgv_ci_titre"])
+    return clauses, cgv_imprimees(cgv_data)
+
+
 def apply_quote_data(data: dict) -> None:
     """Ingère ``data`` dans les globales du module (SANS rendre quoi que ce soit).
 
@@ -4888,8 +4905,7 @@ def apply_quote_data(data: dict) -> None:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION, NOTE_CLIENT
-    global CLAUSES_CGV  # QJR668 — clauses/CGV gelées de l'affaire
-    global CGV_IMPRIMEES  # APDF13 — conditions générales (cgv_imprimees)
+    global CLAUSES_CGV, CGV_IMPRIMEES  # QJR668 clauses gelées, APDF13 CGV
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -5178,19 +5194,8 @@ def apply_quote_data(data: dict) -> None:
     # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
     ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
     NOTE_CLIENT = _esc((data.get("note_client") or "").strip())
-    CLAUSES_CGV = [
-        {"nom": _esc(str(c.get("nom") or "")),
-         "corps_texte": _esc(str(c.get("corps_texte") or ""))}
-        for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
+    CLAUSES_CGV, CGV_IMPRIMEES = _conditions_echappees(data)
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
-    # APDF13 — la variante C&I est un texte SAISI : échappée ici (ERR37) ;
-    # les puces société gardent leurs entités (le moteur ne les échappe pas).
-    _cgv_data = dict(data)
-    if isinstance(data.get("cgv_ci"), list):
-        _cgv_data["cgv_ci"] = [_esc(p) for p in data["cgv_ci"]]
-    if data.get("cgv_ci_titre"):
-        _cgv_data["cgv_ci_titre"] = _esc(data["cgv_ci_titre"])
-    CGV_IMPRIMEES = cgv_imprimees(_cgv_data)
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
     # (l'étude insérée entre les pages 2 et 3 porte le total à 4).

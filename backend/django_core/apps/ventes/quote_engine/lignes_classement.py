@@ -23,6 +23,9 @@ from decimal import Decimal
 from apps.ventes import solar_classification as _sc
 # QJR609 — UN lecteur de kWh : celui du catalogue (``domain.catalogue``).
 from apps.ventes.domain.catalogue import _parse_kwh
+# Politique monétaire (docs/money-convention.md) : 2 décimales, moitié vers le
+# haut — LA fonction de la base, jamais ``round()`` (check_money_rounding).
+from core.money import quantize_mad
 
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 # Repli SÛR quand une ligne panneau n'a aucune puissance lisible dans sa
@@ -174,7 +177,7 @@ def _cout_onduleur(rows, blob=None):
             continue
         if qty > 0 and pu > 0:
             total += qty * pu
-    return round(total, 2) if total > 0 else None
+    return float(quantize_mad(total)) if total > 0 else None
 
 
 class _LigneArgentPdf:
@@ -302,7 +305,7 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         # (``prix_unit_ht × quantite``) devient du même coup celui que le
         # devis facture. Une ligne non remisée à prix rond est byte-identique.
         "prix_unit_ht": float(pu_ht),
-        "prix_unit_ttc": float(round(pu_ttc, 2)),
+        "prix_unit_ttc": float(quantize_mad(pu_ttc)),
         "taux_tva": float(ligne_taux),
         # XSAL14 — position d'affichage (0 par défaut) : sert à intercaler les
         # intertitres de section/notes au bon endroit dans la liste une-page.

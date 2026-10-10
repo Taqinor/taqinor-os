@@ -33,12 +33,6 @@ from .lignes_classement import (
     _item_classement, _item_marque, _line_to_item, _parse_marque,
     panneaux_et_watt_lu,
 )
-# SPL162 — ré-export (noqa: F401) pour d'autres propriétaires :
-# utils/options.py, public/payload_horaire.py, tests devis
-# test_classification_parite, test_qjr301_convention_classification.
-from .lignes_classement import (  # noqa: F401
-    _is_inverter, _is_smart_meter, _is_wifi_dongle, _parse_kwh, _parse_watt,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -1272,6 +1266,62 @@ def _source_cgv_ci(devis):
         return gelees[0] if gelees[0].get("mode") else None
     from apps.parametres.selectors import cgv_variante_ci
     return cgv_variante_ci(getattr(devis, "company", None), mode)
+
+
+def _titre_cgv_ci(devis) -> dict:
+    """APDF12 — le TITRE de la variante C&I n'est plus jeté : ``{"cgv_ci_titre":
+    …}`` quand il est saisi, ``{}`` sinon (clé absente, charge inchangée)."""
+    titre = str((_source_cgv_ci(devis) or {}).get("titre") or "").strip()
+    return {"cgv_ci_titre": titre} if titre else {}
+
+
+def _doc_texts_envoyes(devis, doc_texts):
+    """Textes de document d'un devis : ceux GELÉS à l'envoi, sinon les vifs.
+
+    ERR-QJR668 — les puces CGV de la société GELÉES à l'envoi (entrée
+    ``cgv_gelees`` de ``Devis.clauses_appliquees``) remplacent les puces
+    vives dans le bloc CGV STANDARD : un texte édité après l'envoi ne change
+    pas ce que le client a reçu. Copie : le dict mémoïsé est partagé.
+    Brouillon / jamais envoyé → pas d'entrée → textes vifs, inchangé.
+    APDF12 — une variante C&I gelée (entrée portant un ``mode``) n'est
+    JAMAIS recopiée ici : elle est servie par ``cgv_ci`` (titre compris,
+    marqueurs substitués), via ``generate_devis_premium.cgv_imprimees``.
+    APDF14 — devis envoyé ou signé : l'ENSEMBLE des textes gelés à l'envoi
+    (CGV, titre, garanties, bon pour accord…) prime sur les textes vifs ; la
+    boucle ERR-QJR668 ne sert plus qu'aux envoyés d'avant ce gel.
+    """
+    for _c in (getattr(devis, "clauses_appliquees", None) or []):
+        if (isinstance(_c, dict) and _c.get("type") == "cgv_gelees"
+                and not _c.get("mode")
+                and isinstance(_c.get("bullets"), list) and _c["bullets"]):
+            doc_texts = dict(doc_texts, cgv_bullets=[
+                str(b) for b in _c["bullets"]])
+            break
+    _geles = _doc_texts_geles(devis)
+    return doc_texts if _geles is None else _geles
+
+
+def _entreprise_avec_logo(devis, entreprise, pdf_options):
+    """APDF4 — logo TÉLÉVERSÉ de la société (``logo_key``), lu comme la facture
+    (``utils/pdf`` : même téléchargement, même rognage, data URI), sur le
+    seul chemin de RENDU (drapeau serveur de l'affiche) ; clé posée
+    seulement quand un logo existe (charge publique et golden inchangés)."""
+    if not (entreprise and (pdf_options or {}).get("_embed_roof_render")):
+        return entreprise
+    try:
+        from django.conf import settings as _st
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.utils import pdf as _pdf
+        _cle_logo = CompanyProfile.get(company=devis.company).logo_key
+        _brut = _cle_logo and _pdf._download(
+            _st.MINIO_BUCKET_UPLOADS, _cle_logo)
+        if _brut:
+            _rogne, _ext = _pdf._trim_image_whitespace(_brut)
+            entreprise = dict(entreprise, logo_uri=_pdf._to_data_uri(
+                _rogne, _ext or _cle_logo))
+    except Exception:  # noqa: BLE001 — un logo illisible ne casse rien
+        pass
+    return entreprise
 
 
 def cgv_ci_du_devis(devis, tva_note=""):
@@ -3517,28 +3567,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("ventes.devis_doc_texts", getattr(_company, "id", None)),
         _load_doc_texts)
 
-    # ERR-QJR668 — les puces CGV de la société GELÉES à l'envoi (entrée
-    # ``cgv_gelees`` de ``Devis.clauses_appliquees``) remplacent les puces
-    # vives dans le bloc CGV STANDARD : un texte édité après l'envoi ne change
-    # pas ce que le client a reçu. Copie : le dict mémoïsé est partagé.
-    # Brouillon / jamais envoyé → pas d'entrée → textes vifs, inchangé.
-    # APDF12 — une variante C&I gelée (entrée portant un ``mode``) n'est
-    # JAMAIS recopiée ici : elle est servie par ``cgv_ci`` (titre compris,
-    # marqueurs substitués), via ``generate_devis_premium.cgv_imprimees``.
-    for _c in (getattr(devis, "clauses_appliquees", None) or []):
-        if (isinstance(_c, dict) and _c.get("type") == "cgv_gelees"
-                and not _c.get("mode")
-                and isinstance(_c.get("bullets"), list) and _c["bullets"]):
-            doc_texts = dict(doc_texts, cgv_bullets=[
-                str(b) for b in _c["bullets"]])
-            break
-    # APDF14 — devis envoyé ou signé : l'ENSEMBLE des textes gelés à l'envoi
-    # (CGV, titre, garanties, bon pour accord…) prime sur les textes vifs —
-    # un texte édité ensuite dans Paramètres ne change pas ce que le client a
-    # reçu. La boucle ci-dessus ne sert plus qu'aux envoyés d'avant ce gel.
-    _geles = _doc_texts_geles(devis)
-    if _geles is not None:
-        doc_texts = _geles
+    # ERR-QJR668 / APDF12 / APDF14 — un devis envoyé ou signé imprime les
+    # textes GELÉS à l'envoi, jamais les textes vifs édités depuis.
+    doc_texts = _doc_texts_envoyes(devis, doc_texts)
 
     # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
     # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur
@@ -3551,24 +3582,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         entreprise = company_identity(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
-    # APDF4 — logo TÉLÉVERSÉ de la société (``logo_key``), lu comme la facture
-    # (``utils/pdf`` : même téléchargement, même rognage, data URI), sur le
-    # seul chemin de RENDU (drapeau serveur de l'affiche) ; clé posée
-    # seulement quand un logo existe (charge publique et golden inchangés).
-    if entreprise and (pdf_options or {}).get("_embed_roof_render"):
-        try:
-            from django.conf import settings as _st
-            from apps.parametres.models import CompanyProfile
-            from apps.ventes.utils import pdf as _pdf
-            _cle_logo = CompanyProfile.get(company=devis.company).logo_key
-            _brut = _cle_logo and _pdf._download(
-                _st.MINIO_BUCKET_UPLOADS, _cle_logo)
-            if _brut:
-                _rogne, _ext = _pdf._trim_image_whitespace(_brut)
-                entreprise = dict(entreprise, logo_uri=_pdf._to_data_uri(
-                    _rogne, _ext or _cle_logo))
-        except Exception:  # noqa: BLE001 — un logo illisible ne casse rien
-            pass
+    # APDF4 — logo TÉLÉVERSÉ de la société, sur le seul chemin de RENDU.
+    entreprise = _entreprise_avec_logo(devis, entreprise, pdf_options)
 
     # ── SCA27 (complément) — site du tenant câblé au moteur résidentiel ───────
     # ``build_quote_data`` peuplait ``entreprise`` (identité) mais laissait le
@@ -4342,12 +4357,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _cgv_ci = cgv_ci_du_devis(devis, data.get("tva_note"))
     if _cgv_ci:
         data["cgv_ci"] = _cgv_ci
-        # APDF12 — le TITRE de la variante n'est plus jeté (clé posée
-        # seulement quand il est saisi).
-        _titre_ci = str((_source_cgv_ci(devis) or {}).get("titre")
-                        or "").strip()
-        if _titre_ci:
-            data["cgv_ci_titre"] = _titre_ci
+        data.update(_titre_cgv_ci(devis))  # APDF12 — titre de la variante
 
     # ── PV86 — Avertissements INTERNES sur l'état des données du devis ───────
     # Additif : la clé n'est posée QUE lorsqu'il y a quelque chose à signaler →

@@ -11,6 +11,10 @@ Every class is prefixed `p2-` so it never clashes with pages 1/3.
 """
 from __future__ import annotations
 
+# APDF8 — libellés FIXES du détail (fr : littéral d'origine, octet pour
+# octet ; en/ar : ``i18n_labels``), la même fonction que la couverture.
+from .cover import libelle_fixe
+
 
 def _qty_par_designation(items):
     """{désignation: quantité TOTALE} — somme des lignes de même désignation."""
@@ -395,10 +399,6 @@ def build_pages(ctx) -> list:
     # littéraux d'origine, octet pour octet).
     def L(cle, fr):
         return theme.libelle_doc(d, cle, fr)
-
-    # APDF8 — libellés FIXES du détail (fr : littéral d'origine, octet pour
-    # octet ; en/ar : ``i18n_labels``), la même fonction que la couverture.
-    from .cover import libelle_fixe
 
     # QX5 — deux options seulement quand le devis en porte réellement deux.
     # Mono-option : la page 2 abandonne le découpage delta et renomme l'en-tête

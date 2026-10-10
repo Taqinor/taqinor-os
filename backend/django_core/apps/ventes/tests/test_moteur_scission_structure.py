@@ -96,11 +96,15 @@ class Spl162LignesClassementTests(SimpleTestCase):
         """Règle de ré-export : un importeur d'un autre propriétaire (ou un test
         dont le nom reste lié) lit toujours le MÊME objet via builder."""
         from apps.ventes.quote_engine import builder, lignes_classement
-        for nom in ("_is_battery", "_is_panel", "_is_inverter",
-                    "_is_smart_meter", "_is_wifi_dongle", "_parse_watt",
-                    "_parse_kwh", "_parse_marque", "_line_to_item",
-                    "panneaux_et_watt_lu", "_item_classement",
-                    "_item_marque", "_cout_onduleur"):
+        for nom in ("_is_battery", "_is_panel", "_parse_marque",
+                    "_line_to_item", "panneaux_et_watt_lu",
+                    "_item_classement", "_item_marque", "_cout_onduleur"):
             with self.subTest(nom=nom):
                 self.assertIs(getattr(builder, nom),
                               getattr(lignes_classement, nom))
+        # C20 FACADE — builder n'expose plus ce qu'il n'utilise pas : les
+        # importeurs lisent ces noms dans ``lignes_classement`` directement.
+        for nom in ("_is_inverter", "_is_smart_meter", "_is_wifi_dongle",
+                    "_parse_watt", "_parse_kwh"):
+            with self.subTest(absent=nom):
+                self.assertFalse(hasattr(builder, nom))

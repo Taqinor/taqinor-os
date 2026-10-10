@@ -856,17 +856,9 @@ def build(ctx):
                      if ((masquer_eco or masquer_mensuel) and qr_solo_html)
                      else "")
 
-    # APDF8 — libellés fixes de la couverture dans la langue du document
-    # (calculés hors du gabarit : aucune chaîne imbriquée dans la f-string).
-    _t_ref = libelle_fixe(d, "res_ref_devis", "Réf. devis")
-    _t_kicker = libelle_fixe(
-        d, "res_kicker", "Proposition commerciale — Installation solaire")
-    _t_bonjour = libelle_fixe(d, "res_bonjour", f"Bonjour {first_name},",
-                              nom=first_name)
-    _t_ing = libelle_fixe(d, "res_ingenieurs", "Ingénieurs solaires")
-    _t_suivi = libelle_fixe(d, "res_suivi_temps_reel", "Suivi en temps réel")
-
     # ── HTML ────────────────────────────────────────────────────────────────
+    # APDF8 — les libellés fixes de la couverture suivent la langue du
+    # document (``libelle_fixe`` : fr = littéral d'origine, octet pour octet).
     html = f"""{css}
 <div class="c1-root">
 
@@ -876,7 +868,7 @@ def build(ctx):
     <div class="c1-hero-top">
       <img class="c1-logo" src="data:image/png;base64,{logo_dark}" alt="{brand}">
       <div class="c1-hero-meta">
-        <div class="c1-ref-l">{_t_ref}</div>
+        <div class="c1-ref-l">{libelle_fixe(d, 'res_ref_devis', 'Réf. devis')}</div>
         <div class="c1-ref-v">{ref}</div>
         <div class="c1-date">{date}</div>
         {marques_correction}
@@ -884,8 +876,8 @@ def build(ctx):
       </div>
     </div>
     <div class="c1-hero-body">
-      <div class="c1-kicker c1-hero-kicker">{_t_kicker}</div>
-      <div class="c1-serif c1-hello">{_t_bonjour}</div>
+      <div class="c1-kicker c1-hero-kicker">{libelle_fixe(d, 'res_kicker', 'Proposition commerciale — Installation solaire')}</div>
+      <div class="c1-serif c1-hello">{libelle_fixe(d, 'res_bonjour', 'Bonjour ' + format(first_name) + ',', nom=first_name)}</div>
       {hero_sub_html}
     </div>
   </div>
@@ -900,7 +892,7 @@ def build(ctx):
   <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
   <div class="c1-trust">
     <div class="c1-trust-line"></div>
-    <div class="c1-trust-txt"><b>{_t_ing}</b> &middot; {perf_trust}{_t_suivi}</div>
+    <div class="c1-trust-txt"><b>{libelle_fixe(d, 'res_ingenieurs', 'Ingénieurs solaires')}</b> &middot; {perf_trust}{libelle_fixe(d, 'res_suivi_temps_reel', 'Suivi en temps réel')}</div>
     <div class="c1-trust-line"></div>
   </div>
 

@@ -37,15 +37,14 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
-from apps.ventes.domain.catalogue import classer_produit
-from apps.ventes.quote_engine.builder import (
+from apps.ventes.domain.catalogue import _parse_kwh, classer_produit
+from apps.ventes.quote_engine.lignes_classement import (
     _battery_kwh_from_items,
     _is_battery,
     _is_hybrid_inverter,
     _is_inverter,
     _is_panel,
     _is_reseau_inverter,
-    _parse_kwh,
     panneaux_et_watt_lu,
 )
 from apps.ventes.utils.options import (

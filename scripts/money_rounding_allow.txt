@@ -34,10 +34,6 @@ backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::566a5
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::c1b18a5faf41 | Total HT d'AFFICHAGE d'une ligne d'option (PU HT x quantite).
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::3df65d0bc891 | Total TTC d'AFFICHAGE d'une ligne d'option (PU TTC x quantite).
 
-# --- backend/django_core/apps/ventes/quote_engine/lignes_classement.py
-backend/django_core/apps/ventes/quote_engine/lignes_classement.py::_cout_onduleur::5a537e209151 | Q1 (20/08/2026) : somme TTC des lignes onduleur d'une option, qui devient la provision de remplacement a l'annee 12 (elle remplace un forfait '8 % du CAPEX'). Valeur JAMAIS persistee : trace + ligne d'hypothese.
-backend/django_core/apps/ventes/quote_engine/lignes_classement.py::_line_to_item::b800525fcef3 | Idem pour le prix unitaire TTC de la ligne.
-
 # --- backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::fdd393eb39d1 | Carte option "Sans batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() pour ne plus diverger du bloc totaux page 2 sur un TTC au centime -- affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::4aa80d83238a | Carte option "Avec batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() -- affichage seul, jumeau du site ci-dessus.

@@ -20,7 +20,7 @@ factures existantes ; on ne réimplémente aucun calcul d'argent à la main.
 from __future__ import annotations
 
 # Prédicats de classification — partagés avec le moteur de devis. Purs (chaînes).
-from apps.ventes.quote_engine.builder import (
+from apps.ventes.quote_engine.lignes_classement import (
     _is_battery, _is_hybrid_inverter, _is_inverter, _is_offgrid_inverter,
     _is_reseau_inverter, _is_smart_meter, _is_wifi_dongle,
 )

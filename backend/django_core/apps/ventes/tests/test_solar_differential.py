@@ -68,7 +68,7 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
-from apps.ventes.quote_engine.builder import (
+from apps.ventes.quote_engine.lignes_classement import (
     _is_battery,
     _is_hybrid_inverter,
     _is_inverter,
