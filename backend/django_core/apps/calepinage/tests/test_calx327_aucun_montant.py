@@ -346,37 +346,37 @@ def _html_planche():
 
 def _html_plan_pose():
     from apps.calepinage.services.planche import (
-        html_de_planche, rendre_plan_pose_svg,
+        html_de_planche, _rendre_plan_pose_svg,
     )
 
     nu = SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
                          roof_layout=LAYOUT_PLANCHE, resultat=_resultat())
     return html_de_planche(
-        rendre_plan_pose_svg(nu, moment=MOMENT, titre='Villa Anfa'))
+        _rendre_plan_pose_svg(nu, moment=MOMENT, titre='Villa Anfa'))
 
 
 def _html_plan_toiture():
     from apps.calepinage.services.planche import (
-        CONTENU_TOITURE, html_de_planche, rendre_plan_svg,
+        CONTENU_TOITURE, html_de_planche, _rendre_plan_svg,
     )
 
     nu = SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
                          roof_layout=LAYOUT_PLANCHE)
     return html_de_planche(
-        rendre_plan_svg(nu, contenu=CONTENU_TOITURE, moment=MOMENT,
-                        titre='Villa Anfa'))
+        _rendre_plan_svg(nu, contenu=CONTENU_TOITURE, moment=MOMENT,
+                         titre='Villa Anfa'))
 
 
 def _html_plan_masse():
     from apps.calepinage.services.planche import (
-        CONTENU_MASSE, html_de_planche, rendre_plan_svg,
+        CONTENU_MASSE, html_de_planche, _rendre_plan_svg,
     )
 
     nu = SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
                          roof_layout=layout_avec_parcelle())
     return html_de_planche(
-        rendre_plan_svg(nu, contenu=CONTENU_MASSE, moment=MOMENT,
-                        titre='Villa Anfa'))
+        _rendre_plan_svg(nu, contenu=CONTENU_MASSE, moment=MOMENT,
+                         titre='Villa Anfa'))
 
 
 #: ``code (de l'inventaire) -> fonction HTML PURE`` — la couverture réelle.

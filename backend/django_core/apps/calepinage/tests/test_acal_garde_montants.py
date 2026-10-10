@@ -22,7 +22,7 @@ from apps.calepinage.services.garde_montants import (
     MOTS_D_ARGENT, mots_d_argent,
 )
 from apps.calepinage.services.planche import (
-    PlanDePoseRefuse, geometrie_de_planche, verifier_absence_d_argent,
+    PlanDePoseRefuse, geometrie_de_planche, _verifier_absence_d_argent,
 )
 from apps.calepinage.services.rapport import RapportRefuse
 from apps.calepinage.services.rapport.nomenclature import html_de_section
@@ -42,7 +42,7 @@ class SansFauxPositifTest(SimpleTestCase):
             self.assertEqual(mots_d_argent(nom), [], nom)
             # Le texte guarde du plan de pose est le bandeau (catalogue /
             # moteur) : un nom de calepinage n'y entre jamais.
-            verifier_absence_d_argent('Chaînes : 2\nOnduleur ONDULEUR-ESSAI')
+            _verifier_absence_d_argent('Chaînes : 2\nOnduleur ONDULEUR-ESSAI')
 
     def test_classeur_rend_un_pan_nomme_remise(self):
         geometrie = geometrie_de_planche(_layout_nomme('Remise'))
@@ -102,7 +102,7 @@ class RefusAttenduTest(SimpleTestCase):
 
     def test_le_plan_de_pose_refuse_un_mot_entier(self):
         with self.assertRaises(PlanDePoseRefuse):
-            verifier_absence_d_argent('Onduleur (prix sur demande)')
+            _verifier_absence_d_argent('Onduleur (prix sur demande)')
 
 
 class UneSeuleListeTest(SimpleTestCase):

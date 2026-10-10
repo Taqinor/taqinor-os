@@ -23,7 +23,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.planche import (
     CONTENU_IMPLANTATION, CONTENU_MASSE, CONTENU_TOITURE, PlancheRefusee,
-    echelle_nommee, geometrie_de_planche, mention_d_echelle, rendre_plan_svg,
+    _echelle_nommee, geometrie_de_planche, _mention_d_echelle, _rendre_plan_svg,
     svg_de_planche,
 )
 
@@ -63,13 +63,13 @@ class ParcelleTest(SimpleTestCase):
 class PlanDeMasseTest(SimpleTestCase):
     def test_sans_parcelle_le_plan_de_masse_est_refuse_en_la_nommant(self):
         with self.assertRaises(PlancheRefusee) as capture:
-            rendre_plan_svg(FauxCalepinage(), contenu=CONTENU_MASSE,
-                            moment=MOMENT)
+            _rendre_plan_svg(FauxCalepinage(), contenu=CONTENU_MASSE,
+                             moment=MOMENT)
         self.assertEqual(capture.exception.champ, 'parcelle')
         self.assertIn('parcelle', str(capture.exception).lower())
 
     def test_avec_parcelle_le_plan_de_masse_se_produit(self):
-        svg = rendre_plan_svg(
+        svg = _rendre_plan_svg(
             FauxCalepinage(roof_layout=layout_avec_parcelle()),
             contenu=CONTENU_MASSE, moment=MOMENT)
         self.assertIn('Plan de masse', svg)
@@ -118,11 +118,11 @@ class PlanDeToitureTest(SimpleTestCase):
 class EchelleNommeeTest(SimpleTestCase):
     def test_l_echelle_nommee_est_calculee_du_trace(self):
         # 1 m de terrain occupe 5 mm de feuille -> 1/200.
-        self.assertEqual(echelle_nommee(5.0), 200)
-        self.assertEqual(echelle_nommee(10.0), 100)
+        self.assertEqual(_echelle_nommee(5.0), 200)
+        self.assertEqual(_echelle_nommee(10.0), 100)
 
     def test_la_mention_porte_sa_condition_de_validite(self):
-        mention = mention_d_echelle(5.0)
+        mention = _mention_d_echelle(5.0)
         self.assertIn('1/200', mention)
         self.assertIn('non réduit', mention)
         # La barre graphique reste la référence : la fraction n'est valable
@@ -130,8 +130,8 @@ class EchelleNommeeTest(SimpleTestCase):
         self.assertIn("barre d'échelle", mention)
 
     def test_une_echelle_absente_ne_produit_aucune_mention(self):
-        self.assertIsNone(echelle_nommee(0))
-        self.assertEqual(mention_d_echelle(0), '')
+        self.assertIsNone(_echelle_nommee(0))
+        self.assertEqual(_mention_d_echelle(0), '')
 
     def test_la_planche_porte_l_echelle_nommee(self):
         svg = svg_de_planche(geometrie_de_planche(LAYOUT))

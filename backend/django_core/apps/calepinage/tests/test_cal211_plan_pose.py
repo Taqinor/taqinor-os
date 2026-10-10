@@ -30,8 +30,8 @@ from django.test import SimpleTestCase
 from apps.calepinage.services.rangees import rangees_du_pan
 from apps.calepinage.services.planche import (
     CONTENU_POSE, CONTENU_TOITURE, PlanDePoseRefuse, geometrie_de_planche,
-    lignes_de_chaines, rendre_plan_pose_svg, svg_de_planche,
-    verifier_absence_d_argent,
+    _lignes_de_chaines, _rendre_plan_pose_svg, svg_de_planche,
+    _verifier_absence_d_argent,
 )
 
 from .acal_livrables_helpers import (
@@ -59,7 +59,7 @@ def calepinage_de_pose():
 def plan_de_pose_svg(calepinage, **options):
     """Le plan de pose, materiel injecte (le stock n'a pas de base ici)."""
     with patch_materiel():
-        return rendre_plan_pose_svg(calepinage, moment=MOMENT, **options)
+        return _rendre_plan_pose_svg(calepinage, moment=MOMENT, **options)
 
 
 class AucunMontantTest(SimpleTestCase):
@@ -70,8 +70,8 @@ class AucunMontantTest(SimpleTestCase):
 
     def test_la_garde_refuse_un_document_qui_porterait_un_prix(self):
         with self.assertRaises(PlanDePoseRefuse) as capture:
-            verifier_absence_d_argent('<svg><text>Module 720 Wc — 1 200 MAD'
-                                      '</text></svg>')
+            _verifier_absence_d_argent('<svg><text>Module 720 Wc — 1 200 MAD'
+                                       '</text></svg>')
         self.assertIn('montant', str(capture.exception).lower())
 
     def test_un_resultat_qui_charrie_un_prix_fait_refuser_le_plan(self):
@@ -82,7 +82,7 @@ class AucunMontantTest(SimpleTestCase):
                 'apps.calepinage.services.electrique.resoudre_materiel',
                 return_value=avec_prix):
             with self.assertRaises(PlanDePoseRefuse):
-                rendre_plan_pose_svg(calepinage, moment=MOMENT)
+                _rendre_plan_pose_svg(calepinage, moment=MOMENT)
 
 
 class EmpreinteEtCheminTest(SimpleTestCase):
@@ -132,26 +132,26 @@ class ReperesDePoseTest(SimpleTestCase):
 
 class ListeDesChainesTest(SimpleTestCase):
     def test_les_chaines_sont_recopiees_du_moteur(self):
-        lignes = lignes_de_chaines(RESULTAT)
+        lignes = _lignes_de_chaines(RESULTAT)
         chainage = RESULTAT['electrique']['chainage']
         self.assertIn('Chaînes : %s' % chainage['chaines'], lignes)
         self.assertIn('Modules par chaîne : %s'
                       % chainage['modules_par_chaine'], lignes)
 
     def test_les_onduleurs_sont_listes_avec_leurs_mppt(self):
-        lignes = lignes_de_chaines(RESULTAT)
+        lignes = _lignes_de_chaines(RESULTAT)
         self.assertTrue(any('ONDULEUR-ESSAI-1' in ligne and 'MPPT' in ligne
                             for ligne in lignes))
 
     def test_l_emplacement_des_onduleurs_n_est_jamais_invente(self):
         # La donnée n'existe ni dans le layout ni dans le résultat : on le DIT
         # plutôt que de poser un onduleur à un endroit plausible.
-        lignes = lignes_de_chaines(RESULTAT)
+        lignes = _lignes_de_chaines(RESULTAT)
         self.assertTrue(any('non relevé' in ligne for ligne in lignes))
 
     def test_sans_resultat_aucune_ligne_n_est_fabriquee(self):
-        self.assertEqual(lignes_de_chaines(None), ())
-        self.assertEqual(lignes_de_chaines({}), ())
+        self.assertEqual(_lignes_de_chaines(None), ())
+        self.assertEqual(_lignes_de_chaines({}), ())
 
     def test_la_liste_paraît_dans_le_bandeau_du_plan(self):
         from apps.calepinage import selectors

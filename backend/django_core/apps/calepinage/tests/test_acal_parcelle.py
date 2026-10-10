@@ -20,7 +20,7 @@ from apps.calepinage.services.io_layout import (
 )
 from apps.calepinage.services.planche import (
     CONTENU_MASSE, MOTIF_SANS_PARCELLE, PlancheRefusee, geometrie_de_planche,
-    rendre_plan_svg,
+    _rendre_plan_svg,
 )
 from apps.calepinage.views.sorties import SANS_PARCELLE
 
@@ -44,7 +44,7 @@ class ImportPuisPlanDeMasseTest(SimpleTestCase):
     def test_import_layout_puis_plan_masse_200(self):
         valider_document(avec_parcelle(DOCUMENT_VALIDE))   # ne leve pas
         calepinage = FauxCalepinage(roof_layout=avec_parcelle())
-        svg = rendre_plan_svg(calepinage, contenu=CONTENU_MASSE)
+        svg = _rendre_plan_svg(calepinage, contenu=CONTENU_MASSE)
         self.assertIn('<svg', svg)
 
     def test_export_layout_restitue_la_parcelle_identique(self):
@@ -71,7 +71,7 @@ class UneSeuleCleTest(SimpleTestCase):
 
     def test_motif_sans_parcelle_renvoie_a_l_atelier(self):
         with self.assertRaises(PlancheRefusee) as refus:
-            rendre_plan_svg(FauxCalepinage(), contenu=CONTENU_MASSE)
+            _rendre_plan_svg(FauxCalepinage(), contenu=CONTENU_MASSE)
         self.assertEqual(refus.exception.champ, 'parcelle')
         self.assertIn("atelier 3D", str(refus.exception))
         self.assertIn('Parcelle', str(refus.exception))

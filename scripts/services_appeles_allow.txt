@@ -14,17 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/planche.py::dimensions_module
-backend/django_core/apps/calepinage/services/planche.py::echelle_de_dessin
-backend/django_core/apps/calepinage/services/planche.py::echelle_nommee
-backend/django_core/apps/calepinage/services/planche.py::lignes_d_orientation
-backend/django_core/apps/calepinage/services/planche.py::lignes_de_chaines
-backend/django_core/apps/calepinage/services/planche.py::longueur_de_barre
-backend/django_core/apps/calepinage/services/planche.py::mention_d_echelle
-backend/django_core/apps/calepinage/services/planche.py::rendre_plan_pose_svg
-backend/django_core/apps/calepinage/services/planche.py::rendre_plan_svg
-backend/django_core/apps/calepinage/services/planche.py::texte_d_orientation
-backend/django_core/apps/calepinage/services/planche.py::verifier_absence_d_argent
 backend/django_core/apps/calepinage/services/presets.py::enregistrer_jeu
 backend/django_core/apps/calepinage/services/presets.py::retirer_jeu
 backend/django_core/apps/calepinage/services/profils_types.py::profil_de_repli

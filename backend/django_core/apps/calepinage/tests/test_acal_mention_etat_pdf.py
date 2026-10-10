@@ -32,7 +32,7 @@ from apps.calepinage.services.note_calcul import (
     _construire_note_calcul, _html_de_note_calcul,
 )
 from apps.calepinage.services.planche import (
-    CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pose_svg, rendre_plan_svg,
+    CONTENU_MASSE, CONTENU_TOITURE, _rendre_plan_pose_svg, _rendre_plan_svg,
     rendre_planche_svg,
 )
 
@@ -85,7 +85,7 @@ def sept_rendus_texte(cal):
         cal, resultat=copy.deepcopy(ECHANTILLON),
         roof_layout=cal.roof_layout, svg_planche='', styles={}, etat=etat)
     with patch_materiel():
-        plan_pose = rendre_plan_pose_svg(cal, moment=MOMENT)
+        plan_pose = _rendre_plan_pose_svg(cal, moment=MOMENT)
         # Le plan de câblage REFUSE une conception sans chaîne publiée
         # (CALX310) : l'affectation est celle du résultat SERVI, matériel
         # connu — jamais une liste vide injectée.
@@ -93,10 +93,10 @@ def sept_rendus_texte(cal):
     return {
         'planche': rendre_planche_svg(cal, moment=MOMENT),
         'plan_pose': plan_pose,
-        'plan_toiture': rendre_plan_svg(cal, contenu=CONTENU_TOITURE,
-                                        moment=MOMENT),
-        'plan_masse': rendre_plan_svg(cal, contenu=CONTENU_MASSE,
-                                      moment=MOMENT),
+        'plan_toiture': _rendre_plan_svg(cal, contenu=CONTENU_TOITURE,
+                                         moment=MOMENT),
+        'plan_masse': _rendre_plan_svg(cal, contenu=CONTENU_MASSE,
+                                       moment=MOMENT),
         'note_calcul': _html_de_note_calcul(note),
         'plan_cablage': plan_cablage,
         'presentation_compacte': _html_de_presentation(presentation),
