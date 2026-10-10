@@ -49,12 +49,12 @@ describe('ASTK228 — PortailFournisseurLienPage', () => {
 
   it("confirmer affiche l'erreur de date sous le champ", async () => {
     client.post.mockRejectedValue({
-      response: { status: 400, data: CONFIRMER.nouveau_astk181.exemple_date },
+      response: { status: 400, data: CONFIRMER.exemples_erreur_400.exemple_date },
     })
     monter()
     fireEvent.change(await screen.findByLabelText('Date de livraison confirmée'), { target: { value: '18/10' } })
     fireEvent.click(screen.getByRole('button', { name: /Confirmer la commande/i }))
-    const msg = CONFIRMER.nouveau_astk181.exemple_date.date_confirmee_fournisseur[0]
+    const msg = CONFIRMER.exemples_erreur_400.exemple_date.date_confirmee_fournisseur[0]
     const erreur = await screen.findByText(msg)
     expect(erreur).toBeInTheDocument()
     // « sous le champ » : le message est relié au champ par aria-describedby.
@@ -81,11 +81,11 @@ describe('ASTK228 — PortailFournisseurLienPage', () => {
   })
 
   it("un 409 (déjà reçu) est affiché tel quel", async () => {
-    client.post.mockRejectedValue({ response: { status: 409, data: CONFIRMER.nouveau_astk180.exemple } })
+    client.post.mockRejectedValue({ response: { status: 409, data: CONFIRMER.exemple_erreur_409 } })
     monter()
     fireEvent.change(await screen.findByLabelText('Date de livraison confirmée'), { target: { value: '2026-10-18' } })
     fireEvent.click(screen.getByRole('button', { name: /Confirmer la commande/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(CONFIRMER.nouveau_astk180.exemple.detail)
+    expect(await screen.findByRole('alert')).toHaveTextContent(CONFIRMER.exemple_erreur_409.detail)
   })
 
   it("un BCF reçu n'offre pas de confirmation", async () => {
