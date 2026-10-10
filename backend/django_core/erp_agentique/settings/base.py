@@ -1952,3 +1952,11 @@ ESIGN_PROVIDER = os.environ.get('ESIGN_PROVIDER', '').strip()
 GED_OFFICE_URL = os.environ.get('GED_OFFICE_URL', '').strip()
 GED_PADES_CERT_PATH = os.environ.get('GED_PADES_CERT_PATH', '').strip()
 GED_PADES_KEY_PATH = os.environ.get('GED_PADES_KEY_PATH', '').strip()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADEP38 — apps.portail : passerelle de paiement carte CMI, lus par `cmi_actif()`
+# (`apps/portail/services.py`). Actif seulement si CMI_ENABLED (« 1 »/« true »,
+# strict) ET CMI_MERCHANT_KEY non vide. Absents = faux, comme avant.
+CMI_ENABLED = (
+    os.environ.get('CMI_ENABLED', '').strip().lower() in ('1', 'true'))
+CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
