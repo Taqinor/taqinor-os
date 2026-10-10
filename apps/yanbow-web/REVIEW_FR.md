@@ -50,57 +50,58 @@
 | 4 | MarketingBow _(en-tête)_ | — | interface |  |
 | 5 | Sur-mesure _(en-tête)_ | — | interface |  |
 | 6 | Société _(en-tête)_ | — | interface |  |
-| 7 | Prendre rendez-vous _(en-tête)_ | — | interface |  |
-| 8 | Studio logiciel | — | interface |  |
-| 9 | Nous construisons des logiciels métier pour les entreprises. | `YB-METIER` | construit | `docs/plans/PLAN_YANBOW_WEB.md:42`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
-| 10 | Prendre rendez-vous | — | interface |  |
-| 11 | Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur-mesure pour le reste. | `YB-POSITIONNEMENT` | construit | `docs/plans/PLAN_YANBOW_WEB.md:43`<br>`docs/plans/PLAN_YANBOW_WEB.md:44`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
-| 12 | Découvrir les produits | — | interface |  |
-| 13 | Capture d’écran en préparation | — | interface |  |
-| 14 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
-| 15 | Données fictives | — | interface |  |
-| 16 | Produits | — | interface |  |
-| 17 | Deux produits construits | — | interface |  |
-| 18 | Pour les installateurs solaires | — | interface |  |
-| 19 | SolarBow | — | interface |  |
-| 20 | Le logiciel des installateurs solaires, du premier contact à la proposition commerciale. | `SB-POUR-QUI` | construit | `backend/django_core/apps/crm/models.py:520`<br>`backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py:49`<br>`docs/plans/PLAN_YANBOW_WEB.md:60` |
-| 21 | Un CRM pensé pour les installateurs solaires : fiches prospects complètes, pipeline et relances planifiées. | `SB-CRM` | construit | `backend/django_core/apps/crm/models.py:520`<br>`backend/django_core/apps/crm/models.py:1156` |
-| 22 | Un calepinage de toiture en vue 3D et en plan 2D. | `SB-CALEPINAGE-3D` | construit | `frontend/src/features/calepinage/atelier/OutilsVue.jsx:46`<br>`backend/django_core/apps/calepinage/models.py:41` |
-| 23 | Les dossiers déclaration préalable, Enedis et Consuel composés à partir des modèles de l’installateur. | `SB-PACKS-FR` | construit | `backend/django_core/apps/calepinage/services/reglementaire.py:866`<br>`backend/django_core/apps/calepinage/services/reglementaire.py:918` |
-| 24 | Capture d’écran en préparation | — | interface |  |
-| 25 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
-| 26 | Données fictives | — | interface |  |
-| 27 | Découvrir SolarBow | — | interface |  |
-| 28 | Pour les campagnes publicitaires | — | interface |  |
-| 29 | MarketingBow | — | interface |  |
-| 30 | Un moteur de campagnes publicitaires Meta où une personne valide chaque changement. | `MB-POUR-QUI` | construit | `backend/django_core/apps/adsengine/meta_client.py:741`<br>`backend/django_core/apps/adsengine/services.py:1880` |
-| 31 | Campagnes, ensembles et publicités sont toujours créés en pause ; une personne les active. | `MB-CREATION-EN-PAUSE` | construit | `backend/django_core/apps/adsengine/meta_client.py:32`<br>`backend/django_core/apps/adsengine/meta_client.py:741` |
-| 32 | Chaque changement est d’abord proposé, puis approuvé par une personne, avant d’être appliqué. | `MB-PROPOSE-APPROUVE` | construit | `backend/django_core/apps/adsengine/services.py:228`<br>`backend/django_core/apps/adsengine/services.py:1880` |
-| 33 | Des garde-fous et un coupe-circuit global qui met tout en pause. | `MB-COUPE-CIRCUIT` | construit | `backend/django_core/apps/adsengine/flightrunner.py:204` |
-| 34 | Capture d’écran en préparation | — | interface |  |
-| 35 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
-| 36 | Données fictives | — | interface |  |
-| 37 | Découvrir MarketingBow | — | interface |  |
-| 38 | Sur-mesure | — | interface |  |
-| 39 | Et pour le reste, du sur-mesure | — | interface |  |
-| 40 | Au-delà de nos deux produits, nous construisons des logiciels sur mesure pour les entreprises. | `SM-OFFRE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:54`<br>`docs/plans/PLAN_YANBOW_WEB.md:42` |
-| 41 | La démarche sur mesure | — | interface |  |
-| 42 | Le besoin | — | interface |  |
-| 43 | Le prototype | — | interface |  |
-| 44 | La mise en service | — | interface |  |
-| 45 | L’exploitation | — | interface |  |
-| 46 | Société | — | interface |  |
-| 47 | Pourquoi YanBow | — | interface |  |
-| 48 | YanBow vient de ينبوع, la source. | `YB-NOM-SOURCE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:198` |
-| 49 | Qui nous sommes | — | interface |  |
-| 50 | Parlons de votre projet | — | interface |  |
-| 51 | Une personne de l’équipe lit votre demande et vous répond. | `YB-REPONSE-HUMAINE` | construit | `backend/django_core/apps/crm/webhooks.py:3354`<br>`docs/plans/PLAN_YANBOW_WEB.md:56` |
-| 52 | Prendre rendez-vous | — | interface |  |
-| 53 | SolarBow _(pied)_ | — | interface |  |
-| 54 | MarketingBow _(pied)_ | — | interface |  |
-| 55 | Sur-mesure _(pied)_ | — | interface |  |
-| 56 | Société _(pied)_ | — | interface |  |
-| 57 | Prendre rendez-vous _(pied)_ | — | interface |  |
+| 7 | English _(en-tête)_ | — | interface |  |
+| 8 | Prendre rendez-vous _(en-tête)_ | — | interface |  |
+| 9 | Studio logiciel | — | interface |  |
+| 10 | Nous construisons des logiciels métier pour les entreprises. | `YB-METIER` | construit | `docs/plans/PLAN_YANBOW_WEB.md:42`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
+| 11 | Prendre rendez-vous | — | interface |  |
+| 12 | Deux produits construits, SolarBow pour les installateurs solaires et MarketingBow pour les campagnes publicitaires, et du sur-mesure pour le reste. | `YB-POSITIONNEMENT` | construit | `docs/plans/PLAN_YANBOW_WEB.md:43`<br>`docs/plans/PLAN_YANBOW_WEB.md:44`<br>`docs/plans/PLAN_YANBOW_WEB.md:54` |
+| 13 | Découvrir les produits | — | interface |  |
+| 14 | Capture d’écran en préparation | — | interface |  |
+| 15 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
+| 16 | Données fictives | — | interface |  |
+| 17 | Produits | — | interface |  |
+| 18 | Deux produits construits | — | interface |  |
+| 19 | Pour les installateurs solaires | — | interface |  |
+| 20 | SolarBow | — | interface |  |
+| 21 | Le logiciel des installateurs solaires, du premier contact à la proposition commerciale. | `SB-POUR-QUI` | construit | `backend/django_core/apps/crm/models.py:520`<br>`backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py:49`<br>`docs/plans/PLAN_YANBOW_WEB.md:60` |
+| 22 | Un CRM pensé pour les installateurs solaires : fiches prospects complètes, pipeline et relances planifiées. | `SB-CRM` | construit | `backend/django_core/apps/crm/models.py:520`<br>`backend/django_core/apps/crm/models.py:1156` |
+| 23 | Un calepinage de toiture en vue 3D et en plan 2D. | `SB-CALEPINAGE-3D` | construit | `frontend/src/features/calepinage/atelier/OutilsVue.jsx:46`<br>`backend/django_core/apps/calepinage/models.py:41` |
+| 24 | Les dossiers déclaration préalable, Enedis et Consuel composés à partir des modèles de l’installateur. | `SB-PACKS-FR` | construit | `backend/django_core/apps/calepinage/services/reglementaire.py:866`<br>`backend/django_core/apps/calepinage/services/reglementaire.py:918` |
+| 25 | Capture d’écran en préparation | — | interface |  |
+| 26 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
+| 27 | Données fictives | — | interface |  |
+| 28 | Découvrir SolarBow | — | interface |  |
+| 29 | Pour les campagnes publicitaires | — | interface |  |
+| 30 | MarketingBow | — | interface |  |
+| 31 | Un moteur de campagnes publicitaires Meta où une personne valide chaque changement. | `MB-POUR-QUI` | construit | `backend/django_core/apps/adsengine/meta_client.py:741`<br>`backend/django_core/apps/adsengine/services.py:1880` |
+| 32 | Campagnes, ensembles et publicités sont toujours créés en pause ; une personne les active. | `MB-CREATION-EN-PAUSE` | construit | `backend/django_core/apps/adsengine/meta_client.py:32`<br>`backend/django_core/apps/adsengine/meta_client.py:741` |
+| 33 | Chaque changement est d’abord proposé, puis approuvé par une personne, avant d’être appliqué. | `MB-PROPOSE-APPROUVE` | construit | `backend/django_core/apps/adsengine/services.py:228`<br>`backend/django_core/apps/adsengine/services.py:1880` |
+| 34 | Des garde-fous et un coupe-circuit global qui met tout en pause. | `MB-COUPE-CIRCUIT` | construit | `backend/django_core/apps/adsengine/flightrunner.py:204` |
+| 35 | Capture d’écran en préparation | — | interface |  |
+| 36 | Vrai écran du logiciel, société fictive, recadré sur la zone utile. | — | interface |  |
+| 37 | Données fictives | — | interface |  |
+| 38 | Découvrir MarketingBow | — | interface |  |
+| 39 | Sur-mesure | — | interface |  |
+| 40 | Et pour le reste, du sur-mesure | — | interface |  |
+| 41 | Au-delà de nos deux produits, nous construisons des logiciels sur mesure pour les entreprises. | `SM-OFFRE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:54`<br>`docs/plans/PLAN_YANBOW_WEB.md:42` |
+| 42 | La démarche sur mesure | — | interface |  |
+| 43 | Le besoin | — | interface |  |
+| 44 | Le prototype | — | interface |  |
+| 45 | La mise en service | — | interface |  |
+| 46 | L’exploitation | — | interface |  |
+| 47 | Société | — | interface |  |
+| 48 | Pourquoi YanBow | — | interface |  |
+| 49 | YanBow vient de ينبوع, la source. | `YB-NOM-SOURCE` | construit | `docs/plans/PLAN_YANBOW_WEB.md:198` |
+| 50 | Qui nous sommes | — | interface |  |
+| 51 | Parlons de votre projet | — | interface |  |
+| 52 | Une personne de l’équipe lit votre demande et vous répond. | `YB-REPONSE-HUMAINE` | construit | `backend/django_core/apps/crm/webhooks.py:3354`<br>`docs/plans/PLAN_YANBOW_WEB.md:56` |
+| 53 | Prendre rendez-vous | — | interface |  |
+| 54 | SolarBow _(pied)_ | — | interface |  |
+| 55 | MarketingBow _(pied)_ | — | interface |  |
+| 56 | Sur-mesure _(pied)_ | — | interface |  |
+| 57 | Société _(pied)_ | — | interface |  |
+| 58 | Prendre rendez-vous _(pied)_ | — | interface |  |
 
 ## SolarBow — le logiciel des installateurs solaires — `/solarbow/`
 

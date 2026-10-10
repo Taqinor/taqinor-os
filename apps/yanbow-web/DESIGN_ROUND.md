@@ -88,3 +88,22 @@ Non vérifié par le critique (vérifié ici après corrections, voir « Gardes 
 - `npm run build` : vert ; `npm run check` : 0 erreur (astro check + tsc).
 - `npx vitest run` : 26 fichiers, 417 tests verts (dont `tests/designCandidates.test.ts` : contrastes calculés par candidat, schéma et portée ; règles YBW38 ; règles C et B corrigées ; routes privées hors registre et non liées ; logo ; légendes).
 - `npx playwright test` : 86 verts — débordement 320/375/768/1440, axe, crawl CSP/console/stockage sur les six pages en clair ; A et B en sombre (débordement aux 4 largeurs, axe, cibles 44 px, fond sombre effectif) ; C reste blanc sous un système sombre ; menu mobile ouvert à 320 px pour les trois.
+
+## YBW81 — critique visuelle finale (10/10/2026)
+
+Critique : Fable, contexte frais, 89 captures du site complet FR+EN (48 vues mesurées : 0 débordement). Captures avant = scratchpad de la critique ; après = même script (`cap-after/`), jamais commitées ; `REVIEW_FR.md` + `review/*.jpg` régénérés. Aucun texte visible modifié.
+
+**Corrections appliquées (`src/styles/site.css`)**
+1. Surtitres dans `.prose` (grands et gris) : `.prose p:not(.surtitre)`. Garde ajoutée dans `tests/styleTokens.test.ts` (aucune règle `.prose p` ne bat `.surtitre`, qui reste en `--texte-xs` ; vérifiée rouge sur l'ancien CSS). Avant `marketingbow-fr-1440`, `societe-fr-375` → après : surtitres petits, orange, en capitales.
+2. Modules sans capture : une seule colonne (`.module:not(:has(.capture))`) ; après `marketingbow-fr-1440` : plus de colonne vide.
+3. Menu mobile ouvert : `min-block-size: calc(100dvh - 100%)` sur le panneau ; avant `menu-fr-320` / `menu-en-320` (deux boutons orange à 40 px) → après `menu-fr-320` : panneau plein écran, un seul bouton.
+4. Sélecteur de langue visible dès 40rem (le bouton RDV reste dès 64rem) ; e2e `chrome.spec.ts` « en-tête sur une seule ligne » : 37/37 verts.
+5. Actions du héros produit en colonne dans les deux langues (`.bande-nuit-actions`).
+6. `.bande-nuit h1 { text-wrap: pretty }` ; après `marketingbow-en-375-ecran1` : plus de dernier mot seul ; FR sans régression.
+7. A-4 (tranché par Reda le 10/10/2026 : oui) : `.capture-emplacement` en `aspect-ratio: 16 / 9` ; vérifié à 375 et 1440 (0 débordement, légende « Données fictives » lisible).
+
+**14 constats optionnels de la critique** : listés dans le rapport de la critique, non appliqués (hors périmètre de ce tour).
+
+**Décisions fondateur encore à trancher par Reda** : grille du héros 5fr/7fr → 6fr/6fr ; mise en forme de la signature « Your Arrow Needs 1Bow » ; ligne d'identité du pied de page (bloquée : YBWM4 contact, YBWM5/6 sociétés, « pas encore » — le pied reste sans identité). A-4 est tranché (ci-dessus).
+
+**Non inspecté** : mode sombre EN, largeurs 832-1024 px, états survol / succès / 404.
