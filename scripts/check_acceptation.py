@@ -50,8 +50,8 @@ DETTE — docs/audits/acceptation/<G>/_dette.yml (clé = id de tâche, jamais un
 ligne) : `groupe: <G>`, `amorce: <sha9>`, `ids:` en liste de blocs. Amorcée UNE
 fois par `--amorcer` (à la bascule = l'arrivée de cette garde) ; ne fait que
 rétrécir : un id absent du même fichier à la base git (`--base`, défaut
-origin/main ; en CI à historique court la base est récupérée par un fetch
-superficiel, sinon la comparaison est sautée avec un avis) ⇒ ÉCHEC ; un
+origin/main ; en CI la base absente est récupérée par un fetch complet — jamais
+`--depth=1`, qui rendrait le clone shallow pour check_forme_code —, sinon la comparaison est sautée avec un avis) ⇒ ÉCHEC ; un
 `_dette.yml` absent de la base n'est admis que si la base n'a encore AUCUNE
 dette (la bascule) ; un id couvert ou plus coché à preuve ⇒ ÉCHEC jusqu'à
 `--write-baseline` (la mécanique de cliquet de taches_cablage_allow.txt).
@@ -319,7 +319,7 @@ def base_disponible(base: str) -> bool:
     if _git("rev-parse", "--verify", "--quiet", base + "^{commit}") is not None:
         return True
     if os.environ.get("GITHUB_ACTIONS") and base == "origin/main":
-        _git("fetch", "--no-tags", "--depth=1", "origin",
+        _git("fetch", "--no-tags", "origin",
              "+refs/heads/main:refs/remotes/origin/main", timeout=120)
         return _git("rev-parse", "--verify", "--quiet", base + "^{commit}") is not None
     return False

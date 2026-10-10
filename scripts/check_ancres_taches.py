@@ -113,7 +113,7 @@ def base_disponible(base: str, racine) -> bool:
     if _git(racine, "rev-parse", "--verify", "--quiet", base + "^{commit}") is not None:
         return True
     if os.environ.get("GITHUB_ACTIONS") and base == "origin/main":
-        _git(racine, "fetch", "--no-tags", "--depth=1", "origin",
+        _git(racine, "fetch", "--no-tags", "origin",
              "+refs/heads/main:refs/remotes/origin/main", timeout=120)
         return _git(racine, "rev-parse", "--verify", "--quiet", base + "^{commit}") is not None
     return False
