@@ -1502,7 +1502,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             avoir = creer_avoir_facture(
                 facture=facture, user=request.user, motif=motif, mode=mode,
-                lignes_saisies=clean_lignes)
+                lignes_saisies=clean_lignes,
+                type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirRefuse as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)

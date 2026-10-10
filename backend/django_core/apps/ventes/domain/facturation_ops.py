@@ -1600,7 +1600,7 @@ def _figer_avoir_retour(avoir, facture, *, epuise, reste_creditable):
 
 def creer_avoir_facture(*, facture, user, motif, mode='correction',
                         lignes_saisies=None, retour_lignes=None,
-                        restocker=False):
+                        restocker=False, type_avoir=None):
     """AFAC27 (C-AFAC-024) — LE constructeur unique d'un avoir client.
 
     Appelé par ``creer-avoir`` (correction totale/partielle, contre-
@@ -1630,6 +1630,14 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
 
     company = facture.company
     est_retour = retour_lignes is not None
+    # ATOT36 (D-ATOT5) — type de l'avoir : un retour est TOUJOURS « retour » ;
+    # sinon le choix saisi, à défaut le type neutre du modèle (geste
+    # commercial). Seule une CORRECTION réduit le solde de l'échéancier.
+    type_avoir = (Avoir.Type.RETOUR if est_retour
+                  else (type_avoir or Avoir.Type.GESTE_COMMERCIAL))
+    if type_avoir not in Avoir.Type.values:
+        raise AvoirRefuse(
+            "type doit être 'correction', 'geste_commercial' ou 'retour'.")
     with transaction.atomic():
         locked = Facture.objects.select_for_update().get(pk=facture.pk)
         epuise = False
@@ -1643,6 +1651,7 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
             avoir = Avoir.objects.create(
                 company=company, reference=ref, facture=locked,
                 client=locked.client, statut=Avoir.Statut.EMISE,
+                type=type_avoir,
                 motif=motif, motif_retour=motif if est_retour else '',
                 restocke=bool(restocker and est_retour),
                 taux_tva=locked.taux_tva,

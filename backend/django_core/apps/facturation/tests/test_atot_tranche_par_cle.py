@@ -126,23 +126,106 @@ class TrancheParCleTests(TestCase):
         self.assertIn('soldé', r.data['detail'])
         self.assertEqual(Facture.objects.count(), avant)
 
-    def test_solde_net_des_avoirs(self):
-        from apps.ventes.models import Avoir, Facture
-        devis = self._devis()
-        for _ in range(2):
-            self._generer(devis)
-        materiel = self._actives(devis)[-1]
-        Avoir.objects.create(
+    def _avoir_6000(self, facture, type_avoir):
+        from apps.ventes.models import Avoir
+        return Avoir.objects.create(
             company=self.company, reference=f'AV-ATOT5-{_nxt()}',
-            facture=materiel, client=self.client_obj,
+            facture=facture, client=self.client_obj, type=type_avoir,
             statut=Avoir.Statut.EMISE, taux_tva=Decimal('20.00'),
             montant_ht=Decimal('5000.00'), montant_tva=Decimal('1000.00'),
-            montant_ttc=Decimal('6000.00'), motif='Geste')
-        r = self._generer(devis)
+            montant_ttc=Decimal('6000.00'), motif='Avoir 6 000')
+
+    def test_solde_net_des_avoirs(self):
+        """ATOT36 (décision fondateur 10/10) — réaligné : seul un avoir de
+        CORRECTION réduit le solde (15 000 − 6 000 = 9 000) ; un geste
+        commercial le laisse à 15 000 (il réduit déjà le dû du matériel)."""
+        from apps.ventes.models import Avoir, Facture
+        for type_avoir, attendu in ((Avoir.Type.GESTE_COMMERCIAL, '15000.00'),
+                                    (Avoir.Type.CORRECTION, '9000.00')):
+            with self.subTest(type=type_avoir):
+                devis = self._devis()
+                for _ in range(2):
+                    self._generer(devis)
+                self._avoir_6000(self._actives(devis)[-1], type_avoir)
+                r = self._generer(devis)
+                self.assertEqual(r.status_code, 201, r.data)
+                solde = Facture.objects.get(pk=r.data['id'])
+                self.assertEqual(solde.cle_tranche, 'solde')
+                self.assertEqual(Decimal(str(solde.total_ttc)),
+                                 Decimal(attendu))
+
+    def test_avoir_geste_commercial_reduit_le_du(self):
+        """ATOT36 — exemple du fondateur (10/10/2026) : devis 30 000 TTC
+        en 30/70, acompte 9 000, avoir 6 000 sur l'acompte. Geste commercial
+        → solde 30 000 − 9 000 = 21 000 (le client paie 24 000 au total :
+        l'avoir réduit le dû de l'acompte, jamais compté deux fois) ;
+        correction → solde 15 000. Mutant : retirer le filtre
+        ``type == correction`` ⇒ échec. Recalcul ⇒ identique ; type relu."""
+        from apps.ventes.models import Avoir, Devis, Facture
+        from apps.ventes.utils.echeancier import next_tranche, solde_devis
+        for type_avoir, attendu in ((Avoir.Type.GESTE_COMMERCIAL, '21000.00'),
+                                    (Avoir.Type.CORRECTION, '15000.00')):
+            with self.subTest(type=type_avoir):
+                devis = self._devis()
+                self.ligne.prix_unitaire = Decimal('25000')
+                self.ligne.save(update_fields=['prix_unitaire'])
+                Devis.objects.filter(pk=devis.pk).update(echeancier=[
+                    {'pct_or_montant': 30}, {'pct_or_montant': 70}])
+                r = self._generer(devis)
+                self.assertEqual(r.status_code, 201, r.data)
+                acompte = Facture.objects.get(pk=r.data['id'])
+                self.assertEqual(Decimal(str(acompte.total_ttc)),
+                                 Decimal('9000.00'))
+                avoir = self._avoir_6000(acompte, type_avoir)
+                # Persistance : le type relu est celui émis.
+                self.assertEqual(Avoir.objects.get(pk=avoir.pk).type,
+                                 type_avoir)
+                relu = Devis.objects.get(pk=devis.pk)
+                premier = next_tranche(relu)
+                self.assertEqual(next_tranche(relu), premier)
+                self.assertEqual(Decimal(str(premier['ttc'])),
+                                 Decimal(attendu))
+                # L'écran (solde_devis) dit le même reste à facturer.
+                du_acompte = Decimal('3000.00')
+                self.assertEqual(solde_devis(relu)['restant'],
+                                 du_acompte + Decimal(attendu))
+                r = self._generer(devis)
+                self.assertEqual(r.status_code, 201, r.data)
+                solde = Facture.objects.get(pk=r.data['id'])
+                self.assertEqual(Decimal(str(solde.total_ttc)),
+                                 Decimal(attendu))
+
+    def test_creer_avoir_pose_le_type_du_contrat(self):
+        """ATOT36 — `creer-avoir` pose le `type` saisi (contrat partagé
+        `contract_samples/avoir.json`) ; absent = défaut ; inconnu = 400."""
+        import json
+        from pathlib import Path
+        from apps.ventes.models import Avoir, Facture
+        contrat = json.loads((Path(__file__).resolve().parents[1]
+                              / 'contract_samples' / 'avoir.json')
+                             .read_text(encoding='utf-8'))
+        self.assertEqual(set(contrat['types']), set(Avoir.Type.values))
+        self.assertEqual(Avoir._meta.get_field('type').default,
+                         contrat['type_par_defaut'])
+        self.user.role_legacy = 'admin'
+        self.user.save(update_fields=['role_legacy'])
+        devis = self._devis()
+        self._generer(devis)
+        acompte = self._actives(devis)[0]
+        Facture.objects.filter(pk=acompte.pk).update(
+            statut=Facture.Statut.EMISE)
+        url = f'/api/django/ventes/factures/{acompte.id}/creer-avoir/'
+        corps = {'motif': 'x', 'lignes': [], 'type': 'inconnu'}
+        r = self.api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(url, {'motif': 'x', 'type': 'correction'},
+                          format='json')
         self.assertEqual(r.status_code, 201, r.data)
-        solde = Facture.objects.get(pk=r.data['id'])
-        self.assertEqual(solde.cle_tranche, 'solde')
-        self.assertEqual(Decimal(str(solde.total_ttc)), Decimal('21000.00'))
+        self.assertEqual(r.data['type'], 'correction')
+        self.assertTrue(set(contrat['exemple']) <= set(r.data) | {'id'},
+                        set(contrat['exemple']) - set(r.data))
+        self.assertEqual(Avoir.objects.get(pk=r.data['id']).type,
+                         Avoir.Type.CORRECTION)
 
     def _facture_emise(self):
         from apps.ventes.models import Facture

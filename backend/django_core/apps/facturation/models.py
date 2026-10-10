@@ -1020,9 +1020,20 @@ class Avoir(TotauxDocumentMixin, models.Model):
         EMISE = 'emise', 'Émis'
         ANNULEE = 'annulee', 'Annulé'
 
+    class Type(models.TextChoices):
+        # ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — SEUL un avoir de
+        # CORRECTION réduit la dernière tranche (solde) de l'échéancier ; un
+        # geste commercial ou un retour réduit déjà le dû de SA facture
+        # (``Facture.montant_du``) et n'est jamais compté une seconde fois.
+        CORRECTION = 'correction', 'Correction'
+        GESTE_COMMERCIAL = 'geste_commercial', 'Geste commercial'
+        RETOUR = 'retour', 'Retour'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='avoirs')
+    type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.GESTE_COMMERCIAL)
     reference = models.CharField(max_length=50)
     facture = models.ForeignKey(
         Facture, on_delete=models.PROTECT, related_name='avoirs')
