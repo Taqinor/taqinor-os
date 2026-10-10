@@ -3,7 +3,7 @@
 # PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: AFAC
-amorce: 4b5636118
+amorce: 3a7c3b882
 ids:
   - AFAC5
   - AFAC6
@@ -13,15 +13,18 @@ ids:
   - AFAC10
   - AFAC11
   - AFAC12
+  - AFAC13
   - AFAC15
   - AFAC16
   - AFAC17
+  - AFAC18
   - AFAC19
   - AFAC21
   - AFAC22
   - AFAC23
   - AFAC24
   - AFAC25
+  - AFAC26
   - AFAC27
   - AFAC28
   - AFAC29
@@ -51,6 +54,7 @@ ids:
   - AFAC60
   - AFAC61
   - AFAC63
+  - AFAC64
   - AFAC65
   - AFAC66
   - AFAC67

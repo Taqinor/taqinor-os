@@ -3,7 +3,7 @@
 # PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
 # tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
 groupe: AMOT
-amorce: 4b5636118
+amorce: 3a7c3b882
 ids:
   - AMOT8
   - AMOT9
@@ -46,12 +46,15 @@ ids:
   - AMOT46
   - AMOT49
   - AMOT50
+  - AMOT58
   - AMOT59
   - AMOT60
   - AMOT61
   - AMOT62
+  - AMOT63
   - AMOT66
   - AMOT67
   - AMOT68
   - AMOT69
   - AMOT70
+  - AMOT72
