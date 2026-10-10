@@ -19,17 +19,21 @@ est une copie de dev qui peut diverger sans conséquence.
 | Secrets serveur | `/opt/taqinor-os/.env` (jamais dans le dépôt) |
 | Sauvegardes | Hetzner Backups (7 instantanés glissants, quotidiens) |
 
-## Mode DEBUG (décision du propriétaire, 2026-06-12) — à basculer (D-ASEC-6)
+## Mode de production — `settings.prod`, DEBUG coupé (BASCULÉ le 10/10/2026)
 
-Le serveur tourne **volontairement en mode DEBUG** (`settings.dev`,
-`DJANGO_DEBUG=True` dans l'.env du serveur) tant que Reda teste — il
-préfère voir les erreurs détaillées. Risque assumé : les pages d'erreur
-exposent des détails techniques à tout visiteur, et l'hôte public est
-découvrable (journaux de certificats). Mesuré le 07/10/2026 (audit sécurité,
-C-ASEC-029) : `settings.dev`, `DEBUG=True`, `NUM_PROXIES=1`. **Décision
-D-ASEC-6 (07/10/2026)** : la production passe sur `settings.prod` maintenant
-que les correctifs cookie `Secure` et proxy (ASEC52, ASEC15) sont livrés ; la
-bascule est un **geste du fondateur**, décrit ci-dessous.
+**État actuel : `DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod` et
+`DJANGO_DEBUG=False`** depuis le 10/10/2026 10:54 UTC (décision D-ASEC-6 du
+07/10/2026, bascule ASEC48 exécutée sur ordre explicite de Reda, après le
+merge de la PR #932). Le `.env` d'avant est conservé sur le serveur :
+`/opt/taqinor-os/.env.avant-settings-prod` (retour arrière : section
+« Retour arrière » ci-dessous). Vérifié après bascule : 200 / 401 sur les deux
+hôtes, sondes de santé 200, HSTS, redirection HTTP → HTTPS, page 404 sans
+détail technique, 0 `DisallowedHost` ni trace d'erreur dans les journaux ;
+`check --deploy` : seul avertissement `notifications.W010`.
+
+Historique : du 12/06 au 10/10/2026 le serveur tournait volontairement en
+`settings.dev` / `DEBUG=True` (Reda testait) — pages d'erreur détaillées
+exposées à tout visiteur (C-ASEC-029, audit sécurité du 07/10).
 
 ## Bascule vers settings.prod (ASEC48)
 
@@ -43,10 +47,12 @@ n'est jamais redirigée ; les sondes de santé ne sont jamais redirigées ; les
 cookies session/CSRF/JWT sont `Secure` ; `CORS_ALLOW_ALL_ORIGINS=False` ;
 l'adresse retenue pour la limitation est le visiteur, jamais l'appelant.
 
-**Personne d'autre que Reda ne fait cette bascule** (aucun run Claude ne
-touche le serveur ni son `.env`). Ne JAMAIS la faire pendant un déploiement
+**Bascule (ou retour arrière) : uniquement sur ordre explicite de Reda** —
+par Reda lui-même, ou par Claude hors auto-mode (chaque commande approuvée par
+Reda), comme le 10/10/2026. Ne JAMAIS la faire pendant un déploiement
 (l'auto-deploy du serveur tourne après chaque merge sur `main`) : attendre
-qu'il soit fini.
+qu'il soit fini (`pgrep -f "/opt/autodeploy/[a]uto-deploy"` vide — le motif
+entre crochets évite qu'un `pgrep` lancé par SSH se trouve lui-même).
 
 ### Variables du `.env` serveur (`/opt/taqinor-os/.env`)
 

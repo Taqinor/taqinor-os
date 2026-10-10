@@ -1168,6 +1168,11 @@ class Lead(SoftDeleteModel):
     # forcément perdu ; un lead à « Devis envoyé » peut l'être.
     perdu = models.BooleanField(default=False)
     motif_perte = models.CharField(max_length=255, blank=True, null=True)
+    # AMET23 (D-PROVENANCE) — noms des champs saisis par un HUMAIN (liste
+    # triée, sans doublon), lus par ``records.provenance.ecrire_si_libre`` :
+    # un écrivain automatique ne l'écrase jamais. Posé côté serveur seulement.
+    saisies_humaines = models.JSONField(
+        default=list, blank=True, verbose_name='Champs saisis par un humain')
     relance_date = models.DateField(null=True, blank=True)
     # MRY5 — « ne plus contacter » : la personne a demandé qu'on la laisse
     # tranquille. DISTINCT de `whatsapp_opt_in` (consentement MARKETING) et de

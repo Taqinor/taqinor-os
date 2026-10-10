@@ -3303,7 +3303,9 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def get_queryset(self):
         qs = SignataireDemande.objects.filter(
-            company=self.request.user.company).select_related(
+            company=self.request.user.company,
+            demande__document_id__in=selectors.document_ids_visibles(
+                self.request.user)).select_related(
             'demande', 'role_signataire')
         demande = self.request.query_params.get('demande')
         if demande:
@@ -3333,6 +3335,12 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         qs = ChampSignature.objects.filter(
             company=self.request.user.company).select_related(
                 'demande', 'modele', 'type_champ_ref')
+        # ADOC173 — un champ rattaché à une demande ne sort que si le document
+        # de la demande est visible ; un champ de MODÈLE (demande nulle) reste.
+        qs = qs.filter(
+            models.Q(demande__isnull=True) | models.Q(
+                demande__document_id__in=selectors.document_ids_visibles(
+                    self.request.user)))
         demande = self.request.query_params.get('demande')
         if demande:
             qs = qs.filter(demande_id=demande)

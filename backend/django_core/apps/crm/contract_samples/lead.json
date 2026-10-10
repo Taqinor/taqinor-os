@@ -1,0 +1,12 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AMET23 (D-PROVENANCE, C-AMET-025) — la fiche lead porte `saisies_humaines` : la liste TRIÉE, SANS DOUBLON, des noms de champs saisis par un humain (forme partagée avec apps/records/contract_samples/provenance.json). Lecture seule côté API : posée par le serveur (PATCH de la fiche = clés du corps ; rattrapage de la migration crm 0133 depuis LeadActivity avec utilisateur). Lue par `records.provenance.ecrire_si_libre`, qui refuse alors d'écraser. Échantillon partiel : seule la clé de provenance est figée ici.",
+  "exemple": {
+    "id": 1489,
+    "saisies_humaines": [
+      "email",
+      "whatsapp"
+    ]
+  }
+}
