@@ -55,6 +55,11 @@ if ($EtapesSupplementaires) {
     if ($fus -ne 0) { $spec = $fus }
 }
 Set-Location -LiteralPath $RepoRoot
+# Un enregistrement PASS couvre des ids encore en dette gelee : la dette RETRECIT d'abord
+# (sinon la garde echoue sur des ids couverts restes en dette). Seulement si la spec est verte.
+if ($spec -eq 0) {
+    $null = Run 'python scripts/check_acceptation.py --write-baseline' { python scripts/check_acceptation.py --write-baseline }
+}
 $garde = Run 'python scripts/check_acceptation.py' { python scripts/check_acceptation.py }
 if ($DryRun) { Write-Host ('> git add docs/audits/acceptation/' + $Groupe + '/ + captures ; git commit [dry-run]'); exit 0 }
 if (($spec -ne 0) -or ($garde -ne 0)) {
