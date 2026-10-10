@@ -21,4 +21,10 @@ pour le fondateur : `docs/deploy-notes-vague3.md`.
   `users_gerer` : il lit la liste des comptes mais toute écriture `/users/` est refusée (403
   `droit_manquant`). Commercial responsable, Technicien responsable et Responsable gardent le code.
 
+- **ASEC48 — réglages de la bascule prod (10/10/2026, Reda).** Origines CORS : garder le défaut de
+  `settings.prod` (taqinor.ma + www), ne pas poser `CORS_ALLOWED_ORIGINS`. Adresse de l'admin Django :
+  personnalisée — `DJANGO_ADMIN_URL` aléatoire sous `api/django/` posée le jour même dans le `.env`
+  serveur (valeur jamais au dépôt) ; l'ancien `/api/django/admin/` répond 404. Production en
+  `settings.prod` + `DEBUG=False` depuis le 10/10 10:54 UTC (`docs/production.md`).
+
 Ne jamais re-demander ces questions.
