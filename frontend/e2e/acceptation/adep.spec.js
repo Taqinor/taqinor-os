@@ -8,7 +8,7 @@ import { groupe } from './_oracles.js'
 import { aujourdHui } from './_enregistrement.js'
 import { uniq } from '../helpers.js'
 
-const etape = groupe('ADEP', ['ADEP16', 'ADEP17', 'ADEP18', 'ADEP19', 'ACHT69', 'ADEP99'])
+const etape = groupe('ADEP', ['ADEP16', 'ADEP17', 'ADEP18', 'ADEP19', 'ADEP33', 'ACHT69', 'ADEP99'])
 const API = '/api/django/installations'
 const RESEAU = /\/api\/django\//
 const SYNC = /\/api\/django\/installations\/sync\/$/

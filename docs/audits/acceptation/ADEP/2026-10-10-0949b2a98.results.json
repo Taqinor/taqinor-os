@@ -37,128 +37,11 @@
     "ADEP26",
     "ADEP27",
     "ADEP28",
-    "ADEP29"
+    "ADEP29",
+    "ADEP33"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
-    {
-      "id": "P5.1",
-      "taches": [
-        "ADEP16",
-        "ADEP17",
-        "ADEP99"
-      ],
-      "verdict": "PASS",
-      "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.1.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "PASS",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": ""
-    },
-    {
-      "id": "P5.2",
-      "taches": [
-        "ADEP16",
-        "ADEP99"
-      ],
-      "verdict": "PASS",
-      "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.2.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "PASS",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": ""
-    },
-    {
-      "id": "P5.3",
-      "taches": [
-        "ADEP18",
-        "ACHT69",
-        "ADEP99"
-      ],
-      "verdict": "PASS",
-      "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.3.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "NA",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": ""
-    },
-    {
-      "id": "P5.3-500",
-      "taches": [
-        "ACHT69",
-        "ADEP99"
-      ],
-      "verdict": "PASS",
-      "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.3-500.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "NA",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": ""
-    },
-    {
-      "id": "P5.4",
-      "taches": [
-        "ADEP19",
-        "ADEP33",
-        "ADEP99"
-      ],
-      "verdict": "PASS",
-      "base_verdict": null,
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.4.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "NA",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": ""
-    },
     {
       "id": "P1.1",
       "taches": [
@@ -489,6 +372,124 @@
         "10": "NA"
       },
       "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P4.1.txt"
+    },
+    {
+      "id": "P5.1",
+      "taches": [
+        "ADEP16",
+        "ADEP17",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.2",
+      "taches": [
+        "ADEP16",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.3",
+      "taches": [
+        "ADEP18",
+        "ACHT69",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.3-500",
+      "taches": [
+        "ACHT69",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.3-500.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.4",
+      "taches": [
+        "ADEP19",
+        "ADEP33",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
     }
   ]
 }
