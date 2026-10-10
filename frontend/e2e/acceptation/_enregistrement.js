@@ -34,18 +34,24 @@ export function cheminCapture(groupe, id, date = aujourdHui()) {
 const etapeComplete = (e) => !!(e && e.id && e.taches?.length && ['PASS', 'FAIL'].includes(e.verdict)
   && e.trace && ORACLES.every((o) => ['PASS', 'FAIL', 'NA'].includes(e.oracles?.[o])))
 
-/** Construit {res, md} : results.json (fait foi) + vue humaine à en-tête YAML. */
+/** Construit {res, md} : results.json (fait foi) + vue humaine à en-tête YAML.
+ *  Verdict = règle EXACTE de `check_acceptation.py::_verifier_etape` : PASS ssi
+ *  chaque étape est complète et PASS, ou FAIL en ÉCART ACCEPTÉ (`base_verdict:
+ *  FAIL` ET toutes ses tâches dans `couvre_avec_ecart`) ; couvre_avec_ecart ⊆ couvre. */
 export function composer({ groupe, sha, date, couvre, couvreAvecEcart = [], etapes }) {
   const vues = new Set(etapes.flatMap((e) => e.taches || []))
   const sansEtape = couvre.filter((t) => !vues.has(t))
-  const ok = etapes.length > 0 && sansEtape.length === 0
-    && etapes.every((e) => etapeComplete(e) && e.verdict === 'PASS')
+  // Un id sans étape rendrait l'enregistrement non conforme : il est retiré
+  // de `couvre` (et nommé dans la vue humaine), le verdict tombe à FAIL.
+  const couvert = couvre.filter((t) => vues.has(t))
+  const ecart = new Set(couvreAvecEcart.filter((t) => couvert.includes(t)))
+  const admise = (e) => etapeComplete(e) && (e.verdict === 'PASS'
+    || (e.base_verdict === 'FAIL' && e.taches.every((t) => ecart.has(t))))
+  const ok = etapes.length > 0 && sansEtape.length === 0 && etapes.every(admise)
   const res = {
     sha, date, groupe, verdict: ok ? 'PASS' : 'FAIL',
-    // Un id sans étape rendrait l'enregistrement non conforme : il est retiré
-    // de `couvre` (et nommé dans la vue humaine), le verdict tombe à FAIL.
-    couvre: couvre.filter((t) => vues.has(t)),
-    couvre_avec_ecart: couvreAvecEcart.filter((t) => vues.has(t)),
+    couvre: couvert,
+    couvre_avec_ecart: [...ecart],
     etapes,
   }
   const liste = (xs) => `[${xs.join(', ')}]`

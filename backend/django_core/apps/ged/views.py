@@ -1262,6 +1262,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except ArchivageLegalError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_403_FORBIDDEN)
+        try:  # ADOC175 — jumeau d'ADOC68 : garde AVANT store_attachment
+            services.assert_aucune_signature_en_attente(document)
+        except services.SignatureEnCoursError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         file = request.FILES.get('file')
         if not file:
             return Response({'file': 'Aucun fichier fourni.'},
@@ -1607,7 +1612,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         except (ArchivageLegalError, LegalHoldError, QuotaDepasseError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
-        except PermissionError as exc:
+        except (PermissionError, services.SignatureEnCoursError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         data = DocumentVersionSerializer(

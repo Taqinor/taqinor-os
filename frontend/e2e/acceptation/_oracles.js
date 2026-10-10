@@ -67,16 +67,28 @@ export class Suivi {
   }
 }
 
-/** Fabrique d'étapes d'un groupe : `etape(id, taches, corps)` déclare un test ;
- *  `afterAll` écrit l'enregistrement (même si une étape a échoué : un FAIL
- *  reste une trace, il ne couvre rien). */
+/** Fabrique d'étapes d'un groupe : `etape(id, taches, corps, options)` déclare
+ *  un test ; `afterAll` écrit l'enregistrement (même si une étape a échoué : un
+ *  FAIL reste une trace, il ne couvre rien).
+ *  `options.ecart = { base: 'FAIL', raison }` — ÉCART ACCEPTÉ (`_format.md`) :
+ *  l'étape échouait déjà à la base (`base_verdict`), ses tâches vont dans
+ *  `couvre_avec_ecart` (et restent dans `couvre`). Seuls ses ORACLES peuvent
+ *  alors échouer sans faire tomber le test ; une assertion de son corps qui
+ *  échoue le fait toujours tomber. */
 export function groupe(nom, couvre) {
   const etapes = []
+  const ecarts = new Set()
   test.afterAll(() => {
-    const sortie = ecrire({ groupe: nom, couvre, etapes })
+    const sortie = ecrire({
+      groupe: nom, couvre: [...new Set([...couvre, ...ecarts])], couvreAvecEcart: [...ecarts], etapes,
+    })
     console.log(`[acceptation] ${sortie.verdict} — ${sortie.md}`)
   })
-  return function etape(id, taches, corps) {
+  return function etape(id, taches, corps, { ecart = null } = {}) {
+    if (ecart && (ecart.base !== 'FAIL' || !String(ecart.raison || '').trim())) {
+      throw new Error(`étape ${id} : un écart accepté exige { base: 'FAIL', raison }`)
+    }
+    if (ecart) taches.forEach((t) => ecarts.add(t))
     test(`${id} — ${taches.join(', ')}`, async ({ page, context }, testInfo) => {
       const suivi = new Suivi(new URL(testInfo.project.use.baseURL).origin)
       suivi.surveiller(page)
@@ -94,12 +106,17 @@ export function groupe(nom, couvre) {
       if (ouverte) await ouverte.screenshot({ path: absolu, type: 'jpeg', quality: 60 }).catch(() => undefined)
       const ok = !erreur && !Object.values(oracles).includes('FAIL')
       etapes.push({
-        id, taches, verdict: ok ? 'PASS' : 'FAIL', base_verdict: null, trace, oracles,
-        // eslint-disable-next-line no-control-regex -- couleurs ANSI de `expect`
-        notes: [erreur ? `erreur : ${String(erreur.message).replace(/\u001b\[[0-9;]*m/g, '').split('\n')[0]}` : '',
+        id, taches, verdict: ok ? 'PASS' : 'FAIL', base_verdict: ecart ? ecart.base : null, trace, oracles,
+        notes: [ecart ? `écart accepté (base FAIL) : ${ecart.raison}` : '',
+          // eslint-disable-next-line no-control-regex -- couleurs ANSI de `expect`
+          erreur ? `erreur : ${String(erreur.message).replace(/\u001b\[[0-9;]*m/g, '').split('\n')[0]}` : '',
           ...suivi.incidents.map((i) => `oracle ${i.oracle} — ${i.texte}`)].filter(Boolean).join(' ; '),
       })
       if (erreur) throw erreur
+      if (ecart) {
+        testInfo.annotations.push({ type: 'écart accepté', description: ecart.raison })
+        return
+      }
       expect(suivi.incidents, 'oracles durs 1-4 et 8').toEqual([])
     })
   }

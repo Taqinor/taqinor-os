@@ -1,0 +1,33 @@
+{
+  "sha": "aad67f17629cc22f47ba93a46679c01721eda078",
+  "date": "2026-10-10",
+  "groupe": "ADOC",
+  "verdict": "PASS",
+  "couvre": [
+    "ADOC175"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-ADOC175",
+      "taches": [
+        "ADOC175"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADOC-P-ADOC175.txt"
+    }
+  ]
+}
