@@ -256,6 +256,7 @@
   "roof_outline": null,
   "roof_point": null,
   "roof_type": null,
+  "saisies_humaines": [],
   "score": 15,
   "score_ajustement": null,
   "score_label": "Froid",
