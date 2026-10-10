@@ -50,8 +50,7 @@ from .valeurs import nombre as _nombre
 
 __all__ = [
     'PanPose', 'ModulePan', 'Conception', 'REGLE_UNE_ORIENTATION_PAR_CHAINE',
-    'pans_poses', 'groupes_electriques', 'specs_module', 'specs_onduleur',
-    'entree_electrique', 'concevoir_par_pan',
+    'specs_module', 'entree_electrique', 'concevoir_par_pan',
     'affectation', 'empreinte_entree', 'bloc_electrique', 'bloc_pose',
     # CAL234 — affectation IMPOSÉE (manuelle) et son verdict.
     'SOURCE_AUTO', 'SOURCE_MANUELLE', 'AffectationInvalide',
@@ -240,7 +239,7 @@ def _source_orientation(pan, zones_par_cle):
         orientation_du_pan(zone).get('source_orientation'))
 
 
-def pans_poses(layout):
+def _pans_poses(layout):
     """Les pans du document qui portent au moins un module POSÉ.
 
     ACAL61 — adaptateur MINCE de ``apps.ventes.services.pans_du_document``
@@ -365,10 +364,10 @@ def _module_du_pan(pan):
                      pmax_wc=pmax)
 
 
-def groupes_electriques(layout):
+def _groupes_electriques(layout):
     """Les ``GroupePan`` du noyau — UN groupe par pan, jamais deux mélangés ;
     DEUX pour un pan est-ouest, un par face (ACAL139)."""
-    return tuple(groupe for pan in pans_poses(layout)
+    return tuple(groupe for pan in _pans_poses(layout)
                  for groupe in _groupes_du_pan(pan))
 
 
@@ -413,7 +412,7 @@ def specs_module(specs, designation=''):
         coefficients_sources=tuple(sources), **optionnels), ())
 
 
-def specs_onduleur(specs, designation=''):
+def _specs_onduleur(specs, designation=''):
     """``(SpecOnduleur | None, manquantes)`` depuis un bloc ``onduleur``.
 
     CALX213 (crochet posé par la phase 2 du lot 4) — ``s_max_kva`` et
@@ -444,7 +443,7 @@ def specs_onduleur(specs, designation=''):
         designation=designation or '', **optionnels), ())
 
 
-def chaines_max_par_mppt(specs):
+def _chaines_max_par_mppt(specs):
     """Le nombre de chaînes admis par entrée MPPT, ou ``None`` si non publié.
 
     CAL115 — la fiche onduleur publie ``chaines_max_par_mppt`` (et, à défaut,
@@ -553,7 +552,7 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
     """
     return EntreeElectrique(
         module=module, onduleur=onduleur,
-        groupes=groupes_electriques(layout),
+        groupes=_groupes_electriques(layout),
         dc_m=float(dc_m or 0.0), ac_m=float(ac_m or 0.0),
         phases=int(phases or getattr(onduleur, 'phases', 1) or 1),
         temp_froid_c=temperatures.froid_c, temp_chaud_c=temperatures.chaud_c,
@@ -595,7 +594,7 @@ def _verdict_mppt(pans, onduleur, specs_onduleur_brut):
                 % (len(pans), n_mppt, REGLE_UNE_ORIENTATION_PAR_CHAINE),
                 False, ())
     en_trop = tuple(pan.label for pan in pans[n_mppt:])
-    maxi = chaines_max_par_mppt(specs_onduleur_brut)
+    maxi = _chaines_max_par_mppt(specs_onduleur_brut)
     if maxi and maxi > 1:
         return (
             "partage d'entrée MPPT AUTORISÉ par la fiche de %s (%d chaîne(s) "
@@ -808,10 +807,10 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     (``_concevoir_par_module``) ; mono-module, le chemin est inchangé.
     """
     pans, fiches_par_pan = _pans_avec_leur_fiche(
-        pans_poses(layout), fiches_modules, module_specs, module_designation)
+        _pans_poses(layout), fiches_modules, module_specs, module_designation)
     module, manque_module = specs_module(module_specs, module_designation)
-    onduleur, manque_onduleur = specs_onduleur(onduleur_specs,
-                                               onduleur_designation)
+    onduleur, manque_onduleur = _specs_onduleur(onduleur_specs,
+                                                onduleur_designation)
     # ACAL162 — AUCUN onduleur de chaîne désigné (fiche vide, pas une fiche
     # incomplète) mais un MICRO-onduleur en emplacement optimiseur : le champ
     # est câblé en branches AC. Aucun onduleur fictif n'est construit.
@@ -1087,7 +1086,7 @@ def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,
 
     charge = {
         'pans': [[p.label, p.modules, p.azimut_deg, p.inclinaison_deg]
-                 for p in pans_poses(layout)],
+                 for p in _pans_poses(layout)],
         'module': {cle: _nombre((module_specs or {}).get(cle))
                    for cle, _ in CHAMPS_MODULE},
         'onduleur': {cle: _nombre((onduleur_specs or {}).get(cle))
@@ -1436,7 +1435,7 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
                     "la chaîne ne démarre pas sur la plage MPPT."
                     % (numero, pan, nombre, mini))
 
-    maximum = chaines_max_par_mppt(specs_onduleur)
+    maximum = _chaines_max_par_mppt(specs_onduleur)
     if maximum:
         for (onduleur, mppt), chaines in sorted(
                 chaines_par_mppt.items(),
