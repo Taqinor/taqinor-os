@@ -17,7 +17,7 @@ FG320), prélèvement (`vagues-picking/{id}/lignes/{l}/prelever/` NTWMS4),
 comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
-from ..openapi_helpers import INT, P, S, STR, corps  # noqa: F401
+from ..openapi_helpers import INT, P, STR, corps
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -64,7 +64,7 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
-@extend_schema(request=corps('ScannerMouvementCorps', produit=S.IntegerField(), type_mouvement=S.CharField(), quantite=S.IntegerField(), bin_source=S.IntegerField(required=False, allow_null=True), bin_destination=S.IntegerField(required=False, allow_null=True), reference=S.CharField(required=False), note=S.CharField(required=False, allow_blank=True)), responses={
+@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(), type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(), bin_source=serializers.IntegerField(required=False, allow_null=True), bin_destination=serializers.IntegerField(required=False, allow_null=True), reference=serializers.CharField(required=False), note=serializers.CharField(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
         'id': serializers.IntegerField(),
         'produit': serializers.IntegerField(),

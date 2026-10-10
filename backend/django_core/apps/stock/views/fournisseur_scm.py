@@ -20,9 +20,7 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
-from ..openapi_helpers import (  # noqa: F401
-    BOOL, INT, NUM, P, STR,
-)
+from ..openapi_helpers import BOOL, INT, NUM, P, STR
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur

@@ -61,7 +61,8 @@ from .models import (
 from .serializers import (
     AclGedSerializer,
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
-    ChampSignatureSerializer, CoffreSerializer, DemandeApprobationSerializer,
+    ChampSignatureSerializer, CoffreSerializer, CreerMultiSignatairesSerializer,
+    DemandeApprobationSerializer,
     DemandeDispositionSerializer, DemandeDocumentSerializer,
     DemandeSignatureDocumentSerializer,
     DepotPublicSerializer, DocumentLienSerializer, DocumentSerializer,
@@ -3371,7 +3372,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
-    @extend_schema(request=oa.CREER_MULTI_CORPS,
+    @extend_schema(request=CreerMultiSignatairesSerializer,
                    responses={201: DemandeSignatureDocumentSerializer})
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):
@@ -3395,7 +3396,6 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         # ADOC76 — corps validé par un serializer : rôle parmi les trois
         # choix, ordre ≥ 1, expires_at parsé, au moins un « signataire » —
         # 400 nommé, jamais 500 ni demande en attente à vie.
-        from .serializers import CreerMultiSignatairesSerializer
         entree = CreerMultiSignatairesSerializer(data=request.data)
         if not entree.is_valid():
             return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)

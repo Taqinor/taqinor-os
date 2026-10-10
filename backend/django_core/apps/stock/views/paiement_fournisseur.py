@@ -7,9 +7,7 @@ from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from rest_framework.permissions import BasePermission
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, DATE, INT, P, XLSX,
-)
+from ..openapi_helpers import BINARY, DATE, INT, P, XLSX
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401

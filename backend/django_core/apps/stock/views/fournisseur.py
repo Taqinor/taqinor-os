@@ -6,10 +6,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from ..openapi_helpers import (
-    PTOKEN,  # noqa: F401
-    BINARY, DATE, INT, LISTE, OBJET, P, S, STR, XLSX, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import PTOKEN, BINARY, DATE, INT, LISTE, OBJET, P, STR, XLSX, corps
 from ..serializers import PortailFournisseurTokenSerializer  # noqa: E402
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
@@ -318,7 +316,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
             pass
 
-    @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=S.BooleanField()), responses=corps('FournisseurDeciderCandidatureReponse', id=S.IntegerField(), statut_validation=S.CharField()))
+    @extend_schema(request=corps('FournisseurDeciderCandidatureCorps', valider=serializers.BooleanField()), responses=corps('FournisseurDeciderCandidatureReponse', id=serializers.IntegerField(), statut_validation=serializers.CharField()))
     @action(detail=True, methods=['post'], url_path='decider-candidature',
             permission_classes=[IsAdminRole])
     def decider_candidature(self, request, *args, **kwargs):

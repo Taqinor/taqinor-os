@@ -4,9 +4,8 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from ..openapi_helpers import (  # noqa: F401
-    INT, LISTE, P, S, STR, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import INT, LISTE, P, STR, corps
 from ..models import LotEntrepot
 from ..serializers import LotEntrepotSerializer
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -85,7 +84,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             for p in plan
         ])
 
-    @extend_schema(request=corps('LotSortirCorps', quantite=S.IntegerField(), forcer=S.BooleanField(required=False), motif=S.CharField(required=False, allow_blank=True)), responses=LotEntrepotSerializer)
+    @extend_schema(request=corps('LotSortirCorps', quantite=serializers.IntegerField(), forcer=serializers.BooleanField(required=False), motif=serializers.CharField(required=False, allow_blank=True)), responses=LotEntrepotSerializer)
     @action(detail=True, methods=['post'], url_path='sortir')
     def sortir(self, request, pk=None):
         """XSTK6 — sort une quantité de CE lot. Bloque un lot périmé (garde

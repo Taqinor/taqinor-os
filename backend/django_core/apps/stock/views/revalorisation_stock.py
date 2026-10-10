@@ -3,9 +3,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import (  # noqa: F401
-    INT, P,
-)
+from ..openapi_helpers import INT, P
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import RevalorisationStock
 from ..serializers import RevalorisationStockSerializer

@@ -2,8 +2,9 @@
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, SimpleTestCase
 from rest_framework.test import APIClient
+from rest_framework.parsers import JSONParser
 
 from authentication.models import Company
 
@@ -14,6 +15,8 @@ from .models import (
 )
 from .types_evenements import EventType
 from .services import merged_preferences, notify, notify_many, resolve_recipients
+from apps.notifications.serializers import AnnonceSerializer, NotificationSerializer
+from apps.notifications import views
 
 User = get_user_model()
 
@@ -839,3 +842,30 @@ class RoutingRuleTests(TestCase):
             {'event_type': EventType.FACTURE_OVERDUE},
             format='json')
         self.assertEqual(res.status_code, 400)
+
+
+# ENF8 — schéma OpenAPI exact de l'app notifications (décision D2 : JSON seul).
+# Aucune vue de cette app ne reçoit de fichier : toutes n'acceptent que du JSON, et les sérialiseurs
+# annoncent le vrai type de leurs champs calculés.
+class NotificationsSchemaTests(SimpleTestCase):
+    def test_viewsets_json_seul(self):
+        for vue in (
+            views.NotificationViewSet, views.NotificationPreferenceViewSet,
+            views.NotificationRoutingRuleViewSet,
+            views.WorkingHoursConfigViewSet, views.HolidayViewSet,
+            views.WhatsAppTemplateViewSet, views.AnnonceViewSet,
+            views.MessageAccueilViewSet,
+        ):
+            with self.subTest(vue=vue.__name__):
+                self.assertEqual(vue.parser_classes, [JSONParser])
+
+    def test_fonctions_push_json_seul(self):
+        for fn in (views.push_subscribe, views.push_unsubscribe):
+            with self.subTest(vue=fn.__name__):
+                self.assertEqual(fn.cls.parser_classes, [JSONParser])
+
+    def test_champs_calcules_types(self):
+        annonce = AnnonceSerializer().fields
+        self.assertTrue(annonce['is_expiree'].read_only)
+        notif = NotificationSerializer().fields
+        self.assertEqual(type(notif['reason']).__name__, 'CharField')

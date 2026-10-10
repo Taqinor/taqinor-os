@@ -1,9 +1,7 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from core.viewsets import CompanyScopedModelViewSet
-from ..openapi_helpers import (  # noqa: F401
-    INT, P,
-)
+from ..openapi_helpers import INT, P
 from ..models import ConditionnementProduit
 from ..serializers import ConditionnementProduitSerializer
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
