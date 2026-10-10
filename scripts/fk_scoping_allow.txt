@@ -131,7 +131,6 @@ backend/django_core/apps/ged/serializers.py::CertificatDestructionSerializer.det
 backend/django_core/apps/ged/serializers.py::DocumentLienSerializer.created_by
 backend/django_core/apps/ged/serializers.py::JournalAccesSerializer.utilisateur
 backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.created_by
-backend/django_core/apps/notifications/serializers.py::NotificationRoutingRuleSerializer.target_user
 backend/django_core/apps/parametres/serializers_audit.py::SettingsAuditLogSerializer.user
 backend/django_core/apps/publicapi/serializers.py::ApiKeySerializer.created_by
 backend/django_core/apps/reporting/kpi_alertes.py::KpiAlerteSerializer.metric_definition
@@ -167,7 +166,6 @@ backend/django_core/apps/ged/serializers.py::LotEnvoiSerializer.modele
 backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.demande
 backend/django_core/apps/ged/serializers.py::SignataireDemandeSerializer.role_signataire
 backend/django_core/apps/identity/serializers.py::IpAllowRuleSerializer.policy
-backend/django_core/apps/notifications/serializers.py::AnnonceLectureSerializer.annonce
 backend/django_core/apps/outillage/serializers.py::KitOutillageItemSerializer.kit
 backend/django_core/apps/outillage/serializers.py::KitOutillageItemSerializer.outil
 backend/django_core/apps/publicapi/serializers.py::WebhookDeliverySerializer.webhook
