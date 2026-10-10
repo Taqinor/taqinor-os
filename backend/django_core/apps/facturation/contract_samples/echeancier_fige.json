@@ -1,0 +1,23 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AMET1 (C-AMET-003, D-ECH-FIGE) — CONTRAT D'ABORD (M0). À l'acceptation, `apps/ventes/utils/echeancier.py::figer_echeancier(devis)` copie les conditions société du jour dans l'échéancier PROPRE du devis (`echeancier`, structure d'échéancier négocié) quand il n'en a pas : changer ensuite les réglages société ne réécrit plus les tranches d'un devis signé. Chaque jalon porte `type` (clé de tranche), `libelle`, `pct_or_montant` (pourcentage), `unite` = « pct », `fige_le` (horodatage ISO du figeage) et, pour un jalon C&I, `jalon`. `exemple_figer` = la forme rendue par `figer_echeancier` (lue par AMET2/AMET3) ; `deja_fige` vrai = devis qui portait déjà son échéancier (aucune écriture).",
+  "exemple": {
+    "id": 412,
+    "statut": "accepte",
+    "echeancier": [
+      {"type": "acompte", "libelle": "Acompte", "pct_or_montant": 30.0, "unite": "pct", "fige_le": "2026-10-09T10:15:00+00:00"},
+      {"type": "materiel", "libelle": "Livraison du matériel", "pct_or_montant": 60.0, "unite": "pct", "fige_le": "2026-10-09T10:15:00+00:00"},
+      {"type": "solde", "libelle": "Solde", "pct_or_montant": 10.0, "unite": "pct", "fige_le": "2026-10-09T10:15:00+00:00"}
+    ]
+  },
+  "exemple_figer": {
+    "devis": 412,
+    "deja_fige": false,
+    "jalons": [
+      {"type": "acompte", "libelle": "Acompte", "pct_or_montant": 30.0, "unite": "pct", "fige_le": "2026-10-09T10:15:00+00:00"},
+      {"type": "materiel", "libelle": "Livraison du matériel", "pct_or_montant": 60.0, "unite": "pct", "fige_le": "2026-10-09T10:15:00+00:00"},
+      {"type": "solde", "libelle": "Solde", "pct_or_montant": 10.0, "unite": "pct", "fige_le": "2026-10-09T10:15:00+00:00"}
+    ]
+  }
+}
