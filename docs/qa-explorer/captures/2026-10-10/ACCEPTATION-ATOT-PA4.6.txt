@@ -1,0 +1,7 @@
+# ATOT36 PA4.6 — avoir geste commercial puis tranche suivante
+# rejeu orchestrateur, pile locale (main f7bc5042d : code identique a pc2-batch9), 2026-10-10
+APIClient JWT, transaction annulée, devis 715 (72 900 TTC) : 1re tranche facturée 21 870, avoir total 21 870
+geste_commercial : restant 72 900 → 51 030 (le geste réduit le dû), tranche suivante inchangée 43 740 (jamais refacturé)
+correction : restant reste 72 900 (le montant reste dû, remis au solde de fin), tranche suivante 43 740
+ÉCART : parité écran = PDF non rejouée (rendu PDF non comparé)
+PA4.6 verdict: PASS
