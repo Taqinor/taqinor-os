@@ -23,7 +23,7 @@ import unittest
 from apps.calepinage.services.lestage import (
     NOMBRES_DE_FORME,
     PARAMETRES,
-    feuille_de_lestage,
+    _feuille_de_lestage,
     normaliser_section_lestage,
 )
 from apps.calepinage.services.parametres import ReglageInvalide
@@ -89,8 +89,8 @@ class FeuilleNonCalculeeTest(unittest.TestCase):
     """RIEN de saisi ⇒ RIEN de calculé, et la feuille le dit."""
 
     def test_aucun_parametre_aucun_resultat(self):
-        feuille = feuille_de_lestage({}, surface_module_m2=2.0,
-                                     masse_module_kg=22.0, societe='Taqinor')
+        feuille = _feuille_de_lestage({}, surface_module_m2=2.0,
+                                      masse_module_kg=22.0, societe='Taqinor')
         self.assertFalse(feuille['calculable'])
         for ligne in feuille['lignes']:
             self.assertIsNone(ligne['valeur'], ligne['code'])
@@ -104,9 +104,9 @@ class FeuilleNonCalculeeTest(unittest.TestCase):
     def test_un_parametre_manquant_ne_calcule_pas_sa_ligne(self):
         section = dict(JEU_COMPLET)
         section.pop('coefficient_pression_soulevement')
-        feuille = feuille_de_lestage(normaliser_section_lestage(section),
-                                     surface_module_m2=2.0,
-                                     masse_module_kg=22.0, societe='Taqinor')
+        feuille = _feuille_de_lestage(normaliser_section_lestage(section),
+                                      surface_module_m2=2.0,
+                                      masse_module_kg=22.0, societe='Taqinor')
         # La pression dynamique, elle, ne dépend pas du coefficient absent.
         self.assertIsNotNone(_ligne(feuille, 'pression_dynamique')['valeur'])
         manquante = _ligne(feuille, 'pression_soulevement')
@@ -117,8 +117,8 @@ class FeuilleNonCalculeeTest(unittest.TestCase):
                       manquante['mention'])
 
     def test_sans_surface_de_module_aucun_effort(self):
-        feuille = feuille_de_lestage(normaliser_section_lestage(JEU_COMPLET),
-                                     masse_module_kg=22.0, societe='Taqinor')
+        feuille = _feuille_de_lestage(normaliser_section_lestage(JEU_COMPLET),
+                                      masse_module_kg=22.0, societe='Taqinor')
         ligne = _ligne(feuille, 'effort_soulevement_module')
         self.assertIsNone(ligne['valeur'])
         self.assertIn('surface_module_m2', ligne['manquants'])
@@ -128,7 +128,7 @@ class FeuilleCalculeeTest(unittest.TestCase):
     """Sur un jeu SAISI, le calcul est celui des formules publiées."""
 
     def setUp(self):
-        self.feuille = feuille_de_lestage(
+        self.feuille = _feuille_de_lestage(
             normaliser_section_lestage(JEU_COMPLET),
             surface_module_m2=2.0, masse_module_kg=22.0,
             societe='Taqinor SARL')
@@ -165,9 +165,9 @@ class FeuilleCalculeeTest(unittest.TestCase):
     def test_lest_jamais_negatif(self):
         section = dict(JEU_COMPLET)
         section['coefficient_pression_soulevement'] = _saisie(0.01)
-        feuille = feuille_de_lestage(normaliser_section_lestage(section),
-                                     surface_module_m2=2.0,
-                                     masse_module_kg=22.0)
+        feuille = _feuille_de_lestage(normaliser_section_lestage(section),
+                                      surface_module_m2=2.0,
+                                      masse_module_kg=22.0)
         self.assertEqual(
             _ligne(feuille, 'lest_anti_soulevement')['valeur'], 0)
 

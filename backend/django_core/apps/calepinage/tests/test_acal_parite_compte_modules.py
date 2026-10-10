@@ -102,7 +102,7 @@ def _lecteurs(layout, resultat):
         SimpleNamespace(roof_layout=layout))
     lus['asbuilt'] = (sum(p['modules'] for p in prevus), ...)
 
-    masse = lestage.masse_du_layout(layout)
+    masse = lestage._masse_du_layout(layout)
     lus['lestage'] = (masse['total_modules'], ...)
 
     lus['journal'] = (int(journal._modules(layout)), ...)
