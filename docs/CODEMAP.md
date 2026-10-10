@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 3fab0ced78f24c93bbb5c731178f0871c6a4b28d53167389e05181a935d1a085
-Plan fingerprint: e799e3800c5026f828168c580be10647a02e11e997c2396e1600725a6ef403e7
+Plan fingerprint: ef840c39f9194190fba3f071e46a37f4106dc364bc3ce9da1d1b8f89a2b78e78
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1160)**
+**Done (1169)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1168,11 +1168,20 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
 - `ENF1` — Harnais api-fuzz
 - `ENF2` — Plateforme API (causes C2-C6)
+- `ENF3` — Schéma OpenAPI exact — installations
+- `ENF4` — Schéma OpenAPI exact — stock + achats
+- `ENF5` — Schéma OpenAPI exact — ventes + facturation
+- `ENF6` — Schéma OpenAPI exact — crm + portail
+- `ENF7` — Schéma OpenAPI exact — ged + records
+- `ENF8` — Schéma OpenAPI exact — core + parametres + notifications
+- `ENF9` — Schéma OpenAPI exact — sav + calepinage + outillage
+- `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
 - `ENF12` — Plus aucun masque dans les workflows
 - `ENF13` — Gardes toujours vertes rendues bloquantes
 - `ENF14` — Exceptions permanentes signées
 - `ENF16` — Dette on_delete (573) à zéro
 - `ENF24` — Seuil de couverture
+- `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1738,7 +1747,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (137)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1823,14 +1832,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
-- `ENF3` — Schéma OpenAPI exact — installations
-- `ENF4` — Schéma OpenAPI exact — stock + achats
-- `ENF5` — Schéma OpenAPI exact — ventes + facturation
-- `ENF6` — Schéma OpenAPI exact — crm + portail
-- `ENF7` — Schéma OpenAPI exact — ged + records
-- `ENF8` — Schéma OpenAPI exact — core + parametres + notifications
-- `ENF9` — Schéma OpenAPI exact — sav + calepinage + outillage
-- `ENF10` — Schéma OpenAPI exact — reporting, monitoring, automation, identity, adminops, uxviews…
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
 - `ENF17` — Dette fk_scoping (332) à zéro
