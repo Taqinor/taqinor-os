@@ -1,0 +1,5 @@
+# AGNR44 P3.5 — démo résidentielle : rendu conforme à D-AGNR-2 (curseur retiré)
+# rejeu orchestrateur, pile locale (pc2-batch9 @ 852114993), 2026-10-10 — Playwright, demo_admin
+/ventes/devis/nouveau (mode Résidentiel) : aucun input[type=range] (curseur « Consommation diurne (%) » absent)
+texte affiché : « Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis) »
+P3.5 verdict: PASS
