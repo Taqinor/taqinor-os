@@ -1,0 +1,78 @@
+# Dette d'acceptation GELÉE du groupe ACHT (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: ACHT
+amorce: 3a7c3b882
+ids:
+  - ACHT1
+  - ACHT2
+  - ACHT3
+  - ACHT4
+  - ACHT5
+  - ACHT6
+  - ACHT7
+  - ACHT9
+  - ACHT10
+  - ACHT11
+  - ACHT12
+  - ACHT13
+  - ACHT14
+  - ACHT15
+  - ACHT16
+  - ACHT17
+  - ACHT18
+  - ACHT19
+  - ACHT20
+  - ACHT21
+  - ACHT22
+  - ACHT23
+  - ACHT24
+  - ACHT25
+  - ACHT26
+  - ACHT27
+  - ACHT28
+  - ACHT29
+  - ACHT30
+  - ACHT32
+  - ACHT33
+  - ACHT34
+  - ACHT35
+  - ACHT36
+  - ACHT37
+  - ACHT38
+  - ACHT39
+  - ACHT41
+  - ACHT42
+  - ACHT43
+  - ACHT44
+  - ACHT45
+  - ACHT46
+  - ACHT47
+  - ACHT48
+  - ACHT49
+  - ACHT50
+  - ACHT51
+  - ACHT52
+  - ACHT53
+  - ACHT54
+  - ACHT55
+  - ACHT56
+  - ACHT57
+  - ACHT58
+  - ACHT59
+  - ACHT60
+  - ACHT61
+  - ACHT64
+  - ACHT66
+  - ACHT68
+  - ACHT70
+  - ACHT71
+  - ACHT72
+  - ACHT73
+  - ACHT74
+  - ACHT75
+  - ACHT76
+  - ACHT77
+  - ACHT78
+  - ACHT79

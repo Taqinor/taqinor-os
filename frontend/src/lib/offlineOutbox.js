@@ -414,8 +414,10 @@ export class Outbox {
           resp = await this.sender(batch)
         } catch (err) {
           const statut = err?.response?.status
-          const transitoire = !statut || statut >= 500 || statut === 401
-            || statut === 408 || statut === 429
+          // ACHT69 — un 500 est une réponse APPLICATIVE du serveur (bug, refus) : visible et
+          // abandonnable. Seuls 502/503/504 (passerelle / surcharge), 401, 408, 429 se retentent.
+          const transitoire = !statut || statut === 502 || statut === 503 || statut === 504
+            || statut === 401 || statut === 408 || statut === 429
           if (transitoire) break // Réseau retombé / serveur indispo : file intacte.
           // ADEP18 — réponse HTTP NON transitoire (400, 403, 404…) : ce n'est pas une
           // coupure. Les ops du lot sont marquées (visibles, abandonnables), comme le

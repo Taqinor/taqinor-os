@@ -1,0 +1,220 @@
+{
+ "cas": "ACRM26",
+ "commandes": {
+  "appelants backend/django_core/apps/crm/views.py::EquipeCommercialeViewSet.get_permissions": {
+   "chaines": [],
+   "ecrans": [
+    "frontend/src/pages/crm/leads/LeadsPage.jsx",
+    "frontend/src/pages/parametres/EquipesCommercialesSection.jsx",
+    "frontend/src/pages/ventes/DevisList.jsx"
+   ],
+   "nb_ecrans": 3,
+   "python": [],
+   "routes": [
+    "/api/django/crm/equipes/",
+    "/api/django/crm/equipes/<id>/",
+    "/api/v1/crm/equipes/",
+    "/api/v1/crm/equipes/<id>/"
+   ],
+   "wrappers": [
+    "frontend/src/api/crmApi.js::deleteEquipe",
+    "frontend/src/api/crmApi.js::getEquipes",
+    "frontend/src/api/crmApi.js::saveEquipe"
+   ]
+  },
+  "assertions-existantes backend/django_core/apps/crm/views.py::EquipeCommercialeViewSet.get_permissions": {
+   "assertions": [
+    "backend/django_core/apps/crm/tests_acrm_equipes_admin.py::EquipesAdminTests::test_admin_ok",
+    "backend/django_core/apps/crm/tests_acrm_equipes_admin.py::EquipesAdminTests::test_commercial_refuse",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_commercial_peut_lire_mais_pas_creer",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_cross_company_404_sur_detail_update_delete",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_membres_et_nb_membres_reflete_la_composition",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_responsable_archive_une_equipe",
+    "backend/django_core/apps/crm/tests_zsal3_equipe_crud.py::TestEquipeCommercialeCRUD::test_responsable_cree_une_equipe_societe_forcee"
+   ]
+  },
+  "ecrivains Lead.telephone_whatsapp": {
+   "champ_existe": false,
+   "ecrivains": []
+  },
+  "ecrivains Lead.whatsapp": {
+   "champ_existe": true,
+   "ecrivains": [
+    "backend/django_core/apps/crm/dsr_provider.py::anonymiser_lead",
+    "backend/django_core/apps/crm/management/commands/import_odoo_leads.py::Command.handle",
+    "backend/django_core/apps/crm/management/commands/import_odoo_leads.py::_fill_empty",
+    "backend/django_core/apps/crm/services.py::_apply_meta_form_extras",
+    "backend/django_core/apps/crm/services.py::creer_lead_proprietaire",
+    "backend/django_core/apps/crm/services.py::merge_leads",
+    "backend/django_core/apps/crm/services.py::resolve_or_create_lead_from_whatsapp",
+    "backend/django_core/apps/crm/views.py::LeadViewSet.perform_update",
+    "backend/django_core/apps/crm/webhooks.py::_map_payload_to_fields"
+   ]
+  },
+  "emplacement backend/django_core/apps/crm/services.py::merge_leads": {
+   "mur": true,
+   "spl": [
+    "SPL22"
+   ]
+  },
+  "jumeaux backend/django_core/apps/crm/views.py::EquipeCommercialeViewSet.get_permissions": {
+   "copies": [],
+   "corps_identiques": [
+    "backend/django_core/apps/automation/views.py::ApprovalRequestTypeViewSet.get_permissions",
+    "backend/django_core/apps/automation/views.py::AutomationRuleViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::CanalViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::EquipeCommercialeViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::LeadTagViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::MotifPerteViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/checklist_etape.py::ChecklistEtapeModeleViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/checklist_template.py::ChecklistTemplateViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/fiche_intervention.py::FicheInterventionChampViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/fiche_intervention.py::FicheInterventionTemplateViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/safety.py::SafetyChecklistSlotViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/shotlist.py::ShotListSlotViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/type_intervention.py::TypeInterventionViewSet.get_permissions",
+    "backend/django_core/apps/outillage/views.py::KitOutillageItemViewSet.get_permissions",
+    "backend/django_core/apps/outillage/views.py::KitOutillageViewSet.get_permissions",
+    "backend/django_core/apps/stock/views/marque.py::MarqueViewSet.get_permissions",
+    "backend/django_core/apps/stock/views/wms.py::PlanComptageTournantViewSet.get_permissions"
+   ],
+   "nb_corps_identiques": 17
+  },
+  "jumeaux backend/django_core/apps/crm/views.py::SiteProfileViewSet.get_permissions": {
+   "copies": [],
+   "corps_identiques": [
+    "backend/django_core/apps/crm/views.py::ApporteurViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::ConcurrentPerteViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::ForecastEntryViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::PlanActiviteViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::PlaybookEtapeViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::PlaybookTacheViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::PlaybookViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::RevueCompteViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::SalleVenteViewSet.get_permissions",
+    "backend/django_core/apps/crm/views.py::SiteProfileViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::AclGedViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::ArchivageLegalViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::CabinetViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::ChampSignatureViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::DemandeApprobationViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::DemandeDocumentViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::DepotPublicViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::DocumentLienViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::DocumentTagAssignmentViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::ExigenceDossierViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::LotEnvoiViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::ModeleDocumentViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::PartageGedViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::PlanificationDocumentViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::RegleAclMetadonneeViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::RegleApprobationGedViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::RegleDossierViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::RoleSignataireViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::RoutageDocumentaireViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::TamponSocieteViewSet.get_permissions",
+    "backend/django_core/apps/ged/views.py::TypeChampSignatureViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/bin_location.py::BinAffectationViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/bin_location.py::BinLocationViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/bin_location.py::CategorieStockageViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/bin_location.py::RegleRangementViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/colisage.py::ColisLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/colisage.py::ColisViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/commande_cadre.py::AppelCommandeViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/commande_cadre.py::CommandeCadreLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/commande_cadre.py::CommandeCadreViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/commissioning.py::CommissioningRecordViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/commissioning.py::RecettePompageViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/comptage.py::ComptageLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/comptage.py::SessionComptageViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/consignation.py::MaterielConsigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/contrat_prix.py::ContratPrixFournisseurViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/contrat_prix.py::ContratPrixLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/demande_achat.py::DemandeAchatLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/demande_transfert.py::DemandeTransfertViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/dossier_import.py::DossierImportViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/equipe.py::EquipeViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::ControleQualiteModeleViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::EtapeAssemblageViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::KitComposantViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::OrdreAssemblageLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::OrdreAssemblageViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::OrdreDemontageLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/kitting.py::OrdreDemontageViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/landed_cost.py::FraisImportViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/landed_cost.py::LandedCostLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/livraison.py::LivraisonLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/lot_prelevement.py::LotPrelevementViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/picklist.py::PickListLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/picklist.py::PickListViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/pod.py::PreuveLivraisonViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/program.py::ProjetChantierViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/program.py::ProjetDevisViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/program.py::ProjetTacheViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/program.py::ProjetTicketViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/program.py::ProjetViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/putaway.py::PutAwayViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/reappro.py::RegleReapproViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/retour_livraison.py::RetourLivraisonLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/retour_livraison.py::RetourLivraisonViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/retour_materiel.py::RetourMaterielLigneViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/retour_materiel.py::RetourMaterielViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/serie_entrepot.py::SerieEntrepotViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/soustraitant.py::SousTraitantViewSet.get_permissions",
+    "backend/django_core/apps/installations/views/transporteur.py::TransporteurViewSet.get_permissions",
+    "backend/django_core/apps/monitoring/views.py::CleaningEventViewSet.get_permissions",
+    "backend/django_core/apps/monitoring/views.py::MonitoringSettingsViewSet.get_permissions",
+    "backend/django_core/apps/monitoring/views.py::ProductionReadingViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::CategorieEquipementViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::CategorieTicketViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::CauseDefaillanceViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::CompatibilitePieceViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::EquipeMaintenanceViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::RemedeDefaillanceViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::ReponseTypeViewSet.get_permissions",
+    "backend/django_core/apps/sav/views.py::WorksheetMaintenanceModeleViewSet.get_permissions",
+    "backend/django_core/apps/stock/views/nomenclature_code_barres.py::NomenclatureCodeBarresViewSet.get_permissions",
+    "backend/django_core/apps/stock/views/nomenclature_code_barres.py::RegleCodeBarresViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/commissioning.py::AsBuiltPackViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/commissioning.py::AttestationConformiteViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/commissioning.py::AttestationREViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/commissioning.py::CommissioningTestViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/commissioning.py::IVCurveCaptureViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/commissioning.py::TestPerformanceReceptionViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/liste_prix.py::ListePrixViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/regulatory.py::DossierChecklistItemViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/regulatory.py::DossierExchangeViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/regulatory.py::Regularisation8221ViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/regulatory.py::RegulatoryDossierViewSet.get_permissions",
+    "backend/django_core/apps/ventes/views/regulatory.py::SubventionDossierViewSet.get_permissions",
+    "backend/parked/flotte/views.py::_FlotteBaseViewSet.get_permissions",
+    "backend/parked/hospitality/views.py::ChambreViewSet.get_permissions",
+    "backend/parked/hospitality/views.py::EvenementBanquetViewSet.get_permissions",
+    "backend/parked/hospitality/views.py::PlanTarifaireViewSet.get_permissions",
+    "backend/parked/hospitality/views.py::ReservationViewSet.get_permissions",
+    "backend/parked/hospitality/views.py::SalleEvenementViewSet.get_permissions",
+    "backend/parked/hospitality/views.py::TypeChambreViewSet.get_permissions"
+   ],
+   "nb_corps_identiques": 112
+  },
+  "lecteurs-front tranches_facturees": {
+   "lecteurs": [
+    "frontend/src/pages/ventes/devisList/DevisRow.jsx"
+   ]
+  },
+  "listes-figees backend/django_core/apps/crm/services.py": {
+   "gardes": [
+    "docs/get-or-create-audit.md <- scripts/check_get_or_create.py (par_symbole)",
+    "docs/ownership.yml <- scripts/check_ownership.py (par_symbole)",
+    "scripts/check_actions_atomiques.py <- scripts/check_actions_atomiques.py (par_symbole)",
+    "scripts/check_garde_contact.py <- scripts/check_garde_contact.py (par_symbole)",
+    "scripts/check_stages.py <- scripts/check_stages.py (par_symbole)",
+    "scripts/check_version_en_vigueur.py <- scripts/check_version_en_vigueur.py (par_symbole)",
+    "scripts/read_modify_write_allow.txt <- scripts/check_money_rounding.py (par_symbole)",
+    "scripts/read_modify_write_allow.txt <- scripts/check_read_modify_write.py (par_symbole)",
+    "scripts/services_appeles_allow.txt <- scripts/check_services_appeles.py (par_symbole)"
+   ]
+  }
+ }
+}

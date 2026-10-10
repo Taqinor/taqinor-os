@@ -49,6 +49,7 @@ import sys
 import time
 from pathlib import Path
 
+TYPE_DE_CLE = "par_symbole"  # AMET81 — lu par audit_tache.py listes-figees : cle `empreinte|fichiers`
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE_PATH = ROOT / "scripts" / "duplicats_litteraux_allow.txt"
 

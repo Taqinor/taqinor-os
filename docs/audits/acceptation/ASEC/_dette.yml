@@ -1,0 +1,34 @@
+# Dette d'acceptation GELÉE du groupe ASEC (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: ASEC
+amorce: 3a7c3b882
+ids:
+  - ASEC2
+  - ASEC3
+  - ASEC4
+  - ASEC5
+  - ASEC6
+  - ASEC7
+  - ASEC9
+  - ASEC10
+  - ASEC11
+  - ASEC12
+  - ASEC13
+  - ASEC14
+  - ASEC22
+  - ASEC24
+  - ASEC26
+  - ASEC27
+  - ASEC28
+  - ASEC29
+  - ASEC32
+  - ASEC33
+  - ASEC34
+  - ASEC35
+  - ASEC37
+  - ASEC38
+  - ASEC39
+  - ASEC41
+  - ASEC49

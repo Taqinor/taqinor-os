@@ -1,0 +1,77 @@
+# Dette d'acceptation GELÉE du groupe ASAV (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: ASAV
+amorce: 3a7c3b882
+ids:
+  - ASAV2
+  - ASAV3
+  - ASAV4
+  - ASAV5
+  - ASAV6
+  - ASAV7
+  - ASAV8
+  - ASAV9
+  - ASAV10
+  - ASAV11
+  - ASAV12
+  - ASAV13
+  - ASAV14
+  - ASAV15
+  - ASAV16
+  - ASAV17
+  - ASAV18
+  - ASAV19
+  - ASAV20
+  - ASAV22
+  - ASAV23
+  - ASAV24
+  - ASAV25
+  - ASAV26
+  - ASAV27
+  - ASAV28
+  - ASAV29
+  - ASAV30
+  - ASAV31
+  - ASAV32
+  - ASAV33
+  - ASAV34
+  - ASAV36
+  - ASAV37
+  - ASAV38
+  - ASAV39
+  - ASAV40
+  - ASAV41
+  - ASAV42
+  - ASAV43
+  - ASAV44
+  - ASAV45
+  - ASAV46
+  - ASAV47
+  - ASAV48
+  - ASAV49
+  - ASAV50
+  - ASAV51
+  - ASAV52
+  - ASAV53
+  - ASAV54
+  - ASAV55
+  - ASAV56
+  - ASAV57
+  - ASAV58
+  - ASAV59
+  - ASAV60
+  - ASAV61
+  - ASAV62
+  - ASAV63
+  - ASAV64
+  - ASAV65
+  - ASAV66
+  - ASAV67
+  - ASAV68
+  - ASAV69
+  - ASAV70
+  - ASAV71
+  - ASAV73
+  - ASAV74

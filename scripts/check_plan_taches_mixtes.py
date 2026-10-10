@@ -59,6 +59,7 @@ import argparse
 import re
 import subprocess
 from pathlib import Path
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE_PATH = ROOT / "scripts" / "plan_taches_mixtes_allow.txt"

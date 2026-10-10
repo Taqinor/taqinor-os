@@ -171,6 +171,7 @@ import unicodedata
 from pathlib import Path
 
 from check_api_contract import rapport_plancher, scan_js, write_inventory
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONT_SRC = ROOT / "frontend" / "src"

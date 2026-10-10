@@ -1,0 +1,12 @@
+# ADEP99 P3.3 — filtre changes RÉEL exécuté sur les chemins sondés : apps/web, nginx, contract_samples -> frontend ; fastapi -> fastapi ; docs seuls -> rien
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P3_2_filtre.log
+apps/web/src/lib/roof.ts                                 frontend=true web=true code=true 
+apps/web/worker/index.js                                 frontend=true web=true code=true 
+backend/nginx/nginx.conf                                 backend=true frontend=true code=true 
+backend/django_core/apps/crm/contract_samples/lead.json  backend=true frontend=true code=true 
+backend/fastapi_ia/app/main.py                           backend=true fastapi=true code=true 
+scripts/check_acceptation.py                             backend=true code=true 
+frontend/src/lib/offlineOutbox.js                        frontend=true code=true 
+docs/plans/PLAN_AUDIT_DEPLOY.md                          

@@ -34,7 +34,8 @@ CLASSE « BALAYAGE GLOBAL NON SCOPÉ » (AFAC44 / AFAC93)
 Dans un module beat, une requête ``<Modèle>.objects.<méthode>(…)`` sur un modèle
 métier à FK ``company`` (``Facture``, ``RelanceLog``, ``PromessePaiement``…) dont la
 FONCTION n'appelle pas ``active_companies()`` / ``active_company_ids()`` et ne filtre
-aucun ``company…`` (mot-clé ``company``, ``company_id``, ``company__in``…) est refusée :
+aucun QUERYSET ``<Modèle>.objects….filter/exclude/get(company…=)`` (``company``,
+``company_id``, ``company__in``… ; un ``create(company=…)`` ou une lecture de profil ne comptent pas) est refusée :
 elle balaie les données de TOUTES les sociétés, suspendues comprises. Clé stable
 ``chemin::fonction`` (jamais un numéro de ligne). Les sites existants sont un PASSIF GELÉ
 dans l'allowlist, ligne ``chemin::fonction  # raison / tâche qui la retire`` ; une clé
@@ -57,6 +58,7 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
@@ -172,16 +174,44 @@ def modeles_a_company(scan_root: Path = None) -> set:
     return noms
 
 
-def _fonction_filtre_societe(fonction: ast.AST) -> bool:
-    """La fonction itère active_companies*() ou filtre un mot-clé ``company…``."""
+def _est_filtre_societe_queryset(n: ast.Call, modeles: set) -> bool:
+    """``<Modèle>.objects[…].filter/exclude/get(company…=)`` sur un modèle à FK company."""
+    f = n.func
+    if not (isinstance(f, ast.Attribute) and f.attr in ("filter", "exclude", "get")):
+        return False
+    if not any((kw.arg or "").startswith("company") for kw in n.keywords):
+        return False
+    cur = f.value
+    while isinstance(cur, (ast.Attribute, ast.Call)):
+        if isinstance(cur, ast.Attribute) and cur.attr == "objects":
+            return isinstance(cur.value, ast.Name) and cur.value.id in modeles
+        cur = cur.value if isinstance(cur, ast.Attribute) else cur.func
+    return False
+
+
+def _fonction_filtre_societe(fonction: ast.AST, modeles: set) -> bool:
+    """La fonction itère active_companies*() ou borne un QUERYSET par ``company…``
+    (un ``objects.create(company=…)`` ou une lecture de profil ne bornent aucun balayage)."""
     for n in ast.walk(fonction):
         if isinstance(n, ast.Call):
             nom = _callee_name(n) or ""
             if nom.split(".")[-1] in _SELECTEURS_SOCIETE:
                 return True
-            if any((kw.arg or "").startswith("company") for kw in n.keywords):
+            if _est_filtre_societe_queryset(n, modeles):
                 return True
     return False
+
+
+def _chaines_par_pk(fonction: ast.AST) -> set:
+    """ids des appels d'une chaîne bornée par ``.filter/.get(pk=…|id=…)`` : lecture d'UNE
+    ligne par clé primaire, jamais un balayage (``pk__in`` reste un balayage)."""
+    ids = set()
+    for c in ast.walk(fonction):
+        if (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                and c.func.attr in ("filter", "get")
+                and any(kw.arg in ("pk", "id") for kw in c.keywords)):
+            ids.update(id(x) for x in ast.walk(c))
+    return ids
 
 
 def check_balayage_global(path: Path, modeles: set):
@@ -197,10 +227,11 @@ def check_balayage_global(path: Path, modeles: set):
         imbriquees = {id(x) for f in ast.walk(fonction) if f is not fonction
                       and isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
                       for x in ast.walk(f)}
-        if _fonction_filtre_societe(fonction):
+        if _fonction_filtre_societe(fonction, modeles):
             continue
+        par_pk = _chaines_par_pk(fonction)
         for n in ast.walk(fonction):
-            if id(n) in imbriquees or not isinstance(n, ast.Call):
+            if id(n) in imbriquees or id(n) in par_pk or not isinstance(n, ast.Call):
                 continue
             nom = _callee_name(n)
             if not nom:
