@@ -1993,7 +1993,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         financières). L'événement est journalisé (qui/quand) côté serveur ; la
         réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
         import logging
-        from .services import raison_refus_suppression
+        from .leads_fusion import raison_refus_suppression
         lead = self.get_object()
         # ACAL177 — UNE garde (devis liés + calepinage ouvert), partagée avec
         # l'opération en masse ``delete``.
@@ -2162,7 +2162,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # des touches ouvertes allaient quitter leur plan. Le compte vient
             # de la MÊME définition que la fusion (`relances_ouvertes_de`),
             # jamais d'un second filtre qui dériverait.
-            from .services import relances_ouvertes_de
+            from .leads_fusion import relances_ouvertes_de
             relances_reprises = sum(
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
@@ -2208,7 +2208,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
         devis, chantiers, activités, pièces jointes et historique sont déplacés ;
         les leads absorbés sont archivés (jamais supprimés)."""
-        from .services import merge_leads
+        from .leads_fusion import merge_leads
         survivor = self.get_object()
         ids = request.data.get('others') or []
         if not isinstance(ids, list) or not ids:

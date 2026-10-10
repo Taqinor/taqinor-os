@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from . import activity, stages
 from .models import Canal, Lead
-from .services import raison_refus_suppression
+from .leads_fusion import raison_refus_suppression
 from .cadence_touche import reprendre_cadence_apres_reouverture
 from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .cadence_plan import arreter_cadence, sync_relance_activity

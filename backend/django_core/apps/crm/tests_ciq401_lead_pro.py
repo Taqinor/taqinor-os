@@ -19,7 +19,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm import activity, selectors, services
+from apps.crm import activity, selectors, leads_fusion
 from apps.crm import leads_doublons
 from apps.crm.models import Lead
 
@@ -283,7 +283,7 @@ class FusionConserveLesColonnesPro(TestCase):
             tension_source='facture', categorie_commerciale='hotel',
             jours_ouverture=[1, 2, 3], ice='000000000000000',
             cos_phi=Decimal('0.900'), tva_recuperable='oui')
-        services.merge_leads(survivant, [absorbe], user)
+        leads_fusion.merge_leads(survivant, [absorbe], user)
         survivant.refresh_from_db()
         self.assertEqual(survivant.tension_raccordement, 'mt')
         self.assertEqual(survivant.tension_source, 'facture')

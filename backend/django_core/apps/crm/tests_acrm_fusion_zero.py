@@ -21,7 +21,7 @@ from authentication.models import Company
 
 from apps.crm import activity
 from apps.crm.models import Lead
-from apps.crm.services import merge_leads
+from apps.crm.leads_fusion import merge_leads
 from apps.crm.leads_doublons import _MERGE_FILL_FIELDS
 
 User = get_user_model()

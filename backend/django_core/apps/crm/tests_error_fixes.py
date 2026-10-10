@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm import exports
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
-from apps.crm.services import merge_leads
+from apps.crm.leads_fusion import merge_leads
 from apps.crm.clients_identite import resolve_client_for_lead
 from apps.crm.fiche_bulk import coerce_id_list
 from authentication.models import Company

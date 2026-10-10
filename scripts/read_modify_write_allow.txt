@@ -4,7 +4,7 @@
 # (pure increment) or select_for_update() (read-decide-write), do not append.
 # Baseline captured 2026-07-13; many of these are non-concurrent single-actor
 # writes or string/path fields caught by the coarse v1 heuristic.
-backend/django_core/apps/crm/services.py::merge_leads
+backend/django_core/apps/crm/leads_fusion.py::merge_leads
 backend/django_core/apps/ged/services.py::move_folder
 backend/django_core/apps/ged/services.py::relancer_demande_document
 backend/django_core/apps/ged/services.py::relancer_signataires_dus
