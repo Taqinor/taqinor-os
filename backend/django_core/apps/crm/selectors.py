@@ -3552,7 +3552,10 @@ def leads_matching_regles(company, regles):
     if inconnues:
         raise ValueError(f"Règle(s) de segment inconnue(s) : {sorted(inconnues)}")
 
-    qs = Lead.objects.filter(company=company, is_archived=False, perdu=False)
+    # ACRM56 (D-ACRM-5 (1)=(a)) — un lead « ne plus contacter » n'entre dans
+    # AUCUN segment marketing.
+    qs = Lead.objects.filter(company=company, is_archived=False, perdu=False,
+                             ne_plus_contacter=False)
     if 'ville' in regles and regles['ville']:
         qs = qs.filter(ville__iexact=regles['ville'])
     if 'type_installation' in regles and regles['type_installation']:
@@ -3614,8 +3617,10 @@ def lead_contact_identifiers(company, lead_ids):
     from .models import Lead
     if not lead_ids:
         return []
+    # ACRM56 (D-ACRM-5 (1)=(a)) — jamais d'identifiant d'un lead opposé
+    # (audience Meta, graine lookalike).
     rows = Lead.objects.filter(
-        company=company, id__in=list(lead_ids),
+        company=company, id__in=list(lead_ids), ne_plus_contacter=False,
     ).values('email', 'telephone', 'whatsapp')
     return [
         {'email': r['email'] or '', 'telephone': r['telephone'] or r['whatsapp'] or ''}
@@ -3628,7 +3633,11 @@ def clients_contact_identifiers(company):
     d'exclusion publicitaire : on n'achète pas d'impression pour un client
     déjà converti). Même contrat lecture seule que ``lead_contact_identifiers``."""
     from .models import Client
-    rows = Client.objects.filter(company=company).values('email', 'telephone')
+    # ACRM56 (D-ACRM-5 (1)=(a)) — un client rattaché à un lead « ne plus
+    # contacter » n'est exporté dans aucune audience.
+    rows = (Client.objects.filter(company=company)
+            .exclude(leads__ne_plus_contacter=True)
+            .values('email', 'telephone'))
     return [
         {'email': r['email'] or '', 'telephone': r['telephone'] or ''}
         for r in rows

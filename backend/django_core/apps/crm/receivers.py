@@ -72,6 +72,27 @@ def _point_de_sauvegarde(fn):
     return wrapper
 
 
+def _lever_perdu_sur_signature(devis, ancien_statut, user):
+    """ADEV63 — lève ``perdu`` quand le devis du lead vient d'être accepté.
+
+    N'agit que sur la transition vers « accepté » d'un devis qui porte un
+    lead perdu ; un objet devis minimal (sans lead) est ignoré. Écrit UNE
+    entrée de chatter « relevé de Perdu : devis signé <référence> »."""
+    if getattr(devis, 'statut', None) == ancien_statut:
+        return
+    lead = getattr(devis, 'lead', None)
+    if lead is None or not lead.perdu:
+        return
+    lead.perdu = False
+    lead.save(update_fields=['perdu'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='perdu', field_label='Perdu',
+        old_value='Oui', new_value='Non',
+        body=f"relevé de Perdu : devis signé {devis.reference}")
+
+
 @receiver(devis_accepted, dispatch_uid="crm_advance_stage_on_devis_accepted")
 def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
                                      **kwargs):
@@ -81,6 +102,10 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     fait au site d'acceptation : même règle (ne recule jamais, ignore les leads
     perdus), désormais déclenchée par l'événement ``devis_accepted``.
     """
+    # ADEV63 (D-ADEV-5 = (a)) — la signature d'un devis dont le lead est
+    # PERDU lève « Perdu » AVANT l'avancée d'étape (qui ignore les perdus) :
+    # le lead passe à Signé, avec une entrée de chatter.
+    _lever_perdu_sur_signature(devis, ancien_statut, user)
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
 
 

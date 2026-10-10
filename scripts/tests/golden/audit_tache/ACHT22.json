@@ -1,0 +1,83 @@
+{
+ "cas": "ACHT22",
+ "commandes": {
+  "appelants backend/django_core/apps/installations/livraison_pdf.py::bon_livraison_pdf": {
+   "chaines": [],
+   "ecrans": [],
+   "nb_ecrans": 0,
+   "python": [
+    "backend/django_core/apps/installations/tests_acht_bon_livraison.py::BonLivraisonTests.test_adresse_livraison_imprimee",
+    "backend/django_core/apps/installations/tests_acht_bon_livraison.py::BonLivraisonTests.test_bandeau_annulee",
+    "backend/django_core/apps/installations/tests_acht_bon_livraison.py::BonLivraisonTests.test_repli_adresse_chantier",
+    "backend/django_core/apps/installations/tests_zstk4_bon_livraison.py::TestBonLivraisonPdf.test_contexte_sans_cout_interne",
+    "backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.bon_livraison"
+   ],
+   "routes": [],
+   "wrappers": []
+  },
+  "appelants backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.bon_livraison": {
+   "chaines": [],
+   "ecrans": [],
+   "nb_ecrans": 0,
+   "python": [],
+   "routes": [
+    "/api/django/installations/livraisons/<id>/bon-livraison/",
+    "/api/v1/installations/livraisons/<id>/bon-livraison/"
+   ],
+   "wrappers": []
+  },
+  "assertions-existantes backend/django_core/apps/installations/views/livraison.py::LivraisonViewSet.bon_livraison": {
+   "assertions": []
+  },
+  "lecteurs-sample roof_layout_v2.schema.json": {
+   "lecteurs": [
+    "apps/web/src/contract_samples/proposal_data.json",
+    "apps/web/src/scripts/roofPro11/allerRetourDocument.test.ts",
+    "apps/web/src/scripts/roofPro11/harnaisDocument.ts",
+    "apps/web/src/scripts/roofPro11/prefill.calx253.test.ts",
+    "apps/web/src/scripts/roofPro11/prefill.roundtrip.test.ts",
+    "backend/django_core/apps/calepinage/contract_samples/calepinage_consommation_proposee.json",
+    "backend/django_core/apps/calepinage/contract_samples/calepinage_modules_disponibles.json",
+    "backend/django_core/apps/calepinage/contract_samples/electrique_cheminements.json",
+    "backend/django_core/apps/calepinage/contract_samples/electrique_equipements.json",
+    "backend/django_core/apps/calepinage/contract_samples/lead_layout_public.json",
+    "backend/django_core/apps/calepinage/contract_samples/zones.json",
+    "backend/django_core/apps/calepinage/services/io_layout.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_acces_module_document.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_contour_croise.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_derive_repere.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_garde_empreintes.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_horizon_document.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_parcelle.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_releve_azimut_pan.py",
+    "backend/django_core/apps/calepinage/tests/test_acal_zones_branchees.py",
+    "backend/django_core/apps/calepinage/tests/test_cal216_import_export.py",
+    "backend/django_core/apps/calepinage/tests/test_calx106_contrat_empreinte_osm.py",
+    "backend/django_core/apps/calepinage/tests/test_calx109_modules_disponibles.py",
+    "backend/django_core/apps/calepinage/tests/test_calx201_contrat_equipements.py",
+    "backend/django_core/apps/calepinage/tests/test_calx202_contrat_cheminements.py",
+    "backend/django_core/apps/calepinage/tests/test_calx251_contrat_consommation.py",
+    "backend/django_core/apps/calepinage/tests/test_calx28_io_layout_aller_retour.py",
+    "backend/django_core/apps/calepinage/tests/test_calx401_allee_circulation.py",
+    "backend/django_core/apps/calepinage/tests/test_calx81_arete_retrait.py",
+    "backend/django_core/apps/calepinage/tests/test_calx82_modules_document.py",
+    "backend/django_core/apps/calepinage/tests/test_calx83_numerotation.py",
+    "backend/django_core/apps/calepinage/tests/test_calx84_batiments.py",
+    "backend/django_core/apps/calepinage/tests/test_calx85_obstacle_formes.py",
+    "backend/django_core/apps/calepinage/tests/test_calx86_underlay.py",
+    "backend/django_core/apps/calepinage/tests/test_calx87_pose_facade.py",
+    "backend/django_core/apps/calepinage/tests/test_calx88_optimisation_scene.py",
+    "backend/django_core/apps/ventes/contract_samples/proposal_data.json",
+    "backend/django_core/apps/ventes/tests/test_roof_layout_v2.py",
+    "frontend/src/api/calepinageApi.test.mjs",
+    "frontend/src/features/calepinage/__tests__/mode_terrain.test.jsx",
+    "frontend/src/features/calepinage/__tests__/ombriere.test.jsx"
+   ]
+  },
+  "test-canonique backend/django_core/apps/installations/services.py::recreer_nomenclature_ordre_assemblage": {
+   "modules": [
+    "backend/django_core/apps/installations/tests_fg328_kitting.py"
+   ]
+  }
+ }
+}

@@ -83,3 +83,48 @@ class RegistreOppositionTests(TestCase):
                 self.assertTrue(derniere.granted, (identifiant, finalite))
                 self.assertIn('opposition levée par acrm59-resp',
                               derniere.source)
+
+    # ── ACRM63 (D-ACRM-5 (3)=(a)) ──────────────────────────────────────────
+
+    def test_rappel_client_leve_opposition(self):
+        from apps.crm.models import LeadActivity
+        from apps.crm.services import notify_client_contact_request
+
+        self._patch(True)
+        self.lead.refresh_from_db()
+        self.assertTrue(self.lead.ne_plus_contacter)
+
+        notify_client_contact_request(
+            'DEV-ACRM63', self.lead, canal='rappel', message='')
+
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.ne_plus_contacter)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead,
+            body__contains='opposition levée à la demande du client').exists())
+        for identifiant in (EMAIL, TELEPHONE):
+            for finalite in FINALITES_CONTACT:
+                derniere = self._derniere(identifiant, finalite)
+                self.assertTrue(derniere.granted, (identifiant, finalite))
+                self.assertIn('à la demande du client', derniere.source)
+
+    def test_rappel_client_lead_non_oppose_sans_note(self):
+        from apps.crm.models import LeadActivity
+        from apps.crm.services import notify_client_contact_request
+
+        notify_client_contact_request(
+            'DEV-ACRM63', self.lead, canal='rappel', message='')
+
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead,
+            body__contains='opposition levée à la demande du client').exists())
+
+    def test_autre_canal_ne_leve_pas_opposition(self):
+        from apps.crm.services import notify_client_contact_request
+
+        self._patch(True)
+        self.lead.refresh_from_db()
+        notify_client_contact_request(
+            'DEV-ACRM63', self.lead, canal='revision', message='')
+        self.lead.refresh_from_db()
+        self.assertTrue(self.lead.ne_plus_contacter)

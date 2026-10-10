@@ -1,0 +1,6 @@
+# ADEP99 P3.5 — suite FastAPI (231 tests, 0 sauté) | verifier_sortie_unittest --plancher 218 -> OK
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P3_5_fastapi_unittest.txt
+Ran 231 tests in 28.476s
+OK

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import useStatutConfig from '../../features/parametres/useStatutConfig'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
@@ -59,7 +60,6 @@ import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
   TICKET_STATUSES,
-  TICKET_STATUS_LABELS,
   TICKET_STATUS_COLORS,
   // APX30 — la liste des statuts OUVERTS vient de la source unique
   // (features/sav/ticketStatuses), jamais d'un littéral recopié ici.
@@ -1037,7 +1037,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {statutsProposes.map((k) => (
-                    <SelectItem key={k} value={k}>{TICKET_STATUS_LABELS[k]}</SelectItem>
+                    <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2002,6 +2002,8 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
 export default function TicketsPage() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Tickets SAV')
+  // APAR54 — libellés de statuts réglés dans Paramètres › Statuts.
+  useStatutConfig('sav')
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector((s) => s.tickets)
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
@@ -2218,10 +2220,10 @@ export default function TicketsPage() {
      respectée côté serveur), une confirmation explicite en plus. */
   const ticketsBulkEdit = {
     fieldLabel: 'Statut',
-    options: TICKET_STATUSES.map((k) => ({ value: k, label: TICKET_STATUS_LABELS[k] })),
+    options: TICKET_STATUSES.map((k) => ({ value: k, label: statusLabel(k) })),
     getRowLabel: (row) => row.reference,
     getOldValue: (row) => row.statut,
-    formatValue: (v) => TICKET_STATUS_LABELS[v] ?? String(v ?? '—'),
+    formatValue: (v) => (v ? statusLabel(v) : '—'),
     onConfirm: bulkEditStatut,
     // NTUX37 — toast succès + bouton « Annuler » (NTUX6). Silencieux si tout
     // a échoué (`result.updated` vide) — voir notifyBulkUpdateWithUndo.js.
@@ -2418,7 +2420,7 @@ export default function TicketsPage() {
             <SelectTrigger className="w-auto min-w-[130px]"><SelectValue placeholder="Tous statuts" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all">Tous statuts</SelectItem>
-              {TICKET_STATUSES.map((k) => <SelectItem key={k} value={k}>{TICKET_STATUS_LABELS[k]}</SelectItem>)}
+              {TICKET_STATUSES.map((k) => <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filters.type || '__all'}

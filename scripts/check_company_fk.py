@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 
 import _exceptions_permanentes  # ENF14 — exceptions permanentes signées
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"

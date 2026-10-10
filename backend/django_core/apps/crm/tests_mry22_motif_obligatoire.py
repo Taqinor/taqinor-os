@@ -25,7 +25,7 @@ from authentication.models import Company
 from core.events import devis_refused
 
 from apps.crm.models import Client, Lead
-from apps.crm.services import apply_bulk_action
+from apps.crm.fiche_bulk import apply_bulk_action
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 

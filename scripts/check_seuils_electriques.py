@@ -64,7 +64,7 @@ consécutives », comme ``CHUTE_CIBLE_DC_PCT``/``CHUTE_MAX_DC_PCT`` dans
 BASE DE RÉFÉRENCE — ELLE NE PEUT QUE RÉTRÉCIR
 -------------------------------------------------
 ``scripts/seuils_electriques_exceptions.txt`` gèle le passif du jour : chaque
-ligne ``fichier:ligne  # motif`` documente POURQUOI ce littéral existant reste
+ligne ``fichier::symbole  # motif`` documente POURQUOI ce littéral existant reste
 sans citation détectée. Un NOUVEAU littéral (absent de la base) fait échouer
 la garde en nommant ``fichier:ligne``. ``--write-baseline`` ne sait que
 RETIRER des lignes (celles qui ont trouvé une source, ou dont le littéral a
@@ -84,6 +84,7 @@ import re
 import sys
 from pathlib import Path
 
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle `fichier::symbole[#n]` (constante de module ou Classe.champ)
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO = ROOT / "backend" / "django_core"
 CORE_ELECTRIQUE_DIR = DJANGO / "core" / "electrique"
@@ -278,6 +279,13 @@ def _source_citee(bloc: str) -> bool:
 # 5. Analyse
 # ===========================================================================
 
+def _cle(rel: str, symbole: str, vus: dict) -> str:
+    """AMET100 — cle par SYMBOLE `fichier::symbole[#n]` (n des la 2e occurrence du
+    meme symbole dans le fichier) : un decalage de ligne ne rougit plus la garde."""
+    vus[symbole] = vus.get(symbole, 0) + 1
+    return f"{rel}::{symbole}" + (f"#{vus[symbole]}" if vus[symbole] > 1 else "")
+
+
 def analyse():
     """(constats, stats). Un constat = (signature, fichier, ligne,
     motif_ctx)."""
@@ -292,6 +300,7 @@ def analyse():
         n_fichiers += 1
         _texte, lignes, arbre = lu
         rel = relatif(path)
+        vus = {}
 
         for nom, ligne, _valeur in _constantes_module(arbre):
             n_module += 1
@@ -299,7 +308,7 @@ def analyse():
             if _source_citee(bloc):
                 continue
             motif_ctx = f"constante de module « {nom} »"
-            constats.append((f"{rel}:{ligne}", rel, ligne, motif_ctx))
+            constats.append((_cle(rel, nom, vus), rel, ligne, motif_ctx))
 
         for classe, champ, ligne, _valeur in _defauts_dataclass(arbre):
             n_dataclass += 1
@@ -307,7 +316,7 @@ def analyse():
             if _source_citee(bloc):
                 continue
             motif_ctx = f"défaut de dataclass « {classe}.{champ} »"
-            constats.append((f"{rel}:{ligne}", rel, ligne, motif_ctx))
+            constats.append((_cle(rel, f"{classe}.{champ}", vus), rel, ligne, motif_ctx))
 
     stats = {
         "fichiers": n_fichiers,
@@ -345,7 +354,7 @@ ENTETE_BASE = """\
 #   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
 #     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
 #
-# Format : `<fichier>:<ligne>  # <motif>` — le motif dit POURQUOI ce littéral
+# Format : `<fichier>::<symbole>  # <motif>` — le motif dit POURQUOI ce littéral
 # reste sans source détectée (revue humaine encore à faire, ou dette connue).
 """
 
@@ -363,8 +372,10 @@ def charger_base(path: Path | None = None) -> dict:
         contenu = ligne.strip()
         if not contenu or contenu.startswith("#"):
             continue
-        cle, _, motif = contenu.partition("#")
-        base[cle.strip()] = motif.strip()
+        # AMET100 : la cle peut porter `#n` (2e occurrence) — le motif commence a ` #`.
+        morceaux = re.split(r"\s+#", contenu, maxsplit=1)
+        base[morceaux[0].strip()] = morceaux[1].strip() if len(morceaux) > 1 else ""
+
     return base
 
 

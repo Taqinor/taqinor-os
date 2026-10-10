@@ -1,0 +1,7 @@
+# ADEP99 P1.7 — BREVO seule : is_email_configured()=False ET promesse publique de confirmation par e-mail fausse (vrai devis local) ; témoin locmem + clé : vrai partout
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P1_7_adep34.log
+BREVO seule      : {"backend": "django.core.mail.backends.console.EmailBackend", "devis": 1, "is_email_configured": false, "promesse_publique": false}
+témoin locmem+clé: {"backend": "django.core.mail.backends.locmem.EmailBackend", "devis": 1, "is_email_configured": true, "promesse_publique": true}
+P1.7 (ADEP34) : PASS

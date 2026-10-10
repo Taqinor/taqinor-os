@@ -25,6 +25,16 @@ from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.ventes.models import Devis
 from core.events import devis_accepted
+import datetime
+import itertools
+from core.events import devis_sent
+from testkit.time import frozen
+from apps.crm import horaires, stages
+from apps.crm.models import RelanceEtape
+from apps.crm.receivers_cadence import LIBELLE_FAIRE_SIGNER_AVENANT
+from apps.parametres.models import CompanyProfile
+from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
+from apps.ventes.domain.revision import reviser_devis
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -92,7 +102,9 @@ class TestDevisAcceptedAdvancesLeadStage(TestCase):
         self.assertEqual(lead.stage, 'SIGNED')
 
     def test_ignores_lost_lead(self):
-        """Lead marqué perdu : le funnel ne bouge plus automatiquement."""
+        """D-ADEV-5 = (a) (fondateur, 08/10/2026 ; ADEV63) : un lead PERDU dont
+        le client signe le devis est relevé de Perdu puis passe en Signé (le
+        nom du test est conservé pour l'historique ; la règle a changé)."""
         lead = Lead.objects.create(
             company=self.company, nom='Lead Perdu', stage='QUOTE_SENT',
             perdu=True)
@@ -100,4 +112,95 @@ class TestDevisAcceptedAdvancesLeadStage(TestCase):
         devis_accepted.send(
             sender=None, devis=devis, user=self.user, ancien_statut='envoye')
         lead.refresh_from_db()
-        self.assertEqual(lead.stage, 'QUOTE_SENT')
+        self.assertEqual(lead.stage, 'SIGNED')
+        self.assertFalse(lead.perdu)
+
+
+# ADEV57 (déplacé depuis tests_adev57_cadence_avenant.py — AMET84 : un test par module)
+User = get_user_model()
+
+GEL = datetime.datetime(2026, 9, 23, 10, 0, tzinfo=horaires.CASABLANCA)
+A_FAIRE = RelanceEtape.Statut.A_FAIRE
+
+_seq = itertools.count(1)
+
+
+class CadenceAvenant(TestCase):
+
+    def setUp(self):
+        gel = frozen(GEL)
+        gel.start()
+        self.addCleanup(gel.stop)
+        n = next(_seq)
+        self.company = Company.objects.create(
+            nom=f'ADEV57 {n}', slug=f'adev57-{n}')
+        CompanyProfile.objects.get_or_create(company=self.company)
+        for cadence in CADENCES_DEFAUT:
+            CadenceRelanceEtape.cadence_pour(self.company, cadence)
+        self.acteur = User.objects.create_user(
+            username=f'adev57-resp-{n}', password='x',
+            role_legacy='responsable', company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom=f'Prospect ADEV57 {n}',
+            stage=stages.CONTACTED, owner=self.acteur,
+            telephone=f'+21266570{n:04d}')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom=f'Client ADEV57 {n}',
+            email=f'adev57-{n}@example.com')
+        self.v1 = Devis.objects.create(
+            company=self.company, reference=f'DEV-ADEV57-{n:05d}',
+            client=self.client_obj, lead=self.lead,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'),
+            date_envoi=GEL)
+
+    def _envoyer(self, devis):
+        devis_sent.send(sender='test', devis=devis, user=self.acteur,
+                        ancien_statut='brouillon')
+
+    def _cadence(self):
+        return self.lead.relance_etapes.filter(cadence='apres_devis')
+
+    def _taches_avenant(self):
+        return self.lead.relance_etapes.filter(
+            libelle=LIBELLE_FAIRE_SIGNER_AVENANT, statut=A_FAIRE)
+
+    def _v2_envoyee(self):
+        v2 = reviser_devis(self.v1, user=self.acteur)
+        Devis.objects.filter(pk=v2.pk).update(
+            statut=Devis.Statut.ENVOYE, date_envoi=GEL)
+        v2.refresh_from_db()
+        self._envoyer(v2)
+        return v2
+
+    def test_avenant_n_ouvre_aucune_cadence(self):
+        # V1 acceptée (lead signé), puis révisée : la V2 est un avenant.
+        Devis.objects.filter(pk=self.v1.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+        Lead.objects.filter(pk=self.lead.pk).update(stage=stages.SIGNED)
+        self.v1.refresh_from_db()
+        self.lead.refresh_from_db()
+
+        self._v2_envoyee()
+
+        self.assertEqual(self._cadence().count(), 0)
+        self.assertEqual(self._taches_avenant().count(), 1)
+
+    def test_la_tache_avenant_n_est_pas_doublee(self):
+        Devis.objects.filter(pk=self.v1.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+        self.v1.refresh_from_db()
+        v2 = self._v2_envoyee()
+        self._envoyer(v2)
+        self.assertEqual(self._taches_avenant().count(), 1)
+        self.assertEqual(self._cadence().count(), 0)
+
+    def test_premier_devis_envoye_garde_sa_cadence_normale(self):
+        self._envoyer(self.v1)
+        self.assertGreater(self._cadence().filter(statut=A_FAIRE).count(), 0)
+        self.assertEqual(self._taches_avenant().count(), 0)
+
+    def test_revision_d_un_devis_non_accepte_garde_la_cadence(self):
+        # V1 seulement ENVOYÉE (QJR561) : ce n'est pas un avenant.
+        self._v2_envoyee()
+        self.assertGreater(self._cadence().filter(statut=A_FAIRE).count(), 0)
+        self.assertEqual(self._taches_avenant().count(), 0)

@@ -1,0 +1,25 @@
+{
+ "appel": "GET relance-etapes journal",
+ "corps": {
+  "etat": {
+   "cadence_active": "contact",
+   "dernier_echange": null,
+   "devis_en_cours": null,
+   "phrase": "Étape Contacté · cadence « contact » active · prochaine touche « Appel de suite » le 30/09 à 12:00.",
+   "prochaine_touche": {
+    "cadence": "contact",
+    "canal": "appel",
+    "due_at": "2026-09-30T12:00:00Z",
+    "due_date": "2026-09-30",
+    "en_retard": false,
+    "id": "etape#2",
+    "libelle": "Appel de suite"
+   },
+   "stage": "CONTACTED",
+   "stage_libelle": "Contacté"
+  },
+  "lead": "lead#2",
+  "lignes": []
+ },
+ "statut": 200
+}

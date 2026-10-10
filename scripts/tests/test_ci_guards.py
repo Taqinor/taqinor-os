@@ -123,6 +123,22 @@ class CiYmlTests(unittest.TestCase):
                 self.assertGreaterEqual(len(steps), len(rows))
 
 
+class GardesTests(unittest.TestCase):
+    """AMET86 (C-AMET-029) - la garde C20 tourne dans stage-names sur un clone COMPLET
+    (sinon elle echoue fermee) ; check_ao_api_contract (NO-OP, app `ao` parquee) est retiree."""
+
+    def test_forme_code_presente_et_ao_api_contract_absente(self):
+        commandes = [c for _n, c, _w in ci_guards.GARDES["stage-names"]]
+        self.assertIn("python scripts/check_forme_code.py --base origin/main", commandes)
+        self.assertIn("python -m unittest scripts.tests.test_check_forme_code -v", commandes)
+        toutes = [c for rows in ci_guards.GARDES.values() for _n, c, _w in rows]
+        self.assertFalse([c for c in toutes if "check_ao_api_contract" in c])
+        self.assertFalse(os.path.exists(os.path.join(REPO_ROOT, "scripts", "check_ao_api_contract.py")))
+        etapes = ci_fast_gate_steps.load_jobs()["stage-names"]["steps"]
+        checkout = next(e for e in etapes if str(e.get("uses", "")).startswith("actions/checkout"))
+        self.assertEqual((checkout.get("with") or {}).get("fetch-depth"), 0)
+
+
 class RunnerTests(unittest.TestCase):
     def _run(self, gardes):
         buf = io.StringIO()
@@ -311,6 +327,30 @@ class RegistresDeriveTests(unittest.TestCase):
         for script in ("check_db_invariants.py", "check_money_monodevise.py"):
             with self.subTest(script=script):
                 self.assertIn(f"python scripts/{script} --check", commandes)
+
+
+class TypeDeCleTests(unittest.TestCase):
+    """AMET100 - toute garde qui lit une baseline / allowlist declare `TYPE_DE_CLE` (lu par
+    `audit_tache.py listes-figees`) : `par_symbole` = cle de contenu, `par_ligne` = numero de ligne."""
+
+    _BASELINE = re.compile(r"\w+_(?:allow|allowlist|exceptions|non_branches)\w*\.txt|exceptions_permanentes\.yml|_dette\.yml")
+    _TYPE = re.compile(r"(?m)^TYPE_DE_CLE\s*=\s*['\"](par_ligne|par_symbole)['\"]")
+
+    def test_toute_garde_a_baseline_declare_son_type_de_cle(self):
+        scripts = os.path.join(REPO_ROOT, "scripts")
+        sans_type = []
+        lisant = 0
+        for nom in sorted(os.listdir(scripts)):
+            if not (nom.startswith("check_") and nom.endswith(".py")):
+                continue
+            with open(os.path.join(scripts, nom), encoding="utf-8") as f:
+                source = f.read()
+            if self._BASELINE.search(source):
+                lisant += 1
+                if not self._TYPE.search(source):
+                    sans_type.append(nom)
+        self.assertGreater(lisant, 40)  # la detection ne s'est pas videe
+        self.assertEqual(sans_type, [], "ajoutez `TYPE_DE_CLE = \"par_symbole\"` (ou par_ligne) apres les imports")
 
 
 if __name__ == "__main__":

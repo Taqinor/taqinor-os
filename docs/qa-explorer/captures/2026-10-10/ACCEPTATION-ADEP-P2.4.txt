@@ -1,0 +1,33 @@
+# ADEP99 P2.4 — AVANT correctif : 2 lignes Cache-Control sur l'asset (frontend/nginx.conf expires + add_header) ; APRÈS (63e646322) : 1 ligne immutable, API no-store, en-têtes de sécurité
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P2_images_entetes.log
+=== P2.6 (ADEP5) en-tetes
+asset=/assets/index-C0g3ywoi.js
+HTTP/1.1 200 OK
+Cache-Control: max-age=31536000
+Cache-Control: public, immutable
+HTTP/1.1 401 Unauthorized
+Cache-Control: no-store
+HTTP/1.1 200 OK
+Cache-Control: no-cache
+
+## P2_4_entetes_apres.log
+=== P2.4 (ADEP5) apres correctif : en-tetes de l'asset, de l'API et de la racine
+asset=/assets/index-BUDD7bwY.js
+HTTP/1.1 200 OK
+Cache-Control: public, max-age=31536000, immutable
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+nb lignes Cache-Control asset: 1
+--- /api/django/auth/me/
+HTTP/1.1 401 Unauthorized
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Cache-Control: no-store
+--- image
+img=/onglet hérité, .svg

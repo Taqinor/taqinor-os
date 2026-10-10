@@ -1,0 +1,379 @@
+{
+ "appel": "GET relance-etapes",
+ "corps": {
+  "count": 5,
+  "results": [
+   {
+    "cadence": "contact",
+    "canal": "appel",
+    "canal_adapte": "",
+    "cle": "",
+    "devis": null,
+    "devis_reference": "",
+    "due_at": "2026-09-30T11:00:00Z",
+    "due_date": "2026-09-30",
+    "due_initial_at": "2026-09-30T11:00:00Z",
+    "est_tache": false,
+    "id": "etape#1",
+    "lead": "lead#1",
+    "lead_contact_preference": "",
+    "lead_email": "",
+    "lead_est_junk": false,
+    "lead_langue": "fr",
+    "lead_nom": "Prospect Golden Un",
+    "lead_owner_nom": "golden-http-resp",
+    "lead_pii_masquee": false,
+    "lead_priorite": "normale",
+    "lead_score": null,
+    "lead_segment": "",
+    "lead_telephone": "+212661000001",
+    "lead_whatsapp": "",
+    "libelle": "Premier appel",
+    "message_ouvert_le": null,
+    "nb_reports": 0,
+    "note": "",
+    "ordre": 1,
+    "overdue": false,
+    "posee_le": "2026-09-30T10:00:00Z",
+    "statut": "a_faire",
+    "statut_libelle": "À faire",
+    "suites": {
+     "attente_accord": [
+      "veille_meme_touche"
+     ],
+     "joint": [
+      "contact_arretee",
+      "etape_devis_demain"
+     ],
+     "ne_plus_contacter": [
+      "ne_plus_contacter"
+     ],
+     "non_joint": [
+      "touche_suivante"
+     ],
+     "plus_tard": [
+      "veille_meme_touche"
+     ],
+     "rappel": [
+      "touche_suivante_a_la_date"
+     ],
+     "refuse": [
+      "relances_arretees",
+      "etape_decider_suite"
+     ],
+     "sauter": [
+      "touche_suivante"
+     ],
+     "visite_acceptee": [
+      "contact_arretee",
+      "etape_planifier_visite"
+     ]
+    },
+    "template_cle": "",
+    "traite_le": null,
+    "traite_par_nom": "",
+    "type_etape": "contact_appel",
+    "visite_id": null,
+    "visite_prevue_le": null,
+    "visite_retour_disponible": false
+   },
+   {
+    "cadence": "contact",
+    "canal": "appel",
+    "canal_adapte": "",
+    "cle": "",
+    "devis": null,
+    "devis_reference": "",
+    "due_at": "2026-09-30T12:00:00Z",
+    "due_date": "2026-09-30",
+    "due_initial_at": "2026-09-30T12:00:00Z",
+    "est_tache": false,
+    "id": "etape#2",
+    "lead": "lead#2",
+    "lead_contact_preference": "",
+    "lead_email": "",
+    "lead_est_junk": false,
+    "lead_langue": "fr",
+    "lead_nom": "Prospect Golden Deux",
+    "lead_owner_nom": "golden-http-comm",
+    "lead_pii_masquee": false,
+    "lead_priorite": "normale",
+    "lead_score": null,
+    "lead_segment": "",
+    "lead_telephone": "+212661000002",
+    "lead_whatsapp": "",
+    "libelle": "Appel de suite",
+    "message_ouvert_le": null,
+    "nb_reports": 0,
+    "note": "",
+    "ordre": 2,
+    "overdue": false,
+    "posee_le": "2026-09-30T10:00:00Z",
+    "statut": "a_faire",
+    "statut_libelle": "À faire",
+    "suites": {
+     "attente_accord": [
+      "veille_meme_touche"
+     ],
+     "joint": [
+      "contact_arretee",
+      "etape_devis_demain"
+     ],
+     "ne_plus_contacter": [
+      "ne_plus_contacter"
+     ],
+     "non_joint": [
+      "touche_suivante"
+     ],
+     "plus_tard": [
+      "veille_meme_touche"
+     ],
+     "rappel": [
+      "touche_suivante_a_la_date"
+     ],
+     "refuse": [
+      "relances_arretees",
+      "etape_decider_suite"
+     ],
+     "sauter": [
+      "touche_suivante"
+     ],
+     "visite_acceptee": [
+      "contact_arretee",
+      "etape_planifier_visite"
+     ]
+    },
+    "template_cle": "",
+    "traite_le": null,
+    "traite_par_nom": "",
+    "type_etape": "contact_appel",
+    "visite_id": null,
+    "visite_prevue_le": null,
+    "visite_retour_disponible": false
+   },
+   {
+    "cadence": "contact",
+    "canal": "appel",
+    "canal_adapte": "",
+    "cle": "",
+    "devis": null,
+    "devis_reference": "",
+    "due_at": "2026-09-30T13:00:00Z",
+    "due_date": "2026-09-30",
+    "due_initial_at": "2026-09-30T13:00:00Z",
+    "est_tache": false,
+    "id": "etape#3",
+    "lead": "lead#2",
+    "lead_contact_preference": "",
+    "lead_email": "",
+    "lead_est_junk": false,
+    "lead_langue": "fr",
+    "lead_nom": "Prospect Golden Deux",
+    "lead_owner_nom": "golden-http-comm",
+    "lead_pii_masquee": false,
+    "lead_priorite": "normale",
+    "lead_score": null,
+    "lead_segment": "",
+    "lead_telephone": "+212661000002",
+    "lead_whatsapp": "",
+    "libelle": "Appel à reporter",
+    "message_ouvert_le": null,
+    "nb_reports": 0,
+    "note": "",
+    "ordre": 3,
+    "overdue": false,
+    "posee_le": "2026-09-30T10:00:00Z",
+    "statut": "a_faire",
+    "statut_libelle": "À faire",
+    "suites": {
+     "attente_accord": [
+      "veille_meme_touche"
+     ],
+     "joint": [
+      "contact_arretee",
+      "etape_devis_demain"
+     ],
+     "ne_plus_contacter": [
+      "ne_plus_contacter"
+     ],
+     "non_joint": [
+      "touche_suivante"
+     ],
+     "plus_tard": [
+      "veille_meme_touche"
+     ],
+     "rappel": [
+      "touche_suivante_a_la_date"
+     ],
+     "refuse": [
+      "relances_arretees",
+      "etape_decider_suite"
+     ],
+     "sauter": [
+      "touche_suivante"
+     ],
+     "visite_acceptee": [
+      "contact_arretee",
+      "etape_planifier_visite"
+     ]
+    },
+    "template_cle": "",
+    "traite_le": null,
+    "traite_par_nom": "",
+    "type_etape": "contact_appel",
+    "visite_id": null,
+    "visite_prevue_le": null,
+    "visite_retour_disponible": false
+   },
+   {
+    "cadence": "contact",
+    "canal": "appel",
+    "canal_adapte": "",
+    "cle": "",
+    "devis": null,
+    "devis_reference": "",
+    "due_at": "2026-09-30T14:00:00Z",
+    "due_date": "2026-09-30",
+    "due_initial_at": "2026-09-30T14:00:00Z",
+    "est_tache": false,
+    "id": "etape#4",
+    "lead": "lead#3",
+    "lead_contact_preference": "",
+    "lead_email": "",
+    "lead_est_junk": false,
+    "lead_langue": "fr",
+    "lead_nom": "Prospect Golden Trois",
+    "lead_owner_nom": "golden-http-comm",
+    "lead_pii_masquee": false,
+    "lead_priorite": "normale",
+    "lead_score": null,
+    "lead_segment": "",
+    "lead_telephone": "+212661000003",
+    "lead_whatsapp": "",
+    "libelle": "Appel à sauter",
+    "message_ouvert_le": null,
+    "nb_reports": 0,
+    "note": "",
+    "ordre": 4,
+    "overdue": false,
+    "posee_le": "2026-09-30T10:00:00Z",
+    "statut": "a_faire",
+    "statut_libelle": "À faire",
+    "suites": {
+     "attente_accord": [
+      "veille_meme_touche"
+     ],
+     "joint": [
+      "contact_arretee",
+      "etape_devis_demain"
+     ],
+     "ne_plus_contacter": [
+      "ne_plus_contacter"
+     ],
+     "non_joint": [
+      "touche_suivante"
+     ],
+     "plus_tard": [
+      "veille_meme_touche"
+     ],
+     "rappel": [
+      "touche_suivante_a_la_date"
+     ],
+     "refuse": [
+      "relances_arretees",
+      "etape_decider_suite"
+     ],
+     "sauter": [
+      "touche_suivante"
+     ],
+     "visite_acceptee": [
+      "contact_arretee",
+      "etape_planifier_visite"
+     ]
+    },
+    "template_cle": "",
+    "traite_le": null,
+    "traite_par_nom": "",
+    "type_etape": "contact_appel",
+    "visite_id": null,
+    "visite_prevue_le": null,
+    "visite_retour_disponible": false
+   },
+   {
+    "cadence": "contact",
+    "canal": "appel",
+    "canal_adapte": "",
+    "cle": "",
+    "devis": null,
+    "devis_reference": "",
+    "due_at": "2026-09-30T15:00:00Z",
+    "due_date": "2026-09-30",
+    "due_initial_at": "2026-09-30T15:00:00Z",
+    "est_tache": false,
+    "id": "etape#5",
+    "lead": "lead#3",
+    "lead_contact_preference": "",
+    "lead_email": "",
+    "lead_est_junk": false,
+    "lead_langue": "fr",
+    "lead_nom": "Prospect Golden Trois",
+    "lead_owner_nom": "golden-http-comm",
+    "lead_pii_masquee": false,
+    "lead_priorite": "normale",
+    "lead_score": null,
+    "lead_segment": "",
+    "lead_telephone": "+212661000003",
+    "lead_whatsapp": "",
+    "libelle": "Appel de relance",
+    "message_ouvert_le": null,
+    "nb_reports": 0,
+    "note": "",
+    "ordre": 5,
+    "overdue": false,
+    "posee_le": "2026-09-30T10:00:00Z",
+    "statut": "a_faire",
+    "statut_libelle": "À faire",
+    "suites": {
+     "attente_accord": [
+      "veille_meme_touche"
+     ],
+     "joint": [
+      "contact_arretee",
+      "etape_devis_demain"
+     ],
+     "ne_plus_contacter": [
+      "ne_plus_contacter"
+     ],
+     "non_joint": [
+      "touche_suivante"
+     ],
+     "plus_tard": [
+      "veille_meme_touche"
+     ],
+     "rappel": [
+      "touche_suivante_a_la_date"
+     ],
+     "refuse": [
+      "relances_arretees",
+      "etape_decider_suite"
+     ],
+     "sauter": [
+      "touche_suivante"
+     ],
+     "visite_acceptee": [
+      "contact_arretee",
+      "etape_planifier_visite"
+     ]
+    },
+    "template_cle": "",
+    "traite_le": null,
+    "traite_par_nom": "",
+    "type_etape": "contact_appel",
+    "visite_id": null,
+    "visite_prevue_le": null,
+    "visite_retour_disponible": false
+   }
+  ]
+ },
+ "statut": 200
+}

@@ -5,7 +5,10 @@ Move only : corps et noms inchangés, SANS décorateur. Le câblage (``@receiver
 relais d'une ligne par récepteur parti.
 """
 
+import datetime
 import logging
+
+from django.utils import timezone
 
 from . import stages
 from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
@@ -14,6 +17,7 @@ from .services import (
     CADENCES_ARRETEES_PAR_ISSUE,
     CAUSE_RDV_REFUS,
     OUTCOME_VISITE_ACCEPTEE,
+    _poser_etape_de_filet,
     _recaler_file,
     annuler_etapes_moteur_ouvertes,
     annuler_rendez_vous_sur_arret,
@@ -35,6 +39,35 @@ from .services import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
+
+
+def _a_un_predecesseur_accepte(devis):
+    """ADEV57 — vrai si une version que ``devis`` REMPLACE (chaîne de
+    révision) est au statut accepté. Lecture via les sélecteurs ventes."""
+    from apps.ventes.selectors import (
+        devis_predecesseurs_revision_ids, get_devis_by_pk, is_devis_accepte)
+    for pk in devis_predecesseurs_revision_ids(devis):
+        ancien = get_devis_by_pk(pk)
+        if ancien is not None and is_devis_accepte(ancien):
+            return True
+    return False
+
+
+def _poser_tache_avenant(lead, devis, user):
+    """ADEV57 — UNE tâche « faire signer l’avenant » (étape de filet,
+    idempotente : une étape déjà ouverte est déplacée, jamais doublée)."""
+    reference = getattr(devis, 'reference', '') or '?'
+    etape = _poser_etape_de_filet(
+        lead, libelle=LIBELLE_FAIRE_SIGNER_AVENANT, canal='appel',
+        vise=timezone.now() + datetime.timedelta(days=1),
+        note=(f'Posée automatiquement : la révision {reference} d’un devis '
+              'accepté est envoyée — avenant à faire signer, aucune cadence '
+              'de relance commerciale.'))
+    _recaler_file(lead, user)
+    return etape
 
 
 def _arreter_cadence_on_devis_accepted(sender, devis, user, ancien_statut,
@@ -73,6 +106,14 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         lead = Lead.objects.filter(
             pk=lead_id, company=getattr(devis, 'company', None)).first()
         if lead is None:
+            return
+        # ADEV57 (D-ADEV-6 (a), fondateur 08/10/2026) — le devis envoyé
+        # RÉVISE un devis déjà ACCEPTÉ (avenant) : le client a signé, aucune
+        # cadence de relance commerciale ne s'ouvre ; une seule tâche
+        # interne « faire signer l'avenant » est posée. Prédécesseurs lus
+        # par les sélecteurs ventes (jamais ses modèles).
+        if _a_un_predecesseur_accepte(devis):
+            _poser_tache_avenant(lead, devis, user)
             return
         # RELANCE-SUITE (08/09/2026) — l'envoi ferme aussi l'étape générique
         # « préparer et envoyer le devis » / « appeler le client » devenue

@@ -60,6 +60,16 @@ class GetOrCreateTests(Depot):
         self.source("import os\n\n\n# commentaire\n" + APPEL)  # decale l'appel
         self.assertEqual(self.lancer(), 0)
 
+    def test_decalage_de_ligne_ne_rougit_plus(self):
+        """AMET100 : la fonction descend de 20 lignes -> la garde reste verte SANS regeneration (cle par symbole)."""
+        self.source(APPEL)
+        self.assertEqual(self.lancer("--write"), 0)
+        avant = guard.AUDIT_DOC.read_text(encoding="utf-8")
+        self.source("# ligne de remplissage\n" * 20 + APPEL)
+        self.assertEqual(self.lancer(), 0)
+        self.assertEqual(guard.AUDIT_DOC.read_text(encoding="utf-8"), avant)  # le registre n'a pas bouge
+        self.assertEqual(guard.TYPE_DE_CLE, "par_symbole")
+
     def test_depot_reel_vert(self):
         self.restaurer()
         sortie = io.StringIO()

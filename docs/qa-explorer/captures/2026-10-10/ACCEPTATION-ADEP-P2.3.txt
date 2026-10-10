@@ -1,0 +1,14 @@
+# ADEP99 P2.3 — manage.py dump_database -> MinIO local (BackupRun termine) ; restore_drill -> base jetable, comptages
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P2_3_backup.log
+=== P2.3a dump_database
+dump_database: OK — BackupRun #9, 15934609 octets, objet pg_dumps/20261010-001605.dump
+real	1m1.233s
+user	0m0.092s
+sys	0m0.137s
+=== P2.3b restore_drill
+restore_drill: OK — BackupRun #10, comptages={'authentication_customuser': 6, 'ventes_devis': 40, 'crm_lead': 82}
+real	2m13.329s
+user	0m0.137s
+sys	0m0.092s

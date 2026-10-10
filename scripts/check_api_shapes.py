@@ -102,6 +102,7 @@ import check_api_contract as contract
 import check_choices_declares as declares
 from check_api_contract import (HOLE, ROOT, FRONT_SRC, RouteTrie, scan_js,
                                 resolve_template, normalise_call)
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 BASELINE_PATH = ROOT / "scripts" / "api_shapes_allow.txt"
 CONTRACT_PATH = ROOT / "docs" / "api-contracts.md"

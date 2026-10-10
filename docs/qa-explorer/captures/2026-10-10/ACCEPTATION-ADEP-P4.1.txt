@@ -1,0 +1,44 @@
+# ADEP99 P4.1 — toutes les gardes étiquetées ADEP et leurs tests (cas rouges inclus) via ci_guards --only ADEP, dans les deux jobs
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P4_gardes_ADEP_stage_names.log
+===== OK      0.5s  Tests nginx : no-store sur l API seulement, en-tetes de securite herites (ADEP5)
+===== OK      0.8s  Tests check_money_fields : cles d exception par contenu (ADEP25)
+===== OK      1.4s  Tests celery tasks (ADEP21)
+===== OK      1.0s  Tests db invariants (ADEP21)
+===== OK      0.5s  Tests fk scoping m2m (ADEP21)
+===== OK      3.3s  Tests money monodevise (ADEP21)
+===== OK      0.3s  Tests on_delete (ADEP21)
+===== OK      0.3s  Tests stage names (ADEP21)
+===== OK      3.4s  Tests litteraux de stages (ADEP21)
+===== OK      2.2s  Tests extraction i18n (ADEP21)
+===== OK     13.9s  Tests de la garde determinisme des tests (ADEP24)
+===== OK      0.7s  Tests plan_lanes append-only (ADEP21)
+===== OK      0.4s  Tests plan_progress (ADEP21)
+===== OK     22.1s  Tests plan_lanes (ADEP21)
+===== OK     36.7s  Tests check_naive_datetime : cles d exception par contenu (ADEP25)
+===== OK      6.8s  Check filtre de chemins ci.yml : lectures croisees frontend (ADEP13)
+===== OK      1.8s  Check .dockerignore : aucun motif racine-seul non justifie (ADEP4)
+===== OK     13.1s  Tests de la garde .dockerignore (ADEP4)
+===== OK      2.6s  Check parite image de prod <-> environnements CI (ADEP2)
+===== OK     15.9s  Tests de la garde parite image/CI (ADEP2)
+===== OK    155.2s  Tests runner de gardes + inverse branchement (ADEP12/21) (ADEP21)
+===== OK     96.1s  Test the gardes à dépôt déplacé (ADEP27) checker itself
+===== OK      1.7s  Test the verificateur de sortie unittest (ADEP14) checker itself
+===== OK     23.8s  Test the get_or_create en lecture seule (ADEP29) checker itself
+===== OK    159.9s  Tests de la garde filtre de chemins (ADEP13)
+===== OK     46.0s  Test the dockerfiles construits (ADEP6) checker itself
+real	3m38.364s
+rc=0
+===== ADEP22 --check des deux registres derives
+rc=0
+rc=0
+
+## P4_gardes_ADEP_backend_lint_fast.log
+===== OK      0.7s  Test allowlists sans ligne morte (fichier absent, ADEP26)
+===== OK      8.4s  Check reglages lus declares (ADEP20)
+===== OK      8.6s  Test the reglages lus declares (ADEP20) checker itself
+===== OK     23.4s  Tests de la garde binaires/image (ADEP1)
+===== OK     23.5s  Check binaires de sous-processus <-> paquets de l'image de prod (ADEP1)
+real	0m23.633s
+rc=0

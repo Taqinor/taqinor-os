@@ -23,7 +23,8 @@ from apps.crm import stages
 from apps.crm.models import (
     Lead, LeadPlaybookProgress, Playbook, PlaybookEtape, PlaybookTache,
 )
-from apps.crm.services import apply_bulk_action, avancer_stage_sur_ouverture_devis
+from apps.crm.services import avancer_stage_sur_ouverture_devis
+from apps.crm.fiche_bulk import apply_bulk_action
 from apps.roles.models import Role
 from authentication.models import Company
 from core.events import lead_stage_changed

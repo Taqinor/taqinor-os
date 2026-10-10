@@ -1,0 +1,7 @@
+# ADEP99 P2.8 — manage.py check --deploy : aucun core.E_RLS ni core.E_EMAIL (avertissements de réglages dev attendus)
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P2_5_P2_8.log
+=== P2.8 manage.py check --deploy (sans core.E_RLS ni core.E_EMAIL)
+      1 System check identified 618 issues (0 silenced).
+      1 System check identified some issues:

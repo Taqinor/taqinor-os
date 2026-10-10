@@ -1768,7 +1768,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.ventes.utils.phone import normalize_phone_e164
         from apps.ventes.utils.whatsapp import build_devis_whatsapp
 
-        from .services import coerce_id_list
+        from .fiche_bulk import coerce_id_list
 
         raw_ids = request.data.get('devis_ids') or []
         if not isinstance(raw_ids, list) or not raw_ids:
@@ -3589,7 +3589,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'archive'|'unarchive'|'delete', + paramètres de l'action}. La société et
         l'acteur viennent du serveur ; la règle métier (funnel, garde-fous,
         Historique « en masse ») vit dans services.apply_bulk_action."""
-        from .services import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
+        from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
         op = request.data.get('action')
         ids = request.data.get('ids') or []
         if op not in BULK_ACTIONS:
@@ -3623,7 +3623,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         Corps : {ids: [...]} — la sélection. Vide → 400 (l'UI exporte une
         sélection). Borné à la société de l'utilisateur."""
         from .exports import export_leads_xlsx
-        from .services import coerce_id_list
+        from .fiche_bulk import coerce_id_list
         raw_ids = request.data.get('ids') or []
         if not isinstance(raw_ids, list) or not raw_ids:
             return Response({'detail': 'Sélectionnez au moins un lead.'},

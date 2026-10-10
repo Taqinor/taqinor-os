@@ -25,6 +25,7 @@ import argparse
 import ast
 import sys
 from pathlib import Path
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _cliquet  # noqa: E402

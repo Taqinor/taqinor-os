@@ -578,6 +578,13 @@ jobs:
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
         run: python scripts/check_openapi_schema.py
+      # ASEC48 — settings.prod chargé dans un interpréteur neuf avec un
+      # environnement type prod (valeurs factices) : `check --deploy` sans
+      # erreur ni avertissement non documenté, is_secure() derrière le proxy,
+      # sondes de santé jamais redirigées. Aucune base (même image, même
+      # raison que l'étape précédente : toutes les dépendances backend).
+      - name: settings.prod sous un environnement type prod (ASEC48)
+        run: python -m unittest scripts.tests.test_settings_prod_asec48 -v
 
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `backend-lint`
@@ -1453,6 +1460,8 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # AMET86 : check_forme_code.py juge le diff vs merge-base(origin/main) ; clone superficiel = echec ferme
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.

@@ -603,5 +603,58 @@ class SurfacesRegistresRestreintesTests(unittest.TestCase):
         self.assertNotIn("core/events.py, roles/models.py", memoire)
 
 
+class TransverseTests(unittest.TestCase):
+    """AMET96 — règle (d) : le plan transverse n'accepte qu'une tâche
+    `(@atomique: <propriétaires>)` dont le tag égale EXACTEMENT les
+    propriétaires de ses `Files:` (déplacement construit en UN commit)."""
+
+    FILES = ("Files: `backend/django_core/apps/ventes/views/devis.py`, "
+             "`backend/django_core/apps/crm/cadence_temps.py`, "
+             "`frontend/src/router/index.jsx`. (ROUTINE)")
+
+    def setUp(self):
+        self.reg = registre()
+
+    def _refus(self, *taches):
+        texte = "## BUILD QUEUE\n" + "".join(
+            f"- [ ] {tid} — déplacement. {self.FILES}{tag}\n" for tid, tag in taches)
+        return co.verifier_transverse(
+            self.reg, {"docs/plans/PLAN_TRANSVERSE.md": texte,
+                       "docs/plans/PLAN_DEVIS.md": texte})
+
+    def test_tache_sans_atomique_refusee_et_tag_exact_accepte(self):
+        erreurs = self._refus(("SPL1", ""), ("SPL2", " (@atomique: devis, cadence)"))
+        self.assertEqual(len(erreurs), 1, erreurs)
+        self.assertIn("PLAN_TRANSVERSE.md:2 SPL1", erreurs[0])
+        self.assertIn("tâche multi-propriétaires : à scinder, contrat d'abord",
+                      erreurs[0])
+        # Ordre et séparateurs libres ; la surface append-only ne compte pas.
+        self.assertEqual(self._refus(("SPL3", " (@atomique: cadence/devis)")), [])
+        # Mutant « accepter un tag partiel » : un propriétaire omis = refus.
+        partiel = self._refus(("SPL4", " (@atomique: devis)"))
+        self.assertEqual(len(partiel), 1, partiel)
+        self.assertIn("le tag doit les nommer EXACTEMENT", partiel[0])
+
+    def test_tag_partiel_ou_en_trop_refuse(self):
+        for tag in (" (@atomique: devis)", " (@atomique: devis, cadence, fiche)"):
+            erreurs = self._refus(("SPL4", tag))
+            self.assertEqual(len(erreurs), 1, (tag, erreurs))
+            self.assertIn("cadence, devis", erreurs[0])
+
+    def test_seul_le_plan_transverse_et_les_taches_ouvertes(self):
+        texte = ("- [x] SPL5 — fait. " + self.FILES + "\n"
+                 "- [BLOCKED: attend X] SPL6 — bloqué. " + self.FILES + "\n")
+        self.assertEqual(co.verifier_transverse(
+            self.reg, {"docs/plans/PLAN_TRANSVERSE.md": texte}), [])
+
+    def test_le_tag_est_lu_par_plan_lanes(self):
+        self.assertEqual(pl.proprietaires_atomiques(
+            "x (@atomique: crm, devis) (@lane: a)"), {"crm", "devis"})
+        self.assertIsNone(pl.proprietaires_atomiques("x (@lane: a)"))
+        # Cité en prose (backticks), ce n'est pas un tag.
+        self.assertIsNone(pl.proprietaires_atomiques(
+            "Tag `(@atomique: <propriétaires>)` ; une tâche `@atomique: crm, devis`"))
+
+
 if __name__ == "__main__":
     unittest.main()
