@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, fiche_api_publique
 from apps.crm import leads_intake
 from apps.crm import leads_meta
 from apps.crm import cadence_plan
@@ -226,7 +226,7 @@ class PointsDappelTests(_Base):
         self.assertGreater(self._touches(lead), 0)
 
     def test_api_publique(self):
-        lead = services.create_lead_from_public_api(
+        lead = fiche_api_publique.create_lead_from_public_api(
             company=self.company,
             fields={'nom': 'Partenaire', 'telephone': '+212661445566'})
         self.assertGreater(self._touches(lead), 0)
