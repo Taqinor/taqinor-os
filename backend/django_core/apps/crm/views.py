@@ -3937,15 +3937,15 @@ class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         return None
 
 
-class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
 
     À la création, la récompense est pré-remplie depuis Paramètres
     (referral_reward) quand elle n'est pas fournie. ?stats=1 ajoute un petit
     tableau de bord (totaux par statut + récompenses)."""
-    # ACRM9 — lectures bornées à la portée (leads : filleul_lead ;
-    # clients : parrain, filleul_client).
-    portee_leads = ('filleul_lead',)
+    # ACRM9 — lectures bornées à la portée (leads : filleul_lead ;
+    # clients : parrain, filleul_client).
+    portee_leads = ('filleul_lead',)
     portee_clients = ('parrain', 'filleul_client')
     queryset = Parrainage.objects.select_related(
         'parrain', 'filleul_lead', 'filleul_client').all()
@@ -4053,16 +4053,16 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
 
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
-class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Saisi une fois par client, le générateur de devis le pré-remplit ensuite
     (y compris pour les devis sans lead). Société ET créateur forcés côté
     serveur (jamais lus du corps de requête). Lecture tout rôle, écriture
     responsable/admin. Filtrable par ?client=<id>."""
-    # ACRM9 — lectures bornées à la portée (leads : — ;
-    # clients : client).
-    portee_leads = ()
+    # ACRM9 — lectures bornées à la portée (leads : — ;
+    # clients : client).
+    portee_leads = ()
     portee_clients = ('client',)
     queryset = SiteProfile.objects.select_related('client').all()
     serializer_class = SiteProfileSerializer
@@ -5582,7 +5582,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
-class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
@@ -5598,9 +5598,9 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
     l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
     """
-    # ACRM9 — lectures bornées à la portée (leads : lead ;
-    # clients : —).
-    portee_leads = ('lead',)
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
     portee_clients = ()
     serializer_class = ConcurrentPerteSerializer
     queryset = ConcurrentPerte.objects.select_related(
@@ -5642,7 +5642,7 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             pass
 
 
-class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """FG204 — journal multi-touch des points de contact d'un lead.
 
     Au-delà du first-touch (``Lead.canal``), on consigne chaque point de contact
@@ -5659,9 +5659,9 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
     l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
     """
-    # ACRM9 — lectures bornées à la portée (leads : lead ;
-    # clients : —).
-    portee_leads = ('lead',)
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
     portee_clients = ()
     serializer_class = PointContactSerializer
     queryset = PointContact.objects.select_related(
@@ -5753,7 +5753,7 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 # ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
 
-class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
 
     Routes :
@@ -5761,9 +5761,9 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
       GET/PATCH /crm/forecast-entries/{id}/
     La réponse liste inclut ``totaux_par_categorie`` (somme des montants
     effectifs des lignes filtrées, par catégorie)."""
-    # ACRM9 — lectures bornées à la portée (leads : lead ;
-    # clients : —).
-    portee_leads = ('lead',)
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
     portee_clients = ()
     queryset = ForecastEntry.objects.select_related('lead', 'lead__owner')
     serializer_class = ForecastEntrySerializer
@@ -5877,15 +5877,15 @@ def forecast_historique_view(request):
 
 # ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
 
-class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
+class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
     """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
     ``records.Activity`` — création + changements de champ suivis journalisés
     via ``records.services`` (le « mail.thread » maison), jamais un modèle
     ``*Activity`` local. Le mixin ``ChatterViewSetMixin`` ajoute en plus les
     actions génériques ``chatter/historique`` (GET) et ``chatter/noter`` (POST)."""
-    # ACRM9 — lectures bornées à la portée (leads : — ;
-    # clients : client).
-    portee_leads = ()
+    # ACRM9 — lectures bornées à la portée (leads : — ;
+    # clients : client).
+    portee_leads = ()
     portee_clients = ('client',)
     queryset = PlanCompte.objects.select_related('client')
     serializer_class = PlanCompteSerializer
@@ -6202,16 +6202,16 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         return Response(SavedViewSerializer(result, many=True).data)
 
 
-class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
 
     ``company`` posé côté serveur (TenantMixin). ``created_by`` forcé à la
     création. Lecture tout rôle, écriture responsable/admin (mêmes gardes
     que ``PointContactViewSet``). Ajout/retrait d'items via des actions
     dédiées (jamais un PATCH imbriqué non trivial du serializer nested)."""
-    # ACRM9 — lectures bornées à la portée (leads : lead ;
-    # clients : client).
-    portee_leads = ('lead',)
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : client).
+    portee_leads = ('lead',)
     portee_clients = ('client',)
     serializer_class = SalleVenteSerializer
     queryset = SalleVente.objects.select_related(
@@ -6343,15 +6343,15 @@ class ApporteurViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
 
     ``approuver``/``rejeter`` : actions dédiées plutôt qu'un PATCH direct du
     statut — un rejet/expiration lève la protection immédiatement pour un
     futur enregistrement concurrent (`clean()` du modèle)."""
-    # ACRM9 — lectures bornées à la portée (leads : lead ;
-    # clients : —).
-    portee_leads = ('lead',)
+    # ACRM9 — lectures bornées à la portée (leads : lead ;
+    # clients : —).
+    portee_leads = ('lead',)
     portee_clients = ()
     serializer_class = DealEnregistreSerializer
     queryset = DealEnregistre.objects.select_related(

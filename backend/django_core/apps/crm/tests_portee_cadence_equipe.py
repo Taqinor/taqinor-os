@@ -18,7 +18,7 @@ réels, ``core.scoping`` réel, réponse HTTP réelle — aucun mock de portée.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
-        -Modules "apps.crm.tests_adev64_portee_cadence"
+        -Modules "apps.crm.tests_portee_cadence_equipe"
 """
 from datetime import timedelta
 from decimal import Decimal

@@ -144,8 +144,10 @@ decisions:
   - id: D-VTAG1
     question: "apps/visites : rattacher au contrat de propriété PLAN_CRM_VENTES ou laisser plateforme ?"
     options:
-      - {cle: a, texte: "rattacher à PLAN_CRM_VENTES (pré-vente cohérent) — une ligne au contrat"}
-      - {cle: b, texte: "laisser plateforme"}
+      - cle: a
+        texte: "rattacher à PLAN_CRM_VENTES (pré-vente cohérent) — une ligne au contrat"
+      - cle: b
+        texte: "laisser plateforme"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -154,8 +156,10 @@ decisions:
   - id: D-CRXB
     question: "Lancer le sous-groupe d'architecture CRXB (contrat-d'abord leads-list + workspace, 8 tâches) ?"
     options:
-      - {cle: a, texte: "pas maintenant — re-poser après la vague SPL de scission du crm (PR #918)"}
-      - {cle: b, texte: "lancer CRXB"}
+      - cle: a
+        texte: "pas maintenant — re-poser après la vague SPL de scission du crm (PR #918)"
+      - cle: b
+        texte: "lancer CRXB"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -164,8 +168,10 @@ decisions:
   - id: D-QJW16
     question: "DiagnosticFormEnriched (4 champs enrichis non mappés sur le lead) : rester parqué ou préparer la promotion ?"
     options:
-      - {cle: a, texte: "rester parqué, rien à construire"}
-      - {cle: b, texte: "créer la tâche jumelle backend puis promouvoir"}
+      - cle: a
+        texte: "rester parqué, rien à construire"
+      - cle: b
+        texte: "créer la tâche jumelle backend puis promouvoir"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -174,8 +180,10 @@ decisions:
   - id: D-ODY33
     question: "Le mode « Apps » (ODY30) en prod est-il validé pour retirer l'ancien shell « sidebar globale » ?"
     options:
-      - {cle: a, texte: "oui, validé — retirer le legacy"}
-      - {cle: b, texte: "pas encore"}
+      - cle: a
+        texte: "oui, validé — retirer le legacy"
+      - cle: b
+        texte: "pas encore"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -184,8 +192,10 @@ decisions:
   - id: D-QXG3
     question: "Fiche constructeur (noms/diamètres) et prix des 11 pompes OSP 30 à courbe : disponibles ?"
     options:
-      - {cle: a, texte: "pas encore — rester gaté"}
-      - {cle: b, texte: "fournis maintenant"}
+      - cle: a
+        texte: "pas encore — rester gaté"
+      - cle: b
+        texte: "fournis maintenant"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -194,9 +204,12 @@ decisions:
   - id: D-WHATSAPP
     question: "WhatsApp officiel (modèles automatisés, OTP réel, envoi de proposition) : quel canal ?"
     options:
-      - {cle: a, texte: "pas maintenant — brouillons wa.me"}
-      - {cle: b, texte: "360dialog (BSP)"}
-      - {cle: c, texte: "Meta Cloud API direct"}
+      - cle: a
+        texte: "pas maintenant — brouillons wa.me"
+      - cle: b
+        texte: "360dialog (BSP)"
+      - cle: c
+        texte: "Meta Cloud API direct"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -205,9 +218,12 @@ decisions:
   - id: D-PAIEMENT
     question: "Paiement en ligne (créneau carte QX33, liens de paiement facture) : quel prestataire ?"
     options:
-      - {cle: a, texte: "pas maintenant — QX3 reste fail-closed"}
-      - {cle: b, texte: "PayZone"}
-      - {cle: c, texte: "CMI"}
+      - cle: a
+        texte: "pas maintenant — QX3 reste fail-closed"
+      - cle: b
+        texte: "PayZone"
+      - cle: c
+        texte: "CMI"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -216,8 +232,10 @@ decisions:
   - id: D-QXG4
     question: "Pack de preuves réel pour la page confiance du devis (photos, témoignages nommés, certifications) : disponible ?"
     options:
-      - {cle: a, texte: "pas encore — la page reste sans preuves (checked-facts-only)"}
-      - {cle: b, texte: "disponible"}
+      - cle: a
+        texte: "pas encore — la page reste sans preuves (checked-facts-only)"
+      - cle: b
+        texte: "disponible"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -226,8 +244,10 @@ decisions:
   - id: D-CALX-PAYANT
     question: "Sources payantes du calepinage (météo bancable, pas infra-horaire, imagerie oblique/LiDAR, configurateur fixation, photogrammétrie drone, intégrations partenaires, photogrammétrie serveur phase 2, Google Solar) ?"
     options:
-      - {cle: a, texte: "tout différer — PVGIS gratuit, nadir, relevé manuel"}
-      - {cle: b, texte: "ouvrir une ligne nommée"}
+      - cle: a
+        texte: "tout différer — PVGIS gratuit, nadir, relevé manuel"
+      - cle: b
+        texte: "ouvrir une ligne nommée"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -236,9 +256,12 @@ decisions:
   - id: D-PUB-PAYANT
     question: "Pubs : budget général, fal.ai, json2video/Bannerbear, clé LLM + revue anti-hallucination, cœur décisionnel ?"
     options:
-      - {cle: a, texte: "tout différer — système 0 DH voix humaine"}
-      - {cle: b, texte: "ouvrir fal.ai seulement"}
-      - {cle: c, texte: "ouvrir fal.ai + json2video"}
+      - cle: a
+        texte: "tout différer — système 0 DH voix humaine"
+      - cle: b
+        texte: "ouvrir fal.ai seulement"
+      - cle: c
+        texte: "ouvrir fal.ai + json2video"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -247,8 +270,10 @@ decisions:
   - id: D-AUD504
     question: "Signature électronique qualifiée DGSSI (prestataire payant) pour les contrats à enjeu ?"
     options:
-      - {cle: a, texte: "différer — OTP simple étiqueté honnêtement (AUD503)"}
-      - {cle: b, texte: "demander des devis"}
+      - cle: a
+        texte: "différer — OTP simple étiqueté honnêtement (AUD503)"
+      - cle: b
+        texte: "demander des devis"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -257,8 +282,10 @@ decisions:
   - id: D-NTI18N16
     question: "Pack pays France (TVA/Factur-X, SIRET, adresse FR) : ouvrir ou différer ?"
     options:
-      - {cle: a, texte: "différer — Maroc d'abord"}
-      - {cle: b, texte: "ouvrir le squelette, toggle OFF"}
+      - cle: a
+        texte: "différer — Maroc d'abord"
+      - cle: b
+        texte: "ouvrir le squelette, toggle OFF"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -267,9 +294,12 @@ decisions:
   - id: D-CRX42
     question: "Vérification du .env de prod (WEBSITE_LEADS_COMPANY_ID, e-mail sortant, META_LEAD_ADS_APP_SECRET, RETENTION_AUTO_APPLY, realip nginx) : où en est-on ?"
     options:
-      - {cle: a, texte: "Claude écrit la checklist docs/checklists/crm-prod-ops.md ; Reda la joue sur le serveur"}
-      - {cle: b, texte: "déjà vérifié — cocher CRX42 et QXG5"}
-      - {cle: c, texte: "laisser en attente"}
+      - cle: a
+        texte: "Claude écrit la checklist docs/checklists/crm-prod-ops.md ; Reda la joue sur le serveur"
+      - cle: b
+        texte: "déjà vérifié — cocher CRX42 et QXG5"
+      - cle: c
+        texte: "laisser en attente"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -278,8 +308,10 @@ decisions:
   - id: D-SR500
     question: "Critères et phrase ÉCRITS de l'opérateur Solar Rooftop 500 (KliK) : reçus ?"
     options:
-      - {cle: a, texte: "pas encore de contact écrit — rester gaté"}
-      - {cle: b, texte: "reçus"}
+      - cle: a
+        texte: "pas encore de contact écrit — rester gaté"
+      - cle: b
+        texte: "reçus"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -288,8 +320,10 @@ decisions:
   - id: D-CIQ425
     question: "Facture MT réelle anonymisée pour lever la structure OCR : disponible ?"
     options:
-      - {cle: a, texte: "pas disponible — rester gaté"}
-      - {cle: b, texte: "fournie"}
+      - cle: a
+        texte: "pas disponible — rester gaté"
+      - cle: b
+        texte: "fournie"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -298,8 +332,10 @@ decisions:
   - id: D-QAH10
     question: "Nuit QA dans le cloud (secret ANTHROPIC_API_KEY GitHub + URL de staging) en plus de la nuit locale ?"
     options:
-      - {cle: a, texte: "non, la nuit locale suffit"}
-      - {cle: b, texte: "oui"}
+      - cle: a
+        texte: "non, la nuit locale suffit"
+      - cle: b
+        texte: "oui"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -308,8 +344,10 @@ decisions:
   - id: D-ADOC39
     question: "Routes GED sans appelant (classer-apres-vente, office-sauvegarder) : câbler ou retirer ?"
     options:
-      - {cle: a, texte: "retirer avec leurs tests"}
-      - {cle: b, texte: "câbler"}
+      - cle: a
+        texte: "retirer avec leurs tests"
+      - cle: b
+        texte: "câbler"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -318,8 +356,10 @@ decisions:
   - id: D-AANA51
     question: "EDI X12 de l'API publique (aucun appelant de production, derrière PUBLICAPI_EDI_ACTIF) : garder ou parquer ?"
     options:
-      - {cle: a, texte: "parquer (recette docs/parked-modules.md)"}
-      - {cle: b, texte: "garder et brancher un appelant"}
+      - cle: a
+        texte: "parquer (recette docs/parked-modules.md)"
+      - cle: b
+        texte: "garder et brancher un appelant"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -328,8 +368,10 @@ decisions:
   - id: D-ASTK63
     question: "Garde « coût figé une fois reçu » sur les frais annexes de BCF vs coût débarqué DC38 (frais connus après réception) ?"
     options:
-      - {cle: a, texte: "garde conditionnelle — frais annexes après réception uniquement via le flux DC38 tracé, coût moyen recalculé avec trace"}
-      - {cle: b, texte: "retirer la promesse ASTK63"}
+      - cle: a
+        texte: "garde conditionnelle — frais annexes après réception uniquement via le flux DC38 tracé, coût moyen recalculé avec trace"
+      - cle: b
+        texte: "retirer la promesse ASTK63"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -338,8 +380,10 @@ decisions:
   - id: D-APAR-2
     question: "Écran Paramètres « Approbations » jamais appelé dans le chemin de remise : retirer ou brancher ?"
     options:
-      - {cle: a, texte: "retirer l'écran, routes d'écriture fermées"}
-      - {cle: b, texte: "brancher requires_approval dans le chemin de remise"}
+      - cle: a
+        texte: "retirer l'écran, routes d'écriture fermées"
+      - cle: b
+        texte: "brancher requires_approval dans le chemin de remise"
     reponse: b
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -348,8 +392,10 @@ decisions:
   - id: D-NTPRT29
     question: "TAQINOR distribue-t-elle des leads à des partenaires (lien Lead↔Partenaire) ?"
     options:
-      - {cle: a, texte: "non, pas de distribution"}
-      - {cle: b, texte: "oui, prévoir le schéma"}
+      - cle: a
+        texte: "non, pas de distribution"
+      - cle: b
+        texte: "oui, prévoir le schéma"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -358,8 +404,10 @@ decisions:
   - id: D-VEIL41
     question: "Application « YanBow Veille » créée sur le compte réel + tos_risk/meta_ad_library_api.md approuvé ?"
     options:
-      - {cle: a, texte: "pas encore"}
-      - {cle: b, texte: "jeton prêt + risque approuvé"}
+      - cle: a
+        texte: "pas encore"
+      - cle: b
+        texte: "jeton prêt + risque approuvé"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -368,10 +416,14 @@ decisions:
   - id: D-YBW91
     question: "Analytics du site YanBow : quel outil ?"
     options:
-      - {cle: a, texte: "Cloudflare Web Analytics (sans cookie)"}
-      - {cle: b, texte: "Plausible / Umami"}
-      - {cle: c, texte: "Google Analytics 4"}
-      - {cle: d, texte: "pas d'analytics"}
+      - cle: a
+        texte: "Cloudflare Web Analytics (sans cookie)"
+      - cle: b
+        texte: "Plausible / Umami"
+      - cle: c
+        texte: "Google Analytics 4"
+      - cle: d
+        texte: "pas d'analytics"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -380,8 +432,10 @@ decisions:
   - id: D-ADOC149
     question: "Surfaces des portails fournisseur (Mes factures, Ma performance) et partenaire (Ressources) servies sans écran : brancher ou retirer ?"
     options:
-      - {cle: a, texte: "retirer avec contrats et tests — D-ADOC-1 ne nomme que les six surfaces client"}
-      - {cle: b, texte: "brancher"}
+      - cle: a
+        texte: "retirer avec contrats et tests — D-ADOC-1 ne nomme que les six surfaces client"
+      - cle: b
+        texte: "brancher"
     reponse: a
     date: "2026-10-09"
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
@@ -390,9 +444,12 @@ decisions:
   - id: D-YBWM13
     question: "Approuver le texte français du site YanBow (REVIEW_FR.md) avant toute traduction ?"
     options:
-      - {cle: a, texte: "approuvé tel quel"}
-      - {cle: b, texte: "approuvé avec corrections"}
-      - {cle: c, texte: "pas encore"}
+      - cle: a
+        texte: "approuvé tel quel"
+      - cle: b
+        texte: "approuvé avec corrections"
+      - cle: c
+        texte: "pas encore"
     reponse: b
     date: "2026-10-10"
     source: "session « loop work on all plans » (Reda_Laptop) — Reda délègue la relecture à Claude ; relecture contre les règles du site (faits vérifiés, sans prix, YanBow = Ltd UK + SARLAU) ; corrections : apostrophes typographiques du formulaire, « sur-mesure » substantif"
@@ -401,8 +458,10 @@ decisions:
   - id: D-YBW-A4
     question: "Plafonner les cadres « Capture d'écran en préparation » du site YanBow au format 16:9 tant que le kit YBW41 est vide ?"
     options:
-      - {cle: a, texte: "oui, plafonner 16:9"}
-      - {cle: b, texte: "non, taille actuelle"}
+      - cle: a
+        texte: "oui, plafonner 16:9"
+      - cle: b
+        texte: "non, taille actuelle"
     reponse: a
     date: "2026-10-10"
     source: "session « loop work on all plans » (Reda_Laptop) — critique Fable YBW81, question interactive"
@@ -411,8 +470,10 @@ decisions:
   - id: D-YBWM4-6
     question: "Contact YanBow (WhatsApp, e-mail) et sociétés (Ltd UK, SARLAU) : disponibles / créées ?"
     options:
-      - {cle: a, texte: "pas encore — site sans WhatsApp ni e-mail, pages juridiques fermées, pied sans identité"}
-      - {cle: b, texte: "fournis / créées"}
+      - cle: a
+        texte: "pas encore — site sans WhatsApp ni e-mail, pages juridiques fermées, pied sans identité"
+      - cle: b
+        texte: "fournis / créées"
     reponse: a
     date: "2026-10-10"
     source: "session « loop work on all plans » (Reda_Laptop) — question interactive après la critique YBW81"
@@ -421,10 +482,14 @@ decisions:
   - id: D-CLAIMS-MERGE
     question: "Sessions de plan concurrentes : quand relâcher la claim d'une lane foldée mais pas encore mergée ? (7 doublons le 10/10 : PA1/2/5/6/7, ACAL352, ASTK242 reconstruits sur le PC 2)"
     options:
-      - {cle: a, texte: "garder la claim fichier+apps jusqu'au merge de la vague"}
-      - {cle: b, texte: "merger plus petit (~30 tâches / 4 h) quand une autre session est active"}
-      - {cle: c, texte: "les deux"}
-      - {cle: d, texte: "laisser tel quel"}
+      - cle: a
+        texte: "garder la claim fichier+apps jusqu'au merge de la vague"
+      - cle: b
+        texte: "merger plus petit (~30 tâches / 4 h) quand une autre session est active"
+      - cle: c
+        texte: "les deux"
+      - cle: d
+        texte: "laisser tel quel"
     reponse: a
     date: "2026-10-10"
     source: "session « loop work on all plans » (Reda_Laptop), question interactive après le merge d'origin/main"
