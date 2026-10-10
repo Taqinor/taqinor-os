@@ -66,6 +66,14 @@ from .devis_selectors import (  # noqa: F401
     lead_devis_ids_by_id, _kwh_positif, SEGMENTS_REPLI_KWH_SITE,
     conso_mensuelle_kwh_pour_devis,
 )
+from .roof_selectors import (  # noqa: F401
+    conception_3d_du_lead, REPERE_SOURCE_ROOF_POINT, REPERE_SOURCE_GPS,
+    _REPERE_TOLERANCE_DEG, _repere_nombre, _repere_pin, _repere_anneau,
+    _repere_dans_anneau, repere_toit,
+)
+from .stock_selectors import (  # noqa: F401
+    leads_utilisant_produit,
+)
 
 
 def signed_lead_phone_keys(company):
@@ -378,24 +386,6 @@ def lead_card(lead_id, company):
         'subtitle': ' · '.join(parts),
         'url': f'/leads/{lead.pk}',
     }
-
-
-def conception_3d_du_lead(lead):
-    """PV78 — la conception 3D du lead ``{kwc, image_url}``, lecture seule.
-
-    Passe-plat vers ``apps.ventes.selectors.conception_pour_lead`` (import
-    FONCTION-LOCAL : la lecture cross-app passe exclusivement par le sélecteur
-    de l'app cible, et l'import différé évite tout cycle au chargement).
-    ``crm`` n'importe donc JAMAIS les modèles ventes.
-
-    Rend toujours les deux clés — un lead sans devis calepiné vaut
-    ``{'kwc': None, 'image_url': None}``, jamais une clé absente.
-    """
-    vide = {'kwc': None, 'image_url': None}
-    if lead is None:
-        return vide
-    from apps.ventes.selectors import conception_pour_lead
-    return conception_pour_lead(lead, getattr(lead, 'company', None)) or vide
 
 
 # ── CAD150/CAD159 — la PROVENANCE des champs captés par le site ─────────────
@@ -1776,75 +1766,6 @@ def attribution_comparaison_devis(devis):
     }
 
 
-def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
-    """STKCAT25 — les leads RÉCENTS qui dépendent de ce produit.
-
-    Frontière cross-app : ``apps.stock`` (onglet « Utilisé dans » de la fiche
-    produit) lit les leads PAR ICI — jamais un import de ``apps.crm.models``
-    depuis une autre app.
-
-    CE QU'« UTILISER » VEUT DIRE ICI, ET RIEN D'AUTRE : un lead utilise un
-    produit À TRAVERS SES DEVIS. La jointure passe par le lien devis→lead
-    (``ventes.Devis.lead``, ``related_name='devis'``) en pure relation ORM
-    string-FK — ``apps.ventes.models`` n'est jamais importé.
-
-    Depuis STKCAT9, ``Lead.structure_produit`` (la structure choisie sur le
-    lead) est un SECOND lien direct : un lead qui a retenu ce produit comme
-    structure est listé même sans devis.
-
-    ``user`` (optionnel, mot-clé) rejoue la portée de
-    ``LeadViewSet.get_queryset`` — ``scope_queryset(..., ['owner'])`` : un rôle
-    restreint ne voit pas par le Stock un lead que /crm/leads lui masque. Sans
-    ``user``, la lecture reste bornée à la SOCIÉTÉ (jamais globale).
-
-    Renvoie une liste de dicts ``{id, nom, ville, stage, date}``, du plus
-    récent au plus ancien, bornée à ``limit``. ``stage`` est la clé canonique
-    de ``STAGES.py`` telle que stockée (l'écran en rend le libellé français).
-    Forme contractuelle : ``apps/stock/contract_samples/produit_utilise_dans.json``.
-    """
-    from django.db.models import Q
-
-    from core.scoping import scope_queryset
-
-    from .models import Lead
-
-    if company is None or not produit_id:
-        return []
-    try:
-        limite = int(limit)
-    except (TypeError, ValueError):
-        limite = 0
-    if limite <= 0:
-        return []
-
-    # STKCAT25 bis — deux liens : à travers ses devis, OU directement par la
-    # structure choisie sur le lead (``Lead.structure_produit``, STKCAT9).
-    qs = Lead.objects.filter(company=company).filter(
-        Q(devis__lignes__produit_id=produit_id)
-        | Q(structure_produit_id=produit_id))
-    # Comme la liste /crm/leads par défaut : les leads archivés n'y figurent pas.
-    qs = qs.filter(is_archived=False)
-    if user is not None:
-        qs = scope_queryset(qs, user, ['owner'])
-        # NTADM3 — même périmètre d'entités que LeadViewSet (EntiteScopeMixin).
-        from core.entite_scoping import scope_entite_queryset
-        qs = scope_entite_queryset(qs, user)
-    qs = qs.distinct().order_by('-date_creation', '-id')
-
-    lignes = []
-    for lead in qs[:limite]:
-        nom = f"{lead.nom or ''} {lead.prenom or ''}".strip()
-        lignes.append({
-            'id': lead.id,
-            'nom': nom,
-            'ville': lead.ville or '',
-            'stage': lead.stage or '',
-            'date': (lead.date_creation.date().isoformat()
-                     if lead.date_creation else ''),
-        })
-    return lignes
-
-
 # ── QA-COHERENCE — « signé fantôme », en LECTURE SEULE pour l'auditeur ──────
 #
 # Point d'entrée cross-app de l'auditeur de cohérence nocturne
@@ -1871,112 +1792,6 @@ def leads_signes_sans_devis_accepte(company):
         .exclude(devis__statut=_DEVIS_STATUT_ACCEPTE)
         .order_by('pk')
         .values('id', 'stage', 'source'))
-
-
-# ── QJR598 — UN seul repère toit du lead (D-QJR5-15) ────────────────────────
-REPERE_SOURCE_ROOF_POINT = 'roof_point'   # l'épingle posée sur le tunnel public
-
-
-REPERE_SOURCE_GPS = 'gps'                 # le GPS corrigé (équipe ou questionnaire)
-
-
-# Le GPS est stocké à 7 décimales : en deçà, deux coordonnées sont la même.
-_REPERE_TOLERANCE_DEG = 1e-6
-
-
-def _repere_nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return nombre if nombre == nombre else None  # écarte NaN
-
-
-def _repere_pin(lat, lng):
-    lat, lng = _repere_nombre(lat), _repere_nombre(lng)
-    if lat is None or lng is None:
-        return None
-    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-        return None
-    return {'lat': lat, 'lng': lng}
-
-
-def _repere_anneau(outline):
-    """Les sommets ``(lat, lng)`` lisibles du contour client — ``[lat, lng]``
-    (webhook) ou ``{lat, lng}`` (import) ; liste vide sous 3 sommets."""
-    if not isinstance(outline, (list, tuple)):
-        return []
-    anneau = []
-    for point in outline:
-        if isinstance(point, dict):
-            pin = _repere_pin(point.get('lat'), point.get('lng'))
-        elif isinstance(point, (list, tuple)) and len(point) >= 2:
-            pin = _repere_pin(point[0], point[1])
-        else:
-            pin = None
-        if pin is not None:
-            anneau.append((pin['lat'], pin['lng']))
-    return anneau if len(anneau) >= 3 else []
-
-
-def _repere_dans_anneau(pin, anneau):
-    """Lancer de rayon dans le plan (lat, lng) — un toit fait quelques
-    dizaines de mètres, la projection plane suffit."""
-    y, x = pin['lat'], pin['lng']
-    dedans = False
-    j = len(anneau) - 1
-    for i in range(len(anneau)):
-        yi, xi = anneau[i]
-        yj, xj = anneau[j]
-        if (yi > y) != (yj > y):
-            x_croise = xi + (y - yi) * (xj - xi) / (yj - yi)
-            if x < x_croise:
-                dedans = not dedans
-        j = i
-    return dedans
-
-
-def repere_toit(lead):
-    """QJR598 — ``(pin, source, contour_utilisable)`` : LE repère toit du lead.
-
-    * ``pin`` : le GPS du lead quand il est renseigné ET différent de
-      ``roof_point`` (à l'entrée, le tunnel public écrit GPS = roof_point :
-      un GPS différent vient donc toujours d'une correction), sinon
-      ``roof_point``, sinon le GPS seul ; ``None`` sans aucune coordonnée —
-      jamais une position devinée.
-    * ``source`` : ``REPERE_SOURCE_GPS`` ou ``REPERE_SOURCE_ROOF_POINT``
-      (``None`` sans pin).
-    * ``contour_utilisable`` : ``roof_outline`` est un polygone lisible et le
-      pin tombe dedans (sans pin, le contour reste le seul repère). Faux →
-      le contour n'est plus qu'un calque affiché, jamais un toit à calepiner.
-
-    Lecture pure ; ``roof_point`` / ``roof_outline`` ne sont jamais réécrits.
-    """
-    if lead is None:
-        return None, None, False
-    point = getattr(lead, 'roof_point', None)
-    epingle = (_repere_pin(point.get('lat'), point.get('lng'))
-               if isinstance(point, dict) else None)
-    gps = _repere_pin(getattr(lead, 'gps_lat', None),
-                      getattr(lead, 'gps_lng', None))
-
-    if gps is not None and (
-            epingle is None
-            or abs(gps['lat'] - epingle['lat']) > _REPERE_TOLERANCE_DEG
-            or abs(gps['lng'] - epingle['lng']) > _REPERE_TOLERANCE_DEG):
-        pin, source = gps, REPERE_SOURCE_GPS
-    elif epingle is not None:
-        pin, source = epingle, REPERE_SOURCE_ROOF_POINT
-    else:
-        pin, source = None, None
-
-    anneau = _repere_anneau(getattr(lead, 'roof_outline', None))
-    if not anneau:
-        return pin, source, False
-    utilisable = True if pin is None else _repere_dans_anneau(pin, anneau)
-    return pin, source, utilisable
 
 
 def champs_devis_auto_manquants(lead):
