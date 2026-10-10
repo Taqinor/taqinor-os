@@ -8,6 +8,8 @@ MinIO de test réel ; aucun mock interne.
 """
 import hashlib
 
+import fitz
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -21,7 +23,26 @@ from apps.ged.models import (
 
 User = get_user_model()
 
-CONTENU = b'%PDF-1.4\n%adoc68\n' + b'D' * 100
+
+def _vrai_pdf():
+    """Vrai PDF d'une page (que `fitz.open` accepte), contrairement à un
+    faux en-tête : la branche « version aplatie ajoutée » est ainsi prise."""
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), 'Contrat ADOC68')
+    octets = doc.tobytes()
+    doc.close()
+    return octets
+
+
+def _texte_pdf(octets):
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        return ''.join(page.get_text() for page in doc)
+    finally:
+        doc.close()
+
+
+CONTENU = _vrai_pdf()
 
 
 def _sha(octets):
@@ -139,11 +160,30 @@ class SignatureFigeeTests(SignatureFigeeBase):
         self.demande.refresh_from_db()
         self.assertEqual(_sha(apres), self.demande.hash_contenu)
 
+    def test_version_signee_est_une_nouvelle_version_aplatie(self):
+        v1 = self.doc.versions.get()
+        self._signer()
+        self.assertIsNotNone(self.demande.version_signee_id)
+        self.assertNotEqual(self.demande.version_signee_id, v1.pk)
+        self.assertEqual(self.doc.versions.count(), 2)
+        figee = self.doc.versions.order_by('-version').first()
+        self.assertEqual(figee.pk, self.demande.version_signee_id)
+        self.assertGreater(figee.version, v1.version)
+        self.assertNotEqual(figee.checksum, v1.checksum)
+        fige = self._pdf_signe()
+        self.assertIn('ORIGINAL', _texte_pdf(fige))
+        self.assertNotIn('ORIGINAL', _texte_pdf(CONTENU))
+
     def test_classement_de_la_version_aplatie(self):
         self._signer()
         fige = self._pdf_signe()
+        self.assertNotEqual(_sha(fige), _sha(CONTENU))
         classe = Document.objects.get(
             company=self.co_a, folder__nom='Signés',
             custom_data__source_type='ged.demandesignaturedocument.document')
-        self.assertEqual(
-            classe.versions.order_by('-version').first().checksum, _sha(fige))
+        derniere = classe.versions.order_by('-version').first()
+        self.assertEqual(derniere.checksum, _sha(fige))
+        from apps.records.storage import fetch_attachment
+        octets, err = fetch_attachment(derniere.file_key)
+        self.assertIsNone(err)
+        self.assertIn('ORIGINAL', _texte_pdf(octets))
