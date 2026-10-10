@@ -1,0 +1,444 @@
+{
+  "sha": "e3db31c947b25754f0fe26af9b2e8859c8dafd87",
+  "date": "2026-10-10",
+  "groupe": "ADEP",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEP16",
+    "ADEP17",
+    "ADEP18",
+    "ADEP19",
+    "ACHT69",
+    "ADEP99"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.1",
+      "taches": [
+        "ADEP16",
+        "ADEP17",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.2",
+      "taches": [
+        "ADEP16",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.3",
+      "taches": [
+        "ADEP18",
+        "ACHT69",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.3-500",
+      "taches": [
+        "ACHT69",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.3-500.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.4",
+      "taches": [
+        "ADEP19",
+        "ADEP99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P5.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.1",
+      "taches": [
+        "ADEP7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.1.log"
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "ADEP8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.2.log"
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "ADEP9",
+        "ADEP31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.3.log"
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "ADEP30"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.4.log"
+    },
+    {
+      "id": "P1.6",
+      "taches": [
+        "ADEP32",
+        "ADEP35",
+        "ADEP36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.6.log"
+    },
+    {
+      "id": "P2.1",
+      "taches": [
+        "ADEP1",
+        "ADEP3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.1.log"
+    },
+    {
+      "id": "P2.3",
+      "taches": [
+        "ADEP1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.3.log"
+    },
+    {
+      "id": "P2.4",
+      "taches": [
+        "ADEP5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.4.log"
+    },
+    {
+      "id": "P2.5",
+      "taches": [
+        "ADEP6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.5.log"
+    },
+    {
+      "id": "P2.8",
+      "taches": [
+        "ADEP30",
+        "ADEP31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.8.log"
+    },
+    {
+      "id": "P3.2",
+      "taches": [
+        "ADEP10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.2.log"
+    },
+    {
+      "id": "P3.3",
+      "taches": [
+        "ADEP11",
+        "ADEP13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.3.log"
+    },
+    {
+      "id": "P3.5",
+      "taches": [
+        "ADEP14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.5.log"
+    },
+    {
+      "id": "P4.1",
+      "taches": [
+        "ADEP12",
+        "ADEP20",
+        "ADEP21",
+        "ADEP22",
+        "ADEP23",
+        "ADEP24",
+        "ADEP25",
+        "ADEP26",
+        "ADEP27",
+        "ADEP28",
+        "ADEP29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P4.1.log"
+    }
+  ]
+}
