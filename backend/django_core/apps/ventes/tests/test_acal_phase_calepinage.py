@@ -5,8 +5,10 @@ et dans le pré-vol ``validate_composition_for_layout``.
 
 * lead triphasé, 10 panneaux (7,1 kWc < 10) : jamais un onduleur monophasé,
   et le module comme from-layout composent le MÊME onduleur ;
-* lead « aucun » (site isolé) : onduleur autonome + batterie, ou 422 NOMMÉ
-  ``{hors_reseau: …}`` — jamais un onduleur réseau, jamais un 500 ;
+* lead « aucun » (site isolé) — ACAL361, deux tests distincts : catalogue
+  qui sert un onduleur autonome + une batterie tarifés ⇒ 201, ce kit, jamais
+  un onduleur réseau ; catalogue seedé seul ⇒ 422 NOMMÉ ``{hors_reseau: …}``,
+  aucun devis créé, jamais un 500 ;
 * le pré-vol compose avec la phase / le site isolé du lead.
 
 Vrais produits : le catalogue RÉELLEMENT seedé (``seed_catalogue``), aucun
@@ -16,6 +18,7 @@ Run:
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_acal_phase_calepinage"
 """
+from decimal import Decimal
 from io import StringIO
 from unittest import mock
 
@@ -29,6 +32,7 @@ from apps.calepinage.models import Calepinage
 from apps.crm.models import Lead
 from apps.roles.models import Role
 from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+from apps.stock.models import Produit
 from apps.ventes.domain import catalogue as domaine_catalogue
 from apps.ventes.domain.geometrie import layout_hash
 from apps.ventes.models import Devis
@@ -135,21 +139,20 @@ class PhaseDuLeadSurLeLayout(TestCase):
             Devis.objects.get(pk=r_vente.data['id']))
         self.assertEqual(sorted(module), sorted(vente))
 
-    def test_module_lead_isole_onduleur_autonome_ou_422_nomme(self):
+    def test_module_lead_isole_compose_onduleur_autonome(self):
         from apps.ventes.solar_classification import (
             is_offgrid_inverter, is_reseau_inverter)
+        for nom, sku, prix in (
+                ('Onduleur Off-Grid Deye 8kW', 'A361-OFF-8', '16000'),
+                ('Batterie lithium 5 kWh', 'A361-BAT-5', '15000')):
+            Produit.objects.create(
+                company=self.company, nom=nom, sku=sku,
+                prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+                quantite_stock=100)
         for geste in (self._generer_module, self._from_layout):
             with self.subTest(geste=geste.__name__):
-                avant = Devis.objects.filter(company=self.company).count()
                 r = geste(self._lead('aucun'))
-                self.assertIn(r.status_code, (201, 422), r.data)
-                if r.status_code == 422:
-                    self.assertIn('hors_reseau', r.data)
-                    self.assertTrue(str(r.data['hors_reseau']).strip())
-                    self.assertEqual(
-                        Devis.objects.filter(company=self.company).count(),
-                        avant)
-                    continue
+                self.assertEqual(r.status_code, 201, r.data)
                 pk = r.data.get('devis') or r.data.get('id')
                 devis = Devis.objects.get(pk=pk)
                 onduleurs = _onduleurs(devis)
@@ -159,6 +162,17 @@ class PhaseDuLeadSurLeLayout(TestCase):
                                      for o in onduleurs), onduleurs)
                 self.assertTrue(any('batterie' in _norm(ligne.designation)
                                     for ligne in devis.lignes.all()))
+
+    def test_module_lead_isole_sans_kit_autonome_422_nomme(self):
+        for geste in (self._generer_module, self._from_layout):
+            with self.subTest(geste=geste.__name__):
+                avant = Devis.objects.filter(company=self.company).count()
+                r = geste(self._lead('aucun'))
+                self.assertEqual(r.status_code, 422, r.data)
+                self.assertIn('hors_reseau', r.data)
+                self.assertTrue(str(r.data['hors_reseau']).strip())
+                self.assertEqual(
+                    Devis.objects.filter(company=self.company).count(), avant)
 
     def test_preflight_lit_la_phase_du_lead(self):
         from apps.ventes.domain import geometrie
