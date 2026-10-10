@@ -21,8 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (_civilite_et_prenom, _placer_civilite,
-                               message_pour_etape)
+from apps.crm.cadence_messages import _civilite_et_prenom, _placer_civilite, message_pour_etape
 from apps.parametres.models_messages import (MESSAGE_TEMPLATE_DEFAULTS,
                                              MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
 from authentication.models import Company

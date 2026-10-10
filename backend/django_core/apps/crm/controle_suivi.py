@@ -738,7 +738,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
 
     from . import cadence_absence, horaires
     from .models import Lead, RelanceEtape
-    from .services import lead_sla_hours
+    from .leads_premier_contact import lead_sla_hours
 
     maintenant = maintenant or timezone.now()
     today = aujourd_hui_local(maintenant)

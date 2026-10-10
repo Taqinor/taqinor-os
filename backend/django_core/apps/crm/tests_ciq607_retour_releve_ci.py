@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
-from apps.crm import services
+from apps.crm import visites_retour_lead
 from apps.crm.models import Lead, LeadActivity
 from apps.visites import selectors as visites_selectors
 from apps.visites import services as visites_services
@@ -30,7 +30,7 @@ CONTRAT_LEAD = json.loads(
     (RACINE / 'crm' / 'contract_samples' / 'lead_pro.json')
     .read_text(encoding='utf-8'))
 
-COLONNES_CI = [c for _cle, c, _s in services.RETOUR_LEAD_CI]
+COLONNES_CI = [c for _cle, c, _s in visites_retour_lead.RETOUR_LEAD_CI]
 
 ZONE = {'id': 'z1', 'libelle': 'Atelier nord', 'longueur_m': 40,
         'largeur_m': 18, 'pente_deg': 8, 'orientation': 'sud',
@@ -42,20 +42,20 @@ class TableDuContrat(SimpleTestCase):
     def test_chaque_ligne_est_dans_retour_lead_ci(self):
         contrat = {ligne['colonne_lead']: ligne
                    for ligne in CONTRAT_VISITE['retour_lead_ci']}
-        for _cle, colonne, source in services.RETOUR_LEAD_CI:
+        for _cle, colonne, source in visites_retour_lead.RETOUR_LEAD_CI:
             with self.subTest(colonne=colonne):
                 self.assertIn(colonne, contrat)
                 provenance = contrat[colonne].get('provenance')
                 if source:
                     self.assertEqual(provenance, {
                         'colonne_lead': source,
-                        'valeur': services.ORIGINE_MESURE_VISITE})
+                        'valeur': visites_retour_lead.ORIGINE_MESURE_VISITE})
                 else:
                     self.assertIsNone(provenance)
 
     def test_les_cles_du_releve_sont_celles_du_contrat(self):
         releve = CONTRAT_VISITE['exemple_ci']['releve_ci']
-        for cle, _colonne, _source in services.RETOUR_LEAD_CI:
+        for cle, _colonne, _source in visites_retour_lead.RETOUR_LEAD_CI:
             self.assertIn(cle, releve)
 
 
@@ -115,7 +115,7 @@ class RetourReleveCiALaValidation(TestCase):
         Lead.objects.filter(pk=self.lead.pk).update(
             compteur_puissance_kva=Decimal('80'))
         self.lead.refresh_from_db()
-        rendu = services.appliquer_releve_ci(
+        rendu = visites_retour_lead.appliquer_releve_ci(
             self.lead, visites_selectors.releve_ci_de_visite(visite),
             self.bureau)
         self.assertEqual(rendu['compteur_puissance_kva']['provenance'], {
@@ -149,7 +149,7 @@ class RetourReleveCiALaValidation(TestCase):
         visites_services.valider_visite(visite, self.bureau)
         self.lead.refresh_from_db()
         self.assertEqual(
-            services.appliquer_releve_ci(
+            visites_retour_lead.appliquer_releve_ci(
                 self.lead, visites_selectors.releve_ci_de_visite(visite),
                 self.bureau), {})
         self.assertEqual(
@@ -177,11 +177,11 @@ class SupplementCosPhiGroupe(TestCase):
     def test_les_lignes_supplement_sont_dans_le_contrat(self):
         contrat = {ligne['colonne_lead']: ligne
                    for ligne in CONTRAT_VISITE['retour_lead_ci']}
-        for _cle, colonne, source in services.RETOUR_LEAD_CI_SUPPLEMENT:
+        for _cle, colonne, source in visites_retour_lead.RETOUR_LEAD_CI_SUPPLEMENT:
             with self.subTest(colonne=colonne):
                 self.assertIn(colonne, contrat)
                 attendu = ({'colonne_lead': source,
-                            'valeur': services.ORIGINE_MESURE_VISITE}
+                            'valeur': visites_retour_lead.ORIGINE_MESURE_VISITE}
                            if source else None)
                 self.assertEqual(contrat[colonne].get('provenance'), attendu)
 

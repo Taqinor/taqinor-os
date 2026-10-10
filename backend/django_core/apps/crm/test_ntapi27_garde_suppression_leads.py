@@ -17,7 +17,7 @@ from apps.publicapi.models import SandboxTenant
 from apps.publicapi.services import get_or_create_sandbox, reset_sandbox
 
 from .models import Lead
-from .services import SuppressionLeadsRefusee, delete_leads_for_company
+from .fiche_archivage import SuppressionLeadsRefusee, delete_leads_for_company
 
 
 class GardeSuppressionLeadsTests(TestCase):

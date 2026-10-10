@@ -82,7 +82,7 @@ def _matcher(company, subject_identifier):
     normalisé. Toujours borné par ``company``.
     """
     from .models import Client, Lead
-    from .services import normalize_email, normalize_phone
+    from .leads_doublons import normalize_email, normalize_phone
 
     email = normalize_email(subject_identifier)
     phone = normalize_phone(subject_identifier)

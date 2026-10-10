@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -59,7 +59,7 @@ class NatureParCleTests(SimpleTestCase):
 
     def test_un_debrief_renomme_reste_un_geste_de_visite(self):
         etape = _etape('apres_devis', 'Rappeler après la visite',
-                       cle='debrief', ordre=services.VISITE_ORDRE_DEBRIEF)
+                       cle='debrief', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF)
         self.assertEqual(st.nature_touche(etape), st.NATURE_VISITE)
         promesses = st.promesses_touche(etape, ordres=_ordres('apres_devis'))
         self.assertEqual(promesses['non_joint'],
@@ -130,7 +130,7 @@ class PalierDesactivePromesseEtEffetTests(TestCase):
 
     def _appel_apres_reponse(self):
         return self._touche(cadence='generique', ordre=1, canal=APPEL,
-                            libelle=services.FILET_APPEL_LIBELLE,
+                            libelle=cadence_reperes.FILET_APPEL_LIBELLE,
                             cle='appel_apres_reponse')
 
     def test_message_creneau_desactive(self):

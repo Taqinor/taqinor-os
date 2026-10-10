@@ -28,7 +28,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import crochets_a_completer
+from apps.crm.cadence_messages import crochets_a_completer
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

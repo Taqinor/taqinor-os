@@ -30,7 +30,8 @@ from django.utils import timezone
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_visite
+from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -43,7 +44,7 @@ VISITE_LE = datetime.date(2026, 9, 28)
 
 A_FAIRE = RelanceEtape.Statut.A_FAIRE
 ANNULEE = RelanceEtape.Statut.ANNULEE
-DEVIS = services.FILET_JOINT_LIBELLE
+DEVIS = cadence_reperes.FILET_JOINT_LIBELLE
 
 
 class _Base(TestCase):
@@ -109,27 +110,27 @@ class PlanificationSansDevisTests(_Base):
     def test_la_visite_met_l_etape_devis_en_attente(self):
         etape = self._etape_devis_ouverte()
 
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.acteur, VISITE_LE, commercial_nom='Youssef')
 
         etape.refresh_from_db()
         self.assertEqual(etape.statut, ANNULEE)
-        self.assertEqual(etape.note, services.NOTE_DEVIS_APRES_VISITE)
+        self.assertEqual(etape.note, cadence_visite.NOTE_DEVIS_APRES_VISITE)
         self.assertIsNone(etape.traite_par)
         # UNE note, qui le dit (après la mention CAD123).
         note = self._notes('Visite technique planifiée').get()
-        self.assertIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
-        self.assertIn(services.MENTION_DEVIS_APRES_VISITE, note.body)
+        self.assertIn(cadence_visite.MENTION_VISITE_SANS_DEVIS, note.body)
+        self.assertIn(cadence_visite.MENTION_DEVIS_APRES_VISITE, note.body)
         self.assertIsNone(note.user)
         # Les deux gestes du rendez-vous sont là ; plus aucune étape devis.
         self.assertEqual(self._ouvertes(DEVIS).count(), 0)
         self.assertEqual(
-            self._ouvertes(services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+            self._ouvertes(cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
 
     def test_replanifier_n_annule_rien_de_plus_et_ne_le_redit_pas(self):
         self._etape_devis_ouverte()
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
-        services.appliquer_visite_planifiee(
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(
             self.lead, self.acteur, VISITE_LE + datetime.timedelta(days=2))
 
         self.assertEqual(self.lead.relance_etapes.filter(
@@ -137,19 +138,19 @@ class PlanificationSansDevisTests(_Base):
         notes = list(self._notes('Visite technique planifiée')
                      .order_by('created_at', 'pk'))
         self.assertEqual(len(notes), 2)
-        self.assertIn(services.MENTION_DEVIS_APRES_VISITE, notes[0].body)
-        self.assertNotIn(services.MENTION_DEVIS_APRES_VISITE, notes[1].body)
+        self.assertIn(cadence_visite.MENTION_DEVIS_APRES_VISITE, notes[0].body)
+        self.assertNotIn(cadence_visite.MENTION_DEVIS_APRES_VISITE, notes[1].body)
 
     def test_avec_un_devis_envoye_l_etape_devis_reste(self):
         self._devis_envoye()
         etape = self._etape_devis_ouverte()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape.refresh_from_db()
         self.assertEqual(etape.statut, A_FAIRE)
         note = self._notes('Visite technique planifiée').get()
-        self.assertNotIn(services.MENTION_DEVIS_APRES_VISITE, note.body)
+        self.assertNotIn(cadence_visite.MENTION_DEVIS_APRES_VISITE, note.body)
 
     def test_un_devis_parti_hors_erp_compte_aussi(self):
         # TREADMILL-1538 — le suivi de proposition a démarré sans objet devis
@@ -163,7 +164,7 @@ class PlanificationSansDevisTests(_Base):
             traite_le=GEL - datetime.timedelta(days=3))
         etape = self._etape_devis_ouverte()
 
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
         etape.refresh_from_db()
         self.assertEqual(etape.statut, A_FAIRE)
@@ -176,15 +177,15 @@ class RetourSansDevisTests(_Base):
               'commentaires_photos': [], 'nb_photos': 0}
 
     def test_la_suite_du_retour_est_de_preparer_le_devis(self):
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
-        debrief = self._ouvertes(services.VISITE_DEBRIEF_LIBELLE).get()
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        debrief = self._ouvertes(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
 
-        etape = services.appliquer_retour_visite(
+        etape = cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR, auteur='Youssef')
 
         debrief.refresh_from_db()
         self.assertEqual(debrief.statut, ANNULEE)
-        self.assertEqual(debrief.note, services.NOTE_RETOUR_SANS_DEVIS)
+        self.assertEqual(debrief.note, cadence_visite.NOTE_RETOUR_SANS_DEVIS)
         self.assertIsNone(debrief.traite_par)
         self.assertEqual(etape.libelle, DEVIS)
         self.assertEqual(etape.statut, A_FAIRE)
@@ -192,15 +193,15 @@ class RetourSansDevisTests(_Base):
         self.assertEqual(etape.due_date, self._echeance_devis(1))
         self.assertEqual(self._ouvertes(DEVIS).count(), 1)
         self.assertFalse(self.lead.relance_etapes.filter(
-            libelle__in=(services.VISITE_DEBRIEF_LIBELLE,
-                         services.VISITE_DEVIS_LIBELLE),
+            libelle__in=(cadence_reperes.VISITE_DEBRIEF_LIBELLE,
+                         cadence_reperes.VISITE_DEVIS_LIBELLE),
             statut=A_FAIRE).exists())
         # Le funnel ne bouge pas : c'est une tâche, pas un devis parti.
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.CONTACTED)
 
     def test_une_seule_note_qui_dit_la_suite_et_sa_date(self):
-        etape = services.appliquer_retour_visite(
+        etape = cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR)
 
         note = self._notes('Visite technique terminée').get()
@@ -216,7 +217,7 @@ class RetourSansDevisTests(_Base):
         self.assertEqual(self.lead.relance_date, etape.due_date)
 
     def test_cette_semaine_cale_l_etape_devis_sur_le_moment_convenu(self):
-        etape = services.appliquer_retour_visite(
+        etape = cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR,
             qualification={'devis': 'convient', 'rappel': 'cette_semaine'})
         self.assertEqual(etape.libelle, DEVIS)
@@ -226,7 +227,7 @@ class RetourSansDevisTests(_Base):
         ouverte = self._etape_devis_ouverte()
         avant = ouverte.due_date
 
-        etape = services.appliquer_retour_visite(
+        etape = cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR)
 
         self.assertEqual(etape.pk, ouverte.pk)
@@ -235,22 +236,22 @@ class RetourSansDevisTests(_Base):
         self.assertEqual(etape.due_date, avant)
 
     def test_un_devis_a_modifier_garde_son_etape(self):
-        services.appliquer_retour_visite(
+        cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR,
             qualification={'devis': 'a_modifier',
                            'devis_details': 'Ajouter une batterie'})
         self.assertEqual(
-            self._ouvertes(services.VISITE_DEVIS_LIBELLE).count(), 1)
+            self._ouvertes(cadence_reperes.VISITE_DEVIS_LIBELLE).count(), 1)
         self.assertEqual(self._ouvertes(DEVIS).count(), 0)
 
     def test_avec_un_devis_envoye_le_debrief_reste_la_suite(self):
         self._devis_envoye()
-        services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
+        cadence_visite.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
 
-        etape = services.appliquer_retour_visite(
+        etape = cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR)
 
-        self.assertEqual(etape.libelle, services.VISITE_DEBRIEF_LIBELLE)
+        self.assertEqual(etape.libelle, cadence_reperes.VISITE_DEBRIEF_LIBELLE)
         self.assertEqual(etape.statut, A_FAIRE)
         self.assertEqual(self._ouvertes(DEVIS).count(), 0)
         note = self._notes('Visite technique terminée').get()
@@ -260,7 +261,7 @@ class RetourSansDevisTests(_Base):
         self.lead.perdu = True
         self.lead.save(update_fields=['perdu'])
 
-        self.assertIsNone(services.appliquer_retour_visite(
+        self.assertIsNone(cadence_visite.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR))
         self.assertFalse(self.lead.relance_etapes.filter(
             statut=A_FAIRE).exists())

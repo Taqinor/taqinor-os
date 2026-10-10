@@ -31,7 +31,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_DECIDER_SUITE, CLE_DEVIS, CLE_RAPPEL_CONVENU, cle_de, q_etape)
@@ -51,8 +51,8 @@ A_FAIRE = RelanceEtape.Statut.A_FAIRE
 FAIT = RelanceEtape.Statut.FAIT
 APPEL = RelanceEtape.Canal.APPEL
 WHATSAPP = RelanceEtape.Canal.WHATSAPP
-FAMILLE = services.REPONSE_DECISION_FAMILLE
-PROPRIETAIRE = services.REPONSE_DECISION_PROPRIETAIRE
+FAMILLE = cadence_reponses.REPONSE_DECISION_FAMILLE
+PROPRIETAIRE = cadence_reponses.REPONSE_DECISION_PROPRIETAIRE
 ORDRES_SUIVI = frozenset(e['ordre'] for e in CADENCES_DEFAUT['apres_devis'])
 #: Le dernier barreau du gabarit livré (« Mise en pause », un message).
 DERNIER = max(ORDRES_SUIVI)
@@ -306,7 +306,7 @@ class DerniereToucheApiTests(TestCase):
 
     def test_non_derniere_decision_fait_naitre_la_touche_suivante(self):
         appel = self._barreau(DERNIER_APPEL)
-        self.assertFalse(services.est_derniere_touche_du_suivi(appel))
+        self.assertFalse(cadence_reponses.est_derniere_touche_du_suivi(appel))
 
         self._fait(appel, reponse=FAMILLE)
 

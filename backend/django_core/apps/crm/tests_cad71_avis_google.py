@@ -23,8 +23,10 @@ from decimal import Decimal
 
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.crm.services import (
-    GabaritNonAssignable, message_pour_etape, verifier_gabarit_assignable,
+from apps.crm.cadence_messages import (
+    GabaritNonAssignable,
+    message_pour_etape,
+    verifier_gabarit_assignable,
 )
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis

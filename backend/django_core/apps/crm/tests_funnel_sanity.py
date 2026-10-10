@@ -20,10 +20,7 @@ from django.utils import timezone
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.crm.services import (
-    lead_signe_sans_devis_actif,
-    signaler_mismatch_signe_sur_refus,
-)
+from apps.crm.fiche_funnel import lead_signe_sans_devis_actif, signaler_mismatch_signe_sur_refus
 from apps.ventes.models import Devis
 from core.events import devis_refused
 

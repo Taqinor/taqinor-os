@@ -199,7 +199,7 @@ class GardeQuatreLeContratEstLaReponse(SimpleTestCase):
         # il est simulé ici — sa forme est gardée par CAD155.
         with mock.patch.object(panneau, '_touche_en_cours',
                                return_value=touche), \
-                mock.patch('apps.crm.services.message_pour_etape',
+                mock.patch('apps.crm.cadence_messages.message_pour_etape',
                            side_effect=_rendu_factice), \
                 mock.patch('apps.crm.horaires.fenetre_du_jour',
                            return_value=None), \

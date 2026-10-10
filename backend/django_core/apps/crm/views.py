@@ -49,10 +49,8 @@ from .serializers import (
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity, stages
-from .services import (
-    COOKIE_APPAREIL, default_responsable_for,
-    domaine_cookies_equipe, enregistrer_appareil_equipe,
-)
+from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
+from .leads_attribution import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import (
     IsAnyRole,
@@ -533,7 +531,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """NTUX13 — Duplique cette fiche client (suffixe « (copie) », email/
         ICE vidés — voir ``services.dupliquer_client``)."""
         source = self.get_object()
-        from .services import dupliquer_client
+        from .clients_identite import dupliquer_client
         copie = dupliquer_client(source, user=request.user)
         return Response(
             ClientSerializer(copie, context={'request': request}).data,
@@ -1230,16 +1228,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import (
-            demarrer_cadence_contact, recompute_lead_score,
-            sync_relance_activity,
-        )
+        from .leads_score import recompute_lead_score
+        from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
         # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
         # site : il doit donc, comme eux, exister au registre de consentement.
         # La personne a elle-même sollicité le contact (appel entrant,
         # message reçu, demande au salon) : c'est la base légale tracée ici.
-        from .services import (
-            BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_SAISIE_MANUELLE,
+        from .leads_consentement import (
+            BASE_LEGALE_SOLLICITATION,
+            CONSENT_SOURCE_SAISIE_MANUELLE,
             enregistrer_base_legale_lead,
         )
         enregistrer_base_legale_lead(
@@ -1366,7 +1363,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # QJR584 — le WhatsApp qui n'était qu'une copie du téléphone suit la
         # correction du téléphone ; un WhatsApp distinct n'est jamais touché.
         if 'telephone' in vd and 'whatsapp' not in vd:
-            from .services import normalize_phone
+            from .leads_doublons import normalize_phone
             if (old.whatsapp and normalize_phone(old.whatsapp)
                     == normalize_phone(old.telephone)
                     and normalize_phone(vd['telephone'])
@@ -1387,11 +1384,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # sont best-effort, chacun dans son point de sauvegarde : leur panne
         # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
         from django.db import transaction
-        from .services import (
-            _emit_stage_changed, maybe_set_first_contacted_at,
-            recompute_lead_score, reporter_prochaine_touche,
-            sync_relance_activity,
-        )
+        from .leads_score import recompute_lead_score
+        from .cadence_plan import reporter_prochaine_touche, sync_relance_activity
+        from .fiche_funnel import _emit_stage_changed
+        from .leads_premier_contact import maybe_set_first_contacted_at
         with transaction.atomic():
             # Décision fondateur 08/10/2026 — SORTIR de « Signé » par une
             # action utilisateur dés-accepte le(s) devis du lead (retour à
@@ -1400,9 +1396,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # avancé…) rend un 409 qui nomme la cause, rien n'est écrit.
             if (old.stage == stages.SIGNED and 'stage' in vd
                     and vd['stage'] != stages.SIGNED):
-                from .services import (
-                    SortieSigneBloquee, desaccepter_devis_du_lead,
-                )
+                from .fiche_funnel import SortieSigneBloquee, desaccepter_devis_du_lead
                 try:
                     desaccepter_devis_du_lead(old, self.request.user)
                 except SortieSigneBloquee as exc:
@@ -1463,7 +1457,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                   != new_lead.dossier_subvention_le))
                 or (old.dossier_subvention == accorde
                     and new_lead.dossier_subvention != accorde)):
-            from .services import poser_rappel_subvention
+            from .cadence_filet import poser_rappel_subvention
             try:
                 poser_rappel_subvention(new_lead, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1474,7 +1468,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # plusieurs » (même effet que les réponses de touche). Idempotent ;
         # repasser à « seul » ne retire rien. Jamais bloquant.
         if old.decideur != new_lead.decideur:
-            from .services import poser_decision_a_plusieurs_depuis_decideur
+            from .cadence_reponses import poser_decision_a_plusieurs_depuis_decideur
             try:
                 poser_decision_a_plusieurs_depuis_decideur(
                     new_lead, self.request.user)
@@ -1485,7 +1479,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # la tâche FDA apparaît pour les étapes atteintes (idempotent).
         if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle
                 and new_lead.pompe_alim_actuelle == 'butane'):
-            from .services import rattraper_playbooks_pompe
+            from .fiche_funnel import rattraper_playbooks_pompe
             try:
                 rattraper_playbooks_pompe(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1497,7 +1491,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if any(getattr(old, champ) != getattr(new_lead, champ)
                for champ in ('tension_raccordement', 'regularisation_8221',
                              'objectif_projet')):
-            from .services import rattraper_playbooks_8221
+            from .fiche_funnel import rattraper_playbooks_8221
             try:
                 rattraper_playbooks_8221(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1509,7 +1503,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
                      'ville', 'societe', 'fonction_contact', 'ice', 'rc',
                      'if_fiscal', 'adresse_siege', 'tva_recuperable'}:
-            from .services import synchroniser_identite_client
+            from .clients_identite import synchroniser_identite_client
             try:
                 synchroniser_identite_client(new_lead, old, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1522,9 +1516,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # s'annule avec elles (best-effort, note au chatter quand un
         # rendez-vous est réellement annulé) : le technicien ne se déplace
         # pas chez un client perdu ou qui ne veut plus être contacté.
-        from .services import (
-            CAUSE_RDV_NE_PLUS_CONTACTER, annuler_rendez_vous_sur_arret,
-            arreter_cadence, cause_rdv_perdu)
+        from .cadence_visite import (
+            CAUSE_RDV_NE_PLUS_CONTACTER,
+            annuler_rendez_vous_sur_arret,
+            cause_rdv_perdu,
+        )
+        from .cadence_plan import arreter_cadence
         try:
             if not old.perdu and new_lead.perdu:
                 arreter_cadence(
@@ -1548,21 +1545,23 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
         # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
         if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
-            from .services import (
-                CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
+            from .cadence_reponses import (
+                CONSENT_SOURCE_OPPOSITION_FICHE,
+                tracer_opposition_registre,
+            )
             tracer_opposition_registre(
                 new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
         # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
         # finalité de contact, dont la source nomme l'utilisateur.
         if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
-            from .services import tracer_levee_opposition_registre
+            from .leads_consentement import tracer_levee_opposition_registre
             tracer_levee_opposition_registre(new_lead, self.request.user)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
         # est le meilleur signal d'achat qui existe. Les trois chemins de
         # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
         # entrante) posent désormais la MÊME cadence de reprise.
-        from .services import reprendre_cadence_apres_reouverture
+        from .cadence_touche import reprendre_cadence_apres_reouverture
         try:
             if old.perdu and not new_lead.perdu:
                 reprendre_cadence_apres_reouverture(
@@ -1843,9 +1842,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
-        from .services import (
-            _corps_pour_segment, _nom_affiche_conseiller, _nom_affiche_marque,
-            _omettre_phrases_incompletes, _societe_du_lead,
+        from .cadence_messages import (
+            _corps_pour_segment,
+            _nom_affiche_conseiller,
+            _nom_affiche_marque,
+            _omettre_phrases_incompletes,
+            _societe_du_lead,
         )
 
         if pii_masquee_pour(request.user):
@@ -1961,7 +1963,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         fiche client » : recopie TOUT l'écart d'identité du lead vers SA fiche
         Client (``lead.client`` seulement, jamais un id du corps). 200
         ``{client_ecart, champs_mis_a_jour}`` | 400 ``{detail}``."""
-        from .services import client_ecart, synchroniser_identite_client
+        from .clients_identite import client_ecart, synchroniser_identite_client
 
         lead = self.get_object()
         if not lead.client_id:
@@ -1991,7 +1993,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         financières). L'événement est journalisé (qui/quand) côté serveur ; la
         réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
         import logging
-        from .services import raison_refus_suppression
+        from .leads_fusion import raison_refus_suppression
         lead = self.get_object()
         # ACAL177 — UNE garde (devis liés + calepinage ouvert), partagée avec
         # l'opération en masse ``delete``.
@@ -2028,7 +2030,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         client. Depuis que le webhook du site crée SYSTÉMATIQUEMENT un nouveau
         lead (plus aucune fusion silencieuse), c'est ce bandeau qui porte le
         rapprochement, et la fusion reste manuelle."""
-        from .services import find_duplicate_leads, is_strong_identity_match
+        from .leads_doublons import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
         dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
         # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``
@@ -2056,7 +2058,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ?exclude=<id> retire le lead en cours d'édition de ses propres doublons.
         `match_fort` : même forme de ligne que l'action `duplicates` ci-dessus
         (les deux listes sont fusionnées par le même bandeau côté rail)."""
-        from .services import find_duplicates_by_contact, is_strong_identity_match
+        from .leads_doublons import find_duplicates_by_contact, is_strong_identity_match
         phone = request.query_params.get('telephone') or \
             request.query_params.get('phone')
         email = request.query_params.get('email')
@@ -2089,7 +2091,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         reconnus + un pré-check de doublons ; l'utilisateur valide avant
         toute création. Sans clé OCR configurée : 503 douce, aucun appel
         réseau. Aucune image persistée au-delà du traitement (en mémoire)."""
-        from .services import CarteVisiteScanUnavailable, scan_carte_visite
+        from .leads_intake import CarteVisiteScanUnavailable, scan_carte_visite
 
         upload = request.FILES.get('file')
         if not upload:
@@ -2131,9 +2133,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         SUGGESTION seulement : aucune fusion n'est faite ici, `match_keys` dit
         POURQUOI chaque groupe est rapproché et la décision reste humaine."""
-        from .services import (
-            find_duplicate_clusters, _completeness, cluster_match_keys,
-            _MERGE_FILL_FIELDS, _est_vide,
+        from .leads_doublons import (
+            find_duplicate_clusters,
+            _completeness,
+            cluster_match_keys,
+            _MERGE_FILL_FIELDS,
+            _est_vide,
         )
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
@@ -2157,7 +2162,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # des touches ouvertes allaient quitter leur plan. Le compte vient
             # de la MÊME définition que la fusion (`relances_ouvertes_de`),
             # jamais d'un second filtre qui dériverait.
-            from .services import relances_ouvertes_de
+            from .leads_fusion import relances_ouvertes_de
             relances_reprises = sum(
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
@@ -2203,7 +2208,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
         devis, chantiers, activités, pièces jointes et historique sont déplacés ;
         les leads absorbés sont archivés (jamais supprimés)."""
-        from .services import merge_leads
+        from .leads_fusion import merge_leads
         survivor = self.get_object()
         ids = request.data.get('others') or []
         if not isinstance(ids, list) or not ids:
@@ -2336,7 +2341,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if plan is None:
             return Response({'detail': 'Plan introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        from .services import appliquer_plan_activite
+        from .fiche_ecritures import appliquer_plan_activite
         try:
             activites = appliquer_plan_activite(
                 lead=lead, plan=plan, user=request.user)
@@ -2394,15 +2399,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (MESSAGE_RELANCE_PLUSIEURS_DEVIS,
-                               MESSAGE_RELANCE_SANS_DEVIS,
-                               CadenceActiveConflit,
-                               CadenceRemplacementAConfirmer,
-                               apercu_remplacement_cadence,
-                               choix_devis_relance,
-                               devis_envoyes_pour_relance,
-                               initialiser_plan_relance,
-                               message_remplacement_cadence)
+        from .cadence_plan import (
+            MESSAGE_RELANCE_PLUSIEURS_DEVIS,
+            MESSAGE_RELANCE_SANS_DEVIS,
+            CadenceActiveConflit,
+            CadenceRemplacementAConfirmer,
+            apercu_remplacement_cadence,
+            choix_devis_relance,
+            devis_envoyes_pour_relance,
+            initialiser_plan_relance,
+            message_remplacement_cadence,
+        )
         oui = (True, 'true', 'True', '1', 1)
         confirme = request.data.get('confirmer_remplacement') in oui
         motif = str(request.data.get('motif') or '').strip()
@@ -2412,7 +2419,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # inchangée) : aucune question, et jamais un second plan à côté.
         # SUIVI E1 (30/09/2026) — un plan ouvert = un BARREAU du protocole :
         # une étape de visite ouverte (même cadence) ne l'est pas.
-        from .services import q_visite
+        from .cadence_reperes import q_visite
         devis = None
         if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
                 cadence=Cadence.APRES_DEVIS,
@@ -2505,7 +2512,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'cadences': 'Liste de cadences attendue.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import arreter_cadence
+        from .cadence_plan import arreter_cadence
         arretees = arreter_cadence(
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
@@ -2540,8 +2547,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'apply': 'Booléen attendu (true pour appliquer).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (
-            PLACEMENT_LOT_DEFAUT, PLACEMENT_LOT_MAX, placer_anciens_leads)
+        from .cadence_placement import (
+            PLACEMENT_LOT_DEFAUT,
+            PLACEMENT_LOT_MAX,
+            placer_anciens_leads,
+        )
         limite = request.data.get('limite')
         if limite in (None, ''):
             limite = PLACEMENT_LOT_DEFAUT
@@ -2566,7 +2576,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # ALEA25 — borné par la portée du viewset (société + équipe).
         from rest_framework.exceptions import APIException
 
-        from .services import PlacementImpossible
+        from .cadence_placement import PlacementImpossible
 
         class _PlacementSuspendu(APIException):
             # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas
@@ -2682,7 +2692,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         mode = (request.data.get('mode') or '').strip()
         client_id = request.data.get('client_id')
-        from .services import ClientIntrouvable, convertir_lead_en_client
+        from .clients_identite import ClientIntrouvable, convertir_lead_en_client
         try:
             # ACRM7 — le client à lier est cherché dans la PORTÉE de
             # l'appelant (même règle que ``ClientViewSet.get_queryset``).
@@ -2929,7 +2939,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # `apps.ventes.utils.phone.normalize_ma_phone` (forçait un préfixe
         # '212', ne rapprochait jamais un lead à numéro étranger) vers la
         # même clé QW10 que `selectors.find_client_by_phone` juste au-dessus.
-        from .services import normalize_phone
+        from .leads_doublons import normalize_phone
 
         conditions = []
         phone_norm = normalize_phone(lead.telephone or '') if lead.telephone else None
@@ -3081,7 +3091,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """
         from django.utils import timezone
         import datetime
-        from .services import lead_sla_hours as get_sla_hours
+        from .leads_premier_contact import lead_sla_hours as get_sla_hours
         sla = get_sla_hours(request.user.company)
         if sla == 0:
             return Response({'sla_hours': 0, 'count': 0, 'results': []})
@@ -3133,7 +3143,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         chaînes vides sinon."""
         from apps.visites.selectors import visites_pour_lead
 
-        from .services import avertissement_visite
+        from .cadence_visite import avertissement_visite
 
         lead = self.get_object()
         avertissement = avertissement_visite(lead)
@@ -3174,8 +3184,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.visites.selectors import ligne_visite_pour_lead
         from apps.visites.services import planifier_visite
 
-        from .services import (
-            _prochaine_touche_a_faire, clore_etape_apres_planification)
+        from .cadence_visite import clore_etape_apres_planification
+        from .cadence_plan import _prochaine_touche_a_faire
 
         lead = self.get_object()
         brut = (request.data.get('date_prevue') or '').strip()
@@ -3256,9 +3266,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         locataire avec le motif EXISTANT « Locataire » — 200. Chaque refus
         NOMME son champ. Aucune valeur d'énumération neuve (contrat
         ``lead_locataire``)."""
-        from .services import (
-            clore_locataire_sans_proprietaire, creer_lead_proprietaire,
-            proposition_locataire, refus_proprietaire)
+        from .cadence_reponses import (
+            clore_locataire_sans_proprietaire,
+            creer_lead_proprietaire,
+            proposition_locataire,
+            refus_proprietaire,
+        )
 
         lead = self.get_object()
         if request.method == 'GET':
@@ -3320,7 +3333,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .services import cles_message_visite_du_lead, message_visite_pour_lead
+        from .cadence_messages import cles_message_visite_du_lead, message_visite_pour_lead
 
         cle = (request.query_params.get('cle') or '').strip()
         lead = self.get_object()
@@ -3357,9 +3370,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         issue, aucune touche avancée. ``etape`` (une touche à faire de CE lead)
         rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
         Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
-        from .services import (
-            LANGUES_MESSAGE_VISITE, cle_message_visite_autorisee,
-            cles_message_visite_du_lead, journaliser_message_visite_ouvert,
+        from .cadence_messages import (
+            LANGUES_MESSAGE_VISITE,
+            cle_message_visite_autorisee,
+            cles_message_visite_du_lead,
+            journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
         cle = (request.data.get('cle') or '').strip()
@@ -3441,7 +3456,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # FG28/MRY19 — première note = premier contact. La condition
         # « lead encore en NEW » a DISPARU : un lead saisi à la main, déjà
         # CONTACTED, ne recevait jamais d'horodatage et sortait du KPI.
-        from .services import marquer_premier_contact
+        from .leads_premier_contact import marquer_premier_contact
         marquer_premier_contact(lead)
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data,
@@ -3497,8 +3512,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # touche forment UNE transaction : un report en panne n'écrit rien
         # (avant : chatter écrit puis 500, touche jamais déplacée).
         from django.db import transaction
-        from .services import (marquer_premier_contact,
-                               reporter_prochaine_touche)
+        from .cadence_plan import reporter_prochaine_touche
+        from .leads_premier_contact import marquer_premier_contact
         with transaction.atomic():
             act = LeadActivity.objects.create(
                 lead=lead,
@@ -4528,7 +4543,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # « perdu » reste une décision humaine, MRY22).
         motif_refus = (request.data.get('motif_refus') or '').strip()
         if motif_refus:
-            from .services import mention_motif_refus, motif_refus_valide
+            from .cadence_reponses import mention_motif_refus
+            from .leads_socle import motif_refus_valide
             if outcome != 'refuse':
                 return Response(
                     {'erreurs': {'motif_refus': (
@@ -4550,7 +4566,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         perdu_junk = (request.data.get('perdu_junk') or '').strip()
         motif_junk = None
         if perdu_junk:
-            from .services import motif_junk_valide
+            from .cadence_reponses import motif_junk_valide
             if statut != RelanceEtape.Statut.FAIT or outcome != 'non_joint':
                 return Response(
                     {'erreurs': {'perdu_junk': (
@@ -4625,13 +4641,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import (est_derniere_touche_de_contact,
-                               est_derniere_touche_du_suivi,
-                               est_dernier_reveil, est_etape_de_filet,
-                               est_etape_de_visite, marquer_etape_relance,
-                               repondre_planifier_sans_reponse,
-                               reporter_prochaine_touche,
-                               repondre_rappel_convenu)
+        from .cadence_touche import marquer_etape_relance
+        from .cadence_plan import est_etape_de_filet, reporter_prochaine_touche
+        from .cadence_reperes import est_etape_de_visite
+        from .cadence_reponses import (
+            est_derniere_touche_de_contact,
+            est_derniere_touche_du_suivi,
+            est_dernier_reveil,
+            repondre_planifier_sans_reponse,
+            repondre_rappel_convenu,
+        )
         # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse :
         # l'appel compte et l'étape est REPOSÉE pour demain — jamais
         # « Préparer et envoyer le devis » (le client a accepté la visite).
@@ -4724,7 +4743,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, request.user, statut, note=note, outcome=outcome,
             body=body, suite=motif_junk is None)
         if motif_junk is not None:
-            from .services import marquer_lead_perdu_junk
+            from .cadence_reponses import marquer_lead_perdu_junk
             marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
             # COCKPIT-CONTRÔLE — la touche est CLOSE ; la date place la
@@ -4754,7 +4773,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         SUIVI E9 — elle NOMME l'étape (``libelle``, ``cle``) :
         ``_prochaine_touche_publique``."""
-        from .services import _prochaine_touche_a_faire
+        from .cadence_plan import _prochaine_touche_a_faire
 
         data = self.get_serializer(etape).data
         data['prochaine_touche'] = _prochaine_touche_publique(
@@ -4769,18 +4788,31 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         l'issue enregistrée en est dérivée ici, jamais envoyée par l'écran.
         Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
         réponse et dit où elle vaut."""
-        from .services import (
-            REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_ATTENTE_ACCORD, REPONSE_DEVIS_MODIFIE,
+        from .cadence_reponses import (
+            REPONSE_DECISION_FAMILLE,
+            REPONSE_DECISION_PROPRIETAIRE,
+            REPONSE_ATTENTE_ACCORD,
+            REPONSE_DEVIS_MODIFIE,
             REPONSE_JOINT_TELEPHONE,
-            REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
-            REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
-            refus_motif_perte, refus_raison_attente, refus_reponse_touche,
+            REPONSE_NE_PLUS_CONTACTER,
+            REPONSE_PERDU,
+            REPONSE_PLUS_TARD,
+            REPONSE_QUESTION_PRIX,
+            REPONSE_VISITE_ABANDONNEE,
+            refus_motif_perte,
+            refus_raison_attente,
+            refus_reponse_touche,
             repondre_attente_accord,
-            repondre_decision_a_plusieurs, repondre_devis_modifie,
-            repondre_joint_telephone, repondre_ne_plus_contacter,
-            repondre_perdu, repondre_plus_tard, repondre_question_prix,
-            repondre_visite_abandonnee, reponse_touche)
+            repondre_decision_a_plusieurs,
+            repondre_devis_modifie,
+            repondre_joint_telephone,
+            repondre_ne_plus_contacter,
+            repondre_perdu,
+            repondre_plus_tard,
+            repondre_question_prix,
+            repondre_visite_abandonnee,
+            reponse_touche,
+        )
 
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
@@ -4894,7 +4926,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         une fois pour toutes — seulement si la touche a bien été enregistrée
         (un refus 400 ne change rien). Une langue inconnue est refusée AVANT
         tout, en 400 ``{"erreurs": {"langue": …}}``."""
-        from .services import definir_langue_preferee, refus_langue_relance
+        from .cadence_messages import definir_langue_preferee, refus_langue_relance
         langue = (request.data.get('langue') or '').strip()
         if langue:
             refus = refus_langue_relance(langue)
@@ -4950,7 +4982,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
         listée parmi les lectures)."""
         etape = self.get_object()
-        from .services import AnnulationToucheRefusee, annuler_touche_relance
+        from .cadence_touche import AnnulationToucheRefusee, annuler_touche_relance
         try:
             etape = annuler_touche_relance(etape, request.user)
         except AnnulationToucheRefusee as refus:
@@ -4975,8 +5007,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
         autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .services import (
-            CLES_MESSAGE_REPONSE, message_pour_etape, refus_langue_relance)
+        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_reponses import CLES_MESSAGE_REPONSE
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
             # Levée, jamais un second `return` : la forme du contrat
@@ -5009,10 +5041,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .services import (
-            journaliser_whatsapp_ouvert, marquer_premier_contact,
-            message_pour_etape, refus_langue_relance,
-        )
+        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_reperes import journaliser_whatsapp_ouvert
+        from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
         if langue and refus_langue_relance(langue):
             # Levée (même motif que `message`) : la forme versionnée du
@@ -5025,7 +5056,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             # CAD70 — sans réalisation publiée, le message J4 se réduit à une
             # phrase orpheline : il n'est pas « ouvert ». Levée (même motif
             # que la langue) : la forme versionnée reste celle du rendu.
-            from .services import REFUS_PREUVE_MANQUANTE
+            from .cadence_messages import REFUS_PREUVE_MANQUANTE
             raise DRFValidationError(
                 {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
         if not rendu.get('wa_url'):
@@ -5084,7 +5115,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         Écriture → garde ``IsResponsableOrAdmin`` par défaut de
         ``get_permissions``."""
         etape = self.get_object()
-        from .services import definir_langue_preferee, refus_langue_relance
+        from .cadence_messages import definir_langue_preferee, refus_langue_relance
         langue = (request.data.get('langue') or '').strip()
         refus = (refus_langue_relance(langue) if langue else
                  '« Langue du client » : choisissez la langue à enregistrer.')
@@ -5113,7 +5144,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         par un message ENTRANT : c'est un geste humain. Écriture → garde
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions``."""
         etape = self.get_object()
-        from .services import enregistrer_piece_recue, refus_piece_recue
+        from .cadence_reponses import enregistrer_piece_recue, refus_piece_recue
         type_piece = (request.data.get('type_piece') or '').strip()
         refus = refus_piece_recue(etape, type_piece)
         if refus:
@@ -5208,7 +5239,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'mesure CAD178 reporter', enregistrer_geste_appareil,
             etape.company, 'reporter', request.META.get('HTTP_USER_AGENT', ''))
         if mode == 'veille':
-            from .services import mettre_en_veille
+            from .cadence_reponses import mettre_en_veille
             reprise = mettre_en_veille(
                 etape.lead, request.user, quand, etape=etape)
             if reprise is None:
@@ -5217,7 +5248,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape.refresh_from_db()
                 reprise = etape
             return Response(self.get_serializer(reprise).data)
-        from .services import reporter_prochaine_touche
+        from .cadence_plan import reporter_prochaine_touche
         etape = reporter_prochaine_touche(
             etape.lead, request.user, quand, etape=etape)
         return Response(self.get_serializer(etape).data)
@@ -5306,7 +5337,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
                 # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
                 raise DRFValidationError({'lead': ['Lead introuvable.']})
         if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
-            from .services import public_booking_url
+            from .visites_rdv import public_booking_url
             try:
                 lien_rdv = public_booking_url(lead, request=request)
             except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
@@ -5374,7 +5405,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         """Company et created_by toujours posés côté serveur."""
-        from .services import book_appointment
+        from .visites_rdv import book_appointment
         lead = serializer.validated_data['lead']
         scheduled_at = serializer.validated_data['scheduled_at']
         notes = serializer.validated_data.get('notes') or ''
@@ -5468,7 +5499,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
         `LeadViewSet.whatsapp_devis`)."""
         appt = self.get_object()
-        from .services import build_appointment_confirmation_whatsapp
+        from .visites_rdv import build_appointment_confirmation_whatsapp
 
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
@@ -6700,7 +6731,7 @@ def _message_ouvert_sur_touche(etape):
     issue sur un canal « appel » — le seul cas où la réponse sert.
     """
     from .models import LeadActivity
-    from .services import prefixe_activite_message_ouvert
+    from .cadence_reperes import prefixe_activite_message_ouvert
     return LeadActivity.objects.filter(
         company_id=etape.company_id, lead_id=etape.lead_id,
         kind=LeadActivity.Kind.WHATSAPP,

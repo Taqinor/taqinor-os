@@ -518,7 +518,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         que l'écriture, jamais un second littéral."""
         if not self._message_eligible(obj):
             return None
-        from .services import prefixe_activite_message_ouvert
+        from .cadence_reperes import prefixe_activite_message_ouvert
         # APRF21 — lecture EN LOT : la première touche éligible de la page
         # lit UNE fois les activités « WhatsApp ouvert » de tous les leads
         # éligibles (patron ``_visite_du_lead``), carte posée en contexte.
@@ -1400,7 +1400,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # qui NOMME le champ : période inconnue, ou période sans montant.
         periodicite = (attrs.pop('facture_periodicite', '') or '').strip()
         if periodicite:
-            from .services import facture_au_mois, refus_periodicite_facture
+            from .fiche_ecritures import facture_au_mois, refus_periodicite_facture
             refus = refus_periodicite_facture(periodicite)
             if refus:
                 raise serializers.ValidationError(
@@ -1429,7 +1429,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # l'entonnoir doit être EXPLICITEMENT assumé (Froid = parking, jamais
         # une régression : _bulk_stage_allowed l'autorise déjà des deux côtés).
         if self.instance is not None and 'stage' in attrs:
-            from .services import _bulk_stage_allowed
+            from .fiche_funnel import _bulk_stage_allowed
             current = self.instance.stage
             target = attrs['stage']
             if target != current:
@@ -1890,7 +1890,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_client_ecart(self, obj):
         """QJR590 — ``[nom|prenom|email|telephone|adresse]`` divergents."""
-        from .services import client_ecart
+        from .clients_identite import client_ecart
         return client_ecart(obj)
 
     def get_devis(self, obj):
@@ -2600,7 +2600,7 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
         """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
         dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
         ``cle_message_segment(lead)`` la confirme ; ``None`` sinon."""
-        from .services import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
+        from .cadence_messages import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
         playbook = getattr(getattr(obj.tache, 'etape', None), 'playbook', None)
         nom = getattr(playbook, 'nom', None)
         entree = next((e for e in PLAYBOOKS_SEGMENT_CAD125 if e['nom'] == nom),

@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.crm.services import convertir_lead_en_client
+from apps.crm.clients_identite import convertir_lead_en_client
 
 User = get_user_model()
 

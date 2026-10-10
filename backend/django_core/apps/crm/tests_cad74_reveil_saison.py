@@ -30,7 +30,7 @@ from apps.crm.cadence_reveil_saison import (
     motif_de_refus,
 )
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import poser_reveil_saisonnier, poser_reveils_saisonniers
+from apps.crm.cadence_plan import poser_reveil_saisonnier, poser_reveils_saisonniers
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
     CADENCE_REVEIL_DEFAUT, CanalRelance,

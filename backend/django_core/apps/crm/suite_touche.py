@@ -264,7 +264,7 @@ def type_etape(etape):
     historique « visite » compte comme un appel, ``_canal_configure``).
     Toute étape d'une autre cadence est « générique »."""
     from .cadence_config import cle_de
-    from .services import QUESTION_PRIX_LIBELLE
+    from .cadence_reperes import QUESTION_PRIX_LIBELLE
 
     cle = cle_de(etape)
     if cle in _TYPES_PAR_CLE:
@@ -384,7 +384,7 @@ def q_tache():
     from django.db.models import Q
 
     from .cadence_config import q_etape
-    from .services import QUESTION_PRIX_LIBELLE
+    from .cadence_reperes import QUESTION_PRIX_LIBELLE
 
     cles = tuple(sorted(TYPES_TACHE & _TYPES_PAR_CLE))
     return q_etape(*cles) | Q(cle='', libelle=QUESTION_PRIX_LIBELLE)
@@ -407,7 +407,7 @@ def q_barreau():
     from django.db.models import Q
 
     from .cadence_config import q_etape
-    from .services import QUESTION_PRIX_LIBELLE
+    from .cadence_reperes import QUESTION_PRIX_LIBELLE
 
     return (Q(cadence__in=tuple(sorted(_TYPES_PAR_CADENCE)))
             & ~q_etape(*sorted(_TYPES_PAR_CLE))
@@ -421,8 +421,8 @@ def nature_touche(etape):
     garde sa nature ; une étape posée avant la clé est reconnue par son
     libellé par défaut."""
     from .cadence_config import CLE_DEVIS, est_etape
-    from .services import (
-        PASSATION_LIBELLE, est_etape_de_filet, est_etape_de_visite)
+    from .cadence_plan import est_etape_de_filet
+    from .cadence_reperes import PASSATION_LIBELLE, est_etape_de_visite
 
     if est_etape_de_visite(etape):
         return NATURE_VISITE
@@ -546,7 +546,8 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
     dernière touche). ``canal`` : le canal RÉEL (SUIVI E16), qui décide de
     la suite d'un client joint à la place du canal prévu."""
-    from .services import CADENCES_ARRETEES_PAR_ISSUE, OUTCOME_VISITE_ACCEPTEE
+    from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
+    from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     cadence = etape.cadence
     # La cadence de la touche SURVIT-elle à l'issue ? (récepteur MRY9, et
@@ -650,7 +651,7 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
 
 def _codes_envoi_devis(issue):
     """« Préparer et envoyer le devis (ou fixer un rappel) »."""
-    from .services import OUTCOME_VISITE_ACCEPTEE
+    from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     if issue == '':
         return [SUIVI_PROPOSITION_DEMARRE]
@@ -675,7 +676,8 @@ def _codes_filet(etape, issue, est_actif):
     palier désactivé, exactement comme le moteur
     (``services.prochain_palier_sans_reponse``)."""
     from .cadence_config import CLE_DERNIER_APPEL, CLE_MESSAGE_CRENEAU, cle_de
-    from .services import OUTCOME_VISITE_ACCEPTEE, prochain_palier_sans_reponse
+    from .cadence_filet import prochain_palier_sans_reponse
+    from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     if issue == OUTCOME_VISITE_ACCEPTEE:
         # 24/09/2026 — la suite est de caler la visite, rien d'autre.
@@ -709,7 +711,7 @@ def _codes_a_cote_du_plan(issue, *, visite, cle=''):
     des phrases conditionnelles, vérifiées dans chacune de leurs branches.
     ``cle`` : la clé moteur de la touche (``cadence_config.cle_de``)."""
     from .cadence_config import CLE_DEVIS_MODIFIE, CLE_PLANIFIER
-    from .services import OUTCOME_VISITE_ACCEPTEE
+    from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
@@ -760,11 +762,17 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
 
 def _codes_reponse_client(cle, *, nature, derniere):
     """Les RÉPONSES DU CLIENT (``REPONSES_TOUCHE``, CAD-A)."""
-    from .services import (
-        REPONSE_ATTENTE_ACCORD, REPONSE_DECISION_FAMILLE,
-        REPONSE_DECISION_PROPRIETAIRE, REPONSE_DEVIS_MODIFIE,
-        REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
-        REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE)
+    from .cadence_reponses import (
+        REPONSE_ATTENTE_ACCORD,
+        REPONSE_DECISION_FAMILLE,
+        REPONSE_DECISION_PROPRIETAIRE,
+        REPONSE_DEVIS_MODIFIE,
+        REPONSE_NE_PLUS_CONTACTER,
+        REPONSE_PERDU,
+        REPONSE_PLUS_TARD,
+        REPONSE_QUESTION_PRIX,
+        REPONSE_VISITE_ABANDONNEE,
+    )
 
     if cle == REPONSE_NE_PLUS_CONTACTER:
         return [NE_PLUS_CONTACTER]
@@ -811,7 +819,7 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     from . import stages
     from .cadence_config import cle_de
     from .models import RelanceEtape
-    from .services import REPONSE_JOINT_TELEPHONE, REPONSES_TOUCHE
+    from .cadence_reponses import REPONSE_JOINT_TELEPHONE, REPONSES_TOUCHE
 
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return {}
@@ -874,7 +882,8 @@ def promesses_journal():
     ``journal``) : la garde CAD17 exige qu'elle soit ÉGALE à ce calcul et
     rejoue chaque issue par l'API réelle."""
     from .models import LeadActivity
-    from .services import CADENCES_ARRETEES_PAR_ISSUE, OUTCOME_VISITE_ACCEPTEE
+    from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
+    from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     promesses = {}
     for issue, _libelle in LeadActivity.OUTCOMES:

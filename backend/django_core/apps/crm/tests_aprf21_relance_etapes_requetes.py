@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import prefixe_activite_message_ouvert
+from apps.crm.cadence_reperes import prefixe_activite_message_ouvert
 
 User = get_user_model()
 URL = '/api/django/crm/relance-etapes/'

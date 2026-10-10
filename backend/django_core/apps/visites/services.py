@@ -520,9 +520,9 @@ def journaliser_visite(visite, user, moment, detail=''):
     Best-effort côté CRM : un chatter indisponible ne fait jamais échouer la
     transition métier qui vient d'aboutir.
     """
-    from apps.crm import services as crm_services
+    from apps.crm import visites_retour_lead
 
-    return crm_services.journaliser_visite(visite, user, moment, detail=detail)
+    return visites_retour_lead.journaliser_visite(visite, user, moment, detail=detail)
 
 
 def codes_slots_toiture():

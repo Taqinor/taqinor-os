@@ -844,15 +844,14 @@ def appliquer_section(lien, section, reponses=None, photo=None,
     # recalculer AVANT de l'écrire persistait un score périmé de 4 points —
     # deux valeurs différentes pour le même lead (la colonne triée d'un côté,
     # le calcul de l'autre), ce que CRX22 interdit.
-    from .services import recompute_lead_score
+    from .leads_score import recompute_lead_score
     recompute_lead_score(lead)
     # CAD136 (audit L3 du 21/09/2026) — le responsable est PRÉVENU. Jusqu'ici
     # répondre au questionnaire enrichissait le lead, recalculait le score et
     # écrivait une note — sans aucune notification, et `derniere_reponse_at`
     # n'était relu par personne dans tout le dépôt. Le client vient pourtant
     # de passer cinq minutes sur NOTRE formulaire.
-    from .services import (
-        SIGNAL_QUESTIONNAIRE, notifier_signal_client, poser_touche_signal)
+    from .cadence_signaux import SIGNAL_QUESTIONNAIRE, notifier_signal_client, poser_touche_signal
     notifier_signal_client(
         lead, SIGNAL_QUESTIONNAIRE,
         detail=f'Section « {LIBELLE_SECTION[section]} » renseignée.')

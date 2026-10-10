@@ -58,13 +58,13 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/calepinage/services/modeles.py::marquer_modele::TaggedItem` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/calepinage/views/calepinages.py::ActionIdempotenteMixin.executer_idempotent::IdempotencyRecord` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
 | `backend/django_core/apps/calepinage/views/reglementaire.py::_dossier_en_base::DossierReglementaire` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
+| `backend/django_core/apps/crm/cadence_messages.py::seed_playbooks_segment::Playbook` | get_or_create | Playbook.objects | company, nom |
+| `backend/django_core/apps/crm/cadence_messages.py::seed_playbooks_segment::PlaybookEtape` | get_or_create | PlaybookEtape.objects | playbook, stage |
+| `backend/django_core/apps/crm/cadence_messages.py::seed_playbooks_segment::PlaybookTache` | get_or_create | PlaybookTache.objects | etape, libelle |
+| `backend/django_core/apps/crm/fiche_funnel.py::_rattraper_playbooks_lisant::LeadPlaybookProgress` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
+| `backend/django_core/apps/crm/fiche_funnel.py::generer_playbook_progress::LeadPlaybookProgress` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py::snapshot_forecast_hebdo::ForecastSnapshot` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py::enregistrer_geste_appareil::GesteRelanceAppareil` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
-| `backend/django_core/apps/crm/services.py::_rattraper_playbooks_lisant::LeadPlaybookProgress` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py::generer_playbook_progress::LeadPlaybookProgress` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py::seed_playbooks_segment::Playbook` | get_or_create | Playbook.objects | company, nom |
-| `backend/django_core/apps/crm/services.py::seed_playbooks_segment::PlaybookEtape` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/services.py::seed_playbooks_segment::PlaybookTache` | get_or_create | PlaybookTache.objects | etape, libelle |
 | `backend/django_core/apps/crm/views.py::completer_motifs_perte::MotifPerte` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py::completer_motifs_perte::MotifPerteStandardPropose` | get_or_create | MotifPerteStandardPropose.objects | company, nom |
 | `backend/django_core/apps/crm/views.py::seed_canaux::Canal` | get_or_create | Canal.objects | cle, company |

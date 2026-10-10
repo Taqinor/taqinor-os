@@ -340,7 +340,7 @@ class TestReculConfirme(UndoStageBase):
         """La règle de MASSE est délibérément inchangée : aucune boîte de
         dialogue ne fait assumer sincèrement le recul de 200 leads d'un coup.
         ``_bulk_stage_allowed`` reste la définition pure de « ce qui avance »."""
-        from apps.crm.services import _bulk_stage_allowed
+        from apps.crm.fiche_funnel import _bulk_stage_allowed
         self.assertFalse(
             _bulk_stage_allowed(stages.QUOTE_SENT, stages.CONTACTED))
         self.assertTrue(

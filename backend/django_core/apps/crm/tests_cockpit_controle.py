@@ -47,7 +47,7 @@ from testkit.time import frozen
 
 from apps.crm import cadence_absence
 from apps.crm import controle_suivi as cs
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_plan
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS
 from apps.crm.models import Client, Lead, PeriodeAbsence, RelanceEtape
@@ -787,7 +787,7 @@ class ExceptionsTests(_Base):
     def test_un_report_ne_sort_pas_une_tache_de_en_attente(self):
         lead = self._lead()
         tache = self._devis(lead, _jour(1), cree_le=_a(_jour(-4)))
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             lead, self.acteur, _a(_jour(7), 11), etape=tache)
         tache.refresh_from_db()
         self.assertEqual(tache.nb_reports, 1)
@@ -804,7 +804,7 @@ class ExceptionsTests(_Base):
         etape = self._etape(lead, _jour(1))
         origine = etape.due_initial_at
         for jours in (3, 6):
-            services.reporter_prochaine_touche(
+            cadence_plan.reporter_prochaine_touche(
                 lead, self.acteur, _a(_jour(jours), 11), etape=etape)
         close = self._fait(lead, _jour(-2), nb_reports=3)
         liste = self._controle()['exceptions']['reports']
