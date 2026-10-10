@@ -32,6 +32,7 @@ from django.test import TestCase
 from freezegun import freeze_time
 
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.quote_engine import i18n_labels
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_produit,
     make_user,
@@ -137,10 +138,22 @@ def _lignes_variantees(devis, company, lignes):
 
 GOLDEN = Path(__file__).resolve().parent / 'golden' / 'regles_calcul_origine.json'
 #: Clés sans chiffre ajoutées après le merge-base, retirées des deux côtés.
+#: Lane APDF (APDF8/9/10/46, 10/10/2026) — 86 libellés de gabarit traduits
+#: (préfixes res_/op_/lg_/cgv_/tva_ + clauses_particulieres, aucun n'existait
+#: avant) : des TEXTES de ``libelles_document``, jamais un chiffre.
+_LIBELLES_APDF = tuple(
+    ('libelles_document', cle) for cle in i18n_labels.LIBELLES
+    if cle.startswith(('res_', 'op_', 'lg_', 'cgv_', 'tva_'))
+    or cle == 'clauses_particulieres')
 CLES_HORS_RENDU_ORIGINE = (
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
-    ('libelles_document', 'agr_base_besoin_agronomique'))
+    ('libelles_document', 'agr_base_besoin_agronomique'),
+    *_LIBELLES_APDF)
+#: APDF10 — un document en/ar porte sa note de TVA TRADUITE (mêmes taux,
+#: ``tva_note_des_lignes(langue=…)``) : retirée des deux côtés hors français
+#: seulement ; le français reste comparé au caractère près.
+CLES_TRADUITES_HORS_FR = (('tva_note',),)
 
 
 def _empreinte(test, devis, data):
@@ -160,7 +173,10 @@ def _empreinte(test, devis, data):
     for pk in sorted(pks, reverse=True):
         texte = re.sub(r'(?<![0-9])/%d(?=[/._?#"])' % pk, '/<pk>', texte)
     d = json.loads(texte)
-    for chemin in CLES_HORS_RENDU_ORIGINE:
+    chemins = CLES_HORS_RENDU_ORIGINE
+    if d.get('langue_sortie') not in (None, 'fr'):
+        chemins = chemins + CLES_TRADUITES_HORS_FR
+    for chemin in chemins:
         cible = d
         for k in chemin[:-1]:
             cible = cible.get(k) if isinstance(cible, dict) else None
