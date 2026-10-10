@@ -11,6 +11,8 @@ BASELINE_GROSSIT, deplacement SPL (empreinte AST), EXCEPTION (`Exception C20 : <
 <chemin> car :` sur une tache cochee). Ailleurs : test nomme par id -> check_test_placement
 (AMET84) ; helper jumeau -> check_duplicats_litteraux ; cle de ligne -> AMET100.
 Clone superficiel ou base introuvable : ECHEC (« garde inoperante »), jamais un vert.
+PR de revert (TOUS ses commits non-merge `merge-base..tete` sont des `git revert`) : non jugee,
+exit 0 — `main` reste toujours revertable (CLAUDE.md) ; une PR mixte est jugee normalement.
 
 Usage :
     python scripts/check_forme_code.py [--base origin/main] [--tete HEAD]
@@ -32,6 +34,7 @@ from forme_code.socle import Contexte, Echec, git  # noqa: E402
 
 REGLES = (fichier_mur, fonction_neuve, fonction_mur, facade, reglage, garde_neuve, baseline_grossit)
 INOPERANTE = "clone superficiel : garde inopérante"
+REVERT = 'Revert "'
 
 
 def _sha(racine, ref: str) -> str | None:
@@ -57,6 +60,13 @@ def resoudre_base(racine, base: str, tete: str) -> tuple:
         return git(racine, "merge-base", sha_base, sha_tete).decode().strip(), sha_tete
     except Echec:
         raise Echec(f"{INOPERANTE} (aucune base commune entre {base} et {tete})") from None
+
+
+def est_pr_de_revert(racine, mb: str, tete: str) -> bool:
+    """Vrai si les commits non-merge `mb..tete` sont TOUS des `git revert` (revenir en arriere reste permis)."""
+    brut = git(racine, "log", "--no-merges", "--format=%s", f"{mb}..{tete}").decode("utf-8", "replace")
+    sujets = [s for s in brut.splitlines() if s.strip()]
+    return bool(sujets) and all(s.startswith(REVERT) for s in sujets)
 
 
 def analyser(racine, base: str, tete: str) -> dict:
@@ -99,6 +109,9 @@ def main(argv=None) -> int:
         return 0
     try:
         mb, tete = resoudre_base(args.racine, args.base, args.tete)
+        if est_pr_de_revert(args.racine, mb, tete):
+            print("check_forme_code : PR de revert : forme du code non jugée (main toujours revertable)")
+            return 0
         resultat = analyser(args.racine, mb, tete)
     except Echec as exc:
         print(f"check_forme_code : ÉCHEC — {exc}")

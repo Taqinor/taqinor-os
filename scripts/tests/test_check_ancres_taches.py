@@ -110,6 +110,25 @@ class AncresTests(unittest.TestCase):
         self.assertIn("ECHEC BBB2", sortie)
         self.assertNotIn("ECHEC BBB1", sortie)
 
+    def test_base_en_avance_sur_le_merge_base_ne_touche_pas_la_tache(self):
+        # Revue du lot audit_deploy : une branche EN RETARD sur main ne touche pas une tâche que seul
+        # main a modifiée — « touchée » se juge contre merge-base(base, HEAD), jamais la pointe de base.
+        mauvaise = "BBB4 — voir `mod.py::absent` fin"
+        self.depot.plan(mauvaise)
+        self.depot.valider("merge-base")
+        self.depot.git("branch", "pr")
+        self.depot.plan(mauvaise + " precisee sur main", "BBB5 — neuve sur main seulement")
+        self.depot.valider("main avance")
+        self.depot.git("branch", "base-en-avance")
+        self.depot.git("checkout", "-q", "pr")
+        code, sortie = self.depot.lancer("--base", "base-en-avance")
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("BBB4 : mod.py::absent", sortie)  # au rapport, pas bloquante
+        self.depot.plan(mauvaise + " modifiee par la PR")
+        code, sortie = self.depot.lancer("--base", "base-en-avance")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("ECHEC BBB4", sortie)
+
     def test_base_indisponible_traite_tout_comme_touche(self):
         self.depot.plan("BBB3 — voir `mod.py::absent` fin")
         os.environ.pop("GITHUB_ACTIONS", None)

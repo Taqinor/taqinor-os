@@ -7,7 +7,10 @@ Pour chaque fichier de test NOUVEAU (`A`, copie, ou renommage vers un autre nom)
 `merge-base(--base, --tete)..--tete` :
   1. un chemin cite par une tache v2 GELEE (`scripts/taches_audit_v2.txt`) que la PR coche
      -> AVERTISSEMENT, exit 0 (le chemin etait dicte avant la bascule v3) ;
-  2. un nom qui porte un id de tache (`test_amet9_x.py`, `x.amet9.test.mjs`) -> ECHEC ;
+  2. un nom qui porte un id de tache (`test_amet9_x.py`, `x.amet9.test.mjs`) -> ECHEC ; « id de
+     tache » = `<prefixe><chiffres>` dont le prefixe est un VRAI prefixe de tache lu dans les plans
+     a la tete (`- [ ]`/`[x]`/`[BLOCKED…]`/`[GATED…]` + registre `PREFIXE=N` de done_task.md) :
+     `test_sha256_x.py`, `test_utf8_x.py`, `test_oauth2_x.py` n'en portent pas ;
   3. sinon ACCEPTE seulement si une ligne de tache cochee par la PR porte
      « Nouveau fichier car : » ET cite ce chemin (entre backticks) -> sinon ECHEC.
 Un test ajoute a un module existant n'est jamais concerne. Clone superficiel ou base
@@ -27,11 +30,14 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_forme_code as cfc  # noqa: E402
 from check_taches_cablage import charger_ids_v2  # noqa: E402
-from forme_code.socle import Contexte, Echec, alias  # noqa: E402
+from forme_code.socle import Contexte, Echec, alias, lire_blobs  # noqa: E402
 
 TYPE_DE_CLE = "par_symbole"  # sans objet : aucune baseline, la garde juge le diff seul
 NOM_TEST = re.compile(r"^(?:tests?_.+|.+_test)\.py$|^tests\.py$|\.(?:test|spec)\.[cm]?[jt]sx?$", re.I)
-NOM_AVEC_ID = re.compile(r"(?:^|[/\\])tests?_[a-z]{2,6}[0-9]{1,4}_|\.[a-z]{2,6}[0-9]{1,4}\.test\.", re.I)
+NOM_AVEC_ID = re.compile(r"(?:^|[/\\])tests?_([a-z]{2,6})[0-9]{1,4}_|\.([a-z]{2,6})[0-9]{1,4}\.test\.", re.I)
+PLAN_DE_TACHES = re.compile(r"^docs/(?:plans/[^/]+|PLAN[^/]*|[^/]*_PLAN[^/]*|new_tasks_plan|done_task)\.md$")
+PREFIXE_TACHE = re.compile(r"^- \[(?:[ xX]|(?:BLOCKED|GATED)[^\]\n]*)\]\s*\**([A-Z]+)[0-9]+|^([A-Z]+)=[0-9]+[ \t]*$",
+                           re.M)
 NOUVEAU_FICHIER = re.compile(r"nouveau\s+fichier\s+car\s*:", re.I)
 NOUVEAU_DOSSIER = re.compile(r"nouveau\s+dossier\s+car\s*:", re.I)
 CHEMIN_CITE = re.compile(r"`([\w./-]+/[\w.-]+)(?:`|::)")
@@ -41,6 +47,23 @@ def est_fichier_test(chemin: str) -> bool:
     """Un module de test (par son NOM) — ni helper, ni fixture, ni `__init__`."""
     nom = chemin.rsplit("/", 1)[-1]
     return bool(NOM_TEST.search(nom)) and "node_modules/" not in chemin
+
+
+def prefixes_de(texte: str) -> set:
+    """Prefixes (minuscules) des ids de taches d'un plan, et du registre `PREFIXE=N` de done_task.md."""
+    return {(tache or registre).lower() for tache, registre in PREFIXE_TACHE.findall(texte)}
+
+
+def prefixes_connus(ctx) -> set:
+    """Prefixes de taches REELS, lus dans les plans de la tete (une passe `git cat-file --batch`)."""
+    plans = sorted(p for p in ctx.arbre_tete() if PLAN_DE_TACHES.match(p))
+    textes = lire_blobs(ctx.racine, [f"{ctx.tete}:{p}" for p in plans]).values()
+    return {prefixe for texte in textes for prefixe in prefixes_de(texte or "")}
+
+
+def porte_un_id(chemin: str, prefixes: set) -> bool:
+    """`test_amet9_x.py` porte un id si `amet` est un prefixe de tache connu — `test_sha256_x.py` jamais."""
+    return any((py or js).lower() in prefixes for py, js in NOM_AVEC_ID.findall(chemin))
 
 
 def cite(ligne: str, chemin: str) -> bool:
@@ -73,13 +96,15 @@ def fichiers_tests_neufs(ctx) -> list:
 def juger(ctx, ids_v2: set) -> tuple:
     """(erreurs, avertissements) — une phrase par fichier de test neuf."""
     erreurs, avertissements = [], []
-    for chemin in fichiers_tests_neufs(ctx):
+    neufs = fichiers_tests_neufs(ctx)
+    prefixes = prefixes_connus(ctx) if neufs else set()
+    for chemin in neufs:
         citantes = [(ident, ligne) for ident, ligne in ctx.taches if cite(ligne, chemin)]
         gelees = [ident for ident, _ in citantes if ident in ids_v2]
         if gelees:
             avertissements.append(f"{chemin} : chemin dicté par la tâche v2 gelée {', '.join(gelees)} "
                                   "(à consolider dans un module existant)")
-        elif NOM_AVEC_ID.search(chemin):
+        elif porte_un_id(chemin, prefixes):
             erreurs.append(f"{chemin} : le nom porte un id de tâche — ajouter le test au module existant "
                            "du module touché (convention : un test par module, pas par tâche)")
         elif (not any(NOUVEAU_FICHIER.search(ligne) for _, ligne in citantes)

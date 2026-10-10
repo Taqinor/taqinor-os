@@ -50,11 +50,15 @@ DETTE — docs/audits/acceptation/<G>/_dette.yml (clé = id de tâche, jamais un
 ligne) : `groupe: <G>`, `amorce: <sha9>`, `ids:` en liste de blocs. Amorcée UNE
 fois par `--amorcer` (à la bascule = l'arrivée de cette garde) ; ne fait que
 rétrécir : un id absent du même fichier à la base git (`--base`, défaut
-origin/main ; en CI à historique court la base est récupérée par un fetch
-superficiel, sinon la comparaison est sautée avec un avis) ⇒ ÉCHEC ; un
+origin/main ; en CI la base absente est récupérée par un fetch complet — jamais
+`--depth=1`, qui rendrait le clone shallow pour check_forme_code —, sinon la comparaison est sautée avec un avis) ⇒ ÉCHEC ; un
 `_dette.yml` absent de la base n'est admis que si la base n'a encore AUCUNE
 dette (la bascule) ; un id couvert ou plus coché à preuve ⇒ ÉCHEC jusqu'à
-`--write-baseline` (la mécanique de cliquet de taches_cablage_allow.txt).
+`--write-baseline` (la mécanique de cliquet de taches_cablage_allow.txt). Un id
+de la dette qui n'est plus sur AUCUNE ligne de tâche des plans scannés (archivé
+par « clean the plans » vers docs/done_task.md) n'a jamais été rejoué : il
+RESTE en dette, en silence (ni « périmé », ni retiré par `--write-baseline`),
+sauf s'il est couvert par un enregistrement PASS.
 
 Usage :
   python scripts/check_acceptation.py [--base REF]   # garde (exit 1 si rouge)
@@ -132,14 +136,24 @@ def a_preuve(texte: str) -> bool:
                for m in _PREUVE.finditer(texte))
 
 
+def _taches_des_plans() -> list:
+    plans = sorted((ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md"))
+    return ctc.lire_taches([str(p) for p in plans])
+
+
 def taches_a_preuve() -> dict:
     """{id: Tache} des tâches cochées à preuve exécutable des PLAN_AUDIT_*.md."""
-    plans = sorted((ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md"))
     trouvees = {}
-    for tache in ctc.lire_taches([str(p) for p in plans]):
+    for tache in _taches_des_plans():
         if tache.close and a_preuve(tache.texte):
             trouvees.setdefault(tache.identifiant, tache)
     return trouvees
+
+
+def ids_des_plans() -> set:
+    """Ids présents sur une ligne de tâche (tout état) des PLAN_AUDIT_*.md : un id de dette absent
+    est ARCHIVÉ (« clean the plans » → docs/done_task.md), jamais rejoué."""
+    return {tache.identifiant for tache in _taches_des_plans()}
 
 
 def _en_tete(texte: str):
@@ -319,7 +333,7 @@ def base_disponible(base: str) -> bool:
     if _git("rev-parse", "--verify", "--quiet", base + "^{commit}") is not None:
         return True
     if os.environ.get("GITHUB_ACTIONS") and base == "origin/main":
-        _git("fetch", "--no-tags", "--depth=1", "origin",
+        _git("fetch", "--no-tags", "origin",
              "+refs/heads/main:refs/remotes/origin/main", timeout=120)
         return _git("rev-parse", "--verify", "--quiet", base + "^{commit}") is not None
     return False
@@ -458,6 +472,9 @@ def main(argv=None) -> int:
     for ident in a_couvrir:
         if ident not in couverts:
             restants.setdefault(groupe_de(ident), set()).add(ident)
+    presents = ids_des_plans()
+    for groupe, ids in dette.items():  # archivé et non couvert : reste en dette (ni périmé, ni retiré)
+        restants.setdefault(groupe, set()).update(ids - presents - couverts)
 
     if args.groupe:
         return _mode_groupe(args.groupe, a_couvrir, couverts, dette)

@@ -202,6 +202,41 @@ class FormeCodeTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("clone superficiel : garde inopérante (dépôt shallow", sortie)
 
+    def test_pr_de_revert_non_jugee_et_pr_mixte_jugee(self):
+        """Revue du lot audit_deploy : `main` reste revertable — re-ajouter une garde supprimee par un
+        `git revert` n'est pas une GARDE_NEUVE ; un commit non-revert dans la PR la fait juger."""
+        d = self.depot({"scripts/check_vieux.py": "X = 1\n"})
+        base = d.commit({"scripts/check_vieux.py": None}, "supprime la garde")
+        _git(d.racine, "revert", "--no-edit", base)
+        code, sortie = d.juger(base=base)
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("PR de revert : forme du code non jugée (main toujours revertable)", sortie)
+        d.commit({"scripts/a.py": "X = 1\n"}, "ajout ordinaire")
+        code, sortie = d.juger(base=base)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("[GARDE_NEUVE] scripts/check_vieux.py", sortie)
+
+    def test_fetch_de_secours_jamais_superficiel(self):
+        """Un fetch `--depth=1` rendrait le clone CI shallow : check_forme_code echouerait ferme."""
+        import check_acceptation as cacc
+        appels = []
+
+        def faux_git(*args, **_):
+            appels.append(args)
+            return None
+
+        def faux_socle(_racine, *args, **_):  # check_ancres_taches passe par resoudre_base
+            appels.append(args)
+            raise cfc.Echec("absent")
+        with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                mock.patch.object(cacc, "_git", faux_git), mock.patch.object(cfc, "git", faux_socle):
+            self.assertFalse(cacc.base_disponible("origin/main"))
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(cfc.Echec):
+                cfc.resoudre_base(ROOT, "origin/main", "HEAD")
+        fetchs = [a for a in appels if "fetch" in a]
+        self.assertEqual(len(fetchs), 2, appels)
+        self.assertFalse([a for a in fetchs if any(str(x).startswith("--depth") for x in a)], fetchs)
+
     @unittest.skipUnless(subprocess.run(["git", "cat-file", "-e", PR_888 + "^{commit}"], cwd=ROOT).returncode == 0,
                          "PR #888 absente du dépôt local")
     def test_pr_888_rejouee_ne_leve_rien(self):

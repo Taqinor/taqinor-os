@@ -262,6 +262,21 @@ class AcceptationTests(unittest.TestCase):
         self.assertEqual(cacc.dettes()["ATST"], {"ATST2"})
         self.assertEqual(self.lancer()[0], 0)
 
+    def test_id_archive_reste_en_dette_sans_bloquer_ni_etre_efface(self):
+        """« clean the plans » déplace `- [x] ATST2` vers docs/done_task.md : jamais rejouée, elle
+        reste en dette (ni « périmée », ni effacée par --write-baseline). Seuls un id COUVERT ou un id
+        encore présent mais plus coché à preuve (ATST3) font rétrécir la dette."""
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"), ligne("x", "ATST3"), ligne("x", "ATST4"))
+        self.depot.dette("ATST", "ATST1", "ATST2", "ATST3", "ATST4")
+        self.depot.enregistrement(couvre=("ATST4",), etapes=[etape(taches=("ATST4",))])
+        self.depot.plan(ligne("x", "ATST1"), ligne(" ", "ATST3"))  # ATST2 et ATST4 archivées
+        code, sortie = self.lancer()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("dette ATST : 2 id(s) couvert(s) ou plus cochés à preuve (ATST3, ATST4)", sortie)
+        self.assertEqual(self.lancer("--write-baseline")[0], 0)
+        self.assertEqual(cacc.dettes()["ATST"], {"ATST1", "ATST2"})
+        self.assertEqual(self.lancer()[0], 0)
+
     def test_amorcer_une_seule_fois_par_groupe(self):
         self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"), ligne(" ", "ATST3"))
         self.depot.enregistrement()
