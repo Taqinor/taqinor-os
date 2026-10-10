@@ -239,3 +239,114 @@ class ProprietesAvoirEcheancierTests(_Base):
         _verifier_sommes()
         self.assertIn(cible.cle_tranche,
                       {f.cle_tranche for f in _actives()})
+
+    def _reglage_societe(self, acompte, materiel, solde):
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.company)
+        profil.payment_terms = {'residentiel': {
+            'acompte': acompte, 'materiel': materiel, 'solde': solde}}
+        profil.save()
+
+    def test_echeancier_fige_insensible_aux_reglages(self):
+        """AMET1 (C-AMET-003, D-ECH-FIGE) — un devis accepté figé garde
+        30/60/10 quand la société passe à 30/40/30 ; un devis non figé suit
+        toujours la société ; second appel idempotent ; forme = contrat."""
+        import json
+        from pathlib import Path
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.echeancier import (
+            figer_echeancier, tranches_normalisees,
+        )
+        self._contexte()
+        self._reglage_societe(30, 60, 10)
+        ligne = [{'quantite': Decimal('1'),
+                  'prix_unitaire': Decimal('53166.67'), 'remise': ZERO,
+                  'taux_tva': Decimal('20')}]
+        devis = self._devis(ligne)
+        brouillon = self._devis(ligne)
+        Devis.objects.filter(pk=brouillon.pk).update(
+            statut=Devis.Statut.BROUILLON)
+        self.assertFalse(devis.echeancier)
+
+        rendu = figer_echeancier(devis)
+        self.assertFalse(rendu['deja_fige'])
+        contrat = json.loads((Path(__file__).resolve().parents[1]
+                              / 'contract_samples' / 'echeancier_fige.json')
+                             .read_text(encoding='utf-8'))
+        self.assertEqual(set(rendu), set(contrat['exemple_figer']))
+        self.assertEqual(set(rendu['jalons'][0]),
+                         set(contrat['exemple_figer']['jalons'][0]))
+
+        self._reglage_societe(30, 40, 30)
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(
+            [(t['key'], t['valeur']) for t in tranches_normalisees(relu)],
+            [('acompte', 30), ('materiel', 60), ('solde', 10)])
+        self.assertEqual(
+            [t['libelle'] for t in tranches_normalisees(relu)],
+            ['Acompte', 'Livraison du matériel', 'Solde'])
+        # Non figé : suit la société (comportement inchangé).
+        self.assertEqual(
+            [t['valeur'] for t in tranches_normalisees(
+                Devis.objects.get(pk=brouillon.pk))], [30, 40, 30])
+        # Idempotent : aucun changement au second appel.
+        stocke = relu.echeancier
+        second = figer_echeancier(relu)
+        self.assertTrue(second['deja_fige'])
+        self.assertEqual(Devis.objects.get(pk=devis.pk).echeancier, stocke)
+
+    def test_commande_figer_dry_run_puis_appliquer(self):
+        """AMET3 (C-AMET-003, D-ECH-FIGE) — `figer_echeanciers_signes` :
+        le dry-run liste les devis acceptés sans échéancier propre SANS rien
+        écrire ; `--appliquer` les fige (conditions société du jour) ; rejoué,
+        plus rien à figer ; les tranches restent 30/60/10 quand la société
+        change ensuite. Un brouillon n'est jamais figé."""
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.echeancier import tranches_normalisees
+        self._contexte()
+        self._reglage_societe(30, 60, 10)
+        ligne = [{'quantite': Decimal('1'),
+                  'prix_unitaire': Decimal('10000'), 'remise': ZERO,
+                  'taux_tva': Decimal('20')}]
+        acceptes = [self._devis(ligne) for _ in range(3)]
+        brouillon = self._devis(ligne)
+        Devis.objects.filter(pk=brouillon.pk).update(
+            statut=Devis.Statut.BROUILLON)
+        pks = [d.pk for d in acceptes]
+
+        def _sans_propre():
+            return [d.pk for d in Devis.objects.filter(pk__in=pks)
+                    if not d.echeancier]
+
+        sortie = StringIO()
+        call_command('figer_echeanciers_signes', '--dry-run', stdout=sortie)
+        texte = sortie.getvalue()
+        for devis in acceptes:
+            self.assertIn(devis.reference, texte)
+        self.assertNotIn(brouillon.reference, texte)
+        self.assertIn('acompte 30', texte)
+        self.assertEqual(len(_sans_propre()), 3)  # aucune écriture
+
+        call_command('figer_echeanciers_signes', '--appliquer',
+                     stdout=StringIO())
+        self.assertEqual(_sans_propre(), [])
+        self.assertFalse(Devis.objects.get(pk=brouillon.pk).echeancier)
+        stockes = {d.pk: d.echeancier
+                   for d in Devis.objects.filter(pk__in=pks)}
+
+        sortie = StringIO()
+        call_command('figer_echeanciers_signes', '--dry-run', stdout=sortie)
+        for devis in acceptes:
+            self.assertNotIn(devis.reference, sortie.getvalue())
+        call_command('figer_echeanciers_signes', '--appliquer',
+                     stdout=StringIO())
+        self.assertEqual({d.pk: d.echeancier
+                          for d in Devis.objects.filter(pk__in=pks)}, stockes)
+
+        self._reglage_societe(30, 40, 30)
+        for devis in Devis.objects.filter(pk__in=pks):
+            self.assertEqual(
+                [t['valeur'] for t in tranches_normalisees(devis)],
+                [30, 60, 10])

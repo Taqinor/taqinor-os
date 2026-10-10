@@ -31,6 +31,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
 import { useCanCreateProduit, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
@@ -753,6 +754,8 @@ function Step2Validate({
   lignes, updateLigne, onReset, onApply, applying,
   docType, creerBcf, setCreerBcf, peutCommander, canCreateProduit,
 }) {
+  // ASTK242 — la case « Créer un BCF » exige `achats_commander` côté serveur.
+  const peutCommander = usePermissionAchats('achats_commander')
   const showFournisseur = docType !== 'bon_sortie'
   const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
   // For purchase/delivery docs, prix_vente is not required (falls back to prix_achat)

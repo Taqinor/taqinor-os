@@ -42,6 +42,7 @@ vi.mock('../../features/stock/store/stockSlice', () => ({
 import stockApi from '../../api/stockApi'
 import { createMouvement } from '../../features/stock/store/stockSlice'
 import MouvementsPage from './MouvementsPage.jsx'
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 function store({ role = 'admin', mouvements = [], produits = [] } = {}) {
   return configureStore({
@@ -64,14 +65,7 @@ function renderPage(opts) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  installJsdomPolyfills()
   URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   URL.revokeObjectURL = vi.fn()
 })

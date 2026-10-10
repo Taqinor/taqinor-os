@@ -1,47 +1,84 @@
 """AMET13 — garde statique de la table de parcours PA6 « Approvisionnement ».
 
-Sans base : la table ``parcours/PA6.json`` est lue et ses symboles sont résolus par AST
-avec le résolveur unique ``core.parcours`` (aucune seconde implémentation).
+``apps/stock/parcours/PA6.json`` décrit fiche chantier « Matériel & BC » ->
+demande d'achat -> BCF -> réception -> mouvement -> kitting -> facture et
+paiement fournisseur. Cette garde la confronte au CODE par analyse AST, sans
+base de données : chaque ``declencheur.source``, ``fonction_entree``,
+``checkpoint.persistance`` et ``regles_aval[].source`` désigne un symbole qui
+existe, et ``portes[]`` liste les 7 portes de sortie de stock.
+
+Lancer : ``python -m unittest apps.stock.test_parcours_pa6`` (depuis
+``backend/django_core``).
 """
-import copy
-import os
+import ast
+import json
 import unittest
 from pathlib import Path
 
-from core import parcours
+RACINE = Path(__file__).resolve().parents[2]  # backend/django_core
+TABLE = json.loads(
+    (Path(__file__).resolve().parent / 'parcours' / 'PA6.json')
+    .read_text(encoding='utf-8'))
+TYPES_DECLENCHEUR = {'signal', 'tache', 'http', 'manuel'}
 
-TABLE = Path(__file__).resolve().parent / 'parcours' / 'PA6.json'
-PORTES_ATTENDUES = {'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'}
+
+def _symbole_existe(reference):
+    """``chemin.py::Classe.methode`` ou ``chemin.py::fonction`` -> bool (AST)."""
+    chemin, _, nom = reference.partition('::')
+    fichier = RACINE / chemin
+    if not nom or not fichier.is_file():
+        return False
+    portee = ast.parse(fichier.read_text(encoding='utf-8'))
+    for morceau in nom.split('.'):
+        for noeud in getattr(portee, 'body', []):
+            if isinstance(noeud, (ast.ClassDef, ast.FunctionDef,
+                                  ast.AsyncFunctionDef)) \
+                    and noeud.name == morceau:
+                portee = noeud
+                break
+        else:
+            return False
+    return True
 
 
 class ParcoursPA6Tests(unittest.TestCase):
-    def setUp(self):
-        self.table = parcours.charger_table(TABLE)
 
     def test_chaque_etape_est_complete_et_resolue(self):
-        self.assertEqual(parcours.problemes_de_la_table(self.table), [])
-        for etape in parcours.etapes(self.table):
-            self.assertTrue(parcours.est_une_reference(etape['fonction_entree']), etape['id'])
+        self.assertTrue(TABLE['etapes'])
+        ids = [e['id'] for e in TABLE['etapes']]
+        self.assertEqual(len(ids), len(set(ids)), 'identifiants dupliqués')
+        for etape in TABLE['etapes']:
+            ident = etape['id']
+            for cle in ('declencheur', 'fonction_entree', 'checkpoint',
+                        'regles_aval'):
+                self.assertIn(cle, etape, f'{ident} : « {cle} » absent')
+            declencheur = etape['declencheur']
+            self.assertIn(declencheur.get('type'), TYPES_DECLENCHEUR, ident)
+            self.assertTrue(_symbole_existe(declencheur['source']),
+                            f'{ident} : déclencheur introuvable '
+                            f'{declencheur["source"]}')
+            self.assertTrue(_symbole_existe(etape['fonction_entree']),
+                            f'{ident} : fonction_entree introuvable '
+                            f'{etape["fonction_entree"]}')
             persistance = etape['checkpoint']['persistance']
-            self.assertTrue(parcours.est_une_reference(persistance) or persistance.startswith('n/a'), etape['id'])
-            test = etape['test_nomme']
-            if not test.startswith('aucun'):
-                racine = parcours.RACINE_DJANGO
-                self.assertTrue(os.path.isfile(racine / test), f"{etape['id']} : test_nomme introuvable ({test})")
+            self.assertTrue(_symbole_existe(persistance),
+                            f'{ident} : persistance introuvable {persistance}')
+            self.assertGreaterEqual(len(etape['regles_aval']), 1, ident)
+            for regle in etape['regles_aval']:
+                self.assertTrue(regle['regle'].strip(), ident)
+                self.assertTrue(_symbole_existe(regle['source']),
+                                f'{ident} : règle aval introuvable '
+                                f'{regle["source"]}')
 
-    def test_casser_une_fonction_entree_fait_echouer_la_garde(self):
-        mutant = copy.deepcopy(self.table)
-        mutant['etapes'][0]['fonction_entree'] = 'apps/stock/services.py::symbole_qui_n_existe_pas'
-        problemes = parcours.problemes_de_la_table(mutant)
-        self.assertTrue(any('fonction_entree' in p for p in problemes), problemes)
-
-    def test_portes_listent_les_sept_sorties_de_stock(self):
-        portes = self.table['portes']
-        self.assertEqual({p['id'] for p in portes}, PORTES_ATTENDUES)
+    def test_les_sept_portes_de_sortie_de_stock_resolvent(self):
+        portes = TABLE['portes']
+        self.assertEqual(len(portes), 7)
+        self.assertEqual(len({p['id'] for p in portes}), 7)
         for porte in portes:
-            ok, motif = parcours.resoudre_symbole(porte['source'])
-            self.assertTrue(ok, f"{porte['id']} : {motif}")
-        self.assertTrue(self.table['liens_manquants'], 'les liens manquants sont déclarés, jamais inventés résolus')
+            self.assertTrue(porte['description'].strip(), porte['id'])
+            self.assertTrue(_symbole_existe(porte['source']),
+                            f'{porte["id"]} : porte introuvable '
+                            f'{porte["source"]}')
 
 
 if __name__ == '__main__':

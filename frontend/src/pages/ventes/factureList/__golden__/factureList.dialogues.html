@@ -1646,6 +1646,13 @@
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="avoir-motif">Motif (optionnel)</label>
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="avoir-motif" type="text" value="">
 </div>
+<fieldset class="grid gap-1" data-testid="avoir-type">
+<legend class="text-sm font-medium">Type d’avoir</legend>
+<label class="flex items-center gap-2 text-sm">
+<input type="radio" value="geste_commercial" checked="" name="avoir-type">Geste commercial (réduit le dû de cette facture)</label>
+<label class="flex items-center gap-2 text-sm">
+<input type="radio" value="correction" name="avoir-type">Correction d’erreur (le montant reste dû : remis au solde de l’échéancier)</label>
+</fieldset>
 <div class="overflow-x-auto">
 <table class="data-table text-sm">
 <thead>

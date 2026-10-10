@@ -1,0 +1,28 @@
+{
+ "appel": "GET playbooks",
+ "corps": {
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+   {
+    "actif": true,
+    "condition": null,
+    "date_creation": "<masque>",
+    "etapes": [
+     {
+      "id": "objet:etapes?#1",
+      "ordre": 1,
+      "playbook": "playbook#1",
+      "stage": "NEW",
+      "stage_display": "Nouveau",
+      "taches": []
+     }
+    ],
+    "id": "playbook#1",
+    "nom": "Playbook Golden"
+   }
+  ]
+ },
+ "statut": 200
+}

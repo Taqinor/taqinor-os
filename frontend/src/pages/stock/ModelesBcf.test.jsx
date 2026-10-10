@@ -8,13 +8,6 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    liste, création, et génération d'un BCF brouillon pré-rempli.
    ========================================================================== */
 
-// ASTK242 — codes de permission pilotables par test (null = tous portés).
-const perms = vi.hoisted(() => ({ codes: null }))
-vi.mock('../../features/stock/useVoitPrixAchat', () => {
-  const porte = (c) => perms.codes === null || perms.codes.includes(c)
-  return { usePermissionAchats: porte, useVoitPrixAchat: () => porte('prix_achat_voir'), default: () => porte('prix_achat_voir') }
-})
-
 vi.mock('../../api/stockApi', () => ({
   default: {
     getModelesBcf: vi.fn(),
@@ -28,28 +21,22 @@ vi.mock('../../api/stockApi', () => ({
   },
 }))
 
+// ASTK242 — codes de permission pilotés par test (défaut : tous accordés).
+const mockCodes = { achats_commander: true }
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: (code) => mockCodes[code] !== false,
+  useVoitPrixAchat: () => true,
+}))
+
 import stockApi from '../../api/stockApi'
 import ModelesBcf from './ModelesBcf.jsx'
-
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
-}
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
+import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  perms.codes = null
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  mockCodes.achats_commander = true
+  installJsdomPolyfills()
   stockApi.getModelesBcf.mockResolvedValue({
     data: [
       { id: 1, nom: 'Réassort panneaux', fournisseur: 3, fournisseur_nom: 'JA Solar', lignes: [{ id: 1, produit: 7, quantite: 10 }] },
@@ -57,26 +44,6 @@ beforeEach(() => {
   })
   stockApi.getAllFournisseurs.mockResolvedValue({ data: [{ id: 3, nom: 'JA Solar' }] })
   stockApi.getProduits.mockResolvedValue({ data: [{ id: 7, nom: 'Panneau 550', sku: 'PAN-550' }] })
-})
-
-describe('ASTK242 — gestes de création de BCF', () => {
-  it('sans achats_commander : aucun bouton Créer', async () => {
-    perms.codes = ['stock_voir']
-    render(<ModelesBcf />, { wrapper })
-    await screen.findAllByText('Réassort panneaux')
-    expect(screen.queryByRole('button', { name: /Nouveau modèle/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Générer un BCF/ })).toBeNull()
-    expect(stockApi.createModeleBcf).not.toHaveBeenCalled()
-    expect(stockApi.genererModeleBcf).not.toHaveBeenCalled()
-  })
-
-  it('avec achats_commander : les gestes sont rendus', async () => {
-    perms.codes = ['achats_commander']
-    render(<ModelesBcf />, { wrapper })
-    await screen.findAllByText('Réassort panneaux')
-    expect(screen.getByRole('button', { name: /Nouveau modèle/ })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Générer un BCF/ }).length).toBeGreaterThan(0)
-  })
 })
 
 describe('ZPUR3 — liste des modèles de BCF', () => {
@@ -110,5 +77,16 @@ describe('ZPUR3 — liste des modèles de BCF', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/au moins une ligne/)
     expect(stockApi.createModeleBcf).not.toHaveBeenCalled()
+  })
+})
+
+describe('ASTK242 — gating par achats_commander', () => {
+  it('sans achats_commander : aucun bouton Créer / Générer / Supprimer', async () => {
+    mockCodes.achats_commander = false
+    render(<ModelesBcf />, { wrapper })
+    await screen.findAllByText('Réassort panneaux')
+    expect(screen.queryByRole('button', { name: /Nouveau modèle/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Générer un BCF/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Supprimer le modèle/ })).toBeNull()
   })
 })

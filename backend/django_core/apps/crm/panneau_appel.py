@@ -30,7 +30,7 @@ import logging
 
 from django.db import models
 
-from . import cadence_temps, questionnaire
+from . import cadence_temps, horaires, questionnaire
 from .models import Lead, RelanceEtape
 from .segment_suggere import segment_suggere
 
@@ -630,7 +630,7 @@ def _touche_servie(etape):
         'canal': etape.canal,
         'statut': etape.statut,
         'prevue_le': etape.due_date.isoformat() if etape.due_date else None,
-        'heure_cible': (etape.due_at.astimezone().strftime('%H:%M')
+        'heure_cible': (etape.due_at.astimezone(horaires.CASABLANCA).strftime('%H:%M')
                         if etape.due_at else None),
     }
 

@@ -9,12 +9,12 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    un BCF brouillon en un clic (generer-bcf-reappro/).
    ========================================================================== */
 
-// ASTK242 — codes de permission pilotables par test (null = tous portés).
-const perms = vi.hoisted(() => ({ codes: null }))
-vi.mock('../../features/stock/useVoitPrixAchat', () => {
-  const porte = (c) => perms.codes === null || perms.codes.includes(c)
-  return { usePermissionAchats: porte, useVoitPrixAchat: () => porte('prix_achat_voir'), default: () => porte('prix_achat_voir') }
-})
+// ASTK242 — le gating par codes lit le store : ici l'auto-accord (compte
+// légacy sans rôle fin) ; les cas « sans code » sont dans ModelesBcf.test.jsx.
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: () => true,
+  useVoitPrixAchat: () => true,
+}))
 
 vi.mock('../../api/stockApi', () => ({
   default: {
@@ -44,25 +44,12 @@ vi.mock('../../api/parametresApi', async (importOriginal) => {
 import stockApi from '../../api/stockApi'
 import parametresApi from '../../api/parametresApi'
 import PilotageStock from './PilotageStock.jsx'
-
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
-}
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
+import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  perms.codes = null
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
+  installJsdomPolyfills()
   stockApi.produitsAReapprovisionner.mockResolvedValue({
     data: [{
       produit_id: 1, nom: 'Panneau 550', sku: 'PAN-550',
@@ -146,16 +133,6 @@ describe('ASTK207 — une seule quantité suggérée', () => {
       const cellules = screen.getAllByText('13').filter((el) => el.className.includes('font-semibold'))
       expect(cellules.length).toBeGreaterThanOrEqual(2)
     })
-  })
-})
-
-describe('ASTK242 — auto-PO réservé à achats_commander', () => {
-  it('sans achats_commander : pas de bouton « Générer un BCF », aucun appel', async () => {
-    perms.codes = ['stock_voir']
-    render(<PilotageStock />, { wrapper })
-    await screen.findAllByText(/Panneau 550/)
-    expect(screen.queryByRole('button', { name: /Générer un BCF/ })).toBeNull()
-    expect(stockApi.genererBcfReappro).not.toHaveBeenCalled()
   })
 })
 

@@ -213,6 +213,8 @@ function RotationDonut({ data }) {
 export default function PilotageStock({ onBcfGenere }) {
   const peutCommander = usePermissionAchats('achats_commander')
   const navigate = useNavigate()
+  // ASTK242 — générer un BCF exige `achats_commander` côté serveur.
+  const peutCommander = usePermissionAchats('achats_commander')
   // ZSTK13 — masque la colonne « Lot » du registre de péremption quand la
   // société a désactivé les lots/séries (True par défaut = inchangé).
   const { stock_lots_series_actif: lotsSeriesActif } = useStockFlags()

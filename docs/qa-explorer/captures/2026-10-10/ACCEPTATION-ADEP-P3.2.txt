@@ -1,0 +1,9 @@
+# ADEP99 P3.2 — les 5 requis tournent sous always() et sortent en 1 quand changes != success (évaluation du ci.yml réel)
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P3_1_changes_failure.log
+backend-lint    needs=[changes, ci-image-check, backend-lint-fast, backend-openapi] | job_if=${{ always() }} | étape « changes != success » qui fait exit 1 : oui
+backend-tests   needs=[changes, ci-image-check, backend-tests-shard, fastapi-security] | job_if=${{ always() }} | étape « changes != success » qui fait exit 1 : oui
+frontend-lint   needs=[changes, frontend-static, frontend-vitest-shard] | job_if=${{ always() }} | étape « changes != success » qui fait exit 1 : oui
+e2e             needs=[changes, ci-image-check, e2e-shard] | job_if=${{ always() }} | étape « changes != success » qui fait exit 1 : oui
+web-build-test  needs=changes | job_if=${{ always() && (needs.changes.result != 'success' || needs.changes.ou | étape « changes != success » qui fait exit 1 : oui

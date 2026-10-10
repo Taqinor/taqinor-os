@@ -1,0 +1,10 @@
+# ADEP99 P1.6 — clés posées -> lues ; CTWA : actif <=> GET Meta 200 '4242', sans clés inactif + 404 ; WHATSAPP_ENABLED strict
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P1_6_8_9_cles.log
+temoin (aucune cle) : {"GEOIP_PATH": "", "OPENSEARCH_URL": "", "CF_CONNECTING_IP_TRUSTED": false, "ctwa_get": [404, "Non configuré."], "ctwa_actif": false, "whatsapp_actif": false}
+cles posees         : {"GEOIP_PATH": "/tmp/GeoLite2-City.mmdb", "OPENSEARCH_URL": "http://opensearch:9200", "CF_CONNECTING_IP_TRUSTED": true, "ctwa_get": [200, "4242"], "ctwa_actif": true, "whatsapp_actif": true}
+valeurs non strictes: {"GEOIP_PATH": "", "OPENSEARCH_URL": "", "CF_CONNECTING_IP_TRUSTED": false, "ctwa_get": [404, "Non configuré."], "ctwa_actif": false, "whatsapp_actif": false}
+P1.6 (ADEP32) : PASS
+P1.8 (ADEP35) : PASS
+P1.9 (ADEP36) : PASS

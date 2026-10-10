@@ -1,0 +1,38 @@
+# Dette d'acceptation GELÉE du groupe ALEA (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: ALEA
+amorce: 3a7c3b882
+ids:
+  - ALEA1
+  - ALEA2
+  - ALEA3
+  - ALEA6
+  - ALEA7
+  - ALEA8
+  - ALEA9
+  - ALEA10
+  - ALEA11
+  - ALEA12
+  - ALEA13
+  - ALEA14
+  - ALEA15
+  - ALEA16
+  - ALEA17
+  - ALEA18
+  - ALEA19
+  - ALEA20
+  - ALEA21
+  - ALEA22
+  - ALEA27
+  - ALEA28
+  - ALEA29
+  - ALEA30
+  - ALEA31
+  - ALEA32
+  - ALEA33
+  - ALEA37
+  - ALEA38
+  - ALEA39
+  - ALEA40

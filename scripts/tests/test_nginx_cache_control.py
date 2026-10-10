@@ -230,5 +230,35 @@ class CacheControlTests(unittest.TestCase):
                                 "Cache-Control littéral au niveau server : hérité par /")
 
 
+FRONT_NGINX = ROOT / "frontend" / "nginx.conf"
+
+
+def _locations_front():
+    """[(motif, enfants)] des locations du server de frontend/nginx.conf."""
+    arbre, _ = _blocs(_jetons(FRONT_NGINX.read_text(encoding="utf-8")))
+    server = next(e for n, _, e in arbre if n == "server")
+    return [(a[-1] if a else "", e) for n, a, e in server if n == "location"]
+
+
+class FrontNginxUnePolitiqueTests(unittest.TestCase):
+    """ADEP5 (acceptation ADEP99 P2.4, 10/10/2026) : un asset hashé porte UNE ligne
+    Cache-Control. `expires` + `add_header Cache-Control` dans la même location en émet
+    DEUX (max-age=… puis public, immutable) — mesuré par curl sur la pile locale."""
+
+    def test_aucune_location_ne_cumule_expires_et_cache_control(self):
+        for motif, enfants in _locations_front():
+            noms = [n for n, _, _ in enfants]
+            cc = [a for n, a, _ in enfants if n == "add_header" and a and a[0].lower() == "cache-control"]
+            self.assertFalse("expires" in noms and cc,
+                             f"location {motif} : expires + add_header Cache-Control = deux en-têtes")
+
+    def test_assets_hashes_une_politique_immutable_d_un_an(self):
+        motif, enfants = next((m, e) for m, e in _locations_front() if "js|css" in m)
+        cc = [a[1] for n, a, _ in enfants if n == "add_header" and a and a[0].lower() == "cache-control"]
+        self.assertEqual(len(cc), 1, motif)
+        for jeton in ("public", "max-age=31536000", "immutable"):
+            self.assertIn(jeton, cc[0])
+
+
 if __name__ == "__main__":
     unittest.main()

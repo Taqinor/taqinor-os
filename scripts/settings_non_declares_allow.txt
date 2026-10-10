@@ -24,7 +24,6 @@ backend/django_core/apps/ventes/email_service.py::INBOUND_REPLY_EMAIL  # ADEP20 
 backend/django_core/apps/ventes/exports.py::VENTES_COMPTA_ACCOUNT_CODES  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/exports.py::VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY  # ADEP20 clé non déclarée
 backend/django_core/apps/ventes/exports.py::VENTES_EXPORT_ASYNC_ROW_THRESHOLD  # ADEP20 clé non déclarée
-backend/django_core/apps/ventes/public/paiement_views.py::PAYMENT_PROVIDER  # ADEP20 clé non déclarée
 backend/django_core/authentication/password_policy.py::LOGIN_PLANCHER_ECHECS  # ADEP20 clé non déclarée
 backend/django_core/authentication/password_policy.py::LOGIN_PLANCHER_VERROU_MINUTES  # ADEP20 clé non déclarée
 backend/django_core/core/ai/services.py::AI_GUARD_MAX_CHARS  # ADEP20 clé non déclarée

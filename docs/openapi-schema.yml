@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4818, operations: 7586, components: 2211}
+counts: {paths: 4818, operations: 7586, components: 2212}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7719,6 +7719,7 @@ components:
 - AvoirFournisseurStatutEnum
 - AvoirRequest
 - AvoirStatutEnum
+- AvoirTypeEnum
 - BackgroundJob
 - BackgroundJobStatutEnum
 - BackupRun

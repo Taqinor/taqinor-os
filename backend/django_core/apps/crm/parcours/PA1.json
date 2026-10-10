@@ -1,169 +1,303 @@
 {
-  "_doc": "PA1 « Contact → visite » (METHODE v3 §D.1, AMET18, 10/10/2026) — table du parcours formulaire / `/crm/leads` → fiche lead → cadence → visite technique → `/visites/revue`. Pilote : lead (apps/crm). Lecteurs : (1) la garde statique `apps/crm/test_parcours_pa1.py` (résolution AST via `core/parcours.py`, sans base) ; (2) `scripts/check_parcours.py` et `scripts/rejouer_parcours.py` (AMET, à construire). Sous-table de la cadence de suivi : `frontend/src/features/crm/relances/parcours_suivi.json` — RÉFÉRENCÉE, jamais recopiée. La table DÉCLARE, elle ne change ni le bus ni le moteur.",
-  "version": "1.0",
-  "maj": "2026-10-10",
   "parcours": "PA1",
-  "proprietaire": "lead",
-  "sous_tables": ["frontend/src/features/crm/relances/parcours_suivi.json"],
-  "portes": [
-    "apps/crm/views.py::LeadViewSet.perform_create",
-    "apps/crm/services.py::create_draft_lead_from_ocr",
-    "apps/crm/services.py::create_lead_from_meta_lead_ads",
-    "apps/crm/services.py::create_minimal_lead_from_ctwa",
-    "apps/crm/services.py::create_lead_from_livechat",
-    "apps/crm/services.py::create_lead_depuis_ticket",
-    "apps/crm/services.py::create_lead_from_evenement_marketing",
-    "apps/crm/services.py::create_lead_from_public_api",
-    "apps/crm/services.py::creer_lead_proprietaire",
-    "apps/crm/webhooks.py::_map_and_link_lead",
-    "apps/crm/webhooks.py::_rdv_creer_lead",
-    "apps/crm/management/commands/import_odoo_leads.py::Command.handle",
-    "apps/dataimport/services.py::_commit_raw"
+  "titre": "Contact -> visite",
+  "pilote": "crm",
+  "pourquoi": "AMET18 (C-AMET-025) — table du parcours formulaire / `/crm/leads` -> qualification -> cadence de contact -> visite -> `/visites/revue`. Lue par la garde `apps/crm/test_parcours_pa1.py` (AST, sans base) : chaque déclencheur, fonction d'entrée, point de persistance et règle aval est un symbole qui existe ; `portes[]` liste les 13 portes de création de lead (appelants qui créent un `Lead`, vérifiés dans le code) ; `provenance.ecrivains_auto` liste les écrivains automatiques des champs saisis (score, propriétaire, attribution Meta, fusion, placement, retour de visite). La cadence est une sous-table : `frontend/src/features/crm/relances/parcours_suivi.json` est référencée (`references`), jamais recopiée. Source R1_G J1 non disponible dans le dépôt : la table est dressée depuis le code.",
+  "chemins_relatifs_a": "backend/django_core",
+  "references": [
+    "../../frontend/src/features/crm/relances/parcours_suivi.json",
+    "../../frontend/src/features/visites/module.config.jsx"
   ],
   "etapes": [
     {
-      "id": "PA1-01",
-      "nom": "Entrée du lead (saisie, site, Meta, WhatsApp, import) : création scopée société",
-      "proprietaire": "crm",
-      "declencheur": {"type": "clic", "source": "frontend/src/pages/crm/leads/LeadsPage.jsx"},
-      "ecran": {"route": "/crm/leads", "composant": "LeadsPage", "action": "créer un lead (ou arrivée par une autre porte de `portes[]`)"},
+      "id": "arrivee_lead_crm",
+      "libelle": "Lead saisi à la main dans /crm/leads",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/views.py::LeadViewSet.perform_create"
+      },
       "fonction_entree": "apps/crm/views.py::LeadViewSet.perform_create",
-      "checkpoint": {"modifiable": true, "champs": ["Lead.nom", "Lead.telephone", "Lead.email", "Lead.ville", "Lead.owner", "Lead.canal"], "persistance": "apps/crm/models.py::Lead"},
-      "regle_aval": ["preserve_manuel"],
-      "provenance": {"marqueur": "Lead.canal + activité système de création", "ecrivains_auto": ["apps/crm/services.py::create_lead_from_meta_lead_ads", "apps/crm/services.py::default_responsable_for", "apps/crm/services.py::pick_round_robin_owner", "apps/crm/services.py::merge_leads"]},
-      "compensation": "archivage (SoftDeleteModel), jamais de suppression dure ; fusion de doublons par `merge_leads`",
-      "portes": ["apps/crm/views.py::LeadViewSet.perform_create", "apps/crm/webhooks.py::_map_and_link_lead", "apps/dataimport/services.py::_commit_raw"],
-      "suite": "Le signal `lead_created` (PA1-02) puis le placement du responsable (PA1-03) ; la cadence de contact démarre (PA1-05).",
-      "negatifs": ["société jamais lue du corps de la requête", "doublon téléphone / e-mail : proposé en fusion, pas écrasé"],
-      "test_nomme": "apps/crm/tests.py",
-      "taches": ["AMET18"],
-      "constats": ["13 portes de création, un seul chemin de cadence : chacune doit appeler `demarrer_cadence_contact` (déclenchement explicite, jamais un post_save global)."]
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Une fiche lead de la société de l'utilisateur, responsable par défaut ou tour de rôle."
+      },
+      "regles_aval": [
+        {
+          "regle": "Sans responsable par défaut, le propriétaire est choisi au tour de rôle.",
+          "source": "apps/crm/services.py::pick_round_robin_owner"
+        },
+        {
+          "regle": "Le score de qualité est calculé et stocké sur la fiche.",
+          "source": "apps/crm/services.py::recompute_lead_score"
+        },
+        {
+          "regle": "La cadence de contact démarre explicitement (jamais par signal global).",
+          "source": "apps/crm/services.py::demarrer_cadence_contact"
+        }
+      ]
     },
     {
-      "id": "PA1-02",
-      "nom": "Signal de création du lead (conformité, abonnés aval)",
-      "proprietaire": "crm",
-      "declencheur": {"type": "evenement", "source": "apps/crm/models.py::Lead"},
-      "ecran": {"route": "/crm/leads", "composant": "LeadsPage", "action": "aucune : effet de fond de la création"},
-      "fonction_entree": "apps/crm/receivers.py::_emit_lead_created",
-      "checkpoint": {"modifiable": false, "champs": [], "persistance": "apps/crm/models.py::Lead"},
-      "regle_aval": ["non_propage"],
-      "provenance": {"marqueur": "signal `lead_created` (core/events/lead.py)", "ecrivains_auto": ["apps/crm/receivers.py::_emit_lead_created"]},
-      "compensation": "best-effort : un abonné en échec n'annule jamais la création",
-      "portes": ["apps/crm/views.py::LeadViewSet.perform_create"],
-      "suite": "Les abonnés (conformité GRC) réagissent ; le CRM ne les connaît pas.",
-      "negatifs": ["mise à jour d'un lead existant : aucun signal"],
-      "test_nomme": "apps/crm/tests.py",
-      "taches": ["AMET18"],
-      "constats": []
+      "id": "arrivee_formulaire_web",
+      "libelle": "Lead arrivé par le formulaire du site",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/webhooks.py::website_lead_webhook"
+      },
+      "fonction_entree": "apps/crm/webhooks.py::_map_and_link_lead",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Lead créé ou complété (anti-doublon), canal et provenance posés."
+      },
+      "regles_aval": [
+        {
+          "regle": "La cadence de contact démarre à l'arrivée d'un lead vivant.",
+          "source": "apps/crm/services.py::demarrer_cadence_contact"
+        }
+      ]
     },
     {
-      "id": "PA1-03",
-      "nom": "Placement du responsable (défaut société, tourniquet, MQL)",
-      "proprietaire": "crm",
-      "declencheur": {"type": "manuel", "source": "apps/crm/views.py::LeadViewSet.perform_create"},
-      "ecran": {"route": "/crm/leads/:id", "composant": "LeadDetailPage", "action": "réassigner le responsable"},
-      "fonction_entree": "apps/crm/services.py::assigner_lead_a",
-      "checkpoint": {"modifiable": true, "champs": ["Lead.owner"], "persistance": "apps/crm/models.py::Lead"},
-      "regle_aval": ["preserve_manuel"],
-      "provenance": {"marqueur": "activité système old→new « responsable »", "ecrivains_auto": ["apps/crm/services.py::default_responsable_for", "apps/crm/services.py::pick_round_robin_owner", "apps/crm/services.py::maybe_assign_mql"]},
-      "compensation": "réassignation manuelle tracée au chatter",
-      "portes": ["apps/crm/views.py::LeadViewSet.perform_create"],
-      "suite": "Le responsable reçoit la cadence de contact (PA1-05).",
-      "negatifs": ["responsable explicite à la création : respecté, jamais remplacé par le défaut"],
-      "test_nomme": "apps/crm/tests.py",
-      "taches": ["AMET18"],
-      "constats": ["Trois écrivains automatiques du même champ (défaut, tourniquet, MQL) : l'ordre n'est pas déclaré."]
+      "id": "qualification",
+      "libelle": "Qualification : fiche complétée et score recalculé",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/views.py::LeadViewSet.perform_update"
+      },
+      "fonction_entree": "apps/crm/services.py::recompute_lead_score",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Champs de la fiche et `score` persistés ; chaque changement tracé au chatter."
+      },
+      "regles_aval": [
+        {
+          "regle": "Un ajustement manuel de score est tracé avec son delta.",
+          "source": "apps/crm/services.py::ajuster_score_lead"
+        }
+      ]
     },
     {
-      "id": "PA1-04",
-      "nom": "Fiche lead : qualification et saisie (adresse, énergie, toiture)",
-      "proprietaire": "crm",
-      "declencheur": {"type": "clic", "source": "frontend/src/pages/crm/leads/LeadDetailPage.jsx"},
-      "ecran": {"route": "/crm/leads/:id", "composant": "LeadDetailPage", "action": "modifier les sections de la fiche"},
-      "fonction_entree": "apps/crm/views.py::LeadViewSet.perform_update",
-      "checkpoint": {"modifiable": true, "champs": ["Lead.stage", "Lead.ville", "Lead.facture_mensuelle", "Lead.type_installation"], "persistance": "apps/crm/models.py::LeadActivity"},
-      "regle_aval": ["recalcul", "preserve_manuel"],
-      "provenance": {"marqueur": "LeadActivity old→new (chatter)", "ecrivains_auto": ["apps/crm/services.py::avancer_stage_new_vers_contacted", "apps/crm/services.py::marquer_premier_contact"]},
-      "compensation": "chaque écrasement tracé au chatter ; retour d'étape manuel permis",
-      "portes": ["apps/crm/views.py::LeadViewSet.perform_update"],
-      "suite": "L'étape peut avancer automatiquement sur une touche de la cadence (PA1-05).",
-      "negatifs": ["lead perdu ou archivé : étape non avancée automatiquement"],
-      "test_nomme": "apps/crm/tests.py",
-      "taches": ["AMET18"],
-      "constats": []
+      "id": "cadence_contact",
+      "libelle": "Cadence de contact : touches planifiées puis relancées",
+      "declencheur": {
+        "type": "tache",
+        "source": "apps/crm/tasks.py::notifier_relances_dues_task"
+      },
+      "fonction_entree": "apps/crm/services.py::demarrer_cadence_contact",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::RelanceEtape",
+        "description": "Une touche échue par étape de cadence, jamais deux en parallèle."
+      },
+      "regles_aval": [
+        {
+          "regle": "Une touche traitée matérialise la suivante.",
+          "source": "apps/crm/services.py::materialiser_touche_suivante"
+        },
+        {
+          "regle": "Le report humain d'une échéance est tracé.",
+          "source": "apps/crm/services.py::reporter_prochaine_touche"
+        }
+      ]
     },
     {
-      "id": "PA1-05",
-      "nom": "Cadence de contact : démarrage puis étapes de relance (sous-table parcours_suivi.json)",
-      "proprietaire": "crm",
-      "declencheur": {"type": "clic", "source": "frontend/src/features/crm/relances/RelanceEtapeRow.jsx"},
-      "ecran": {"route": "/crm/leads/:id", "composant": "RelanceEtapeRow", "action": "répondre à l'étape (fait / sauter) selon la table parcours_suivi.json"},
-      "fonction_entree": "apps/crm/services.py::marquer_etape_relance",
-      "checkpoint": {"modifiable": true, "champs": ["RelanceEtape.statut", "RelanceEtape.note", "RelanceEtape.outcome"], "persistance": "apps/crm/models.py::RelanceEtape"},
-      "regle_aval": ["recalcul", "choix_explicite"],
-      "provenance": {"marqueur": "RelanceEtape.origine + activité système", "ecrivains_auto": ["apps/crm/services.py::demarrer_cadence_contact", "apps/crm/services.py::reprendre_relances_apres_fusion"]},
-      "compensation": "étape sautée avec motif ; reprise après fusion de doublons",
-      "portes": ["apps/crm/views.py::RelanceEtapeViewSet.fait", "apps/crm/views.py::RelanceEtapeViewSet.sauter"],
-      "suite": "Réponses, effets et suites : `frontend/src/features/crm/relances/parcours_suivi.json` (non recopié ici) ; une visite se planifie en PA1-06.",
-      "negatifs": ["lead perdu : cadence arrêtée, aucune relance ouverte"],
-      "test_nomme": "apps/crm/tests_parcours_suivi.py",
-      "taches": ["AMET18"],
-      "constats": []
+      "id": "planification_visite",
+      "libelle": "Visite technique planifiée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/visites/views.py::VisiteTerrainViewSet.create"
+      },
+      "fonction_entree": "apps/visites/services.py::emettre_visite_planifiee",
+      "checkpoint": {
+        "persistance": "apps/visites/models.py::VisiteTerrain",
+        "description": "Une visite par rendez-vous, date prévue et commercial posés."
+      },
+      "regles_aval": [
+        {
+          "regle": "La cadence se recale sur le rendez-vous.",
+          "source": "apps/crm/receivers_cadence.py::_suivi_on_visite_planifiee"
+        },
+        {
+          "regle": "Le rendez-vous peut être annulé avec motif.",
+          "source": "apps/visites/services.py::annuler_rendez_vous"
+        }
+      ]
     },
     {
-      "id": "PA1-06",
-      "nom": "Planification de la visite technique depuis la fiche",
-      "proprietaire": "visites",
-      "declencheur": {"type": "clic", "source": "frontend/src/features/crm/relances/PlanifierVisiteModal.jsx"},
-      "ecran": {"route": "/crm/leads/:id", "composant": "PlanifierVisiteModal", "action": "choisir date, commercial, notes"},
-      "fonction_entree": "apps/visites/services.py::planifier_visite",
-      "checkpoint": {"modifiable": true, "champs": ["VisiteTerrain.date_prevue", "VisiteTerrain.commercial", "VisiteTerrain.notes"], "persistance": "apps/visites/models.py::VisiteTerrain"},
-      "regle_aval": ["recalcul", "refus_409"],
-      "provenance": {"marqueur": "signal `visite_planifiee`", "ecrivains_auto": ["apps/visites/services.py::emettre_visite_planifiee", "apps/crm/receivers.py::_suivi_on_visite_planifiee"]},
-      "compensation": "replanification ou annulation du rendez-vous (`annuler_rendez_vous`)",
-      "portes": ["apps/crm/views.py::LeadViewSet.planifier_visite", "apps/visites/views.py::VisiteTerrainViewSet.create"],
-      "suite": "La cadence se cale sur la visite (`_suivi_on_visite_planifiee`) ; le terrain exécute puis termine (PA1-07).",
-      "negatifs": ["date passée refusée", "visite déjà en attente sur le lead : refus explicite"],
-      "test_nomme": "apps/crm/tests_parcours_suivi.py",
-      "taches": ["AMET18"],
-      "constats": ["Deux portes de planification aux gardes différentes (C-ALEA-006)."]
+      "id": "visite_terminee",
+      "libelle": "Visite terminée : retour du technicien",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/visites/views.py::VisiteTerrainViewSet.terminer"
+      },
+      "fonction_entree": "apps/visites/services.py::emettre_visite_terminee",
+      "checkpoint": {
+        "persistance": "apps/visites/models.py::VisiteTerrain",
+        "description": "Retour et qualification de visite enregistrés (idempotent)."
+      },
+      "regles_aval": [
+        {
+          "regle": "Le retour redescend sur le lead et un rappel est posé.",
+          "source": "apps/crm/receivers_cadence.py::_suivi_on_visite_terminee"
+        },
+        {
+          "regle": "Le responsable est notifié du retour.",
+          "source": "apps/crm/receivers_cadence.py::_notifier_responsable_retour_visite"
+        }
+      ]
     },
     {
-      "id": "PA1-07",
-      "nom": "Visite terminée sur le terrain (qualification, retour au lead)",
-      "proprietaire": "visites",
-      "declencheur": {"type": "clic", "source": "frontend/src/pages/visites/VisiteWizardPage.jsx"},
-      "ecran": {"route": "/visites/:id", "composant": "VisiteWizardPage", "action": "terminer la visite"},
-      "fonction_entree": "apps/visites/views.py::VisiteTerrainViewSet.terminer",
-      "checkpoint": {"modifiable": true, "champs": ["VisiteTerrain.statut", "VisiteTerrain.qualification"], "persistance": "apps/visites/models.py::VisiteTerrain"},
-      "regle_aval": ["recalcul", "fige"],
-      "provenance": {"marqueur": "signal `visite_terminee`", "ecrivains_auto": ["apps/visites/services.py::emettre_visite_terminee", "apps/crm/receivers.py::_suivi_on_visite_terminee"]},
-      "compensation": "renvoi au terrain par le bureau d'études (`renvoyer_visite`)",
-      "portes": ["apps/visites/views.py::VisiteTerrainViewSet.terminer"],
-      "suite": "La cadence reprend sur le retour de visite ; la visite attend la revue technique (PA1-08).",
-      "negatifs": ["visite non assignée à l'utilisateur : refus"],
-      "test_nomme": "apps/crm/tests_parcours_suivi.py",
-      "taches": ["AMET18"],
-      "constats": []
-    },
-    {
-      "id": "PA1-08",
-      "nom": "Revue technique : validation (ou renvoi) au bureau d'études",
-      "proprietaire": "visites",
-      "declencheur": {"type": "clic", "source": "frontend/src/pages/visites/VisiteBureauEtudesPage.jsx"},
-      "ecran": {"route": "/visites/revue", "composant": "VisiteBureauEtudesPage", "action": "valider ou renvoyer la visite"},
+      "id": "revue_visite",
+      "libelle": "Revue de visite : feu vert (/visites/revue)",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/visites/views.py::VisiteTerrainViewSet.valider"
+      },
       "fonction_entree": "apps/visites/services.py::valider_visite",
-      "checkpoint": {"modifiable": true, "champs": ["VisiteTerrain.statut", "VisiteTerrain.valide_par"], "persistance": "apps/visites/models.py::VisiteTerrain"},
-      "regle_aval": ["recalcul", "refus_409"],
-      "provenance": {"marqueur": "signal `visite_validee`", "ecrivains_auto": ["apps/crm/receivers.py::_retour_lead_on_visite_validee"]},
-      "compensation": "renvoi au terrain (`renvoyer_visite`) avec motif",
-      "portes": ["apps/visites/views.py::VisiteTerrainViewSet.valider", "apps/visites/views.py::VisiteTerrainViewSet.renvoyer"],
-      "suite": "Le récapitulatif revient sur la fiche du lead ; le devis se prépare (parcours PA3).",
-      "negatifs": ["valider une visite non terminée : refus (`refus_transition`)"],
-      "test_nomme": "apps/crm/tests_parcours_suivi.py",
-      "taches": ["AMET18"],
-      "constats": ["Aucune table de transitions serveur complète pour la visite (C-ALEA-004)."]
+      "checkpoint": {
+        "persistance": "apps/visites/models.py::VisiteTerrain",
+        "description": "Visite validée, lecture seule ; `visite_validee` émis sur le bus."
+      },
+      "regles_aval": [
+        {
+          "regle": "Le récap est posé sur la fiche lead et au chatter (idempotent).",
+          "source": "apps/crm/receivers_cadence.py::_retour_lead_on_visite_validee"
+        }
+      ]
     }
-  ]
+  ],
+  "portes": [
+    {
+      "id": "saisie_manuelle",
+      "source": "apps/crm/views.py::LeadViewSet.perform_create",
+      "description": "Saisie à la main dans /crm/leads."
+    },
+    {
+      "id": "formulaire_web",
+      "source": "apps/crm/webhooks.py::_map_and_link_lead",
+      "description": "Formulaire du site (webhook), anti-doublon."
+    },
+    {
+      "id": "demande_rdv",
+      "source": "apps/crm/webhooks.py::_rdv_creer_lead",
+      "description": "Demande de rendez-vous publique."
+    },
+    {
+      "id": "meta_lead_ads",
+      "source": "apps/crm/services.py::create_lead_from_meta_lead_ads",
+      "description": "Formulaire Meta Lead Ads."
+    },
+    {
+      "id": "whatsapp_ctwa",
+      "source": "apps/crm/services.py::create_minimal_lead_from_ctwa",
+      "description": "Clic vers WhatsApp (annonce)."
+    },
+    {
+      "id": "livechat",
+      "source": "apps/crm/services.py::create_lead_from_livechat",
+      "description": "Chat du site."
+    },
+    {
+      "id": "api_publique",
+      "source": "apps/crm/services.py::create_lead_from_public_api",
+      "description": "API publique."
+    },
+    {
+      "id": "evenement_marketing",
+      "source": "apps/crm/services.py::create_lead_from_evenement_marketing",
+      "description": "Événement marketing."
+    },
+    {
+      "id": "ticket_sav",
+      "source": "apps/crm/services.py::create_lead_depuis_ticket",
+      "description": "Ticket SAV devenu opportunité."
+    },
+    {
+      "id": "ocr_facture",
+      "source": "apps/crm/services.py::create_draft_lead_from_ocr",
+      "description": "Brouillon issu d'un scan de facture."
+    },
+    {
+      "id": "proprietaire",
+      "source": "apps/crm/services.py::creer_lead_proprietaire",
+      "description": "Propriétaire d'un lead locataire."
+    },
+    {
+      "id": "import_odoo",
+      "source": "apps/crm/management/commands/import_odoo_leads.py::Command.handle",
+      "description": "Import des leads Odoo (miroir)."
+    },
+    {
+      "id": "import_donnees",
+      "source": "apps/dataimport/services.py::_commit_raw",
+      "description": "Import de données (fichier)."
+    }
+  ],
+  "provenance": {
+    "ecrivains_auto": [
+      {
+        "champ": "score",
+        "ecrivains": [
+          {
+            "regle": "Recalcul du score de qualité.",
+            "source": "apps/crm/services.py::recompute_lead_score"
+          },
+          {
+            "regle": "Ajustement manuel du score.",
+            "source": "apps/crm/services.py::ajuster_score_lead"
+          },
+          {
+            "regle": "Recalcul différé des scores obsolètes.",
+            "source": "apps/crm/services.py::recalculer_scores_obsoletes"
+          }
+        ]
+      },
+      {
+        "champ": "owner",
+        "ecrivains": [
+          {
+            "regle": "Propriétaire choisi au tour de rôle.",
+            "source": "apps/crm/services.py::pick_round_robin_owner"
+          }
+        ]
+      },
+      {
+        "champ": "meta_ad_id",
+        "ecrivains": [
+          {
+            "regle": "Création depuis Meta Lead Ads.",
+            "source": "apps/crm/services.py::create_lead_from_meta_lead_ads"
+          },
+          {
+            "regle": "Rétro-remplissage de l'attribution par variante.",
+            "source": "apps/crm/services.py::backfill_meta_lead_attribution"
+          }
+        ]
+      },
+      {
+        "champ": "champs_fusionnes",
+        "ecrivains": [
+          {
+            "regle": "Fusion de doublons : champs vides du survivant complétés.",
+            "source": "apps/crm/services.py::merge_leads"
+          }
+        ]
+      },
+      {
+        "champ": "placement_relances",
+        "ecrivains": [
+          {
+            "regle": "Phase de décision du placement des relances (n'écrit aucune donnée métier).",
+            "source": "apps/crm/services.py::_decider_placements"
+          }
+        ]
+      },
+      {
+        "champ": "visite_effectuee",
+        "ecrivains": [
+          {
+            "regle": "Retour de visite validée posé sur la fiche.",
+            "source": "apps/crm/receivers_cadence.py::_retour_lead_on_visite_validee"
+          }
+        ]
+      }
+    ]
+  }
 }

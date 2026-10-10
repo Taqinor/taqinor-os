@@ -657,3 +657,75 @@ class AlignementReculHumainTests(OdooSyncBase):
         self.assertEqual(rapport.divergences_assumees, 0)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.FOLLOW_UP)
+
+
+def _lead_odoo(odoo_id, nom, **kwargs):
+    base = {
+        'id': odoo_id, 'name': nom, 'contact_name': nom, 'partner_name': '',
+        'email_from': f'{nom.lower()}@example.test', 'phone': '+2126%08d' % odoo_id,
+        'street': '', 'street2': '', 'city': '',
+        'stage_id': [1, 'New'], 'active': True, 'expected_revenue': 0,
+        'create_date': '2026-10-05 10:00:00', 'user_id': False, 'tag_ids': [],
+        'lost_reason_id': False, 'description': '',
+    }
+    base.update(kwargs)
+    return base
+
+
+class GardeCreationPerduOdooTests(OdooSyncBase):
+    """AACQ34 [TRANCHÉ 10/10/2026] — garde À LA CRÉATION seulement : un lead
+    NEUF déjà perdu/archivé dans Odoo ne démarre aucune cadence ; un lead ERP
+    existant n'est JAMAIS modifié par une perte côté Odoo."""
+
+    def _passer(self, leads):
+        cible = ('apps.crm.management.commands.sync_odoo_leads.'
+                 'fetch_odoo_leads')
+        with patch(cible, return_value=(leads, {})):
+            return self._sync()
+
+    def test_build_rows_porte_active_et_motif_en_lecture_seule(self):
+        rows = {r['id']: r for r in odoo_sync.build_rows(ODOO_LEADS, {})}
+        self.assertTrue(rows[12]['active'])
+        self.assertNotIn('lost_reason_id', rows[12])
+        self.assertFalse(rows[13]['active'])
+        self.assertEqual(rows[13]['lost_reason_id'], 'Trop cher')
+
+    def test_lead_neuf_deja_perdu_sans_cadence(self):
+        from apps.crm import services
+        leads = [
+            _lead_odoo(71, 'Vivant'),
+            _lead_odoo(72, 'Archive', active=False),
+            _lead_odoo(73, 'Perdu', lost_reason_id=[4, 'Trop cher']),
+        ]
+        with patch.object(services, 'demarrer_cadence_contact',
+                          wraps=services.demarrer_cadence_contact) as spy:
+            sortie = self._passer(leads)
+        appeles = {c.args[0].external_id for c in spy.call_args_list}
+        self.assertEqual(appeles, {'71'})
+        for ext in ('72', '73'):
+            lead = Lead.objects.get(company=self.company, external_id=ext)
+            self.assertFalse(lead.relance_etapes.exists())
+            self.assertFalse(lead.perdu)  # l'ERP ne change rien d'autre
+        self.assertIn('cadence non démarrée', sortie)
+        self.assertIn('Trop cher', sortie)
+
+    def test_lead_existant_perdu_dans_odoo_inchange(self):
+        from apps.crm import services
+        existant = Lead.objects.create(
+            company=self.company, nom='Existant', external_system='odoo',
+            external_id='80', stage=stages.NEW)
+        avant = (existant.stage, existant.perdu, existant.is_archived)
+        nb_activites = LeadActivity.objects.filter(lead=existant).count()
+        perdu = _lead_odoo(80, 'Existant', active=False,
+                           lost_reason_id=[4, 'Trop cher'])
+        with patch.object(services, 'marquer_lead_perdu') as perdre, \
+                patch.object(services, 'arreter_cadence') as arreter:
+            self._passer([perdu])
+            self._passer([perdu])
+        perdre.assert_not_called()
+        arreter.assert_not_called()
+        existant.refresh_from_db()
+        self.assertEqual(
+            (existant.stage, existant.perdu, existant.is_archived), avant)
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=existant).count(), nb_activites)

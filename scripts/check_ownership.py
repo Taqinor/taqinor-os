@@ -15,8 +15,8 @@ Le registre est une DONNÉE : ``docs/ownership.yml`` (propriétaires, globs,
 surfaces append-only, liaison plan → propriétaire). Cette garde le vérifie ;
 ``scripts/plan_lanes.py`` le lit pour la disjonction des lanes.
 
-LES TROIS RÈGLES
-----------------
+LES QUATRE RÈGLES
+-----------------
 (a) **Exactement un propriétaire.** Chaque fichier suivi sous les ``roots`` est
     revendiqué par UN propriétaire. Résolution à deux étages : un glob ``paths``
     (revendication précise, STRICTE : deux propriétaires = refus) l'emporte ; à
@@ -35,6 +35,10 @@ LES TROIS RÈGLES
 (c) **Pas de fichier neuf sans propriétaire.** Un fichier déclaré par une tâche
     (même pas encore créé) ou ajouté par une branche (``--base``) doit déjà
     avoir un propriétaire au registre.
+(d) **Transverse = déplacements atomiques seulement** (AMET96). Une tâche du
+    plan transverse porte `(@atomique: <propriétaires>)` égal EXACTEMENT aux
+    propriétaires de ses `Files:` ; sinon « à scinder, contrat d'abord ».
+    Mode RAPPORT (code 0) tant que ``--bloquant`` n'est pas passé (AMET101).
 
 Pur stdlib : le job ``stage-names`` n'installe pas PyYAML ; le registre est
 écrit dans le sous-ensemble YAML lu par ``plan_lanes._MiniYamlParser``.
@@ -410,12 +414,44 @@ def _cibles(reg: "Registre", chemin: str, fichiers) -> list[str]:
     return hits or [re.sub(r"\*+", "x", chemin)]
 
 
+def _taches_ouvertes(texte: str):
+    """(n° de ligne, id, label + continuations) de chaque tâche OUVERTE de la
+    file d'un plan ; id ``None`` = ligne de case `- [ ]` mal formée portant
+    `Files:`. Une tâche = sa ligne + ses lignes de continuation (indentées)."""
+    lignes = texte.splitlines()
+    hors_file = False
+    for i, brut in enumerate(lignes):
+        if brut.startswith(("# ", "## ", "### ")):
+            hors_file = bool(PL._NON_QUEUE_SECTION.match(brut))
+            continue
+        if hors_file:
+            continue
+        m = PL._TASK_LIST_RE.match(brut) or PL._TASK_HEADER_RE.match(brut)
+        if not m:
+            if PL._RAW_CHECKLIST_RE.match(brut) and brut.lstrip().startswith("- [ ]") \
+                    and _FILES_MARQUEUR.search(brut):
+                yield i + 1, None, ""
+            continue
+        statut = (m.group("status") or "").strip()
+        en_ligne = (m.groupdict().get("inline_status") or "").strip()
+        if en_ligne:
+            statut = en_ligne
+        if statut:
+            continue  # [x], [BLOCKED…], [GATED…] : rien à construire
+        label = m.group("label")
+        j = i + 1
+        while j < len(lignes) and lignes[j][:1] in (" ", "\t") \
+                and not lignes[j].lstrip().startswith("- ["):
+            label += " " + lignes[j].strip()
+            j += 1
+        yield i + 1, m.group("id"), label
+
+
 def verifier_plans(reg: Registre, plans: dict[str, str], fichiers=()) -> list[str]:
     """Règle (b) (+ (a)/(c) au moment où la tâche est écrite).
 
-    Une tâche = sa ligne + ses lignes de continuation (indentées) jusqu'à la
-    suivante. Une ligne de case à cocher qui porte `Files:` sans être lisible
-    comme tâche est REFUSÉE (elle échapperait sinon à toute vérification).
+    Une ligne de case à cocher qui porte `Files:` sans être lisible comme
+    tâche est REFUSÉE (elle échapperait sinon à toute vérification).
     """
     fichiers = list(fichiers)
     erreurs = []
@@ -432,37 +468,13 @@ def verifier_plans(reg: Registre, plans: dict[str, str], fichiers=()) -> list[st
         # (b). Un fichier qu'ils déclarent doit quand même avoir UN propriétaire.
         exempte = bool(set(owners) & reg.exempt)
         web = owners == ["web"]
-        lignes = texte.splitlines()
-        hors_file = False
-        for i, brut in enumerate(lignes):
-            n_ligne = i + 1
-            if brut.startswith(("# ", "## ", "### ")):
-                hors_file = bool(PL._NON_QUEUE_SECTION.match(brut))
+        for n_ligne, tid, label in _taches_ouvertes(texte):
+            if tid is None:
+                erreurs.append(
+                    f"{plan}:{n_ligne} — ligne de tâche mal formée (attendu « - [ ] "
+                    f"<ID> — … », tiret cadratin) : ses Files: échapperaient à la "
+                    f"garde ; la corriger")
                 continue
-            if hors_file:
-                continue
-            m = PL._TASK_LIST_RE.match(brut) or PL._TASK_HEADER_RE.match(brut)
-            if not m:
-                if PL._RAW_CHECKLIST_RE.match(brut) and brut.lstrip().startswith("- [ ]") \
-                        and _FILES_MARQUEUR.search(brut):
-                    erreurs.append(
-                        f"{plan}:{n_ligne} — ligne de tâche mal formée (attendu « - [ ] "
-                        f"<ID> — … », tiret cadratin) : ses Files: échapperaient à la "
-                        f"garde ; la corriger")
-                continue
-            statut = (m.group("status") or "").strip()
-            en_ligne = (m.groupdict().get("inline_status") or "").strip()
-            if en_ligne:
-                statut = en_ligne
-            if statut:
-                continue  # [x], [BLOCKED…], [GATED…] : rien à construire
-            tid = m.group("id")
-            label = m.group("label")
-            j = i + 1
-            while j < len(lignes) and lignes[j][:1] in (" ", "\t") \
-                    and not lignes[j].lstrip().startswith("- ["):
-                label += " " + lignes[j].strip()
-                j += 1
             for declare in chemins_declares(label):
                 chemin = normaliser(declare, web=web)
                 if not chemin or not reg.sous_racines(chemin):
@@ -486,6 +498,37 @@ def verifier_plans(reg: Registre, plans: dict[str, str], fichiers=()) -> list[st
                             f"multi-propriétaires va dans {reg.plan_transverse} "
                             f"(ou retirer ce fichier de Files:)")
     return erreurs
+
+
+def verifier_transverse(reg: Registre, plans: dict[str, str], fichiers=()) -> list[str]:
+    """Règle (d) (AMET96) : le plan transverse n'accepte qu'une tâche
+    `(@atomique: <propriétaires>)` dont le tag égale EXACTEMENT les
+    propriétaires (règle a) de ses `Files:`, surfaces append-only exclues."""
+    plan = reg.plan_transverse
+    fichiers = list(fichiers)
+    refus = []
+    for n_ligne, tid, label in _taches_ouvertes(plans.get(plan, "")):
+        if tid is None:
+            continue  # déjà refusée par la règle (b)
+        tag = PL.proprietaires_atomiques(label)
+        reels = set()
+        for declare in chemins_declares(label):
+            chemin = normaliser(declare)
+            if chemin and reg.sous_racines(chemin):
+                reels |= {proprietaire(reg, c) for c in _cibles(reg, chemin, fichiers)
+                          if not reg.est_append_only(c)} - {None}
+        if tag is None:
+            refus.append(
+                f"{plan}:{n_ligne} {tid} — tâche multi-propriétaires : à scinder, "
+                f"contrat d'abord (une par propriétaire, contract_samples/ "
+                f"d'abord) — ou `(@atomique: {', '.join(sorted(reels))})` si "
+                f"c'est un déplacement construit en UN commit")
+        elif tag != reels:
+            refus.append(
+                f"{plan}:{n_ligne} {tid} — `@atomique: {', '.join(sorted(tag))}` "
+                f"≠ propriétaires de ses Files: {', '.join(sorted(reels))} — "
+                f"le tag doit les nommer EXACTEMENT")
+    return refus
 
 
 # ------------------------------------------------------------- mesure (brief 1)
@@ -652,6 +695,9 @@ def main(argv=None) -> int:
     ap.add_argument("--owner-of", nargs="+", metavar="CHEMIN")
     ap.add_argument("--max", type=int, default=60, help="refus imprimés au plus")
     ap.add_argument("--verbose", action="store_true", help="lister aussi les globs morts")
+    ap.add_argument("--bloquant", action="store_true",
+                    help="règle (d) BLOQUANTE (plan transverse : @atomique exact) ; "
+                         "sans l'option elle tourne en mode rapport (code 0)")
     ap.add_argument("--conflits", type=int, nargs="?", const=40, metavar="N",
                     help="mesure : les N fichiers partagés les plus coûteux (tâches × "
                          "propriétaires × lignes, plans + archives + 2000 commits)")
@@ -678,6 +724,17 @@ def main(argv=None) -> int:
     erreurs += verifier_fichiers(reg, fichiers)
     plans = plans_du_depot()
     erreurs += verifier_plans(reg, plans, fichiers)
+    transverse = verifier_transverse(reg, plans, fichiers)
+    if args.bloquant:
+        erreurs += transverse
+    elif transverse:  # mode RAPPORT jusqu'à la migration D-OWN-FUSION (AMET101)
+        for e in transverse[:args.max]:
+            print(f"RAPPORT (règle d) : {e}")
+        if len(transverse) > args.max:
+            print(f"… et {len(transverse) - args.max} autre(s)")
+        print(f"note : règle (d) en mode RAPPORT — {len(transverse)} tâche(s) du "
+              f"plan transverse à scinder ou à marquer `@atomique` exact ; "
+              f"--bloquant pour refuser\n")
     if args.base:
         ajoutes = _git("diff", "--name-only", "--diff-filter=A",
                        f"{args.base}...HEAD", "--", *reg.roots)
@@ -695,7 +752,7 @@ def main(argv=None) -> int:
             print(f"REFUS : {e}")
         if len(erreurs) > args.max:
             print(f"… et {len(erreurs) - args.max} autre(s) refus")
-        print(f"\nÉCHEC — {len(erreurs)} refus (docs/ownership.yml, règles a/b/c "
+        print(f"\nÉCHEC — {len(erreurs)} refus (docs/ownership.yml, règles a/b/c/d "
               f"en tête de scripts/check_ownership.py)")
         return 1
     print(f"OK — {len(fichiers)} fichiers, chacun à UN propriétaire parmi "

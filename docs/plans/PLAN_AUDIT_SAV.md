@@ -199,3 +199,4 @@
 - 2026-10-09 — ASAV55 — Problèmes : 5 appels savApi branchés (tickets liés, lier/délier, résoudre, supprimer)
 - 2026-10-09 — ASAV61 — gestes d'écriture gardés par rôle/permission (alarmes, KB, problèmes, rebut)
 - 2026-10-09 — ASAV78 — seuils SLA codés en dur (ticketSlaLevel, slaThresholdDays) retirés de ticketStatuses.js après ASAV47 ; test d'absence des exports
+- 2026-10-09 — AMET24 — parcours PA7 (SAV/monitoring) cartographié + garde AST ; 4 étapes déclarées manquantes avec preuve d'absence (création d'abonnement, SLA de disponibilité, suivi du remplacement, résiliation)

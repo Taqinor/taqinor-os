@@ -408,6 +408,16 @@ def build_rows(odoo_leads, tag_names):
             'date_last_stage_update_odoo': (
                 str(lead['date_last_stage_update'])
                 if lead.get('date_last_stage_update') else None),
+            # AACQ34 — LECTURE seule : l'état « actif » et le motif de perte
+            # Odoo voyagent en données structurées (la note texte reste la
+            # trace). Servent UNIQUEMENT à ne pas démarrer de cadence sur un
+            # lead NEUF déjà perdu/archivé ; ils ne modifient jamais un lead
+            # ERP existant (décision fondateur 08/10 : l'ERP fait foi).
+            'active': bool(lead.get('active', True)),
+            'lost_reason_id': (
+                str(lead['lost_reason_id'][1])
+                if lead.get('lost_reason_id')
+                and len(lead['lost_reason_id']) > 1 else None),
         }
         rows.append({k: v for k, v in row.items() if v is not None})
     return rows

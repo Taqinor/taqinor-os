@@ -27,6 +27,7 @@ import {
   toast,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import useStatutConfig from '../../features/parametres/useStatutConfig'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import KanbanView from './views/KanbanView'
@@ -258,6 +259,8 @@ function CalendarView({ items, onOpen, onReschedule }) {
 }
 
 export default function InstallationsPage() {
+  // APAR54 — libellés de statuts réglés dans Paramètres › Statuts.
+  useStatutConfig('chantier')
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector(s => s.installations)
   const currentUser = useSelector(s => s.auth?.user)

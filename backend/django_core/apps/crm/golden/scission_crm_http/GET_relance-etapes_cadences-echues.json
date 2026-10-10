@@ -1,0 +1,9 @@
+{
+ "appel": "GET relance-etapes cadences-echues",
+ "corps": {
+  "count": 0,
+  "jours": 0,
+  "results": []
+ },
+ "statut": 200
+}

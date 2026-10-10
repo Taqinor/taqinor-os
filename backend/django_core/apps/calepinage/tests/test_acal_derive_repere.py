@@ -384,3 +384,61 @@ class DeriveRepereTest(BaseApiCalepinage):
             roof_layout=dict(self.layout))
         for geste in ('recentrer-sur-lead', 'garder-repere'):
             self.assertEqual(self._poster(geste, etranger).status_code, 404)
+
+    def test_pointe_d_ombre_translatee_et_anonymisee(self):
+        """ACAL352 (C-AMET-009) — ``shadeObstructions[].bout`` suit la base.
+
+        Recentrage de 500 m : la longueur d'ombre base→bout reste ≈ 10,82 m
+        (avant : 505,65 m) ; un second recentrage nul ne change rien ;
+        l'export anonymisé ne garde aucune coordonnée réelle ; et le geste
+        HTTP persiste base et ``bout`` translatés du même vecteur.
+        """
+        from apps.calepinage.dsr_provider import document_anonymise
+        from core.calepinage.geo import deprojeteur_local
+
+        vers_gps = deprojeteur_local((CASABLANCA['lng'], CASABLANCA['lat']))
+        base = list(vers_gps((3.0, 2.0)))
+        bout = list(vers_gps((3.0, 12.82)))  # 10,82 m plein nord
+
+        def longueur(ombre, repere):
+            projeter = projeteur_local((repere['lng'], repere['lat']))
+            (xa, ya), (xb, yb) = (projeter(ombre['centre']),
+                                  projeter(ombre['bout']))
+            return ((xb - xa) ** 2 + (yb - ya) ** 2) ** 0.5
+
+        ombre = {'id': 'o1', 'kind': 'ombre-tracee', 'centre': base,
+                 'bout': bout, 'rayonM': 0.5}
+        document = dict(self.layout, shadeObstructions=[ombre])
+        self.assertAlmostEqual(longueur(ombre, CASABLANCA), 10.82, places=2)
+
+        # Recentrage pur de 500 m vers l'est.
+        lng_c, lat_c = vers_gps((500.0, 0.0))
+        cible = {'lat': lat_c, 'lng': lng_c}
+        recentre = service_repere._translater_document(
+            document, CASABLANCA, cible)
+        ombre_b = recentre['shadeObstructions'][0]
+        self.assertNotEqual(ombre_b['bout'], bout)
+        self.assertAlmostEqual(longueur(ombre_b, cible), 10.82, places=2)
+        for i in (0, 1):
+            self.assertAlmostEqual(ombre_b['centre'][i] - base[i],
+                                   ombre_b['bout'][i] - bout[i], places=7)
+
+        # Second recentrage nul ⇒ identique.
+        nul = service_repere._translater_document(recentre, cible, cible)
+        self.assertEqual(nul['shadeObstructions'][0]['bout'],
+                         ombre_b['bout'])
+
+        # Anonymisation : plus aucune coordonnée GPS réelle sous `bout`.
+        bout_local = document_anonymise(document)['shadeObstructions'][0][
+            'bout']
+        self.assertAlmostEqual(bout_local[0], 3.0, delta=0.01)
+        self.assertAlmostEqual(bout_local[1], 12.82, delta=0.01)
+
+        # Persistance : le geste HTTP relu translate base et bout ensemble.
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=document)
+        reponse = self._poster('recentrer-sur-lead')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.calepinage.refresh_from_db()
+        relue = self.calepinage.roof_layout['shadeObstructions'][0]
+        self.assertAlmostEqual(longueur(relue, MARRAKECH), 10.82, places=2)

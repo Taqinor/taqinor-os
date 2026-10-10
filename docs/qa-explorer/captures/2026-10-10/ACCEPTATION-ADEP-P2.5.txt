@@ -1,0 +1,9 @@
+# ADEP99 P2.5 — docker compose config -q -> 0 ; squelettes morts absents ; seul refus d'ownership = fichier d'exécution non suivi celerybeat-schedule (jamais commité)
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P2_5_P2_8.log
+=== P2.5 (ADEP6) docker compose config -q + check_ownership
+compose config rc=0
+ÉCHEC — 1 refus (docs/ownership.yml, règles a/b/c/d en tête de scripts/check_ownership.py)
+ls: cannot access 'backend/celery_worker': No such file or directory
+ls: cannot access 'frontend/Dockerfile.dev': No such file or directory

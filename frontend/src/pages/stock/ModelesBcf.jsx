@@ -226,9 +226,11 @@ function GenererModal({ modele, fournisseurs, onClose, onGenere }) {
 }
 
 export default function ModelesBcf() {
-  const peutCommander = usePermissionAchats('achats_commander')
   const [confirmer, dialogueConfirmation] = useConfirmation()
   const navigate = useNavigate()
+  // ASTK242 — le serveur exige `achats_commander` pour créer / modifier /
+  // supprimer / générer : jamais un geste refusé (403) à l'écran.
+  const peutCommander = usePermissionAchats('achats_commander')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [fournisseurs, setFournisseurs] = useState([])
@@ -277,15 +279,17 @@ export default function ModelesBcf() {
       cell: (_v, m) => (
         <div className="flex items-center justify-end gap-1.5">
           {peutCommander && (
-            <Button type="button" variant="outline" size="sm"
-                    onClick={(e) => { e.stopPropagation(); setGenererFor(m) }}>
-              <PlayCircle /> Générer un BCF
-            </Button>
+            <>
+              <Button type="button" variant="outline" size="sm"
+                      onClick={(e) => { e.stopPropagation(); setGenererFor(m) }}>
+                <PlayCircle /> Générer un BCF
+              </Button>
+              <IconButton label="Supprimer le modèle" variant="ghost" size="icon" className="size-8"
+                          onClick={(e) => { e.stopPropagation(); supprimer(m) }}>
+                <Trash2 className="text-destructive" />
+              </IconButton>
+            </>
           )}
-          <IconButton label="Supprimer le modèle" variant="ghost" size="icon" className="size-8"
-                      onClick={(e) => { e.stopPropagation(); supprimer(m) }}>
-            <Trash2 className="text-destructive" />
-          </IconButton>
         </div>
       ) },
   ], [supprimer, peutCommander])
@@ -329,7 +333,9 @@ export default function ModelesBcf() {
         onRowClick={openModele}
         emptyTitle="Aucun modèle de bon de commande"
         emptyDescription="Créez-en un pour réutiliser rapidement une liste d'articles récurrente."
-        emptyAction={peutCommander ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau modèle</Button> : undefined}
+        emptyAction={peutCommander
+          ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau modèle</Button>
+          : undefined}
         aria-label="Modèles de bon de commande fournisseur"
       />
 

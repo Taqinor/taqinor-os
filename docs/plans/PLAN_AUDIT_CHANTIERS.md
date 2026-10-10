@@ -244,3 +244,4 @@ fichier du propriétaire). **351 tâches ACAL** au total : `docs/plans/PLAN_AUDI
 - 2026-10-09 — ACHT70 — sync cocher-checklist accepte les équipements via enregistrer_series_lot ; échantillon forme_serveur complete
 - 2026-10-09 — ACHT48 — recalage des garanties du parc après correction de la date de réception (perform_update atomique + note chatter)
 - 2026-10-09 — APAR66 — 5 window.confirm des sections Paramètres chantier → confirmDelete maison
+- 2026-10-10 — AMET15 — parcours PA5 (chantiers) cartographié + garde AST (compensation sur chaque effet automatique)

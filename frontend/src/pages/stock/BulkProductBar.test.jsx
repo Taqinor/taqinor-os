@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BulkProductBar from './BulkProductBar.jsx'
 
-// ASTK242 — codes de permission pilotables par test (null = tous portés).
-const perms = vi.hoisted(() => ({ codes: null }))
-vi.mock('../../features/stock/useVoitPrixAchat', () => {
-  const porte = (c) => perms.codes === null || perms.codes.includes(c)
-  return { usePermissionAchats: porte, useVoitPrixAchat: () => porte('prix_achat_voir'), default: () => porte('prix_achat_voir') }
-})
+// ASTK242 — le gating par codes lit le store : ici l'auto-accord (compte
+// légacy sans rôle fin) ; les cas « sans code » sont dans ModelesBcf.test.jsx.
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: () => true,
+  useVoitPrixAchat: () => true,
+}))
 
 /* ============================================================================
    WIR268/XSTK20 — « Cartes kanban » (deux-bacs, réservées à un emplacement
@@ -27,24 +27,6 @@ const baseProps = {
   onExport: vi.fn(),
   onClear: vi.fn(),
 }
-
-describe('BulkProductBar — panneau Prix (ASTK242)', () => {
-  beforeEach(() => { perms.codes = null })
-
-  it('sans catalogue_prix_modifier : pas de panneau « Prix », aucun set_price', () => {
-    perms.codes = ['stock_voir']
-    const onAction = vi.fn()
-    render(<BulkProductBar {...baseProps} onAction={onAction} />)
-    expect(screen.queryByText('Prix')).toBeNull()
-    expect(onAction).not.toHaveBeenCalled()
-  })
-
-  it('avec catalogue_prix_modifier : le panneau « Prix » est offert', () => {
-    perms.codes = ['catalogue_prix_modifier']
-    render(<BulkProductBar {...baseProps} />)
-    expect(screen.getByText('Prix')).toBeInTheDocument()
-  })
-})
 
 describe('BulkProductBar — Cartes kanban (WIR268/XSTK20)', () => {
   it('absent sans onPrintKanban (ex. aucun emplacement filtré)', () => {

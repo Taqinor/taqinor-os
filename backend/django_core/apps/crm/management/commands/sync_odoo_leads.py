@@ -98,7 +98,8 @@ class Command(BaseCommand):
                 json.dump({'leads': rows}, fh, ensure_ascii=False)
             call_command(
                 'import_odoo_leads', path,
-                company=str(company.pk), dry_run=dry_run)
+                company=str(company.pk), dry_run=dry_run,
+                stdout=self.stdout)
         finally:
             try:
                 os.remove(path)

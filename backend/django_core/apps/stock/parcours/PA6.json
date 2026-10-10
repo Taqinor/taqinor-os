@@ -1,259 +1,257 @@
 {
- "_doc": "PA6 « Approvisionnement » (AMET13, METHODE v3 §D.1) — table du parcours chantier → achats → stock. Les liens manquants sont DÉCLARÉS (`liens_manquants` et `constats` de l'étape), jamais inventés résolus. Garde : apps/stock/test_parcours_pa6.py. Hors table : PA1-PA5, PA7. Les autres sorties de stock (prêt SAV, retour fournisseur, assemblage, pièces SAV) ne sont pas dans les 7 portes ; le dossier R1_G J4 n'est pas versionné, la liste des portes vient du code.",
- "version": "1.0",
- "maj": "2026-10-09",
- "parcours": "PA6",
- "pilote": "stock",
- "portes": [
-  {"id": "S1", "libelle": "Sortie manuelle (API mouvements)", "source": "apps/stock/views/mouvement.py::MouvementStockViewSet.perform_create"},
-  {"id": "S2", "libelle": "Consommation du chantier à « Installé »", "source": "apps/installations/services.py::consume_reservations"},
-  {"id": "S3", "libelle": "Consommation validée sur le terrain", "source": "apps/installations/field_capture.py::validate_consommation"},
-  {"id": "S4", "libelle": "Livraison directe fournisseur → chantier", "source": "apps/stock/services.py::affecter_livraison_directe_chantier"},
-  {"id": "S5", "libelle": "Décompte de stock à la facturation client", "source": "apps/ventes/domain/facturation_ops.py::decompter_stock_lignes"},
-  {"id": "S6", "libelle": "Livraison partielle d'un bon de commande client", "source": "apps/ventes/views/bon_commande.py::BonCommandeViewSet.livrer_partiel"},
-  {"id": "S7", "libelle": "Rebut", "source": "apps/stock/services.py::declarer_rebut"}
- ],
- "liens_manquants": [
-  {"id": "L1", "constat": "Besoin chantier et demande d'achat : deux chemins vers le BCF sans lien entre eux (PA6.1)"},
-  {"id": "L2", "constat": "Abonnés installations des événements stock : exceptions avalées, aucun signalement (PA6.7, PA6.11)"},
-  {"id": "L3", "constat": "Bon de prélèvement terminé : aucun mouvement de stock ; la sortie arrive à « Installé » (PA6.8)"},
-  {"id": "L4", "constat": "Bon de prélèvement et livraison : aucun écran dédié repéré dans les routes stock/chantiers (PA6.8, PA6.9)"},
-  {"id": "L5", "constat": "Livraison effective (`livrer`) : statut seul, aucune sortie de stock (PA6.9)"}
- ],
- "etapes": [
-  {
-   "id": "PA6.1",
-   "nom": "Fiche chantier « Matériel & BC » : calcul du besoin",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/installations/views/installation.py::InstallationViewSet.besoin_materiel"},
-   "ecran": {"route": "/chantiers", "composant": "pages/installations/InstallationDetail.jsx::InstallationDetail", "action": "Calculer le besoin"},
-   "fonction_entree": "apps/stock/services.py::compute_besoin_materiel",
-   "checkpoint": {"modifiable": false, "champs": [], "persistance": "n/a — lecture seule, aucune écriture"},
-   "regle_aval": ["recalcul"],
-   "provenance": {"marqueur": "aucun", "ecrivains_auto": []},
-   "compensation": "sans objet (lecture)",
-   "portes": [],
-   "suite": "PA6.2 (commander le besoin) ou PA6.3 (demande d'achat), deux chemins indépendants",
-   "negatifs": ["Chantier sans devis source : besoin vide"],
-   "test_nomme": "apps/stock/test_acht_besoin_chantier.py",
-   "taches": [],
-   "constats": ["LIEN MANQUANT L1 : « Commander le besoin » crée un BCF brouillon sans demande d'achat ; les deux chemins vers le BCF (commander-besoin, DA puis generer-bcf) ne se voient pas."]
-  },
-  {
-   "id": "PA6.2",
-   "nom": "Commander le besoin : BCF brouillon pour les manques",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/installations/views/installation.py::InstallationViewSet.commander_besoin"},
-   "ecran": {"route": "/chantiers", "composant": "pages/installations/InstallationDetail.jsx::InstallationDetail", "action": "Commander les manques"},
-   "fonction_entree": "apps/stock/services.py::draft_bcf_for_shortfall",
-   "checkpoint": {"modifiable": true, "champs": ["fournisseur"], "persistance": "apps/achats/models.py::BonCommandeFournisseur"},
-   "regle_aval": ["reference"],
-   "provenance": {"marqueur": "BonCommandeFournisseur.chantier_origine", "ecrivains_auto": ["apps/stock/services.py::draft_bcf_for_shortfall"]},
-   "compensation": "suppression du brouillon",
-   "portes": [],
-   "suite": "PA6.4 (approbation) puis PA6.5 (envoi)",
-   "negatifs": ["Aucun fournisseur par défaut : 400"],
-   "test_nomme": "apps/stock/test_acht_besoin_chantier.py",
-   "taches": [],
-   "constats": ["Le BCF brouillon porte le chantier d'origine, pas la demande d'achat (voir L1)."]
-  },
-  {
-   "id": "PA6.3",
-   "nom": "Demande d'achat approuvée → BCF brouillon",
-   "proprietaire": "installations",
-   "declencheur": {"type": "clic", "source": "apps/installations/views/demande_achat.py::DemandeAchatViewSet.generer_bcf"},
-   "ecran": {"route": "/chantiers/demandes-achat", "composant": "pages/installations/DemandesAchatList.jsx::DemandesAchatList", "action": "Générer le BCF"},
-   "fonction_entree": "apps/stock/services.py::creer_bcf_depuis_lignes",
-   "checkpoint": {"modifiable": true, "champs": ["fournisseur_suggere"], "persistance": "apps/achats/models.py::BonCommandeFournisseur"},
-   "regle_aval": ["refus_409", "reference"],
-   "provenance": {"marqueur": "DemandeAchat.bon_commande", "ecrivains_auto": ["apps/stock/services.py::creer_bcf_depuis_lignes"]},
-   "compensation": "annuler le BCF (cascade)",
-   "portes": [],
-   "suite": "PA6.4 (approbation) puis PA6.5 (envoi)",
-   "negatifs": ["DA non approuvée : 400", "DA déjà commandée : refusée"],
-   "test_nomme": "apps/stock/test_acht_bcf_depuis_lignes.py",
-   "taches": [],
-   "constats": ["Émet demande_achat_approuvee (core/events/stock.py) vers installations ; ne lit pas le besoin du chantier (voir L1)."]
-  },
-  {
-   "id": "PA6.4",
-   "nom": "Approbation par palier du BCF",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet.envoyer"},
-   "ecran": {"route": "/stock/bons-commande-fournisseur", "composant": "pages/stock/BonsCommandeFournisseur.jsx::BcfDetail", "action": "Envoyer"},
-   "fonction_entree": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet._refus_approbation",
-   "checkpoint": {"modifiable": false, "champs": [], "persistance": "apps/installations/models_approbation_bcf.py"},
-   "regle_aval": ["refus_409"],
-   "provenance": {"marqueur": "seuil par société", "ecrivains_auto": []},
-   "compensation": "sans objet (garde)",
-   "portes": [],
-   "suite": "PA6.5",
-   "negatifs": ["Palier non approuvé : envoi refusé"],
-   "test_nomme": "apps/stock/test_yproc4_gate_envoi_bcf.py",
-   "taches": [],
-   "constats": ["Garde d'envoi (YPROC4) : sans seuil configuré pour la société, comportement inchangé."]
-  },
-  {
-   "id": "PA6.5",
-   "nom": "Envoi du BCF au fournisseur",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet.envoyer"},
-   "ecran": {"route": "/stock/bons-commande-fournisseur", "composant": "pages/stock/BonsCommandeFournisseur.jsx::BcfDetail", "action": "Envoyer"},
-   "fonction_entree": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet.envoyer",
-   "checkpoint": {"modifiable": false, "champs": ["statut"], "persistance": "apps/achats/models.py::BonCommandeFournisseur"},
-   "regle_aval": ["fige"],
-   "provenance": {"marqueur": "statut=envoye", "ecrivains_auto": []},
-   "compensation": "action rouvrir (BonCommandeFournisseurViewSet.rouvrir)",
-   "portes": [],
-   "suite": "PA6.6 (réception)",
-   "negatifs": ["BCF non brouillon : 400"],
-   "test_nomme": "apps/stock/test_qs3_bcf_send.py",
-   "taches": [],
-   "constats": ["Un BCF envoyé ne se modifie que par réviser ou rouvrir."]
-  },
-  {
-   "id": "PA6.6",
-   "nom": "Réception fournisseur confirmée (entrée de stock)",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/stock/views/reception_fournisseur.py::ReceptionFournisseurViewSet.confirmer"},
-   "ecran": {"route": "/stock/receptions-fournisseur", "composant": "pages/stock/ReceptionsFournisseur.jsx::ReceptionDetail", "action": "Confirmer la réception"},
-   "fonction_entree": "apps/stock/services.py::confirm_reception_fournisseur",
-   "checkpoint": {"modifiable": true, "champs": ["lignes", "quantite_recue"], "persistance": "apps/stock/services.py::record_stock_movement"},
-   "regle_aval": ["fige", "refus_409"],
-   "provenance": {"marqueur": "MouvementStock ENTREE", "ecrivains_auto": ["apps/stock/services.py::confirm_reception_fournisseur"]},
-   "compensation": "apps/stock/services.py::annuler_reception_confirmee",
-   "portes": [],
-   "suite": "PA6.7 (couture installations), PA6.11 (facturer la réception)",
-   "negatifs": ["Réception vide ou non brouillon : ValueError"],
-   "test_nomme": "apps/stock/test_astk_verrou_reception.py",
-   "taches": [],
-   "constats": ["COUTURE reception_fournisseur_confirmee → installations (GR/IR, séries entrepôt, réservation du stock reçu pour le chantier)."]
-  },
-  {
-   "id": "PA6.7",
-   "nom": "Couture réception → installations (GR/IR, réservation chantier)",
-   "proprietaire": "installations",
-   "declencheur": {"type": "evenement", "source": "core/events/stock.py::reception_fournisseur_confirmee"},
-   "ecran": {"route": null, "composant": null, "action": "aucun écran (abonnés du bus)"},
-   "fonction_entree": "apps/installations/receivers.py::_reserver_stock_chantier_on_reception",
-   "checkpoint": {"modifiable": false, "champs": [], "persistance": "apps/installations/models_chantier.py::StockReservation"},
-   "regle_aval": ["non_propage", "recalcul"],
-   "provenance": {"marqueur": "StockReservation", "ecrivains_auto": ["apps/installations/services.py::reserver_stock_recu_pour_chantier"]},
-   "compensation": "apps/installations/services.py::replafonner_reservation_recue_pour_chantier",
-   "portes": [],
-   "suite": "PA6.8 (kitting)",
-   "negatifs": ["Abonné en échec : exception avalée (except pass), aucun signalement"],
-   "test_nomme": "apps/installations/tests_astk_gr_ir_lettrage.py",
-   "taches": [],
-   "constats": ["LIEN MANQUANT L2 : les abonnés installations de reception_fournisseur_confirmee avalent toute exception (try/except pass) : une réservation ou un GR/IR manquant n'est jamais signalé."]
-  },
-  {
-   "id": "PA6.8",
-   "nom": "Kitting : bon de prélèvement du chantier",
-   "proprietaire": "installations",
-   "declencheur": {"type": "clic", "source": "apps/installations/views/picklist.py::PickListViewSet"},
-   "ecran": {"route": null, "composant": null, "action": "aucun écran dédié repéré"},
-   "fonction_entree": "apps/installations/services.py::generer_picklist_pour_chantier",
-   "checkpoint": {"modifiable": true, "champs": ["lignes"], "persistance": "apps/installations/models_picklist.py::PickList"},
-   "regle_aval": ["non_propage"],
-   "provenance": {"marqueur": "PickList", "ecrivains_auto": []},
-   "compensation": "supprimer le bon",
-   "portes": [],
-   "suite": "PA6.9 / PA6.10",
-   "negatifs": ["Réservations vides : bon sans ligne"],
-   "test_nomme": "aucun test nommé (à écrire)",
-   "taches": [],
-   "constats": ["LIEN MANQUANT L3 : terminer le bon de prélèvement ne crée aucun mouvement ; la sortie réelle n'a lieu qu'à consume_reservations (PA6.10).", "LIEN MANQUANT L4 : aucune route frontend des menus stock ou chantiers n'expose le bon de prélèvement."]
-  },
-  {
-   "id": "PA6.9",
-   "nom": "Livraison : expédition dépôt → van",
-   "proprietaire": "installations",
-   "declencheur": {"type": "clic", "source": "apps/installations/views/livraison.py::LivraisonViewSet.expedier"},
-   "ecran": {"route": null, "composant": null, "action": "aucun écran dédié repéré (portail client seul)"},
-   "fonction_entree": "apps/installations/services.py::ventiler_stock_livraison",
-   "checkpoint": {"modifiable": true, "champs": ["lignes"], "persistance": "apps/installations/models_livraison.py::Livraison"},
-   "regle_aval": ["refus_409", "fige"],
-   "provenance": {"marqueur": "Livraison.stock_mouvemente", "ecrivains_auto": ["apps/installations/services.py::ventiler_stock_livraison"]},
-   "compensation": "apps/installations/services.py::contre_transferer_stock_livraison",
-   "portes": [],
-   "suite": "PA6.10",
-   "negatifs": ["Stock insuffisant au dépôt : 400 nommant la ligne"],
-   "test_nomme": "aucun test nommé (à écrire)",
-   "taches": [],
-   "constats": ["LIEN MANQUANT L5 : `livrer` ne pose que le statut et la notification ; aucune sortie de stock à la livraison effective."]
-  },
-  {
-   "id": "PA6.10",
-   "nom": "Mouvement : sortie de stock (consommation chantier)",
-   "proprietaire": "stock",
-   "declencheur": {"type": "evenement", "source": "apps/installations/services.py::consume_reservations"},
-   "ecran": {"route": null, "composant": null, "action": "passage du chantier à « Installé »"},
-   "fonction_entree": "apps/stock/services.py::record_stock_movement",
-   "checkpoint": {"modifiable": false, "champs": [], "persistance": "apps/stock/models.py::MouvementStock"},
-   "regle_aval": ["fige", "non_propage"],
-   "provenance": {"marqueur": "MouvementStock SORTIE", "ecrivains_auto": ["apps/installations/services.py::consume_reservations"]},
-   "compensation": "mouvement inverse (entrée) via record_stock_movement",
-   "portes": [],
-   "suite": "miroir comptable : core/events/stock.py::mouvement_stock_enregistre",
-   "negatifs": ["Réservation déjà consommée : idempotent"],
-   "test_nomme": "apps/stock/test_astk_mouvement_via_service.py",
-   "taches": [],
-   "constats": ["Sept portes de sortie de stock : voir `portes[]`. record_stock_movement est l'unique créateur de MouvementStock (scripts/check_mouvement_stock_service.py)."]
-  },
-  {
-   "id": "PA6.11",
-   "nom": "Facture fournisseur et couture vers installations",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet.perform_create"},
-   "ecran": {"route": "/stock/factures-fournisseur", "composant": "pages/stock/FacturesFournisseur.jsx::FacturesFournisseur", "action": "Nouvelle facture / Facturer la réception"},
-   "fonction_entree": "apps/stock/services.py::facturer_reception",
-   "checkpoint": {"modifiable": true, "champs": ["lignes", "bon_commande"], "persistance": "apps/achats/models.py::FactureFournisseur"},
-   "regle_aval": ["recalcul", "refus_409"],
-   "provenance": {"marqueur": "FactureFournisseur.bon_commande", "ecrivains_auto": ["apps/stock/services.py::facturer_reception"]},
-   "compensation": "apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet.perform_destroy",
-   "portes": [],
-   "suite": "PA6.12",
-   "negatifs": ["Réception non confirmée ou déjà facturée : ValueError"],
-   "test_nomme": "apps/stock/test_astk_facture_lien_bcf_evenement.py",
-   "taches": [],
-   "constats": ["COUTURE facture_fournisseur_creee → installations : lettrage GR/IR (installations/receivers.py::_lettrer_gr_ir_on_facture, avale aussi ses exceptions, voir L2)."]
-  },
-  {
-   "id": "PA6.12",
-   "nom": "Paiement fournisseur",
-   "proprietaire": "stock",
-   "declencheur": {"type": "clic", "source": "apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_create"},
-   "ecran": {"route": "/stock/paiements-fournisseur", "composant": "pages/stock/PaiementsFournisseurLedgerPage.jsx::PaiementsFournisseurLedgerPage", "action": "Enregistrer le paiement"},
-   "fonction_entree": "apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_create",
-   "checkpoint": {"modifiable": false, "champs": ["montant", "date_paiement"], "persistance": "apps/achats/models.py::PaiementFournisseur"},
-   "regle_aval": ["fige", "refus_409"],
-   "provenance": {"marqueur": "PaiementFournisseur", "ecrivains_auto": ["apps/stock/services.py::enregistrer_paiement_fournisseur_depuis_run"]},
-   "compensation": "apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_destroy",
-   "portes": [],
-   "suite": "fin du parcours ; écriture comptable via paiement_fournisseur_enregistre",
-   "negatifs": ["Montant au-delà du solde dû, sous verrou : refusé"],
-   "test_nomme": "apps/stock/test_astk_paiement_immuable.py",
-   "taches": [],
-   "constats": ["Un paiement est immuable (ASTK) ; la correction passe par l'avoir."]
-  },
-  {
-   "id": "PA6.13",
-   "nom": "Produit modifié → devis de ventes resynchronisés",
-   "proprietaire": "ventes",
-   "declencheur": {"type": "evenement", "source": "core/events/stock.py::produit_modifie"},
-   "ecran": {"route": null, "composant": null, "action": "aucun écran (abonné du bus)"},
-   "fonction_entree": "apps/ventes/domain/catalogue_events.py::on_produit_modifie",
-   "checkpoint": {"modifiable": false, "champs": [], "persistance": "apps/ventes/tasks.py::task_resync_devis_apres_produit_modifie"},
-   "regle_aval": ["recalcul", "fige"],
-   "provenance": {"marqueur": "devis non envoyés", "ecrivains_auto": ["apps/ventes/tasks.py::task_resync_devis_apres_produit_modifie"]},
-   "compensation": "aucune (les devis envoyés ne sont jamais touchés)",
-   "portes": [],
-   "suite": "fin du parcours",
-   "negatifs": ["Devis envoyé ou accepté : non touché"],
-   "test_nomme": "apps/ventes/tests/test_astk_pvsync_fraicheur.py",
-   "taches": [],
-   "constats": ["COUTURE produit_modifie → ventes (PVSYNC) ; émetteur : apps/stock/views/produit.py::emettre_produit_modifie."]
-  }
- ]
+  "parcours": "PA6",
+  "titre": "Approvisionnement",
+  "pilote": "stock",
+  "pourquoi": "AMET13 (C-AMET-025) — table du parcours fiche chantier « Matériel & BC » -> demande d'achat -> BCF -> réception fournisseur -> mouvement -> kitting -> facture et paiement fournisseur, plus la couture produit_modifie -> ventes. Lue par la garde `apps/stock/test_parcours_pa6.py` (AST, sans base) : chaque déclencheur, fonction d'entrée, point de persistance et règle aval est un symbole qui existe. `portes[]` liste les sept portes de sortie de stock (appelants de `record_stock_movement` en sortie, vérifiés dans le code) ; `scripts/check_mouvement_stock_service.py` garde la porte de mouvement, pas le parcours. Coutures : `reception_fournisseur_confirmee` et `facture_fournisseur_creee` -> installations ; `produit_modifie` -> ventes. Source R1_G J4 non disponible dans le dépôt : la table est dressée depuis le code.",
+  "chemins_relatifs_a": "backend/django_core",
+  "etapes": [
+    {
+      "id": "besoin_materiel",
+      "libelle": "Fiche chantier « Matériel & BC » : besoin matériel confronté au stock",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.besoin_materiel"
+      },
+      "fonction_entree": "apps/stock/services.py::compute_besoin_materiel",
+      "checkpoint": {
+        "persistance": "apps/stock/models.py::Produit",
+        "description": "Lecture seule : manque = besoin du devis − stock disponible (aucune écriture)."
+      },
+      "regles_aval": [
+        {
+          "regle": "Les quantités déjà réservées sont déduites du disponible.",
+          "source": "apps/stock/services.py::available_quantity"
+        }
+      ]
+    },
+    {
+      "id": "demande_achat",
+      "libelle": "Demande d'achat du chantier approuvée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/demande_achat.py::DemandeAchatViewSet.approuver"
+      },
+      "fonction_entree": "apps/installations/services.py::decider_demande_achat",
+      "checkpoint": {
+        "persistance": "apps/installations/models_demande_achat.py::DemandeAchat",
+        "description": "Statut approuvée/refusée, approbateur et date tracés."
+      },
+      "regles_aval": [
+        {
+          "regle": "L'approbation émet `demande_achat_approuvee` sur le bus.",
+          "source": "apps/installations/services.py::emettre_demande_achat_approuvee"
+        },
+        {
+          "regle": "Le budget du département est contrôlé avant approbation.",
+          "source": "apps/installations/services.py::controler_budget_demande_achat"
+        }
+      ]
+    },
+    {
+      "id": "bcf_brouillon",
+      "libelle": "BCF brouillon créé pour les manques du chantier",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.commander_besoin"
+      },
+      "fonction_entree": "apps/stock/services.py::draft_bcf_for_shortfall",
+      "checkpoint": {
+        "persistance": "apps/achats/models.py::BonCommandeFournisseur",
+        "description": "Un BCF brouillon par commande de besoin, chantier d'origine posé."
+      },
+      "regles_aval": [
+        {
+          "regle": "À la création du BCF, le chantier né du même devis lui est rattaché.",
+          "source": "apps/installations/receivers.py::_rattacher_chantier_on_bon_commande_cree"
+        }
+      ]
+    },
+    {
+      "id": "bcf_envoi",
+      "libelle": "BCF envoyé au fournisseur (garde d'approbation par palier)",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet.envoyer"
+      },
+      "fonction_entree": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet.envoyer",
+      "checkpoint": {
+        "persistance": "apps/achats/models.py::BonCommandeFournisseur",
+        "description": "Statut « envoyé » ; refusé tant que l'approbation du palier manque."
+      },
+      "regles_aval": [
+        {
+          "regle": "L'envoi est bloqué si le palier d'approbation n'est pas validé.",
+          "source": "apps/stock/views/bon_commande_fournisseur.py::BonCommandeFournisseurViewSet._refus_approbation"
+        }
+      ]
+    },
+    {
+      "id": "reception_fournisseur",
+      "libelle": "Réception fournisseur confirmée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/stock/views/reception_fournisseur.py::ReceptionFournisseurViewSet.confirmer"
+      },
+      "fonction_entree": "apps/stock/services.py::confirm_reception_fournisseur",
+      "checkpoint": {
+        "persistance": "apps/achats/models.py::ReceptionFournisseur",
+        "description": "Réception confirmée, quantités reçues cumulées sur les lignes du BCF."
+      },
+      "regles_aval": [
+        {
+          "regle": "Livraison directe chantier : la marchandise ressort aussitôt du stock libre.",
+          "source": "apps/stock/services.py::affecter_livraison_directe_chantier"
+        },
+        {
+          "regle": "`reception_fournisseur_confirmee` : réservation du stock reçu pour le chantier.",
+          "source": "apps/installations/receivers.py::_reserver_stock_chantier_on_reception"
+        },
+        {
+          "regle": "`reception_fournisseur_confirmee` : provision GR/IR.",
+          "source": "apps/installations/receivers.py::_provisionner_gr_ir_on_reception"
+        }
+      ]
+    },
+    {
+      "id": "mouvement_entree",
+      "libelle": "Mouvement d'entrée de stock enregistré",
+      "declencheur": {
+        "type": "signal",
+        "signal": "reception_fournisseur_confirmee",
+        "source": "apps/stock/services.py::confirm_reception_fournisseur"
+      },
+      "fonction_entree": "apps/stock/services.py::record_stock_movement",
+      "checkpoint": {
+        "persistance": "apps/stock/models.py::MouvementStock",
+        "description": "Un mouvement ENTREE par ligne reçue ; le stock ne bouge que par un mouvement."
+      },
+      "regles_aval": [
+        {
+          "regle": "Le mouvement est annoncé sur le bus (miroir d'inventaire).",
+          "source": "apps/stock/services.py::_emit_mouvement_stock_enregistre"
+        }
+      ]
+    },
+    {
+      "id": "kitting_picklist",
+      "libelle": "Kitting : bon de prélèvement généré puis clôturé",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/picklist.py::PickListViewSet.terminer"
+      },
+      "fonction_entree": "apps/installations/services.py::generer_picklist_pour_chantier",
+      "checkpoint": {
+        "persistance": "apps/installations/models_picklist.py::PickList",
+        "description": "Un bon de prélèvement par chantier (en cours puis terminé)."
+      },
+      "regles_aval": [
+        {
+          "regle": "La sortie effective du stock se fait à l'installation du chantier.",
+          "source": "apps/installations/services.py::consume_reservations"
+        }
+      ]
+    },
+    {
+      "id": "facture_fournisseur",
+      "libelle": "Facture fournisseur créée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet.perform_create"
+      },
+      "fonction_entree": "apps/stock/views/facture_fournisseur.py::FactureFournisseurViewSet.perform_create",
+      "checkpoint": {
+        "persistance": "apps/achats/models.py::FactureFournisseur",
+        "description": "Facture numérotée sans trou, liée au BCF."
+      },
+      "regles_aval": [
+        {
+          "regle": "`facture_fournisseur_creee` : lettrage des provisions GR/IR du BCF.",
+          "source": "apps/installations/receivers.py::_lettrer_gr_ir_on_facture"
+        },
+        {
+          "regle": "Statut et solde recalculés.",
+          "source": "apps/stock/services.py::recompute_facture_fournisseur_statut"
+        }
+      ]
+    },
+    {
+      "id": "paiement_fournisseur",
+      "libelle": "Règlement fournisseur enregistré",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_create"
+      },
+      "fonction_entree": "apps/stock/views/paiement_fournisseur.py::PaiementFournisseurViewSet.perform_create",
+      "checkpoint": {
+        "persistance": "apps/achats/models.py::PaiementFournisseur",
+        "description": "Un règlement par paiement ; le solde dû = TTC − Σ règlements."
+      },
+      "regles_aval": [
+        {
+          "regle": "Le solde est verrouillé et vérifié avant d'accepter le montant.",
+          "source": "apps/stock/services.py::verrouiller_facture_fournisseur_et_verifier_solde"
+        },
+        {
+          "regle": "Le statut de la facture suit le solde.",
+          "source": "apps/stock/services.py::recompute_facture_fournisseur_statut"
+        }
+      ]
+    },
+    {
+      "id": "produit_modifie",
+      "libelle": "Produit modifié : les devis ouverts sont resynchronisés",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/stock/views/produit.py::ProduitViewSet.perform_update"
+      },
+      "fonction_entree": "apps/stock/views/produit.py::emettre_produit_modifie",
+      "checkpoint": {
+        "persistance": "apps/stock/models.py::Produit",
+        "description": "Prix/nom du produit écrit ; `produit_modifie` émis après commit."
+      },
+      "regles_aval": [
+        {
+          "regle": "ventes s'abonne et planifie la resynchronisation des devis.",
+          "source": "apps/ventes/domain/catalogue_events.py::on_produit_modifie"
+        }
+      ]
+    }
+  ],
+  "portes": [
+    {
+      "id": "consommation_chantier",
+      "source": "apps/installations/services.py::consume_reservations",
+      "description": "Passage du chantier à « Installé » : sort les réservations."
+    },
+    {
+      "id": "consommation_terrain",
+      "source": "apps/installations/field_capture.py::validate_consommation",
+      "description": "Validation d'une consommation saisie sur le terrain."
+    },
+    {
+      "id": "livraison_directe_chantier",
+      "source": "apps/stock/services.py::affecter_livraison_directe_chantier",
+      "description": "Marchandise reçue ressortie aussitôt vers le chantier."
+    },
+    {
+      "id": "facturation_client",
+      "source": "apps/ventes/domain/facturation_ops.py::decompter_stock_lignes",
+      "description": "Facture client : décompte du stock des lignes."
+    },
+    {
+      "id": "piece_sav",
+      "source": "apps/sav/views.py::TicketViewSet.pieces",
+      "description": "Pièce posée sur un ticket SAV."
+    },
+    {
+      "id": "sortie_manuelle",
+      "source": "apps/stock/views/mouvement.py::MouvementStockViewSet.perform_create",
+      "description": "Mouvement saisi à la main sur l'écran stock."
+    },
+    {
+      "id": "sortie_lot_entrepot",
+      "source": "apps/stock/views/lot_entrepot.py::LotEntrepotViewSet.sortir",
+      "description": "Sortie d'un lot d'entrepôt."
+    }
+  ]
 }

@@ -25,6 +25,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 SETUP = ROOT / "scripts" / "setup-nightly-qa.ps1"
 NIGHTLY = ROOT / "scripts" / "nightly-qa.ps1"
+# AMET99 : les etapes stack / migrations / seed_demo vivent dans pile_locale.ps1,
+# appele par setup-nightly-qa.ps1 (survivant unique) : il fait partie de la chaine.
+PILE = ROOT / "scripts" / "pile_locale.ps1"
 MCP = ROOT / ".mcp.json"
 GITIGNORE = ROOT / ".gitignore"
 
@@ -52,6 +55,14 @@ def _code(path):
     return "\n".join(lines)
 
 
+def _chaine(path):
+    """Source du script + celle de pile_locale.ps1 quand il la delegue (AMET99)."""
+    code = _code(path)
+    if "pile_locale.ps1" in code:
+        code += "\n" + _code(PILE)
+    return code
+
+
 def _first_invocation(code):
     m = INVOCATION.search(code)
     return (m.start(), m.group(0)) if m else (len(code), None)
@@ -61,15 +72,16 @@ class TestCommun(unittest.TestCase):
     def test_les_deux_scripts_existent(self):
         self.assertTrue(SETUP.is_file(), SETUP)
         self.assertTrue(NIGHTLY.is_file(), NIGHTLY)
+        self.assertTrue(PILE.is_file(), PILE)
 
     def test_ascii_seulement_pour_powershell_5_1(self):
-        for path in (SETUP, NIGHTLY):
+        for path in (SETUP, NIGHTLY, PILE):
             data = path.read_bytes()
             non_ascii = [b for b in data if b > 127]
             self.assertEqual(non_ascii, [], f"{path.name} : octets non-ASCII")
 
     def test_jamais_de_force(self):
-        for path in (SETUP, NIGHTLY):
+        for path in (SETUP, NIGHTLY, PILE):
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("--force", text, path.name)
             for ln in text.splitlines():
@@ -77,15 +89,17 @@ class TestCommun(unittest.TestCase):
                     self.assertNotRegex(ln, r"(?i)-force\b", f"{path.name} : {ln}")
 
     def test_seed_demo_bien_appele_sans_forcage(self):
-        for path in (SETUP, NIGHTLY):
+        for path in (SETUP, NIGHTLY, PILE):
+            if path is PILE:
+                continue  # c'est lui qui porte l'appel ; SETUP le delegue (chaine)
             self.assertRegex(
-                _code(path),
+                _chaine(path),
                 r"docker compose exec -T django_core python manage\.py seed_demo \}",
                 path.name,
             )
 
     def test_jamais_d_url_de_prod(self):
-        for path in (SETUP, NIGHTLY):
+        for path in (SETUP, NIGHTLY, PILE):
             text = path.read_text(encoding="utf-8")
             for marker in PROD_MARKERS:
                 self.assertNotIn(marker, text, f"{path.name} : {marker}")
@@ -97,13 +111,13 @@ class TestCommun(unittest.TestCase):
                 )
 
     def test_syntaxe_powershell_5_1(self):
-        for path in (SETUP, NIGHTLY):
+        for path in (SETUP, NIGHTLY, PILE):
             code = _code(path)
             for op in ("&&", "||", "??"):
                 self.assertNotIn(op, code, f"{path.name} : operateur {op}")
 
     def test_ne_touche_jamais_aux_crons_github(self):
-        for path in (SETUP, NIGHTLY):
+        for path in (SETUP, NIGHTLY, PILE):
             code = _code(path)
             self.assertNotIn(".github", code, path.name)
             self.assertNotIn("gh workflow", code, path.name)
@@ -176,7 +190,7 @@ class TestNightly(unittest.TestCase):
 
 class TestSetup(unittest.TestCase):
     def setUp(self):
-        self.code = _code(SETUP)
+        self.code = _chaine(SETUP)
 
     def test_schtasks_en_mode_creer_ou_remplacer(self):
         # Les invocations reelles (pas les libelles/messages entre apostrophes).

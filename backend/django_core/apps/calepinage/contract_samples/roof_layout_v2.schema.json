@@ -2050,7 +2050,8 @@
           "$ref": "#/$defs/couple"
         },
         "bout": {
-          "$ref": "#/$defs/couple"
+          "$ref": "#/$defs/couple",
+          "description": "ACAL352 — la POINTE de l'ombre tracée (clic 2 de l'atelier), [lng, lat] comme `centre` : translatée avec la base au recentrage, à la copie et à l'anonymisation."
         },
         "rayonM": {
           "type": "number",
