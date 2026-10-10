@@ -8203,7 +8203,7 @@ def notify_client_contact_request(devis_reference: str, lead,
         # demande ELLE-MÊME un rappel lève son opposition (note datée +
         # registre), AVANT de poser la touche.
         if canal_key == 'rappel':
-            lever_opposition_a_la_demande_du_client(lead)
+            _lever_opposition_a_la_demande_du_client(lead)
 
         # QW5/QW4 — un rappel demandé DEPUIS LA PROPOSITION est la même
         # obligation qu'un rappel demandé à la capture : pose la préférence si
@@ -8262,7 +8262,7 @@ CONSENT_SOURCE_OPPOSITION_LEVEE_CLIENT = (
 NOTE_OPPOSITION_LEVEE_CLIENT = 'opposition levée à la demande du client'
 
 
-def lever_opposition_a_la_demande_du_client(lead) -> bool:
+def _lever_opposition_a_la_demande_du_client(lead) -> bool:
     """ACRM63 — D-ACRM-5 (3)=(a) : un lead ``ne_plus_contacter`` dont la
     personne demande elle-même un rappel passe à ``False``, avec une note de
     chatter datée « opposition levée à la demande du client » et les lignes
