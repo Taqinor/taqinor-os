@@ -14,9 +14,35 @@
       },
       "tient": true
     },
+    "accueil.en": {
+      "fichier": "accueil-en-df10f02f43.png",
+      "titre": "YanBow — business software",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
     "solarbow.fr": {
       "fichier": "solarbow-fr-744a5ce88c.png",
       "titre": "SolarBow — le logiciel des installateurs solaires",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 144
+      },
+      "tient": true
+    },
+    "solarbow.en": {
+      "fichier": "solarbow-en-bb9d443c7f.png",
+      "titre": "SolarBow — the software for solar installers",
       "largeur": 1200,
       "hauteur": 630,
       "zone": {
@@ -40,9 +66,35 @@
       },
       "tient": true
     },
+    "marketingbow.en": {
+      "fichier": "marketingbow-en-87164d2531.png",
+      "titre": "MarketingBow — advertising campaigns validated by a person",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 144
+      },
+      "tient": true
+    },
     "surMesure.fr": {
       "fichier": "surMesure-fr-282ae3c275.png",
       "titre": "Logiciel sur mesure — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
+    "surMesure.en": {
+      "fichier": "surMesure-en-eb48fd6f94.png",
+      "titre": "Custom software — YanBow",
       "largeur": 1200,
       "hauteur": 630,
       "zone": {
@@ -66,9 +118,35 @@
       },
       "tient": true
     },
+    "societe.en": {
+      "fichier": "societe-en-ef88e8d7c5.png",
+      "titre": "The company — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
     "rendezVous.fr": {
       "fichier": "rendezVous-fr-910c7eb24c.png",
       "titre": "Prendre rendez-vous — YanBow",
+      "largeur": 1200,
+      "hauteur": 630,
+      "zone": {
+        "x": 80,
+        "y": 300,
+        "l": 1040,
+        "h": 75
+      },
+      "tient": true
+    },
+    "rendezVous.en": {
+      "fichier": "rendezVous-en-a14afb401d.png",
+      "titre": "Book a meeting — YanBow",
       "largeur": 1200,
       "hauteur": 630,
       "zone": {

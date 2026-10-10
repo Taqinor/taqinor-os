@@ -1,32 +1,32 @@
 /**
- * Custom software page (YBW64) — SKELETON: same keys as the French one, empty
- * strings. No English before Reda approves the French (YBWM13); filled by YBW70.
+ * Custom software page (YBW64) — same keys as the French one, translated from
+ * the approved French (YBWM13, YBW70). No new statement.
  */
 import type { DictEn } from '../config';
 import type { fr } from './sur-mesure.fr';
 
 export const en: DictEn<typeof fr> = {
-  titre: '',
-  description: '',
-  surtitre: '',
-  h1: '',
-  cta: '',
+  titre: 'Custom software — YanBow',
+  description: 'YanBow builds custom software for companies: need, prototype, putting into service, operation.',
+  surtitre: 'Custom software',
+  h1: 'The software your company needs',
+  cta: 'Book a meeting',
   demarche: {
-    surtitre: '',
-    titre: '',
-    besoin: { titre: '', detail: '' },
-    prototype: { titre: '', detail: '' },
-    service: { titre: '', detail: '' },
-    exploitation: { titre: '', detail: '' },
+    surtitre: 'The approach',
+    titre: 'Four steps, in this order',
+    besoin: { titre: 'The need', detail: 'We start from how you work and from what is stuck today.' },
+    prototype: { titre: 'The prototype', detail: 'A first working piece of software, to try before going further.' },
+    service: { titre: 'Putting into service', detail: 'The software is installed and used by your teams.' },
+    exploitation: { titre: 'Operation', detail: 'We maintain it and evolve it with you.' },
   },
   preuve: {
-    surtitre: '',
-    titre: '',
-    solarbow: '',
-    marketingbow: '',
+    surtitre: 'The proof',
+    titre: 'Two built products',
+    solarbow: 'Discover SolarBow',
+    marketingbow: 'Discover MarketingBow',
   },
   appel: {
-    titre: '',
-    bouton: '',
+    titre: 'Let’s talk about your need',
+    bouton: 'Book a meeting',
   },
 };
