@@ -1,0 +1,17 @@
+{
+  "cas": "signe_au_domicile",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 3510242,
+  "ordre": 9,
+  "pages": 4,
+  "polices_masquees": 6,
+  "sha256": "d726d85b8a0c142cc1481c62b5a05a1f176a21df7b574f637e4082d0bd28b721",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "f2ed6f0b49d0e1e7bfcce1119ed725e74c5104a51f169fc87584f0328a728d45",
+    "86efc2410eccaf207ddab7cc08ecc6c5c1ff0db0912fc8b621e1b71c6c3b9e0b",
+    "00307abc1151236ed34b55b4e8c552e2b144ac0402b3df75e280ce7f38885008",
+    "22a58ab5a7e831b2fbea6fecbd56fc470eb6d0871c3bee239abe4793cf6a3a50"
+  ]
+}

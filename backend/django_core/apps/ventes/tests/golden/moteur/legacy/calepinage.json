@@ -1,0 +1,17 @@
+{
+  "cas": "calepinage",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 3508305,
+  "ordre": 8,
+  "pages": 4,
+  "polices_masquees": 6,
+  "sha256": "68f75a56af062cb5f2d54cd598c558b91e08133ceff32ba09fdca2f82a374dc2",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "9ef473cca145f256aecd302cb7ee48fada5db5abde8d10bc67f87eed43026f8f",
+    "991c48fd472338688a918e59b8733e7e185a93805ac69b1c521810e1242257f3",
+    "90564db2c1c6f3f398d7f6c9367b931ddfad435e70d8fe96b26cc22275ee6263",
+    "98fe38695e3dfb21dd1dfcb4d49e669cedf6698253107e906bdadd1fa31dda98"
+  ]
+}

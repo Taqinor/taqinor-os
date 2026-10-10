@@ -1,0 +1,16 @@
+{
+  "cas": "multi_villa",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 2638788,
+  "ordre": 13,
+  "pages": 3,
+  "polices_masquees": 6,
+  "sha256": "06ac58266153c48be523aa0927e667817b6cc4860c89322b43fcfdbc915bdb64",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "27c18102f1cbf41ba1e5f84c45c9bd4f35a080c21ac7ea2e729428979ba09214",
+    "ccc07135baddb46c6369b8e90cc94c2c2611fa191a57f8a028abe7412ae6d4b7",
+    "70aac0ad5b0584e558c96fd9088d47af9c511db072d8ccfc13dcd6f3cfc2687a"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "cas": "devis_final_mensuel",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 2645753,
+  "ordre": 12,
+  "pages": 3,
+  "polices_masquees": 6,
+  "sha256": "4494bde6dfca391a90e85ebbd6ea44180413fabd80daae60c76b64df42eee16e",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "f2ed6f0b49d0e1e7bfcce1119ed725e74c5104a51f169fc87584f0328a728d45",
+    "86efc2410eccaf207ddab7cc08ecc6c5c1ff0db0912fc8b621e1b71c6c3b9e0b",
+    "d9fb4926fb407e1f245359447f2d62af2636c7c2ffdabfea0a9b7353522565e4"
+  ]
+}

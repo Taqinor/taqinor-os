@@ -1,0 +1,14 @@
+{
+  "cas": "onepage_langue_en",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 0,
+  "octets": 885445,
+  "ordre": 10,
+  "pages": 1,
+  "polices_masquees": 6,
+  "sha256": "ed702254d5b49a2e1759d85f472f07383c2a466526025a0e3cbd29654301939a",
+  "sha256_par_segment": [
+    "7218255f6b440d01a8620deedc7318adfc78044a4340dac63f8e894b7a404486",
+    "fdbee446eb6fda8920bbd27cf54ff6bca826db8296c2d853c4b67ba87b220859"
+  ]
+}

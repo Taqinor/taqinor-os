@@ -1,0 +1,16 @@
+{
+  "cas": "clauses_cgv",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 2644508,
+  "ordre": 18,
+  "pages": 3,
+  "polices_masquees": 6,
+  "sha256": "ad01d5c6287f95489eeaeb81a5050150de3896f4b3ed6a99ff888941569b0891",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "f2ed6f0b49d0e1e7bfcce1119ed725e74c5104a51f169fc87584f0328a728d45",
+    "86efc2410eccaf207ddab7cc08ecc6c5c1ff0db0912fc8b621e1b71c6c3b9e0b",
+    "4376e9fe3e4b502e640f65bec418628f2bb958c1e07fb2ee2f32da13a1603550"
+  ]
+}

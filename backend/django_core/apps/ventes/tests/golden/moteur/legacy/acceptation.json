@@ -1,0 +1,16 @@
+{
+  "cas": "acceptation",
+  "graphes_etude": [],
+  "graphes_roi_mensuel_masques": 2,
+  "octets": 2644272,
+  "ordre": 17,
+  "pages": 3,
+  "polices_masquees": 6,
+  "sha256": "98f3bb76faf79d2569a112a3a48a11dbc9a089e74c30972c91bf5488d3e1cba0",
+  "sha256_par_segment": [
+    "35a1662e456349b5dce1d51bbc371dc99d2e23e6e81eddf432b089b2635add96",
+    "f2ed6f0b49d0e1e7bfcce1119ed725e74c5104a51f169fc87584f0328a728d45",
+    "86efc2410eccaf207ddab7cc08ecc6c5c1ff0db0912fc8b621e1b71c6c3b9e0b",
+    "fd64b7ba47eeabe4c2c9db51017fa1483ba59fdc6bf6a2f9d0017c82aa0fbdd7"
+  ]
+}
