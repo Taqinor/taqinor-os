@@ -25,7 +25,7 @@ from apps.calepinage.services.rapport import (
     construire_rapport, html_du_rapport, rendre_rapport,
 )
 from apps.calepinage.services.rapport import systeme
-from apps.calepinage.services.rapport.mise_en_page import pages_attendues
+from apps.calepinage.services.rapport.mise_en_page import _pages_attendues
 
 from .acal_livrables_helpers import (
     calepinage_simule_reel, exiger_bibliotheques_pdf, patch_materiel,
@@ -85,7 +85,7 @@ class RapportEtudeServiTest(unittest.TestCase):
         pages = _texte(octets)
         self.assertIn('Sommaire', pages[1])           # sommaire en page 2
         rapport = construire_rapport(self.pivot, **OPTIONS)
-        attendues = pages_attendues(rapport)
+        attendues = _pages_attendues(rapport)
         self.assertEqual(len(pages), sum(attendues.values()))
 
         annexe = _pdf_constructeur('FICHE-CONSTRUCTEUR')

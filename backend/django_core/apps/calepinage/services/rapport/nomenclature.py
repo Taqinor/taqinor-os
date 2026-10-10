@@ -30,7 +30,7 @@ from html import escape
 
 from . import nombre_tel_que_servi, valeur_imprimable
 
-__all__ = ['CSS_SECTION', 'html_de_section', 'html_de_table']
+__all__ = ['CSS_SECTION', 'html_de_section']
 
 #: La feuille de la section — mêmes conventions visuelles que le reste du
 #: rapport (voir ``pertes.CSS_SECTION``).
@@ -40,7 +40,7 @@ CSS_SECTION = (
 )
 
 
-def html_de_table(entetes, lignes, langue='fr'):
+def _html_de_table(entetes, lignes, langue='fr'):
     """Une table ``(entetes, lignes)`` — la forme de
     ``export_tableur.table_nomenclature`` — en HTML, valeurs imprimées
     TELLES QUE SERVIES (``nombre_tel_que_servi``/``valeur_imprimable`` :
@@ -85,4 +85,4 @@ def html_de_section(contexte):
         # ACAL231 - un refus d'export dans une section de rapport est un
         # REFUS DE RAPPORT (400 nomme), jamais une 500.
         raise RapportRefuse(str(refus), champ='nomenclature') from refus
-    return html_de_table(entetes, lignes, langue)
+    return _html_de_table(entetes, lignes, langue)
