@@ -209,9 +209,9 @@ unites:
     plan: docs/plans/PLAN_AUDIT_LEAD.md
     plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: 845
-    date: 2026-10-07
+    date: 2026-10-10
     dossier: docs/audits/2026-10-07-lead.md
-    notes: "Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
+    notes: "vérifie ALEA du 10/10/2026 (clôture, 40/41 cochées ; dossier docs/audits/2026-10-10-lead-verifie.md) : 10 tâches échantillonnées (graine 5ea32b58b) — 9 ok, 1 partielle (ALEA4, câblage gardé par expression régulière) → ALEA46 (S3) dans WEB_PLAN ; aucun écart S1-S2, aucune sonde, pas de Fable ; premier vérifie à zéro S1-S2 (sortie du cycle au second, en contre-visite par différence). Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
 
   - id: D1
     rang: 6
