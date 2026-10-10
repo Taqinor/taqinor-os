@@ -444,6 +444,16 @@
    "args": [],
    "kwargs": {
     "blank": true,
+    "default": "classe:list",
+    "verbose_name": "Champs saisis par un humain"
+   },
+   "nom": "saisies_humaines",
+   "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
     "null": true
    },
    "nom": "relance_date",
