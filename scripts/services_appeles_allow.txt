@@ -14,7 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/pack_technique.py::rendre_pieces
 backend/django_core/apps/calepinage/services/pertes.py::moyenne_mensuelle
 backend/django_core/apps/calepinage/services/planche.py::dimensions_module
 backend/django_core/apps/calepinage/services/planche.py::echelle_de_dessin
