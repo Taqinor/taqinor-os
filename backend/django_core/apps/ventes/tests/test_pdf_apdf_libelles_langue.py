@@ -214,13 +214,16 @@ class UnePageLibellesTests(TestCase):
         profil(self.company, nom="SOLAIRE EXEMPLE SARL", adresse="1 rue A",
                ice="001111111000011")
         lignes, etude, mode = MARCHES["agricole"]
-        agricole = make_devis(self.company, make_user(self.company),
-                              make_client(self.company), lignes,
+        # UN utilisateur et UN client pour les deux devis (username et
+        # (société, e-mail) sont uniques).
+        user, client = make_user(self.company), make_client(self.company)
+        agricole = make_devis(self.company, user, client, lignes,
                               reference="DEV-APDF9-AGRI",
                               etude_params=dict(etude))
         agricole.mode_installation = mode
         agricole.save(update_fields=["mode_installation"])
-        self.devis = [devis_residentiel(self.company, "DEV-APDF9-RES"),
+        self.devis = [devis_residentiel(self.company, "DEV-APDF9-RES",
+                                        user=user, client=client),
                       agricole]
 
     def _rendu(self, devis, langue):

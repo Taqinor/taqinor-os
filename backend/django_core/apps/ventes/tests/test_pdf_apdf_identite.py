@@ -69,9 +69,23 @@ FORMATS = {
 }
 
 
-def devis_residentiel(company, reference):
-    devis = make_devis(company, make_user(company), make_client(company),
-                       LIGNES_RESIDENTIEL, reference=reference,
+def utilisateur(company, reference):
+    """Un utilisateur PROPRE à ce devis : ``make_user`` pose un nom figé
+    (« test_qe_user ») — deux appels dans un même test violaient l'unicité
+    de ``username`` (IntegrityError dans l'image)."""
+    from django.contrib.auth import get_user_model
+    return get_user_model().objects.create_user(
+        username=f'apdf-{reference.lower()}', password='x',
+        role_legacy='responsable', company=company)
+
+
+def devis_residentiel(company, reference, user=None, client=None):
+    """Devis résidentiel premium ; ``user``/``client`` à passer quand le test
+    en a déjà créé dans la même société (``Client`` est unique par
+    (société, e-mail))."""
+    devis = make_devis(company, user or utilisateur(company, reference),
+                       client or make_client(company), LIGNES_RESIDENTIEL,
+                       reference=reference,
                        etude_params=dict(ETUDE_RESIDENTIEL))
     devis.mode_installation = 'residentiel'
     devis.save(update_fields=['mode_installation'])
