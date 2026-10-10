@@ -94,4 +94,28 @@ export default defineConfig([
       'no-alert': 'error',
     },
   },
+  // AFAC62 — garde de classe (critère C13) : sur les huit écrans de facturation (J5),
+  // un `catch` vide (commentaire seul compris) autour d'un `await` avale l'erreur
+  // serveur. Un `catch` sans `await` (lecture localStorage) n'est pas visé.
+  {
+    files: [
+      'src/pages/ventes/PaiementDialog.jsx',
+      'src/pages/ventes/FactureList.jsx',
+      'src/pages/ventes/FactureForm.jsx',
+      'src/pages/ventes/RelancesPage.jsx',
+      'src/pages/ventes/AvoirsPage.jsx',
+      'src/pages/ventes/RemisesEncaissementPage.jsx',
+      'src/pages/ventes/MandatsPaiementPage.jsx',
+      'src/pages/ventes/PaiementsPage.jsx',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'TryStatement:has(AwaitExpression) > CatchClause > BlockStatement[body.length=0]',
+          message: 'Erreur serveur avalée : affichez-la (useServerFieldErrors/frenchError)',
+        },
+      ],
+    },
+  },
 ])

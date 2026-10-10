@@ -674,6 +674,7 @@ export default function FactureList() {
     try {
       await dispatch(genererPdfFacture(f.id)).unwrap()
       let attempts = 0
+      let erreurSignalee = false
       const poll = async () => {
         if (attempts++ > 15) {
           toast.error('La génération PDF prend plus de temps que prévu. Réessayez dans quelques instants.')
@@ -686,8 +687,14 @@ export default function FactureList() {
           } else {
             setTimeout(poll, 2000)
           }
-        } catch {
-          // ignore poll errors
+        } catch (err) {
+          // Une erreur de sondage transitoire n'arrête pas la boucle, mais la
+          // raison du serveur est affichée (une seule fois, pas à chaque tick).
+          if (!erreurSignalee) {
+            erreurSignalee = true
+            toast.error(frenchError(err, 'Suivi de la génération du PDF impossible, nouvelle tentative en cours.'))
+          }
+          setTimeout(poll, 2000)
         }
       }
       setTimeout(poll, 2000)
