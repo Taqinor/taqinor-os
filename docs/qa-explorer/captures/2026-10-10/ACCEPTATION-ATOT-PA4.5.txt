@@ -1,0 +1,4 @@
+# ATOT35 PA4.5 — facture émise ouverte depuis le Kanban, Enregistrer sans modifier
+# rejeu orchestrateur, pile locale (main f7bc5042d : code identique a pc2-batch9), 2026-10-10
+Playwright demo_admin : FAC-DEMO-0001 (emise) → « Mettre à jour » sans modification : PATCH factures/8 = 200, aucun « Montant figé », dialogue fermé
+PA4.5 verdict: PASS
