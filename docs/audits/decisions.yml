@@ -372,6 +372,26 @@ decisions:
     source: "session « loop work on all plans » (Reda_Laptop) — Reda délègue la relecture à Claude ; relecture contre les règles du site (faits vérifiés, sans prix, YanBow = Ltd UK + SARLAU) ; corrections : apostrophes typographiques du formulaire, « sur-mesure » substantif"
     taches: [YBWM13, YBW70, YBW71]
 
+  - id: D-YBW-A4
+    question: "Plafonner les cadres « Capture d'écran en préparation » du site YanBow au format 16:9 tant que le kit YBW41 est vide ?"
+    options:
+      - {cle: a, texte: "oui, plafonner 16:9"}
+      - {cle: b, texte: "non, taille actuelle"}
+    reponse: a
+    date: "2026-10-10"
+    source: "session « loop work on all plans » (Reda_Laptop) — critique Fable YBW81, question interactive"
+    taches: [YBW81]
+
+  - id: D-YBWM4-6
+    question: "Contact YanBow (WhatsApp, e-mail) et sociétés (Ltd UK, SARLAU) : disponibles / créées ?"
+    options:
+      - {cle: a, texte: "pas encore — site sans WhatsApp ni e-mail, pages juridiques fermées, pied sans identité"}
+      - {cle: b, texte: "fournis / créées"}
+    reponse: a
+    date: "2026-10-10"
+    source: "session « loop work on all plans » (Reda_Laptop) — question interactive après la critique YBW81"
+    taches: [YBWM4, YBWM5, YBWM6]
+
 # Pointeurs vers les décisions historiques (répondues, source de vérité = le fichier mémoire) :
 #   docs/claude-memory/decisions-audit-0810.md   — ASAV90-95, ACHT90/91/94/95, AFAC80-89, APDF92, AACQ90/95/96, AMOT1-7, ADEP90/91, AGNR4/43, ADEV61/62
 #   docs/claude-memory/asec-decisions-fondateur.md, astk-decisions-fondateur.md, ci-decisions-fondateur.md,
