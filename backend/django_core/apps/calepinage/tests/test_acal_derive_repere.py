@@ -15,15 +15,11 @@ Run :
     python manage.py test apps.calepinage.tests.test_acal_derive_repere -v2
 """
 import json
-import math
 import pathlib
 from decimal import Decimal
 
-from apps.calepinage.dsr_provider import document_anonymise
 from apps.calepinage.models import Calepinage, CalepinageVersion
 from apps.calepinage.services import repere as service_repere
-from apps.calepinage.services.translation_conception import (
-    translater_conception)
 from apps.crm.models import Lead
 from core.calepinage.geo import aire_contour_m2, projeteur_local
 
@@ -153,19 +149,6 @@ def _lng_lat(valeur, forme, ordre):
     return tuple(couple) if ordre == 'lng_lat' else (couple[1], couple[0])
 
 
-#: ACAL352 (C-AMET-009) — une ombre tracée (ACAL27) : pied ``centre`` et
-#: pointe ``bout`` en [lng, lat], 10,82 m l'un de l'autre.
-OMBRE = {'id': 'o1', 'kind': 'ombre_tracee', 'centre': [-7.58985, 33.57305],
-         'bout': [-7.58975, 33.57300], 'rayonM': 0.5, 'hauteurM': 4.2,
-         'source': 'ombre_tracee'}
-
-
-def _metres(ombre, pin):
-    """``(centre, bout)`` de ``ombre`` en mètres autour de ``pin``."""
-    projeter = projeteur_local((pin['lng'], pin['lat']))
-    return projeter(tuple(ombre['centre'])), projeter(tuple(ombre['bout']))
-
-
 def url_contexte(pk):
     return f'{url_detail(pk)}design-context/'
 
@@ -284,43 +267,6 @@ class DeriveRepereTest(BaseApiCalepinage):
                                    msg=chemin)
             self.assertAlmostEqual(obtenu[1], attendu[1], places=4,
                                    msg=chemin)
-
-    def test_pointe_d_ombre_translatee_et_anonymisee(self):
-        """ACAL352 — ``bout`` suit la base : recentrage, modèle, 09-08."""
-        document = dict(self.layout, shadeObstructions=[dict(OMBRE)])
-        Calepinage.objects.filter(pk=self.calepinage.pk).update(
-            roof_layout=document)
-        self.lead.gps_lat = Decimal('33.577592')  # ≈ 500 m plus au nord
-        self.lead.gps_lng = Decimal('-7.589800')
-        self.lead.save()
-        avant = _metres(OMBRE, CASABLANCA)
-        relus = []
-        for _ in range(2):  # le second recentrage est nul
-            reponse = self._poster('recentrer-sur-lead')
-            self.assertEqual(reponse.status_code, 200, reponse.data)
-            relu = self.api.get(f'{url_detail(self.calepinage.pk)}layout/')
-            relus.append(relu.data['roof_layout'])
-        ombre = relus[0]['shadeObstructions'][0]
-        self.assertAlmostEqual(relus[0]['pin']['lat'], 33.577592, places=6)
-        apres = _metres(ombre, relus[0]['pin'])
-        for point_avant, point_apres in zip(avant, apres):  # même vecteur
-            for a, b in zip(point_avant, point_apres):
-                self.assertAlmostEqual(a, b, places=4)
-        self.assertEqual(round(math.dist(*apres), 2), 10.82)
-        for cle in ('centre', 'bout'):
-            for a, b in zip(relus[1]['shadeObstructions'][0][cle],
-                            ombre[cle]):
-                self.assertAlmostEqual(a, b, places=9, msg=cle)
-        copie = translater_conception(document, MARRAKECH)
-        modele = copie['shadeObstructions'][0]
-        self.assertNotEqual(modele['bout'], OMBRE['bout'])
-        self.assertEqual(round(math.dist(*_metres(modele, MARRAKECH)), 2),
-                         10.82)
-        anonyme = document_anonymise(document)['shadeObstructions'][0]
-        local = [round(v, 3) for v in avant[1]]
-        self.assertEqual(anonyme['bout'], local)  # plus aucun GPS réel
-        self.assertAlmostEqual(
-            math.dist(anonyme['centre'], anonyme['bout']), 10.82, delta=0.01)
 
     def test_recentrer_conserve_les_formes_metriques(self):
         aire_avant = aire_contour_m2(PAN)

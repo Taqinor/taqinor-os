@@ -211,7 +211,6 @@ function RotationDonut({ data }) {
 }
 
 export default function PilotageStock({ onBcfGenere }) {
-  const peutCommander = usePermissionAchats('achats_commander')
   const navigate = useNavigate()
   // ASTK242 — générer un BCF exige `achats_commander` côté serveur.
   const peutCommander = usePermissionAchats('achats_commander')
