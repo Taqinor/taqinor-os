@@ -1,0 +1,9 @@
+# ADEP99 P1.1 — rôle DB par process : celery/audit_coherence -> propriétaire, gunicorn/runserver -> app_rls
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P1_1_rls.log
+P1.1 celery           argv=celery     attendu=erp_user   observé=erp_user   -> REPRO
+P1.1 audit_coherence  argv=manage.py  attendu=erp_user   observé=erp_user   -> REPRO
+P1.1 gunicorn         argv=gunicorn   attendu=app_rls    observé=app_rls    -> REPRO
+P1.1 runserver        argv=manage.py  attendu=app_rls    observé=app_rls    -> REPRO
+P1.1 verdict: PASS

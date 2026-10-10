@@ -1,0 +1,20 @@
+# ADEP99 P2.1 — images django_core/frontend/nginx construites ; pg_dump/pg_restore 16.15 ; builder node:22.14-alpine, 0 EBADENGINE
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## AMET99_pile_locale_build.log
+OK - Docker Desktop 29.5.3
+> docker compose up -d --build (premier build : plusieurs minutes)
+> migrations
+OK - societe taqinor-demo deja seedee.
+OK - societe taqinor-demo-full deja seedee.
+OK - pile locale saine (racine 200, API 401).
+real	77m33.369s
+rc=0
+
+## P2_images_entetes.log
+=== P2.2 (ADEP1) client PostgreSQL dans l'image django_core reconstruite
+pg_dump (PostgreSQL) 16.15 (Debian 16.15-1.pgdg12+2)
+pg_restore (PostgreSQL) 16.15 (Debian 16.15-1.pgdg12+2)
+=== P2.5 (ADEP3) builder Node 22 sans EBADENGINE
+0
+FROM docker.io/library/node:22.14-alpine

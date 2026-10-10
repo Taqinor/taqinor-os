@@ -108,6 +108,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error(`étape(s) vide(s) ou incomplète(s) : ${incompletes.join(', ')}`)
     process.exit(1)
   }
-  const sortie = ecrire({ groupe, couvre: Array.isArray(lu) ? [] : lu.couvre || [], etapes })
+  // Étapes fusionnées sans `couvre` explicite : elles couvrent leurs propres tâches (sinon
+  // la fusion n'ajoutait aucune couverture — constaté au rejeu ADEP99 du 10/10/2026).
+  const couvre = Array.isArray(lu) || !lu.couvre ? [...new Set(etapes.flatMap((e) => e.taches || []))] : lu.couvre
+  const sortie = ecrire({ groupe, couvre, etapes })
   console.log(`${sortie.verdict} — ${sortie.md}`)
 }

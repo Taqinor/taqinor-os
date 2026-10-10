@@ -9,7 +9,34 @@
     "ADEP18",
     "ADEP19",
     "ACHT69",
-    "ADEP99"
+    "ADEP99",
+    "ADEP7",
+    "ADEP8",
+    "ADEP9",
+    "ADEP31",
+    "ADEP30",
+    "ADEP32",
+    "ADEP35",
+    "ADEP36",
+    "ADEP1",
+    "ADEP3",
+    "ADEP5",
+    "ADEP6",
+    "ADEP10",
+    "ADEP11",
+    "ADEP13",
+    "ADEP14",
+    "ADEP12",
+    "ADEP20",
+    "ADEP21",
+    "ADEP22",
+    "ADEP23",
+    "ADEP24",
+    "ADEP25",
+    "ADEP26",
+    "ADEP27",
+    "ADEP28",
+    "ADEP29"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -149,7 +176,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.1.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.1.txt"
     },
     {
       "id": "P1.2",
@@ -170,7 +197,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.2.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.2.txt"
     },
     {
       "id": "P1.3",
@@ -192,7 +219,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.3.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.3.txt"
     },
     {
       "id": "P1.4",
@@ -213,7 +240,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.4.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.4.txt"
     },
     {
       "id": "P1.6",
@@ -236,7 +263,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.6.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P1.6.txt"
     },
     {
       "id": "P2.1",
@@ -258,7 +285,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.1.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.1.txt"
     },
     {
       "id": "P2.3",
@@ -279,7 +306,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.3.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.3.txt"
     },
     {
       "id": "P2.4",
@@ -300,7 +327,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.4.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.4.txt"
     },
     {
       "id": "P2.5",
@@ -321,7 +348,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.5.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.5.txt"
     },
     {
       "id": "P2.8",
@@ -343,7 +370,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.8.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P2.8.txt"
     },
     {
       "id": "P3.2",
@@ -364,7 +391,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.2.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.2.txt"
     },
     {
       "id": "P3.3",
@@ -386,7 +413,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.3.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.3.txt"
     },
     {
       "id": "P3.5",
@@ -407,7 +434,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.5.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P3.5.txt"
     },
     {
       "id": "P4.1",
@@ -438,7 +465,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P4.1.log"
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ADEP-P4.1.txt"
     }
   ]
 }

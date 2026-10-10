@@ -1,0 +1,7 @@
+# ADEP99 P1.3 — BREVO seule (D-ADEP-2 = b : rien n'est dérivé) -> console, is_email_configured()=False, core.W_EMAIL + core.E_EMAIL ; sans clé : aucun
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P1_3_email.log
+P1.3a .env.example  -> {"backend": "django.core.mail.backends.console.EmailBackend", "configured": false, "checks": []} -> REPRO
+P1.3b BREVO seule   -> {"backend": "django.core.mail.backends.console.EmailBackend", "configured": false, "checks": ["core.W_EMAIL", "core.E_EMAIL"]} -> REPRO
+P1.3 verdict: PASS

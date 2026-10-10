@@ -230,7 +230,6 @@ class CacheControlTests(unittest.TestCase):
                                 "Cache-Control littéral au niveau server : hérité par /")
 
 
-
 FRONT_NGINX = ROOT / "frontend" / "nginx.conf"
 
 
