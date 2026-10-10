@@ -77,6 +77,9 @@ _RENDER_LOCK = threading.RLock()
 
 
 from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402
+from .identite import (  # noqa: E402
+    LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
+    profil_renseigne as _profil_renseigne)
 
 
 def _esc(value):
@@ -396,10 +399,8 @@ ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
 # exact (SCA27 : reconstruit par _apply_entreprise dès qu’un email ou un site
 # de profil est fourni — plus de fuite du contact fondateur sur la page étude).
 ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
-# Ligne légale du footer page 3 (raison sociale · RC · ICE · capital · siège).
-ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
-                  "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
-                  "&middot; Siège : 5 Rue Ennoussour RDC, Casablanca")
+# Ligne légale du footer page 3 — APDF3 : repli « aucun profil » (identite).
+ENT_LEGAL_LINE = LEGALE_TAQINOR_LEGACY
 # Ligne RIB (bénéficiaire · banque · RIB · BIC) — APDF2 : LA règle unique de
 # ``quote_engine.identite`` (un seul littéral, partagé avec le résidentiel).
 
@@ -447,15 +448,9 @@ def _apply_entreprise(ent):
     adresse = (ent.get("adresse") or "").strip()
     email = (ent.get("email") or "").strip()
     tel = (ent.get("telephone") or "").strip()
-    ice = (ent.get("ice") or "").strip()
-    rc = (ent.get("rc") or "").strip()
-    if_ = (ent.get("identifiant_fiscal") or "").strip()
-    patente = (ent.get("patente") or "").strip()
-    rib = (ent.get("rib") or "").strip()
-    banque = (ent.get("banque") or "").strip()
 
-    # Aucun champ d'identité renseigné → on ne touche à rien (byte-identique).
-    if not any([nom, adresse, email, tel, ice, rc, if_, patente, rib, banque]):
+    # Aucun profil (APDF3 : la définition d'identite) → byte-identique.
+    if not _profil_renseigne(ent):
         return
 
     if nom:
@@ -487,22 +482,12 @@ def _apply_entreprise(ent):
         # AMOT17 — idem pour le pied de la page Étude.
         ENT_ETUDE_CONTACT = ""
 
-    # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
-    legal_bits = []
-    if nom:
-        legal_bits.append(_esc(nom))
-    if rc:
-        legal_bits.append("RC " + _esc(rc))
-    if ice:
-        legal_bits.append("ICE " + _esc(ice))
-    if if_:
-        legal_bits.append("IF " + _esc(if_))
-    if patente:
-        legal_bits.append("Patente " + _esc(patente))
+    # APDF3 — ligne légale par LA fonction de la bande premium (identite) :
+    # raison sociale [forme, capital] · RC · ICE · IF · Patente, puis Siège.
+    legal_bits = _mentions_legales(ent, gras=None, fiscales=True) or []
     if adresse:
-        legal_bits.append("Siège : " + _esc(adresse))
-    if legal_bits:
-        ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
+        legal_bits.append("Si\u00e8ge\u00a0: " + _esc(adresse))
+    ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
 
     # APDF2 (C-APDF-001) — ligne RIB par LA règle unique (identite.py) :
     # RIB/banque du profil → sa ligne ; société identifiée SANS RIB → AUCUNE

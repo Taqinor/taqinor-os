@@ -164,7 +164,7 @@ def bande_legale(d: dict, ident: dict) -> str:
     fois pour le résidentiel (``residential/trust``, sortie identique octet
     pour octet) et les pages de confiance commerciale et industrielle.
 
-    La composition (profil société d'un tenant, sinon repli fondateur) vit
-    dans ``residential.theme.bande_legale``, à côté des autres replis de
-    marque du moteur (SCA29)."""
+    La composition vit dans ``residential.theme.bande_legale`` ; ses mentions
+    viennent de ``identite.mentions_legales`` (APDF3), la fonction que lit
+    aussi la ligne légale du moteur legacy."""
     return theme.bande_legale(d, ident)
