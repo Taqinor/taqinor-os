@@ -264,7 +264,7 @@ class DeclencheurPerduTests(_Base):
         self.assertEqual(self._ouvertes(), 0)
 
     def test_action_en_masse(self):
-        from apps.crm.services import apply_bulk_action
+        from apps.crm.fiche_bulk import apply_bulk_action
         apply_bulk_action(
             company=self.company, user=self.acteur, lead_ids=[self.lead.pk],
             op='set_perdu', params={'motif': 'Concurrent'})
