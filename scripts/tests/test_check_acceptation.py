@@ -202,6 +202,20 @@ class AcceptationTests(unittest.TestCase):
         self.assertIn("échoue aussi à la base", sortie)
 
     # -- la dette ne fait que retrecir ----------------------------------------
+    def test_seule_une_coche_apportee_par_la_pr_est_reprochee(self):
+        # File de merge : une tâche DÉJÀ cochée sur la base (mergée par une autre PR) n'est
+        # jamais reprochée à cette PR (avis) ; une coche APPORTÉE par la PR l'est.
+        self.depot.plan(ligne("x", "ATST1"), ligne(" ", "ATST2"))
+        base = self.depot.commit_base()
+        code, sortie = self.lancer("--base", base)
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("ATST1", sortie)
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"))
+        code, sortie = self.lancer("--base", base)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("ATST2 (", sortie)
+        self.assertNotIn("ATST1 (", sortie)
+
     def test_dette_qui_grossit_echoue(self):
         """Mutant : accepter une dette qui grossit ⇒ la garde DOIT echouer."""
         self.depot.plan(ligne("x", "ATST1"), ligne(" ", "ATST2"))

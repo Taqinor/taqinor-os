@@ -390,13 +390,33 @@ def _mode_baseline(restants: dict, dette: dict) -> int:
     return 0
 
 
+_COCHEE = re.compile(r"^- \[[xX]\] ([A-Z]+[0-9]+)\b", re.M)
+
+
+def coches_a_la_base(base: str) -> set:
+    """Ids déjà cochés sur la base (plans d'audit) : une coche mergée par une AUTRE PR n'est
+    jamais reprochée à celle-ci (file de merge). Base indisponible : ensemble vide (échec fermé)."""
+    if not base_disponible(base):
+        return set()
+    ids = set()
+    for plan in sorted((ROOT / "docs" / "plans").glob("PLAN_AUDIT_*.md")):
+        texte = _git("show", f"{base}:{_rel(plan)}") or ""
+        ids |= set(_COCHEE.findall(texte))
+    return ids
+
+
 def _erreurs_garde(a_couvrir: dict, couverts: set, dette: dict, restants: dict,
                    base: str) -> list:
     erreurs = []
+    deja = coches_a_la_base(base)
     for ident in sorted(a_couvrir, key=_cle):
         groupe = groupe_de(ident)
         if ident not in couverts and ident not in dette.get(groupe, set()):
             tache = a_couvrir[ident]
+            if ident in deja:
+                print(f"Avis : {ident} déjà cochée sur la base sans couverture ni dette — "
+                      "à rejouer (non reprochée à cette PR)")
+                continue
             erreurs.append(f"{ident} ({_rel(tache.fichier)}:{tache.ligne}) : cochée à preuve "
                            f"en direct, ni couverte par un enregistrement PASS ni dans la "
                            f"dette {groupe} — l'orchestrateur rejoue l'acceptation et "
