@@ -55,6 +55,7 @@ vi.mock('../../api/coreApi', () => ({
 import stockApi from '../../api/stockApi'
 import BonsCommandeFournisseur, { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 function makeStore({ role_nom = 'Magasinier', permissions = [] } = {}) {
   return configureStore({
@@ -102,14 +103,7 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   URL.revokeObjectURL = vi.fn()
   window.open = vi.fn(() => ({}))
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  installJsdomPolyfills()
 })
 
 describe('QS1 — PDF (interne) : ouverture', () => {

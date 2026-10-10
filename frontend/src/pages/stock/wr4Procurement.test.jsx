@@ -24,6 +24,7 @@ vi.mock('../../api/stockApi', () => ({
 
 import stockApi from '../../api/stockApi'
 import FournisseursStock from './FournisseursStock.jsx'
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 function store(role = 'admin') {
   return configureStore({
@@ -43,13 +44,7 @@ function renderFournisseurs(role = 'admin') {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
+  installJsdomPolyfills()
   stockApi.getAllFournisseurs.mockResolvedValue({
     data: [{ id: 9, nom: 'JA Solar', nb_produits: 4, nb_bons_commande: 2 }],
   })

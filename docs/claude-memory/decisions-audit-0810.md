@@ -74,3 +74,5 @@ note : chaque décision débloque ses tâches de construction.
   (a) seulement une tâche « faire signer l'avenant » (aucune cadence « après devis »).
 
 Ne jamais re-demander ces questions.
+
+**Précision 10/10/2026 (AACQ34, question interactive) :** « garde à la création seulement » — un lead NEUF créé par la synchro alors qu'il est déjà perdu/archivé dans Odoo ne démarre aucune cadence ; le rapport de synchro montre `active`/`lost_reason_id` en lecture seule. Aucun lead ERP existant n'est jamais modifié par l'état Odoo.

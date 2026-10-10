@@ -94,6 +94,7 @@ import { toastWithUndo } from '../../lib/toast'
 import { deleteProduit } from '../../features/stock/store/stockSlice'
 import { createViewMock } from '../../features/uxviews/useServerSavedViews'
 import StockList from './StockList.jsx'
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 const CAT_PANNEAUX = { id: 1, nom: 'Panneaux', ordre: 1 }
 const CAT_ONDULEURS = { id: 2, nom: 'Onduleurs', ordre: 2 }
@@ -158,14 +159,7 @@ beforeEach(() => {
   stockApi.exportProduitsXlsx.mockResolvedValue({ data: new Blob(['x']) })
   URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   URL.revokeObjectURL = vi.fn()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  installJsdomPolyfills()
 })
 
 describe('StockList — rail de catégories filtre par ID (STKCAT14)', () => {
