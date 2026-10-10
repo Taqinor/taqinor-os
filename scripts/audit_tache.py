@@ -246,14 +246,15 @@ def carte_routes(cache_dir=None) -> dict:
     debut = time.perf_counter()
 
     def calcul():
-        backend = cac.BackendRoutes()
+        backend = cac.BackendRoutes(ROOT / DJANGO_REL)  # ROOT lu A L'APPEL (depots jetables des tests)
         backend.build()
         vues = {}
         for route, (module, ref) in backend.views.items():
             source = backend._imports_of(module).get(ref[1]) if ref else None
             vues[route] = (module, ref, source)
         appels = cac.FrontendCalls(cac.frontend_files()).collect()
-        return {"routes": set(backend.routes) | cac.fastapi_routes(), "vues": vues, "appels": appels}
+        fastapi = cac.fastapi_routes(ROOT / "backend" / "fastapi_ia")
+        return {"routes": set(backend.routes) | fastapi, "vues": vues, "appels": appels}
     valeur = _memo_disque("routes", ROOT, "routes", cache_dir, calcul)
     CHRONO["routes+appels front"] = (len(valeur["routes"]), round(time.perf_counter() - debut, 1))
     return valeur
@@ -311,9 +312,9 @@ _DECL_TOP = re.compile(r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\
 
 
 def _lignes(rel: str, memo={}) -> list:
-    if rel not in memo:
-        memo[rel] = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
-    return memo[rel]
+    if (ROOT, rel) not in memo:
+        memo[(ROOT, rel)] = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+    return memo[(ROOT, rel)]
 
 
 def _verbe(rel: str, ligne: int, brut: str) -> str:
@@ -365,9 +366,9 @@ def wrappers_front(routes: list, carte: dict) -> list:
 
 def _code_front(rel: str, memo={}) -> list:
     """Lignes du code SANS commentaires ni contenu de chaine (`scan_js`)."""
-    if rel not in memo:
-        memo[rel] = cac.scan_js((ROOT / rel).read_text(encoding="utf-8", errors="replace"))[2].splitlines()
-    return memo[rel]
+    if (ROOT, rel) not in memo:
+        memo[(ROOT, rel)] = cac.scan_js((ROOT / rel).read_text(encoding="utf-8", errors="replace"))[2].splitlines()
+    return memo[(ROOT, rel)]
 
 
 def consommateurs_front(depart: list, profondeur: int = 3) -> tuple:
@@ -467,7 +468,7 @@ def texte_appelants(r: dict) -> str:
                         + f" → {len(r['ecrans'])} écran(s)" + "".join(
                             f" ; `{Path(e).name}` ← {r['chemins'][e]}" for e in r["ecrans"]))
         morceaux[-1] = morceaux[-1].replace(" → 0 écran(s)", " → 0 écran")
-    elif r["vue_drf"] or not r["python"]:
+    else:  # « 0 écran » toujours EXPLICITE (METHODE §C.2, clause Appelants)
         morceaux.append("front : 0 écran (aucune route servie)")
     return "Appelants : " + " ; ".join(morceaux) + "."
 
@@ -736,7 +737,7 @@ def listes_figees(fichier: str, racine=None) -> dict:
             for route, _, _ in routes_du_symbole(rel, classe, carte):
                 motif = re.compile(re.escape("/" + "/".join(route)).replace(re.escape(cac.PK), r"(?:<[^>]*>|\{[^}]*\})")
                                    + r"/?(?=[\s\[]|$)")
-                for f in ("docs/api-contracts.md", "docs/openapi-schema.yml"):
+                for f in (x for x in ("docs/api-contracts.md", "docs/openapi-schema.yml") if (racine / x).is_file()):
                     for ligne, texte in enumerate((racine / f).read_text(encoding="utf-8").splitlines(), 1):
                         if motif.search(texte):
                             cites.setdefault(f, []).append((ligne, texte))
@@ -793,7 +794,7 @@ def jumeaux(cible: str, racine=None) -> dict:
                 for x in e["defs"] if x.qualname.split(".")[-1] == nom and x.empreinte != d.empreinte]
     blocs = []
     if racine.resolve() == ROOT.resolve():
-        duplicats, _ = cdl.analyse()
+        duplicats, _ = cdl.analyse(racine)
         for dup in duplicats:
             if any(b.fichier == rel and b.debut <= d.fin and b.fin >= d.debut for b in dup.blocs):
                 blocs.append({"empreinte": dup.empreinte, "lignes": dup.nb_lignes,
