@@ -279,7 +279,8 @@ etape('P1.13', ['ADEP40'], async ({ page }) => {
       await request.delete(`${PROFIL}delete-logo/`).catch(() => null)
     }
   }
-})
+}, { ecart: { base: 'FAIL', raison: 'aperçu du logo Paramètres bloqué par la CSP (URL interne minio:9000, '
+  + '`peConstants.js::mediaUrl`), défaut antérieur hors ADEP40 ; à la base (avant ADEP40) le PDF n\'avait aucun logo' } })
 
 // ── P5.5 — ADEP44 + ADEP45 : ajout d'un n° de série, réponse en ligne coupée ──
 async function seriesServeur(request, id) {
