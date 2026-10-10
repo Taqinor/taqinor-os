@@ -603,7 +603,12 @@ GARDES = {
         ('Check page_size front sous le plafond serveur (APAR65)',
          'python scripts/check_page_size_front.py',
          '.'),
-        # ANCRE-A12-reserve : la lane remplace cette ligne par ses entrees GARDES (orchestrateur audit_deploy 2026-10-09)
+        ('Check placement des tests : aucun fichier de test neuf nomme par id de tache (AMET84)',
+         'python scripts/check_test_placement.py --base origin/main',
+         '.'),
+        ('Tests de la garde de placement des tests (AMET84)',
+         'python -m unittest scripts.tests.test_check_test_placement -v',
+         '.'),
         ('Test the page_size front sous le plafond serveur (APAR65) checker itself',
          'python -m unittest scripts.tests.test_check_page_size_front -v',
          '.'),
