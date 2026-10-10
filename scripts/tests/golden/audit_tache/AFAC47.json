@@ -1,0 +1,86 @@
+{
+ "cas": "AFAC47",
+ "commandes": {
+  "appelants backend/django_core/apps/ventes/utils/echeancier.py::tranches_normalisees": {
+   "chaines": [
+    "backend/django_core/apps/ventes/tests/test_err_acompte_ttc_centime.py::_tranche",
+    "backend/django_core/apps/ventes/tests/test_err_qac_multivilla_total_xn.py::TestEcheancier._tranche"
+   ],
+   "ecrans": [],
+   "nb_ecrans": 0,
+   "python": [
+    "backend/django_core/apps/ventes/quote_engine/builder.py::_marqueurs_cgv_ci",
+    "backend/django_core/apps/ventes/quote_engine/builder.py::tranches_echeancier_en_montant",
+    "backend/django_core/apps/ventes/tests/test_ciq212_echeancier_jalons.py::JalonsDefautTest.test_commercial_40_50_10",
+    "backend/django_core/apps/ventes/tests/test_ciq212_echeancier_jalons.py::JalonsDefautTest.test_industriel_30_40_20_10",
+    "backend/django_core/apps/ventes/tests/test_ciq212_echeancier_jalons.py::JalonsDefautTest.test_residentiel_identique_a_l_octet",
+    "backend/django_core/apps/ventes/tests/test_echeancier_agnr12_somme.py::SommeEcheancierApiTests.test_stocke_hors_regle_reste_lisible",
+    "backend/django_core/apps/ventes/tests/test_qjr_echeancier_validation.py::EcheancierDUnDevis.test_echeancier_ambigu_deja_stocke_retombe_sur_le_defaut",
+    "backend/django_core/apps/ventes/tests/test_qjr_echeancier_validation.py::EcheancierDUnDevis.test_montant_declare_vaut_ce_montant_et_non_un_pourcentage",
+    "backend/django_core/apps/ventes/utils/echeancier.py::dates_prevues_par_creneau",
+    "backend/django_core/apps/ventes/utils/echeancier.py::jalons_paiement_devis",
+    "backend/django_core/apps/ventes/utils/echeancier.py::next_tranche",
+    "backend/django_core/apps/ventes/utils/echeancier.py::pourcentages_echeancier",
+    "backend/django_core/apps/ventes/utils/echeancier.py::schedule_for_devis"
+   ],
+   "routes": [],
+   "wrappers": []
+  },
+  "appelants backend/django_core/apps/ventes/views/facture.py::FactureViewSet.perform_update": {
+   "chaines": [],
+   "ecrans": [
+    "frontend/src/pages/ventes/DossiersReglementairesPage.jsx",
+    "frontend/src/pages/ventes/FactureForm.jsx",
+    "frontend/src/pages/ventes/FactureList.jsx"
+   ],
+   "nb_ecrans": 3,
+   "python": [],
+   "routes": [
+    "/api/django/ventes/factures/<id>/",
+    "/api/v1/ventes/factures/<id>/"
+   ],
+   "wrappers": [
+    "frontend/src/api/ventesApi.js::patchFacture",
+    "frontend/src/api/ventesApi.js::patchReglementaire",
+    "frontend/src/api/ventesApi.js::updateFacture"
+   ]
+  },
+  "assertions-existantes backend/django_core/apps/ventes/recouvrement.py::ParametrageRelanceClientViewSet.perform_update": {
+   "assertions": [
+    "backend/django_core/apps/facturation/tests/test_afac_parametrage_relance_societe.py::ParametrageRelanceSocieteTests::test_b_peut_parametrer_son_client",
+    "backend/django_core/apps/facturation/tests/test_afac_parametrage_relance_societe.py::ParametrageRelanceSocieteTests::test_patch_client_etranger_400",
+    "backend/django_core/apps/facturation/tests/test_afac_parametrage_relance_societe.py::ParametrageRelanceSocieteTests::test_put_client_etranger_400",
+    "backend/django_core/apps/ventes/tests/test_xfac_asec28_bc_mandat_fk.py::BcMandatRelanceRemiseTests::test_relance_responsable_etranger_400",
+    "frontend/src/pages/ventes/RelancesPage.test.jsx::affiche le mode de relance et le responsable de chaque client",
+    "frontend/src/pages/ventes/RelancesPage.test.jsx::passe un client en relance manuelle assignée"
+   ]
+  },
+  "assertions-existantes backend/django_core/apps/ventes/views/facture.py::FactureViewSet.perform_update --anciens Montant figé": {
+   "assertions": [
+    "backend/django_core/apps/facturation/contract_samples/facture_encaissable.json",
+    "backend/django_core/apps/facturation/tests/test_afac_cinquieme_porte.py::CinquiemePorteTests::test_patch_bc_de_devis_refuse",
+    "backend/django_core/apps/facturation/tests/test_atot_montants_figes.py::MontantsFigesTests::test_brouillon_modifiable_trace",
+    "backend/django_core/apps/facturation/tests/test_atot_montants_figes.py::MontantsFigesTests::test_patch_montant_emise_refuse",
+    "backend/django_core/apps/ventes/tests/test_aud124_marquer_payee.py::TestAUD124MarquerPayee::test_permission_dediee_distincte_de_l_edition_courante",
+    "backend/django_core/apps/ventes/tests/test_conformite.py::TestClearanceStatut::test_default_non_soumise_and_editable",
+    "backend/django_core/apps/ventes/tests/test_xfac24_facture_immuable.py::XFAC24FactureImmuableTests::test_flag_off_facture_freely_editable_byte_identical",
+    "backend/django_core/apps/ventes/tests/test_xfac24_facture_immuable.py::XFAC24FactureImmuableTests::test_flag_on_brouillon_still_freely_editable",
+    "backend/django_core/apps/ventes/tests/test_xfac24_facture_immuable.py::XFAC24FactureImmuableTests::test_flag_on_financial_field_patch_refused_on_emise",
+    "backend/django_core/apps/ventes/tests/test_xfac24_facture_immuable.py::XFAC24FactureImmuableTests::test_flag_on_non_financial_field_still_editable",
+    "backend/django_core/apps/ventes/tests/test_xfac_asec27_facture_fk.py::FactureFkEtChampsServeurTests::test_fk_etrangere_400",
+    "frontend/src/features/offlinesync/mobile/aFaireItems.test.mjs::NTMOB19: agrège les quatre sources en items cliquables",
+    "frontend/src/hooks/permissionParity.test.jsx",
+    "scripts/tests/test_check_query_budgets.py::TestRougeDabordEnforcedWithoutTest::test_not_enforced_endpoint_without_test_is_ok"
+   ]
+  },
+  "listes-figees backend/django_core/apps/ventes/recouvrement.py": {
+   "gardes": [
+    "docs/api-contracts.md <- scripts/check_api_shapes.py (par_symbole)",
+    "docs/api-contracts.md <- scripts/check_taches_cablage.py (par_symbole)",
+    "docs/openapi-schema.yml <- scripts/check_api_shapes.py (par_symbole)",
+    "docs/openapi-schema.yml <- scripts/check_openapi_schema.py (par_symbole)",
+    "docs/ownership.yml <- scripts/check_ownership.py (par_symbole)"
+   ]
+  }
+ }
+}

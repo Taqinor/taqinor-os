@@ -1,0 +1,59 @@
+# Dette d'acceptation GELÉE du groupe APAR (AMET88, scripts/check_acceptation.py).
+# Clé = id de tâche cochée à preuve en direct, ni couverte par un enregistrement
+# PASS. Elle ne fait que RÉTRÉCIR : `--write-baseline` retire les ids couverts ;
+# tout ajout fait échouer la garde. Amorcée à la bascule (sha ci-dessous).
+groupe: APAR
+amorce: 3a7c3b882
+ids:
+  - APAR3
+  - APAR4
+  - APAR5
+  - APAR6
+  - APAR7
+  - APAR8
+  - APAR9
+  - APAR10
+  - APAR11
+  - APAR12
+  - APAR13
+  - APAR14
+  - APAR15
+  - APAR16
+  - APAR17
+  - APAR18
+  - APAR19
+  - APAR20
+  - APAR21
+  - APAR22
+  - APAR23
+  - APAR24
+  - APAR25
+  - APAR26
+  - APAR27
+  - APAR28
+  - APAR29
+  - APAR30
+  - APAR31
+  - APAR32
+  - APAR33
+  - APAR36
+  - APAR37
+  - APAR38
+  - APAR39
+  - APAR40
+  - APAR41
+  - APAR42
+  - APAR43
+  - APAR46
+  - APAR47
+  - APAR49
+  - APAR50
+  - APAR51
+  - APAR53
+  - APAR57
+  - APAR59
+  - APAR60
+  - APAR61
+  - APAR62
+  - APAR66
+  - APAR67

@@ -72,6 +72,7 @@ import sys
 from pathlib import Path
 
 import check_api_contract as contract
+TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 # -- Racines (globales MUTABLES, relues a l'appel : un test les monkeypatch,
 #    exactement comme test_check_api_contract.py fait pour `cac.ROOT`). ------

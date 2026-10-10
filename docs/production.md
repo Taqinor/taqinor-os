@@ -19,21 +19,142 @@ est une copie de dev qui peut diverger sans conséquence.
 | Secrets serveur | `/opt/taqinor-os/.env` (jamais dans le dépôt) |
 | Sauvegardes | Hetzner Backups (7 instantanés glissants, quotidiens) |
 
-## Mode DEBUG (décision du propriétaire, 2026-06-12)
+## Mode DEBUG (décision du propriétaire, 2026-06-12) — à basculer (D-ASEC-6)
 
 Le serveur tourne **volontairement en mode DEBUG** (`settings.dev`,
 `DJANGO_DEBUG=True` dans l'.env du serveur) tant que Reda teste — il
 préfère voir les erreurs détaillées. Risque assumé : les pages d'erreur
 exposent des détails techniques à tout visiteur, et l'hôte public est
-découvrable (journaux de certificats). **Avant d'ouvrir aux clients**,
-basculer dans `/opt/taqinor-os/.env` :
+découvrable (journaux de certificats). Mesuré le 07/10/2026 (audit sécurité,
+C-ASEC-029) : `settings.dev`, `DEBUG=True`, `NUM_PROXIES=1`. **Décision
+D-ASEC-6 (07/10/2026)** : la production passe sur `settings.prod` maintenant
+que les correctifs cookie `Secure` et proxy (ASEC52, ASEC15) sont livrés ; la
+bascule est un **geste du fondateur**, décrit ci-dessous.
 
-```
-DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod
-DJANGO_DEBUG=False
+## Bascule vers settings.prod (ASEC48)
+
+`erp_agentique/settings/prod.py` est prouvé pour la chaîne réelle
+**Caddy → nginx → Django** par `scripts/tests/test_settings_prod_asec48.py`
+(job CI `backend-openapi`) : un interpréteur neuf charge `settings.prod` avec
+un environnement type prod (valeurs factices) ; `check --deploy` ne lève
+aucune erreur et seulement les avertissements listés plus bas ; une requête
+arrivée avec `X-Forwarded-Proto: https` est vue `is_secure()`, reçoit HSTS et
+n'est jamais redirigée ; les sondes de santé ne sont jamais redirigées ; les
+cookies session/CSRF/JWT sont `Secure` ; `CORS_ALLOW_ALL_ORIGINS=False` ;
+l'adresse retenue pour la limitation est le visiteur, jamais l'appelant.
+
+**Personne d'autre que Reda ne fait cette bascule** (aucun run Claude ne
+touche le serveur ni son `.env`). Ne JAMAIS la faire pendant un déploiement
+(l'auto-deploy du serveur tourne après chaque merge sur `main`) : attendre
+qu'il soit fini.
+
+### Variables du `.env` serveur (`/opt/taqinor-os/.env`)
+
+| Variable | Valeur en production | Obligatoire ? | Si absente / fausse |
+|---|---|---|---|
+| `DJANGO_SETTINGS_MODULE` | `erp_agentique.settings.prod` | oui | reste en `settings.dev` (DEBUG, aucun durcissement) |
+| `DJANGO_DEBUG` | `False` | oui | le garde de démarrage de `SECRET_KEY` (`base.py`) n'est pas évalué |
+| `DJANGO_SECRET_KEY` | la clé réelle déjà en place (jamais un `change_me…`) | oui | `RuntimeError` au démarrage / erreur `core.E_AUD410_SECRET_KEY` |
+| `DJANGO_ALLOWED_HOSTS` | `api.taqinor.ma,178-105-192-116.sslip.io` (les deux hôtes de la Caddyfile ; le 2e = `PUBLIC_HOSTNAME`) | oui | **toute requête refusée (400)** et erreur `core.E_QJR423_ALLOWED_HOSTS` : en prod il n'y a plus de défaut `localhost` |
+| `CSRF_TRUSTED_ORIGINS` | `https://api.taqinor.ma,https://178-105-192-116.sslip.io` (déjà posée) | recommandé | complétée automatiquement des origines CORS |
+| `CORS_ALLOWED_ORIGINS` | `https://taqinor.ma,https://www.taqinor.ma` | non (c'est le défaut de `settings.prod`) | défaut : les deux domaines publics |
+| `MINIO_ROOT_PASSWORD` | le mot de passe réel (jamais un `change_me…`) | oui | erreur `core.E_AUD410_MINIO` |
+| `NUM_PROXIES` | absente, ou `1` | non | absente = 1 ; `0` ou illisible ⇒ **démarrage refusé** (tout Internet dans un seul seau de limitation) |
+| `AUTH_COOKIE_SECURE` | **absente** | non | `0` retirerait `Secure` aux cookies JWT — ne jamais la poser en prod |
+| `ODOO_COMPANY_ID` | id numérique de la société propriétaire du connecteur Odoo (ASEC40) | si Odoo est utilisé | le tableau Odoo s'éteint (fail-closed) |
+| `TENANT_SIGNUP_ENABLED` | `0` (ou absente) | non | `1` rouvrirait l'inscription publique de sociétés (D-ASEC-2) |
+| `DJANGO_ADMIN_URL` | recommandé : un chemin non devinable SOUS `api/django/`, terminé par `/` (ex. `api/django/<mot-choisi>/`) | non | défaut `api/django/admin/` (devinable). Hors `api/django/`, nginx ne relaierait pas l'admin |
+| `PUBLIC_BASE_URL` | `https://api.taqinor.ma` | recommandé | liens client relatifs (comportement historique) |
+| `LOG_LEVEL` | `INFO` | non | défaut `INFO` (journaux lisibles sans DEBUG) |
+
+### Avertissements acceptés de `manage.py check --deploy`
+
+Seuls ces avertissements sont attendus (toute ERREUR, ou tout autre
+avertissement, bloque la bascule) — ce sont des fonctionnalités à clé,
+volontairement en pause tant que la clé n'est pas posée :
+
+| Identifiant | Sens |
+|---|---|
+| `crm.W010` | `META_LEAD_ADS_APP_SECRET` absent : webhook Meta Lead Ads fermé (403), synchro entrante en pause (DR3) |
+| `notifications.W010` | `WHATSAPP_BSP_APP_SECRET` absent : webhook BSP WhatsApp fermé (403) (DR3) |
+
+Le contrôle de déploiement de drf-spectacular (≈ 600 avertissements de
+documentation du schéma OpenAPI) est coupé dans `settings.prod` : le schéma
+est gardé en CI par `scripts/check_openapi_schema.py`.
+
+### Procédure (Reda, sur le serveur)
+
+1. **Sauvegarder l'état actuel, lecture seule** :
+
+   ```bash
+   cd /opt/taqinor-os
+   cp .env .env.avant-settings-prod
+   grep -E '^(DJANGO_SETTINGS_MODULE|DJANGO_DEBUG|DJANGO_ALLOWED_HOSTS|CSRF_TRUSTED_ORIGINS|CORS_ALLOWED_ORIGINS|NUM_PROXIES|AUTH_COOKIE_SECURE|ODOO_COMPANY_ID|TENANT_SIGNUP_ENABLED|DJANGO_ADMIN_URL|PUBLIC_HOSTNAME)=' .env
+   ```
+
+   Noter aussi un lien public de devis déjà envoyé (`/proposal`) et l'ouvrir :
+   il servira de témoin « identique avant/après ».
+
+2. **Poser les variables** du tableau ci-dessus dans `.env` (au minimum
+   `DJANGO_SETTINGS_MODULE`, `DJANGO_DEBUG=False`, `DJANGO_ALLOWED_HOSTS`).
+
+3. **Essai à blanc, sans toucher aux conteneurs en service** (conteneur
+   jetable, lit le nouveau `.env`) :
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps django_core python manage.py check --deploy
+   ```
+
+   Attendu : aucune ligne `ERROR`, seulement les avertissements acceptés
+   ci-dessus. Une erreur nomme la variable à corriger ; corriger puis relancer.
+
+4. **Basculer** (recrée Django + Celery avec le nouvel `.env`, puis nginx
+   pour qu'il retrouve la nouvelle adresse de Django) :
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate django_core celery_worker celery_worker_interactive celery_beat
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+   ```
+
+### Vérification après bascule (lecture seule)
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://api.taqinor.ma/                              # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://api.taqinor.ma/api/django/ventes/devis/       # 401 (jamais 301/302 : sinon boucle)
+curl -sI https://api.taqinor.ma/api/django/core/health/live/ | grep -iE '^HTTP|strict-transport' # 200 + strict-transport-security
+curl -s https://api.taqinor.ma/api/django/page-inexistante/ | grep -c URLconf                  # 0 (page 404 sans détail technique)
+curl -sI https://api.taqinor.ma/<DJANGO_ADMIN_URL>login/ | grep -i set-cookie                 # csrftoken …; Secure
+docker ps --format '{{.Names}}' | wc -l                                                         # 12
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --since 10m django_core | grep -ciE 'DisallowedHost|Traceback'   # 0
 ```
 
-puis `powershell -File scripts\deploy-prod.ps1` (ou redémarrer django_core).
+Puis dans le navigateur : se connecter à l'ERP — outils de développement →
+Application → Cookies : les cookies de connexion portent `Secure`. Rouvrir le
+lien `/proposal` témoin : même page, même PDF. Ouvrir une page publique (suivi
+SAV, signature) : servie en HTTPS comme avant. Le formulaire du site
+(taqinor.ma → webhook des leads) continue de créer des leads.
+
+**Symptômes et cause probable** : `400 Bad Request` partout →
+`DJANGO_ALLOWED_HOSTS` incomplet ; « trop de redirections » → l'en-tête
+`X-Forwarded-Proto` n'arrive pas (Caddyfile `header_up X-Forwarded-Proto
+{scheme}` et plages de confiance de `backend/nginx/nginx.conf`, ASEC52) ;
+`403 CSRF` sur l'admin → `CSRF_TRUSTED_ORIGINS`.
+
+### Retour arrière
+
+Revenir à `settings.dev` en restaurant le `.env` sauvegardé, puis la même
+recréation :
+
+```bash
+cd /opt/taqinor-os
+cp .env.avant-settings-prod .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate django_core celery_worker celery_worker_interactive celery_beat
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+```
+
+Aucune donnée n'est touchée par la bascule ni par le retour (seuls les
+réglages changent). L'en-tête HSTS déjà reçu par les navigateurs reste un an :
+sans effet, le site est servi en HTTPS par Caddy dans les deux cas.
 
 ## Mettre à jour la production
 

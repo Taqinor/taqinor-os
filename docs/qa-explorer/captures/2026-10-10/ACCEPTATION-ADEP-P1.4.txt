@@ -1,0 +1,6 @@
+# ADEP99 P1.4 — RLS de bout en bout sous rôle NOBYPASSRLS jetable : sans GUC 0 ligne ; TenantGucWrapper -> 25 devis de la société A seule (autocommit, transaction, savepoint) ; INSERT non rejoué
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P1_2_rls_e2e.log
+P1.2 {"societes": 2, "total": 40, "A": 43, "attendu_A": 25, "autocommit": true, "sans_guc": 0, "A_q1": 25, "A_q2": 25, "A_societes_vues": [43], "B_q1": 25, "B_savepoint": 25, "apres_sans_guc": 0, "role_supprime": true}
+P1.2 verdict: PASS

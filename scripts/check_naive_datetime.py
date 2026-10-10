@@ -35,6 +35,7 @@ import re
 import sys
 from pathlib import Path
 
+TYPE_DE_CLE = "par_symbole"  # AMET81 — lu par audit_tache.py listes-figees : cle `fichier::Classe.champ` (ADEP25)
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_CORE = ROOT / "backend" / "django_core"
 APPS_DIR = DJANGO_CORE / "apps"

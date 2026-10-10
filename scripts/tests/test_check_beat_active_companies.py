@@ -223,5 +223,36 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
         self.assertIn('clé morte', out)
 
 
+class BeatActiveCompaniesTests(BalayageGlobalNonScopeTests):
+    """AFAC101 — seul un QUERYSET borné par company/active_company_ids() borne le balayage."""
+
+    def test_create_company_ne_borne_pas_le_balayage(self):
+        code, out = self._lancer(
+            "def relance_reminders():\n    RelanceLog.objects.create(company=c)\n"
+            "    p = CompanyProfile.get(company=c)\n"
+            "    return Facture.objects.filter(statut='x')\n")
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled.py::relance_reminders', out)
+
+    def test_filtre_company_chaine_borne_le_balayage(self):
+        code, out = self._lancer(
+            "def f(c):\n    return Facture.objects.filter(statut='x').exclude(company=c)\n")
+        self.assertEqual(code, 0, out)
+
+    def test_lecture_d_une_ligne_par_pk_n_est_pas_un_balayage(self):
+        # Revue C20 du lot audit_deploy : une chaine bornee par pk=/id= lit UNE ligne
+        # (_langue_resolue, _signaler_pdf_devis_genere) - plus besoin d'allowlist.
+        code, out = self._lancer(
+            "def f(pk):\n    return (Facture.objects.select_related('company')\n"
+            "            .filter(pk=pk).first())\n\n\n"
+            "def g(i):\n    return Facture.objects.get(id=i)\n")
+        self.assertEqual(code, 0, out)
+
+    def test_pk_in_reste_un_balayage(self):
+        code, out = self._lancer(
+            "def f(ids):\n    return list(Facture.objects.filter(pk__in=ids))\n")
+        self.assertEqual(code, 1, out)
+
+
 if __name__ == '__main__':
     unittest.main()

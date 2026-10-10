@@ -1,0 +1,10 @@
+# ADEP99 P1.2 — .env.example -> backend console, e-mail non configuré, envoi imprimé, aucune erreur fournisseur
+# rejeu orchestrateur, pile locale, 2026-10-10
+
+## P1_3_email.log
+P1.3a .env.example  -> {"backend": "django.core.mail.backends.console.EmailBackend", "configured": false, "checks": []} -> REPRO
+
+## P1_2b_envoi_console.log
+backend: django.core.mail.backends.console.EmailBackend
+CORPS-SONDE-ADEP8
+send_mail -> 1
