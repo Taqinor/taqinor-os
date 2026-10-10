@@ -6275,22 +6275,23 @@ def evaluer_tolerance_ecart(company, bon_commande_id):
 
 def _montant_attendu_bcf_ht(bon_commande_id):
     """ASTK107 — HT ATTENDU d'un BCF pour le rapprochement 3 voies :
-    somme (quantité reçue sur réceptions CONFIRMÉES × PU du BCF) pour les
-    lignes « sur réception », somme (quantité commandée × PU) pour les lignes
-    « sur commande » (ZPUR1, facturées avant réception)."""
+    somme (quantité ENTRÉE sur réceptions CONFIRMÉES × PU du BCF — ASTK245 :
+    ``quantite_entree_ligne_reception``, la sur-livraison plafonnée ne compte
+    pas) pour les lignes « sur réception », somme (quantité commandée × PU)
+    pour les lignes « sur commande » (ZPUR1, facturées avant réception)."""
     from .models import (
         LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
         ReceptionFournisseur,
     )
     recu = {}
-    for ligne_id, qte in (LigneReceptionFournisseur.objects
-                          .filter(reception__bon_commande_id=bon_commande_id,
-                                  reception__statut=ReceptionFournisseur
-                                  .Statut.CONFIRME,
-                                  ligne_commande__isnull=False)
-                          .values_list('ligne_commande_id', 'quantite')):
-        recu[ligne_id] = recu.get(ligne_id, Decimal('0')) + Decimal(
-            str(qte or 0))
+    for lr in (LigneReceptionFournisseur.objects
+               .filter(reception__bon_commande_id=bon_commande_id,
+                       reception__statut=ReceptionFournisseur.Statut.CONFIRME,
+                       ligne_commande__isnull=False)
+               .only('ligne_commande_id', 'quantite', 'quantite_appliquee')):
+        recu[lr.ligne_commande_id] = recu.get(
+            lr.ligne_commande_id, Decimal('0')) + Decimal(
+            quantite_entree_ligne_reception(lr))
     attendu = Decimal('0')
     for ligne in (LigneBonCommandeFournisseur.objects
                   .filter(bon_commande_id=bon_commande_id)
