@@ -338,6 +338,25 @@ class AcceptationTests(unittest.TestCase):
         self.assertIn("ADEP : 5 cochée(s) à preuve, 5 couverte(s), 0 en dette", sortie)
         self.assertIn("ACHT : 1 cochée(s) à preuve, 1 couverte(s), 0 en dette", sortie)
 
+    def test_ecart_accepte_tel_que_l_ecrit_la_spec_est_pass_et_refuse_sans_base_fail(self):
+        """Forme de `_enregistrement.js::composer` pour une étape `{ ecart }` (P1.13 d'ADEP) :
+        corps vert, oracle 3 FAIL, base_verdict FAIL, tâche dans couvre ET couvre_avec_ecart."""
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"))
+        oracles = dict(etape()["oracles"], **{"3": "FAIL"})
+        ecart = etape("P1.13", ("ATST2",), verdict="FAIL", base="FAIL", oracles=oracles,
+                      notes="écart accepté (base FAIL) : défaut antérieur ; oracle 3 — CSP")
+        self.depot.enregistrement(couvre=("ATST1", "ATST2"), ecart=("ATST2",),
+                                  etapes=[etape(notes=""), ecart])
+        code, sortie = self.lancer()
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("ATST : 2 cochée(s) à preuve, 2 couverte(s), 0 en dette", sortie)
+        # Mutant : la même étape sans `base_verdict: FAIL` (ce qu'écrit une étape sans écart).
+        self.depot.enregistrement(couvre=("ATST1", "ATST2"), ecart=("ATST2",),
+                                  etapes=[etape(notes=""), dict(ecart, base_verdict=None)])
+        code, sortie = self.lancer()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("échoue aussi à la base", sortie)
+
     def test_enregistrement_spec_exemple_mutant_etape_vide_echoue(self):
         """Mutant : une etape sans oracles ni trace ⇒ la garde DOIT echouer."""
         self.ecrire_exemple_adep(vider_etape=2)

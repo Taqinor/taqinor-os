@@ -57,6 +57,19 @@ etape('P5.4', ['ADEP19', 'ADEP99'], async ({ page, context, suivi }) => { … })
 Une étape est PASS si son corps passe ET aucun oracle n'est FAIL. Un FAIL est enregistré aussi
 (il reste une trace, il ne couvre rien).
 
+### Écart accepté
+
+Une étape dont le corps passe mais qu'un oracle fait tomber sur un défaut ANTÉRIEUR, hors des
+tâches qu'elle prouve, se déclare en 4ᵉ argument :
+`etape('P1.13', ['ADEP40'], corps, { ecart: { base: 'FAIL', raison: '…' } })` — décision de
+l'orchestrateur, jamais un réflexe. Effets : `base_verdict: FAIL` (l'étape échouait déjà à la
+base, avant les tâches), ses tâches vont dans `couvre_avec_ecart` (et restent dans `couvre`), la
+raison (le défaut, son fichier, pourquoi il est hors périmètre) ouvre les `notes`. Le test reste
+vert si seuls les ORACLES échouent ; une assertion du corps qui échoue le fait toujours tomber.
+L'enregistrement reste PASS — même règle que la garde : chaque étape PASS, ou FAIL avec
+`base_verdict: FAIL` et toutes ses tâches dans `couvre_avec_ecart`. Le défaut est classé chez
+son propriétaire (plan d'audit), l'écart disparaît quand il est corrigé.
+
 ## L'enregistrement (contrat AMET88 — docstring de `scripts/check_acceptation.py`)
 
 `_enregistrement.js` écrit en `afterAll` :
