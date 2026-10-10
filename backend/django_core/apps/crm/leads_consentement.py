@@ -96,6 +96,33 @@ def enregistrer_consentements_intake_web(lead):
     return creees
 
 
+# ── CAD-I ── CAD90 — le registre couvre TOUTES les créations de lead ────────
+#
+# Audit L3 du 21/09/2026. ``enregistrer_consentement_lead`` n'était appelée
+# que depuis le webhook du formulaire du site : un lead créé à la main par la
+# commerciale (appel entrant, WhatsApp reçu au salon), un lead Meta Lead Ads
+# ou un lead venu d'un document n'écrivaient RIEN au registre
+# ``core.ConsentRecord`` — alors que la cadence démarre quand même et que sa
+# touche n°1 est un WhatsApp, le canal le plus encadré.
+#
+# CE QUE ``granted`` VEUT DIRE ICI, ET CE QU'IL NE VEUT PAS DIRE. Il dit
+# seulement si un CONSENTEMENT A ÉTÉ RECUEILLI — jamais si le traitement est
+# licite. Sur ces chemins, aucune case n'a été cochée par la personne : la
+# licéité vient de la BASE LÉGALE, tracée dans ``source``. Écrire
+# ``granted=True`` pour faire joli fabriquerait une preuve fausse, ce qui est
+# pire qu'une preuve absente (même raison que ``ip_confirmation`` laissée
+# vide par l'intake web).
+#
+# LES DEUX BASES, SUR TEXTE PRIMAIRE (extraction du round 2 de l'audit, PDF
+# adala.justice.gov.ma) :
+#   * données NON collectées auprès de la personne (Meta, import, document) —
+#     loi 09-08 art. 5 §3, avec l'information due « par tous moyens » de
+#     l'art. 34 du décret 2-09-165 ;
+#   * la personne a elle-même SOLLICITÉ le contact (appel entrant, message
+#     WhatsApp, demande au salon) — relation précontractuelle à sa demande,
+#     loi 09-08 art. 5. Le CNDP distingue les deux, le registre aussi.
+
+
 #: Finalité inscrite au registre pour la prospection commerciale.
 CONSENT_PURPOSE_PROSPECTION = 'marketing'
 

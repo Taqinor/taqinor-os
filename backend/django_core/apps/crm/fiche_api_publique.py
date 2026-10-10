@@ -13,6 +13,12 @@ from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
 
 
+# ── XPLT5 — API publique en ÉCRITURE (leads:write / activities:write) ───────
+# Point d'entrée cross-app sanctionné (services.py) pour `apps.publicapi` :
+# la société vient TOUJOURS de l'appelant (résolue depuis la clé API, jamais
+# du corps), jamais acceptée en argument depuis les données utilisateur.
+
+
 PUBLIC_LEAD_WRITABLE_FIELDS = (
     'nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
     'canal', 'priorite', 'type_installation', 'stage',

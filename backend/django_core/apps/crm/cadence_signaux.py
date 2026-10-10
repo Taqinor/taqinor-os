@@ -718,6 +718,21 @@ def notify_lead_callback_requested(lead) -> None:
             getattr(lead, 'pk', '?'), exc)
 
 
+# ── CAD-K ── CAD129 — « rappelez-moi » entre dans la FILE, pas dans la cloche ─
+#
+# Audit L3 du 21/09/2026. Un clic « rappelez-moi » écrivait une note, notifiait
+# le responsable et son supérieur, et posait la préférence « joignable par
+# téléphone » — mais ne créait AUCUNE touche. Si la notification est noyée dans
+# la cloche, la demande la plus forte qu'un prospect puisse faire disparaît.
+#
+# LA RÈGLE : décaler, jamais redémarrer. Quand le lead a déjà un plan en cours,
+# on RAMÈNE sa prochaine touche au prochain créneau d'appel et tout le reste du
+# plan glisse du MÊME delta (``reporter_prochaine_touche`` le fait déjà, ancre
+# comprise) : le lead garde sa position dans le protocole, on ne fabrique pas un
+# second plan concurrent. Quand il n'a plus aucune touche ouverte (cadence
+# terminée ou arrêtée), on pose UNE touche — une seule, jamais un plan.
+
+
 #: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
 #: deux clics du même client ne laissent jamais deux lignes dans la file.
 RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'

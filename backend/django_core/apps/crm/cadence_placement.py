@@ -24,6 +24,44 @@ from .models import Lead, LeadActivity, RelanceEtape
 logger = logging.getLogger(__name__)
 
 
+# ── MRY30 — PLACEMENT DES ANCIENS LEADS DANS LES CADENCES DU MOTEUR ──────────
+#
+# Le moteur de relances ne démarre que sur les leads qui ARRIVENT. Le
+# portefeuille déjà présent — plusieurs centaines de dossiers, dont les 930
+# leads du miroir Odoo — resterait donc sans aucune cadence, et le bénéfice
+# n'arriverait qu'au fil des semaines. Décision fondateur du 06/09/2026 :
+# « tous les anciens leads non Froid sont traités ; le moteur décide à quelle
+# étape des six appels chacun se trouve ».
+#
+# Trois différences assumées avec la reprise MRY23
+# (`demarrer_cadences_existantes`, qui reste en place et ne change pas) :
+#
+#   1. le MIROIR ODOO EST INCLUS. `_garde_cadence_contact` refuse
+#      `source == ODOO_IMPORT_TEST` — garde juste pour un démarrage AUTOMATIQUE
+#      à la création (elle empêche un import de 930 lignes d'inonder la file),
+#      fausse pour un placement DEMANDÉ à la main sur ce même portefeuille.
+#      C'est pourquoi ce service appelle `initialiser_plan_relance`
+#      directement et JAMAIS `demarrer_cadence_contact` ;
+#   2. il n'y a pas de fenêtre d'éligibilité qui laisse des leads de côté :
+#      un dossier trop ancien pour être relancé n'est pas ignoré, il est mis
+#      en DORMANCE explicite (Froid + étiquette + réveil étalé) ;
+#   3. l'aperçu et l'application partagent LE MÊME CALCUL — sans partager
+#      les écritures. L'aperçu était une exécution complète dans une
+#      transaction annulée : fidèle, mais il matérialisait les touches des
+#      277 candidats pour les jeter aussitôt, soit plus de 20 s pendant
+#      lesquelles le navigateur abandonnait (deux 499 dans nginx le
+#      07/09/2026, sur le clic « Aperçu » du Cockpit). Il est désormais un
+#      CALCUL PUR : mêmes décisions, mêmes créneaux, mêmes dates — obtenus
+#      par `calculer_echeances_cadence`, la fonction que l'application
+#      utilise elle aussi pour créer les touches. Un dry-run qui recalcule
+#      « à côté » finit toujours par annoncer autre chose que ce que --apply
+#      fait ; partager la FONCTION donne la même garantie que partager
+#      l'exécution, pour le prix d'un calcul ;
+#   4. l'application se fait PAR LOTS de `limite` leads (défaut 40), l'écran
+#      rappelant tant que `restants > 0`. Écrire 277 dossiers d'un trait
+#      dépassait le délai du navigateur exactement comme l'aperçu.
+
+
 #: Au-delà de ce silence, un dossier n'est plus « en cours » : lui envoyer la
 #: touche J+1 d'une cadence positionnée serait un message hors sujet. Il part
 #: en dormance (réveil), pas en relance.

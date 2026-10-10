@@ -9,6 +9,15 @@ from . import activity
 from .models import Lead, LeadActivity
 
 
+# ── VT1 — CHATTER AUTOMATIQUE DE LA VISITE TECHNIQUE TERRAIN ─────────────────
+#
+# Le chatter du lead (``LeadActivity``) est le journal COMMUN de tout ce qui
+# arrive à un lead : la visite technique y écrit ses quatre moments — création,
+# terminaison, feu vert, renvoi — plutôt que d'ouvrir un second historique.
+# L'auteur et la société viennent TOUJOURS du serveur (jamais du corps de
+# requête), comme le reste du chatter.
+
+
 #: Moment de la visite → phrase FR posée au chatter.
 _VISITE_CHATTER = {
     'creation': 'Visite technique créée.',

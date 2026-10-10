@@ -35,7 +35,7 @@ from django.test import TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_temps, horaires, services
+from apps.crm import cadence_temps, horaires, stages
 from apps.crm import cadence_plan
 from apps.crm.models import Lead
 from apps.crm.cadence_plan import calculer_echeances_cadence
@@ -133,7 +133,7 @@ class UnFixeDemarreParUnAppelTests(_Base):
     def test_la_cadence_DEMARRE_bien_sur_un_fixe(self):
         """On ne bloque pas wa.me : la garde laisse passer, et le plan est
         celui du protocole, en appels."""
-        lead = self._lead(telephone=FIXE, stage=services.stages.NEW)
+        lead = self._lead(telephone=FIXE, stage=stages.NEW)
         self.assertIsNone(cadence_plan._garde_cadence_contact(lead))
 
     def test_un_mobile_garde_ses_WhatsApp(self):

@@ -630,6 +630,39 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None,
     return client
 
 
+# ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
+#
+# Sur le modèle de `merge_leads` ci-dessus, mais pour `Client` : le détecteur
+# (`dataquality.services.doublons_clients`) PROPOSE, un humain DÉCIDE, et cette
+# fonction exécute. Jamais de fusion automatique.
+#
+# TROIS GARANTIES DURES :
+#
+# 1. AUCUNE SUPPRESSION. Le doublon n'est jamais effacé : il est NEUTRALISÉ.
+#    `Client` ne porte pas (encore) de drapeau d'archivage — ajouter une
+#    colonne supposerait une migration `crm`, hors du périmètre de cette
+#    tâche. On utilise donc le mécanisme EXISTANT prévu pour ça :
+#    `avertissement_bloquant` (une garde serveur refuse dès lors l'acceptation
+#    et la facturation d'un devis pour ce client, patron XFAC28) + un
+#    avertissement lisible, + un marqueur `custom_data['fusionne_dans']` qui
+#    trace la cible et la date. La fiche reste consultable, son historique
+#    intact, et la fusion est intégralement réversible à la main.
+#
+# 2. AUCUN ORPHELIN. Tout ce qui pointait le doublon pointe le survivant —
+#    non pas une liste de quatre modèles écrite à la main (le dépôt compte
+#    plus de trente FK vers `Client`), mais le parcours des relations inverses
+#    déclarées par Django (`core.merge.repointer_relations`, la MÊME mécanique
+#    que la fusion fournisseur/produit de `stock` — jamais une seconde
+#    implémentation). Chaque relation est repointée dans son PROPRE point de
+#    sauvegarde : une contrainte d'unicité qui refuse (le survivant a déjà sa
+#    limite de crédit, par exemple) annule CETTE relation seule et le rapport
+#    la NOMME, au lieu de faire échouer toute la fusion en silence.
+#
+# 3. AUCUN IMPORT D'APP ÉTRANGÈRE. Le parcours passe par l'API `_meta` de
+#    Django, donc `crm` n'importe ni `ventes`, ni `facturation`, ni
+#    `installations`, ni `sav`.
+
+
 #: Champs du client dont une valeur VIDE chez le survivant est complétée
 #: depuis un doublon (jamais l'inverse : on n'écrase jamais une valeur saisie).
 _MERGE_CLIENT_FILL_FIELDS = (

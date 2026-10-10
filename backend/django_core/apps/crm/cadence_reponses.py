@@ -1653,6 +1653,18 @@ def repondre_perdu(etape, user, motif, *, note='', body=''):
     return etape
 
 
+# ── CAD164 — le LOCATAIRE : demander le propriétaire, sinon « Perdu — Locataire »
+#
+# Décision fondateur du 21/09/2026 : on demande le propriétaire ; s'il est
+# joignable, on crée SA fiche, LIÉE à celle du locataire (le locataire reste le
+# prescripteur : son prénom passe par la variable `{prescripteur}` du texte
+# d'origine « recommandation », CAD127 — jamais en dur) ; sinon on clôt avec
+# le motif EXISTANT « Locataire ». Aucune valeur d'énumération neuve : le motif
+# existe (`MotifPerte`), le canal « Référence » aussi, et le lien entre les deux
+# fiches est une NOTE d'historique de chaque côté — jamais une fusion
+# automatique (conduite `FLUX_LOCATAIRE` du script d'appel).
+
+
 #: Le motif de perte d'un locataire sans propriétaire joignable (existant).
 MOTIF_PERTE_LOCATAIRE = 'Locataire'
 

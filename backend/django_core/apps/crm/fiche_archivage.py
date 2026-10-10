@@ -6,6 +6,18 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 from django.apps import apps as django_apps
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# YOPSB11 — Archivage par lots de `LeadActivity` (chatter à forte croissance)
+#
+# Le chatter (`LeadActivity`) est append-only et grossit sans borne, alourdissant
+# le chemin chaud. `archiver_anciens(now, jours)` DÉPLACE les entrées plus
+# vieilles que `jours` vers la table froide `LeadActivityArchive` (par lots de
+# 5 000, un commit par lot — jamais de transaction géante) puis les supprime de
+# la table vive. Fenêtre par défaut 0 = OFF (aucun archivage, comportement
+# inchangé) ; réglage via `CRM_LEADACTIVITY_ARCHIVE_DAYS`. La politique est
+# enregistrée dans le registre partagé YOPSB10 depuis `CrmConfig.ready()`.
+
+
 DEFAULT_LEADACTIVITY_ARCHIVE_DAYS = 0
 
 

@@ -253,6 +253,9 @@ def handle_parrainage_signup(lead) -> None:
             getattr(lead, 'pk', '?'), exc)
 
 
+# ── NTMIG28 — miroir du compteur de déploiements d'un partenaire ────────────
+
+
 def poser_compteur_deploiements(partenaire_id, company, nb_reussis):
     """Pose le nombre de déploiements RÉUSSIS reconnus d'un partenaire.
 

@@ -24,6 +24,9 @@ from .models import Lead, LeadActivity
 logger = logging.getLogger(__name__)
 
 
+# ── YLEAD11 — Réactivation d'un lead perdu/COLD sur nouvelle touche entrante ──
+
+
 def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     """YLEAD11 — Réactive ``lead`` s'il est actuellement PERDU ou COLD.
 
@@ -566,6 +569,11 @@ def create_lead_from_evenement_marketing(
             lead, None, f'Inscrit à l\'événement « {evenement_nom} »')
     recompute_lead_score(lead)
     return lead
+
+
+# ---------------------------------------------------------------------------
+# AUD518 — Effets de CRÉATION d'un lead importé (dataimport)
+# ---------------------------------------------------------------------------
 
 
 def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):

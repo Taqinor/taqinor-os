@@ -298,6 +298,38 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     return etape
 
 
+# ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────
+#
+# Ordre fondateur du 15/09/2026. La visite technique se place APRÈS l'envoi du
+# devis, comme outil de closing. Trois conséquences, et elles vivent ICI (pas
+# dans les récepteurs, qui restent minces et se contentent d'appeler) :
+#
+#   * quand un RENDEZ-VOUS est pris, les messages génériques de relance se
+#     TAISENT jusqu'après la visite — continuer à demander « le PDF s'ouvre
+#     bien ? » à quelqu'un qui reçoit le technicien jeudi est le genre de
+#     faute qui décrédibilise tout le suivi — et deux gestes utiles les
+#     remplacent en attendant ;
+#
+#     AMENDEMENT FONDATEUR (15/09/2026) — ils se TAISENT, ils ne MEURENT PAS.
+#     La première écriture de ce lot ANNULAIT la cadence après-devis : le lead
+#     perdait sa place dans le protocole, et une visite qui n'aboutit pas
+#     laissait un dossier sans suivi (ou, pire, exigeait un REDÉMARRAGE de
+#     cadence — un client reprenant le plan au barreau 1 après avoir déjà reçu
+#     neuf messages). On DÉCALE désormais : la touche pendante, tout ce qui la
+#     suit, ET l'ancre de la cadence glissent jusqu'après le débrief. Le lead
+#     garde sa POSITION EXACTE (même ordre, même libellé, même reste de plan) ;
+#     si la visite ne donne rien, le suivi reprend tout seul là où il en était.
+#     Aucun `initialiser_plan_relance` n'est appelé sur un lead qui a déjà des
+#     étapes après-devis : il n'y a JAMAIS de restart.
+#   * quand le technicien repart, le RESPONSABLE doit rappeler sous 24-48 h,
+#     tant que la visite est fraîche ;
+#   * le TEXTE LIBRE du terrain entre dans l'historique du lead : c'est
+#     souvent la seule trace de ce que le client a dit sur place.
+#
+# Aucune de ces fonctions ne touche ``Lead.stage`` : le statut d'une visite est
+# un layer DOCUMENT, jamais une étape de funnel (``STAGES.py`` intact).
+
+
 def _lead_relancable(lead):
     """Vrai si l'on a le droit de poser une relance sur ce lead.
 
@@ -412,6 +444,15 @@ def _suivi_de_proposition_existe(lead):
     envoyer le devis » démarre le suivi sans objet devis (TREADMILL-1538)."""
     return (lead.relance_etapes.filter(cadence='apres_devis')
             .exclude(q_visite()).exists())
+
+
+# ── AGR522 — DOSSIER DE SUBVENTION FDA : LE RAPPEL DES 3 MOIS ───────────────
+#
+# Guide FDA 2024 (p.22-23, tableau « Délais ») : « Demande de subvention —
+# 3 mois à compter de la date de l'approbation préalable », après la
+# RÉALISATION. Au passage à « accordé », une étape MANUELLE datée est posée
+# pour le lendemain (filet hors gabarit — jamais une touche de cadence,
+# CAD124). Ce délai n'est JAMAIS écrit au client.
 
 
 #: Délai du Guide FDA 2024 (p.22-23) entre l'approbation préalable et la
