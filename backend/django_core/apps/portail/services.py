@@ -133,8 +133,10 @@ def rapprocher_paiement_facture(paiement, *, reference=None, user=None):
             facture = get_facture_or_none(
                 company=paiement.company, facture_id=paiement.facture_id)
             if facture is not None:
+                # AFAC100 — borné à l'EXIGIBLE (hors retenue de garantie
+                # non libérée), jamais à `montant_du` qui l'inclut.
                 montant = min(Decimal(str(paiement.montant)),
-                              facture.montant_du)
+                              facture.montant_exigible)
                 if montant > Decimal('0'):
                     mode = ('carte'
                             if paiement.methode == PaiementFacturePortail.Methode.CARTE

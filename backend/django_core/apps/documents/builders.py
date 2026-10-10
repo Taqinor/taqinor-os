@@ -28,10 +28,12 @@ from django.utils.html import escape
 from apps.ventes.utils.pdf import _company_context
 # XSTK18 — réutilise (lecture seule, aucune écriture) les utilitaires AR déjà
 # vendored pour la facture legacy (XSAL13, `apps/ventes/utils/libelles_ar.py`) :
-# même police Noto Sans Arabic embarquée, même résolution de langue depuis
-# `Client.langue_document`. Import identique dans l'esprit à `_company_context`
-# ci-dessus (déjà cross-app) — jamais un import de `apps.ventes.models`/`views`.
-from apps.ventes.utils.libelles_ar import arabic_font_face_css, document_langue
+# même résolution de langue depuis `Client.langue_document`. APDF50 — plus
+# aucune police arabe embarquée (`arabic_font_face_css` n'est plus passé) : la
+# police système de l'image sert seule. Import identique dans l'esprit à
+# `_company_context` ci-dessus (déjà cross-app) — jamais un import de
+# `apps.ventes.models`/`views`.
+from apps.ventes.utils.libelles_ar import document_langue
 from core.pdf import render_pdf
 
 logger = logging.getLogger(__name__)
@@ -624,8 +626,7 @@ def generate_bon_livraison(chantier):
     rendu FR par défaut passe par le gabarit HISTORIQUE, intégralement
     inchangé (`document_bon_livraison.html`) → byte-identique. Un client
     `langue_document='ar'` passe par le NOUVEAU gabarit dédié
-    (`document_bon_livraison_ar.html`, RTL + police Noto Sans Arabic
-    embarquée) — jamais de traduction automatique, libellés fixes traduits.
+    (`document_bon_livraison_ar.html`, RTL, police système — APDF50) — jamais de traduction automatique, libellés fixes traduits.
     """
     ctx = _base_context(chantier)
     ctx['composants'] = _composants(chantier)
@@ -646,7 +647,8 @@ def generate_bon_livraison(chantier):
     langue = document_langue(chantier.client, company=chantier.company)
     if langue == 'ar':
         ctx['L'] = lambda cle: _bl_libelle(cle, langue)
-        ctx['arabic_font_face_css'] = arabic_font_face_css()
+        # APDF50 (C-APDF-002) — aucun `arabic_font_face_css` : le @font-face
+        # vendorisé rendait « QA-CAL-PUB-OFF » en « QAÎCALÎPUBÎOFF ».
         template_name = 'document_bon_livraison_ar.html'
     else:
         template_name = 'document_bon_livraison.html'

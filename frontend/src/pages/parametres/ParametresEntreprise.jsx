@@ -54,6 +54,7 @@ import MessagesSection from './MessagesSection'
 import EmailSection from './EmailSection'
 import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection, { formReglagesCi, payloadReglagesCi } from './AvanceSection'
+import ParcoursAutomatiquesSection from './ParcoursAutomatiquesSection'
 import SecuriteCompteSection from './SecuriteCompteSection'
 import TraductionsSection from './TraductionsSection'
 import I18nCoverageSection from './I18nCoverageSection'
@@ -1070,6 +1071,11 @@ export default function ParametresEntreprise() {
           {/* N89 — clés d'API publiques & webhooks signés (section autonome). */}
           {tab === 'api'      && <ApiWebhooksSection />}
           {tab === 'avance'   && <AvanceSection {...ctx} />}
+          {/* AMET17 — drapeaux de parcours servis par `drapeaux_parcours`. */}
+          {tab === 'avance'   && (
+            <ParcoursAutomatiquesSection profile={profile} dispatch={dispatch}
+              lectureSeule={!canModifier} saving={saving} />
+          )}
           {/* N96 — double authentification (2FA, opt-in). Section autonome. */}
           {tab === 'securite_compte' && <SecuriteCompteSection />}
           {/* N94 — traductions d'interface éditables par langue (autonome). */}
