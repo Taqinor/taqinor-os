@@ -12,12 +12,19 @@ les gabarits maison, ``apply_quote_data`` pour le legacy) : rien n'est
 ré-échappé. Sans clause → chaîne vide (document octet-identique).
 """
 
-TITRE = "Clauses particulières"
+from . import i18n_labels
+
+#: APDF9 — le titre vit dans ``i18n_labels`` (clé ``clauses_particulieres``) ;
+#: ``TITRE`` en reste la forme française.
+TITRE = i18n_labels.libelle("clauses_particulieres", "fr")
 
 
 def bloc_clauses_html(clauses, *, couleur_titre="#0f2a44",
-                      couleur_texte="#334155", taille_pt="7.5"):
-    """HTML compact des clauses gelées, ou ``""`` quand il n'y en a pas."""
+                      couleur_texte="#334155", taille_pt="7.5", langue=None):
+    """HTML compact des clauses gelées, ou ``""`` quand il n'y en a pas.
+
+    APDF9 — ``langue`` choisit le titre (``i18n_labels``) ; absente : le
+    français d'hier, octet pour octet."""
     lignes = []
     for c in clauses or []:
         if not isinstance(c, dict):
@@ -35,4 +42,5 @@ def bloc_clauses_html(clauses, *, couleur_titre="#0f2a44",
         f'line-height:1.35;color:{couleur_texte};">'
         f'<div style="font-weight:700;color:{couleur_titre};'
         'text-transform:uppercase;letter-spacing:.8px;">'
-        f'{TITRE}</div>{"".join(lignes)}</div>')
+        f'{i18n_labels.libelle("clauses_particulieres", langue)}</div>'
+        f'{"".join(lignes)}</div>')

@@ -1251,6 +1251,41 @@ LIBELLES = {
                             'ar': 'وقعوا عبر الإنترنت'},
     'res_scannez_signer': {'fr': 'Scannez pour signer', 'en': 'Scan to sign',
                            'ar': 'امسحوا للتوقيع'},
+    # ── APDF9 — UNE PAGE legacy + titre des clauses particulières ──────────
+    # Préfixe ``op_``. Le français est le littéral EXACT du gabarit legacy
+    # (entités comprises) : ``_L`` le rend tel quel, octet pour octet.
+    'op_consultez_proposition': {
+        'fr': 'Consultez votre<br>proposition interactive',
+        'en': 'View your<br>interactive proposal',
+        'ar': 'اطلعوا على<br>عرضكم التفاعلي'},
+    'op_devis': {'fr': 'DEVIS', 'en': 'QUOTE', 'ar': 'عرض سعر'},
+    'op_numero': {'fr': 'N&#176;', 'en': 'No.', 'ar': 'رقم'},
+    'op_puissance_crete': {'fr': 'Puissance cr&#234;te', 'en': 'Peak power',
+                           'ar': 'القدرة القصوى'},
+    'op_production_annuelle': {'fr': 'Production annuelle',
+                               'en': 'Annual production',
+                               'ar': 'الإنتاج السنوي'},
+    'op_economie_annuelle': {'fr': '&#201;conomie annuelle',
+                             'en': 'Annual savings', 'ar': 'التوفير السنوي'},
+    'op_estimation': {'fr': ' (estimation)', 'en': ' (estimate)',
+                      'ar': ' (تقدير)'},
+    'op_prix_par_kwc': {'fr': 'Prix par kWc', 'en': 'Price per kWp',
+                        'ar': 'السعر لكل كيلوواط ذروة'},
+    'op_residuel_vise': {'fr': 'R&#233;siduel vis&#233;',
+                         'en': 'Target residual', 'ar': 'المتبقي المستهدف'},
+    'op_economies_estimees_an': {'fr': '&#201;conomies estim&#233;es / an',
+                                 'en': 'Estimated savings / year',
+                                 'ar': 'التوفير المقدر / سنة'},
+    'op_retour_estime': {'fr': 'Retour estim&#233;',
+                         'en': 'Estimated payback',
+                         'ar': 'مدة الاسترداد المقدرة'},
+    'op_validite_jusqu': {
+        'fr': 'Validit&#233;&#160;: jusqu&#8217;au {date}',
+        'en': 'Valid until {date}', 'ar': 'صالح إلى غاية {date}'},
+    'op_siege': {'fr': 'Si\u00e8ge\u00a0:', 'en': 'Head office:',
+                 'ar': 'المقر:'},
+    'clauses_particulieres': {'fr': 'Clauses particulières',
+                              'en': 'Special terms', 'ar': 'شروط خاصة'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

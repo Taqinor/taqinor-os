@@ -442,7 +442,9 @@ def _apply_entreprise(ent):
     ENT_NOM_MARQUE = _ENT_DEFAULT_NOM_MARQUE
     ENT_CONTACT_LINE = _ENT_DEFAULT_CONTACT_LINE
     ENT_ETUDE_CONTACT = _ENT_DEFAULT_ETUDE_CONTACT
-    ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
+    # APDF9 — repli « aucun profil » : « Siège » dans la langue du document.
+    ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE.replace(
+        "Si\u00e8ge\u00a0:", _L("op_siege"))
     ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE
     ENT_LOGO_B64 = None
     CA = _CA_DEFAULT
@@ -492,7 +494,7 @@ def _apply_entreprise(ent):
     # raison sociale [forme, capital] · RC · ICE · IF · Patente, puis Siège.
     legal_bits = _mentions_legales(ent, gras=None, fiscales=True) or []
     if adresse:
-        legal_bits.append("Si\u00e8ge\u00a0: " + _esc(adresse))
+        legal_bits.append(_L("op_siege") + " " + _esc(adresse))
     ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
 
     # APDF2 (C-APDF-001) — ligne RIB par LA règle unique (identite.py) :
@@ -641,7 +643,8 @@ def _clauses_cgv_html(font_pt="7.5"):
         clauses.append({"nom": "", "corps_texte":
                         "(" + _renvoi_texte_integral() + ")"})
     return bloc_clauses_html(clauses, couleur_titre=CN,
-                             couleur_texte=CG7, taille_pt=font_pt)
+                             couleur_texte=CG7, taille_pt=font_pt,
+                             langue=LANGUE_SORTIE)
 
 
 def _note_client_html(font_pt="8"):
@@ -868,7 +871,7 @@ def _doc_text(key):
     # M7 — {validite} porte la VRAIE échéance du devis, ou rien du tout.
     if isinstance(val, str) and "{validite}" in val:
         val = (val.replace("{validite}",
-                           f"Validit&#233;&#160;: jusqu&#8217;au {VALID_UNTIL}")
+                           _L("op_validite_jusqu").format(date=VALID_UNTIL))
                if VALID_UNTIL else "")
     return val
 
@@ -3919,8 +3922,9 @@ def _onepage_header_html():
     h = f"{ONEPAGE_HEADER_MM}mm"
     ref_html = (
         '<div style="text-align:right;">'
-        f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
-        f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
+        f'<div style="color:white;font-size:11pt;font-weight:700;">'
+        f'{_L("op_devis")}&nbsp;'
+        f'<span style="color:{CA};">{_L("op_numero")}&#160;{REF}</span></div>'
         f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
         f'margin-top:2px;">{DATE_STR}</div>'
         + _marques_correction_html(
@@ -3942,7 +3946,7 @@ def _onepage_header_html():
         '<div style="display:table-cell;vertical-align:middle;'
         'text-align:right;padding-right:3mm;">'
         '<div style="color:rgba(255,255,255,0.80);font-size:6.2pt;'
-        'line-height:1.25;">Consultez votre<br>proposition interactive'
+        f'line-height:1.25;">{_L("op_consultez_proposition")}'
         f'<br><span style="color:{CA};">{court}</span></div></div>'
         '<div style="display:table-cell;vertical-align:middle;">'
         '<div style="background:#FFFFFF;padding:0.7mm;display:inline-block;">'
@@ -4023,20 +4027,20 @@ def _cartes_ci_onepage(chiffres):
     prod = chiffres.get("production_kwh_an")
     if prod:
         cellules.append(
-            ("Production annuelle", f"{fnum(prod)} kWh/an",
+            (_L("op_production_annuelle"), f"{fnum(prod)} kWh/an",
              _ancre_figure("production_annuelle_kwh", fnum(prod))))
     if MASQUER_ECONOMIES:
         return cellules
     eco = chiffres.get("economie_annuelle_mad")
     if eco is not None:
         base = chiffres.get("base_economie")
-        libelle = ("&#201;conomies estim&#233;es / an"
+        libelle = (_L("op_economies_estimees_an")
                    + (f" ({base})" if base else ""))
         cellules.append((libelle, f"{fnum(eco)} MAD/an",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")
     if payback is not None:
-        cellules.append(("Retour estim&#233;", f"{ans(payback)} ans",
+        cellules.append((_L("op_retour_estime"), f"{ans(payback)} ans",
                          _ancre_figure("payback_ans", ans(payback))))
     return cellules
 
@@ -4137,7 +4141,7 @@ def page_onepage(items, tronquees=0):
                                _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
         _sum_cells = [
-            ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc",
+            (_L("op_puissance_crete"), f"{kwc_fr(KWC)} kWc",
              _ancre_figure("puissance_kwc", kwc_fr(KWC))),
         ]
         if CHIFFRES_CI is not None:
@@ -4147,7 +4151,7 @@ def page_onepage(items, tronquees=0):
             _sum_cells += _cartes_ci_onepage(CHIFFRES_CI)
         else:
             _sum_cells.append(
-                ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an",
+                (_L("op_production_annuelle"), f"{fnum(PROD_KWH)} kWh/an",
                  _ancre_figure("production_annuelle_kwh", fnum(PROD_KWH))))
             # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
             # la vignette « Économie annuelle » est OMISE. La valeur disponible
@@ -4164,14 +4168,14 @@ def page_onepage(items, tronquees=0):
                 ONEPAGE_BRANCHE)
             if not MASQUER_ECONOMIES and _eco_branche:
                 _sum_cells.append(
-                    ("&#201;conomie annuelle",
+                    (_L("op_economie_annuelle"),
                      f"{fnum(_eco_branche)} MAD/an"
-                     + (" (estimation)" if SAVINGS_ESTIMATED else ""),
+                     + (_L("op_estimation") if SAVINGS_ESTIMATED else ""),
                      _ancre_figure("economie_annuelle", fnum(_eco_branche),
                                    ONEPAGE_BRANCHE)))
         _pkwc_txt = fnum(round(total / KWC))
         _sum_cells.append(
-            ("Prix par kWc", f"{_pkwc_txt} MAD/kWc",
+            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/kWc",
              _ancre_figure("prix_kwc", _pkwc_txt, _op_opt)))
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
@@ -4185,7 +4189,7 @@ def page_onepage(items, tronquees=0):
                 # QJR163 (b) — ÉCHAPPÉ comme sur la page étude : ce libellé
                 # vient du contrat de dimensionnement, pas d'une constante.
                 _rtxt += f" ({_esc(_fctx_onepage['tranche_apres'])})"
-            _sum_cells.append(("R&#233;siduel vis&#233;", _rtxt))
+            _sum_cells.append((_L("op_residuel_vise"), _rtxt))
     else:
         _sum_cells = []
     summary_html = ""

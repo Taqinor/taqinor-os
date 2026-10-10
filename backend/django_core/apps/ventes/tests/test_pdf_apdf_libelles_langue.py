@@ -136,3 +136,122 @@ class ResidentielLibellesTests(TestCase):
                         "Bon pour accord", "Bonjour"):
             self.assertIn(libelle, texte)
         self.assertEqual(texte, self._texte("fr"))
+
+
+# ── APDF9 — une-page legacy + titre des clauses particulières ──────────────
+
+#: APDF9 — libellés de gabarit français du UNE PAGE (sonde PLANG-3).
+LIBELLES_UNE_PAGE = (
+    "Consultez votre", "DEVIS N°", "PUISSANCE CRÊTE", "PRODUCTION ANNUELLE",
+    "ÉCONOMIE ANNUELLE", "PRIX PAR KWC", "Validité : jusqu", "Siège : ",
+    "Clauses particulières",
+)
+
+
+def texte_normalise(texte):
+    """Espaces insécables ramenés à l'espace (le gabarit en pose avant « : »)."""
+    return texte.replace("\xa0", " ").replace(" ", " ")
+
+
+def html_une_page(langue, **surcharges):
+    """HTML EXACT du une-page legacy (données d'échantillon, sans base)."""
+    from apps.ventes.quote_engine import generate_devis_premium as G
+    from apps.ventes.quote_engine import i18n_labels
+    from apps.ventes.tests import _moteur_fixtures as mf
+    surcharges = dict(surcharges, pdf_mode="onepage")
+    if langue != "fr":
+        surcharges["langue_sortie"] = langue
+        surcharges["libelles_document"] = i18n_labels.libelles(langue)
+    return G.render_html_for(mf.donnees_legacy("deux", **surcharges))
+
+
+class UnePageLibellesHtmlTests(SimpleTestCase):
+    """APDF9 — HTML du une-page (profil, adresse, clause gelée)."""
+
+    SURCHARGES = {
+        "entreprise": {"nom": "SOLAIRE EXEMPLE SARL", "adresse": "1 rue A",
+                       "ice": "001111111000011"},
+        "clauses_cgv": [{"nom": "Clause A", "corps_texte": "Texte A."}],
+    }
+
+    def test_en_et_ar_aucun_libelle_fr(self):
+        for langue in ("en", "ar"):
+            with self.subTest(langue=langue):
+                texte = texte_normalise(texte_html(
+                    html_une_page(langue, **self.SURCHARGES)))
+                self.assertEqual(trouves(texte, LIBELLES_UNE_PAGE), [])
+                # Les données saisies restent telles quelles.
+                self.assertIn("Clause A", texte)
+                self.assertIn("1 rue A", texte)
+
+    def test_fr_inchange(self):
+        texte = texte_normalise(texte_html(
+            html_une_page("fr", **self.SURCHARGES)))
+        for libelle in ("Consultez votre", "DEVIS N°", "Siège : ",
+                        "Clauses particulières"):
+            self.assertIn(libelle.lower(), texte.lower())
+
+    def test_titre_clauses_par_langue(self):
+        from apps.ventes.quote_engine import clauses_cgv
+        clause = [{"nom": "A", "corps_texte": "B"}]
+        self.assertIn(clauses_cgv.TITRE, clauses_cgv.bloc_clauses_html(clause))
+        self.assertEqual(clauses_cgv.TITRE, "Clauses particulières")
+        self.assertIn("Special terms",
+                      clauses_cgv.bloc_clauses_html(clause, langue="en"))
+
+
+@tag("pdf")
+class UnePageLibellesTests(TestCase):
+    """APDF9 — une-page RÉEL (résidentiel et agricole) en en / ar / fr."""
+
+    def setUp(self):
+        from apps.ventes.tests.test_pdf_apdf_garde_identite import MARCHES
+        from apps.ventes.tests.test_pdf_apdf_identite import (
+            devis_residentiel, profil)
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+        self.company = make_company(slug="apdf9-co", nom="APDF9")
+        profil(self.company, nom="SOLAIRE EXEMPLE SARL", adresse="1 rue A",
+               ice="001111111000011")
+        lignes, etude, mode = MARCHES["agricole"]
+        agricole = make_devis(self.company, make_user(self.company),
+                              make_client(self.company), lignes,
+                              reference="DEV-APDF9-AGRI",
+                              etude_params=dict(etude))
+        agricole.mode_installation = mode
+        agricole.save(update_fields=["mode_installation"])
+        self.devis = [devis_residentiel(self.company, "DEV-APDF9-RES"),
+                      agricole]
+
+    def _rendu(self, devis, langue):
+        import fitz
+        from apps.ventes.tests.test_pdf_apdf_identite import rendre_pdf
+        pdf = rendre_pdf(devis, {"pdf_mode": "onepage",
+                                 "langue_sortie": langue})
+        doc = fitz.open(stream=pdf, filetype="pdf")
+        try:
+            return (texte_normalise("\n".join(p.get_text() for p in doc)),
+                    len(doc))
+        finally:
+            doc.close()
+
+    def test_onepage_en(self):
+        for devis in self.devis:
+            with self.subTest(devis=devis.reference):
+                texte, _pages = self._rendu(devis, "en")
+                self.assertEqual(trouves(texte, LIBELLES_UNE_PAGE), [])
+
+    def test_onepage_ar(self):
+        for devis in self.devis:
+            with self.subTest(devis=devis.reference):
+                texte, _pages = self._rendu(devis, "ar")
+                self.assertEqual(trouves(texte, LIBELLES_UNE_PAGE), [])
+
+    def test_onepage_fr_inchange_une_page(self):
+        for devis in self.devis:
+            with self.subTest(devis=devis.reference):
+                texte, pages = self._rendu(devis, "fr")
+                self.assertEqual(pages, 1)
+                self.assertIn("DEVIS", texte)
+                for langue in ("en", "ar"):
+                    self.assertEqual(self._rendu(devis, langue)[1], 1)
