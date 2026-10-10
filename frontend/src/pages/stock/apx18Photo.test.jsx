@@ -24,6 +24,7 @@ vi.mock('../../api/stockApi', () => ({
 
 import { CatalogueTable } from './CatalogueTable.jsx'
 import { ProduitDetail } from './ProduitDetail.jsx'
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
 const store = configureStore({
   reducer: { auth: (s = { role: 'Directeur', role_nom: 'Directeur', permissions: [] }) => s },
@@ -65,14 +66,7 @@ function renderCatalogue(produits) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  installJsdomPolyfills()
 })
 
 describe('APX18 — vignette du catalogue', () => {

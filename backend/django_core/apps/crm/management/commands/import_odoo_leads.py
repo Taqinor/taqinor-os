@@ -175,6 +175,11 @@ def _read_export(path):
     return rows
 
 
+def _perdu_dans_odoo(row):
+    """AACQ34 — la ligne Odoo est-elle perdue/archivée ? (lecture seule)."""
+    return row.get('active') is False or bool(row.get('lost_reason_id'))
+
+
 def _row_to_fields(row):
     """Projette une ligne d'export brute vers les champs du modèle Lead.
 
@@ -444,6 +449,7 @@ class Command(BaseCommand):
 
         rows = _read_export(path)
         created = updated = unchanged = skipped = 0
+        sans_cadence = []
         # CRX7 — lignes dont le lead rapproché est dans la CORBEILLE : ignorées
         # (ni écriture, ni restauration silencieuse), comptées au rapport.
         corbeille = 0
@@ -581,14 +587,28 @@ class Command(BaseCommand):
                     # voit enfin qu'un dossier n'est pas suivi. La fonction
                     # avale ses propres exceptions : un import n'échoue
                     # jamais sur une cadence.
-                    services.demarrer_cadence_contact(
-                        lead_cree, origine='import_odoo_leads')
+                    # AACQ34 [TRANCHÉ 10/10/2026] — GARDE À LA CRÉATION
+                    # SEULE : un lead NEUF déjà perdu/archivé dans Odoo
+                    # (active=False ou motif de perte) ne démarre aucune
+                    # cadence. Aucun lead ERP existant n'est touché.
+                    if _perdu_dans_odoo(row):
+                        sans_cadence.append(
+                            (lead_cree.pk, row.get('active'),
+                             row.get('lost_reason_id')))
+                    else:
+                        services.demarrer_cadence_contact(
+                            lead_cree, origine='import_odoo_leads')
                 created += 1
 
             if dry_run:
                 transaction.set_rollback(True)
 
         prefix = "[dry-run] " if dry_run else ""
+        for pk, actif, motif in sans_cadence:
+            self.stdout.write(self.style.WARNING(
+                f"{prefix}Lead neuf #{pk} déjà perdu/archivé dans Odoo "
+                f"(active={actif}, motif={motif or '-'}) : cadence non "
+                "démarrée."))
         for detail in corbeille_details:
             self.stdout.write(self.style.WARNING(
                 f"{prefix}Corbeille — ignoré (jamais restauré) : {detail}"))

@@ -16,6 +16,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 
 // ZPUR3 — Modèles de bon de commande fournisseur (« purchase templates ») :
 // un nom + fournisseur optionnel + lignes produit/quantité par défaut.
@@ -32,6 +33,7 @@ function frErr(err, fallback = 'Une erreur est survenue. Réessayez.') {
 
 // ── Modal de création / édition d'un modèle ─────────────────────────────────
 export function ModeleDetail({ modele, fournisseurs, produits, onClose, onSaved }) {
+  const peutCommander = usePermissionAchats('achats_commander')
   const isNew = !modele?.id
   const [nom, setNom] = useState(modele?.nom ?? '')
   const [fournisseur, setFournisseur] = useState(modele?.fournisseur ?? '')
@@ -156,9 +158,11 @@ export function ModeleDetail({ modele, fournisseurs, produits, onClose, onSaved 
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
-          <Button type="button" loading={busy} onClick={save}>
-            {busy ? '…' : 'Enregistrer'}
-          </Button>
+          {peutCommander && (
+            <Button type="button" loading={busy} onClick={save}>
+              {busy ? '…' : 'Enregistrer'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -224,6 +228,9 @@ function GenererModal({ modele, fournisseurs, onClose, onGenere }) {
 export default function ModelesBcf() {
   const [confirmer, dialogueConfirmation] = useConfirmation()
   const navigate = useNavigate()
+  // ASTK242 — le serveur exige `achats_commander` pour créer / modifier /
+  // supprimer / générer : jamais un geste refusé (403) à l'écran.
+  const peutCommander = usePermissionAchats('achats_commander')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [fournisseurs, setFournisseurs] = useState([])
@@ -271,17 +278,21 @@ export default function ModelesBcf() {
       accessor: () => '',
       cell: (_v, m) => (
         <div className="flex items-center justify-end gap-1.5">
-          <Button type="button" variant="outline" size="sm"
-                  onClick={(e) => { e.stopPropagation(); setGenererFor(m) }}>
-            <PlayCircle /> Générer un BCF
-          </Button>
-          <IconButton label="Supprimer le modèle" variant="ghost" size="icon" className="size-8"
-                      onClick={(e) => { e.stopPropagation(); supprimer(m) }}>
-            <Trash2 className="text-destructive" />
-          </IconButton>
+          {peutCommander && (
+            <>
+              <Button type="button" variant="outline" size="sm"
+                      onClick={(e) => { e.stopPropagation(); setGenererFor(m) }}>
+                <PlayCircle /> Générer un BCF
+              </Button>
+              <IconButton label="Supprimer le modèle" variant="ghost" size="icon" className="size-8"
+                          onClick={(e) => { e.stopPropagation(); supprimer(m) }}>
+                <Trash2 className="text-destructive" />
+              </IconButton>
+            </>
+          )}
         </div>
       ) },
-  ], [supprimer])
+  ], [supprimer, peutCommander])
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
@@ -297,9 +308,11 @@ export default function ModelesBcf() {
           <Button variant="outline" onClick={() => navigate('/stock/bons-commande-fournisseur')}>
             Bons de commande
           </Button>
-          <Button onClick={() => setSelected({})}>
-            <Plus /> Nouveau modèle
-          </Button>
+          {peutCommander && (
+            <Button onClick={() => setSelected({})}>
+              <Plus /> Nouveau modèle
+            </Button>
+          )}
           </>
         )}
       />
@@ -320,7 +333,9 @@ export default function ModelesBcf() {
         onRowClick={openModele}
         emptyTitle="Aucun modèle de bon de commande"
         emptyDescription="Créez-en un pour réutiliser rapidement une liste d'articles récurrente."
-        emptyAction={<Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau modèle</Button>}
+        emptyAction={peutCommander
+          ? <Button size="sm" onClick={() => setSelected({})}><Plus className="size-4" /> Nouveau modèle</Button>
+          : undefined}
         aria-label="Modèles de bon de commande fournisseur"
       />
 

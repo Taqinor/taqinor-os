@@ -21,6 +21,7 @@ vi.mock('../../api/stockApi', () => ({
 
 import stockApi from '../../api/stockApi'
 import NomenclaturesCodeBarresSection from './NomenclaturesCodeBarresSection.jsx'
+import { installJsdomPolyfills } from '../stock/__tests__/jsdomPolyfills.js'
 
 function wrap(node) {
   return render(<ThemeProvider>{node}</ThemeProvider>)
@@ -28,14 +29,7 @@ function wrap(node) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  installJsdomPolyfills()
 })
 
 describe('ZSTK12 — liste des nomenclatures', () => {
