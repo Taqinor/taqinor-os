@@ -111,3 +111,64 @@ class PatchStatutIgnoreSansMouvementStock(TestCase):
         self.assertEqual(self.bc.statut, BonCommande.Statut.LIVRE)
         self.assertIsNotNone(self.bc.date_livraison_reelle)
         self.assertEqual(MouvementStock.objects.count(), 1)
+
+
+class ConvertirEnBcTests(TestCase):
+    """AMET6 (C-AMET-008) — « Convertir en BC » crée le BC par LA porte
+    unique `facturation_ops.creer_bon_commande` (AMET5) : même contrôle
+    « BC existant », même message, même événement, émis une seule fois."""
+
+    def setUp(self):
+        self.company = _company()
+        self.user = User.objects.create_user(
+            username='amet6_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='AMET6',
+            telephone='+212600000606')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-AMET6-0001',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'))
+
+    def test_convertir_en_bc_passe_par_creer_bon_commande(self):
+        from unittest import mock
+        from apps.ventes.domain import facturation_ops
+        from core.events import bon_commande_cree
+        recus = []
+
+        def _recepteur(sender, instance=None, **kwargs):
+            recus.append(instance.pk)
+        bon_commande_cree.connect(_recepteur, weak=False)
+        self.addCleanup(bon_commande_cree.disconnect, _recepteur)
+        url = f'/api/django/ventes/devis/{self.devis.id}/convertir-bc/'
+        with mock.patch.object(
+                facturation_ops, 'creer_bon_commande',
+                wraps=facturation_ops.creer_bon_commande) as porte:
+            r = self.api.post(url)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(porte.call_count, 1)
+        bc = BonCommande.objects.get(devis=self.devis)
+        self.assertEqual(r.data['reference'], bc.reference)
+        self.assertEqual(bc.company_id, self.company.id)
+        self.assertEqual(bc.statut, BonCommande.Statut.EN_ATTENTE)
+        self.assertEqual(recus, [bc.pk])  # événement émis une seule fois
+
+        # Doublon : même message par les deux portes, aucun second BC
+        # ni second événement.
+        message = facturation_ops.MESSAGE_BC_EXISTANT
+        r2 = self.api.post(url)
+        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.data['detail'], message)
+        r3 = self.api.post(
+            '/api/django/ventes/bons-commande/',
+            {'client': self.client_obj.id, 'devis': self.devis.id},
+            format='json')
+        self.assertEqual(r3.status_code, 400, r3.data)
+        self.assertIn(message, str(r3.data))
+        self.assertEqual(BonCommande.objects.filter(devis=self.devis).count(),
+                         1)
+        self.assertEqual(recus, [bc.pk])

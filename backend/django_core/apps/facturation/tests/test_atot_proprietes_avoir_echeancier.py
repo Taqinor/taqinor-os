@@ -294,3 +294,59 @@ class ProprietesAvoirEcheancierTests(_Base):
         second = figer_echeancier(relu)
         self.assertTrue(second['deja_fige'])
         self.assertEqual(Devis.objects.get(pk=devis.pk).echeancier, stocke)
+
+    def test_commande_figer_dry_run_puis_appliquer(self):
+        """AMET3 (C-AMET-003, D-ECH-FIGE) — `figer_echeanciers_signes` :
+        le dry-run liste les devis acceptés sans échéancier propre SANS rien
+        écrire ; `--appliquer` les fige (conditions société du jour) ; rejoué,
+        plus rien à figer ; les tranches restent 30/60/10 quand la société
+        change ensuite. Un brouillon n'est jamais figé."""
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.echeancier import tranches_normalisees
+        self._contexte()
+        self._reglage_societe(30, 60, 10)
+        ligne = [{'quantite': Decimal('1'),
+                  'prix_unitaire': Decimal('10000'), 'remise': ZERO,
+                  'taux_tva': Decimal('20')}]
+        acceptes = [self._devis(ligne) for _ in range(3)]
+        brouillon = self._devis(ligne)
+        Devis.objects.filter(pk=brouillon.pk).update(
+            statut=Devis.Statut.BROUILLON)
+        pks = [d.pk for d in acceptes]
+
+        def _sans_propre():
+            return [d.pk for d in Devis.objects.filter(pk__in=pks)
+                    if not d.echeancier]
+
+        sortie = StringIO()
+        call_command('figer_echeanciers_signes', '--dry-run', stdout=sortie)
+        texte = sortie.getvalue()
+        for devis in acceptes:
+            self.assertIn(devis.reference, texte)
+        self.assertNotIn(brouillon.reference, texte)
+        self.assertIn('acompte 30', texte)
+        self.assertEqual(len(_sans_propre()), 3)  # aucune écriture
+
+        call_command('figer_echeanciers_signes', '--appliquer',
+                     stdout=StringIO())
+        self.assertEqual(_sans_propre(), [])
+        self.assertFalse(Devis.objects.get(pk=brouillon.pk).echeancier)
+        stockes = {d.pk: d.echeancier
+                   for d in Devis.objects.filter(pk__in=pks)}
+
+        sortie = StringIO()
+        call_command('figer_echeanciers_signes', '--dry-run', stdout=sortie)
+        for devis in acceptes:
+            self.assertNotIn(devis.reference, sortie.getvalue())
+        call_command('figer_echeanciers_signes', '--appliquer',
+                     stdout=StringIO())
+        self.assertEqual({d.pk: d.echeancier
+                          for d in Devis.objects.filter(pk__in=pks)}, stockes)
+
+        self._reglage_societe(30, 40, 30)
+        for devis in Devis.objects.filter(pk__in=pks):
+            self.assertEqual(
+                [t['valeur'] for t in tranches_normalisees(devis)],
+                [30, 60, 10])
