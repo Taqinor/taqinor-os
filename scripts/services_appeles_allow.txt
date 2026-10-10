@@ -14,8 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/site.py::altitude_pvgis
-backend/django_core/apps/calepinage/services/site.py::fournisseur_actif
 backend/django_core/apps/calepinage/services/versions.py::borne_de_purge
 backend/django_core/apps/calepinage/services/zones_reglementaires.py::appliquer_modele
 backend/django_core/apps/crm/cadence_config.py::etape_configuree

@@ -39,7 +39,7 @@ from apps.calepinage.services.parametres import (
 from apps.calepinage.services.site import (
     CLES,
     FOURNISSEURS,
-    fournisseur_actif,
+    _fournisseur_actif,
     normaliser_section_imagerie,
     section_vide,
 )
@@ -107,18 +107,18 @@ class EquivalenceTest(SimpleTestCase):
         self.assertEqual(normaliser_section_imagerie(None), {})
 
     def test_aucun_fournisseur_actif_sans_reglage(self):
-        self.assertIsNone(fournisseur_actif({}))
-        self.assertIsNone(fournisseur_actif(section_vide()))
+        self.assertIsNone(_fournisseur_actif({}))
+        self.assertIsNone(_fournisseur_actif(section_vide()))
 
     def test_le_premier_autorise_fait_l_actif(self):
         self.assertEqual(
-            fournisseur_actif({'fournisseurs_autorises': ['mapbox',
-                                                          'maptiler']}),
+            _fournisseur_actif({'fournisseurs_autorises': ['mapbox',
+                                                           'maptiler']}),
             'mapbox')
 
     def test_le_choix_explicite_prime(self):
         self.assertEqual(
-            fournisseur_actif({'fournisseur_imagerie': 'maptiler',
+            _fournisseur_actif({'fournisseur_imagerie': 'maptiler',
                                'fournisseurs_autorises': ['mapbox']}),
             'maptiler')
 
@@ -243,7 +243,7 @@ class EcritureEtLectureTest(TestCase):
         self.assertEqual(parametres_de_societe(self.company)['imagerie'], {})
         resolu = imagerie_site(self.company)
         self.assertEqual(resolu, section_vide())
-        self.assertIsNone(fournisseur_actif(resolu))
+        self.assertIsNone(_fournisseur_actif(resolu))
 
     def test_sans_societe_tout_est_inconnu(self):
         self.assertEqual(imagerie_site(None), section_vide())
