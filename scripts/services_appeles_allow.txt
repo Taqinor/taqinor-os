@@ -14,12 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/consommation.py::appliquer_ramadan
-backend/django_core/apps/calepinage/services/consommation.py::courbe_appareils
-backend/django_core/apps/calepinage/services/consommation.py::interpoler_factures
-backend/django_core/apps/calepinage/services/consommation.py::profil_depuis_lead
-backend/django_core/apps/calepinage/services/consommation.py::profil_mensuel
-backend/django_core/apps/calepinage/services/consommation.py::publier_kwh
 backend/django_core/apps/calepinage/services/degagements.py::types_admis
 backend/django_core/apps/calepinage/services/diagramme_pertes.py::echelle_px_par_point
 backend/django_core/apps/calepinage/services/diagramme_pertes.py::px_de_mm
