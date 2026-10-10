@@ -21,8 +21,8 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    REPONSES_TOUCHE, TAG_ATTENTE_ACCORD, calculer_echeances_cadence)
+from apps.crm.services import TAG_ATTENTE_ACCORD, calculer_echeances_cadence
+from apps.crm.cadence_reponses import REPONSES_TOUCHE
 from apps.crm.views import _DEFAULT_TAGS
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape

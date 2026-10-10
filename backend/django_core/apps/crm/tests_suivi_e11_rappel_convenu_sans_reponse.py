@@ -22,6 +22,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_DERNIER_APPEL, CLE_DEVIS, CLE_RAPPEL_CONVENU, q_etape)
@@ -53,8 +54,8 @@ class EscalierTests(SimpleTestCase):
         self.assertEqual(services.prochain_palier_sans_reponse(
             CLE_RAPPEL_CONVENU, 'non_joint', _tous_actifs), CLE_DERNIER_APPEL)
         self.assertEqual(
-            services._palier_sans_reponse(services.FILET_RAPPEL_LIBELLE,
-                                          'non_joint'),
+            cadence_reponses._palier_sans_reponse(services.FILET_RAPPEL_LIBELLE,
+                                                  'non_joint'),
             (services.FILET_DERNIER_APPEL_LIBELLE, RelanceEtape.Canal.APPEL,
              services.FILET_JOINT_DELAI_JOURS))
 

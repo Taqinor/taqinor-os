@@ -32,6 +32,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_APPEL_APRES_REPONSE, CLE_CONFIRMATION, CLE_DEVIS, CLE_MESSAGE_CRENEAU,
@@ -50,7 +51,7 @@ FAIT = RelanceEtape.Statut.FAIT
 APPEL = RelanceEtape.Canal.APPEL
 WHATSAPP = RelanceEtape.Canal.WHATSAPP
 EMAIL = RelanceEtape.Canal.EMAIL
-JOINT_TELEPHONE = services.REPONSE_JOINT_TELEPHONE
+JOINT_TELEPHONE = cadence_reponses.REPONSE_JOINT_TELEPHONE
 
 _seq = itertools.count(1)
 
@@ -139,11 +140,11 @@ class RestrictionsTests(SimpleTestCase):
         for cadence in ('contact', 'deuxieme_affaire', 'apres_devis',
                         'reveil'):
             with self.subTest(cadence=cadence):
-                self.assertIsNone(services.refus_reponse_touche(
+                self.assertIsNone(cadence_reponses.refus_reponse_touche(
                     _touche(cadence, 1, WHATSAPP), JOINT_TELEPHONE))
 
     def test_refusee_sur_un_appel(self):
-        refus = services.refus_reponse_touche(
+        refus = cadence_reponses.refus_reponse_touche(
             _touche('contact', 2, APPEL), JOINT_TELEPHONE)
         self.assertIn('« Client joint au téléphone »', refus)
         self.assertIn('WhatsApp', refus)
@@ -151,13 +152,13 @@ class RestrictionsTests(SimpleTestCase):
     def test_refusee_sur_un_geste_de_visite(self):
         confirmation = _touche('apres_devis', services.VISITE_ORDRE_CONFIRMATION,
                                WHATSAPP, cle=CLE_CONFIRMATION, devis=True)
-        refus = services.refus_reponse_touche(confirmation, JOINT_TELEPHONE)
+        refus = cadence_reponses.refus_reponse_touche(confirmation, JOINT_TELEPHONE)
         self.assertIn('« Client joint au téléphone »', refus)
         self.assertIn('protocole', refus)
 
     def test_refusee_sur_une_etape_de_filet(self):
         creneau = _touche('generique', 1, WHATSAPP, cle=CLE_MESSAGE_CRENEAU)
-        refus = services.refus_reponse_touche(creneau, JOINT_TELEPHONE)
+        refus = cadence_reponses.refus_reponse_touche(creneau, JOINT_TELEPHONE)
         self.assertIn('« Client joint au téléphone »', refus)
 
 

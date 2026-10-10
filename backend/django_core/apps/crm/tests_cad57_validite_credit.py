@@ -323,7 +323,7 @@ class AttenteApresEnvoiTests(_ProBase):
 
     def _repondre_attente(self):
         from testkit.time import frozen
-        from apps.crm.services import repondre_attente_accord
+        from apps.crm.cadence_reponses import repondre_attente_accord
         j3 = ENVOI + datetime.timedelta(days=3)
         with frozen(j3):
             etape = (self.lead.relance_etapes

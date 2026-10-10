@@ -24,7 +24,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reponses
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -73,7 +73,7 @@ class VeilleSansReveilTests(TestCase):
     def _plus_tard(self):
         return self.api.post(
             f'/api/django/crm/relance-etapes/{self.touche.pk}/fait/',
-            {'reponse': services.REPONSE_PLUS_TARD,
+            {'reponse': cadence_reponses.REPONSE_PLUS_TARD,
              'rappel_le': DATE_LOINTAINE.isoformat()}, format='json')
 
     def test_sans_reveil_actif_la_touche_est_deplacee_rien_n_est_arrete(self):
@@ -95,7 +95,7 @@ class VeilleSansReveilTests(TestCase):
     def test_le_service_rend_la_meme_touche(self):
         self._sans_reveil()
 
-        reprise = services.mettre_en_veille(
+        reprise = cadence_reponses.mettre_en_veille(
             self.lead, self.acteur, DATE_LOINTAINE, etape=self.touche)
 
         self.assertEqual(reprise.pk, self.touche.pk)

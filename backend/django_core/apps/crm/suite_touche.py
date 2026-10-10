@@ -760,11 +760,17 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
 
 def _codes_reponse_client(cle, *, nature, derniere):
     """Les RÉPONSES DU CLIENT (``REPONSES_TOUCHE``, CAD-A)."""
-    from .services import (
-        REPONSE_ATTENTE_ACCORD, REPONSE_DECISION_FAMILLE,
-        REPONSE_DECISION_PROPRIETAIRE, REPONSE_DEVIS_MODIFIE,
-        REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
-        REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE)
+    from .cadence_reponses import (
+        REPONSE_ATTENTE_ACCORD,
+        REPONSE_DECISION_FAMILLE,
+        REPONSE_DECISION_PROPRIETAIRE,
+        REPONSE_DEVIS_MODIFIE,
+        REPONSE_NE_PLUS_CONTACTER,
+        REPONSE_PERDU,
+        REPONSE_PLUS_TARD,
+        REPONSE_QUESTION_PRIX,
+        REPONSE_VISITE_ABANDONNEE,
+    )
 
     if cle == REPONSE_NE_PLUS_CONTACTER:
         return [NE_PLUS_CONTACTER]
@@ -811,7 +817,7 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     from . import stages
     from .cadence_config import cle_de
     from .models import RelanceEtape
-    from .services import REPONSE_JOINT_TELEPHONE, REPONSES_TOUCHE
+    from .cadence_reponses import REPONSE_JOINT_TELEPHONE, REPONSES_TOUCHE
 
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return {}

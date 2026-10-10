@@ -23,9 +23,12 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import (
-    BASE_LEGALE_OPPOSITION, CONSENT_PURPOSE_PROSPECTION,
-    CONSENT_SOURCE_OPPOSITION_FICHE, CONSENT_SOURCE_OPPOSITION_TOUCHE)
+from apps.crm.services import CONSENT_PURPOSE_PROSPECTION
+from apps.crm.cadence_reponses import (
+    BASE_LEGALE_OPPOSITION,
+    CONSENT_SOURCE_OPPOSITION_FICHE,
+    CONSENT_SOURCE_OPPOSITION_TOUCHE,
+)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

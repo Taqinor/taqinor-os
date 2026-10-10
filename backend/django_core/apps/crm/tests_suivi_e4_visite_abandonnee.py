@@ -29,6 +29,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_DEVIS_MODIFIE, CLE_PLANIFIER,
     q_etape)
@@ -88,7 +89,7 @@ class _Base(TestCase):
         return self.lead.relance_etapes.get(q_etape(cle), statut=A_FAIRE)
 
     def _abandonner(self, etape, **corps):
-        corps['reponse'] = services.REPONSE_VISITE_ABANDONNEE
+        corps['reponse'] = cadence_reponses.REPONSE_VISITE_ABANDONNEE
         return self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/', corps,
             format='json')
@@ -127,7 +128,7 @@ class AnnuleLeRendezVousTests(_Base):
         self.assertIsNone(self.lead.visite_prevue_le)
         debrief.refresh_from_db()
         self.assertEqual(debrief.statut, ANNULEE)
-        self.assertEqual(debrief.note, services.NOTE_VISITE_ABANDONNEE)
+        self.assertEqual(debrief.note, cadence_reponses.NOTE_VISITE_ABANDONNEE)
         self.assertEqual(self.lead.activites.filter(
             body__startswith='Visite abandonnée à la demande du client',
             user__isnull=True).count(), 1)

@@ -711,6 +711,7 @@ class GardeCreationPerduOdooTests(OdooSyncBase):
 
     def test_lead_existant_perdu_dans_odoo_inchange(self):
         from apps.crm import services
+        from apps.crm import cadence_reponses
         existant = Lead.objects.create(
             company=self.company, nom='Existant', external_system='odoo',
             external_id='80', stage=stages.NEW)
@@ -718,7 +719,7 @@ class GardeCreationPerduOdooTests(OdooSyncBase):
         nb_activites = LeadActivity.objects.filter(lead=existant).count()
         perdu = _lead_odoo(80, 'Existant', active=False,
                            lost_reason_id=[4, 'Trop cher'])
-        with patch.object(services, 'marquer_lead_perdu') as perdre, \
+        with patch.object(cadence_reponses, 'marquer_lead_perdu') as perdre, \
                 patch.object(services, 'arreter_cadence') as arreter:
             self._passer([perdu])
             self._passer([perdu])

@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import cadence_config, horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
@@ -160,7 +161,7 @@ class RenommerEtDecalerLeDevisTests(_Base):
 
     def test_la_piece_recue_pose_aussi_l_etape_renommee(self):
         touche = self._touche()
-        _, etape_devis = services.enregistrer_piece_recue(
+        _, etape_devis = cadence_reponses.enregistrer_piece_recue(
             touche, self.acteur, type_piece='facture')
         self.assertEqual((etape_devis.libelle, etape_devis.cle),
                          ('Faire le devis', 'devis'))

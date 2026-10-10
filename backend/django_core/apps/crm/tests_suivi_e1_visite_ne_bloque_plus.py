@@ -34,6 +34,7 @@ from core.events import devis_sent
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS_MODIFIE, CLE_PLANIFIER, q_etape)
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -157,7 +158,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
                              cadence_depart=GEL - datetime.timedelta(days=7))
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{suivi.pk}/fait/',
-            {'reponse': services.REPONSE_DEVIS_MODIFIE}, format='json')
+            {'reponse': cadence_reponses.REPONSE_DEVIS_MODIFIE}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         modifie = self._ouvertes(q_etape(CLE_DEVIS_MODIFIE)).get()
 

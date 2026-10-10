@@ -28,6 +28,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DECIDER_SUITE, q_etape)
 from apps.crm.models import Lead, MotifPerte, RelanceEtape
@@ -135,7 +136,7 @@ class ArretParUneToucheTests(_Base):
             libelle='Décider la suite — perdu (motif) ou relance ultérieure',
             due_at=GEL, due_date=GEL.date())
 
-        resp = self._fait(decider, {'reponse': services.REPONSE_PERDU,
+        resp = self._fait(decider, {'reponse': cadence_reponses.REPONSE_PERDU,
                                     'motif_perte': MOTIF})
 
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -148,7 +149,7 @@ class ArretParUneToucheTests(_Base):
             q_etape(CLE_CONFIRMATION), statut=A_FAIRE)
 
         resp = self._fait(confirmation,
-                          {'reponse': services.REPONSE_NE_PLUS_CONTACTER})
+                          {'reponse': cadence_reponses.REPONSE_NE_PLUS_CONTACTER})
 
         self.assertEqual(resp.status_code, 200, resp.data)
         self._assert_annule(visite, services.CAUSE_RDV_NE_PLUS_CONTACTER)

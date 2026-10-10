@@ -18,6 +18,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
@@ -31,23 +32,23 @@ CONTRAT = json.loads(
 class LocatairePurTests(SimpleTestCase):
 
     def test_la_proposition_a_la_forme_du_contrat(self):
-        oui = services.proposition_locataire(
+        oui = cadence_reponses.proposition_locataire(
             Lead(nom='x', ownership=Lead.Ownership.LOCATAIRE))
-        non = services.proposition_locataire(
+        non = cadence_reponses.proposition_locataire(
             Lead(nom='x', ownership=Lead.Ownership.PROPRIETAIRE))
         self.assertEqual(oui, CONTRAT['exemple'])
         self.assertEqual(non, CONTRAT['exemple_pas_locataire'])
 
     def test_aucune_valeur_d_enumeration_neuve(self):
-        self.assertIn(services.MOTIF_PERTE_LOCATAIRE, ('Locataire',))
+        self.assertIn(cadence_reponses.MOTIF_PERTE_LOCATAIRE, ('Locataire',))
         self.assertIn(Lead.Canal.REFERENCE, Lead.Canal.values)
         self.assertIn(Lead.Ownership.LOCATAIRE, Lead.Ownership.values)
 
     def test_un_proprietaire_sans_numero_est_refuse_en_nommant_le_champ(self):
         self.assertEqual(
-            services.refus_proprietaire({'nom': 'Tazi', 'telephone': ''}),
+            cadence_reponses.refus_proprietaire({'nom': 'Tazi', 'telephone': ''}),
             CONTRAT['exemple_erreur_proprietaire']['proprietaire'])
-        self.assertIsNone(services.refus_proprietaire(
+        self.assertIsNone(cadence_reponses.refus_proprietaire(
             CONTRAT['corps_proprietaire']['proprietaire']))
 
 

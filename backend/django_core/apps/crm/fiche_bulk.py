@@ -17,10 +17,10 @@ from .services import (
     assurer_prochaine_etape_apres_succes,
     desaccepter_devis_du_lead,
     raison_refus_suppression,
-    reattribuer_lead,
     reprendre_cadence_apres_reouverture,
     sync_relance_activity,
 )
+from .cadence_reponses import reattribuer_lead
 from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
 
 

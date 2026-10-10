@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS, q_etape
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.crm.views import MESSAGE_REFUS_SUR_DECIDER_SUITE
@@ -104,7 +105,7 @@ class PerduTests(_Base):
                              due_date=(GEL + datetime.timedelta(days=30))
                              .date())
 
-        resp = self._fait(decider, reponse=services.REPONSE_PERDU,
+        resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='prix TROP élevé', note='Trop cher')
 
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -128,14 +129,14 @@ class PerduTests(_Base):
 
     def test_motif_absent_refuse_en_nommant_le_champ(self):
         decider = self._decider()
-        resp = self._fait(decider, reponse=services.REPONSE_PERDU)
+        resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU)
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('Motif de perte', resp.data['erreurs']['motif_perte'])
         self._rien_n_a_bouge(decider)
 
     def test_motif_hors_liste_refuse(self):
         decider = self._decider()
-        resp = self._fait(decider, reponse=services.REPONSE_PERDU,
+        resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='Inventé')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('« Inventé »', resp.data['erreurs']['motif_perte'])
@@ -143,7 +144,7 @@ class PerduTests(_Base):
 
     def test_motif_archive_refuse(self):
         decider = self._decider()
-        resp = self._fait(decider, reponse=services.REPONSE_PERDU,
+        resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='Ancien motif')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('motif_perte', resp.data['erreurs'])
@@ -155,7 +156,7 @@ class PerduTests(_Base):
                                        slug=f'suivi-e2-autre-{n}')
         MotifPerte.objects.create(company=autre, nom='Motif étranger')
         decider = self._decider()
-        resp = self._fait(decider, reponse=services.REPONSE_PERDU,
+        resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='Motif étranger')
         self.assertEqual(resp.status_code, 400, resp.data)
         self._rien_n_a_bouge(decider)
@@ -163,7 +164,7 @@ class PerduTests(_Base):
     def test_perdu_hors_de_decider_la_suite_est_refuse(self):
         devis = self._touche(cle=CLE_DEVIS,
                              libelle=services.FILET_JOINT_LIBELLE)
-        resp = self._fait(devis, reponse=services.REPONSE_PERDU,
+        resp = self._fait(devis, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte=MOTIF)
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('« Perdu — clore le dossier »',
@@ -203,12 +204,12 @@ class AliasJunkTests(_Base):
 
     def test_marquer_lead_perdu_junk_reste_un_alias(self):
         self._touche(cadence='contact', ordre=2, libelle="Appel d'ouverture")
-        self.assertTrue(services.marquer_lead_perdu_junk(
+        self.assertTrue(cadence_reponses.marquer_lead_perdu_junk(
             self.lead, self.acteur, 'Numéro invalide'))
         self.lead.refresh_from_db()
         self.assertTrue(self.lead.perdu)
         self.assertEqual(self.lead.motif_perte, 'Numéro invalide')
         self.assertFalse(self._ouvertes().exists())
         # Idempotent : un lead déjà perdu n'est pas réécrit.
-        self.assertFalse(services.marquer_lead_perdu_junk(
+        self.assertFalse(cadence_reponses.marquer_lead_perdu_junk(
             self.lead, self.acteur, 'Autre'))

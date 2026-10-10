@@ -29,7 +29,6 @@ from .services import (
     avancer_stage_lead_vers,
     ecrire_retour_lead_visite,
     est_cloture_d_etape_visite,
-    est_derniere_touche_du_suivi,
     initialiser_plan_relance,
     journaliser_visite,
     phrase_notification_retour_visite,
@@ -37,6 +36,7 @@ from .services import (
     q_visite,
     touche_close_de,
 )
+from .cadence_reponses import est_derniere_touche_du_suivi
 
 logger = logging.getLogger(__name__)
 

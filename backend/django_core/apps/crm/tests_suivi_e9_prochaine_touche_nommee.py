@@ -24,6 +24,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm.cadence_config import CLE_DEVIS
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.views import _prochaine_touche_publique
@@ -187,7 +188,7 @@ class LaPlusProcheToucheTests(_Base):
 
     def test_etape_de_filet_deplacee_plus_loin(self):
         passation = self._touche(cadence='generique',
-                                 ordre=services.PASSATION_ORDRE,
+                                 ordre=cadence_reponses.PASSATION_ORDRE,
                                  canal=RelanceEtape.Canal.WHATSAPP,
                                  libelle=services.PASSATION_LIBELLE)
         resp = self._rappel(passation)

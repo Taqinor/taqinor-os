@@ -29,6 +29,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, q_etape
 from apps.crm.models import Lead, RelanceEtape
@@ -130,7 +131,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
 
     def test_la_question_de_prix_reprend_le_suivi(self):
         appel = self._barreau(2)
-        self._fait(appel, reponse=services.REPONSE_QUESTION_PRIX)
+        self._fait(appel, reponse=cadence_reponses.REPONSE_QUESTION_PRIX)
         question = self.lead.relance_etapes.get(
             libelle=services.QUESTION_PRIX_LIBELLE, statut=A_FAIRE)
 

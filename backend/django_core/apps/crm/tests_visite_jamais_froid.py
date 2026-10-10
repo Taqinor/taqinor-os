@@ -38,6 +38,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -246,9 +247,9 @@ class PromesseTests(SimpleTestCase):
                         services.VISITE_DEVIS_LIBELLE):
             with self.subTest(libelle=libelle):
                 self.assertEqual(
-                    services._palier_sans_reponse(libelle, 'non_joint'),
+                    cadence_reponses._palier_sans_reponse(libelle, 'non_joint'),
                     (services.FILET_DERNIER_APPEL_LIBELLE, APPEL,
                      services.FILET_JOINT_DELAI_JOURS))
         # Après le dernier essai : plus aucun palier, le devis.
-        self.assertIsNone(services._palier_sans_reponse(
+        self.assertIsNone(cadence_reponses._palier_sans_reponse(
             services.FILET_DERNIER_APPEL_LIBELLE, 'non_joint'))

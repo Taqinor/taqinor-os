@@ -51,7 +51,7 @@ LISTE_BLANCHE: dict[str, str] = {
         "A CORRIGER (session crm) : touche de visite posee sans garde de contact a la pose",
     "backend/django_core/apps/crm/services.py::poser_touche_rappel_demande::touche":
         "A CORRIGER (session crm) : touche de rappel demande posee sans garde de contact a la pose",
-    "backend/django_core/apps/crm/services.py::_poser_etape_passation::touche":
+    "backend/django_core/apps/crm/cadence_reponses.py::_poser_etape_passation::touche":
         "A CORRIGER (session crm) : touche de passation posee sans garde de contact a la pose",
     "backend/django_core/apps/automation/actions.py::_send_email::email":
         "A CORRIGER (LSVC4-3, session automation/crm) : e-mail sortant a un destinataire pouvant deriver d'un lead, sans peut_contacter",

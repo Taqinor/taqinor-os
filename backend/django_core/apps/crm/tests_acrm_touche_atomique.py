@@ -78,7 +78,7 @@ class ToucheAtomiqueTests(TestCase):
         avant = self._empreinte()
         fichier = SimpleUploadedFile('facture.png', _FAUX_PNG,
                                      content_type='image/png')
-        with patch('apps.crm.services.enregistrer_piece_recue',
+        with patch('apps.crm.cadence_reponses.enregistrer_piece_recue',
                    side_effect=RuntimeError('panne déclarée')):
             resp = self.api.post(f'{self.url}piece-recue/',
                                  {'type_piece': 'facture',

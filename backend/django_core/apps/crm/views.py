@@ -1474,7 +1474,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # plusieurs » (même effet que les réponses de touche). Idempotent ;
         # repasser à « seul » ne retire rien. Jamais bloquant.
         if old.decideur != new_lead.decideur:
-            from .services import poser_decision_a_plusieurs_depuis_decideur
+            from .cadence_reponses import poser_decision_a_plusieurs_depuis_decideur
             try:
                 poser_decision_a_plusieurs_depuis_decideur(
                     new_lead, self.request.user)
@@ -1548,8 +1548,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
         # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
         if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
-            from .services import (
-                CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
+            from .cadence_reponses import (
+                CONSENT_SOURCE_OPPOSITION_FICHE,
+                tracer_opposition_registre,
+            )
             tracer_opposition_registre(
                 new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
         # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
@@ -3256,9 +3258,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         locataire avec le motif EXISTANT « Locataire » — 200. Chaque refus
         NOMME son champ. Aucune valeur d'énumération neuve (contrat
         ``lead_locataire``)."""
-        from .services import (
-            clore_locataire_sans_proprietaire, creer_lead_proprietaire,
-            proposition_locataire, refus_proprietaire)
+        from .cadence_reponses import (
+            clore_locataire_sans_proprietaire,
+            creer_lead_proprietaire,
+            proposition_locataire,
+            refus_proprietaire,
+        )
 
         lead = self.get_object()
         if request.method == 'GET':
@@ -4528,7 +4533,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # « perdu » reste une décision humaine, MRY22).
         motif_refus = (request.data.get('motif_refus') or '').strip()
         if motif_refus:
-            from .services import mention_motif_refus
+            from .cadence_reponses import mention_motif_refus
             from .leads_socle import motif_refus_valide
             if outcome != 'refuse':
                 return Response(
@@ -4551,7 +4556,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         perdu_junk = (request.data.get('perdu_junk') or '').strip()
         motif_junk = None
         if perdu_junk:
-            from .services import motif_junk_valide
+            from .cadence_reponses import motif_junk_valide
             if statut != RelanceEtape.Statut.FAIT or outcome != 'non_joint':
                 return Response(
                     {'erreurs': {'perdu_junk': (
@@ -4626,13 +4631,19 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import (est_derniere_touche_de_contact,
-                               est_derniere_touche_du_suivi,
-                               est_dernier_reveil, est_etape_de_filet,
-                               est_etape_de_visite, marquer_etape_relance,
-                               repondre_planifier_sans_reponse,
-                               reporter_prochaine_touche,
-                               repondre_rappel_convenu)
+        from .services import (
+            est_etape_de_filet,
+            est_etape_de_visite,
+            marquer_etape_relance,
+            reporter_prochaine_touche,
+        )
+        from .cadence_reponses import (
+            est_derniere_touche_de_contact,
+            est_derniere_touche_du_suivi,
+            est_dernier_reveil,
+            repondre_planifier_sans_reponse,
+            repondre_rappel_convenu,
+        )
         # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse :
         # l'appel compte et l'étape est REPOSÉE pour demain — jamais
         # « Préparer et envoyer le devis » (le client a accepté la visite).
@@ -4725,7 +4736,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, request.user, statut, note=note, outcome=outcome,
             body=body, suite=motif_junk is None)
         if motif_junk is not None:
-            from .services import marquer_lead_perdu_junk
+            from .cadence_reponses import marquer_lead_perdu_junk
             marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
             # COCKPIT-CONTRÔLE — la touche est CLOSE ; la date place la
@@ -4770,18 +4781,31 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         l'issue enregistrée en est dérivée ici, jamais envoyée par l'écran.
         Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
         réponse et dit où elle vaut."""
-        from .services import (
-            REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_ATTENTE_ACCORD, REPONSE_DEVIS_MODIFIE,
+        from .cadence_reponses import (
+            REPONSE_DECISION_FAMILLE,
+            REPONSE_DECISION_PROPRIETAIRE,
+            REPONSE_ATTENTE_ACCORD,
+            REPONSE_DEVIS_MODIFIE,
             REPONSE_JOINT_TELEPHONE,
-            REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
-            REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
-            refus_motif_perte, refus_raison_attente, refus_reponse_touche,
+            REPONSE_NE_PLUS_CONTACTER,
+            REPONSE_PERDU,
+            REPONSE_PLUS_TARD,
+            REPONSE_QUESTION_PRIX,
+            REPONSE_VISITE_ABANDONNEE,
+            refus_motif_perte,
+            refus_raison_attente,
+            refus_reponse_touche,
             repondre_attente_accord,
-            repondre_decision_a_plusieurs, repondre_devis_modifie,
-            repondre_joint_telephone, repondre_ne_plus_contacter,
-            repondre_perdu, repondre_plus_tard, repondre_question_prix,
-            repondre_visite_abandonnee, reponse_touche)
+            repondre_decision_a_plusieurs,
+            repondre_devis_modifie,
+            repondre_joint_telephone,
+            repondre_ne_plus_contacter,
+            repondre_perdu,
+            repondre_plus_tard,
+            repondre_question_prix,
+            repondre_visite_abandonnee,
+            reponse_touche,
+        )
 
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
@@ -4976,8 +5000,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
         autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .services import (
-            CLES_MESSAGE_REPONSE, message_pour_etape, refus_langue_relance)
+        from .services import message_pour_etape, refus_langue_relance
+        from .cadence_reponses import CLES_MESSAGE_REPONSE
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
             # Levée, jamais un second `return` : la forme du contrat
@@ -5114,7 +5138,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         par un message ENTRANT : c'est un geste humain. Écriture → garde
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions``."""
         etape = self.get_object()
-        from .services import enregistrer_piece_recue, refus_piece_recue
+        from .cadence_reponses import enregistrer_piece_recue, refus_piece_recue
         type_piece = (request.data.get('type_piece') or '').strip()
         refus = refus_piece_recue(etape, type_piece)
         if refus:
@@ -5209,7 +5233,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'mesure CAD178 reporter', enregistrer_geste_appareil,
             etape.company, 'reporter', request.META.get('HTTP_USER_AGENT', ''))
         if mode == 'veille':
-            from .services import mettre_en_veille
+            from .cadence_reponses import mettre_en_veille
             reprise = mettre_en_veille(
                 etape.lead, request.user, quand, etape=etape)
             if reprise is None:

@@ -20,7 +20,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reponses
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.parcours_suivi_outils import refus_variantes_segment, table
 from apps.crm.services import (
@@ -252,12 +252,12 @@ class DecisionAPlusieursNotesTests(TestCase):
         for rang, segment in enumerate(('residentiel', 'agricole', '')):
             famille = self._repondre(segment, 'decision_famille', 20 + rang)
             self.assertEqual(
-                famille, services.REPONSES_TOUCHE['decision_famille']['note'])
+                famille, cadence_reponses.REPONSES_TOUCHE['decision_famille']['note'])
             proprietaire = self._repondre(
                 segment, 'decision_proprietaire', 30 + rang)
             self.assertEqual(
                 proprietaire,
-                services.REPONSES_TOUCHE['decision_proprietaire']['note'])
+                cadence_reponses.REPONSES_TOUCHE['decision_proprietaire']['note'])
 
 
 class TableDuParcoursTests(SimpleTestCase):
@@ -352,7 +352,7 @@ class ValiditeARenouvelerTests(_Base):
             self.lead.relance_etapes.filter(libelle=self.libelle).exists())
 
     def test_c_rejouer_une_seule_etape(self):
-        from apps.crm.services import poser_etape_validite_a_renouveler
+        from apps.crm.cadence_reponses import poser_etape_validite_a_renouveler
         self._attente(rappel_le=J60.isoformat(), raison_attente='direction')
         poser_etape_validite_a_renouveler(self.lead, J60)
         poser_etape_validite_a_renouveler(self.lead, J60)
