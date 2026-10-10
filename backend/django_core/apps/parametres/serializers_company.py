@@ -104,7 +104,34 @@ def _entree_sourcee(champ, entree, cles_montants):
     return {**montants, 'source': source, 'date': date}
 
 
+# AMET16 — UNE table des drapeaux société qui changent la forme d'un parcours
+# (contrat `contract_samples/drapeaux_parcours.json`). Le défaut est lu sur le
+# modèle, jamais recopié ici.
+DRAPEAUX_PARCOURS = (
+    ('devis_auto_depuis_tunnel', 'Devis automatique depuis le tunnel', 'PA1',
+     'Un lead du site web assez renseigné reçoit un devis brouillon à vérifier, sans création manuelle.'),
+    ('round_robin_leads_actif', 'Affectation équilibrée des leads', 'PA1',
+     "Un nouveau lead est confié au commercial le moins chargé, sous le plafond de leads ouverts."),
+    ('referral_enabled', 'Parrainage', 'PA1',
+     'Un parrainage peut être enregistré sur un lead et sa récompense suivie.'),
+    ('garantie_production_autorisee', 'Garantie de production imprimée', 'PA3',
+     'La garantie de production peut figurer sur le devis, après validation tracée.'),
+    ('revue_factures_active', 'Revue à quatre yeux des factures', 'PA4',
+     "L'émission d'une facture exige la validation d'une autre personne que son créateur."),
+    ('factures_immuables', 'Factures émises immuables', 'PA4',
+     "Une facture émise n'est plus modifiable sur ses champs financiers : correction par avoir seulement."),
+    ('securite_obligatoire_avant_demarrage', 'Contrôle sécurité avant démarrage', 'PA5',
+     "Un chantier ne démarre pas tant que le contrôle de sécurité n'est pas fait."),
+    ('reserver_stock_bc', 'Réservation du stock à la commande', 'PA6',
+     "Le stock est réservé dès le bon de commande au lieu d'être décrémenté plus tard."),
+)
+
+
 class CompanyProfileSerializer(serializers.ModelSerializer):
+    # AMET16 — drapeaux de parcours : lecture seule, l'écriture reste le PATCH
+    # de chaque champ.
+    drapeaux_parcours = serializers.SerializerMethodField()
+
     logo_url = serializers.SerializerMethodField()
     signature_url = serializers.SerializerMethodField()
     responsable_defaut_leads_nom = serializers.CharField(
@@ -133,6 +160,20 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         required=False, allow_null=True)
     delai_reception_definitive_mois = serializers.IntegerField(
         required=False, allow_null=True)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_drapeaux_parcours(self, obj):
+        return [
+            {
+                'cle': cle,
+                'libelle': libelle,
+                'valeur': bool(getattr(obj, cle)),
+                'defaut': bool(CompanyProfile._meta.get_field(cle).default),
+                'parcours': parcours,
+                'effet': effet,
+            }
+            for cle, libelle, parcours, effet in DRAPEAUX_PARCOURS
+        ]
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_benchmarking_opt_in(self, obj):

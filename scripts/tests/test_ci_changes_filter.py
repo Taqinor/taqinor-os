@@ -202,7 +202,10 @@ REQUIS_ALIMENTES_PAR_CHANGES = ("backend-lint", "backend-tests", "frontend-lint"
                                 "web-build-test")
 _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi",
              "backend-tests-shard", "frontend-static", "frontend-vitest-shard",
-             "e2e-shard", "web-build-test", "fastapi-security")
+             "e2e-shard", "web-build-test", "fastapi-security",
+             # WOW8-ONCE (09/10/2026) — constructeur unique du dump de base de test ;
+             # « skipped » par défaut = hit exact du cache (le cas courant).
+             "backend-testdb")
 
 
 def _expr(cond, results, outputs):
@@ -264,6 +267,21 @@ class AgregateursChangesTests(unittest.TestCase):
                     _verdict(self.jobs, nom, results, out), "failure",
                     f"ci.yml : `{nom}` reste vert quand `changes` echoue — un check REQUIS "
                     f"ne doit jamais passer sans que le filtre ait resolu.")
+
+    def test_agregateurs_rougissent_si_le_constructeur_du_dump_echoue(self):
+        """WOW8-ONCE — si `backend-testdb` echoue, les lanes sont « skipped » :
+        `backend-tests` et `e2e` (checks REQUIS) doivent rougir, jamais passer au
+        vert par le seul fait qu'aucune lane n'a tourne. Saute (hit exact) = vert."""
+        results, out = self._scenario("success", {"backend": "true", "code": "true"})
+        results["backend-testdb"] = "failure"
+        for nom in ("backend-tests", "e2e"):
+            self.assertEqual(_verdict(self.jobs, nom, results, out), "failure",
+                             f"ci.yml : `{nom}` reste vert alors que backend-testdb a echoue.")
+        results["backend-testdb"] = "skipped"
+        results["backend-tests-shard"] = "success"
+        results["e2e-shard"] = "success"
+        for nom in ("backend-tests", "e2e"):
+            self.assertEqual(_verdict(self.jobs, nom, results, out), "success")
 
     def test_backend_tests_suit_fastapi_security(self):
         """ADEP15 (D-ADEP-1) — la lane PR `fastapi-security` est dans les `needs`

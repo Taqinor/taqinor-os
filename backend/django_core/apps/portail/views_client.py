@@ -738,6 +738,16 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                 {'detail': "Cette facture n'est plus payable "
                            "(annulée ou déjà réglée)."},
                 status=status.HTTP_400_BAD_REQUEST)
+        # AFAC100 (C-AMET-005) — le client règle l'EXIGIBLE : reste dû hors
+        # retenue de garantie non libérée (`Facture.montant_exigible`, une
+        # seule définition). Une facture dont seule la retenue reste n'est
+        # pas payable : rien à régler tant que la retenue n'est pas libérée.
+        montant_exigible = facture.montant_exigible
+        if montant_exigible <= 0:
+            return Response(
+                {'detail': "Rien à régler pour le moment : seule la retenue "
+                           "de garantie reste due, jusqu'à sa libération."},
+                status=status.HTTP_400_BAD_REQUEST)
 
         from .models import PaiementFacturePortail
         actif = services.cmi_actif()
@@ -748,7 +758,7 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                 paiement, _ = PaiementFacturePortail.objects.get_or_create(
                     company=company, facture=facture,
                     statut=PaiementFacturePortail.Statut.INITIE,
-                    defaults={'montant': facture.montant_du,
+                    defaults={'montant': montant_exigible,
                               'methode': methode})
         except IntegrityError:
             paiement = PaiementFacturePortail.objects.filter(
@@ -756,8 +766,8 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                 statut=PaiementFacturePortail.Statut.INITIE).first()
         # Rafraîchit le montant/méthode depuis l'état COURANT de la facture à
         # CHAQUE appel — une intention réutilisée ne doit jamais rester figée
-        # au reste dû du premier clic.
-        paiement.montant = facture.montant_du
+        # à l'exigible du premier clic.
+        paiement.montant = montant_exigible
         paiement.methode = methode
         paiement.save(update_fields=['montant', 'methode'])
         services.initier_paiement_facture(paiement)

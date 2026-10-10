@@ -189,6 +189,9 @@ jobs:
         with:
           testdb-cache-into: test_erp_db
           prebuilt-image: 'true'
+          # WOW8-ONCE — release-verify (dispatch/nocturne, jamais une PR) reste
+          # un ecrivain du cache, comme avant le 09/10/2026.
+          testdb-save: 'true'
       - name: Run FULL Django test suite (incl. pdf/slow) + coverage
         working-directory: backend/django_core
         # WOW3 — la couverture vit ICI (nightly/manuel), plus dans le gate
@@ -311,6 +314,7 @@ jobs:
         with:
           testdb-cache-into: erp_db
           prebuilt-image: 'true'
+          testdb-save: 'true'
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
@@ -617,6 +621,7 @@ jobs:
         with:
           testdb-cache-into: erp_db
           prebuilt-image: 'true'
+          testdb-save: 'true'
       - name: Migrate + seed throwaway demo data (repris de e2e-full)
         working-directory: backend/django_core
         run: |
