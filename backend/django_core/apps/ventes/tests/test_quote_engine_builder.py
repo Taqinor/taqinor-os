@@ -131,7 +131,7 @@ class TestBuildQuoteData(TestCase):
         """M3 — ``puissance_panneaux_lignes`` garde son repli documenté : il
         sert au KPI INTERNE « conçu vs vendu » (reports.py), qui n'imprime
         rien au client. Le moteur de devis, lui, lit ``panneaux_et_watt_lu``."""
-        from apps.ventes.quote_engine.builder import (
+        from apps.ventes.quote_engine.lignes_classement import (
             _DEFAULT_WATT, panneaux_et_watt_lu, puissance_panneaux_lignes,
         )
 
@@ -1782,7 +1782,7 @@ class TestPanelWattFromFicheTechnique(TestCase):
     def test_fiche_pmax_used_when_designation_has_no_wattage(self):
         """Désignation illisible + fiche → la vraie puissance, pas le repli."""
         from apps.ventes.quote_engine import build_quote_data
-        from apps.ventes.quote_engine.builder import _DEFAULT_WATT
+        from apps.ventes.quote_engine.lignes_classement import _DEFAULT_WATT
         from apps.stock.models import FicheTechnique
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau photovoltaïque monocristallin', '12', '1400'),

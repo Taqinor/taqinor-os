@@ -335,7 +335,8 @@ def warranties_for(d):
     sous-libellé) — pour que tous les consommateurs restent inchangés. Un devis
     sans donnée produit rend EXACTEMENT la constante d'aujourd'hui."""
     try:
-        from .. import builder
+        # SPL162 — les prédicats de classement vivent dans ``lignes_classement``.
+        from .. import lignes_classement
         # QJR424 — SEULE définition du texte de classement (QJR301,
         # ``apps.ventes.utils.options.texte_classement``), importée au lieu
         # d'être recopiée ici.
@@ -350,14 +351,14 @@ def warranties_for(d):
         return texte_classement(it.get('designation', ''), it.get('_produit_nom', ''))
 
     def _est_panneau(it):
-        return builder._is_panel(it.get("designation", "") or "",
-                                 it.get("_produit_nom", "") or "")
+        return lignes_classement._is_panel(
+            it.get("designation", "") or "", it.get("_produit_nom", "") or "")
 
     def _est_onduleur(it):
-        return builder._is_inverter(_nom(it))
+        return lignes_classement._is_inverter(_nom(it))
 
     def _est_batterie(it):
-        return builder._is_battery(_nom(it))
+        return lignes_classement._is_battery(_nom(it))
 
     out = [_WARRANTY_FALLBACK["Installation"]]  # pose : constante 2 ans
 

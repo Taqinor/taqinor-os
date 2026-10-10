@@ -2028,3 +2028,32 @@ class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
         d, html = self._html(data)
         self.assertFalse(d['masquer_synthese'])
         self.assertIn('<div class="c1-bigcut">', html)
+
+
+class TestSpl162GarantiesDesFichesApresScission(SimpleTestCase):
+    """SPL162 — ``warranties_for`` lit ses prédicats dans ``lignes_classement``.
+
+    Un import cassé y est AVALÉ (``except`` → constante ``WARRANTIES``) : sans
+    ce test, un nettoyage F401 de ``builder`` aurait silencieusement remplacé
+    les garanties des fiches par la constante sur chaque PDF."""
+
+    def test_composition_panneau_onduleur_batterie_rend_les_fiches(self):
+        from apps.ventes.quote_engine.residential import theme
+        d = {'items': [
+            {'designation': 'Panneau Longi Hi-MO 585W', 'marque': 'Longi',
+             '_produit_nom': 'Panneau Longi Hi-MO 585W',
+             'garantie_mois': 180, 'garantie_production_mois': 300},
+            {'designation': 'Onduleur hybride Deye 8kW', 'marque': 'Deye',
+             '_produit_nom': 'Onduleur hybride Deye 8kW',
+             'garantie_mois': 60},
+            {'designation': 'Batterie Dyness 10 kWh', 'marque': 'Dyness',
+             '_produit_nom': 'Batterie Dyness 10 kWh',
+             'garantie_mois': 120},
+        ]}
+        bandes = theme.warranties_for(d)
+        self.assertNotEqual(bandes, list(theme.WARRANTIES))
+        par_libelle = {w[2]: w for w in bandes}
+        self.assertEqual(par_libelle['Onduleur'][0], '5')
+        self.assertEqual(par_libelle['Panneaux'][0], '15')
+        self.assertEqual(par_libelle['Performance'][0], '25')
+        self.assertEqual(par_libelle['Batterie'][0], '10')
