@@ -495,6 +495,20 @@ decisions:
     source: "session « loop work on all plans » (Reda_Laptop), question interactive après le merge d'origin/main"
     taches: []
 
+  - id: D-YBW-HREFLANG
+    question: "Lighthouse échoue sur l'audit hreflang (liens relatifs, aucun domaine choisi) depuis l'activation de l'anglais : que faire ?"
+    options:
+      - cle: a
+        texte: "ignorer l'audit hreflang dans lighthouse.config.mjs jusqu'à YBWM10 (domaine)"
+      - cle: b
+        texte: "choisir le domaine maintenant (YBWM10)"
+      - cle: c
+        texte: "repasser le site en FR seul"
+    reponse: a
+    date: "2026-10-10"
+    source: "session « loop work on all plans » (Reda_Laptop), question interactive — CI web-build-test rouge sur 12 pages"
+    taches: [YBW70, YBWM10, YBW85]
+
 # Pointeurs vers les décisions historiques (répondues, source de vérité = le fichier mémoire) :
 #   docs/claude-memory/decisions-audit-0810.md   — ASAV90-95, ACHT90/91/94/95, AFAC80-89, APDF92, AACQ90/95/96, AMOT1-7, ADEP90/91, AGNR4/43, ADEV61/62
 #   docs/claude-memory/asec-decisions-fondateur.md, astk-decisions-fondateur.md, ci-decisions-fondateur.md,
