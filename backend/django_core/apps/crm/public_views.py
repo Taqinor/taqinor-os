@@ -233,7 +233,7 @@ def public_salle_vente(request, token):
         salle=salle, ip_hash=_hash_ip(request, salle))
     try:
         # NTCRM27 — best-effort : ne doit jamais faire échouer la vue publique.
-        from .services import detecter_signal_interet_salle_vente
+        from .clients_pilotage import detecter_signal_interet_salle_vente
         detecter_signal_interet_salle_vente(salle)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         pass

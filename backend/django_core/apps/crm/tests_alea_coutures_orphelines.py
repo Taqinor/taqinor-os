@@ -21,7 +21,7 @@ from apps.crm import stages
 from apps.crm.models import (
     Apporteur, DealEnregistre, Lead, SalleVente, SalleVenteVue,
 )
-from apps.crm.services import detecter_signal_interet_salle_vente
+from apps.crm.clients_pilotage import detecter_signal_interet_salle_vente
 from apps.crm.clients_identite import resolve_client_for_lead
 from apps.notifications.models import Notification
 from apps.ventes.models import Devis, LigneDevis
