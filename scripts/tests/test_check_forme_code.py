@@ -166,6 +166,15 @@ class FormeCodeTests(unittest.TestCase):
         self.assertIn("exception C20 sans effet : ZZ4 : FICHIER_MUR scripts/y.py", sortie)
         self.assertIn("[BASELINE_GROSSIT] scripts/x_allow.txt", sortie)
 
+    def test_dette_videe_en_ids_flux_ne_grossit_pas(self):
+        """`check_acceptation --write-baseline` ecrit `ids: []` quand la dette tombe a 0 (ADEP, 10/10)."""
+        dette = "docs/audits/acceptation/ZZ/_dette.yml"
+        d = self.depot({dette: "groupe: ZZ\namorce: abc\nids:\n  - ZZ1\n  - ZZ2\n"})
+        code, sortie = d.scenario({dette: "groupe: ZZ\namorce: abc\nids: []\n"})
+        self.assertNotIn("BASELINE_GROSSIT", sortie)
+        code, sortie = d.scenario({dette: "groupe: ZZ\namorce: abc\nids: [ZZ1, ZZ3]\n"})
+        self.assertIn(f"[BASELINE_GROSSIT] {dette} : +1 entrée(s) gelée(s) (ZZ3)", sortie)
+
     def test_cle_ligne_refusee_sur_baseline_neuve_par_numero_de_ligne(self):
         """AMET100 : une entree ajoutee dont la cle porte `:123` / `#L123` est refusee ; `::symbole` et `#2` passent."""
         d = self.depot({"scripts/x_allow.txt": "a::f\n"})

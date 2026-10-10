@@ -16,8 +16,20 @@ BASELINES = re.compile(r"^scripts/[^/]*(_allow|allowlist|_exceptions|_non_branch
                        r"|^scripts/exceptions_permanentes\.yml$|(^|/)_dette\.yml$")
 
 
-def _entrees(texte: str | None) -> set:
-    return {s for s in (ligne.strip() for ligne in (texte or "").splitlines()) if s and not s.startswith("#")}
+DETTE = re.compile(r"(^|/)_dette\.yml$")
+ID_DETTE = re.compile(r"^-\s*([^\s#,\[\]]+)|^ids:\s*\[([^\]]*)\]")
+
+
+def _entrees(texte: str | None, chemin: str = "") -> set:
+    lignes = [s for s in (ligne.strip() for ligne in (texte or "").splitlines()) if s and not s.startswith("#")]
+    if not DETTE.search(chemin):
+        return set(lignes)
+    # `_dette.yml` : une entree = un id de `ids:` (bloc `- X` ou flux `[X, Y]`), jamais
+    # une ligne d'en-tete — `ids: []` ecrit par check_acceptation quand la dette est vide.
+    ids = set()
+    for m in filter(None, map(ID_DETTE.match, lignes)):
+        ids.update([m.group(1)] if m.group(1) else (x.strip() for x in m.group(2).split(",") if x.strip()))
+    return ids
 
 
 CLE_PAR_LIGNE = re.compile(r"(?<!:):\d+(?::\d+)?$|#L\d+$")
@@ -42,7 +54,7 @@ def verifier(ctx) -> list:
     for c in ctx.changements:
         if not (c.apres and BASELINES.search(c.apres)):
             continue
-        neuves = _entrees(ctx.texte("tete", c.apres)) - _entrees(ctx.texte("base", c.avant))
+        neuves = _entrees(ctx.texte("tete", c.apres), c.apres) - _entrees(ctx.texte("base", c.avant), c.apres)
         if neuves:
             exemples = " ; ".join(sorted(neuves)[:3])
             constats.append(Constat("BASELINE_GROSSIT", c.apres, "", (
