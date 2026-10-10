@@ -1,0 +1,10 @@
+# AFAC71 P1.6 — facture émise ouverte par le Kanban, soldée dans un autre onglet, « Mettre à jour »
+# rejeu orchestrateur, pile locale (pc2-batch9 @ 852114993), 2026-10-10 — Playwright, demo_admin (société démo)
+FAC-DEMO-0001 (statut emise, dû 32 023,50) ouverte depuis le Kanban « Factures » → dialogue « Éditer — FAC-DEMO-0001 »
+  sélecteurs Statut / Télédéclaration DGI : absents ; 20 champs argent/lignes désactivés
+note saisie « Note acceptation AFAC71 »
+autre onglet (serveur) : paiement du solde + recalcul → statut payee, dû 0
+clic « Mettre à jour » → PATCH /api/django/ventes/factures/8/ = 200 (aucune erreur console)
+relecture serveur : statut payee, dû 0.00, TTC 33024.00 inchangé, note = 'Note acceptation AFAC71'
+1er rejeu (avant correctif 852114993) : PUT → 400 « client : Ce champ est obligatoire » — corrigé (PATCH), test durci
+P1.6 verdict: PASS

@@ -1,0 +1,7 @@
+# ADEP38 P1.11 — réglage CMI lu de l'environnement (probe des drapeaux)
+# rejeu orchestrateur, pile locale (pc2-batch9 @ 852114993), 2026-10-10
+docker exec -e CMI_ENABLED=1 -e CMI_MERCHANT_KEY=k-test erp-agentique-django_core-1 manage.py shell
+  cmi_actif()=True   -> attendu True  -> PASS
+docker exec -e CMI_ENABLED=0 ...
+  cmi_actif()=False  -> attendu False -> PASS
+P1.11 verdict: PASS

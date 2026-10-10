@@ -19,17 +19,21 @@ est une copie de dev qui peut diverger sans conséquence.
 | Secrets serveur | `/opt/taqinor-os/.env` (jamais dans le dépôt) |
 | Sauvegardes | Hetzner Backups (7 instantanés glissants, quotidiens) |
 
-## Mode DEBUG (décision du propriétaire, 2026-06-12) — à basculer (D-ASEC-6)
+## Mode de production — `settings.prod`, DEBUG coupé (BASCULÉ le 10/10/2026)
 
-Le serveur tourne **volontairement en mode DEBUG** (`settings.dev`,
-`DJANGO_DEBUG=True` dans l'.env du serveur) tant que Reda teste — il
-préfère voir les erreurs détaillées. Risque assumé : les pages d'erreur
-exposent des détails techniques à tout visiteur, et l'hôte public est
-découvrable (journaux de certificats). Mesuré le 07/10/2026 (audit sécurité,
-C-ASEC-029) : `settings.dev`, `DEBUG=True`, `NUM_PROXIES=1`. **Décision
-D-ASEC-6 (07/10/2026)** : la production passe sur `settings.prod` maintenant
-que les correctifs cookie `Secure` et proxy (ASEC52, ASEC15) sont livrés ; la
-bascule est un **geste du fondateur**, décrit ci-dessous.
+**État actuel : `DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod` et
+`DJANGO_DEBUG=False`** depuis le 10/10/2026 10:54 UTC (décision D-ASEC-6 du
+07/10/2026, bascule ASEC48 exécutée sur ordre explicite de Reda, après le
+merge de la PR #932). Le `.env` d'avant est conservé sur le serveur :
+`/opt/taqinor-os/.env.avant-settings-prod` (retour arrière : section
+« Retour arrière » ci-dessous). Vérifié après bascule : 200 / 401 sur les deux
+hôtes, sondes de santé 200, HSTS, redirection HTTP → HTTPS, page 404 sans
+détail technique, 0 `DisallowedHost` ni trace d'erreur dans les journaux ;
+`check --deploy` : seul avertissement `notifications.W010`.
+
+Historique : du 12/06 au 10/10/2026 le serveur tournait volontairement en
+`settings.dev` / `DEBUG=True` (Reda testait) — pages d'erreur détaillées
+exposées à tout visiteur (C-ASEC-029, audit sécurité du 07/10).
 
 ## Bascule vers settings.prod (ASEC48)
 
@@ -43,10 +47,12 @@ n'est jamais redirigée ; les sondes de santé ne sont jamais redirigées ; les
 cookies session/CSRF/JWT sont `Secure` ; `CORS_ALLOW_ALL_ORIGINS=False` ;
 l'adresse retenue pour la limitation est le visiteur, jamais l'appelant.
 
-**Personne d'autre que Reda ne fait cette bascule** (aucun run Claude ne
-touche le serveur ni son `.env`). Ne JAMAIS la faire pendant un déploiement
+**Bascule (ou retour arrière) : uniquement sur ordre explicite de Reda** —
+par Reda lui-même, ou par Claude hors auto-mode (chaque commande approuvée par
+Reda), comme le 10/10/2026. Ne JAMAIS la faire pendant un déploiement
 (l'auto-deploy du serveur tourne après chaque merge sur `main`) : attendre
-qu'il soit fini.
+qu'il soit fini (`pgrep -f "/opt/autodeploy/[a]uto-deploy"` vide — le motif
+entre crochets évite qu'un `pgrep` lancé par SSH se trouve lui-même).
 
 ### Variables du `.env` serveur (`/opt/taqinor-os/.env`)
 
@@ -57,13 +63,13 @@ qu'il soit fini.
 | `DJANGO_SECRET_KEY` | la clé réelle déjà en place (jamais un `change_me…`) | oui | `RuntimeError` au démarrage / erreur `core.E_AUD410_SECRET_KEY` |
 | `DJANGO_ALLOWED_HOSTS` | `api.taqinor.ma,178-105-192-116.sslip.io` (les deux hôtes de la Caddyfile ; le 2e = `PUBLIC_HOSTNAME`) | oui | **toute requête refusée (400)** et erreur `core.E_QJR423_ALLOWED_HOSTS` : en prod il n'y a plus de défaut `localhost` |
 | `CSRF_TRUSTED_ORIGINS` | `https://api.taqinor.ma,https://178-105-192-116.sslip.io` (déjà posée) | recommandé | complétée automatiquement des origines CORS |
-| `CORS_ALLOWED_ORIGINS` | `https://taqinor.ma,https://www.taqinor.ma` | non (c'est le défaut de `settings.prod`) | défaut : les deux domaines publics |
+| `CORS_ALLOWED_ORIGINS` | **absente** — décision de Reda du 10/10/2026 : garder le défaut de `settings.prod` (`https://taqinor.ma,https://www.taqinor.ma`) | non | défaut : les deux domaines publics |
 | `MINIO_ROOT_PASSWORD` | le mot de passe réel (jamais un `change_me…`) | oui | erreur `core.E_AUD410_MINIO` |
 | `NUM_PROXIES` | absente, ou `1` | non | absente = 1 ; `0` ou illisible ⇒ **démarrage refusé** (tout Internet dans un seul seau de limitation) |
 | `AUTH_COOKIE_SECURE` | **absente** | non | `0` retirerait `Secure` aux cookies JWT — ne jamais la poser en prod |
 | `ODOO_COMPANY_ID` | id numérique de la société propriétaire du connecteur Odoo (ASEC40) | si Odoo est utilisé | le tableau Odoo s'éteint (fail-closed) |
 | `TENANT_SIGNUP_ENABLED` | `0` (ou absente) | non | `1` rouvrirait l'inscription publique de sociétés (D-ASEC-2) |
-| `DJANGO_ADMIN_URL` | recommandé : un chemin non devinable SOUS `api/django/`, terminé par `/` (ex. `api/django/<mot-choisi>/`) | non | défaut `api/django/admin/` (devinable). Hors `api/django/`, nginx ne relaierait pas l'admin |
+| `DJANGO_ADMIN_URL` | **POSÉE le 10/10/2026** (décision de Reda) : chemin aléatoire SOUS `api/django/`, terminé par `/` ; la valeur n'existe QUE dans le `.env` serveur, jamais au dépôt ni dans un chat — la lire : `grep '^DJANGO_ADMIN_URL=' /opt/taqinor-os/.env` | oui (décision) | l'ancien `/api/django/admin/` répond 404 ; le login `<DJANGO_ADMIN_URL>login/` reste plafonné par nginx (`login_limit`, ASEC47). Hors `api/django/`, nginx ne relaierait pas l'admin |
 | `PUBLIC_BASE_URL` | `https://api.taqinor.ma` | recommandé | liens client relatifs (comportement historique) |
 | `LOG_LEVEL` | `INFO` | non | défaut `INFO` (journaux lisibles sans DEBUG) |
 
