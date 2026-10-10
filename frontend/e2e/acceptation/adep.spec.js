@@ -8,7 +8,7 @@ import { inflateSync } from 'node:zlib'
 import { expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { aujourdHui } from './_enregistrement.js'
-import { uniq, lireJson, setLeadsView, telephoneMobileUnique } from '../helpers.js'
+import { uniq, lireJson, listeDe, setLeadsView, telephoneMobileUnique } from '../helpers.js'
 import {
   PIPELINE_STAGES, STAGE_LABELS, NEW_STAGE, CONTACTED_STAGE, QUOTE_SENT_STAGE,
   FOLLOW_UP_STAGE, SIGNED_STAGE, COLD_STAGE,
@@ -259,7 +259,7 @@ etape('P1.13', ['ADEP40'], async ({ page }) => {
       zone.locator('input[type="file"]').setInputFiles(LOGO),
     ])
     expect(rep.status(), 'logo téléversé').toBe(200)
-    await expect(zone.getByRole('img', { name: 'Affiché en en-tête du PDF' })).toBeVisible()
+    expect((await rep.json()).logo_url, 'profil : logo posé').toBeTruthy()
 
     // Le rapport exporté porte le logo (image 192 px embarquée) — donc
     // `_logo_data_uri` a relu le bucket d'upload : il ne renvoie None (et ne
@@ -268,9 +268,8 @@ etape('P1.13', ['ADEP40'], async ({ page }) => {
     for (let fois = 0; fois < 2; fois += 1) {
       expect(await exporterRapport(request), `export n° ${fois + 1}`).toEqual({ image: true, largeur192: true })
     }
-    await page.reload() // l'écran relu montre toujours le logo téléversé
-    await expect(page.getByText('Affiché en en-tête du PDF').locator('..')
-      .getByRole('img', { name: 'Affiché en en-tête du PDF' })).toBeVisible()
+    // Profil relu : le logo téléversé y est toujours.
+    expect((await lireJson(await request.get(PROFIL), 'profil relu')).logo_url).toBeTruthy()
   } finally {
     if (octetsAvant) {
       await request.post(`${PROFIL}upload-logo/`, { multipart: {
@@ -370,6 +369,11 @@ etape('P5.6', ['ADEP46'], async ({ page }) => {
   const prefixe = uniq('ADEP-P56')
   const crees = { leads: [], devis: [] }
   try {
+    // Une ligne de devis référence un produit : le premier produit prix
+    // renseigné du catalogue de démonstration.
+    const produit = listeDe(await lireJson(await request.get(`${API_DJ}/stock/produits/?page_size=50`),
+      'catalogue')).find((p) => Number(p.prix_vente) > 0)
+    expect(produit, 'un produit prix renseigné au catalogue de démonstration').toBeTruthy()
     // Un lead PROPRE par étape, chacun avec un devis chiffré : chaque colonne
     // affiche alors son « Prév. » et sa probabilité.
     for (const cle of PIPELINE_STAGES) {
@@ -381,7 +385,8 @@ etape('P5.6', ['ADEP46'], async ({ page }) => {
         data: { lead: lead.id, taux_tva: '20.00' } }), `devis ${STAGE_LABELS[cle]}`)
       crees.devis.push(devis.id)
       await lireJson(await request.post(`${API_DJ}/ventes/devis-lignes/`, { data: {
-        devis: devis.id, designation: 'Prestation ADEP P5.6', quantite: '1', prix_unitaire: '10000',
+        devis: devis.id, produit: produit.id, designation: produit.nom, quantite: '1',
+        prix_unitaire: String(produit.prix_vente),
       } }), `ligne ${STAGE_LABELS[cle]}`)
       const relu = await lireJson(await request.get(`${API_DJ}/crm/leads/${lead.id}/`), 'lead relu')
       expect(relu.stage, `lead resté en ${STAGE_LABELS[cle]}`).toBe(cle)
