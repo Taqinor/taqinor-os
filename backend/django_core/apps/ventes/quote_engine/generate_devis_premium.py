@@ -898,15 +898,39 @@ def _pct_nul(valeur):
         return False
 
 
-def _tva_note_par_defaut(tva_pct):
-    """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
+def _tva_note_par_defaut(tva_pct, langue=None):
+    """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois.
+    APDF10 — en/ar : la clé ``tva_unique`` d'``i18n_labels``."""
     tva_lbl = pct_fr(tva_pct)  # AMOT24
+    if i18n_labels.normaliser(langue) != "fr":
+        return i18n_labels.libelle("tva_unique", langue).format(taux=tva_lbl)
     return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
             f"travaux.")
 
 
+def cgv_bullets_defaut(langue=None):
+    """APDF10 — puces CGV PAR DÉFAUT dans la langue du document : fr →
+    ``DEFAULT_DOC_TEXTS['cgv_bullets']`` (octet pour octet) ; en/ar → les clés
+    ``cgv_*`` d'``i18n_labels``, mêmes marqueurs, mêmes pourcentages."""
+    if i18n_labels.normaliser(langue) == "fr":
+        return DEFAULT_DOC_TEXTS["cgv_bullets"]
+    return ["{validite_offre}"] + [
+        i18n_labels.libelle(cle, langue) for cle in (
+            "cgv_acompte_commande", "cgv_reception_materiel",
+            "cgv_mise_en_marche")] + [
+        "{tva_note}", i18n_labels.libelle("cgv_tarifs_reference", langue)]
+
+
+def _puces_cgv(bullets, langue):
+    """APDF10 — puces saisies (souveraines) ou, à défaut, celles du moteur
+    dans la langue du document."""
+    if not bullets or bullets == DEFAULT_DOC_TEXTS["cgv_bullets"]:
+        return cgv_bullets_defaut(langue)
+    return bullets
+
+
 def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
-                        valid_until):
+                        valid_until, langue=None):
     """QJR668 — LA fonction qui remplit les cases des puces CGV.
 
     Substitue {acompte}/{materiel}/{solde}/{tva_note}/{validite_offre} et rend
@@ -932,9 +956,9 @@ def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
                 acompte=acompte, materiel=materiel, solde=solde,
                 tva_note=tva_note,
                 # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
-                validite_offre=(
-                    "Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
-                    f"{valid_until}" if valid_until else ""))
+                validite_offre=(i18n_labels.libelle(
+                    "cgv_validite_offre", langue).format(date=valid_until)
+                    if valid_until else ""))
         except (KeyError, IndexError, ValueError):
             txt = raw
         if not str(txt).strip():
@@ -955,9 +979,9 @@ def cgv_bullets_remplies(data):
     ``valid_until``. Pure : ne lit ni n'écrit aucun global de rendu."""
     data = data or {}
     surcharges = data.get("doc_texts") or {}
-    bullets = ((surcharges.get("cgv_bullets")
-                if isinstance(surcharges, dict) else None)
-               or DEFAULT_DOC_TEXTS["cgv_bullets"])
+    langue = data.get("langue_sortie")
+    bullets = _puces_cgv(surcharges.get("cgv_bullets")
+                         if isinstance(surcharges, dict) else None, langue)
     terms = data.get("payment_terms") or {}
     try:
         tva_pct = float(data.get("taux_tva", 20) or 20)
@@ -968,8 +992,9 @@ def cgv_bullets_remplies(data):
         acompte=_pct_echeance(terms.get("acompte"), 30),
         materiel=_pct_echeance(terms.get("materiel"), 60),
         solde=_pct_echeance(terms.get("solde"), 10),
-        tva_note=data.get("tva_note") or _tva_note_par_defaut(tva_pct),
-        valid_until=(data.get("valid_until") or "").strip())
+        tva_note=(data.get("tva_note")
+                  or _tva_note_par_defaut(tva_pct, langue)),
+        valid_until=(data.get("valid_until") or "").strip(), langue=langue)
 
 
 def _cgv_bullets_html():
@@ -980,11 +1005,12 @@ def _cgv_bullets_html():
     :func:`remplir_cgv_bullets`, la fonction que la page publique appelle
     aussi. Défaut → puces identiques au caractère près.
     """
-    bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
+    bullets = _puces_cgv(_doc_text("cgv_bullets"), LANGUE_SORTIE)
     out = ""
     for txt in remplir_cgv_bullets(
             bullets, acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
-            tva_note=TVA_NOTE, valid_until=VALID_UNTIL):
+            tva_note=TVA_NOTE, valid_until=VALID_UNTIL,
+            langue=LANGUE_SORTIE):
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -4898,7 +4924,8 @@ def apply_quote_data(data: dict) -> None:
     # L'empreinte, elle, est un TEXTE — donc échappée à l'usage.
     CALEPINAGE_SVG = data.get("calepinage_svg") or ""
     CALEPINAGE_EMPREINTE = data.get("calepinage_empreinte") or ""
-    TVA_NOTE       = data.get("tva_note") or _tva_note_par_defaut(TVA_PCT)
+    TVA_NOTE       = (data.get("tva_note") or _tva_note_par_defaut(
+        TVA_PCT, data.get("langue_sortie")))
     # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
     DEVISE         = (data.get("devise") or "MAD").strip().upper()
     # NTI18N5 — langue du document + table de libellés ROUTÉE par le builder.

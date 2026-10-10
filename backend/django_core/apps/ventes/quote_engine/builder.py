@@ -568,7 +568,7 @@ def reference_remplacee(devis) -> str:
     return ref or ""
 
 
-def tva_note_des_lignes(lignes, taux_defaut) -> str:
+def tva_note_des_lignes(lignes, taux_defaut, langue=None) -> str:
     """QJR626 — la mention TVA du PDF, dérivée des taux RÉELS des lignes.
 
     * un seul taux ``r`` (ou aucune ligne : taux du devis) →
@@ -583,7 +583,14 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
     ligne : 0 % / … — exonération : <base légale saisie> », une mention par
     base distincte ; sans ligne à 0 %, texte identique à l'octet.
     Lecture pure : aucun statut écrit (règle #4).
+    APDF10 — ``langue`` (en/ar) : les mêmes phrases tirées d'``i18n_labels``
+    (``tva_*``), mêmes taux ; français (défaut) inchangé à l'octet.
     """
+    def _t(cle, fr, **valeurs):
+        if _i18n.normaliser(langue) == "fr":
+            return fr
+        return _i18n.libelle(cle, langue).format(**valeurs)
+
     par_taux = {}
     bases = []
     zero_ligne = False
@@ -607,20 +614,25 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
         # la base légale saisie (jamais un texte proposé par défaut).
         taux_txt = " / ".join(
             f"{_taux_libelle(t)} %" for t in sorted(par_taux))
-        mentions = " ; ".join(f"exonération : {b}" for b in bases)
-        return (f"TVA appliquée ligne par ligne : {taux_txt}"
+        mentions = " ; ".join(_t("tva_exoneration", f"exonération : {b}",
+                                 base=b) for b in bases)
+        return (_t("tva_ligne_par_ligne",
+                   f"TVA appliquée ligne par ligne : {taux_txt}",
+                   taux=taux_txt)
                 + (f" — {mentions}" if mentions else ""))
     if len(par_taux) <= 1:
         taux = next(iter(par_taux)) if par_taux else float(taux_defaut)
-        return (f"TVA {_taux_libelle(taux)} % appliquée sur l'ensemble des "
-                f"équipements et travaux.")
+        return _t("tva_unique", f"TVA {_taux_libelle(taux)} % appliquée "
+                  "sur l'ensemble des équipements et travaux.",
+                  taux=_taux_libelle(taux))
     if (set(par_taux) == {10.0, 20.0}
             and all(par_taux[10.0]) and not any(par_taux[20.0])):
-        return ("TVA : 10% panneaux photovoltaïques · "
-                "20% autres équipements et prestations")
+        return _t("tva_10_20", "TVA : 10% panneaux photovoltaïques · "
+                  "20% autres équipements et prestations")
     taux_txt = " / ".join(f"{_taux_libelle(t)} %" for t in sorted(par_taux))
-    return (f"TVA appliquée ligne par ligne : {taux_txt} — taux indiqué "
-            f"dans le tableau")
+    return (_t("tva_ligne_par_ligne",
+               f"TVA appliquée ligne par ligne : {taux_txt}", taux=taux_txt)
+            + _t("tva_taux_tableau", " — taux indiqué dans le tableau"))
 
 
 def _attestation_usage_agricole(devis):
@@ -3634,7 +3646,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # QJR626 — il décrit les taux RÉELLEMENT portés par les lignes comptées
     # (le builder décide, les gabarits impriment) : plus de texte 10/20 figé
     # qui contredisait un tableau à 20 % partout.
-    tva_note = tva_note_des_lignes(lignes, tva_pct)
+    tva_note = tva_note_des_lignes(lignes, tva_pct,
+                                   langue=opts['langue_sortie'])
     data = {
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),

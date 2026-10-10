@@ -255,3 +255,113 @@ class UnePageLibellesTests(TestCase):
                 self.assertIn("DEVIS", texte)
                 for langue in ("en", "ar"):
                     self.assertEqual(self._rendu(devis, langue)[1], 1)
+
+
+# ── APDF10 — puces CGV par défaut + note de TVA dans la langue du document ─
+
+#: APDF10 — morceaux français des puces CGV par défaut et de la note de TVA.
+PUCES_FR = ("Acompte à la commande", "à la réception du matériel",
+            "après la mise en marche", "TVA : 10% panneaux",
+            "Tarifs de référence")
+TERMES = {"acompte": 40, "materiel": 50, "solde": 10}
+
+
+def _pourcentages(puces):
+    import re
+    return sorted(re.findall(r"(\d+)&#37;", " ".join(puces)))
+
+
+class PucesCgvLangueHtmlTests(SimpleTestCase):
+    """APDF10 — ``cgv_bullets_remplies`` (PDF C&I + page publique), pur."""
+
+    def _puces(self, langue, **data):
+        from apps.ventes.quote_engine.builder import tva_note_des_lignes
+        from apps.ventes.quote_engine.generate_devis_premium import (
+            cgv_bullets_remplies)
+
+        class _Ligne:
+            def __init__(self, taux, designation):
+                self.taux_tva, self.designation = taux, designation
+                self.produit = None
+
+        note = tva_note_des_lignes(
+            [_Ligne(10, "Panneau Jinko 710W"), _Ligne(20, "Onduleur 10kW")],
+            20, langue=langue)
+        return cgv_bullets_remplies(dict(
+            {"langue_sortie": langue, "payment_terms": TERMES,
+             "tva_note": note, "valid_until": "01/02/2027"}, **data))
+
+    def test_en_et_ar_puces_traduites_memes_pourcentages(self):
+        fr = self._puces("fr")
+        for langue in ("en", "ar"):
+            with self.subTest(langue=langue):
+                puces = self._puces(langue)
+                self.assertEqual(trouves(" ".join(puces), PUCES_FR), [])
+                self.assertEqual(_pourcentages(puces), _pourcentages(fr))
+                self.assertEqual(len(puces), len(fr))
+
+    def test_fr_inchange(self):
+        from apps.ventes.quote_engine.generate_devis_premium import (
+            DEFAULT_DOC_TEXTS, remplir_cgv_bullets)
+        attendu = remplir_cgv_bullets(
+            DEFAULT_DOC_TEXTS["cgv_bullets"], acompte=40, materiel=50,
+            solde=10, tva_note=("TVA : 10% panneaux photovoltaïques · 20% "
+                                "autres équipements et prestations"),
+            valid_until="01/02/2027")
+        self.assertEqual(self._puces("fr"), attendu)
+
+    def test_surcharge_societe_conservee(self):
+        perso = ["Clause société {acompte}&#37; non traduite"]
+        for langue in ("fr", "en", "ar"):
+            with self.subTest(langue=langue):
+                self.assertEqual(
+                    self._puces(langue, doc_texts={"cgv_bullets": perso}),
+                    ["Clause société 40&#37; non traduite"])
+
+
+@tag("pdf")
+class PucesCgvLangueTests(TestCase):
+    """APDF10 — conditions du PDF C&I RÉEL en en / ar (sans CGV société)."""
+
+    def setUp(self):
+        from apps.ventes.tests.test_pdf_apdf_garde_identite import MARCHES
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+        self.company = make_company(slug="apdf10-co", nom="APDF10")
+        user, client = make_user(self.company), make_client(self.company)
+        self.devis = []
+        for mode in ("commercial", "industriel"):
+            lignes, _etude, _mode = MARCHES[mode]
+            devis = make_devis(self.company, user, client, lignes,
+                               reference=f"DEV-APDF10-{mode[:3].upper()}")
+            devis.mode_installation = mode
+            devis.save(update_fields=["mode_installation"])
+            self.devis.append(devis)
+
+    def _texte(self, devis, langue):
+        from apps.ventes.tests.test_pdf_apdf_identite import (
+            rendre_pdf, texte_pdf)
+        return texte_normalise(texte_pdf(rendre_pdf(
+            devis, {"langue_sortie": langue})))
+
+    def test_ci_en_puces_traduites(self):
+        for devis in self.devis:
+            with self.subTest(devis=devis.reference):
+                self.assertEqual(
+                    trouves(self._texte(devis, "en"), PUCES_FR), [])
+
+    def test_ci_ar_puces_traduites(self):
+        for devis in self.devis:
+            with self.subTest(devis=devis.reference):
+                self.assertEqual(
+                    trouves(self._texte(devis, "ar"), PUCES_FR), [])
+
+    def test_surcharge_societe_conservee(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        modele = DocumentTemplates.get(company=self.company)
+        modele.cgv_bullets = ["CLAUSE-SOCIETE-APDF10 conservée"]
+        modele.save()
+        for langue in ("fr", "en", "ar"):
+            with self.subTest(langue=langue):
+                self.assertIn("CLAUSE-SOCIETE-APDF10 conservée",
+                              self._texte(self.devis[0], langue))

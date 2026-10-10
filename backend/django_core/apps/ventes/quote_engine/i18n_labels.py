@@ -1286,6 +1286,52 @@ LIBELLES = {
                  'ar': 'المقر:'},
     'clauses_particulieres': {'fr': 'Clauses particulières',
                               'en': 'Special terms', 'ar': 'شروط خاصة'},
+    # ── APDF10 — puces CGV PAR DÉFAUT et note de TVA du builder ────────────
+    # Le français est EXACTEMENT ``DEFAULT_DOC_TEXTS['cgv_bullets']`` / le
+    # texte de ``builder.tva_note_des_lignes`` : marqueurs ``{…}`` et
+    # pourcentages identiques dans les trois langues. Une puce SAISIE par la
+    # société n'est jamais traduite (décision : son texte reste souverain).
+    'cgv_validite_offre': {
+        'fr': 'Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au {date}',
+        'en': 'Offer valid until {date}',
+        'ar': 'العرض صالح إلى غاية {date}'},
+    'cgv_acompte_commande': {
+        'fr': 'Acompte à la commande&#160;: {acompte}&#37;',
+        'en': 'Down payment on order: {acompte}&#37;',
+        'ar': 'تسبيق عند الطلب: {acompte}&#37;'},
+    'cgv_reception_materiel': {
+        'fr': '{materiel}&#37; à la réception du matériel',
+        'en': '{materiel}&#37; on delivery of the equipment',
+        'ar': '{materiel}&#37; عند استلام المعدات'},
+    'cgv_mise_en_marche': {
+        'fr': '{solde}&#37; après la mise en marche',
+        'en': '{solde}&#37; after commissioning',
+        'ar': '{solde}&#37; بعد التشغيل'},
+    'cgv_tarifs_reference': {
+        'fr': 'Tarifs de référence&#160;: barème ONEE/SRM',
+        'en': 'Reference tariffs: ONEE/SRM schedule',
+        'ar': 'التعريفات المرجعية: جدول ONEE/SRM'},
+    'tva_unique': {
+        'fr': ("TVA {taux} % appliquée sur l'ensemble des équipements et "
+               "travaux."),
+        'en': 'VAT {taux} % applied to all equipment and works.',
+        'ar': 'ضريبة القيمة المضافة {taux} % مطبقة على كل المعدات والأشغال.'},
+    'tva_10_20': {
+        'fr': ('TVA : 10% panneaux photovoltaïques · 20% autres équipements '
+               'et prestations'),
+        'en': 'VAT: 10% solar panels · 20% other equipment and services',
+        'ar': ('ضريبة القيمة المضافة: 10% الألواح الكهروضوئية · 20% '
+               'المعدات والخدمات الأخرى')},
+    'tva_ligne_par_ligne': {
+        'fr': 'TVA appliquée ligne par ligne : {taux}',
+        'en': 'VAT applied line by line: {taux}',
+        'ar': 'ضريبة القيمة المضافة مطبقة سطرًا بسطر: {taux}'},
+    'tva_taux_tableau': {
+        'fr': ' — taux indiqué dans le tableau',
+        'en': ' - rate shown in the table',
+        'ar': ' — النسبة مبينة في الجدول'},
+    'tva_exoneration': {'fr': 'exonération : {base}',
+                        'en': 'exemption: {base}', 'ar': 'إعفاء: {base}'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
