@@ -552,3 +552,4 @@ ALEA** au total : `docs/plans/PLAN_AUDIT_LEAD.md` 22 · `docs/plans/PLAN_AUDIT_T
 - 2026-10-07 — Lot 6 : ALEA29 (PATCH de lead sans changement : ni date de modification ni auteur avancés)
 - 2026-10-07 — Lot 7 : ALEA30 (PATCH lead atomique : écriture + report de la touche dans une transaction, effets annexes en best-effort par savepoint). SPL195 construite (acal-L18) mais retenue : exige SPL196 (MOTEUR) dans le même merge.
 - 2026-10-09 — ACHT77 — 6 sections Paramètres chantier : erreurs serveur affichées (toast ou alerte), plus de catch silencieux, suppression d'un champ de fiche confirmée
+- 2026-10-10 — APAR54 (PARTIEL, reste ouvert) — hook useStatutConfig monté sur InstallationsPage et TicketsPage (libellés réglés affichés ; TicketsPage lit statusLabel) ; RESTE : FilterBar.jsx, ListView.jsx, KanbanView.jsx, InstallationDetail.jsx lisent encore STATUS_LABELS en direct (hors Files de la tâche)
