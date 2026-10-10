@@ -1,0 +1,57 @@
+{
+  "sha": "f7bc5042d05bdd6262a96ca62c6717676c152b2d",
+  "date": "2026-10-10",
+  "groupe": "ATOT",
+  "verdict": "PASS",
+  "couvre": [
+    "ATOT35",
+    "ATOT36"
+  ],
+  "couvre_avec_ecart": [
+    "ATOT36"
+  ],
+  "etapes": [
+    {
+      "id": "PA4.5",
+      "taches": [
+        "ATOT35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ATOT-PA4.5.txt"
+    },
+    {
+      "id": "PA4.6",
+      "taches": [
+        "ATOT36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-10-10/ACCEPTATION-ATOT-PA4.6.txt"
+    }
+  ]
+}
