@@ -48,6 +48,11 @@ const today = new Date().toISOString().slice(0, 10)
 export default function FactureForm({ facture = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!facture
+  // AFAC71 — une facture hors BROUILLON (émise, payée, en retard, annulée) s'ouvre en
+  // lecture seule pour l'argent et les lignes ; seuls note, échéance, conditions et
+  // référence de commande client sont modifiables et envoyés. Le statut et la
+  // télédéclaration DGI ne se posent plus depuis ce formulaire (actions dédiées).
+  const horsBrouillon = isEdit && facture.statut !== 'brouillon'
 
   // VX243(c) — garde d'édition périmée : re-GET léger de `updated_at` au
   // submit, bannière non bloquante si un autre utilisateur a sauvegardé
@@ -82,13 +87,11 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   const [fields, setFields] = useState({
     client:          facture?.client          ?? '',
     bon_commande:    facture?.bon_commande     ?? '',
-    statut:          facture?.statut           ?? 'brouillon',
     date_echeance:   facture?.date_echeance    ?? '',
     date_livraison:  facture?.date_livraison    ?? '',
     conditions_paiement: facture?.conditions_paiement ?? '',
     taux_tva:        String(facture?.taux_tva        ?? '20.00'),
     remise_globale:  String(facture?.remise_globale  ?? '0'),
-    statut_teledeclaration: facture?.statut_teledeclaration ?? 'non_soumise',
     note:            facture?.note             ?? '',
     // CIQ226 — référence de commande du client (héritée du devis, éditable).
     reference_commande_client: facture?.reference_commande_client ?? '',
@@ -301,18 +304,19 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     }
     setSaving(true)
     try {
-      const payload = {
-        client:         parseInt(fields.client),
-        bon_commande:   fields.bon_commande ? parseInt(fields.bon_commande) : null,
-        statut:         fields.statut,
+      const nonFinanciers = {
         date_echeance:  fields.date_echeance  || null,
-        date_livraison: fields.date_livraison || null,
         conditions_paiement: fields.conditions_paiement || '',
-        taux_tva:       fields.taux_tva,
-        remise_globale: fields.remise_globale,
-        statut_teledeclaration: fields.statut_teledeclaration,
         note:           fields.note || null,
         reference_commande_client: (fields.reference_commande_client || '').trim(),
+      }
+      const payload = horsBrouillon ? nonFinanciers : {
+        ...nonFinanciers,
+        client:         parseInt(fields.client),
+        bon_commande:   fields.bon_commande ? parseInt(fields.bon_commande) : null,
+        date_livraison: fields.date_livraison || null,
+        taux_tva:       fields.taux_tva,
+        remise_globale: fields.remise_globale,
       }
 
       // VX117 — une facture déjà créée (id serveur ou id exposé par un
@@ -330,12 +334,12 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
       // Lignes supprimées — allSettled : une suppression en échec ne bloque
       // pas les autres déjà supprimées, et ne les redemande pas au retry.
-      const delResult = await resilientMutation(removedLineIds, (id) =>
+      const delResult = await resilientMutation(horsBrouillon ? [] : removedLineIds, (id) =>
         dispatch(removeLigneFacture(id)).unwrap())
       setRemovedLineIds(delResult.failed.map(f => f.item))
 
       // Lignes existantes → update
-      const updResult = await resilientMutation(lines.filter(l => l.id), (l) =>
+      const updResult = await resilientMutation(horsBrouillon ? [] : lines.filter(l => l.id), (l) =>
         dispatch(updateLigneFacture({
           id: l.id,
           data: {
@@ -352,7 +356,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       // Nouvelles lignes → create — chaque ligne créée avec succès reçoit
       // son id serveur immédiatement : un retry ne la recrée jamais (fin du
       // doublon fiscal ligne-par-ligne).
-      const newLines = lines.filter(l => !l.id)
+      const newLines = horsBrouillon ? [] : lines.filter(l => !l.id)
       const createResult = await resilientMutation(newLines, (l) =>
         dispatch(addLigneFacture({
           facture:       factureId,
@@ -470,6 +474,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Select value={fields.client ? String(fields.client) : undefined}
+                          disabled={horsBrouillon}
                           onValueChange={v => setField('client', v)}>
                     {/* VX240(a) — la modale s'ouvrait SANS aucun autofocus (le
                         vendeur devait cliquer avant de pouvoir taper/choisir) ;
@@ -487,7 +492,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                   </Select>
                 </div>
                 {/* VX91 — création rapide client (QG3), sans quitter la facture */}
-                <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                <Button type="button" variant="outline" disabled={horsBrouillon}
+                        onClick={() => setClientQuickCreateOpen(true)}>
                   <Plus /> Nouveau client
                 </Button>
               </div>
@@ -495,6 +501,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
             <FormField label="Bon de commande (optionnel)" htmlFor="fc-bc">
               <Select value={fields.bon_commande ? String(fields.bon_commande) : undefined}
+                      disabled={horsBrouillon}
                       onValueChange={v => onBcChange(v)}>
                 <SelectTrigger id="fc-bc">
                   <SelectValue placeholder="— Aucun BC —" />
@@ -548,46 +555,17 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             <FormField label="Date de livraison/prestation" htmlFor="fc-livraison"
                        hint="Mention Art. 145 — date de la livraison ou prestation">
               <Input id="fc-livraison" type="date" value={fields.date_livraison}
+                     disabled={horsBrouillon}
                      onChange={e => setField('date_livraison', e.target.value)} />
             </FormField>
 
-            {isEdit && (
-              <FormField label="Statut" htmlFor="fc-statut">
-                <Select value={fields.statut} onValueChange={v => setField('statut', v)}>
-                  <SelectTrigger id="fc-statut"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="brouillon">Brouillon</SelectItem>
-                    <SelectItem value="emise">Émise</SelectItem>
-                    <SelectItem value="payee">Payée</SelectItem>
-                    <SelectItem value="en_retard">En retard</SelectItem>
-                    <SelectItem value="annulee">Annulée</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-            )}
-
-            {isEdit && (
-              <FormField label="Télédéclaration DGI" htmlFor="fc-teledecl"
-                         hint="Statut DGI — informatif, posé à la main">
-                <Select value={fields.statut_teledeclaration}
-                        onValueChange={v => setField('statut_teledeclaration', v)}>
-                  <SelectTrigger id="fc-teledecl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="non_soumise">Non soumise</SelectItem>
-                    <SelectItem value="soumise">Soumise</SelectItem>
-                    <SelectItem value="validee">Validée</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-            )}
-
             <FormField label="TVA (%)" htmlFor="fc-tva"
                        hint="Taux global (par défaut 20 %). Le taux par ligne prime quand renseigné.">
-              <Input id="fc-tva" type="number" min="0" max="100" step="0.01"
+              <Input id="fc-tva" type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
                      value={fields.taux_tva} onChange={e => setField('taux_tva', e.target.value)} />
               <div className="mt-1 flex gap-1">
                 {['20', '10'].map(t => (
-                  <Button key={t} type="button" size="sm"
+                  <Button key={t} type="button" size="sm" disabled={horsBrouillon}
                           variant={fields.taux_tva === `${t}.00` || fields.taux_tva === t ? 'default' : 'outline'}
                           onClick={() => setField('taux_tva', t)}>
                     {t} %
@@ -597,7 +575,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             </FormField>
 
             <FormField label="Remise globale (%)" htmlFor="fc-remise">
-              <Input id="fc-remise" type="number" min="0" max="100" step="0.01"
+              <Input id="fc-remise" type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
                      value={fields.remise_globale} onChange={e => setField('remise_globale', e.target.value)} />
             </FormField>
           </div>
@@ -606,9 +584,11 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="font-display text-base font-semibold text-foreground">Lignes de la facture</h3>
-              <Button type="button" size="sm" variant="outline" onClick={addLine}>
-                <Plus /> Ajouter une ligne
-              </Button>
+              {!horsBrouillon && (
+                <Button type="button" size="sm" variant="outline" onClick={addLine}>
+                  <Plus /> Ajouter une ligne
+                </Button>
+              )}
             </div>
 
             {errors.lines && (
@@ -644,6 +624,11 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                           {/* VX91 — picker partagé (recherche + prix), même
                               composant que DevisForm/DevisGenerator : fin du
                               <Select> natif non filtrable sur 50+ SKU. */}
+                          {horsBrouillon ? (
+                            <span className="text-xs">
+                              {produits.find(p => String(p.id) === String(l.produit))?.nom ?? l.designation}
+                            </span>
+                          ) : (
                           <ProduitPicker
                             produits={produits}
                             value={l.produit ? String(l.produit) : ''}
@@ -658,9 +643,11 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                 ?.focus()
                             }}
                           />
+                          )}
                         </td>
                         <td data-label="Désignation">
                           <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
+                                 disabled={horsBrouillon}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
                                  placeholder="Désignation" />
                           {/* AFAC70 — motif serveur de l'échec de CETTE ligne. */}
@@ -672,13 +659,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                           )}
                         </td>
                         <td data-label="Qté">
-                          <Input type="number" min="0.01" step="0.01" data-role="line-qty"
+                          <Input type="number" min="0.01" step="0.01" data-role="line-qty" disabled={horsBrouillon}
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
                         <td data-label="Prix HT (DH)">
-                          <Input type="number" min="0" step="0.01"
+                          <Input type="number" min="0" step="0.01" disabled={horsBrouillon}
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
                                  onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)}
@@ -693,13 +680,13 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                  }} />
                         </td>
                         <td data-label="Rem. %">
-                          <Input type="number" min="0" max="100" step="0.01"
+                          <Input type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.remise}
                                  onChange={e => setLine(l._key, 'remise', e.target.value)} />
                         </td>
                         <td data-label="TVA %">
-                          <Input type="number" min="0" max="100" step="0.01"
+                          <Input type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.taux_tva}
                                  placeholder={String(tva)}
@@ -708,7 +695,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                         </td>
                         <td className="line-total" data-label="Total HT">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
                         <td>
-                          {lines.length > 1 && (
+                          {!horsBrouillon && lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"
                                         className="text-destructive hover:bg-destructive/10"
                                         onClick={() => removeLine(l._key)}>
