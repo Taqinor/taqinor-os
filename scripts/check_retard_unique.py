@@ -63,7 +63,7 @@ EXCEPTIONS: dict = {
     _C + "cadence_reperes.py::touche_traitee_en_avance":
         "mesure l'AVANCE (traitée avant l'échéance), c'est le complément du "
         "retard et non sa définition",
-    _C + "services.py::_placer_cadence_positionnee":
+    _C + "cadence_placement.py::_placer_cadence_positionnee":
         "comparaison d'INSTANT (due_at < maintenant) pour placer une cadence "
         "positionnée ; pas un affichage de retard",
 }

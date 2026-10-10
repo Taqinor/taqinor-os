@@ -51,8 +51,11 @@ class Command(BaseCommand):
             help='Leads placés par lot (1..200, défaut 40).')
 
     def handle(self, *args, **options):
-        from apps.crm.services import (
-            PLACEMENT_LOT_DEFAUT, PLACEMENT_LOT_MAX, placer_anciens_leads)
+        from apps.crm.cadence_placement import (
+            PLACEMENT_LOT_DEFAUT,
+            PLACEMENT_LOT_MAX,
+            placer_anciens_leads,
+        )
 
         company = _resoudre_company(options.get('company'))
         apply = bool(options.get('apply'))

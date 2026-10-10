@@ -2547,8 +2547,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'apply': 'Booléen attendu (true pour appliquer).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (
-            PLACEMENT_LOT_DEFAUT, PLACEMENT_LOT_MAX, placer_anciens_leads)
+        from .cadence_placement import (
+            PLACEMENT_LOT_DEFAUT,
+            PLACEMENT_LOT_MAX,
+            placer_anciens_leads,
+        )
         limite = request.data.get('limite')
         if limite in (None, ''):
             limite = PLACEMENT_LOT_DEFAUT
@@ -2573,7 +2576,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # ALEA25 — borné par la portée du viewset (société + équipe).
         from rest_framework.exceptions import APIException
 
-        from .services import PlacementImpossible
+        from .cadence_placement import PlacementImpossible
 
         class _PlacementSuspendu(APIException):
             # ACRM47 — 503 ``{detail}`` (contrat ACRM61) ; LEVÉE, pas

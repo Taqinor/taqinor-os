@@ -50,7 +50,7 @@ from testkit.time import frozen
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import relance_etapes_dues
-from apps.crm.services import (
+from apps.crm.cadence_placement import (
     PLACEMENT_CRENEAUX,
     PLACEMENT_NOTE_PASSEE,
     PLACEMENT_REVEILS_PAR_JOUR,

@@ -14,7 +14,7 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import _decider_placements
+from apps.crm.cadence_placement import _decider_placements
 
 
 class PlacementPlanOuvertTests(TestCase):
