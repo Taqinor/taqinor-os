@@ -851,8 +851,7 @@ def appliquer_section(lien, section, reponses=None, photo=None,
     # écrivait une note — sans aucune notification, et `derniere_reponse_at`
     # n'était relu par personne dans tout le dépôt. Le client vient pourtant
     # de passer cinq minutes sur NOTRE formulaire.
-    from .services import (
-        SIGNAL_QUESTIONNAIRE, notifier_signal_client, poser_touche_signal)
+    from .cadence_signaux import SIGNAL_QUESTIONNAIRE, notifier_signal_client, poser_touche_signal
     notifier_signal_client(
         lead, SIGNAL_QUESTIONNAIRE,
         detail=f'Section « {LIBELLE_SECTION[section]} » renseignée.')

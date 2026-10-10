@@ -28,7 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_signaux
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
@@ -147,7 +147,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
 
     def test_devis_parti_poursuit_sans_rejouer_depuis_le_barreau_1(self):
         self._barreau(2, statut=FAIT)
-        devis = services.poser_etape_preparer_devis(
+        devis = cadence_signaux.poser_etape_preparer_devis(
             self.lead, origine='test', user=self.acteur)
         self._fait(devis)
         [ouverte] = self._ouvertes()
@@ -175,7 +175,7 @@ class TemoinDemarrageTests(_Base):
     (TREADMILL-1538, inchangé)."""
 
     def test_devis_parti_sans_aucun_suivi_demarre_au_barreau_1(self):
-        devis = services.poser_etape_preparer_devis(
+        devis = cadence_signaux.poser_etape_preparer_devis(
             self.lead, origine='test', user=self.acteur)
         self._fait(devis)
         [ouverte] = self._ouvertes()

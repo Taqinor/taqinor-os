@@ -45,11 +45,11 @@ LISTE_BLANCHE: dict[str, str] = {
         "A CORRIGER (session crm) : creation en masse du plan de relance, tache interne du vendeur ; garde de contact a la pose non verifiee",
     "backend/django_core/apps/crm/cadence_filet.py::assurer_prochaine_etape_apres_succes::touche":
         "A CORRIGER (session crm) : touche de suite posee sans garde de contact a la pose",
-    "backend/django_core/apps/crm/services.py::poser_touche_signal::touche":
+    "backend/django_core/apps/crm/cadence_signaux.py::poser_touche_signal::touche":
         "A CORRIGER (session crm) : touche de signal posee sans garde de contact a la pose",
     "backend/django_core/apps/crm/cadence_filet.py::_poser_etape_visite::touche":
         "A CORRIGER (session crm) : touche de visite posee sans garde de contact a la pose",
-    "backend/django_core/apps/crm/services.py::poser_touche_rappel_demande::touche":
+    "backend/django_core/apps/crm/cadence_signaux.py::poser_touche_rappel_demande::touche":
         "A CORRIGER (session crm) : touche de rappel demande posee sans garde de contact a la pose",
     "backend/django_core/apps/crm/cadence_reponses.py::_poser_etape_passation::touche":
         "A CORRIGER (session crm) : touche de passation posee sans garde de contact a la pose",

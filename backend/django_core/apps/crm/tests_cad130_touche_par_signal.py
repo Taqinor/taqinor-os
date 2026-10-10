@@ -27,7 +27,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_temps, horaires, services, stages
+from apps.crm import cadence_temps, horaires, stages, cadence_signaux
 from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -43,7 +43,7 @@ JEUDI_9H = datetime.datetime(2026, 9, 24, 9, 0, tzinfo=TZ)
 JEUDI_10H = datetime.datetime(2026, 9, 24, 10, 0, tzinfo=TZ)
 VENDREDI_9H = datetime.datetime(2026, 9, 25, 9, 0, tzinfo=TZ)
 
-LIBELLE = services.TOUCHES_SIGNAL[services.SIGNAL_PROPOSITION_ROUVERTE]
+LIBELLE = cadence_signaux.TOUCHES_SIGNAL[cadence_signaux.SIGNAL_PROPOSITION_ROUVERTE]
 
 
 def _local(dt):
@@ -156,8 +156,8 @@ class ToucheParSignalTests(TestCase):
         return RelanceEtape.objects.filter(lead=self.lead, libelle=LIBELLE)
 
     def _signal(self):
-        return services.poser_touche_signal(
-            self.lead, services.SIGNAL_PROPOSITION_ROUVERTE)
+        return cadence_signaux.poser_touche_signal(
+            self.lead, cadence_signaux.SIGNAL_PROPOSITION_ROUVERTE)
 
     # ── Done : trois ouvertures, UNE touche, le plan décalé et non doublé ──
 
@@ -269,9 +269,9 @@ class ToucheParSignalTests(TestCase):
                     owner=self.acteur, telephone='+212661112244')
                 setattr(lead, champ, valeur)
                 lead.save()
-                self.assertTrue(services.refus_touche_signal(lead))
-                self.assertIsNone(services.poser_touche_signal(
-                    lead, services.SIGNAL_PROPOSITION_ROUVERTE))
+                self.assertTrue(cadence_signaux.refus_touche_signal(lead))
+                self.assertIsNone(cadence_signaux.poser_touche_signal(
+                    lead, cadence_signaux.SIGNAL_PROPOSITION_ROUVERTE))
                 self.assertFalse(lead.relance_etapes.exists())
 
     def test_un_lead_hors_cadence_ne_decale_pas_son_plan(self):
@@ -301,9 +301,9 @@ class ToucheParSignalTests(TestCase):
     def test_un_rappel_demande_ouvert_couvre_deja_le_signal(self):
         rappel = RelanceEtape.objects.create(
             company=self.company, lead=self.lead,
-            cadence=services.RAPPEL_DEMANDE_CADENCE, ordre=0,
+            cadence=cadence_signaux.RAPPEL_DEMANDE_CADENCE, ordre=0,
             canal=RelanceEtape.Canal.APPEL,
-            libelle=services.RAPPEL_DEMANDE_LIBELLE,
+            libelle=cadence_signaux.RAPPEL_DEMANDE_LIBELLE,
             due_at=JEUDI_9H, due_date=JEUDI_9H.date())
         avant = RelanceEtape.objects.filter(lead=self.lead).count()
         self.assertEqual(self._signal().pk, rappel.pk)
@@ -328,16 +328,16 @@ class ToucheParSignalTests(TestCase):
         self.assertEqual(touche.canal, RelanceEtape.Canal.WHATSAPP)
 
     def test_signal_inconnu_ne_pose_rien(self):
-        self.assertIsNone(services.poser_touche_signal(self.lead, 'inconnu'))
+        self.assertIsNone(cadence_signaux.poser_touche_signal(self.lead, 'inconnu'))
         self.assertFalse(self._touches_signal().exists())
 
     def test_variante_par_id_scopee_a_la_societe(self):
         autre = Company.objects.create(nom='CAD130 Autre',
                                        slug='cad130-autre')
-        self.assertIsNone(services.poser_touche_signal_du_lead_id(
-            self.lead.pk, services.SIGNAL_PROPOSITION_ROUVERTE,
+        self.assertIsNone(cadence_signaux.poser_touche_signal_du_lead_id(
+            self.lead.pk, cadence_signaux.SIGNAL_PROPOSITION_ROUVERTE,
             company=autre))
         self.assertFalse(self._touches_signal().exists())
-        self.assertIsNotNone(services.poser_touche_signal_du_lead_id(
-            self.lead.pk, services.SIGNAL_PROPOSITION_ROUVERTE,
+        self.assertIsNotNone(cadence_signaux.poser_touche_signal_du_lead_id(
+            self.lead.pk, cadence_signaux.SIGNAL_PROPOSITION_ROUVERTE,
             company=self.company))

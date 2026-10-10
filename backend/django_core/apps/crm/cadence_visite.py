@@ -43,7 +43,7 @@ from .cadence_reperes import (
 from .cadence_touche import marquer_etape_relance
 from .leads_socle import visite_point_eau_requise, visite_pro_avant_devis
 from .models import LeadActivity, RelanceEtape
-from .services import poser_etape_preparer_devis
+from .cadence_signaux import poser_etape_preparer_devis
 from .visites_retour_lead import ecrire_retour_lead_visite
 
 logger = logging.getLogger(__name__)

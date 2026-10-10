@@ -88,7 +88,7 @@ class RegistreOppositionTests(TestCase):
 
     def test_rappel_client_leve_opposition(self):
         from apps.crm.models import LeadActivity
-        from apps.crm.services import notify_client_contact_request
+        from apps.crm.cadence_signaux import notify_client_contact_request
 
         self._patch(True)
         self.lead.refresh_from_db()
@@ -110,7 +110,7 @@ class RegistreOppositionTests(TestCase):
 
     def test_rappel_client_lead_non_oppose_sans_note(self):
         from apps.crm.models import LeadActivity
-        from apps.crm.services import notify_client_contact_request
+        from apps.crm.cadence_signaux import notify_client_contact_request
 
         notify_client_contact_request(
             'DEV-ACRM63', self.lead, canal='rappel', message='')
@@ -120,7 +120,7 @@ class RegistreOppositionTests(TestCase):
             body__contains='opposition levée à la demande du client').exists())
 
     def test_autre_canal_ne_leve_pas_opposition(self):
-        from apps.crm.services import notify_client_contact_request
+        from apps.crm.cadence_signaux import notify_client_contact_request
 
         self._patch(True)
         self.lead.refresh_from_db()

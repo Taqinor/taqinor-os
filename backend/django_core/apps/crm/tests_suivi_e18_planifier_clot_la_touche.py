@@ -28,7 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_signaux
 from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm.cadence_config import (
@@ -152,7 +152,7 @@ class LaTouchDejaAnnuleeResteAnnuleeTests(_Base):
             body__contains='Calé au tél.').exists())
 
     def test_l_etape_devis_mise_en_attente_reste_annulee(self):
-        devis = services.poser_etape_preparer_devis(
+        devis = cadence_signaux.poser_etape_preparer_devis(
             self.lead, origine='test', user=self.acteur)
         self.assertTrue(devis is not None and devis.cle == CLE_DEVIS)
         resp = self._planifier(etape=devis.pk, note_etape='Visite d’abord')

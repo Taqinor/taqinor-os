@@ -173,6 +173,8 @@ backend/django_core/apps/crm/cadence_reveil_saison.py::dans_la_fenetre_saison
 backend/django_core/apps/crm/cadence_reveil_saison.py::motif_de_refus
 backend/django_core/apps/crm/cadence_reveil_saison.py::poser_reveil_saisonnier
 backend/django_core/apps/crm/cadence_reveil_saison.py::poser_reveils_saisonniers
+backend/django_core/apps/crm/cadence_signaux.py::poser_touche_rappel_demande
+backend/django_core/apps/crm/cadence_signaux.py::refus_touche_signal
 backend/django_core/apps/crm/cadence_touche.py::issue_fait_naitre_la_suite
 backend/django_core/apps/crm/cadence_visite.py::annuler_rendez_vous_du_lead
 backend/django_core/apps/crm/cadence_visite.py::aucun_devis_parti
@@ -207,9 +209,7 @@ backend/django_core/apps/crm/services.py::noter_touche_marketing
 backend/django_core/apps/crm/services.py::pick_round_robin_owner
 backend/django_core/apps/crm/services.py::playbooks_recommandes
 backend/django_core/apps/crm/services.py::poser_compteur_deploiements
-backend/django_core/apps/crm/services.py::poser_touche_rappel_demande
 backend/django_core/apps/crm/services.py::reactivate_lead_on_new_touch
-backend/django_core/apps/crm/services.py::refus_touche_signal
 backend/django_core/apps/crm/services.py::reprendre_relances_apres_fusion
 backend/django_core/apps/crm/services.py::resolve_or_create_lead_from_whatsapp
 backend/django_core/apps/crm/services.py::resoudre_lien_rdv

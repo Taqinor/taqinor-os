@@ -33,7 +33,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_signaux
 from apps.crm import cadence_visite
 from apps.crm import cadence_touche
 from apps.crm import cadence_filet
@@ -223,7 +223,7 @@ class DeplacementMoteurTests(_Base):
 
     def test_un_rappel_demande_par_le_client_ne_compte_pas(self):
         touche = self._touche(_a(2))
-        services.poser_touche_rappel_demande(self.lead, user=None)
+        cadence_signaux.poser_touche_rappel_demande(self.lead, user=None)
         touche.refresh_from_db()
         self.assertLess(touche.due_at, _a(2))
         self.assertEqual(touche.nb_reports, 0)

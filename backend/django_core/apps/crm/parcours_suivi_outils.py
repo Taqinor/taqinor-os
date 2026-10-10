@@ -693,7 +693,7 @@ class ParcoursBase(TestCase):
         chemin réel vers une étape générique qui est un appel (la passation est un message ;
         un rappel demandé pendant un plan en cours DÉPLACE la touche suivante, il n'en pose
         pas)."""
-        from apps.crm.services import SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal
+        from apps.crm.cadence_signaux import SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal
 
         touche = poser_touche_signal(lead, SIGNAL_PROPOSITION_ROUVERTE, user=self.acteur)
         self.assertIsNotNone(touche, self.msg('le signal « proposition rouverte » n’a rien posé', lead))
