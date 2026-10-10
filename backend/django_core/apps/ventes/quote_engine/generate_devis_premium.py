@@ -421,6 +421,9 @@ _ENT_DEFAULT_CONTACT_LINE = ENT_CONTACT_LINE
 _ENT_DEFAULT_ETUDE_CONTACT = ENT_ETUDE_CONTACT
 _ENT_DEFAULT_LEGAL_LINE = ENT_LEGAL_LINE
 _ENT_DEFAULT_RIB_LINE = ENT_RIB_LINE
+#: APDF4 — logo d'en-tête de la société (``theme.logo_societe_b64``) ; None =
+#: aucun profil → l'asset TAQINOR historique.
+ENT_LOGO_B64 = None
 
 
 def _apply_entreprise(ent):
@@ -432,7 +435,7 @@ def _apply_entreprise(ent):
     le devis d'un autre tenant n'affiche plus jamais l'identité de Taqinor.
     """
     global ENT_NOM_MARQUE, ENT_CONTACT_LINE, ENT_LEGAL_LINE, ENT_RIB_LINE
-    global ENT_ETUDE_CONTACT
+    global ENT_ETUDE_CONTACT, ENT_LOGO_B64
     global CA
     # Réinitialise TOUJOURS depuis les défauts d'abord : pas de fuite d'un rendu
     # précédent (les globals sont mutés sous _RENDER_LOCK).
@@ -441,6 +444,7 @@ def _apply_entreprise(ent):
     ENT_ETUDE_CONTACT = _ENT_DEFAULT_ETUDE_CONTACT
     ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
     ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE
+    ENT_LOGO_B64 = None
     CA = _CA_DEFAULT
     if not isinstance(ent, dict):
         return
@@ -452,6 +456,8 @@ def _apply_entreprise(ent):
     # Aucun profil (APDF3 : la définition d'identite) → byte-identique.
     if not _profil_renseigne(ent):
         return
+    from .residential.theme import logo_societe_b64
+    ENT_LOGO_B64 = logo_societe_b64({"entreprise": ent})
 
     if nom:
         ENT_NOM_MARQUE = _esc(nom.upper())
@@ -1208,7 +1214,7 @@ def badge(mar):
 def logo_html(h="36px"):
     """Dark logo for pages 2-3 navy headers — transparent, matching page 1 style."""
     try:
-        b64_data = _logo_dark_b64()
+        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
     except Exception:
         b64_data = None
     if b64_data:
@@ -1240,7 +1246,7 @@ def _logo_dark_b64():
 def logo_p1_dark():
     """Logo for dark header — white bg removed, dark pixels → white, rendered on navy."""
     try:
-        b64_data = _logo_dark_b64()
+        b64_data = ENT_LOGO_B64 if ENT_LOGO_B64 is not None else _logo_dark_b64()
     except Exception:
         b64_data = None
     if b64_data:

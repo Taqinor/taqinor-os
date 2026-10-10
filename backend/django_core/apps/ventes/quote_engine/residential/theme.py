@@ -85,6 +85,51 @@ def logo_color_b64() -> str:
     return base64.b64encode(p.read_bytes()).decode()
 
 
+#: APDF4 — PNG 1×1 transparent : en-tête d'une société identifiée SANS logo
+#: (bandeau neutre, comme ``extra_docs._logo_block`` — jamais le logo TAQINOR).
+_PIXEL_TRANSPARENT_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+                          "nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==")
+
+
+def _png_b64(uri: str) -> str:
+    """APDF4 — data URI d'une image raster → base64 PNG ; '' si illisible."""
+    import io
+    try:
+        from PIL import Image
+        entete, _, charge = (uri or "").partition(",")
+        if ";base64" not in entete:
+            return ""
+        img = Image.open(io.BytesIO(base64.b64decode(charge)))
+        buf = io.BytesIO()
+        img.convert("RGBA").save(buf, "PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent
+        return ""
+
+
+def logo_societe_b64(data):
+    """APDF4 (C-APDF-001) — logo d'en-tête d'une SOCIÉTÉ, en base64 PNG.
+
+    Logo téléversé (``entreprise['logo_uri']``, lu par le builder comme la
+    facture) → ce logo ; profil sans logo → pixel transparent (bandeau
+    neutre) ; aucun profil → ``None`` (l'appelant garde le logo TAQINOR)."""
+    from ..identite import profil_renseigne
+    ent = (data or {}).get("entreprise") or {}
+    png = _png_b64(ent.get("logo_uri") or "") if ent.get("logo_uri") else ""
+    if png:
+        return png
+    return _PIXEL_TRANSPARENT_B64 if profil_renseigne(ent) else None
+
+
+def logo_imprime_b64(data, sombre: bool = True) -> str:
+    """APDF4 — LE logo imprimé par les gabarits premium : celui de la société
+    (``logo_societe_b64``), sinon l'asset TAQINOR (sombre ou couleur)."""
+    societe = logo_societe_b64(data)
+    if societe is not None:
+        return societe
+    return logo_dark_b64() if sombre else logo_color_b64()
+
+
 # This renderer's own bundled assets (the page-1 hero photo).
 _RESID_ASSETS = Path(__file__).resolve().parent / "assets"
 

@@ -33,8 +33,9 @@ def build_ctx(data: dict) -> dict:
         "fmt_mad": montants.fmt_centimes,
         "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
                   "sans": theme.FONT_SANS},
-        "logo_dark": theme.logo_dark_b64(),
-        "logo_color": theme.logo_color_b64(),
+        # APDF4 — logo de la société (neutre sans logo, TAQINOR sans profil).
+        "logo_dark": theme.logo_imprime_b64(data),
+        "logo_color": theme.logo_imprime_b64(data, sombre=False),
         "ident": ident,
         "theme": theme,
     }

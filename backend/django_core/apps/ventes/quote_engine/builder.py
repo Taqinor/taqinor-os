@@ -3504,6 +3504,24 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         entreprise = company_identity(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
+    # APDF4 — logo TÉLÉVERSÉ de la société (``logo_key``), lu comme la facture
+    # (``utils/pdf`` : même téléchargement, même rognage, data URI), sur le
+    # seul chemin de RENDU (drapeau serveur de l'affiche) ; clé posée
+    # seulement quand un logo existe (charge publique et golden inchangés).
+    if entreprise and (pdf_options or {}).get("_embed_roof_render"):
+        try:
+            from django.conf import settings as _st
+            from apps.parametres.models import CompanyProfile
+            from apps.ventes.utils import pdf as _pdf
+            _cle_logo = CompanyProfile.get(company=devis.company).logo_key
+            _brut = _cle_logo and _pdf._download(
+                _st.MINIO_BUCKET_UPLOADS, _cle_logo)
+            if _brut:
+                _rogne, _ext = _pdf._trim_image_whitespace(_brut)
+                entreprise = dict(entreprise, logo_uri=_pdf._to_data_uri(
+                    _rogne, _ext or _cle_logo))
+        except Exception:  # noqa: BLE001 — un logo illisible ne casse rien
+            pass
 
     # ── SCA27 (complément) — site du tenant câblé au moteur résidentiel ───────
     # ``build_quote_data`` peuplait ``entreprise`` (identité) mais laissait le

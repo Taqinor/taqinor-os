@@ -19,6 +19,13 @@ formats du devis, avec l'ICE et le RC que la facture lit
 /proposal, MinIO remplacé en mémoire). Test-du-test : remettre le test
 ``"TAQINOR" not in ent_nom.upper()`` dans ``theme.bande_legale`` ⇒
 ``test_nom_taqinor_profil_renseigne_lit_le_profil`` échoue.
+
+APDF4 — logo (``LogoTests``) : le logo téléversé de la société
+(``CompanyProfile.logo_key``, lu comme la facture) en page 1 de chaque format ;
+société identifiée sans logo → bandeau neutre ; aucun profil → TAQINOR.
+Seul le stockage est local (``utils.pdf._download``). Test-du-test : faire
+renvoyer à ``theme.logo_imprime_b64`` l'asset sans lire
+``entreprise['logo_uri']`` ⇒ ``test_logo_societe_tous_formats`` échoue.
 """
 from unittest import mock
 
@@ -87,6 +94,47 @@ def rendre_pdf(devis, options=None):
             devis.pk, builder.clean_pdf_options(options or {}),
             persist=False)
     return capture['pdf']
+
+
+def png_rouge(largeur=120, hauteur=60) -> bytes:
+    """Logo d'essai : PNG rouge uni."""
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new('RGB', (largeur, hauteur), (220, 20, 20)).save(buf, 'PNG')
+    return buf.getvalue()
+
+
+def images_page(octets, numero=0):
+    """Images (PIL, RGB) embarquées dans la page ``numero`` du PDF."""
+    import io
+    import fitz
+    from PIL import Image
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        out = []
+        for info in doc[numero].get_images(full=True):
+            brut = doc.extract_image(info[0])
+            out.append(Image.open(io.BytesIO(brut['image'])).convert('RGB'))
+        return out
+    finally:
+        doc.close()
+
+
+def taille_logo_taqinor():
+    """Dimensions de l'asset ``assets/logo.png`` (son empreinte)."""
+    from pathlib import Path
+    from PIL import Image
+    from apps.ventes.quote_engine import residential
+    chemin = (Path(residential.__file__).resolve().parent.parent
+              / 'assets' / 'logo.png')
+    with Image.open(chemin) as img:
+        return img.size
+
+
+def est_rouge(img) -> bool:
+    r, g, b = img.getpixel((img.width // 2, img.height // 2))
+    return r > 180 and g < 80 and b < 80
 
 
 def texte_pdf(octets) -> str:
@@ -241,3 +289,85 @@ class MentionsLegalesTests(SimpleTestCase):
         for ligne in (bande, G.ENT_LEGAL_LINE):
             self.assertNotIn('691213', ligne)
             self.assertNotIn('Reda Kasri', ligne)
+
+
+@tag('pdf')
+class LogoTests(TestCase):
+    """APDF4 (C-APDF-001) — logo de la société sur tous les formats."""
+
+    CLE = 'logos/apdf4.png'
+
+    def setUp(self):
+        self.company = make_company(slug='apdf4-co', nom='APDF4')
+        profil(self.company, nom='TAQINOR Démo (complet)',
+               ice='002589631000045', logo_key=self.CLE)
+        self.devis = devis_residentiel(self.company, 'DEV-APDF4-1')
+        brut = png_rouge()
+        patcher = mock.patch(
+            'apps.ventes.utils.pdf._download',
+            lambda bucket, cle: brut if cle == self.CLE else None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_logo_societe_tous_formats(self):
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, clean_pdf_options)
+        from apps.ventes.utils.pdf import _company_context
+        data = build_quote_data(self.devis, dict(
+            clean_pdf_options({}), _embed_roof_render=True))
+        self.assertEqual(data['entreprise']['logo_uri'],
+                         _company_context(self.company)['logo_uri'])
+        taille = taille_logo_taqinor()
+        for nom in ('defaut', 'include_etude', 'onepage'):
+            with self.subTest(format=nom):
+                images = images_page(rendre_pdf(self.devis, FORMATS[nom]))
+                self.assertTrue(any(est_rouge(i) for i in images), nom)
+                self.assertFalse(any(i.size == taille for i in images), nom)
+
+    def test_societe_sans_logo_pas_de_logo_taqinor(self):
+        autre = make_company(slug='apdf4-autre', nom='APDF4 autre')
+        profil(autre, nom='SOLAIRE EXEMPLE SARL', ice='001111111000011')
+        devis = devis_residentiel(autre, 'DEV-APDF4-2')
+        taille = taille_logo_taqinor()
+        for nom in ('defaut', 'include_etude', 'onepage'):
+            with self.subTest(format=nom):
+                images = images_page(rendre_pdf(devis, FORMATS[nom]))
+                self.assertFalse(any(i.size == taille for i in images), nom)
+
+
+class LogoRegleTests(SimpleTestCase):
+    """APDF4 — LA règle du logo, sans base ni rendu PDF."""
+
+    def tearDown(self):
+        G._apply_entreprise(None)
+
+    def test_aucun_profil_logo_taqinor(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme.logo_imprime_b64({}), theme.logo_dark_b64())
+        self.assertEqual(theme.logo_imprime_b64({}, sombre=False),
+                         theme.logo_color_b64())
+        G._apply_entreprise(None)
+        self.assertIsNone(G.ENT_LOGO_B64)
+
+    def test_profil_sans_logo_bandeau_neutre(self):
+        from apps.ventes.quote_engine.residential import theme
+        data = {'entreprise': {'nom': 'SOLAIRE EXEMPLE SARL'}}
+        self.assertEqual(theme.logo_imprime_b64(data),
+                         theme._PIXEL_TRANSPARENT_B64)
+        G._apply_entreprise(data['entreprise'])
+        self.assertNotIn(G._logo_dark_b64(), G.logo_html())
+
+    def test_logo_televerse_imprime_par_les_deux_moteurs(self):
+        import base64
+        import io
+        from PIL import Image
+        from apps.ventes.quote_engine.residential import theme
+        uri = 'data:image/png;base64,' + base64.b64encode(
+            png_rouge()).decode()
+        ent = {'nom': 'X', 'logo_uri': uri}
+        b64 = theme.logo_imprime_b64({'entreprise': ent})
+        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert('RGB')
+        self.assertTrue(est_rouge(img))
+        G._apply_entreprise(ent)
+        self.assertIn(b64, G.logo_html())
+        self.assertIn(b64, G.logo_p1_dark())
