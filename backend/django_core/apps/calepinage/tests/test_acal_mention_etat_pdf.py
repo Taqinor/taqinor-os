@@ -29,7 +29,7 @@ from apps.calepinage.services.documents.presentation_compacte import (
     _construire_presentation, _html_de_presentation,
 )
 from apps.calepinage.services.note_calcul import (
-    construire_note_calcul, html_de_note_calcul,
+    _construire_note_calcul, _html_de_note_calcul,
 )
 from apps.calepinage.services.planche import (
     CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pose_svg, rendre_plan_svg,
@@ -79,8 +79,8 @@ def sept_rendus_texte(cal):
     )
 
     etat = etat_de_conception(cal)
-    note = construire_note_calcul(copy.deepcopy(ECHANTILLON),
-                                  site={'ville': 'x'}, etat=etat)
+    note = _construire_note_calcul(copy.deepcopy(ECHANTILLON),
+                                   site={'ville': 'x'}, etat=etat)
     presentation = _construire_presentation(
         cal, resultat=copy.deepcopy(ECHANTILLON),
         roof_layout=cal.roof_layout, svg_planche='', styles={}, etat=etat)
@@ -97,7 +97,7 @@ def sept_rendus_texte(cal):
                                         moment=MOMENT),
         'plan_masse': rendre_plan_svg(cal, contenu=CONTENU_MASSE,
                                       moment=MOMENT),
-        'note_calcul': html_de_note_calcul(note),
+        'note_calcul': _html_de_note_calcul(note),
         'plan_cablage': plan_cablage,
         'presentation_compacte': _html_de_presentation(presentation),
     }

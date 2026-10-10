@@ -252,12 +252,12 @@ def _codes_pdf_derives():
 
 def _html_note_calcul():
     from apps.calepinage.services.note_calcul import (
-        construire_note_calcul, html_de_note_calcul,
+        _construire_note_calcul, _html_de_note_calcul,
     )
 
-    note = construire_note_calcul(_resultat(), site=SITE, identite=IDENTITE,
-                                  styles=STYLES)
-    return html_de_note_calcul(note)
+    note = _construire_note_calcul(_resultat(), site=SITE, identite=IDENTITE,
+                                   styles=STYLES)
+    return _html_de_note_calcul(note)
 
 
 def _html_rapport_etude():

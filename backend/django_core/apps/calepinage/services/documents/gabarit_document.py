@@ -310,8 +310,8 @@ def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
 # CALX295 — LA PAGE DE GARDE : identité société et projet
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# ``construire_note_calcul`` rangeait une identité dans la note sans que
-# ``html_de_note_calcul`` ne l'imprime NULLE PART : la pièce sortait sans nom
+# ``_construire_note_calcul`` rangeait une identité dans la note sans que
+# ``_html_de_note_calcul`` ne l'imprime NULLE PART : la pièce sortait sans nom
 # de société, sans client, sans date. La garde imprime ce qui est CONNU, et
 # BARRE ce qui ne l'est pas : une valeur absente reste visible comme absente
 # (son libellé barré, « non renseigné »), jamais remplacée par un texte qui

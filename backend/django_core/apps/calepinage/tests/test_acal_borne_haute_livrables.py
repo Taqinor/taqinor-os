@@ -32,7 +32,7 @@ from apps.calepinage.services.documents.presentation_compacte import (
     _construire_presentation, _html_de_presentation,
 )
 from apps.calepinage.services.note_calcul import (
-    construire_note_calcul, html_de_note_calcul,
+    _construire_note_calcul, _html_de_note_calcul,
 )
 from apps.calepinage.services.rapport import nombre_tel_que_servi
 from apps.calepinage.services.rapport.production import html_de_section
@@ -146,7 +146,7 @@ class BorneHauteLivrablesTest(SimpleTestCase):
     def test_note_de_calcul_p90_non_publie(self):
         resultat = _servi(complet=False)
         total = resultat['production']['total']
-        html = html_de_note_calcul(construire_note_calcul(resultat, site=SITE))
+        html = _html_de_note_calcul(_construire_note_calcul(resultat, site=SITE))
         self.assertIn('<th>Production annuelle P90</th><td>%s</td>'
                       % escape(_non_publie(total, 'p90_kwh')), html)
         self.assertIn('<th>Ratio de performance</th><td>%s</td>'
@@ -156,8 +156,8 @@ class BorneHauteLivrablesTest(SimpleTestCase):
         self.assertIn(escape(total['mention']), html[p50:p50 + 600])
 
         complet = _servi(complet=True)
-        html_complet = html_de_note_calcul(
-            construire_note_calcul(complet, site=SITE))
+        html_complet = _html_de_note_calcul(
+            _construire_note_calcul(complet, site=SITE))
         self.assertNotIn('non publié', html_complet)
         self.assertNotIn('<th>Production annuelle P90</th><td>—</td>',
                          html_complet)
@@ -166,7 +166,7 @@ class BorneHauteLivrablesTest(SimpleTestCase):
         resultat = _servi(complet=False)
         total = resultat['production']['total']
         rapport = _rapport(resultat)
-        note = html_de_note_calcul(construire_note_calcul(resultat, site=SITE))
+        note = _html_de_note_calcul(_construire_note_calcul(resultat, site=SITE))
         for cle, libelle_rapport, libelle_note in (
                 ('p75_kwh', 'P75 (kWh)', 'Production annuelle P75'),
                 ('p90_kwh', 'P90 (kWh)', 'Production annuelle P90'),

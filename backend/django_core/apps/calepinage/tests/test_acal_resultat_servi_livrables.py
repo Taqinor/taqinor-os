@@ -18,7 +18,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.note_calcul import (
-    NoteRefusee, construire_note_calcul, motif_note_indisponible,
+    NoteRefusee, _construire_note_calcul, motif_note_indisponible,
     rendre_note_calcul, _resultat_servi_et_stocke,
 )
 from apps.calepinage.services.documents.presentation_compacte import (
@@ -60,7 +60,7 @@ class NoteDeCalculSurCalepinageReelTest(SimpleTestCase):
     def test_la_note_lit_pose_et_production_du_servi(self):
         with patch_materiel():
             servi, stocke = _resultat_servi_et_stocke(self.pivot)
-            note = construire_note_calcul(servi, stocke=stocke, site=SITE)
+            note = _construire_note_calcul(servi, stocke=stocke, site=SITE)
         self.assertEqual(note['pose']['total_modules'],
                          servi['pose']['total_modules'])
         self.assertTrue(note['pose']['total_modules'])
