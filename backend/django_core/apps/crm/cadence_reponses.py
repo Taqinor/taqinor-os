@@ -27,29 +27,31 @@ from .cadence_config import (
 from .leads_socle import motif_refus_valide
 from .models import Lead, LeadActivity, RelanceEtape
 from .services import (
-    CADENCE_DEUXIEME_AFFAIRE,
     CAUSE_RDV_NE_PLUS_CONTACTER,
-    CadenceActiveConflit,
-    _TAG_DECISION_A_PLUSIEURS,
     _config_visite,
     _debrief_ouvert,
     _lead_relancable,
     _poser_etape_de_filet,
     _poser_etape_visite,
-    _prochaine_touche_a_faire,
-    _recaler_file,
     _requalifier_debrief,
     _visite_a_venir,
     annuler_rendez_vous_du_lead,
     annuler_rendez_vous_sur_arret,
-    arreter_cadence,
     assurer_prochaine_etape_apres_succes,
     cause_rdv_perdu,
+    marquer_etape_relance,
+    prochain_palier_sans_reponse,
+)
+from .cadence_plan import (
+    CADENCE_DEUXIEME_AFFAIRE,
+    CadenceActiveConflit,
+    _TAG_DECISION_A_PLUSIEURS,
+    _prochaine_touche_a_faire,
+    _recaler_file,
+    arreter_cadence,
     demarrer_cadence_contact,
     deplacer_echeance_etape,
     initialiser_plan_relance,
-    marquer_etape_relance,
-    prochain_palier_sans_reponse,
     reporter_prochaine_touche,
 )
 from .fiche_funnel import avancer_stage_lead_vers, poser_tag_lead, retirer_tag_lead

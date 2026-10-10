@@ -421,7 +421,7 @@ def nature_touche(etape):
     garde sa nature ; une étape posée avant la clé est reconnue par son
     libellé par défaut."""
     from .cadence_config import CLE_DEVIS, est_etape
-    from .services import est_etape_de_filet
+    from .cadence_plan import est_etape_de_filet
     from .cadence_reperes import PASSATION_LIBELLE, est_etape_de_visite
 
     if est_etape_de_visite(etape):

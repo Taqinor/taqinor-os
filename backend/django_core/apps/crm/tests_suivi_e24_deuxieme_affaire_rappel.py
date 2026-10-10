@@ -27,7 +27,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_plan
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, CLE_RAPPEL_CONVENU, cle_de, q_etape
@@ -45,7 +45,7 @@ A_FAIRE = RelanceEtape.Statut.A_FAIRE
 FAIT = RelanceEtape.Statut.FAIT
 APPEL = RelanceEtape.Canal.APPEL
 WHATSAPP = RelanceEtape.Canal.WHATSAPP
-CADENCE = services.CADENCE_DEUXIEME_AFFAIRE
+CADENCE = cadence_plan.CADENCE_DEUXIEME_AFFAIRE
 ORDRES = frozenset(e['ordre'] for e in CADENCES_DEFAUT[CADENCE])
 #: Le dernier barreau du gabarit livré (l'« Appel d'ouverture »).
 DERNIER = max(ORDRES)

@@ -20,7 +20,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.crm.cadence_reponses import TAG_DECISION_A_PLUSIEURS
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape

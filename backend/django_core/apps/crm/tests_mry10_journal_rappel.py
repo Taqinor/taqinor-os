@@ -46,10 +46,12 @@ def _materialiser_tout(lead, user, *, cadence='contact', depart=None):
     elle, est verrouillée dans ``tests_relance_foundation``.
     """
     from apps.crm import horaires as _h
-    from apps.crm.services import (
-        _adapter_gabarits_reveil, _normaliser_depart,
+    from apps.crm.cadence_plan import (
+        _adapter_gabarits_reveil,
+        _normaliser_depart,
         calculer_echeances_cadence,
-        initialiser_plan_relance as _initialiser)
+        initialiser_plan_relance as _initialiser,
+    )
 
     etapes = _initialiser(
         lead, user, cadence=cadence, depart=depart)

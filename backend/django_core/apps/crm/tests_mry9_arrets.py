@@ -26,7 +26,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import arreter_cadence, initialiser_plan_relance
+from apps.crm.cadence_plan import arreter_cadence, initialiser_plan_relance
 from apps.crm.fiche_funnel import avancer_stage_lead_vers
 from apps.parametres.models import CompanyProfile
 
@@ -54,8 +54,7 @@ def _poser_plan_direct(lead, cadence, depart):
     from django.utils import timezone as _tz
 
     from apps.crm import horaires as _h
-    from apps.crm.services import (
-        _normaliser_depart, calculer_echeances_cadence)
+    from apps.crm.cadence_plan import _normaliser_depart, calculer_echeances_cadence
 
     ancre = _normaliser_depart(depart)
     maintenant = _tz.now()

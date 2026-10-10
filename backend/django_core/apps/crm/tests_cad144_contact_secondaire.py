@@ -16,7 +16,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import cadence_temps, services, stages
+from apps.crm import cadence_temps, stages, cadence_plan
 from apps.crm import leads_doublons
 from apps.crm.models import Lead
 from apps.crm.serializers import LEAD_PII_FIELDS
@@ -107,7 +107,7 @@ class ContactSecondaireApiTests(TestCase):
             owner=self.responsable,
             contact_secondaire_nom='Technicien de maintenance',
             contact_secondaire_telephone='0662334455')
-        services.demarrer_cadence_contact(seul, origine='test')
+        cadence_plan.demarrer_cadence_contact(seul, origine='test')
         self.assertFalse(seul.relance_etapes.exists())
         self.assertEqual(leads_doublons.find_duplicates_by_contact(
             self.company, phone='0662334455'), [])

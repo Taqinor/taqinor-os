@@ -27,8 +27,7 @@ from core.events import devis_refused, devis_sent
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import devis_a_cadence_active
-from apps.crm.services import (
-    calculer_echeances_cadence, initialiser_plan_relance)
+from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 

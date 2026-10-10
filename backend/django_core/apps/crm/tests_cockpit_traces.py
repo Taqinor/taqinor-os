@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_CONFIRMATION
 from apps.crm.models import Lead, RelanceEtape
@@ -106,7 +107,7 @@ class OrigineALaCreationTests(_Base):
         self.assertIsNone(etape.due_initial_at)
 
     def test_le_bulk_create_du_plan_pose_l_origine(self):
-        etapes = services.initialiser_plan_relance(
+        etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='contact', depart=GEL)
         self.assertTrue(etapes)
         for etape in etapes:
@@ -117,7 +118,7 @@ class OrigineALaCreationTests(_Base):
                 self.assertEqual(etape.nb_reports, 0)
 
     def test_la_touche_nee_d_une_issue_porte_son_origine(self):
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='contact', depart=GEL)
         [ouverte] = self._ouvertes()
         services.marquer_etape_relance(
@@ -135,7 +136,7 @@ class ReportHumainTests(_Base):
         cible = self._touche(_a(1), ordre=2)
         suivante = self._touche(_a(2), ordre=3)
         origine = cible.due_at
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             self.lead, self.acteur, _a(5, 11), etape=cible)
         cible.refresh_from_db()
         suivante.refresh_from_db()
@@ -150,9 +151,9 @@ class ReportHumainTests(_Base):
     def test_deux_reports_comptent_deux(self):
         cible = self._touche(_a(1))
         origine = cible.due_at
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             self.lead, self.acteur, _a(2, 11), etape=cible)
-        services.reporter_prochaine_touche(
+        cadence_plan.reporter_prochaine_touche(
             self.lead, self.acteur, _a(6, 11), etape=cible)
         cible.refresh_from_db()
         self.assertEqual(cible.nb_reports, 2)
@@ -243,7 +244,7 @@ class DeplacementMoteurTests(_Base):
         """« À rappeler le… » sur un barreau CONSOMME la touche : la date
         PLACE celle qui lui succède — un placement, jamais un report."""
         gabarits = CadenceRelanceEtape.cadence_pour(self.company, 'contact')
-        echeances = services.calculer_echeances_cadence(
+        echeances = cadence_plan.calculer_echeances_cadence(
             self.lead, 'contact', GEL, gabarits=gabarits)
         gabarit, echeance = next(
             (g, e) for g, e in echeances if g.ordre == 2)

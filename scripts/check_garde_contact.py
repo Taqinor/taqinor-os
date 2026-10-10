@@ -41,7 +41,7 @@ LISTE_BLANCHE: dict[str, str] = {
         "A CORRIGER (ACRM, session crm) : brouillon wa.me de rappel RDV vers le lead sans garde de contact (opposition non verifiee)",
     "backend/django_core/apps/crm/services.py::_poser_etape_de_filet::touche":
         "A CORRIGER (LSVC5-5) : pose de filet sans garde propre ; liste blanche « appelants gardes » OU garde a ajouter, decision du proprietaire crm",
-    "backend/django_core/apps/crm/services.py::initialiser_plan_relance::touche":
+    "backend/django_core/apps/crm/cadence_plan.py::initialiser_plan_relance::touche":
         "A CORRIGER (session crm) : creation en masse du plan de relance, tache interne du vendeur ; garde de contact a la pose non verifiee",
     "backend/django_core/apps/crm/services.py::assurer_prochaine_etape_apres_succes::touche":
         "A CORRIGER (session crm) : touche de suite posee sans garde de contact a la pose",

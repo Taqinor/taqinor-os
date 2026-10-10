@@ -25,7 +25,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS_MODIFIE
@@ -125,7 +125,7 @@ class DevisModifieEnvoyeTests(TestCase):
     def _assert_relance_date_sur_la_plus_proche(self):
         """SUIVI I6 — ``Lead.relance_date`` = la date de la plus proche
         touche ouverte (jamais vide quand une touche l'est)."""
-        proche = services._prochaine_touche_a_faire(self.lead)
+        proche = cadence_plan._prochaine_touche_a_faire(self.lead)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertIsNotNone(proche)
         self.assertEqual(self.lead.relance_date, proche.due_date)

@@ -25,7 +25,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE
 from apps.crm.models import Lead, RelanceEtape
@@ -80,7 +80,7 @@ class ParquerAuFroidTests(TestCase):
     def test_une_etape_de_filet_ne_bloque_plus_les_reveils(self):
         filet = self._filet_ouvert()
 
-        services.cloturer_cadence(self.lead, self.acteur, 'contact')
+        cadence_plan.cloturer_cadence(self.lead, self.acteur, 'contact')
 
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.COLD)
@@ -90,7 +90,7 @@ class ParquerAuFroidTests(TestCase):
         self.assertTrue(self._reveils().exists())
 
     def test_sans_filet_les_reveils_sont_poses_comme_avant(self):
-        services.cloturer_cadence(self.lead, self.acteur, 'contact')
+        cadence_plan.cloturer_cadence(self.lead, self.acteur, 'contact')
 
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.COLD)

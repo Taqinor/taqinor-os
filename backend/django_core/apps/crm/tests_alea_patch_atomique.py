@@ -82,7 +82,7 @@ class PatchAtomiqueTests(TestCase):
         chatter_avant = self._nb_chatter()
         relance_avant = Lead.objects.get(pk=self.lead.pk).relance_date
         j9 = (J + datetime.timedelta(days=9)).date().isoformat()
-        with mock.patch('apps.crm.services.reporter_prochaine_touche',
+        with mock.patch('apps.crm.cadence_plan.reporter_prochaine_touche',
                         side_effect=RuntimeError('report en panne')):
             resp = self.api.patch(self.url, {'relance_date': j9},
                                   format='json')

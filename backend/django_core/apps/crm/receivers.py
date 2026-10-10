@@ -36,7 +36,7 @@ from .models import (
     Lead,
     LeadActivity,
 )
-from .services import arreter_cadence, ISSUES_CLIENT_JOINT
+from .cadence_plan import arreter_cadence, ISSUES_CLIENT_JOINT
 from .fiche_funnel import (
     _CONTACT_KINDS,
     avancer_stage_new_vers_contacted,

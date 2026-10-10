@@ -16,6 +16,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.crm import services
+from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from authentication.models import Company
@@ -52,8 +53,8 @@ class GardeCadenceUniqueTests(CadxBase):
         # (re)lance « contact » → REFUS, et le plan après-devis est INTACT.
         etape = _touche(self.lead, 'apres_devis', ordre=7,
                         libelle='Validité de la proposition', jours=1)
-        with self.assertRaises(services.CadenceActiveConflit):
-            services.initialiser_plan_relance(
+        with self.assertRaises(cadence_plan.CadenceActiveConflit):
+            cadence_plan.initialiser_plan_relance(
                 self.lead, self.user, cadence='contact')
         etape.refresh_from_db()
         self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
@@ -65,7 +66,7 @@ class GardeCadenceUniqueTests(CadxBase):
         # cadence prioritaire remplace — contact ANNULÉ moteur, motif tracé.
         contact = _touche(self.lead, 'contact', ordre=3,
                           libelle='Appel 2 (répondeur)')
-        etapes = services.initialiser_plan_relance(
+        etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='apres_devis',
             depart=timezone.now())
         self.assertTrue(etapes)
@@ -77,22 +78,22 @@ class GardeCadenceUniqueTests(CadxBase):
 
     def test_reveil_refuse_sous_toute_cadence_active(self):
         _touche(self.lead, 'contact')
-        with self.assertRaises(services.CadenceActiveConflit):
-            services.initialiser_plan_relance(
+        with self.assertRaises(cadence_plan.CadenceActiveConflit):
+            cadence_plan.initialiser_plan_relance(
                 self.lead, self.user, cadence='reveil')
 
     def test_meme_cadence_reste_idempotente_jamais_un_conflit(self):
-        premieres = services.initialiser_plan_relance(
+        premieres = cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact', depart=timezone.now())
         self.assertTrue(premieres)
-        secondes = services.initialiser_plan_relance(
+        secondes = cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact', depart=timezone.now())
         self.assertEqual([e.pk for e in secondes],
                          [e.pk for e in premieres])
 
     def test_demarrer_cadence_contact_trace_le_refus_au_chatter(self):
         _touche(self.lead, 'apres_devis', ordre=7, jours=1)
-        resultat = services.demarrer_cadence_contact(
+        resultat = cadence_plan.demarrer_cadence_contact(
             self.lead, user=self.user, origine='test-cadx')
         self.assertEqual(resultat, [])
         self.assertTrue(LeadActivity.objects.filter(
@@ -204,12 +205,12 @@ class TreadmillTests(CadxBase):
     def test_relancer_apres_arret_cree_un_nouveau_plan(self):
         # La recette du 08/09 (« Arrêter la cadence » puis « Relancer »)
         # butait sur l'idempotence-historique : réparée.
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact', depart=timezone.now())
-        services.arreter_cadence(self.lead, user=self.user, motif='test')
+        cadence_plan.arreter_cadence(self.lead, user=self.user, motif='test')
         self.assertEqual(self.lead.relance_etapes.filter(
             statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
-        relance = services.initialiser_plan_relance(
+        relance = cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact', depart=timezone.now())
         self.assertTrue(any(
             e.statut == RelanceEtape.Statut.A_FAIRE for e in relance))
@@ -230,10 +231,10 @@ class TreadmillTests(CadxBase):
             cadence='generique', libelle=cadence_reperes.FILET_JOINT_LIBELLE,
             statut=RelanceEtape.Statut.A_FAIRE).exists())
         # Le client répond → le moteur annule le plan (équivalent MRY9).
-        services.arreter_cadence(self.lead, user=self.user, motif='joint',
-                                 cadences=['apres_devis', 'generique'])
+        cadence_plan.arreter_cadence(self.lead, user=self.user, motif='joint',
+                                     cadences=['apres_devis', 'generique'])
         # ENVOI réel du devis (ce que fait le récepteur devis_sent) :
-        relance = services.initialiser_plan_relance(
+        relance = cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='apres_devis',
             depart=timezone.now(), devis=devis)
         self.assertTrue(any(
@@ -262,10 +263,10 @@ class TreadmillTests(CadxBase):
     def test_un_plan_redemarre_fait_naitre_ses_propres_barreaux(self):
         # Génération (ancre) : les ordres consommés par l'ANCIEN plan clos ne
         # doivent pas étouffer la naissance des barreaux du nouveau.
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact', depart=timezone.now())
-        services.arreter_cadence(self.lead, user=self.user, motif='test')
-        relance = services.initialiser_plan_relance(
+        cadence_plan.arreter_cadence(self.lead, user=self.user, motif='test')
+        relance = cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact', depart=timezone.now())
         premiere = next(e for e in relance
                         if e.statut == RelanceEtape.Statut.A_FAIRE)

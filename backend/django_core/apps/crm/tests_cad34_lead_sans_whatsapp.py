@@ -36,8 +36,9 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import cadence_temps, horaires, services
+from apps.crm import cadence_plan
 from apps.crm.models import Lead
-from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -133,7 +134,7 @@ class UnFixeDemarreParUnAppelTests(_Base):
         """On ne bloque pas wa.me : la garde laisse passer, et le plan est
         celui du protocole, en appels."""
         lead = self._lead(telephone=FIXE, stage=services.stages.NEW)
-        self.assertIsNone(services._garde_cadence_contact(lead))
+        self.assertIsNone(cadence_plan._garde_cadence_contact(lead))
 
     def test_un_mobile_garde_ses_WhatsApp(self):
         """Garde négative : rien ne change pour le cas ordinaire."""
@@ -150,7 +151,7 @@ class LeRepliSurLeTelephoneTests(_Base):
     def test_un_champ_whatsapp_bancal_se_replie_sur_le_telephone(self):
         lead = self._lead(telephone=MOBILE, whatsapp='n/a')
         self.assertTrue(cadence_temps.numero_joignable(lead))
-        self.assertIsNone(services._garde_cadence_contact(lead))
+        self.assertIsNone(cadence_plan._garde_cadence_contact(lead))
 
     def test_le_plan_reste_celui_du_protocole_dans_ce_cas(self):
         lead = self._lead(telephone=MOBILE, whatsapp='n/a')
@@ -171,7 +172,7 @@ class SansAucunNumeroTests(_Base):
 
     def test_la_garde_refuse_toujours_et_NOMME_les_champs(self):
         lead = self._lead(telephone='', whatsapp='')
-        code, motif = services._garde_cadence_contact(lead)
+        code, motif = cadence_plan._garde_cadence_contact(lead)
         self.assertEqual(code, 'sans_numero')
         self.assertIn('aucun numéro exploitable', motif)
         self.assertIn('Téléphone', motif)

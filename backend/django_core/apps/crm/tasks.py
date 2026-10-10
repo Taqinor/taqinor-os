@@ -191,7 +191,7 @@ def poser_reveils_saisonniers_task(
 
     from authentication.selectors import active_companies
 
-    from apps.crm.services import poser_reveils_saisonniers
+    from apps.crm.cadence_plan import poser_reveils_saisonniers
 
     logger = logging.getLogger(__name__)
     posees = 0

@@ -20,8 +20,9 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.crm import services, stages
+from apps.crm import cadence_plan
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import demarrer_cadence_contact
+from apps.crm.cadence_plan import demarrer_cadence_contact
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 
@@ -101,7 +102,7 @@ class LesTroisCheminsNeBougentPasTests(_Base):
     def test_chemin_2_la_garde_PURE_rend_le_meme_verdict_sans_ecrire(self):
         """C'est elle que le dry-run de la reprise appelle pour COMPTER."""
         lead = self._lead()
-        code, motif = services._garde_cadence_contact(lead)
+        code, motif = cadence_plan._garde_cadence_contact(lead)
         self.assertEqual(code, 'miroir')
         self.assertIn('miroir Odoo', motif)
         self.assertFalse(self._notes(lead))

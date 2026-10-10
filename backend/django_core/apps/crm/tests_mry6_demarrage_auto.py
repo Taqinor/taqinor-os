@@ -22,8 +22,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import services, stages
+from apps.crm import cadence_plan
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import demarrer_cadence_contact
+from apps.crm.cadence_plan import demarrer_cadence_contact
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -132,13 +133,13 @@ class GardesTests(_Base):
         même verdict SANS écrire une ligne."""
         sans_numero = self._lead(nom='Sans numéro', telephone=None,
                                  whatsapp=None)
-        code, motif = services._garde_cadence_contact(sans_numero)
+        code, motif = cadence_plan._garde_cadence_contact(sans_numero)
         self.assertEqual(code, 'sans_numero')
         self.assertIn('aucun numéro exploitable', motif)
         self.assertFalse(
             LeadActivity.objects.filter(lead=sans_numero).exists())
         self.assertIsNone(
-            services._garde_cadence_contact(self._lead(nom='Joignable')))
+            cadence_plan._garde_cadence_contact(self._lead(nom='Joignable')))
 
     def test_un_doublon_vivant_est_refuse_et_trace(self):
         """Deux cadences sur la même personne = deux commerciaux qui
@@ -182,7 +183,7 @@ class GardesTests(_Base):
 
     def test_une_exception_ne_casse_jamais_la_creation(self):
         lead = self._lead()
-        with mock.patch.object(services, 'initialiser_plan_relance',
+        with mock.patch.object(cadence_plan, 'initialiser_plan_relance',
                                side_effect=RuntimeError('boum')):
             self.assertEqual(demarrer_cadence_contact(lead), [])
 
@@ -207,7 +208,7 @@ class PointsDappelTests(_Base):
         api = APIClient()
         api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
-        with mock.patch.object(services, 'initialiser_plan_relance',
+        with mock.patch.object(cadence_plan, 'initialiser_plan_relance',
                                side_effect=RuntimeError('boum')):
             resp = api.post('/api/django/crm/leads/', {
                 'nom': 'Malgré tout', 'telephone': '+212661998866',

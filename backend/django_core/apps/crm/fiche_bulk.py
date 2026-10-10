@@ -8,12 +8,11 @@ from django.utils import timezone
 from . import activity, stages
 from .models import Canal, Lead
 from .services import (
-    arreter_cadence,
     assurer_prochaine_etape_apres_succes,
     raison_refus_suppression,
     reprendre_cadence_apres_reouverture,
-    sync_relance_activity,
 )
+from .cadence_plan import arreter_cadence, sync_relance_activity
 from .fiche_funnel import (
     SortieSigneBloquee,
     _bulk_stage_allowed,

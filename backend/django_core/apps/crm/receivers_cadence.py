@@ -17,16 +17,18 @@ from .services import (
     CADENCES_ARRETEES_PAR_ISSUE,
     CAUSE_RDV_REFUS,
     _poser_etape_de_filet,
-    _recaler_file,
     annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
-    arreter_cadence,
-    arreter_cadence_du_lead_id,
     assurer_prochaine_etape_apres_succes,
-    initialiser_plan_relance,
     phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
+)
+from .cadence_plan import (
+    _recaler_file,
+    arreter_cadence,
+    arreter_cadence_du_lead_id,
+    initialiser_plan_relance,
 )
 from .fiche_funnel import avancer_stage_lead_vers
 from .cadence_reperes import (

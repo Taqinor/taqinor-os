@@ -10,7 +10,7 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.crm.models import Client, Lead
-from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_realisations import Realisation
 from apps.ventes.domain.envoi import mark_devis_sent

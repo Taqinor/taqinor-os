@@ -51,8 +51,12 @@ from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import relance_etapes_dues
 from apps.crm.services import (
-    PLACEMENT_CRENEAUX, PLACEMENT_NOTE_PASSEE, PLACEMENT_REVEILS_PAR_JOUR,
-    calculer_echeances_cadence, initialiser_plan_relance, placer_anciens_leads)
+    PLACEMENT_CRENEAUX,
+    PLACEMENT_NOTE_PASSEE,
+    PLACEMENT_REVEILS_PAR_JOUR,
+    placer_anciens_leads,
+)
+from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 
@@ -378,7 +382,7 @@ class DecisionContactTests(_PlacementBase):
         # (11 touches annoncées, c'est ce que l'aperçu MRY30 promet), mais
         # seule la prochaine à faire est matérialisée ; la suite naît des
         # issues saisies.
-        from apps.crm.services import calculer_echeances_cadence
+        from apps.crm.cadence_plan import calculer_echeances_cadence
         depart = touches.first().cadence_depart
         self.assertIsNotNone(depart)
         self.assertEqual(

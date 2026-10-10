@@ -27,9 +27,9 @@ from apps.crm.services import (
     ANNULATION_TOUCHE_HEURES,
     AnnulationToucheRefusee,
     annuler_touche_relance,
-    initialiser_plan_relance,
     marquer_etape_relance,
 )
+from apps.crm.cadence_plan import initialiser_plan_relance
 from apps.crm.cadence_reperes import FILET_JOINT_LIBELLE
 from apps.parametres.models import CompanyProfile
 

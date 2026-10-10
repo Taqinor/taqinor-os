@@ -34,6 +34,7 @@ from core.events import devis_sent
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
@@ -187,7 +188,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
                                canal=RelanceEtape.Canal.APPEL,
                                cle=CLE_DEVIS_MODIFIE,
                                libelle=cadence_reperes.VISITE_DEVIS_LIBELLE)
-        services._recaler_file(self.lead, self.acteur)
+        cadence_plan._recaler_file(self.lead, self.acteur)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertEqual(self.lead.relance_date, GEL.date())
 
@@ -197,7 +198,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
         modifie.refresh_from_db()
         self.assertEqual(modifie.statut, ANNULEE)
         barreau = self._barreau_1_ouvert(nouveau)
-        proche = services._prochaine_touche_a_faire(self.lead)
+        proche = cadence_plan._prochaine_touche_a_faire(self.lead)
         self.assertEqual(proche.pk, barreau.pk)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertEqual(self.lead.relance_date, proche.due_date)
@@ -223,7 +224,7 @@ class InitialisationAvecVisiteOuverteTests(_Base):
     def test_le_service_ne_rend_jamais_l_etape_de_visite(self):
         planifier = services.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
-        etapes = services.initialiser_plan_relance(
+        etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='apres_devis', depart=GEL)
         self.assertTrue(etapes)
         self.assertNotIn(planifier.pk, [e.pk for e in etapes])

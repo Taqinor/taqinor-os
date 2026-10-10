@@ -18,6 +18,7 @@ from authentication.models import Company
 from core.dates import aujourd_hui_local
 
 from apps.crm import selectors, services, stages
+from apps.crm import cadence_plan
 from apps.crm.models import Lead, RelanceEtape
 
 User = get_user_model()
@@ -50,7 +51,7 @@ class RecalageUniqueTests(TestCase):
             today=aujourd_hui_local())}
 
     def test_date_passee_recalee_a_l_initialisation(self):
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact')
         self.lead.refresh_from_db()
         premiere = self._ouverte()
@@ -58,7 +59,7 @@ class RecalageUniqueTests(TestCase):
         self.assertFalse(self._en_retard())
 
     def test_chaque_geste_recale(self):
-        services.initialiser_plan_relance(
+        cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact')
         touche = self._ouverte()
         issue = ('pas_de_reponse'
@@ -70,7 +71,7 @@ class RecalageUniqueTests(TestCase):
         self.assertIsNotNone(suivante)
         self.assertEqual(self.lead.relance_date, suivante.due_date)
         # Arrêt de la cadence : plus rien d'ouvert → la file se vide.
-        services.arreter_cadence(self.lead, user=self.user, motif='test')
+        cadence_plan.arreter_cadence(self.lead, user=self.user, motif='test')
         self.lead.refresh_from_db()
         prochaine = self._ouverte()
         self.assertEqual(self.lead.relance_date,

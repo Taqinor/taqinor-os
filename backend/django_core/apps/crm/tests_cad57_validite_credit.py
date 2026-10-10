@@ -296,7 +296,7 @@ class ProEtiquetteAttenteAuDemarrageTests(_ProBase):
 
     def test_etiquette_attente_au_demarrage_du_plan(self):
         from apps.crm.models import LeadActivity
-        from apps.crm.services import MOTIF_VALIDITE_ATTENTE
+        from apps.crm.cadence_plan import MOTIF_VALIDITE_ATTENTE
         devis = self._envoyer('DEV-CIQ510-0020')
         self.assertEqual(
             devis.date_validite,

@@ -36,9 +36,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from testkit.time import frozen
 
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    calculer_echeances_cadence, initialiser_plan_relance,
-    marquer_etape_relance)
+from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
 from apps.crm import horaires
 from apps.parametres.models_relance import CadenceRelanceEtape
 
@@ -471,7 +470,7 @@ class TestMaterialiserToucheSuivante(TestCase):
     """
 
     def setUp(self):
-        from apps.crm.services import materialiser_touche_suivante
+        from apps.crm.cadence_plan import materialiser_touche_suivante
         self.materialiser = materialiser_touche_suivante
         self.company = make_company('relance-ckp2')
         self.acteur = User.objects.create_user(

@@ -1228,10 +1228,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import (
-            demarrer_cadence_contact, recompute_lead_score,
-            sync_relance_activity,
-        )
+        from .services import recompute_lead_score
+        from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
         # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
         # site : il doit donc, comme eux, exister au registre de consentement.
         # La personne a elle-même sollicité le contact (appel entrant,
@@ -1386,11 +1384,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # sont best-effort, chacun dans son point de sauvegarde : leur panne
         # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
         from django.db import transaction
-        from .services import (
-            recompute_lead_score,
-            reporter_prochaine_touche,
-            sync_relance_activity,
-        )
+        from .services import recompute_lead_score
+        from .cadence_plan import reporter_prochaine_touche, sync_relance_activity
         from .fiche_funnel import _emit_stage_changed
         from .leads_premier_contact import maybe_set_first_contacted_at
         with transaction.atomic():
@@ -1522,8 +1517,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # rendez-vous est réellement annulé) : le technicien ne se déplace
         # pas chez un client perdu ou qui ne veut plus être contacté.
         from .services import (
-            CAUSE_RDV_NE_PLUS_CONTACTER, annuler_rendez_vous_sur_arret,
-            arreter_cadence, cause_rdv_perdu)
+            CAUSE_RDV_NE_PLUS_CONTACTER,
+            annuler_rendez_vous_sur_arret,
+            cause_rdv_perdu,
+        )
+        from .cadence_plan import arreter_cadence
         try:
             if not old.perdu and new_lead.perdu:
                 arreter_cadence(
@@ -2401,15 +2399,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (MESSAGE_RELANCE_PLUSIEURS_DEVIS,
-                               MESSAGE_RELANCE_SANS_DEVIS,
-                               CadenceActiveConflit,
-                               CadenceRemplacementAConfirmer,
-                               apercu_remplacement_cadence,
-                               choix_devis_relance,
-                               devis_envoyes_pour_relance,
-                               initialiser_plan_relance,
-                               message_remplacement_cadence)
+        from .cadence_plan import (
+            MESSAGE_RELANCE_PLUSIEURS_DEVIS,
+            MESSAGE_RELANCE_SANS_DEVIS,
+            CadenceActiveConflit,
+            CadenceRemplacementAConfirmer,
+            apercu_remplacement_cadence,
+            choix_devis_relance,
+            devis_envoyes_pour_relance,
+            initialiser_plan_relance,
+            message_remplacement_cadence,
+        )
         oui = (True, 'true', 'True', '1', 1)
         confirme = request.data.get('confirmer_remplacement') in oui
         motif = str(request.data.get('motif') or '').strip()
@@ -2512,7 +2512,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'cadences': 'Liste de cadences attendue.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import arreter_cadence
+        from .cadence_plan import arreter_cadence
         arretees = arreter_cadence(
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
@@ -3181,8 +3181,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.visites.selectors import ligne_visite_pour_lead
         from apps.visites.services import planifier_visite
 
-        from .services import (
-            _prochaine_touche_a_faire, clore_etape_apres_planification)
+        from .services import clore_etape_apres_planification
+        from .cadence_plan import _prochaine_touche_a_faire
 
         lead = self.get_object()
         brut = (request.data.get('date_prevue') or '').strip()
@@ -3509,7 +3509,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # touche forment UNE transaction : un report en panne n'écrit rien
         # (avant : chatter écrit puis 500, touche jamais déplacée).
         from django.db import transaction
-        from .services import reporter_prochaine_touche
+        from .cadence_plan import reporter_prochaine_touche
         from .leads_premier_contact import marquer_premier_contact
         with transaction.atomic():
             act = LeadActivity.objects.create(
@@ -4638,7 +4638,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import est_etape_de_filet, marquer_etape_relance, reporter_prochaine_touche
+        from .services import marquer_etape_relance
+        from .cadence_plan import est_etape_de_filet, reporter_prochaine_touche
         from .cadence_reperes import est_etape_de_visite
         from .cadence_reponses import (
             est_derniere_touche_de_contact,
@@ -4769,7 +4770,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         SUIVI E9 — elle NOMME l'étape (``libelle``, ``cle``) :
         ``_prochaine_touche_publique``."""
-        from .services import _prochaine_touche_a_faire
+        from .cadence_plan import _prochaine_touche_a_faire
 
         data = self.get_serializer(etape).data
         data['prochaine_touche'] = _prochaine_touche_publique(
@@ -5244,7 +5245,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape.refresh_from_db()
                 reprise = etape
             return Response(self.get_serializer(reprise).data)
-        from .services import reporter_prochaine_touche
+        from .cadence_plan import reporter_prochaine_touche
         etape = reporter_prochaine_touche(
             etape.lead, request.user, quand, etape=etape)
         return Response(self.get_serializer(etape).data)

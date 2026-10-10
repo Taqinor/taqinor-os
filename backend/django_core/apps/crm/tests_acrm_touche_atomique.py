@@ -63,7 +63,7 @@ class ToucheAtomiqueTests(TestCase):
     def test_fait_panne_report_rien_ecrit(self):
         avant = self._empreinte()
         demain = (timezone.localdate() + datetime.timedelta(days=2))
-        with patch('apps.crm.services.reporter_prochaine_touche',
+        with patch('apps.crm.cadence_plan.reporter_prochaine_touche',
                    side_effect=RuntimeError('panne déclarée')):
             resp = self.api.post(f'{self.url}fait/',
                                  {'rappel_le': demain.isoformat()},

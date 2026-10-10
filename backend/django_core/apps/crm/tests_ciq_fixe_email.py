@@ -18,11 +18,11 @@ from django.test import TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import cadence_temps, horaires, services
+from apps.crm import cadence_temps, horaires, cadence_plan
 from apps.crm import cadence_messages
 from apps.crm.models import Lead, RelanceEtape
 from apps.crm.serializers import RelanceEtapeSerializer
-from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
@@ -46,7 +46,7 @@ class _Base(TestCase):
         # Une société qui a une réalisation éligible : la touche J4 « preuve »
         # existe au suivi après devis (AGR514).
         patcher = mock.patch.object(
-            services, '_realisation_eligible', return_value=True)
+            cadence_plan, '_realisation_eligible', return_value=True)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.company = Company.objects.create(
