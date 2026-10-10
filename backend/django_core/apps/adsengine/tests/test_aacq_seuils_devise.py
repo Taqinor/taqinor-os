@@ -146,6 +146,49 @@ class SeuilsDeviseTests(TestCase):
         self.assertEqual(cfg.daily_budget_ceiling_mad, 120)
         self.assertEqual(cfg.ceiling_currency, 'USD')
 
+    def test_armer_sans_seuil_reste_non_applicable(self):
+        """AACQ98 — sonde VER-001 : « Armer » (corps exact de ``doArm``) sans
+        seuil saisi ne pose pas la devise du compte ; le défaut du gabarit
+        (250, calibré en MAD) reste non applicable sur un compte USD. Seuil
+        saisi (30 → 'USD', 31/29) : ``test_seuil_usd_declenche_a_31``."""
+        company, _conn, api = self._societe('aacq98-usd')
+        self._campagne_cpl(company, 300, 'c300')
+        resp = api.post('/api/django/adsengine/regles/', {
+            'template_key': 'stop_loss_cpl', 'enabled': True,
+            'dry_run': False}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['threshold_currency'], '')
+        policy = RulePolicy.objects.get(pk=resp.data['id'])
+        f = self._eval(company, policy)[0]
+        self.assertFalse(f['fired'])
+        self.assertIn(INVITE, f['blocked_fr'])
+        # Persistance : relue par GET ; désarmer seul ne pose aucune devise.
+        url = f'/api/django/adsengine/regles/{policy.pk}/'
+        self.assertEqual(api.get(url).data['threshold_currency'], '')
+        resp = api.patch(url, {'enabled': False}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(api.get(url).data['threshold_currency'], '')
+        # Garde-fous créés sans plafond : '' ; plafond saisi : devise du compte.
+        resp = api.post('/api/django/adsengine/garde-fous/', {}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['ceiling_currency'], '')
+        resp = api.patch('/api/django/adsengine/guardrail/', {
+            'max_daily_budget_mad': 120}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        cfg = GuardrailConfig.objects.get(company=company)
+        resp = api.get(f'/api/django/adsengine/garde-fous/{cfg.pk}/')
+        self.assertEqual(resp.data['ceiling_currency'], 'USD')
+        # Compte MAD : vide = sémantique MAD, la règle reste applicable.
+        company_b, _c, api_b = self._societe('aacq98-mad', currency='MAD')
+        self._campagne_cpl(company_b, 300, 'b300')
+        resp = api_b.post('/api/django/adsengine/regles/', {
+            'template_key': 'stop_loss_cpl', 'enabled': True,
+            'dry_run': False}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        f = self._eval(company_b, RulePolicy.objects.get(pk=resp.data['id']))[0]
+        self.assertTrue(f['fired'])
+        self.assertNotIn('blocked_fr', f)
+
     def test_plafond_usd_borne_budget_usd(self):
         company, _conn, api = self._societe('aacq3-plafond')
         resp = api.patch('/api/django/adsengine/guardrail/', {

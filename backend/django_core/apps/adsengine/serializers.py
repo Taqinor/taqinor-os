@@ -165,7 +165,8 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
 
     def _stamp_currency(self, instance, validated_data, company):
         """Pose la devise du compte quand un plafond est SAISI (création, ou
-        valeur modifiée) ; jamais lue du corps."""
+        valeur modifiée) ; jamais lue du corps. AACQ98 — une création SANS
+        plafond saisi garde '' (le défaut du modèle est calibré en MAD)."""
         if company is None:
             return
         changed = any(
@@ -173,7 +174,7 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
                 instance is None
                 or validated_data[f] != getattr(instance, f))
             for f in self._CURRENCY_FIELDS)
-        if instance is None or changed:
+        if changed:
             from .rules_engine import account_currency
             validated_data['ceiling_currency'] = (
                 account_currency(company) or 'MAD').upper()
@@ -485,17 +486,15 @@ class RulePolicySerializer(serializers.ModelSerializer):
 
     def _stamp_currency(self, instance, validated_data, company):
         """AACQ3 (D-AACQ-1 = a) — la devise des seuils ``*_mad`` est posée par
-        le serveur (devise du compte) à la création, ou quand un seuil est
-        ressaisi (valeur changée) ; jamais lue du corps."""
+        le serveur (devise du compte) quand un seuil est RÉELLEMENT saisi —
+        à la création ou ressaisi (valeur changée) ; jamais lue du corps.
+        AACQ98 — armer sans seuil garde '' : le défaut du gabarit est en MAD."""
         if company is None:
             return
-        if instance is not None:
-            if 'params' not in validated_data:
-                return
-            new = self._mad_params(validated_data['params'])
-            old = self._mad_params(instance.params)
-            if not any(old.get(k) != v for k, v in new.items()):
-                return
+        new = self._mad_params(validated_data.get('params'))
+        old = self._mad_params(getattr(instance, 'params', None))
+        if not any(old.get(k) != v for k, v in new.items()):
+            return
         from .rules_engine import account_currency
         validated_data['threshold_currency'] = (
             account_currency(company) or 'MAD').upper()
