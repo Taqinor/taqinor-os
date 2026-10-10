@@ -1803,6 +1803,13 @@ AUTH_COOKIE_SECURE = (
 # `.env` restait SANS effet. Vide (défaut) = comportement inchangé.
 PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').strip()
 
+# ADEP39 — fournisseur de paiement carte (PSP) de la page publique de
+# paiement : lu par `getattr(settings, 'PAYMENT_PROVIDER', '')` dans
+# `apps/ventes/public/paiement_views.py`. Avant ADEP39 il n'était déclaré
+# nulle part, donc poser la variable dans le `.env` restait SANS effet.
+# Vide (défaut) ou 'noop' = aucun lien carte (comportement inchangé).
+PAYMENT_PROVIDER = os.environ.get('PAYMENT_PROVIDER', '').strip()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fondation IA (core.ai) — sélection des fournisseurs par capacité.
 # Dict {capacité: clé_fournisseur}. Le DÉFAUT de chaque capacité est 'noop' :

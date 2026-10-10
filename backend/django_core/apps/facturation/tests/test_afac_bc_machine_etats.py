@@ -206,3 +206,31 @@ class BcMachineEtatsTests(TestCase):
         r = self.api.post(self._url(bc, 'marquer-livre'))
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(self._stock(self.panneau), 20)
+
+    def test_creation_manuelle_refuse_un_second_bc_et_emet_l_evenement(self):
+        """AMET5 (C-AMET-008) — la création manuelle (POST) passe par la
+        MÊME porte que `convertir_en_bc` : BC créé + `bon_commande_cree`
+        émis une fois ; un second BC pour le même devis = 400, message
+        identique, aucune écriture ni second événement."""
+        from apps.ventes.models import BonCommande
+        from core.events import bon_commande_cree
+        recus = []
+
+        def _recepteur(sender, instance=None, **kwargs):
+            recus.append(instance.pk)
+        bon_commande_cree.connect(_recepteur, weak=False)
+        self.addCleanup(bon_commande_cree.disconnect, _recepteur)
+        devis = self._devis_panneaux()
+        corps = {'client': self.client_obj.id, 'devis': devis.id}
+        r = self.api.post('/api/django/ventes/bons-commande/', corps,
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(BonCommande.objects.filter(devis=devis).count(), 1)
+        self.assertEqual(recus, [r.data['id']])
+        r2 = self.api.post('/api/django/ventes/bons-commande/', corps,
+                           format='json')
+        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertIn('Un bon de commande existe déjà pour ce devis.',
+                      str(r2.data))
+        self.assertEqual(BonCommande.objects.filter(devis=devis).count(), 1)
+        self.assertEqual(len(recus), 1)

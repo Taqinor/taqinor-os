@@ -175,6 +175,18 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             return [IsAdminRole()]
         return [IsAdminRole()]
 
+    def get_serializer(self, *args, **kwargs):
+        serializer = super().get_serializer(*args, **kwargs)
+        if self.action == 'create' and 'devis' in serializer.fields:
+            # AMET5 — « un BC par devis » est jugé par LA porte unique
+            # (`creer_bon_commande`, même message que `convertir_en_bc`),
+            # pas par le validateur d'unicité générique du OneToOne.
+            from rest_framework.validators import UniqueValidator
+            champ = serializer.fields['devis']
+            champ.validators = [v for v in champ.validators
+                                if not isinstance(v, UniqueValidator)]
+        return serializer
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         company = self.request.user.company
@@ -201,10 +213,17 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'client': 'Client inconnu.'})
         if devis is not None and devis.company_id != company.id:
             raise ValidationError({'devis': 'Devis inconnu.'})
-        create_numbered(
-            BonCommande, company, 'bon_commande',
-            lambda ref: serializer.save(reference=ref, company=company),
-        )
+        # AMET5 — même porte que `convertir_en_bc` : refus d'un second BC
+        # pour le même devis + événement `bon_commande_cree`.
+        from ..domain.facturation_ops import (
+            BonCommandeExistant, creer_bon_commande)
+        try:
+            creer_bon_commande(
+                devis, company, self.request.user,
+                enregistrer=lambda ref: serializer.save(
+                    reference=ref, company=company))
+        except BonCommandeExistant as exc:
+            raise ValidationError({'detail': exc.message})
 
     @action(detail=True, methods=['post'], url_path='confirmer',
             permission_classes=[IsResponsableOrAdmin])

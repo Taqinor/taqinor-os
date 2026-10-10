@@ -391,14 +391,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         bc_corps = serializer.validated_data.get('bon_commande')
         if bc_corps is not None and bc_corps.devis_id \
                 and bc_corps.pk != facture.bon_commande_id:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError({
                 'bon_commande': BC_DE_DEVIS_REFUSE,
                 'code': 'bon_commande_de_devis'})
-        argent_touche = (set(serializer.validated_data.keys())
-                         & FACTURE_CHAMPS_ARGENT)
+        from ..domain.facturation_ops import argent_modifie  # ATOT35
+        argent_touche = argent_modifie(
+            facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError({
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),
@@ -411,7 +410,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     set(serializer.validated_data.keys())
                     & FACTURE_CHAMPS_FINANCIERS)
                 if champs_touches:
-                    from rest_framework.exceptions import ValidationError
                     raise ValidationError({
                         'detail': (
                             "Facture immuable : les champs financiers d'une "
@@ -1518,7 +1516,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         try:
             avoir = creer_avoir_facture(
                 facture=facture, user=request.user, motif=motif, mode=mode,
-                lignes_saisies=clean_lignes)
+                lignes_saisies=clean_lignes,
+                type_avoir=str(request.data.get('type') or '').strip() or None)
         except AvoirRefuse as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)

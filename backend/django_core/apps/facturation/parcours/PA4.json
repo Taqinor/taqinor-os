@@ -1,0 +1,668 @@
+{
+ "_doc": "PA4 « Argent » (METHODE §D.1) — table du parcours : convertir le devis en BC, facturer, encaisser, corriger (avoir, note de débit, RAS), exporter (pro-forma, UBL/DGI) et relancer. Pilote : facturation. Garde statique : apps/facturation/tests/test_parcours_pa4.py (symboles résolus par AST, sans base). Chemins relatifs à la racine du dépôt, forme fichier::symbole.",
+ "version": "1.0",
+ "maj": "2026-10-09",
+ "parcours": "PA4",
+ "pilote": "facturation",
+ "etapes": [
+  {
+   "id": "PA4.01",
+   "nom": "Convertir le devis accepté en bon de commande",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/DevisList.jsx::convertirDevisEnBC"
+   },
+   "ecran": {
+    "route": "/ventes/devis",
+    "composant": "DevisList.jsx",
+    "action": "Convertir en BC"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/views/devis_facturation.py::DevisFacturationActionsMixin.convertir_en_bc",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/ventes/models_facturation.py::BonCommande"
+   },
+   "regle_aval": [
+    {
+     "type": "refus_409",
+     "detail": "devis non accepté, ou BC déjà existant : HTTP 400 (message explicite)"
+    },
+    {
+     "type": "reference",
+     "detail": "société du BC = société de l'utilisateur, numérotation create_numbered"
+    }
+   ],
+   "suite": "PA4.02",
+   "negatifs": [
+    "devis non accepté",
+    "BC déjà créé pour ce devis"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.02",
+   "nom": "Confirmer le bon de commande",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/BonCommandeList.jsx::confirmerBC"
+   },
+   "ecran": {
+    "route": "/ventes/bons-commande",
+    "composant": "BonCommandeList.jsx",
+    "action": "Confirmer"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/views/bon_commande.py::BonCommandeViewSet.confirmer",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/ventes/models_facturation.py::BonCommande"
+   },
+   "regle_aval": [
+    {
+     "type": "refus_409",
+     "detail": "seul un BC en attente peut être confirmé : HTTP 400"
+    },
+    {
+     "type": "choix_explicite",
+     "detail": "réservation du stock seulement si le réglage société est actif"
+    }
+   ],
+   "suite": "PA4.03",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.03",
+   "nom": "Livrer le bon de commande (partiel ou total)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/BonCommandeList.jsx::livrerPartielBC"
+   },
+   "ecran": {
+    "route": "/ventes/bons-commande",
+    "composant": "BonCommandeList.jsx",
+    "action": "Livrer (partiel)"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/views/bon_commande.py::BonCommandeViewSet.livrer_partiel",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "quantités livrées par ligne"
+    ],
+    "persistance": "backend/django_core/apps/ventes/models_facturation.py::BonCommande"
+   },
+   "regle_aval": [
+    {
+     "type": "recalcul",
+     "detail": "stock décrémenté des quantités livrées ; BC → livré seulement quand tout le reliquat est soldé"
+    }
+   ],
+   "suite": "PA4.04",
+   "negatifs": [
+    "quantité livrée supérieure au reste à livrer"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.04",
+   "nom": "Créer la facture depuis le bon de commande",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/BonCommandeList.jsx::creerFactureFromBC"
+   },
+   "ecran": {
+    "route": "/ventes/bons-commande",
+    "composant": "BonCommandeList.jsx",
+    "action": "Créer la facture"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/views/bon_commande.py::BonCommandeViewSet.creer_facture",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/facturation/models.py::Facture"
+   },
+   "regle_aval": [
+    {
+     "type": "refus_409",
+     "detail": "BC non confirmé/livré, facture déjà liée, ou devis déjà facturé (exiger_devis_facturable) : HTTP 400"
+    },
+    {
+     "type": "reference",
+     "detail": "société issue du BC, jamais de l'utilisateur (AUD117)"
+    }
+   ],
+   "suite": "PA4.06",
+   "negatifs": [
+    "BC en attente",
+    "devis déjà facturé par l'échéancier"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.05",
+   "nom": "Facturer le devis par tranche (acompte, matériel, solde)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/DevisList.jsx::genererFacture"
+   },
+   "ecran": {
+    "route": "/ventes/devis",
+    "composant": "DevisList.jsx",
+    "action": "Facturer"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/utils/echeancier.py::creer_facture_tranche",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/facturation/models.py::Facture"
+   },
+   "regle_aval": [
+    {
+     "type": "fige",
+     "detail": "échéancier fixé par PAYMENT_TERMS_BY_MODE, facture créée « émise »"
+    },
+    {
+     "type": "refus_409",
+     "detail": "blocage crédit client et avertissements de vente bloquants : HTTP 403/400"
+    }
+   ],
+   "suite": "PA4.06",
+   "negatifs": [
+    "client en blocage crédit"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.06",
+   "nom": "Émettre la facture",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/FactureList.jsx::emettreFacture"
+   },
+   "ecran": {
+    "route": "/ventes/factures",
+    "composant": "FactureList.jsx",
+    "action": "Émettre"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/domain/facturation_ops.py::emettre_facture",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/facturation/models.py::Facture"
+   },
+   "regle_aval": [
+    {
+     "type": "fige",
+     "detail": "brouillon → émise : numéro et totaux figés"
+    }
+   ],
+   "suite": "PA4.07",
+   "negatifs": [
+    "facture sans ligne"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.07",
+   "nom": "Enregistrer un paiement sur la facture",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/PaiementDialog.jsx::enregistrerPaiement"
+   },
+   "ecran": {
+    "route": "/ventes/factures",
+    "composant": "PaiementDialog.jsx",
+    "action": "Enregistrer le paiement"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "montant",
+     "mode",
+     "date_paiement",
+     "référence"
+    ],
+    "persistance": "backend/django_core/apps/facturation/models.py::Paiement"
+   },
+   "regle_aval": [
+    {
+     "type": "recalcul",
+     "detail": "reste dû et statut de la facture (partielle / payée) recalculés"
+    },
+    {
+     "type": "refus_409",
+     "detail": "garde sur-paiement"
+    }
+   ],
+   "suite": "PA4.09",
+   "negatifs": [
+    "montant supérieur au reste dû"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.08",
+   "nom": "Importer un relevé bancaire (paiements en lot)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "manuel",
+    "source": "backend/django_core/apps/ventes/views/releve_import.py::releve_dry_run"
+   },
+   "ecran": {
+    "route": "/ventes/paiements/import",
+    "composant": "import relevé",
+    "action": "Analyser puis valider"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/paiement_import.py::commit",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "lignes validées par l'opérateur"
+    ],
+    "persistance": "backend/django_core/apps/facturation/models.py::Paiement"
+   },
+   "regle_aval": [
+    {
+     "type": "choix_explicite",
+     "detail": "seules les lignes validées après le dry-run sont créées"
+    },
+    {
+     "type": "refus_409",
+     "detail": "jeton absent ou consommé, fichier déjà importé pour la société : HTTP 400"
+    }
+   ],
+   "suite": "PA4.09",
+   "negatifs": [
+    "même fichier importé deux fois"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.09",
+   "nom": "Émettre un avoir (note de crédit)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/FactureList.jsx::avoirTarget"
+   },
+   "ecran": {
+    "route": "/ventes/factures",
+    "composant": "FactureList.jsx",
+    "action": "Avoir"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_avoir_facture",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "motif",
+     "lignes créditées",
+     "mode (correction | contre_passation)"
+    ],
+    "persistance": "backend/django_core/apps/facturation/models.py::Avoir"
+   },
+   "regle_aval": [
+    {
+     "type": "refus_409",
+     "detail": "refus typé AvoirRefuse (ex. contre-passation d'une facture déjà payée)"
+    },
+    {
+     "type": "fige",
+     "detail": "contre-passation : la facture d'origine passe « annulée »"
+    }
+   ],
+   "suite": "PA4.10",
+   "negatifs": [
+    "contre-passation d'une facture payée"
+   ],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.10",
+   "nom": "Émettre une note de débit",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/FactureList.jsx::NoteDebitDialog"
+   },
+   "ecran": {
+    "route": "/ventes/factures",
+    "composant": "NoteDebitDialog",
+    "action": "Note de débit"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.creer_note_debit",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "motif",
+     "montant"
+    ],
+    "persistance": "backend/django_core/apps/ventes/models_facturation.py::NoteDebit"
+   },
+   "regle_aval": [
+    {
+     "type": "reference",
+     "detail": "numérotée par create_numbered, liée à la facture d'origine"
+    }
+   ],
+   "suite": "PA4.14",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.11",
+   "nom": "Encaisser avec retenue à la source (RAS)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/pages/ventes/PaiementDialog.jsx::enregistrerPaiement"
+   },
+   "ecran": {
+    "route": "/ventes/factures",
+    "composant": "PaiementDialog.jsx",
+    "action": "Paiement avec retenue"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement_avec_retenue",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "montant encaissé",
+     "montant retenu"
+    ],
+    "persistance": "backend/django_core/apps/facturation/models.py::Paiement"
+   },
+   "regle_aval": [
+    {
+     "type": "recalcul",
+     "detail": "reste dû = total − encaissé − retenue"
+    },
+    {
+     "type": "choix_explicite",
+     "detail": "la retenue est déclarée par l'opérateur"
+    }
+   ],
+   "suite": "PA4.14",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.12",
+   "nom": "Mandat de paiement (parqué, sans appelant MVP)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "manuel",
+    "source": "backend/django_core/apps/ventes/urls.py::router"
+   },
+   "ecran": {
+    "route": "(aucune)",
+    "composant": "(aucun)",
+    "action": "route mandats-paiement parquée (AFAC19)"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/serializers_facturation.py::MandatPaiementSerializer",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [],
+    "persistance": "backend/django_core/apps/ventes/models_facturation.py::MandatPaiement"
+   },
+   "regle_aval": [
+    {
+     "type": "non_propage",
+     "detail": "modèle conservé, route non enregistrée : aucune écriture automatique"
+    }
+   ],
+   "suite": "PA4.14",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.13",
+   "nom": "Pro-forma du devis",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/api/ventesApi.js::getProformaPdf"
+   },
+   "ecran": {
+    "route": "/ventes/devis",
+    "composant": "DevisList.jsx",
+    "action": "Pro-forma PDF"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/views/devis_facturation.py::DevisFacturationActionsMixin.proforma_pdf",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/ventes/models_facturation.py::ProformaDocument"
+   },
+   "regle_aval": [
+    {
+     "type": "reference",
+     "detail": "document pro-forma distinct de la facture, rendu par generate_proforma_pdf"
+    }
+   ],
+   "suite": "PA4.14",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.14",
+   "nom": "Export UBL / transmission DGI",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "clic",
+    "source": "frontend/src/api/ventesApi.js::dgiExportFacture"
+   },
+   "ecran": {
+    "route": "/ventes/factures",
+    "composant": "FactureList.jsx",
+    "action": "Export DGI"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/dgi/transmission.py::transmettre_facture",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/facturation/models.py::Facture"
+   },
+   "regle_aval": [
+    {
+     "type": "preserve_manuel",
+     "detail": "société sans export DGI actif : aucune transmission, export non proposé"
+    },
+    {
+     "type": "reference",
+     "detail": "XML UBL construit par build_ubl_xml"
+    }
+   ],
+   "suite": "PA4.15",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.15",
+   "nom": "Relances de recouvrement",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "beat",
+    "source": "backend/django_core/apps/ventes/scheduled.py::relance_reminders"
+   },
+   "ecran": {
+    "route": "/ventes/relances",
+    "composant": "RelancesPage.jsx",
+    "action": "Relancer"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/scheduled.py::_dispatch_relance_canal",
+   "checkpoint": {
+    "modifiable": true,
+    "champs": [
+     "niveau",
+     "note",
+     "exclusion de la relance"
+    ],
+    "persistance": "backend/django_core/apps/facturation/models.py::RelanceLog"
+   },
+   "regle_aval": [
+    {
+     "type": "recalcul",
+     "detail": "prochaine date de relance fixée à chaque relance consignée"
+    },
+    {
+     "type": "choix_explicite",
+     "detail": "envoi d'email en opt-in (envoyer_email=true) ; exclure_relance sort la facture de la cadence"
+    }
+   ],
+   "suite": "fin",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  },
+  {
+   "id": "PA4.16",
+   "nom": "Autres portes de création de facture (contrat, régie, consignation, situation, classique, SAV, intervention, import, révision, pénalités, consolidation, facturation complète)",
+   "proprietaire": "facturation",
+   "declencheur": {
+    "type": "manuel",
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_classique"
+   },
+   "ecran": {
+    "route": "variable",
+    "composant": "variable",
+    "action": "création de facture hors BC et hors échéancier"
+   },
+   "fonction_entree": "backend/django_core/apps/ventes/domain/facturation_ops.py::facturer_devis_complet",
+   "checkpoint": {
+    "modifiable": false,
+    "champs": [],
+    "persistance": "backend/django_core/apps/facturation/models.py::Facture"
+   },
+   "regle_aval": [
+    {
+     "type": "refus_409",
+     "detail": "exiger_devis_facturable partagé par les portes devis (ATOT2)"
+    }
+   ],
+   "suite": "PA4.06",
+   "negatifs": [],
+   "taches": [],
+   "constats": []
+  }
+ ],
+ "portes": {
+  "Facture": [
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::consolider_factures._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::facturer_devis_complet._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_contrat._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_regie._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_consignation._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_acompte_situation._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_classique._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::generer_facture_ticket_sav._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::generer_facture_intervention._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/imports.py::creer_facture_import._create",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/revision.py::rattacher_aval_financier_revision._facture",
+    "etape": "PA4.16"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/utils/echeancier.py::creer_facture_tranche._create",
+    "etape": "PA4.05"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/views/bon_commande.py::BonCommandeViewSet.creer_facture._create_facture",
+    "etape": "PA4.04"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.facturer_penalites._create",
+    "etape": "PA4.16"
+   }
+  ],
+  "Paiement": [
+   {
+    "source": "backend/django_core/apps/ventes/paiement_import.py::commit",
+    "etape": "PA4.08"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/receivers.py::_materialize_paiement_on_payment_captured",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::encaisser_sur_facture",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::_creer_paiement_groupe",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::record_payment_from_link",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_avance",
+    "etape": "PA4.07"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement_avec_retenue",
+    "etape": "PA4.11"
+   },
+   {
+    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.annuler",
+    "etape": "PA4.07"
+   }
+  ]
+ }
+}

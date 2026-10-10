@@ -345,7 +345,12 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                 'ecart_ttc': ecart, 'document': None}
     facture_ttc = sum((Decimal(str(f.total_ttc)) for f in actives.values()),
                       Decimal('0'))
-    avoirs_ttc = sum((Decimal(str(f.avoirs_total)) for f in actives.values()),
+    # ATOT36 (décision fondateur 10/10) : seuls les avoirs de CORRECTION sont
+    # remis au reste (même règle que ``next_tranche``) ; un geste commercial
+    # a déjà réduit le dû de sa facture — jamais compté deux fois.
+    from apps.ventes.utils.echeancier import avoirs_correction
+    avoirs_ttc = sum((Decimal(str(a.montant_ttc))
+                      for a in avoirs_correction(actives.values())),
                      Decimal('0'))
     from core.money import quantize_mad
     reste = quantize_mad(Decimal(str(option_totaux(devis)['ttc']))
@@ -420,7 +425,9 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                        f'{precedent.reference}) — écart de révision.'),
                 taux_tva=taux, montant_ht=montant_ht,
                 montant_tva=montant_tva, montant_ttc=montant_ttc,
-                ventilation_tva=ventilation, created_by=user)
+                ventilation_tva=ventilation, created_by=user,
+                # ATOT36 — l'avoir de révision corrige un montant facturé.
+                type=Avoir.Type.CORRECTION)
         document = create_numbered(Avoir, company, 'avoir', _avoir)
         activity.log_facture_avoir(cible, user, document)
         activity.log_devis_note(

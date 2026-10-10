@@ -14,6 +14,48 @@ from .models import (
 )
 from .serializers import _fallback_taux_tva
 from core.mixins import SameCompanyFKSerializerMixin
+from .domain.bornes import montant_saisi, pourcentage_saisi
+
+
+class _BornesArgentMixin:
+    """AFAC69 (C-AFAC-059) — bornes d'argent d'une facture / d'un avoir
+    validées AU SÉRIALISEUR par la garde unique ``domain/bornes`` (ATOT21) :
+    un 400 nommé par champ, jamais un 500 ``CheckViolation``. Les
+    ``CheckConstraint`` du modèle restent le filet base."""
+
+    _MSG_REMISE = 'La remise doit être comprise entre 0 et 100 %.'
+
+    @staticmethod
+    def _borne_pourcentage(valeur, champ, message):
+        if valeur is None:
+            return valeur
+        _, erreur = pourcentage_saisi({champ: valeur}, champ, valeur)
+        if erreur:
+            raise serializers.ValidationError(message)
+        return valeur
+
+    @staticmethod
+    def _borne_montant(valeur, champ, message):
+        _, erreur = montant_saisi(valeur, champ)
+        if erreur:
+            raise serializers.ValidationError(message)
+        return valeur
+
+    def validate_remise(self, valeur):
+        return self._borne_pourcentage(valeur, 'remise', self._MSG_REMISE)
+
+    def validate_remise_globale(self, valeur):
+        return self._borne_pourcentage(
+            valeur, 'remise_globale', self._MSG_REMISE)
+
+    def validate_quantite(self, valeur):
+        return self._borne_montant(
+            valeur, 'quantite', 'La quantité ne peut pas être négative.')
+
+    def validate_prix_unitaire(self, valeur):
+        return self._borne_montant(
+            valeur, 'prix_unitaire',
+            'Le prix unitaire ne peut pas être négatif.')
 
 
 class BonCommandeSerializer(SameCompanyFKSerializerMixin,
@@ -115,7 +157,7 @@ class BonCommandeSerializer(SameCompanyFKSerializerMixin,
         return str(totaux.ttc) if totaux is not None else None
 
 
-class LigneFactureSerializer(SameCompanyFKSerializerMixin,
+class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC27 (C-ASEC-005) — `produit` et `source_devis` bornés à la société
     # de la requête : un id étranger = 400 « objet inexistant » (ACAL298).
@@ -407,7 +449,7 @@ class FactureSerializer(serializers.ModelSerializer):
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
-class FactureWriteSerializer(SameCompanyFKSerializerMixin,
+class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -461,7 +503,7 @@ class FactureWriteSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class LigneAvoirSerializer(serializers.ModelSerializer):
+class LigneAvoirSerializer(_BornesArgentMixin, serializers.ModelSerializer):
     total_ht = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
 
@@ -475,7 +517,7 @@ class LigneAvoirSerializer(serializers.ModelSerializer):
         extra_kwargs = {'produit': {'required': True, 'allow_null': False}}
 
 
-class AvoirSerializer(serializers.ModelSerializer):
+class AvoirSerializer(_BornesArgentMixin, serializers.ModelSerializer):
     lignes = LigneAvoirSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)

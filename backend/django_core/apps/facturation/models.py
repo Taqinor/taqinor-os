@@ -1020,9 +1020,21 @@ class Avoir(TotauxDocumentMixin, models.Model):
         EMISE = 'emise', 'Émis'
         ANNULEE = 'annulee', 'Annulé'
 
+    class Type(models.TextChoices):
+        # ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — SEUL un avoir de
+        # CORRECTION est remis à la dernière tranche (solde) : il rectifie une
+        # erreur de facturation, tout le devis reste dû. Un geste commercial
+        # ou un retour réduit le dû de SA facture (``Facture.montant_du``) et
+        # n'est jamais re-facturé. Avoirs antérieurs = correction (0021).
+        CORRECTION = 'correction', 'Correction'
+        GESTE_COMMERCIAL = 'geste_commercial', 'Geste commercial'
+        RETOUR = 'retour', 'Retour'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='avoirs')
+    type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.GESTE_COMMERCIAL)
     reference = models.CharField(max_length=50)
     facture = models.ForeignKey(
         Facture, on_delete=models.PROTECT, related_name='avoirs')
