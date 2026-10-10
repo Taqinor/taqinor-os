@@ -29,7 +29,7 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, mesure_cadence, services, stages
+from apps.crm import horaires, mesure_cadence, stages, cadence_touche
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
@@ -80,7 +80,7 @@ class OutcomeSurLaToucheTests(TestCase):
 
     def test_une_touche_close_porte_son_issue(self):
         etape = self._touche()
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             etape, self.acteur, RelanceEtape.Statut.FAIT, outcome='joint')
         etape.refresh_from_db()
         self.assertEqual(etape.outcome, 'joint')
@@ -90,7 +90,7 @@ class OutcomeSurLaToucheTests(TestCase):
     def test_la_ligne_de_chatter_porte_la_meme_issue(self):
         """La colonne s'ajoute au chatter, elle ne le remplace pas."""
         etape = self._touche(ordre=2)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             etape, self.acteur, RelanceEtape.Statut.FAIT, outcome='interesse')
         etape.refresh_from_db()
         activite = (LeadActivity.objects
@@ -102,7 +102,7 @@ class OutcomeSurLaToucheTests(TestCase):
     def test_une_cloture_sans_issue_laisse_la_colonne_vide(self):
         """Vide = rien n'a été saisi. Jamais un « non joint » supposé."""
         etape = self._touche(ordre=3)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             etape, self.acteur, RelanceEtape.Statut.SAUTEE, note='occupé')
         etape.refresh_from_db()
         self.assertEqual(etape.outcome, '')

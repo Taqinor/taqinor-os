@@ -36,7 +36,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from testkit.time import frozen
 
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
 from apps.crm import horaires
 from apps.parametres.models_relance import CadenceRelanceEtape

@@ -17,7 +17,7 @@ from django.test import TestCase
 from authentication.models import Company
 from core.dates import aujourd_hui_local
 
-from apps.crm import selectors, services, stages
+from apps.crm import selectors, stages, cadence_touche
 from apps.crm import cadence_plan
 from apps.crm.models import Lead, RelanceEtape
 
@@ -64,7 +64,7 @@ class RecalageUniqueTests(TestCase):
         touche = self._ouverte()
         issue = ('pas_de_reponse'
                  if touche.canal == RelanceEtape.Canal.APPEL else '')
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             touche, self.user, RelanceEtape.Statut.FAIT, outcome=issue)
         self.lead.refresh_from_db()
         suivante = self._ouverte()

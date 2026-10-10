@@ -39,6 +39,7 @@ from django.test import TestCase
 from testkit.time import frozen
 
 from apps.crm import horaires, services
+from apps.crm import cadence_touche
 from apps.crm import cadence_filet
 from apps.crm import cadence_messages
 from apps.crm import cadence_reperes
@@ -256,7 +257,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
             touche.refresh_from_db()
-            services.marquer_etape_relance(
+            cadence_touche.marquer_etape_relance(
                 touche, self.acteur, RelanceEtape.Statut.FAIT)
 
         suivante = self.lead.relance_etapes.filter(
@@ -798,7 +799,7 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
     def test_pose_le_filet_et_aucune_touche_du_gabarit(self):
         etape = self._touche_appel()
         with frozen(MAINTENANT):
-            services.marquer_etape_relance(
+            cadence_touche.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
                 outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
 
@@ -815,7 +816,7 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         etape = self._touche_appel()
         self.assertEqual(self.lead.stage, stages.NEW)
         with frozen(MAINTENANT):
-            services.marquer_etape_relance(
+            cadence_touche.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
                 outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.lead.refresh_from_db()
@@ -831,7 +832,7 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
             date_prevue=AUJOURDHUI + datetime.timedelta(days=3))
         etape = self._touche_appel()
         with frozen(MAINTENANT):
-            services.marquer_etape_relance(
+            cadence_touche.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
                 outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(self._touches(
@@ -843,7 +844,7 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
             date_prevue=AUJOURDHUI - datetime.timedelta(days=3))
         etape = self._touche_appel()
         with frozen(MAINTENANT):
-            services.marquer_etape_relance(
+            cadence_touche.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
                 outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(self._touches(
@@ -857,7 +858,7 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
     def test_lactivite_porte_lissue(self):
         etape = self._touche_appel()
         with frozen(MAINTENANT):
-            services.marquer_etape_relance(
+            cadence_touche.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
                 outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertTrue(self.lead.activites.filter(

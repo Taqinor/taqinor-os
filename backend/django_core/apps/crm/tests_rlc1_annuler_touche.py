@@ -23,7 +23,7 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
+from apps.crm.cadence_touche import (
     ANNULATION_TOUCHE_HEURES,
     AnnulationToucheRefusee,
     annuler_touche_relance,

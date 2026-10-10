@@ -33,7 +33,7 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -156,7 +156,7 @@ class DebriefCloseSansRelanceTests(TestCase):
         # Le plan avait été ANNULÉ par le moteur (aucun barreau consommé) :
         # c'est exactement le cas où l'ancien filet le rejouait depuis 1.
         self._barreau(1, RelanceEtape.Statut.ANNULEE)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.debrief, self.acteur, FAIT, outcome='joint')
         self.assertFalse(self._barreaux_ouverts().exists())
         # Le lead n'est jamais laissé sans suite : l'étape générique est là.
@@ -164,7 +164,7 @@ class DebriefCloseSansRelanceTests(TestCase):
             cadence='generique', statut=A_FAIRE).exists())
 
     def test_debrief_sans_reponse_ne_demarre_pas_le_plan(self):
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.debrief, self.acteur, FAIT, outcome='non_joint')
         self.assertFalse(self._barreaux_ouverts().exists())
 
@@ -172,7 +172,7 @@ class DebriefCloseSansRelanceTests(TestCase):
         # CAD1 — poursuivre reste permis : le barreau 2 consommé fait naître
         # le 3, jamais le 1.
         self._barreau(2, FAIT)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.debrief, self.acteur, FAIT, outcome='joint')
         ordres = set(self._barreaux_ouverts().values_list('ordre', flat=True))
         self.assertNotIn(1, ordres)

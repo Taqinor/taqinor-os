@@ -546,7 +546,7 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
     dernière touche). ``canal`` : le canal RÉEL (SUIVI E16), qui décide de
     la suite d'un client joint à la place du canal prévu."""
-    from .services import CADENCES_ARRETEES_PAR_ISSUE
+    from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
     from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     cadence = etape.cadence
@@ -882,7 +882,7 @@ def promesses_journal():
     ``journal``) : la garde CAD17 exige qu'elle soit ÉGALE à ce calcul et
     rejoue chaque issue par l'API réelle."""
     from .models import LeadActivity
-    from .services import CADENCES_ARRETEES_PAR_ISSUE
+    from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
     from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     promesses = {}

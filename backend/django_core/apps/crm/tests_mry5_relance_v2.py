@@ -28,7 +28,7 @@ from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import (
     devis_a_cadence_active, prochaine_touche_par_lead, relance_etapes_dues)
-from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
 from apps.parametres.models import CompanyProfile
 

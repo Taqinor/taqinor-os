@@ -24,7 +24,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
@@ -234,7 +234,7 @@ class ReportNePosePasLePremierContactTests(_Base):
     def test_un_vrai_contact_horodate_toujours(self):
         """Témoin : la touche FAITE (un message réellement envoyé) reste une
         tentative — MRY19/CAD131 ne sont pas défaits."""
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self.touche, self.acteur, RelanceEtape.Statut.FAIT)
         self.lead.refresh_from_db()
         self.assertIsNotNone(self.lead.first_contacted_at)

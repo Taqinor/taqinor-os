@@ -33,8 +33,8 @@ from .services import (
     annuler_rendez_vous_du_lead,
     annuler_rendez_vous_sur_arret,
     cause_rdv_perdu,
-    marquer_etape_relance,
 )
+from .cadence_touche import marquer_etape_relance
 from .cadence_filet import (
     _config_visite,
     _lead_relancable,

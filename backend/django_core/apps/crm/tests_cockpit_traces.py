@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_touche
 from apps.crm import cadence_filet
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
@@ -122,7 +123,7 @@ class OrigineALaCreationTests(_Base):
         cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='contact', depart=GEL)
         [ouverte] = self._ouvertes()
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             ouverte, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='non_joint')
         [nee] = self._ouvertes()

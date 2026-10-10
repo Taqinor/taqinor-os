@@ -1561,7 +1561,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # est le meilleur signal d'achat qui existe. Les trois chemins de
         # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
         # entrante) posent désormais la MÊME cadence de reprise.
-        from .services import reprendre_cadence_apres_reouverture
+        from .cadence_touche import reprendre_cadence_apres_reouverture
         try:
             if old.perdu and not new_lead.perdu:
                 reprendre_cadence_apres_reouverture(
@@ -4638,7 +4638,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import marquer_etape_relance
+        from .cadence_touche import marquer_etape_relance
         from .cadence_plan import est_etape_de_filet, reporter_prochaine_touche
         from .cadence_reperes import est_etape_de_visite
         from .cadence_reponses import (
@@ -4979,7 +4979,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
         listée parmi les lectures)."""
         etape = self.get_object()
-        from .services import AnnulationToucheRefusee, annuler_touche_relance
+        from .cadence_touche import AnnulationToucheRefusee, annuler_touche_relance
         try:
             etape = annuler_touche_relance(etape, request.user)
         except AnnulationToucheRefusee as refus:

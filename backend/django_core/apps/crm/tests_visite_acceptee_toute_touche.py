@@ -37,7 +37,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -284,9 +284,9 @@ class PromessesTests(SimpleTestCase):
              st.ETAPE_PLANIFIER_VISITE])
 
     def test_la_table_d_arret_est_celle_de_joint(self):
-        self.assertEqual(services.CADENCES_ARRETEES_PAR_ISSUE[VISITE],
-                         services.CADENCES_ARRETEES_PAR_ISSUE['joint'])
+        self.assertEqual(cadence_touche.CADENCES_ARRETEES_PAR_ISSUE[VISITE],
+                         cadence_touche.CADENCES_ARRETEES_PAR_ISSUE['joint'])
         self.assertFalse(
-            services.issue_fait_naitre_la_suite(VISITE, 'contact'))
+            cadence_touche.issue_fait_naitre_la_suite(VISITE, 'contact'))
         self.assertIn(VISITE, cadence_reperes._OUTCOMES_SANS_CLOTURE)
         self.assertIn(VISITE, {k for k, _ in LeadActivity.OUTCOMES})

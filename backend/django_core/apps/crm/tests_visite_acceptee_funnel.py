@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
@@ -136,5 +136,5 @@ class DevisEnvoyeVersRelanceTests(_Base):
 class TableUniqueTests(SimpleTestCase):
     def test_la_confirmation_rlc1_lit_la_meme_table(self):
         self.assertIn(VISITE, cadence_plan.ISSUES_CLIENT_JOINT)
-        self.assertEqual(services._OUTCOMES_REPONSE_CONFIRMEE,
+        self.assertEqual(cadence_touche._OUTCOMES_REPONSE_CONFIRMEE,
                          cadence_plan.ISSUES_CLIENT_JOINT)

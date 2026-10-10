@@ -21,7 +21,7 @@ from django.test import TransactionTestCase
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import stages, cadence_touche
 from apps.crm import cadence_plan
 from apps.crm.models import Lead, RelanceEtape
 
@@ -128,7 +128,7 @@ class CadenceVerrouTests(TransactionTestCase):
                 pk=touche.pk)
             user = User.objects.get(pk=self.user.pk)
             depart.wait(timeout=10)
-            return services.marquer_etape_relance(
+            return cadence_touche.marquer_etape_relance(
                 etape, user, RelanceEtape.Statut.FAIT, outcome=issue)
 
         fils = [_dans_un_thread(fait, resultats, i) for i in range(2)]

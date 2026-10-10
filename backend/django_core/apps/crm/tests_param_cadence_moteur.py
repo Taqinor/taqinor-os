@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import cadence_config, horaires, services, stages
+from apps.crm import cadence_touche
 from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
@@ -356,7 +357,7 @@ class EtapeAvantLaCleTests(_Base):
         debrief = self._touche(
             cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
             libelle='Rappeler après la visite', cle='debrief')
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             debrief, self.acteur, RelanceEtape.Statut.FAIT, outcome='joint')
         ligne = LeadActivity.objects.filter(
             lead=self.lead,

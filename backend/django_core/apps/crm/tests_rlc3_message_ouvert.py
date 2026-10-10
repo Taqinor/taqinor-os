@@ -25,7 +25,7 @@ from authentication.models import Company
 
 from apps.crm import horaires
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_reperes import journaliser_whatsapp_ouvert, prefixe_activite_message_ouvert
 from apps.parametres.models import CompanyProfile
 

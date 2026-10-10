@@ -23,7 +23,7 @@ from django.test import SimpleTestCase, TestCase
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
 from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -78,7 +78,7 @@ class PremierContactEtabliTests(TestCase):
             statut=RelanceEtape.Statut.A_FAIRE)
 
     def test_sauter_la_touche_1_ne_pose_pas_le_premier_contact(self):
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self._touche(), self.acteur, RelanceEtape.Statut.SAUTEE,
             note='pas le moment')
         self.lead.refresh_from_db()
@@ -86,7 +86,7 @@ class PremierContactEtabliTests(TestCase):
 
     def test_sauter_la_touche_1_neteint_pas_lescalade(self):
         """L'escalade vise les leads NEW SANS horodatage : il reste visé."""
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self._touche(), self.acteur, RelanceEtape.Statut.SAUTEE)
         self.lead.refresh_from_db()
         candidats = Lead.objects.filter(
@@ -97,7 +97,7 @@ class PremierContactEtabliTests(TestCase):
 
     def test_faire_la_touche_1_pose_bien_le_premier_contact(self):
         """Un appel réellement passé reste une tentative — rien n'est cassé."""
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self._touche(), self.acteur, RelanceEtape.Statut.FAIT,
             outcome='non_joint')
         self.lead.refresh_from_db()
@@ -112,12 +112,12 @@ class PremierContactEtabliTests(TestCase):
         self.assertIsNotNone(self.lead.first_contacted_at)
 
     def test_sauter_puis_faire_horodate_au_moment_de_lappel(self):
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self._touche(ordre=1), self.acteur,
             RelanceEtape.Statut.SAUTEE)
         self.lead.refresh_from_db()
         self.assertIsNone(self.lead.first_contacted_at)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             self._touche(ordre=2), self.acteur, RelanceEtape.Statut.FAIT,
             outcome='joint')
         self.lead.refresh_from_db()

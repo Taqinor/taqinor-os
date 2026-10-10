@@ -30,7 +30,7 @@ from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS, q_etape
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_reperes import FILET_JOINT_LIBELLE
 from apps.crm.views import MESSAGE_TACHE_NON_SAUTABLE
 from apps.parametres.models import CompanyProfile

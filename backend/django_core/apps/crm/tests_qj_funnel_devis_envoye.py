@@ -27,7 +27,7 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.fiche_funnel import (
     avancer_stage_devis_envoye_sur_touche,
     avancer_stage_sur_reponse_devis,

@@ -26,6 +26,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import services, stages
+from apps.crm import cadence_touche
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
@@ -124,7 +125,7 @@ class LaRepriseEstVISIBLETests(_Base):
 
     def test_une_note_de_chatter_dit_que_le_dossier_est_rouvert(self):
         lead = self._lead_perdu(perdu=False)
-        etapes = services.reprendre_cadence_apres_reouverture(
+        etapes = cadence_touche.reprendre_cadence_apres_reouverture(
             lead, self.acteur, origine='fiche rouverte')
         self.assertTrue(etapes)
         notes = [n.body for n in LeadActivity.objects.filter(lead=lead)]
@@ -135,7 +136,7 @@ class LaRepriseEstVISIBLETests(_Base):
     def test_la_prochaine_touche_remonte_dans_la_file(self):
         lead = self._lead_perdu(perdu=False)
         self.assertTrue(
-            services.reprendre_cadence_apres_reouverture(lead, self.acteur))
+            cadence_touche.reprendre_cadence_apres_reouverture(lead, self.acteur))
         lead.refresh_from_db()
         self.assertIsNotNone(lead.relance_date)
         prochaine = self._ouvertes(lead).order_by('due_date').first()
@@ -155,20 +156,20 @@ class LesNoOpDeliberesTests(_Base):
             due_date=lead.date_creation.date(),
             canal=RelanceEtape.Canal.WHATSAPP, libelle='Le PDF s’ouvre bien ?')
         self.assertEqual(
-            services.reprendre_cadence_apres_reouverture(lead, self.acteur),
+            cadence_touche.reprendre_cadence_apres_reouverture(lead, self.acteur),
             [])
         self.assertEqual([e.pk for e in self._ouvertes(lead)], [deja.pk])
 
     def test_un_lead_encore_PERDU_ne_recoit_rien(self):
         lead = self._lead_perdu()
         self.assertEqual(
-            services.reprendre_cadence_apres_reouverture(lead, self.acteur),
+            cadence_touche.reprendre_cadence_apres_reouverture(lead, self.acteur),
             [])
 
     def test_un_lead_quon_ne_relance_plus_ne_recoit_rien(self):
         lead = self._lead_perdu(perdu=False, ne_plus_contacter=True)
         self.assertEqual(
-            services.reprendre_cadence_apres_reouverture(lead, self.acteur),
+            cadence_touche.reprendre_cadence_apres_reouverture(lead, self.acteur),
             [])
 
     def test_un_lead_SIGNE_ou_FROID_ne_recoit_rien(self):
@@ -176,19 +177,19 @@ class LesNoOpDeliberesTests(_Base):
             with self.subTest(stage=etape):
                 lead = self._lead_perdu(perdu=False, stage=etape)
                 self.assertEqual(
-                    services.reprendre_cadence_apres_reouverture(
+                    cadence_touche.reprendre_cadence_apres_reouverture(
                         lead, self.acteur), [])
 
     def test_un_lead_archive_ne_recoit_rien(self):
         lead = self._lead_perdu(perdu=False, is_archived=True)
         self.assertEqual(
-            services.reprendre_cadence_apres_reouverture(lead, self.acteur),
+            cadence_touche.reprendre_cadence_apres_reouverture(lead, self.acteur),
             [])
 
     def test_la_cadence_posee_est_bien_le_REVEIL_jamais_une_neuve(self):
         """Garde-fou CADX : aucune cadence n'est inventée pour l'occasion."""
         lead = self._lead_perdu(perdu=False)
-        etapes = services.reprendre_cadence_apres_reouverture(
+        etapes = cadence_touche.reprendre_cadence_apres_reouverture(
             lead, self.acteur)
         self.assertTrue(etapes)
         self.assertEqual({e.cadence for e in etapes}, {'reveil'})

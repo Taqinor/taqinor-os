@@ -22,7 +22,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_touche
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE, CLE_DECIDER_SUITE
@@ -53,8 +53,8 @@ class TableEtPromessesTests(SimpleTestCase):
         for issue in ISSUES:
             with self.subTest(issue=issue):
                 self.assertIn('deuxieme_affaire',
-                              services.CADENCES_ARRETEES_PAR_ISSUE[issue])
-                self.assertFalse(services.issue_fait_naitre_la_suite(
+                              cadence_touche.CADENCES_ARRETEES_PAR_ISSUE[issue])
+                self.assertFalse(cadence_touche.issue_fait_naitre_la_suite(
                     issue, 'deuxieme_affaire'))
 
     def test_les_promesses_ne_disent_plus_la_touche_suivante(self):

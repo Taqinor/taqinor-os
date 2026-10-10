@@ -31,7 +31,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_plan import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape

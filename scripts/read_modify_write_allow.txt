@@ -22,7 +22,7 @@ backend/django_core/apps/stock/services.py::reviser_bcf
 backend/django_core/apps/stock/services.py::sortir_lot_entrepot
 
 # ASTK53 - controles de statut hors verrou, PRE-EXISTANTS (releve 2026-10-07), hors stock : CONSTATES, pas approuves ; a corriger par leur proprietaire (select_for_update + relecture du statut dans atomic()).
-backend/django_core/apps/crm/services.py::annuler_touche_relance
+backend/django_core/apps/crm/cadence_touche.py::annuler_touche_relance
 backend/django_core/apps/ged/services.py::annuler_demande
 backend/django_core/apps/ged/services.py::executer_demande_disposition
 backend/django_core/apps/installations/services.py::valider_retour_materiel

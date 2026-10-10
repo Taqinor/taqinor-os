@@ -14,13 +14,13 @@ from . import stages
 from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Lead, LeadActivity
 from .services import (
-    CADENCES_ARRETEES_PAR_ISSUE,
     CAUSE_RDV_REFUS,
     annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
     phrase_notification_retour_visite,
 )
+from .cadence_touche import CADENCES_ARRETEES_PAR_ISSUE
 from .cadence_filet import (
     _poser_etape_de_filet,
     assurer_prochaine_etape_apres_succes,

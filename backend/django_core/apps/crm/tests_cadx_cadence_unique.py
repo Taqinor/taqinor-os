@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.crm import services
+from apps.crm import cadence_touche
 from apps.crm import cadence_filet
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
@@ -223,7 +223,7 @@ class TreadmillTests(CadxBase):
         # filet identique re-posé.
         devis = self._devis(statut='brouillon')
         filet = self._filet_envoi()
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             filet, self.user, RelanceEtape.Statut.FAIT)
         ouvertes = self.lead.relance_etapes.filter(
             cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
@@ -244,7 +244,7 @@ class TreadmillTests(CadxBase):
 
     def test_ar_sans_devis_demarre_le_plan_sans_objet_devis(self):
         filet = self._filet_envoi()
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             filet, self.user, RelanceEtape.Statut.FAIT)
         ouvertes = self.lead.relance_etapes.filter(
             cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
@@ -271,7 +271,7 @@ class TreadmillTests(CadxBase):
             self.lead, self.user, cadence='contact', depart=timezone.now())
         premiere = next(e for e in relance
                         if e.statut == RelanceEtape.Statut.A_FAIRE)
-        services.marquer_etape_relance(
+        cadence_touche.marquer_etape_relance(
             premiere, self.user, RelanceEtape.Statut.FAIT,
             outcome='non_joint')
         suivantes = self.lead.relance_etapes.filter(

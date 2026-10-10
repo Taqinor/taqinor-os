@@ -173,6 +173,7 @@ backend/django_core/apps/crm/cadence_reveil_saison.py::dans_la_fenetre_saison
 backend/django_core/apps/crm/cadence_reveil_saison.py::motif_de_refus
 backend/django_core/apps/crm/cadence_reveil_saison.py::poser_reveil_saisonnier
 backend/django_core/apps/crm/cadence_reveil_saison.py::poser_reveils_saisonniers
+backend/django_core/apps/crm/cadence_touche.py::issue_fait_naitre_la_suite
 backend/django_core/apps/crm/services.py::ajouter_specialite_partenaire
 backend/django_core/apps/crm/services.py::ajuster_score_lead
 backend/django_core/apps/crm/services.py::annuler_rendez_vous_du_lead
@@ -190,7 +191,6 @@ backend/django_core/apps/crm/services.py::dispatch_appointment_reminder
 backend/django_core/apps/crm/services.py::enregistrer_consentement_lead
 backend/django_core/apps/crm/services.py::fetch_meta_lead_node
 backend/django_core/apps/crm/services.py::identite_client_depuis_lead
-backend/django_core/apps/crm/services.py::issue_fait_naitre_la_suite
 backend/django_core/apps/crm/services.py::lead_est_entreprise
 backend/django_core/apps/crm/services.py::lead_signe_sans_devis_actif
 backend/django_core/apps/crm/services.py::leads_avec_cadence_active
