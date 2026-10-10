@@ -39,6 +39,7 @@ except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
 
+from app.core.config import N_EXISTE_PAS  # noqa: F401  (JOUET ADEP99 P3.6 — ne pas merger)
 from app.core.config import (
     CHAT_HISTORY_MAX,
     CHAT_HISTORY_TTL,
