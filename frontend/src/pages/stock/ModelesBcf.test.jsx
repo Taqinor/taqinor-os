@@ -30,26 +30,13 @@ vi.mock('../../features/stock/useVoitPrixAchat', () => ({
 
 import stockApi from '../../api/stockApi'
 import ModelesBcf from './ModelesBcf.jsx'
-
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
-}
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
+import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
 
 beforeEach(() => {
   vi.clearAllMocks()
   mockCodes.achats_commander = true
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  installJsdomPolyfills()
   stockApi.getModelesBcf.mockResolvedValue({
     data: [
       { id: 1, nom: 'Réassort panneaux', fournisseur: 3, fournisseur_nom: 'JA Solar', lignes: [{ id: 1, produit: 7, quantite: 10 }] },

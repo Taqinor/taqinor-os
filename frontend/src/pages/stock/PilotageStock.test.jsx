@@ -44,24 +44,12 @@ vi.mock('../../api/parametresApi', async (importOriginal) => {
 import stockApi from '../../api/stockApi'
 import parametresApi from '../../api/parametresApi'
 import PilotageStock from './PilotageStock.jsx'
-
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
-}
+import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
+import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
+  installJsdomPolyfills()
   stockApi.produitsAReapprovisionner.mockResolvedValue({
     data: [{
       produit_id: 1, nom: 'Panneau 550', sku: 'PAN-550',
