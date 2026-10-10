@@ -385,10 +385,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             raise ValidationError({
                 'bon_commande': BC_DE_DEVIS_REFUSE,
                 'code': 'bon_commande_de_devis'})
-        argent_touche = (set(serializer.validated_data.keys())
-                         & FACTURE_CHAMPS_ARGENT)
+        from ..domain.facturation_ops import argent_modifie  # ATOT35
+        argent_touche = argent_modifie(
+            facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError({
                 'detail': MESSAGE_MONTANT_FIGE,
                 'champs_refuses': sorted(argent_touche),

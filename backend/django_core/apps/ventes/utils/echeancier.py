@@ -360,6 +360,42 @@ def tranches_normalisees(devis) -> list:
     return sortie
 
 
+def figer_echeancier(devis) -> dict:
+    """AMET1 (C-AMET-003, D-ECH-FIGE) — fige l'échéancier d'un devis accepté.
+
+    Un devis SANS échéancier propre lit les conditions société EN DIRECT
+    (:func:`tranches_normalisees`) : changer les réglages réécrivait les
+    tranches d'un devis déjà signé. Ici on COPIE les tranches société du jour
+    dans ``devis.echeancier`` (structure d'échéancier négocié, relue telle
+    quelle par :func:`tranches_normalisees`). Idempotent : un devis qui porte
+    déjà un échéancier propre exploitable n'est pas touché.
+
+    Forme rendue = contrat ``facturation/contract_samples/echeancier_fige.json``.
+    """
+    from django.utils import timezone
+    from apps.ventes.models import Devis
+    propre = getattr(devis, 'echeancier', None)
+    if propre:
+        try:
+            if valider_echeancier(propre, controler_somme=False):
+                return {'devis': devis.pk, 'deja_fige': True,
+                        'jalons': list(propre)}
+        except EcheancierInvalide:
+            pass  # inexploitable → on fige les conditions société du jour
+    fige_le = timezone.now().isoformat()
+    jalons = []
+    for t in tranches_normalisees(devis):
+        entree = {'type': t['key'], 'libelle': t['libelle'],
+                  'pct_or_montant': float(t['valeur']), 'unite': UNITE_PCT,
+                  'fige_le': fige_le}
+        if t.get('jalon'):
+            entree['jalon'] = t['jalon']
+        jalons.append(entree)
+    Devis.objects.filter(pk=devis.pk).update(echeancier=jalons)
+    devis.echeancier = jalons
+    return {'devis': devis.pk, 'deja_fige': False, 'jalons': jalons}
+
+
 def pourcentages_echeancier(devis, lignes=None) -> list:
     """PREVIEW-V3-FIX (16/09/2026, audit C3) — LE POIDS DE CHAQUE TRANCHE DE
     CE DEVIS, en pourcentage : ``[{key, libelle, pct}]`` dans l'ordre.
