@@ -124,8 +124,8 @@ def normalize_phone_key(value):
     téléphone Odoo (``+212…``) passé ici produit EXACTEMENT la même clé que le
     ``phone_key`` d'un lead Meta capturé par l'ERP, donc les deux se rapprochent
     (matching signature ↔ campagne). Lecture pure, aucun accès base."""
-    from . import services as crm_services
-    return crm_services.normalize_phone(value)
+    from . import leads_doublons
+    return leads_doublons.normalize_phone(value)
 
 
 def normalize_email_key(value):
@@ -135,8 +135,8 @@ def normalize_email_key(value):
     ``services.normalize_email`` pour qu'une autre app (la qualité de données,
     par exemple) rapproche EXACTEMENT comme le CRM, sans importer ni
     ``crm.services`` ni ``crm.models``. Lecture pure, aucun accès base."""
-    from . import services as crm_services
-    return crm_services.normalize_email(value)
+    from . import leads_doublons
+    return leads_doublons.normalize_email(value)
 
 
 def normalize_name_key(nom, prenom=None, societe=None):
@@ -146,8 +146,8 @@ def normalize_name_key(nom, prenom=None, societe=None):
     triés, ponctuation écrasée). Rend une chaîne VIDE quand le nom est trop
     court pour rapprocher quoi que ce soit — c'est la garde du CRM, et elle
     doit valoir pour tous ses lecteurs. Lecture pure, aucun accès base."""
-    from . import services as crm_services
-    return crm_services.normalize_name(nom, prenom, societe)
+    from . import leads_doublons
+    return leads_doublons.normalize_name(nom, prenom, societe)
 
 
 #: ACRM17 — le motif FR d'un envoi refusé à une personne opposée (loi 09-08).
@@ -235,11 +235,11 @@ def cles_numeros_lead(lead):
     ``telephone`` ET son ``whatsapp`` (vides ignorés). Helper unique partagé
     par ``find_lead_id_by_phone`` et ``signed_lead_phone_keys`` — un lead
     joignable seulement sur WhatsApp est reconnu partout pareil."""
-    from . import services as crm_services
+    from . import leads_doublons
     keys = set()
     for numero in (getattr(lead, 'telephone', None),
                    getattr(lead, 'whatsapp', None)):
-        key = crm_services.normalize_phone(numero)
+        key = leads_doublons.normalize_phone(numero)
         if key:
             keys.add(key)
     return keys
@@ -255,10 +255,10 @@ def find_lead_id_by_phone(company, phone):
     téléphone) — jamais un import de ``apps.crm.models`` côté adsengine. Renvoie
     le lead le plus récemment créé en cas de doublon ; None si le numéro est
     vide ou introuvable."""
-    from . import services as crm_services
+    from . import leads_doublons
     from .models import Lead
 
-    key = crm_services.normalize_phone(phone)
+    key = leads_doublons.normalize_phone(phone)
     if not key:
         return None
     for lead in (Lead.objects
@@ -4670,7 +4670,7 @@ def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
     Lecture seule, scopée société ; ne compte jamais un lead archivé.
     ``date_start``/``date_end`` (date, inclus) bornent ``date_creation`` ;
     ``None`` = pas de borne. Renvoie une LISTE de dicts (données pures)."""
-    from . import services as crm_services
+    from . import leads_doublons
     from .models import Lead
 
     qs = Lead.objects.filter(company=company, is_archived=False)
@@ -4698,8 +4698,8 @@ def reconciliation_lead_rows(company, *, date_start=None, date_end=None):
             'is_site': lead.source == site_source,
             'is_ctwa': lead.canal == ctwa_canal,
             'is_meta_ads_canal': lead.canal == meta_canal,
-            'phone_key': crm_services.normalize_phone(lead.telephone),
-            'email_key': crm_services.normalize_email(lead.email),
+            'phone_key': leads_doublons.normalize_phone(lead.telephone),
+            'email_key': leads_doublons.normalize_email(lead.email),
             'date': lead.date_creation.date() if lead.date_creation else None,
         })
     return rows
@@ -5929,7 +5929,7 @@ def lead_known_field_codes(company, *, phone=None, email=None):
     ``set`` des codes déjà renseignés parmi les champs standards
     (nom/prenom/societe/email/telephone/ville, non vides) et les clés non
     vides de ``custom_data``. Lecture seule."""
-    from .services import find_duplicates_by_contact
+    from .leads_doublons import find_duplicates_by_contact
 
     matches = find_duplicates_by_contact(company, phone=phone, email=email)
     if not matches:
@@ -6095,7 +6095,7 @@ def lead_ids_by_contact(company, *, email=None, phone=None):
     ses séquences/journeys actifs. Renvoie ``[]`` si rien ne correspond —
     l'appelant se contente alors de la liste de suppression.
     """
-    from .services import find_duplicates_by_contact
+    from .leads_doublons import find_duplicates_by_contact
 
     if not email and not phone:
         return []
@@ -6179,7 +6179,7 @@ def client_ids_par_identifiant(company, identifiant):
     ``company`` — aucune lecture cross-société.
     """
     from .models import Client
-    from .services import normalize_email, normalize_phone
+    from .leads_doublons import normalize_email, normalize_phone
 
     if company is None or not (identifiant or '').strip():
         return []
@@ -6208,7 +6208,7 @@ def lead_ids_par_identifiant(company, identifiant):
     scan Python de toute la table des leads.
     """
     from .models import Lead
-    from .services import normalize_email, normalize_phone
+    from .leads_doublons import normalize_email, normalize_phone
 
     if company is None or not (identifiant or '').strip():
         return []
@@ -6458,7 +6458,7 @@ def doublons_foyer_probables(company, *, include_archived=False):
     l'explique ; rien n'est fusionné, jamais, sans le geste humain de
     l'atelier doublons.
     """
-    from .services import cluster_match_keys, find_duplicate_clusters
+    from .leads_doublons import cluster_match_keys, find_duplicate_clusters
 
     #: Les seules clés qui parlent de LIEU. Un cluster qui partage aussi un
     #: téléphone, un e-mail ou un nom n'est pas un « même foyer » : c'est un

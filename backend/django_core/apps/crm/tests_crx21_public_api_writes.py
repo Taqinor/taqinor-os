@@ -19,10 +19,8 @@ from apps.crm import stages
 from apps.crm.models import (
     Lead, LeadPlaybookProgress, Playbook, PlaybookEtape, PlaybookTache,
 )
-from apps.crm.services import (
-    find_duplicates_by_contact, normalize_email, normalize_phone,
-    update_lead_from_public_api,
-)
+from apps.crm.services import update_lead_from_public_api
+from apps.crm.leads_doublons import find_duplicates_by_contact, normalize_email, normalize_phone
 from authentication.models import Company
 
 

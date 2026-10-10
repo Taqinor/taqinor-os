@@ -20,6 +20,7 @@ from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
 from apps.crm import services
+from apps.crm import leads_doublons
 from apps.crm.models import Client, Lead
 from authentication.models import Company
 
@@ -97,7 +98,7 @@ class ResolutionParTelephoneTests(TestCase):
             company=self.company, nom='Sans e-mail', telephone='+212 612-34-56-78')
         appels = _espionner_verrou(self, lead)
         self.assertEqual(
-            appels, [(self.company.pk, services.normalize_phone('0612345678'))])
+            appels, [(self.company.pk, leads_doublons.normalize_phone('0612345678'))])
 
     def test_sans_email_ni_telephone_le_verrou_est_un_no_op(self):
         lead = Lead.objects.create(company=self.company, nom='Anonyme')

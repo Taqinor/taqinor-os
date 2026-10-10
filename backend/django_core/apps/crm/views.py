@@ -1366,7 +1366,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # QJR584 — le WhatsApp qui n'était qu'une copie du téléphone suit la
         # correction du téléphone ; un WhatsApp distinct n'est jamais touché.
         if 'telephone' in vd and 'whatsapp' not in vd:
-            from .services import normalize_phone
+            from .leads_doublons import normalize_phone
             if (old.whatsapp and normalize_phone(old.whatsapp)
                     == normalize_phone(old.telephone)
                     and normalize_phone(vd['telephone'])
@@ -2030,7 +2030,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         client. Depuis que le webhook du site crée SYSTÉMATIQUEMENT un nouveau
         lead (plus aucune fusion silencieuse), c'est ce bandeau qui porte le
         rapprochement, et la fusion reste manuelle."""
-        from .services import find_duplicate_leads, is_strong_identity_match
+        from .leads_doublons import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
         dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
         # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``
@@ -2058,7 +2058,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         ?exclude=<id> retire le lead en cours d'édition de ses propres doublons.
         `match_fort` : même forme de ligne que l'action `duplicates` ci-dessus
         (les deux listes sont fusionnées par le même bandeau côté rail)."""
-        from .services import find_duplicates_by_contact, is_strong_identity_match
+        from .leads_doublons import find_duplicates_by_contact, is_strong_identity_match
         phone = request.query_params.get('telephone') or \
             request.query_params.get('phone')
         email = request.query_params.get('email')
@@ -2133,9 +2133,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         SUGGESTION seulement : aucune fusion n'est faite ici, `match_keys` dit
         POURQUOI chaque groupe est rapproché et la décision reste humaine."""
-        from .services import (
-            find_duplicate_clusters, _completeness, cluster_match_keys,
-            _MERGE_FILL_FIELDS, _est_vide,
+        from .leads_doublons import (
+            find_duplicate_clusters,
+            _completeness,
+            cluster_match_keys,
+            _MERGE_FILL_FIELDS,
+            _est_vide,
         )
         from .models import LeadActivity
         include_archived = request.query_params.get('archived') in ('1', 'true')
@@ -2931,7 +2934,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # `apps.ventes.utils.phone.normalize_ma_phone` (forçait un préfixe
         # '212', ne rapprochait jamais un lead à numéro étranger) vers la
         # même clé QW10 que `selectors.find_client_by_phone` juste au-dessus.
-        from .services import normalize_phone
+        from .leads_doublons import normalize_phone
 
         conditions = []
         phone_norm = normalize_phone(lead.telephone or '') if lead.telephone else None

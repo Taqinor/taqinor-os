@@ -62,16 +62,15 @@ from .services import (
     cause_rdv_perdu,
     demarrer_cadence_contact,
     deplacer_echeance_etape,
-    find_duplicates_by_contact,
     initialiser_plan_relance,
     marquer_etape_relance,
-    normalize_phone,
     poser_tag_lead,
     prefixe_activite_touche,
     prochain_palier_sans_reponse,
     reporter_prochaine_touche,
     retirer_tag_lead,
 )
+from .leads_doublons import find_duplicates_by_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
 

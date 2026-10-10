@@ -21,6 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from core.dates import aujourd_hui_local
 from apps.crm import activity, selectors, services
+from apps.crm import leads_doublons
 from apps.crm.models import Lead
 
 User = get_user_model()
@@ -116,7 +117,7 @@ class ColonnesDuContrat(SimpleTestCase):
 
     def test_la_fusion_connait_les_nouvelles_colonnes(self):
         for nom in NOUVELLES:
-            self.assertIn(nom, services._MERGE_FILL_FIELDS, nom)
+            self.assertIn(nom, leads_doublons._MERGE_FILL_FIELDS, nom)
 
 
 class SaisieParLApi(TestCase):

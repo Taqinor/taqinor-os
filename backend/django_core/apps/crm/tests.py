@@ -998,7 +998,7 @@ class TestLeadPatchEcritureBornee(TestCase):
         """QW10 — sans ``phone_normalise`` dans update_fields, la colonne
         INDEXÉE de dédup resterait sur l'ancien numéro et la déduplication
         deviendrait aveugle."""
-        from apps.crm.services import normalize_phone
+        from apps.crm.leads_doublons import normalize_phone
         ancien = self.lead.phone_normalise
         self.assertTrue(ancien)
         resp = self.api.patch(
@@ -1011,7 +1011,7 @@ class TestLeadPatchEcritureBornee(TestCase):
                          normalize_phone(self.lead.telephone) or '')
 
     def test_colonnes_derivees_suivent_un_changement_d_email(self):
-        from apps.crm.services import normalize_email
+        from apps.crm.leads_doublons import normalize_email
         ancien = self.lead.email_normalise
         self.assertTrue(ancien)
         resp = self.api.patch(
