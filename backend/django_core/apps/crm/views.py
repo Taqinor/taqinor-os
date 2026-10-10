@@ -52,8 +52,9 @@ from .serializers import (
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity, stages
+from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; ENF6 l'expose au schéma
 from .services import (
-    BULK_ACTIONS, COOKIE_APPAREIL, default_responsable_for,
+    COOKIE_APPAREIL, default_responsable_for,
     domaine_cookies_equipe, enregistrer_appareil_equipe,
 )
 from . import schema_docs as sd
