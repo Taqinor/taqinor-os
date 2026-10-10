@@ -166,6 +166,17 @@ class FormeCodeTests(unittest.TestCase):
         self.assertIn("exception C20 sans effet : ZZ4 : FICHIER_MUR scripts/y.py", sortie)
         self.assertIn("[BASELINE_GROSSIT] scripts/x_allow.txt", sortie)
 
+    def test_cle_ligne_refusee_sur_baseline_neuve_par_numero_de_ligne(self):
+        """AMET100 : une entree ajoutee dont la cle porte `:123` / `#L123` est refusee ; `::symbole` et `#2` passent."""
+        d = self.depot({"scripts/x_allow.txt": "a::f\n"})
+        code, sortie = d.scenario({"scripts/x_allow.txt": (
+            "a::f\nb/c.py:123  # motif\nd.py::g#2  # occurrence\ne.py::h\nf.jsx#L45\n")})
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("[CLE_LIGNE] scripts/x_allow.txt : +2 clé(s) par numéro de ligne (b/c.py:123 ; f.jsx#L45)", sortie)
+        self.assertNotIn("d.py::g#2  #", sortie.split("CLE_LIGNE")[1])
+        code, sortie = d.scenario({"scripts/x_allow.txt": "a::f\nd.py::g#2  # occurrence\n"})
+        self.assertNotIn("CLE_LIGNE", sortie)
+
     def test_deplacement_spl_exempte_par_empreinte(self):
         mur_py = "backend/app/w.py"
 
