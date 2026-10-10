@@ -1022,9 +1022,10 @@ class Avoir(TotauxDocumentMixin, models.Model):
 
     class Type(models.TextChoices):
         # ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — SEUL un avoir de
-        # CORRECTION réduit la dernière tranche (solde) de l'échéancier ; un
-        # geste commercial ou un retour réduit déjà le dû de SA facture
-        # (``Facture.montant_du``) et n'est jamais compté une seconde fois.
+        # CORRECTION est remis à la dernière tranche (solde) : il rectifie une
+        # erreur de facturation, tout le devis reste dû. Un geste commercial
+        # ou un retour réduit le dû de SA facture (``Facture.montant_du``) et
+        # n'est jamais re-facturé. Avoirs antérieurs = correction (0021).
         CORRECTION = 'correction', 'Correction'
         GESTE_COMMERCIAL = 'geste_commercial', 'Geste commercial'
         RETOUR = 'retour', 'Retour'

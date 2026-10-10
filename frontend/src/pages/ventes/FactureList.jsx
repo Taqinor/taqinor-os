@@ -146,7 +146,7 @@ const TYPES_FACTURE = [
 // « retour » est posé par l'action retour-client, jamais ici.
 const TYPES_AVOIR = [
   ['geste_commercial', 'Geste commercial (réduit le dû de cette facture)'],
-  ['correction', 'Correction (réduit aussi le solde de l’échéancier du devis)'],
+  ['correction', 'Correction d’erreur (le montant reste dû : remis au solde de l’échéancier)'],
 ]
 
 // VX230 — MODES_PAIEMENT + défauts intelligents VX92/VX93 (localStorage) ont
@@ -346,8 +346,8 @@ export default function FactureList() {
   const [avoirSaving, setAvoirSaving] = useState(false)
   // Quantités à créditer par ligne (clé = id de ligne) ; vide = avoir total.
   const [avoirQtes, setAvoirQtes]     = useState({})
-  // ATOT36 (décision fondateur 10/10) — seule une CORRECTION réduit le solde
-  // de l'échéancier ; un geste commercial réduit le dû de cette facture.
+  // ATOT36 (décision fondateur 10/10) — une CORRECTION est remise au solde de
+  // l'échéancier ; un geste commercial réduit le dû de cette facture.
   const [avoirType, setAvoirType]     = useState('geste_commercial')
 
   const openAvoirModal = async (f) => {

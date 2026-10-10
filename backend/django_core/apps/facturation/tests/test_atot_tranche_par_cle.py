@@ -137,11 +137,12 @@ class TrancheParCleTests(TestCase):
 
     def test_solde_net_des_avoirs(self):
         """ATOT36 (décision fondateur 10/10) — réaligné : seul un avoir de
-        CORRECTION réduit le solde (15 000 − 6 000 = 9 000) ; un geste
-        commercial le laisse à 15 000 (il réduit déjà le dû du matériel)."""
+        CORRECTION est remis au solde (15 000 + 6 000 = 21 000, le devis
+        reste dû en entier) ; un geste commercial le laisse à 15 000 (il
+        réduit le dû du matériel, jamais re-facturé)."""
         from apps.ventes.models import Avoir, Facture
         for type_avoir, attendu in ((Avoir.Type.GESTE_COMMERCIAL, '15000.00'),
-                                    (Avoir.Type.CORRECTION, '9000.00')):
+                                    (Avoir.Type.CORRECTION, '21000.00')):
             with self.subTest(type=type_avoir):
                 devis = self._devis()
                 for _ in range(2):
@@ -155,16 +156,16 @@ class TrancheParCleTests(TestCase):
                                  Decimal(attendu))
 
     def test_avoir_geste_commercial_reduit_le_du(self):
-        """ATOT36 — exemple du fondateur (10/10/2026) : devis 30 000 TTC
-        en 30/70, acompte 9 000, avoir 6 000 sur l'acompte. Geste commercial
-        → solde 30 000 − 9 000 = 21 000 (le client paie 24 000 au total :
-        l'avoir réduit le dû de l'acompte, jamais compté deux fois) ;
-        correction → solde 15 000. Mutant : retirer le filtre
+        """ATOT36 — exemple du fondateur (10/10/2026, corrigé) : devis
+        30 000 TTC en 30/70, acompte 9 000, avoir 6 000 sur l'acompte.
+        Geste commercial → solde 30 000 − 9 000 = 21 000 (le client paie
+        24 000) ; correction → solde 30 000 − (9 000 − 6 000) = 27 000 (le
+        client paie 30 000). Mutant : retirer le filtre
         ``type == correction`` ⇒ échec. Recalcul ⇒ identique ; type relu."""
         from apps.ventes.models import Avoir, Devis, Facture
         from apps.ventes.utils.echeancier import next_tranche, solde_devis
         for type_avoir, attendu in ((Avoir.Type.GESTE_COMMERCIAL, '21000.00'),
-                                    (Avoir.Type.CORRECTION, '15000.00')):
+                                    (Avoir.Type.CORRECTION, '27000.00')):
             with self.subTest(type=type_avoir):
                 devis = self._devis()
                 self.ligne.prix_unitaire = Decimal('25000')

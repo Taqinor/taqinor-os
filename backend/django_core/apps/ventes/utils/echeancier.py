@@ -720,7 +720,7 @@ def factures_actives(devis):
 
 def avoirs_correction(factures):
     """ATOT36 — avoirs ÉMIS de type CORRECTION des ``factures`` : les seuls
-    qui réduisent le solde de l'échéancier (``next_tranche``, ``solde_devis``).
+    remis au solde de l'échéancier (``next_tranche``, ``solde_devis``).
     Lit le prefetch ``avoirs`` (aucune requête de plus en liste)."""
     return [a for f in factures for a in f.avoirs.all()
             if a.statut == Avoir.Statut.EMISE
@@ -879,18 +879,19 @@ def next_tranche(devis, lignes=None, option=None):
     if is_last:
         # Le solde = reste exact pour que la somme égale le total du devis.
         # ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — seuls les avoirs
-        # de CORRECTION actifs réduisent le solde ; un geste commercial ou un
-        # retour réduit déjà le dû de sa facture (jamais compté deux fois).
-        # Un reste nul ou négatif = échéancier soldé (None), jamais une
+        # de CORRECTION actifs sont REMIS au solde (une correction rectifie
+        # une erreur de facturation : tout le devis reste dû) ; un geste
+        # commercial ou un retour réduit le dû de sa facture et n'est jamais
+        # re-facturé. Un reste nul ou négatif = échéancier soldé (None), jamais une
         # facture <= 0 (contrainte ck_facture_montants_positifs -> 500).
         avoirs = avoirs_correction(existantes)
         zero = Decimal('0')
         deja_ht = (sum((Decimal(str(f.total_ht)) for f in existantes), zero)
-                   + sum((Decimal(str(a.total_ht)) for a in avoirs), zero))
+                   - sum((Decimal(str(a.total_ht)) for a in avoirs), zero))
         deja_tva = (sum((Decimal(str(f.total_tva)) for f in existantes), zero)
-                    + sum((Decimal(str(a.total_tva)) for a in avoirs), zero))
+                    - sum((Decimal(str(a.total_tva)) for a in avoirs), zero))
         deja_ttc = (sum((Decimal(str(f.total_ttc)) for f in existantes), zero)
-                    + sum((Decimal(str(a.total_ttc)) for a in avoirs), zero))
+                    - sum((Decimal(str(a.total_ttc)) for a in avoirs), zero))
         ht = _q(total_ht - deja_ht)
         tva = _q(total_tva - deja_tva)
         ttc = _q(total_ttc - deja_ttc)
@@ -1107,10 +1108,10 @@ def solde_devis(devis):
     # (déjà sorti du total révisé) et ignorait notes de débit et RAS.
     du = sum((Decimal(str(f.montant_du)) for f in actives), Decimal('0'))
     # ATOT36 — le reste à facturer suit EXACTEMENT ``next_tranche`` : seuls
-    # les avoirs de correction le réduisent (décision fondateur 10/10).
-    a_facturer = total - facture - sum(
+    # les avoirs de correction y sont remis (décision fondateur 10/10).
+    a_facturer = total - (facture - sum(
         (Decimal(str(a.total_ttc)) for a in avoirs_correction(actives)),
-        Decimal('0'))
+        Decimal('0')))
     restant = du + (a_facturer if a_facturer > 0 else Decimal('0'))
     # ATOT2 — ``tranches_facturees`` ne compte plus que les factures de
     # TRANCHE (la complète et la facture de BC n'en sont pas) ; la porte

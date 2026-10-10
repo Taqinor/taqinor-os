@@ -1632,7 +1632,7 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
     est_retour = retour_lignes is not None
     # ATOT36 (D-ATOT5) — type de l'avoir : un retour est TOUJOURS « retour » ;
     # sinon le choix saisi, à défaut le type neutre du modèle (geste
-    # commercial). Seule une CORRECTION réduit le solde de l'échéancier.
+    # commercial). Seule une CORRECTION est remise au solde de l'échéancier.
     type_avoir = (Avoir.Type.RETOUR if est_retour
                   else (type_avoir or Avoir.Type.GESTE_COMMERCIAL))
     if type_avoir not in Avoir.Type.values:

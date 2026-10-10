@@ -361,7 +361,7 @@ describe('WIR183 — gating de palier', () => {
 
 /* ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — la modale « Créer un
    avoir » envoie le `type` choisi : geste commercial par défaut (réduit le
-   dû de la facture), correction sur choix (réduit aussi le solde de
+   dû de la facture), correction sur choix (remise au solde de
    l'échéancier). Types et réponse simulée : contrat partagé `avoir.json`. */
 describe('ATOT36 — type d’avoir à l’émission', () => {
   const ouvrirAvoir = async (user) => {
