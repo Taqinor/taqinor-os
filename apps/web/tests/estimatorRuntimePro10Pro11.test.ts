@@ -2087,6 +2087,48 @@ describe('runtime ACAL64 — ajouter un pan à un dossier rouvert', () => {
     expect(sortie.zones.map((z) => z.id)).toEqual(['area-1', 'area-2', 'area-3']);
     expect(sortie.zones[1].vertices).toEqual(squareCorners(16, -7.6195));
   });
+
+  // ACAL357 — les ombres (relues + tracées) et la matrice appartiennent au SITE : seul
+  // « Effacer » les vide, jamais l'ajout d'un pan.
+  it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
+    const exemple = (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
+    const matrice = Array.from({ length: 12 }, () => Array(24).fill(0.8));
+    type Doc = { zones: unknown[]; shadeObstructions?: Array<{ id: string }>; shading12x24?: unknown };
+    const boot = async (doc: unknown) => {
+      setupDom();
+      fakeMaps.length = 0;
+      vi.resetModules();
+      document.body.appendChild(el('button', 'rp9-shade-add')); // WJ19 — « Tracer une ombre »
+      const init = await loadTool();
+      let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+      init({
+        maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+        hydrate: { devis: { id: 3, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+        onApiReady: (a) => { api = a; },
+      });
+      fakeMaps[0].fire('load', {});
+      return () => api!.serializeLayout() as Doc;
+    };
+    const enregistrer = await boot({ ...exemple, shading12x24: matrice });
+    expect(enregistrer().shading12x24).toEqual(matrice); // la matrice 0,8 relue
+    // Une ombre tracée sur le pan actif (pied puis bout).
+    (document.getElementById('rp9-shade-add') as HTMLButtonElement).click();
+    for (const lat of [2.9999, 3.0001]) fakeMaps[0].fire('click', { lngLat: { lng: 5, lat }, point: { x: 0, y: 0 } });
+    const avant = enregistrer();
+    expect(avant.shadeObstructions?.map((o) => o.id)).toEqual(['shade-1', 'sh-1', 'sh-2']);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    const apres = enregistrer();
+    expect(apres.zones).toHaveLength(3);
+    expect(apres.shadeObstructions).toEqual(avant.shadeObstructions);
+    expect(apres.shading12x24).toEqual(avant.shading12x24);
+    // Persistance : rouvert après l'ajout, ombres et matrice relues identiques.
+    const relu = (await boot(JSON.parse(JSON.stringify(apres))))();
+    expect(relu.shadeObstructions).toEqual(apres.shadeObstructions);
+    expect(relu.shading12x24).toEqual(apres.shading12x24);
+  }, 120000);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
