@@ -31,6 +31,14 @@ APPS = ROOT / "backend" / "django_core" / "apps"
 #: Fichiers du périmètre (chemin relatif au dépôt).
 FICHIERS = [
     "backend/django_core/apps/crm/selectors.py",
+    "backend/django_core/apps/crm/portee_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/cadence_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/leads_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/clients_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/devis_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/roof_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/stock_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
+    "backend/django_core/apps/crm/attribution_selectors.py",  # SPL309/SPL83-SPL88 : morceaux de selectors.py
     "backend/django_core/apps/crm/services.py",
     "backend/django_core/apps/crm/views.py",
     "backend/django_core/apps/ventes/scheduled.py",
@@ -50,10 +58,10 @@ PREDICATS = (
 
 #: Liste blanche MOTIVÉE : ``fichier::fonction`` -> raison propre.
 ALLOWLIST = {
-    "backend/django_core/apps/crm/selectors.py::reporting_lead_rows":
+    "backend/django_core/apps/crm/attribution_selectors.py::reporting_lead_rows":
         "date de PREMIÈRE acceptation du lead (événement de signature) : une "
         "V1 remplacée a bien été acceptée, sa date compte",
-    "backend/django_core/apps/crm/selectors.py::attribution_comparaison_devis":
+    "backend/django_core/apps/crm/attribution_selectors.py::attribution_comparaison_devis":
         "attribution d'un devis donné (argument) : le caller fournit la "
         "version ; ne lit pas un ensemble de devis",
     "backend/django_core/apps/crm/selectors.py::leads_signes_sans_devis_accepte":
