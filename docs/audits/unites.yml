@@ -139,9 +139,9 @@ unites:
     plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
     plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: 790
-    date: 2026-10-04
+    date: 2026-10-10
     dossier: docs/audits/2026-10-04-calepinage.md
-    notes: "Score le plus élevé à égalité (critique de complétude) ; livrables PDF d'étude hors règle #4."
+    notes: "vérifie ACAL du 10/10/2026 (clôture, 336/351 cochées ; dossier docs/audits/2026-10-10-calepinage-verifie.md) : 48 tâches échantillonnées parmi 60 P0/S1 (graine 5ea32b58b) — 29 ok, 19 partielles ; 6 écarts S1-S2 reproduits (sondes docs/audits/sondes/ACAL/C-ACAL-VER-001..005 + vitest) : resync sans refus moduleWc/moduleId (S1, ACAL59/62), resync vers fiche non tarifée met la ligne à 0 (S1, ACAL63), production au prorata du kWc (S1, ACAL28), dérate horizon/ombrage absent de la production du devis (S1), « Ajouter une zone » efface les ombres (S2, ACAL27), pan sans fiche chaîné au module par défaut (S2, ACAL264) + S3 → ACAL353-ACAL365 (CALEPINAGE, DEVIS, ANALYSE, TRANSVERSE) ; ACAL253/48/54 sans tâche (lecture prod 10/10 : aucun calepinage concerné) ; 1 critique Fable. Score le plus élevé à égalité (critique de complétude) ; livrables PDF d'étude hors règle #4."
 
   - id: J0
     rang: 4
@@ -170,11 +170,11 @@ unites:
     statut: audité
     groupe: AACQ
     plan: docs/plans/PLAN_AUDIT_ACQUISITION.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_LEAD.md]
     pr: 865
-    date: 2026-10-08
+    date: 2026-10-10
     dossier: docs/audits/2026-10-08-acquisition.md
-    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-acquisition.md) : 53 constats reproduits (0 S1 confirmé), 65 tâches AACQ dont 3 décisions fondateur M1 ; action moteur modifiable après approbation, budget Meta jamais appliqué (méthode absente), seuils MAD comparés à de l'USD."
+    notes: "vérifie AACQ du 10/10/2026 (clôture, 65/66 cochées ; dossier docs/audits/2026-10-10-acquisition-verifie.md) : 16 tâches échantillonnées (graine 5ea32b58b) — 11 ok, 5 partielles ; 1 écart S2 reproduit par sonde (docs/audits/sondes/AACQ/C-AACQ-VER-001.py : seuil par défaut 250 « MAD » appliqué en USD, devise du plafond non exposée) + 3 S3 → AACQ98-AACQ105 (PLAN_AUDIT_ACQUISITION) et AACQ106 (PLAN_AUDIT_LEAD) ; AACQ60 S4 sans tâche ; aucun S1, pas de Fable ; statut inchangé tant que AACQ98-106 et AACQ89 (acceptation) restent ouvertes. crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3). Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-acquisition.md) : 53 constats reproduits (0 S1 confirmé), 65 tâches AACQ dont 3 décisions fondateur M1 ; action moteur modifiable après approbation, budget Meta jamais appliqué (méthode absente), seuils MAD comparés à de l'USD."
 
   - id: J1a
     rang: 5
@@ -209,9 +209,9 @@ unites:
     plan: docs/plans/PLAN_AUDIT_LEAD.md
     plans_alimentes: [docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_GENERATEUR.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
     pr: 845
-    date: 2026-10-07
+    date: 2026-10-10
     dossier: docs/audits/2026-10-07-lead.md
-    notes: "Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
+    notes: "vérifie ALEA du 10/10/2026 (clôture, 40/41 cochées ; dossier docs/audits/2026-10-10-lead-verifie.md) : 10 tâches échantillonnées (graine 5ea32b58b) — 9 ok, 1 partielle (ALEA4, câblage gardé par expression régulière) → ALEA46 (S3) dans WEB_PLAN ; aucun écart S1-S2, aucune sonde, pas de Fable ; premier vérifie à zéro S1-S2 (sortie du cycle au second, en contre-visite par différence). Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété. Audit L2 du 07/10/2026 (dossier docs/audits/2026-10-07-lead.md) : 31 constats (+5 optionnels), 41 tâches ALEA ; boucle d'autosave GPS confirmée en direct."
 
   - id: D1
     rang: 6
@@ -407,9 +407,9 @@ unites:
     plan: docs/plans/PLAN_AUDIT_STOCK.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md]
     pr: 902
-    date: 2026-10-09
+    date: 2026-10-10
     dossier: docs/audits/2026-10-06-stock.md
-    notes: "vérifie ASTK du 09/10/2026 (dossier docs/audits/2026-10-09-stock-verifie.md, PR 902) : 182 tâches cochées vérifiées (159 ok, 22 partiel, 1 faux), run live (26 écrans, S-A→S-F, 7 routes S-E), critique Fable ; 17 ERR-ASTK* + 1 GATED dans docs/ERROR_PLAN.md (1 S1 reproduit : comptage cyclique ASTK39 ; 1 S1 à confirmer : réservation après sortie partielle ASTK121 ; 6 S2 dont acompte tardif non imputé et annulation d'une réception facturée) → statut construit ; ASTK239 (acceptation live) jamais jouée par un plan-run. Audit L2 du 06/10/2026 (dossier docs/audits/2026-10-06-stock.md, PR 820) : 55 constats (9 S1), 185 tâches ASTK, décisions D-ASTK-1..4 (D-ASTK-1 remplace la décision du 18/08 : seuls les devis BROUILLON suivent le catalogue). P re-scoré 3 → 4 : 106 défauts reproduits malgré les audits AUD2 (02/09) et STKCAT (16/09). possede aligné sur docs/ownership.yml (qui prime) ; crm/stock_selectors.py et core/events/stock.py y sont déclarés mais n'existent pas. Produit.prix_achat jamais client (tient) ; seed_catalogue additif sur prix/quantités (tient), mais il ré-écrit les fiches (question ASTK172)."
+    notes: "vérifie ASTK du 10/10/2026 (2e contre-visite de clôture, 183/189 cochées ; dossier docs/audits/2026-10-10-stock-verifie.md) : 48 tâches échantillonnées (30 P0/S1 + 18 tirées, graine 5ea32b58b) — 41 ok, 7 partielles ; 4 écarts S1-S2 reproduits par sonde (docs/audits/sondes/ASTK/C-ASTK-VER-001..004 : double sortie de stock livraison partielle × facture (S1), rapprochement 3 voies sur quantité saisie (S2), acomptes/avoirs fournisseur lisibles sans prix_achat_voir (S2)) + quarantaine ignorée par le poste scanner et les autres sorties (S2, sonde REPRO) + S3 → ASTK244-ASTK253 (STOCK, FACTURATION, CHANTIERS ; ASTK250 GATED D-ASTK-VER-1) ; 1 critique Fable ; statut recalculé audité tant que ASTK244-253 et ASTK239 restent ouvertes. vérifie ASTK du 09/10/2026 (dossier docs/audits/2026-10-09-stock-verifie.md, PR 902) : 182 tâches cochées vérifiées (159 ok, 22 partiel, 1 faux), run live (26 écrans, S-A→S-F, 7 routes S-E), critique Fable ; 17 ERR-ASTK* + 1 GATED dans docs/ERROR_PLAN.md (1 S1 reproduit : comptage cyclique ASTK39 ; 1 S1 à confirmer : réservation après sortie partielle ASTK121 ; 6 S2 dont acompte tardif non imputé et annulation d'une réception facturée) → statut construit ; ASTK239 (acceptation live) jamais jouée par un plan-run. Audit L2 du 06/10/2026 (dossier docs/audits/2026-10-06-stock.md, PR 820) : 55 constats (9 S1), 185 tâches ASTK, décisions D-ASTK-1..4 (D-ASTK-1 remplace la décision du 18/08 : seuls les devis BROUILLON suivent le catalogue). P re-scoré 3 → 4 : 106 défauts reproduits malgré les audits AUD2 (02/09) et STKCAT (16/09). possede aligné sur docs/ownership.yml (qui prime) ; crm/stock_selectors.py et core/events/stock.py y sont déclarés mais n'existent pas. Produit.prix_achat jamais client (tient) ; seed_catalogue additif sur prix/quantités (tient), mais il ré-écrit les fiches (question ASTK172)."
 
   - id: J6
     rang: 12
