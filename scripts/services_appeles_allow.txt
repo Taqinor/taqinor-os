@@ -14,8 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/presets.py::enregistrer_jeu
-backend/django_core/apps/calepinage/services/presets.py::retirer_jeu
 backend/django_core/apps/calepinage/services/rapport/annexe_hypotheses.py::html_de_section
 backend/django_core/apps/calepinage/services/rapport/electrique.py::html_de_section
 backend/django_core/apps/calepinage/services/rapport/electrique.py::html_table_verdicts
