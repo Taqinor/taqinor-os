@@ -4,7 +4,7 @@ CE QUI EXISTAIT, ET POURQUOI IL NE SERVAIT À RIEN
 --------------------------------------------------
 ``services/electrique.py::ecretage_depuis_serie`` calcule la perte
 d'écrêtage HEURE PAR HEURE depuis CAL127 — mais son unique appelant,
-``bloc_ratio_dc_ac``, était invoqué sans ``serie_dc_kw``. ``ecretage_pct``
+``_bloc_ratio_dc_ac``, était invoqué sans ``serie_dc_kw``. ``ecretage_pct``
 valait donc TOUJOURS ``null``, avec le motif « la perte d'écrêtage exige la
 série horaire ». Le calcul était là, la série aussi (la chaîne de pertes la
 produit) : les deux ne se rencontraient jamais.

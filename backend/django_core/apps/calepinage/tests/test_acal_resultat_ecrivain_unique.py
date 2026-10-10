@@ -15,7 +15,7 @@ from django.test import TestCase, TransactionTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
-    CLE_ENTREE, CLE_FIL_ECARTS, enregistrer_entree, journaliser_ecart_longueur,
+    CLE_ENTREE, CLE_FIL_ECARTS, enregistrer_entree, _journaliser_ecart_longueur,
 )
 from apps.calepinage.services.resultat import CLES_SAISIES, modifier_resultat
 from apps.calepinage.services.sld import CLE_EDITION, enregistrer_edition_sld
@@ -44,7 +44,7 @@ def _ecrivains():
         # ACAL325 — ``rejouer_apres_layout`` n'écrit PLUS ``resultat`` (le
         # verdict est servi à la demande) : il sort de la liste des écrivains.
         ('journaliser_ecart_longueur',
-         lambda c: journaliser_ecart_longueur(c, {
+         lambda c: _journaliser_ecart_longueur(c, {
              'hors_tolerance': True, 'longueur': 12,
              'longueur_dossier': 15, 'ecart': 3}), CLE_FIL_ECARTS),
         ('enregistrer_edition_sld',

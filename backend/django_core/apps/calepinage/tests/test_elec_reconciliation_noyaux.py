@@ -24,7 +24,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import (
     ORIGINE_LONGUEUR_DOSSIER, ORIGINE_LONGUEUR_FICHE,
-    journaliser_ecart_longueur, longueur_chaine_retenue, plafond_modules,
+    _journaliser_ecart_longueur, _longueur_chaine_retenue, _plafond_modules,
     temperatures_site,
 )
 from core.calepinage.electrique import MODULES_PAR_CHAINE
@@ -68,7 +68,7 @@ class ArbitrageTest(SimpleTestCase):
     """La fiche l'emporte ; le dossier n'est qu'un repli assumé."""
 
     def test_la_longueur_calculee_l_emporte_et_le_dit(self):
-        reconciliation = longueur_chaine_retenue(_conception(24))
+        reconciliation = _longueur_chaine_retenue(_conception(24))
 
         self.assertEqual(reconciliation['origine'], ORIGINE_LONGUEUR_FICHE)
         self.assertEqual(reconciliation['longueur_dossier'],
@@ -80,7 +80,7 @@ class ArbitrageTest(SimpleTestCase):
         incomplet = {cle: valeur for cle, valeur in MODULE.items()
                      if cle != 'voc_v'}
 
-        reconciliation = longueur_chaine_retenue(
+        reconciliation = _longueur_chaine_retenue(
             _conception(24, module_specs=incomplet))
 
         self.assertEqual(reconciliation['origine'], ORIGINE_LONGUEUR_DOSSIER)
@@ -89,7 +89,7 @@ class ArbitrageTest(SimpleTestCase):
         self.assertIsNone(reconciliation['ecart'])
 
     def test_l_ecart_au_dossier_est_calcule(self):
-        reconciliation = longueur_chaine_retenue(_conception(24))
+        reconciliation = _longueur_chaine_retenue(_conception(24))
 
         self.assertEqual(reconciliation['ecart'],
                          reconciliation['par_pan']['PAN-A']
@@ -104,8 +104,8 @@ class JournalTest(SimpleTestCase):
         dans_tolerance = {'hors_tolerance': False, 'longueur': 15,
                           'longueur_dossier': 16, 'ecart': -1}
 
-        self.assertIsNone(journaliser_ecart_longueur(calepinage,
-                                                     dans_tolerance))
+        self.assertIsNone(_journaliser_ecart_longueur(calepinage,
+                                                      dans_tolerance))
         self.assertEqual(calepinage.resultat, {})
 
     def test_un_ecart_hors_tolerance_part_en_warning_et_reste_en_historique(
@@ -117,7 +117,7 @@ class JournalTest(SimpleTestCase):
 
         with self.assertLogs(
                 'apps.calepinage.services.electrique', level='WARNING') as log:
-            journal = journaliser_ecart_longueur(calepinage, hors)
+            journal = _journaliser_ecart_longueur(calepinage, hors)
 
         self.assertEqual(len(journal), 1)
         self.assertEqual(journal[0]['ecart'], -10)
@@ -125,7 +125,7 @@ class JournalTest(SimpleTestCase):
 
         # L'historique s'ACCUMULE : la relecture du dossier doit voir la
         # succession des écarts, pas seulement le dernier.
-        journaliser_ecart_longueur(calepinage, hors)
+        _journaliser_ecart_longueur(calepinage, hors)
         self.assertEqual(
             len(calepinage.resultat['journal_longueur_chaine']), 2)
 
@@ -135,11 +135,11 @@ class RebouclagePlafondTest(SimpleTestCase):
 
     def test_le_plafond_est_traduit_en_modules(self):
         # 60 kWc plafond, modules de 710 Wc → 84 modules.
-        self.assertEqual(plafond_modules(60.0, 710.0), 84)
+        self.assertEqual(_plafond_modules(60.0, 710.0), 84)
 
     def test_sans_plafond_rien_n_est_suppose(self):
-        self.assertIsNone(plafond_modules(None, 710.0))
-        self.assertIsNone(plafond_modules(60.0, None))
+        self.assertIsNone(_plafond_modules(None, 710.0))
+        self.assertIsNone(_plafond_modules(60.0, None))
 
 
 class NoyauxSansLienTest(SimpleTestCase):

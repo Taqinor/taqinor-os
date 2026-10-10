@@ -78,7 +78,7 @@ class VerdictNonPersisteTest(BaseApiCalepinage):
 
     def test_la_reconciliation_de_longueur_est_toujours_journalisee(self):
         with patch_materiel(), mock.patch(
-                'apps.calepinage.services.electrique.longueur_chaine_retenue',
+                'apps.calepinage.services.electrique._longueur_chaine_retenue',
                 return_value=dict(HORS_TOLERANCE)):
             enregistrer_layout(self.calepinage, self._document_modifie(),
                                user=self.user)

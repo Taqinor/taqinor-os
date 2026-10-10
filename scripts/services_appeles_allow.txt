@@ -14,15 +14,6 @@
 #
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
-backend/django_core/apps/calepinage/services/electrique.py::alertes_nommees
-backend/django_core/apps/calepinage/services/electrique.py::bloc_ratio_dc_ac
-backend/django_core/apps/calepinage/services/electrique.py::bornes_ratio
-backend/django_core/apps/calepinage/services/electrique.py::fournisseur_temperatures
-backend/django_core/apps/calepinage/services/electrique.py::journaliser_ecart_longueur
-backend/django_core/apps/calepinage/services/electrique.py::longueur_chaine_retenue
-backend/django_core/apps/calepinage/services/electrique.py::plafond_modules
-backend/django_core/apps/calepinage/services/electrique.py::regle_de_chaine
-backend/django_core/apps/calepinage/services/electrique.py::verdicts_electriques
 backend/django_core/apps/calepinage/services/export_dxf.py::document_dxf
 backend/django_core/apps/calepinage/services/export_projet.py::cle_de_montant
 backend/django_core/apps/calepinage/services/export_projet.py::horodatage_utc

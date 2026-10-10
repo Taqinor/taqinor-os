@@ -2,7 +2,7 @@
 
 CE QUI MANQUAIT
 ----------------
-``services/electrique.py::regle_de_chaine`` ne connaît que deux régimes,
+``services/electrique.py::_regle_de_chaine`` ne connaît que deux régimes,
 ``voc_module`` et ``sortie_regulee_optimiseur`` — tous deux raisonnent sur
 une chaîne DC qui monte vers un onduleur. Un champ à MICRO-ONDULEURS n'a ni
 chaîne DC ni entrée MPPT : il a N unités qui rendent directement de
