@@ -552,5 +552,6 @@ ALEA** au total : `docs/plans/PLAN_AUDIT_LEAD.md` 22 · `docs/plans/PLAN_AUDIT_T
 - 2026-10-07 — Lot 6 : ALEA29 (PATCH de lead sans changement : ni date de modification ni auteur avancés)
 - 2026-10-07 — Lot 7 : ALEA30 (PATCH lead atomique : écriture + report de la touche dans une transaction, effets annexes en best-effort par savepoint). SPL195 construite (acal-L18) mais retenue : exige SPL196 (MOTEUR) dans le même merge.
 - 2026-10-09 — ACHT77 — 6 sections Paramètres chantier : erreurs serveur affichées (toast ou alerte), plus de catch silencieux, suppression d'un champ de fiche confirmée
+- 2026-10-10 — APAR54 (PARTIEL, reste ouvert) — hook useStatutConfig monté sur InstallationsPage et TicketsPage (libellés réglés affichés ; TicketsPage lit statusLabel) ; RESTE : FilterBar.jsx, ListView.jsx, KanbanView.jsx, InstallationDetail.jsx lisent encore STATUS_LABELS en direct (hors Files de la tâche)
 - 2026-10-10 — ACRM56 — D-ACRM-5 (1)=(a) : lead « ne plus contacter » exclu de tout export d'audience (règles, identifiants de contact, graine lookalike via lead_contact_identifiers ; clients liés à un lead opposé exclus)
 - 2026-10-10 — ACRM63 — D-ACRM-5 (3)=(a) : rappel demandé par la personne opposée → touche posée, drapeau levé, note datée « opposition levée à la demande du client », registre de consentement tracé
