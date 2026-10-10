@@ -108,13 +108,12 @@ RIVES = ('laterale_m', 'extremite_m', 'acrotere_m', 'joint_m')
 __all__ = [
     'SECTION', 'REGLAGES', 'CLES_DE_ZONE', 'CLES_DE_GEOMETRIE',
     'ORIENTATIONS', 'FAMILLES', 'TYPES_TOITURE', 'RIVES', 'COMPTES',
-    'reglages_admis',
-    'normaliser_section_gabarits_disposition', 'gabarit_depuis_zone',
+    'normaliser_section_gabarits_disposition',
     'appliquer_gabarit',
 ]
 
 
-def reglages_admis():
+def _reglages_admis():
     """Les clés admises d'un gabarit — jamais une liste recopiée à la main."""
     return tuple(cle for cle, _libelle in REGLAGES)
 
@@ -177,7 +176,7 @@ def _gabarit(cle, brut):
             "règles de pose, jamais la forme d'un autre toit.",
             f'{champ}.{geometrie[0]}')
 
-    admis = reglages_admis()
+    admis = _reglages_admis()
     inconnues = [str(k) for k in brut if str(k) not in admis]
     if inconnues:
         raise _refus(
@@ -287,7 +286,7 @@ def normaliser_section_gabarits_disposition(valeur):
             for cle, brut in valeur.items()}
 
 
-def gabarit_depuis_zone(zone, *, reglages=None, libelle=''):
+def _gabarit_depuis_zone(zone, *, reglages=None, libelle=''):
     """Les RÈGLES de pose d'une zone, prêtes à être enregistrées.
 
     Args:
