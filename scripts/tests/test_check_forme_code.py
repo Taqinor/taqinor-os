@@ -219,16 +219,20 @@ class FormeCodeTests(unittest.TestCase):
     def test_fetch_de_secours_jamais_superficiel(self):
         """Un fetch `--depth=1` rendrait le clone CI shallow : check_forme_code echouerait ferme."""
         import check_acceptation as cacc
-        import check_ancres_taches as cat
         appels = []
 
         def faux_git(*args, **_):
             appels.append(args)
             return None
+
+        def faux_socle(_racine, *args, **_):  # check_ancres_taches passe par resoudre_base
+            appels.append(args)
+            raise cfc.Echec("absent")
         with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
-                mock.patch.object(cacc, "_git", faux_git), mock.patch.object(cat, "_git", faux_git):
+                mock.patch.object(cacc, "_git", faux_git), mock.patch.object(cfc, "git", faux_socle):
             self.assertFalse(cacc.base_disponible("origin/main"))
-            self.assertFalse(cat.base_disponible("origin/main", ROOT))
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(cfc.Echec):
+                cfc.resoudre_base(ROOT, "origin/main", "HEAD")
         fetchs = [a for a in appels if "fetch" in a]
         self.assertEqual(len(fetchs), 2, appels)
         self.assertFalse([a for a in fetchs if any(str(x).startswith("--depth") for x in a)], fetchs)

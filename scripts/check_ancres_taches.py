@@ -7,14 +7,15 @@ Dans une tache OUVERTE v3 (id hors scripts/taches_audit_v2.txt) :
   2. une ancre de ligne nue `chemin.ext:123` ou `(l.123)` / `l.123` sans
      aucune ancre `::symbole` dans la meme tache est un ECHEC.
 Option --base <ref> (defaut origin/main) : seules les taches v3 TOUCHEES (id absent du plan
-a la base, ou ligne modifiee) font echouer ; les autres vont au rapport. Base indisponible :
+au merge-base(<ref>, HEAD), ou ligne modifiee depuis) font echouer ; les autres vont au rapport.
+Jamais la POINTE de <ref> : une branche en retard ne « touche » pas ce que seule la base a change
+(meme resolution que check_forme_code.resoudre_base). Base indisponible ou clone superficiel :
 tout est touche (echec ferme). « Meme clause » = la tache entiere.
 Tache v2 : le nombre d ancres derivees est imprime, jamais bloque.
 
     python scripts/check_ancres_taches.py        # exit 1 si ECHEC
 """
 import argparse
-import os
 import ast
 import re
 import subprocess
@@ -24,7 +25,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import audit_tache as at  # noqa: E402
+import check_forme_code as cfc  # noqa: E402
 import check_taches_cablage as ctc  # noqa: E402
+from forme_code.socle import Echec  # noqa: E402
 
 _EXT = r"(?:py|jsx?|tsx?|ya?ml|json|md|ps1|sh)"
 ANCRE = re.compile(r"`([\w./-]+\.%s)::([A-Za-z_][\w.]*)`" % _EXT)
@@ -108,15 +111,14 @@ def _git(racine, *args, timeout=60):
     return p.stdout if p.returncode == 0 else None
 
 
-def base_disponible(base: str, racine) -> bool:
-    """Meme logique que check_acceptation.base_disponible (fetch CI de origin/main)."""
-    if _git(racine, "rev-parse", "--verify", "--quiet", base + "^{commit}") is not None:
-        return True
-    if os.environ.get("GITHUB_ACTIONS") and base == "origin/main":
-        _git(racine, "fetch", "--no-tags", "origin",
-             "+refs/heads/main:refs/remotes/origin/main", timeout=120)
-        return _git(racine, "rev-parse", "--verify", "--quiet", base + "^{commit}") is not None
-    return False
+def merge_base(base: str, racine) -> str | None:
+    """merge-base(base, HEAD) par check_forme_code.resoudre_base (fetch CI complet de origin/main) ;
+    None si la base est introuvable ou le clone superficiel (tout est alors touche)."""
+    try:
+        return cfc.resoudre_base(racine, base, "HEAD")[0]
+    except Echec as exc:
+        print(_ascii(f"Avis : {exc}"))
+        return None
 
 
 def lignes_a_la_base(base: str, rel: str, racine) -> dict:
@@ -136,13 +138,14 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     racine = ctc.ROOT
     ids_v2 = ctc.charger_ids_v2()
-    dispo = base_disponible(args.base, racine)
+    mb = merge_base(args.base, racine)
+    dispo = mb is not None
     if not dispo:
         print("Avis : base indisponible - toutes les taches v3 traitees comme touchees")
     bloquants, rapport = [], []
     nb_v3 = anc_v3 = nb_v2 = anc_v2 = 0
     for rel in [f for f in ctc.fichiers_de_plan() if "PLAN_AUDIT_" in f]:
-        base_lignes = lignes_a_la_base(args.base, rel, racine) if dispo else {}
+        base_lignes = lignes_a_la_base(mb, rel, racine) if dispo else {}
         for tache in ctc.lire_taches([rel]):
             if tache.etat != " ":
                 continue
