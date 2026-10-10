@@ -40,7 +40,7 @@ class RFQ(models.Model):
         CLOTUREE = 'cloturee', 'Clôturée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_rfqs')
     reference = models.CharField(max_length=50)
     objet = models.CharField(max_length=255)
@@ -84,10 +84,10 @@ class RFQOffre(models.Model):
     (garanti côté serveur). Montants INTERNES."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_rfq_offres')
     rfq = models.ForeignKey(
-        RFQ, on_delete=models.CASCADE, related_name='offres')
+        RFQ, on_delete=models.CASCADE, related_name='offres')  # on_delete: RFQOffre est le détail de RFQ — n'existe pas sans lui
     # Fournisseur consulté (string-FK vers stock). PROTECT inutile : SET_NULL
     # conserve l'historique d'offre même si le fournisseur disparaît.
     fournisseur = models.ForeignKey(
@@ -133,14 +133,14 @@ class RFQConsultation(models.Model):
     serveur, jamais depuis le corps de la requête."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_rfq_consultations')
     rfq = models.ForeignKey(
-        RFQ, on_delete=models.CASCADE, related_name='consultations')
+        RFQ, on_delete=models.CASCADE, related_name='consultations')  # on_delete: RFQConsultation est le détail de RFQ — n'existe pas sans lui
     # Fournisseur consulté (string-FK vers stock, jamais d'import de modèle).
     fournisseur = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.CASCADE,
+        'stock.Fournisseur', on_delete=models.CASCADE,  # on_delete: RFQConsultation est le détail de Fournisseur — n'existe pas sans lui
         related_name='installations_rfq_consultations')
     token = models.CharField(
         max_length=64, unique=True, default=_default_rfq_token,

@@ -80,7 +80,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
 
     def test_maintenance_create_forbidden_for_fiabilite_voir_only(self):
         resp = self._client(self.u_voir).post(
-            '/api/django/core/maintenance-windows/', {})
+            '/api/django/core/maintenance-windows/', {}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_maintenance_create_allowed_for_fiabilite_administration(self):
@@ -91,7 +91,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             'description': 'Test NTOBS22',
         }
         resp = self._client(self.u_admin_fiab).post(
-            '/api/django/core/maintenance-windows/', payload)
+            '/api/django/core/maintenance-windows/', payload, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_directeur_never_regresses(self):
@@ -102,7 +102,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             'description': 'Test NTOBS22 Directeur',
         }
         resp = self._client(self.u_directeur).post(
-            '/api/django/core/maintenance-windows/', payload)
+            '/api/django/core/maintenance-windows/', payload, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         resp = self._client(self.u_directeur).get(
             '/api/django/core/maintenance-windows/')
@@ -231,7 +231,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             self.company, timezone.now().date().replace(day=1))
         resp = self._client(self.u_voir).post(
             f'/api/django/core/sla/credits/{snapshot.pk}/statut/',
-            {'statut': 'emis'})
+            {'statut': 'emis'}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_sla_credit_statut_allowed_for_fiabilite_administration(self):
@@ -239,7 +239,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             self.company, timezone.now().date().replace(day=1))
         resp = self._client(self.u_admin_fiab).post(
             f'/api/django/core/sla/credits/{snapshot.pk}/statut/',
-            {'statut': 'emis'})
+            {'statut': 'emis'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_sla_credit_statut_dune_autre_societe_est_404(self):
@@ -251,7 +251,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             self.autre, timezone.now().date().replace(day=1))
         resp = self._client(self.u_admin_fiab).post(
             f'/api/django/core/sla/credits/{snapshot_autre.pk}/statut/',
-            {'statut': 'emis'})
+            {'statut': 'emis'}, format='json')
         self.assertEqual(resp.status_code, 404)
         snapshot_autre.refresh_from_db()
         self.assertNotEqual(
@@ -264,7 +264,7 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             self.autre, timezone.now().date().replace(day=1))
         resp = self._client(self.u_directeur).post(
             f'/api/django/core/sla/credits/{snapshot_autre.pk}/statut/',
-            {'statut': 'emis'})
+            {'statut': 'emis'}, format='json')
         self.assertEqual(resp.status_code, 404)
 
     # ── 6 — Sauvegardes (BackupRunViewSet) ───────────────────────────────
@@ -279,10 +279,10 @@ class Ntobs22PermissionsMatrixTest(TestCase):
 
     def test_backups_create_forbidden_for_fiabilite_voir_only(self):
         resp = self._client(self.u_voir).post(
-            '/api/django/core/sauvegardes/', {'kind': BackupRun.KIND_EXPORT})
+            '/api/django/core/sauvegardes/', {'kind': BackupRun.KIND_EXPORT}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_backups_create_allowed_for_fiabilite_administration(self):
         resp = self._client(self.u_admin_fiab).post(
-            '/api/django/core/sauvegardes/', {'kind': BackupRun.KIND_EXPORT})
+            '/api/django/core/sauvegardes/', {'kind': BackupRun.KIND_EXPORT}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)

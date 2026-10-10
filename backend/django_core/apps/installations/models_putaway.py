@@ -28,11 +28,11 @@ class PutAway(models.Model):
         RANGE = 'range', 'Rangé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_putaways')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: PutAway est le détail de Produit — n'existe pas sans lui
         related_name='installations_putaways')
     emplacement = models.ForeignKey(
         'stock.EmplacementStock', on_delete=models.SET_NULL,

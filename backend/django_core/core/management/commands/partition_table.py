@@ -20,8 +20,14 @@ from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from psycopg2 import sql
 
 from core.partition_tooling import PartitionPlan
+
+
+def _ident(nom):
+    """ENF12 — identifiant SQL (``schema.table`` accepté) composé par psycopg2."""
+    return sql.Identifier(*str(nom).split('.'))
 
 
 class Command(BaseCommand):
@@ -51,8 +57,9 @@ class Command(BaseCommand):
 
     def _date_range(self, table, key):
         with connection.cursor() as cur:
-            cur.execute(
-                f'SELECT MIN({key})::date, MAX({key})::date FROM {table}')
+            cur.execute(sql.SQL(
+                'SELECT MIN({key})::date, MAX({key})::date FROM {table}').format(
+                    key=_ident(key), table=_ident(table)))
             lo, hi = cur.fetchone()
         return lo or date.today().replace(day=1), hi or date.today()
 
@@ -113,8 +120,8 @@ class Command(BaseCommand):
     def _copy_batches(self, plan: PartitionPlan):
         """Copie INSERT ... SELECT (le partitionnement route chaque ligne)."""
         with connection.cursor() as cur:
-            cur.execute(
-                f'INSERT INTO {plan.shadow} SELECT * FROM {plan.table}')
+            cur.execute(sql.SQL('INSERT INTO {} SELECT * FROM {}').format(
+                _ident(plan.shadow), _ident(plan.table)))
 
     def _execute(self, statements):
         with connection.cursor() as cur:

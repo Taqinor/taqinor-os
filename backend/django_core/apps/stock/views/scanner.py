@@ -17,14 +17,16 @@ FG320), prélèvement (`vagues-picking/{id}/lignes/{l}/prelever/` NTWMS4),
 comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
+from ..openapi_helpers import INT, P, STR, corps
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import JSONParser
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 
 
-@extend_schema(responses={
+@extend_schema(parameters=[P('code', STR, True, 'Code scanné')], responses={
     200: inline_serializer('StockScannerResoudreResultat', {
         'type': serializers.CharField(),
         'id': serializers.IntegerField(),
@@ -62,7 +64,7 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
-@extend_schema(request=None, responses={
+@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(), type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(), bin_source=serializers.IntegerField(required=False, allow_null=True), bin_destination=serializers.IntegerField(required=False, allow_null=True), reference=serializers.CharField(required=False), note=serializers.CharField(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
         'id': serializers.IntegerField(),
         'produit': serializers.IntegerField(),
@@ -78,6 +80,7 @@ def scanner_resoudre_view(request):
     }),
 })
 @api_view(['POST'])
+@parser_classes([JSONParser])
 @permission_classes([HasPermissionOrLegacy('stock_modifier')])
 def scanner_mouvement_view(request):
     """Pose un mouvement de stock SCANNÉ, casiers tracés.
@@ -113,7 +116,7 @@ def scanner_mouvement_view(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(responses={
+@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU'), P('quantite', INT)], responses={
     200: inline_serializer('StockScannerRetourFournisseurLigne', {
         'produit': serializers.IntegerField(),
         'produit_nom': serializers.CharField(),

@@ -1,3 +1,5 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -28,6 +30,8 @@ class NotificationSerializer(serializers.ModelSerializer):
     # vide si non classée (comportement historique).
     reason_label = serializers.CharField(
         source='get_reason_display', read_only=True, default='')
+    # ENF8 — ``reason`` vaut '' quand non classée : pas une valeur d'énum.
+    reason = serializers.CharField(read_only=True)
 
     class Meta:
         model = Notification
@@ -43,14 +47,17 @@ class NotificationSerializer(serializers.ModelSerializer):
             'reason', 'reason_label',
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_severity(self, obj):
         from . import severity as severity_module
         return severity_module.severity_of(obj.event_type)
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_category(self, obj):
         from . import severity as severity_module
         return severity_module.category_of(obj.event_type)
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_is_action(self, obj):
         from . import severity as severity_module
         return severity_module.is_action(obj.event_type)
@@ -175,9 +182,11 @@ class AnnonceSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_is_expiree(self, obj):
         return obj.is_expiree()
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_lus_count(self, obj):
         return obj.lectures.count()
 

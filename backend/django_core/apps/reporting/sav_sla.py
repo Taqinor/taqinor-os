@@ -16,6 +16,10 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm.exports import build_xlsx_response
 from core.dates import aujourd_hui_local, maintenant_local
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers as drf_serializers
+from drf_spectacular.utils import inline_serializer
 
 
 def _co(user):
@@ -45,6 +49,29 @@ def _avg_days(values):
     return round(sum(vals) / len(vals), 1)
 
 
+_SAV_SLA_SAV_SLA_INSIGHT_REPONSE = inline_serializer('SavSlaSavSlaInsightReponse', {
+    'total_tickets': drf_serializers.JSONField(allow_null=True),
+    'par_priorite': drf_serializers.JSONField(allow_null=True),
+    'par_technicien': drf_serializers.JSONField(allow_null=True),
+    'delai_moyen_premiere_reponse_jours': drf_serializers.JSONField(allow_null=True),
+    'delai_moyen_resolution_jours': drf_serializers.JSONField(allow_null=True),
+    'backlog_vieilli': drf_serializers.JSONField(allow_null=True),
+    'preventif_vs_correctif': drf_serializers.JSONField(allow_null=True),
+    'visites_preventives': drf_serializers.JSONField(allow_null=True),
+    'reouverture': drf_serializers.JSONField(allow_null=True),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('from', OpenApiTypes.STR, required=False),
+        OpenApiParameter('to', OpenApiTypes.STR, required=False),
+        OpenApiParameter('technicien', OpenApiTypes.INT, required=False),
+        OpenApiParameter('priorite', OpenApiTypes.STR, required=False),
+        OpenApiParameter('export', OpenApiTypes.STR, required=False),
+    ],
+    responses={(200, 'application/json'): _SAV_SLA_SAV_SLA_INSIGHT_REPONSE,
+               (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def sav_sla_insight(request):

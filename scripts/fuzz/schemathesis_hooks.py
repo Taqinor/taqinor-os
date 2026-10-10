@@ -29,7 +29,21 @@ fichier). Trois responsabilités, toutes du HARNAIS (aucun code produit) :
      id RÉEL de la société de fuzz : le schéma OpenAPI ne peut pas exprimer
      l'existence d'une ligne, donc sans cela ``positive_data_acceptance``
      signalait des rejets légitimes. Les cas NÉGATIFS ne sont jamais
-     touchés.
+     touchés ;
+   - ENF1b (run 37897343514) : une écriture qui passerait la politique
+     réseau de la société de fuzz en ``enforce`` est ramenée à ``monitor``.
+     Le fuzzeur créait une ``NetworkPolicy`` puis la passait en
+     ``enforce`` sans aucune plage couvrant 127.0.0.1 : le middleware
+     NTSEC11 refusait ensuite TOUTE requête authentifiée (403 « Adresse IP
+     non autorisée par la politique réseau de votre société »), 1 760
+     opérations n'ont reçu que des 403 et Schemathesis a conclu
+     « Authentication stopped working mid-run ». Le comportement serveur
+     est correct (c'est exactement ce qu'``enforce`` doit faire) : c'est le
+     harnais qui ne doit pas se verrouiller dehors. L'endpoint reste fuzzé
+     (``monitor`` journalise sans bloquer) ;
+   - le rôle du compte ``fuzz_admin`` est protégé comme son compte : un
+     PATCH ``permissions: []`` sur ce rôle retirerait au fuzzeur toutes ses
+     permissions (403 partout pour le reste du run).
 """
 from __future__ import annotations
 
@@ -61,6 +75,7 @@ def _charger_etat():
 _ETAT = _charger_etat()
 FUZZ_USER_ID = _ETAT.get('user_id')
 FUZZ_COMPANY_ID = _ETAT.get('company_id')
+FUZZ_ROLE_ID = _ETAT.get('role_id')
 # nom de champ -> liste d'ids existants dans la société de fuzz.
 FK_IDS = {
     nom: list(ids)
@@ -124,7 +139,13 @@ _CIBLES_PROTEGEES = (
      lambda: FUZZ_USER_ID),
     (re.compile(r'^/api/django/companies/\{[^}]+\}/'),
      lambda: FUZZ_COMPANY_ID),
+    (re.compile(r'^/api/django/roles/\{[^}]+\}/'),
+     lambda: FUZZ_ROLE_ID),
 )
+# ENF1b — politique réseau de la société de fuzz (NTSEC11).
+_POLITIQUE_RESEAU = re.compile(r'^/api/django/identity/network-policies/')
+_MODE_BLOQUANT = 'enforce'
+_MODE_SUR = 'monitor'
 
 
 def _proteger_soi(case):
@@ -137,6 +158,18 @@ def _proteger_soi(case):
         for nom, valeur in list((case.path_parameters or {}).items()):
             if str(valeur) == str(protege):
                 case.path_parameters[nom] = ID_INEXISTANT
+
+
+def _neutraliser_politique_reseau(case):
+    """``mode: enforce`` → ``monitor`` sur une écriture de la politique
+    réseau : le fuzzeur (127.0.0.1) ne doit jamais se refuser l'accès."""
+    if case.operation.method.upper() not in _METHODES_ECRITURE:
+        return
+    if not _POLITIQUE_RESEAU.match(case.operation.path):
+        return
+    corps = case.body
+    if isinstance(corps, dict) and corps.get('mode') == _MODE_BLOQUANT:
+        corps['mode'] = _MODE_SUR
 
 
 def _id_connu(nom, valeur):
@@ -167,4 +200,5 @@ def _ids_fk_connus(case):
 @schemathesis.hook
 def before_call(context, case, kwargs):
     _proteger_soi(case)
+    _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)

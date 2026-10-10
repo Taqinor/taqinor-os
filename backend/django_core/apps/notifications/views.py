@@ -6,10 +6,16 @@ destinataire/utilisateur sont posés côté serveur, jamais lus du corps.
 """
 from django.utils import timezone
 
-from rest_framework import status, viewsets
-from rest_framework.decorators import (
-    action, api_view, permission_classes,
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import (
+    authentication_classes, action, api_view, parser_classes,
+    permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
@@ -44,6 +50,51 @@ from .services import (
 )
 
 
+def _q(nom, type_, description, **kw):
+    """ENF8 — paramètre de requête optionnel lu par la vue."""
+    return OpenApiParameter(
+        nom, type_, OpenApiParameter.QUERY, required=False,
+        description=description, **kw)
+
+
+_DETAIL = inline_serializer('NotificationsDetail', {
+    'detail': serializers.CharField(),
+})
+_OK_UPDATED = inline_serializer('NotificationsToutLu', {
+    'updated': serializers.IntegerField(),
+    'ids': serializers.ListField(child=serializers.IntegerField()),
+})
+_UNREAD_COUNT = inline_serializer('NotificationsNonLues', {
+    'unread': serializers.IntegerField(),
+    'actions': serializers.IntegerField(),
+    'infos': serializers.IntegerField(),
+})
+_PREFERENCE_LIGNE = inline_serializer('PreferenceEffective', many=True, fields={
+    'event_type': serializers.CharField(),
+    'event_label': serializers.CharField(),
+    'in_app': serializers.BooleanField(),
+    'whatsapp': serializers.BooleanField(),
+    'email': serializers.BooleanField(),
+    'push': serializers.BooleanField(),
+    'routable': serializers.BooleanField(),
+})
+_PREFERENCE_REQUEST = inline_serializer('PreferenceEcriture', {
+    'in_app': serializers.BooleanField(required=False),
+    'whatsapp': serializers.BooleanField(required=False),
+    'email': serializers.BooleanField(required=False),
+    'push': serializers.BooleanField(required=False),
+})
+_PREFERENCE_ID = OpenApiParameter(
+    'id', OpenApiTypes.STR, OpenApiParameter.PATH,
+    enum=list(EventType.values), description="Clé du type d'événement.")
+_BOOL_01 = ['0', '1', 'true', 'false']
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[_q(
+        'unread', OpenApiTypes.STR, 'Ne garder que les non lues.',
+        enum=['1', 'true', 'True'])]),
+)
 class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Mes notifications in-app : liste (filtre `unread`), détail, comptage,
     marquage lu / tout lu. Aucune création via l'API (les notifications naissent
@@ -51,6 +102,7 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [IsAnyRole]
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     def get_queryset(self):
         # Scope société (TenantMixin) PUIS destinataire courant : un utilisateur
@@ -78,6 +130,7 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(archived=False, created_at__gte=horizon)
         return qs
 
+    @extend_schema(responses=_UNREAD_COUNT)
     @action(detail=False, methods=['get'], url_path='unread-count')
     def unread_count(self, request):
         from . import severity as severity_module
@@ -94,6 +147,7 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             'unread': count, 'actions': actions, 'infos': count - actions,
         })
 
+    @extend_schema(request=None, responses=NotificationSerializer)
     @action(detail=True, methods=['post'], url_path='read')
     def mark_read(self, request, pk=None):
         notif = self.get_object()
@@ -103,6 +157,7 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             notif.save(update_fields=['read', 'read_at'])
         return Response(self.get_serializer(notif).data)
 
+    @extend_schema(request=None, responses=NotificationSerializer)
     @action(detail=True, methods=['post'], url_path='unread')
     def mark_unread(self, request, pk=None):
         notif = self.get_object()
@@ -112,6 +167,7 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             notif.save(update_fields=['read', 'read_at'])
         return Response(self.get_serializer(notif).data)
 
+    @extend_schema(request=None, responses=_OK_UPDATED)
     @action(detail=False, methods=['post'], url_path='read-all')
     def mark_all_read(self, request):
         # VX208(c) — capture les ids AVANT la mise à jour : un « Annuler »
@@ -126,6 +182,15 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response({'updated': updated, 'ids': ids})
 
 
+@extend_schema_view(
+    list=extend_schema(responses=_PREFERENCE_LIGNE),
+    update=extend_schema(
+        parameters=[_PREFERENCE_ID], request=_PREFERENCE_REQUEST,
+        responses=NotificationPreferenceSerializer),
+    partial_update=extend_schema(
+        parameters=[_PREFERENCE_ID], request=_PREFERENCE_REQUEST,
+        responses=NotificationPreferenceSerializer),
+)
 class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
     """Préférences de canaux par événement, propres à l'utilisateur courant.
 
@@ -134,6 +199,8 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
     fabrique pas de viewset CRUD complet : l'UI manipule une grille événement ×
     canaux."""
     permission_classes = [IsAnyRole]
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    serializer_class = NotificationPreferenceSerializer
 
     def list(self, request):
         return Response(merged_preferences(request.user))
@@ -164,6 +231,10 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
         return Response(NotificationPreferenceSerializer(pref).data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('event_type', OpenApiTypes.STR, "Type d'événement."),
+    _q('enabled', OpenApiTypes.STR, 'Règles actives ou non.',
+       enum=_BOOL_01)]))
 class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG4 — CRUD des règles de routage de notifications (admin uniquement).
 
@@ -172,6 +243,7 @@ class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     Tout est scopé à la société (TenantMixin). company est posée côté serveur."""
     queryset = NotificationRoutingRule.objects.all()
     serializer_class = NotificationRoutingRuleSerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     READ_ACTIONS = ['list', 'retrieve']
 
     def get_permissions(self):
@@ -199,6 +271,19 @@ class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
 # publique par nature (exposée au navigateur) ; les autres routes exigent un
 # utilisateur authentifié.
 
+@extend_schema_view(
+    list=extend_schema(responses=WorkingHoursConfigSerializer),
+    update=extend_schema(
+        parameters=[OpenApiParameter(
+            'id', OpenApiTypes.STR, OpenApiParameter.PATH)],
+        request=WorkingHoursConfigSerializer,
+        responses=WorkingHoursConfigSerializer),
+    partial_update=extend_schema(
+        parameters=[OpenApiParameter(
+            'id', OpenApiTypes.STR, OpenApiParameter.PATH)],
+        request=WorkingHoursConfigSerializer,
+        responses=WorkingHoursConfigSerializer),
+)
 class WorkingHoursConfigViewSet(viewsets.ViewSet):
     """FG5 — Config des jours ouvrés : GET (lecture) + PUT/PATCH (upsert).
 
@@ -207,6 +292,8 @@ class WorkingHoursConfigViewSet(viewsets.ViewSet):
     Lecture : tout rôle. Écriture : admin seulement. company posée côté serveur.
     Pas de TenantMixin (ViewSet sans queryset) : scoping manuel via request.user.company."""
     permission_classes = [IsAnyRole]
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    serializer_class = WorkingHoursConfigSerializer
 
     def _get_or_default_data(self, company):
         cfg = WorkingHoursConfig.objects.filter(company=company).first()
@@ -244,6 +331,8 @@ class WorkingHoursConfigViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('year', OpenApiTypes.INT, 'Année : fériés de cette année ou récurrents.')]))
 class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG5 — CRUD des jours fériés, scopé à la société courante.
 
@@ -253,6 +342,7 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
     (date.year == 2025 OU recurrent_annuel)."""
     queryset = Holiday.objects.all()
     serializer_class = HolidaySerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     READ_ACTIONS = ['list', 'retrieve']
 
     def get_permissions(self):
@@ -276,6 +366,10 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('statut_approbation', OpenApiTypes.STR, "Statut d'approbation.",
+       enum=list(WhatsAppTemplate.StatutApprobation.values)),
+    _q('groupe', OpenApiTypes.STR, 'Groupe de gabarits.')]))
 class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     """XMKT25 — Registre des gabarits BSP + cycle d'approbation Meta.
 
@@ -286,6 +380,7 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     le registre lui-même)."""
     queryset = WhatsAppTemplate.objects.all()
     serializer_class = WhatsAppTemplateSerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     READ_ACTIONS = ['list', 'retrieve']
 
     def get_permissions(self):
@@ -306,6 +401,7 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(request=None, responses=WhatsAppTemplateSerializer)
     @action(detail=True, methods=['post'], url_path='submit')
     def submit(self, request, pk=None):
         """Soumet le gabarit à l'approbation Meta (gated, no-op sans jeton)."""
@@ -314,6 +410,13 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         tpl.refresh_from_db()
         return Response(self.get_serializer(tpl).data)
 
+    @extend_schema(
+        request=inline_serializer('WhatsAppTemplateDecision', {
+            'statut_approbation': serializers.ChoiceField(
+                choices=list(WhatsAppTemplate.StatutApprobation.values)),
+            'motif_rejet': serializers.CharField(required=False),
+        }),
+        responses=WhatsAppTemplateSerializer)
     @action(detail=True, methods=['post'], url_path='decision')
     def decision(self, request, pk=None):
         """Saisie manuelle du statut d'approbation (retour Meta Business Manager).
@@ -331,6 +434,25 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(tpl).data)
 
 
+_LIGNE_LECTURE = {
+    'user_id': serializers.IntegerField(),
+    'username': serializers.CharField(),
+}
+_CONFORMITE = inline_serializer('AnnonceConformite', {
+    'lus': inline_serializer('AnnonceConformiteLu', {
+        **_LIGNE_LECTURE, 'date_lecture': serializers.DateTimeField(),
+    }, many=True),
+    'manquants': inline_serializer(
+        'AnnonceConformiteManquant', _LIGNE_LECTURE, many=True),
+    'total_cibles': serializers.IntegerField(),
+})
+
+
+@extend_schema_view(list=extend_schema(parameters=[
+    _q('active', OpenApiTypes.STR, 'Publiées et non expirées seulement.',
+       enum=['1', 'true', 'True']),
+    _q('epinglee', OpenApiTypes.STR, 'Annonces épinglées ou non.',
+       enum=_BOOL_01)]))
 class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     """XKB5 — Annonces internes ciblées et programmées.
 
@@ -340,6 +462,7 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     bandeau/carte du dashboard)."""
     queryset = Annonce.objects.all()
     serializer_class = AnnonceSerializer
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     READ_ACTIONS = ['list', 'retrieve']
     # accuser_lecture : « J'ai lu et compris » est ouvert à tout rôle
     # destinataire — seules création/édition/publication/conformité restent
@@ -366,6 +489,7 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company, auteur=self.request.user)
 
+    @extend_schema(request=None, responses=AnnonceSerializer)
     @action(detail=True, methods=['post'], url_path='publier')
     def publier(self, request, pk=None):
         """Publie immédiatement l'annonce (idempotent si déjà publiée)."""
@@ -376,6 +500,8 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
 
     # ── XKB6 — Accusé de lecture obligatoire + rapport de conformité ────────
 
+    @extend_schema(request=None, responses=inline_serializer(
+        'AnnonceAccuseLecture', {'lu': serializers.BooleanField()}))
     @action(detail=True, methods=['post'], url_path='accuser-lecture',
             permission_classes=[IsAnyRole])
     def accuser_lecture(self, request, pk=None):
@@ -384,6 +510,7 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
         acknowledge_annonce(annonce, request.user)
         return Response({'lu': True})
 
+    @extend_schema(responses=_CONFORMITE)
     @action(detail=True, methods=['get'], url_path='conformite')
     def conformite(self, request, pk=None):
         """Rapport de conformité : qui a confirmé, quand, qui manque (admin)."""
@@ -412,6 +539,7 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
     queryset = MessageAccueil.objects.all()
     serializer_class = MessageAccueilSerializer
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
+    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     ANY_ROLE_ACTIONS = ['list', 'retrieve', 'a_lire', 'lu']
 
     def get_permissions(self):
@@ -449,6 +577,14 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company, auteur=self.request.user)
 
+    @extend_schema(responses=inline_serializer('MessagesAccueilALire', {
+        'messages': inline_serializer('MessageAccueilALire', {
+            'id': serializers.IntegerField(),
+            'auteur_nom': serializers.CharField(allow_null=True),
+            'visible_a_partir_de': serializers.DateTimeField(),
+            'corps': serializers.CharField(),
+        }, many=True),
+    }))
     @action(detail=False, methods=['get'], url_path='a-lire')
     def a_lire(self, request):
         messages = [
@@ -462,6 +598,7 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
         ]
         return Response({'messages': messages})
 
+    @extend_schema(request=None, responses=MessageAccueilSerializer)
     @action(detail=True, methods=['post'], url_path='lu')
     def lu(self, request, pk=None):
         message = self.get_object()
@@ -487,6 +624,14 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
 # ─────────────────────────────────────────────────────────────────────────────
 # FG5 — Endpoint de vérification des helpers de calendrier.
 
+@extend_schema(
+    parameters=[_q('date', OpenApiTypes.DATE,
+                   "Date AAAA-MM-JJ (défaut : aujourd'hui).")],
+    responses=inline_serializer('CalendrierOuvre', {
+        'date': serializers.DateField(),
+        'is_jour_ouvre': serializers.BooleanField(),
+        'prochain_jour_ouvre': serializers.DateField(),
+    }))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def calendar_check(request):
@@ -514,7 +659,12 @@ def calendar_check(request):
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+@extend_schema(responses={
+    200: inline_serializer('CleVapid', {'public_key': serializers.CharField()}),
+    403: _DETAIL,  # politique réseau de la société (middleware)
+})
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def vapid_public_key(request):
     """Clé publique VAPID pour l'abonnement côté navigateur.
@@ -525,8 +675,22 @@ def vapid_public_key(request):
     return Response({'public_key': resolve_vapid_keys()[0]})
 
 
+_NON_VIDE = r'\S'
+_PUSH_SUBSCRIBE = inline_serializer('PushSubscribeRequest', {
+    'endpoint': serializers.RegexField(_NON_VIDE),
+    'keys': inline_serializer('PushSubscribeKeys', {
+        'p256dh': serializers.RegexField(_NON_VIDE),
+        'auth': serializers.RegexField(_NON_VIDE),
+    }),
+})
+
+
+@extend_schema(request=_PUSH_SUBSCRIBE, responses={
+    201: inline_serializer('PushSubscribed', {'id': serializers.IntegerField()}),
+})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def push_subscribe(request):
     """Enregistre (upsert) l'abonnement push de l'appareil courant.
 
@@ -553,6 +717,13 @@ def push_subscribe(request):
     return Response({'id': sub.id}, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(responses=inline_serializer('AttentionSummary', {
+    'actions_dues': serializers.IntegerField(),
+    'en_retard': serializers.IntegerField(),
+    'aujourdhui': serializers.IntegerField(),
+    'approbations': serializers.IntegerField(),
+    'mentions_non_lues': serializers.IntegerField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def attention_summary(request):
@@ -620,8 +791,15 @@ def attention_summary(request):
     })
 
 
+@extend_schema(
+    request=inline_serializer('PushUnsubscribeRequest', {
+        'endpoint': serializers.RegexField(r'\S'),
+    }),
+    responses=inline_serializer(
+        'PushUnsubscribed', {'deleted': serializers.IntegerField()}))
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def push_unsubscribe(request):
     """Supprime l'abonnement push de l'appareil courant (par endpoint).
 

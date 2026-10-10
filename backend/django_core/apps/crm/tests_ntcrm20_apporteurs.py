@@ -75,7 +75,7 @@ class ApporteurApiTests(TestCase):
     def test_crud_apporteur(self):
         resp = self.api.post('/api/django/crm/apporteurs/', {
             'nom': 'Nouvel apporteur', 'type_apporteur': 'courtier',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_enregistrer_puis_refus_second_via_api(self):
@@ -85,14 +85,14 @@ class ApporteurApiTests(TestCase):
             company=self.company, nom='Prospect API', telephone='0644444444')
         resp = self.api.post('/api/django/crm/deals-enregistres/', {
             'apporteur': apporteur1.pk, 'lead': lead1.pk,
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
         lead2 = Lead.objects.create(
             company=self.company, nom='Prospect API bis', telephone='0644444444')
         resp2 = self.api.post('/api/django/crm/deals-enregistres/', {
             'apporteur': apporteur2.pk, 'lead': lead2.pk,
-        })
+        }, format='json')
         self.assertEqual(resp2.status_code, 400, resp2.data)
 
     def test_approuver_rejeter(self):

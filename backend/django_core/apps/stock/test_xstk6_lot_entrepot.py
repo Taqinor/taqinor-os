@@ -14,6 +14,7 @@ Couvre :
 Run:
     python manage.py test apps.stock.test_xstk6_lot_entrepot -v 2
 """
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -78,7 +79,7 @@ class Xstk6Base(TestCase):
         # dès qu'un test crée plusieurs BCF, ex. deux réceptions FEFO).
         bc = BonCommandeFournisseur.objects.create(
             company=self.company,
-            reference=f'BCF-X6-{BonCommandeFournisseur.objects.count() + 1}',
+            reference=f'BCF-X6-{uuid.uuid4().hex[:8]}',
             fournisseur=self.fournisseur,
             statut=BonCommandeFournisseur.Statut.ENVOYE)
         bc.lignes.create(

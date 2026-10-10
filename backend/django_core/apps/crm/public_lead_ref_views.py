@@ -44,7 +44,7 @@ from rest_framework import status
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -110,6 +110,7 @@ def _find_client_ref(company, idempotency_key: str, field: str):
                  'pour tout échec — anti-énumération.'),
 )
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLeadRefLookupThrottle])
 def lead_ref_lookup(request, idempotency_key):

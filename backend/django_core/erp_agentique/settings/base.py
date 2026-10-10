@@ -389,6 +389,9 @@ MIDDLEWARE = [
     # core.exceptions.taqinor_exception_handler (YAPIC3) et
     # core.observability.RequestObservabilityMiddleware le lisent tous deux.
     'core.middleware.RequestIdMiddleware',
+    # ENF1b — URL d'API interne sans route → 404 JSON `ErreurApi`, jamais la
+    # page HTML de Django (après RequestIdMiddleware : lit request.request_id).
+    'core.middleware.ApiJson404Middleware',
     # NTAPI38-middleware — journalise chaque appel public (`/api/public/…`,
     # `publicapi.ApiCallLog` : latence, statut, request_id) ; APRÈS
     # RequestIdMiddleware dont il lit `request.request_id`. Test de préfixe
@@ -661,6 +664,10 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = int(
 
 # Django REST Framework
 REST_FRAMEWORK = {
+    # ENF (D2, décision fondateur 09/10) : les vues sans fichier n'acceptent
+    # que du JSON — le client de test envoie donc du JSON par défaut ; les
+    # tests d'upload fixent explicitement format='multipart'.
+    'TEST_REQUEST_DEFAULT_FORMAT': 'json',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'authentication.cookie_auth.CookieJWTAuthentication',
     ),
@@ -671,6 +678,9 @@ REST_FRAMEWORK = {
     # ``?page_size=`` autorisé, max_page_size=200 (plafond serveur). L'enveloppe
     # count/next/previous/results reste identique à DRF.
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
+    # ENF1b — OPTIONS ne répond jamais 500 sur une action de liste PUT/PATCH
+    # ou une vue sans `serializer_class` (core/metadata.py).
+    'DEFAULT_METADATA_CLASS': 'core.metadata.TaqinorMetadata',
     'PAGE_SIZE': 50,
     # YAPIC2 — backends de tri/recherche par défaut. Toute vue qui déclare son
     # PROPRE `filter_backends` (37/97 aujourd'hui) N'EST PAS affectée (un
@@ -772,6 +782,15 @@ REST_FRAMEWORK = {
     'ALLOWED_VERSIONS': ('v1',),
 }
 
+# ENFP (décision fondateur D1, 09/10/2026) — un paramètre de requête NON déclaré
+# au schéma OpenAPI de l'opération est refusé (400 `unknown_query_parameter`
+# nommant le paramètre). Voir `core/parametres_requete.py`. FAUX par défaut tant
+# que la garde « paramètres envoyés par le frontend ⊆ schéma » n'est pas verte
+# (≈50 apps hors des lanes ENF3-ENF10 non balayées) : le job api-fuzz l'allume
+# (env API_QUERY_PARAMS_STRICT=1) et les tests ENFP le forcent via
+# override_settings. Ensuite : vrai en tests/CI, puis en production.
+API_QUERY_PARAMS_STRICT = os.environ.get('API_QUERY_PARAMS_STRICT', '0') == '1'
+
 # YAPIC5 — réglages drf-spectacular. COMPONENT_SPLIT_REQUEST distingue les
 # schémas Request/Response (champs read_only exclus du corps de requête dans
 # le schéma généré). SERVE_PERMISSIONS gate /api/schema/, /api/docs/ et
@@ -789,6 +808,13 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    # ENF2 (C2) — après le nommage des énums (crochet par défaut, conservé en
+    # tête), chaque opération déclare l'enveloppe d'erreur qu'elle peut
+    # réellement servir (400/401/403/404/409/429/500) : documenté == réel.
+    'POSTPROCESSING_HOOKS': [
+        'drf_spectacular.hooks.postprocess_schema_enums',
+        'core.openapi_erreurs.declarer_enveloppe_erreur',
+    ],
     # YAPIC6 — nommage STABLE des jeux de choix partagés. Sans ces entrées,
     # drf-spectacular baptise un jeu de choix ambigu avec un suffixe de hachage
     # (`UniteF3aEnum`, `Regle614Enum`…) : un nom illisible pour un client

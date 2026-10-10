@@ -25,10 +25,10 @@ class Astreinte(models.Model):
     chevauchements sont refusés (``clean()``)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='astreintes')
     technicien = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée de suivi/planning du technicien — sans objet sans lui (Astreinte)
         related_name='astreintes')
     date_debut = models.DateTimeField()
     date_fin = models.DateTimeField()

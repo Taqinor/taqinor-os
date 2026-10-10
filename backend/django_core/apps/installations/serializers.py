@@ -236,6 +236,7 @@ class TypeInterventionSerializer(serializers.ModelSerializer):
         fields = ['id', 'cle', 'libelle', 'ordre', 'protege', 'archived', 'en_usage']
         read_only_fields = ['protege']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_en_usage(self, obj):
         return Intervention.objects.filter(
             company=obj.company, type_intervention=obj.cle).count()
@@ -257,6 +258,7 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
             'body', 'user_nom', 'created_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
@@ -340,6 +342,7 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
             'rdv_reschedule_count', 'arrivee_dans_fenetre',
         ]
 
+    @extend_schema_field(serializers.IntegerField())
     def get_statut_ordre(self, obj):
         order = list(Intervention.STATUT_ORDER)
         try:
@@ -347,22 +350,27 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
         except ValueError:
             return len(order)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien, 'username', None)
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_equipe_noms(self, obj):
         return [u.username for u in obj.equipe.all()]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_nom(self, obj):
         c = getattr(obj.installation, 'client', None)
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.FloatField(allow_null=True))
     def get_distance_site_km(self, obj):
         from .field_services import distance_to_site
         return distance_to_site(obj)
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_preparation_completion(self, obj):
         from .field_services import preparation_completion
         prep = getattr(obj, 'preparation', None)
@@ -370,6 +378,7 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
             return None
         return preparation_completion(prep)
 
+    @extend_schema_field(serializers.BooleanField())
     def get_preparation_confirmee(self, obj):
         prep = getattr(obj, 'preparation', None)
         return bool(prep and prep.tout_charge)
@@ -391,15 +400,18 @@ class InterventionSerializer(SameCompanyFKSerializerMixin,
             cache[cid] = active_shotlist(company)
         return cache[cid]
 
+    @extend_schema_field(serializers.IntegerField())
     def get_photos_obligatoires_manquantes(self, obj):
         from .field_services import missing_required_shots
         return len(missing_required_shots(
             obj, slots=self._shotlist(obj.company)))
 
+    @extend_schema_field(serializers.DictField())
     def get_crew_time(self, obj):
         from .field_capture import crew_time
         return crew_time(obj)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_reserves_ouvertes(self, obj):
         # AUD324 — quand l'appelant a préchargé les réserves OUVERTES (Prefetch
         # filtré déposé par `views.intervention.dispatch_prefetches()`), on lit
@@ -466,13 +478,16 @@ class InterventionPreparationSerializer(serializers.ModelSerializer):
                   'completion', 'nb_manques']
         read_only_fields = ['intervention', 'tout_charge', 'confirme_le']
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_completion(self, obj):
         from .field_services import preparation_completion
         return preparation_completion(obj)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_confirme_par_nom(self, obj):
         return getattr(obj.confirme_par, 'username', None)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_manques(self, obj):
         return sum(1 for li in obj.materiel.all() if li.manquant)
 
@@ -487,6 +502,7 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
             'body', 'user_nom', 'created_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
@@ -639,6 +655,7 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
         from .services import resume_dossier_8221
         return resume_dossier_8221(obj)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_statut_ordre(self, obj):
         order = list(Installation.STATUT_ORDER)
         try:
@@ -646,9 +663,11 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
         except ValueError:
             return len(order)
 
+    @extend_schema_field(serializers.CharField())
     def get_statut_canonique(self, obj):
         return Installation.canonical_statut(obj.statut)
 
+    @extend_schema_field(serializers.DictField())
     def get_regime_suggere(self, obj):
         # CIQ613 — noyau sourcé : kWc DC, kW AC des onduleurs (nomenclature
         # gelée), niveau de tension, hors réseau ; C&I inconnu → à qualifier.
@@ -657,6 +676,7 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
         label = dict(Installation.Regime8221.choices).get(code, code)
         return {'code': code, 'label': label}
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_parc_garantie_etat(self, obj):
         # Pire état de garantie parmi les équipements EN SERVICE du système.
         # Sévérité : hors_garantie > expire_bientot > non_renseignee >
@@ -700,6 +720,7 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
         from .selectors import calepinage_retenu_du_chantier
         return calepinage_retenu_du_chantier(obj)
 
+    @extend_schema_field(serializers.BooleanField())
     def get_est_parc(self, obj):
         # Système installé = chantier réceptionné (ou clôturé) et toujours
         # actif dans le parc, hors chantier annulé.
@@ -708,6 +729,7 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
             Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
         return bool(reached and obj.parc_actif and not obj.annule)
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_checklist_completion(self, obj):
         items = list(obj.checklist.all())
         if not items:
@@ -715,20 +737,24 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
         done = sum(1 for it in items if it.fait)
         return round(100 * done / len(items))
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_nom(self, obj):
         c = obj.client
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien_responsable, 'username', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_lead_nom(self, obj):
         if not obj.lead_id:
             return None
         return f"{obj.lead.nom} {obj.lead.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
 
@@ -747,6 +773,7 @@ class ComponentSerialSerializer(serializers.ModelSerializer):
         read_only_fields = ['intervention', 'serie_ocr', 'pousse_parc',
                             'date_creation']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_plaque_url(self, obj):
         if not obj.plaque_attachment_id:
             return None
@@ -781,9 +808,11 @@ class ConsommationLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
                   'date_modification']
         read_only_fields = ['stock_applique', 'ordre', 'date_modification']
 
+    @extend_schema_field(serializers.CharField())
     def get_variance(self, obj):
         return obj.variance
 
+    @extend_schema_field(serializers.BooleanField())
     def get_justification_requise(self, obj):
         from .field_capture import ligne_needs_justification
         return ligne_needs_justification(obj)
@@ -801,12 +830,15 @@ class MaterielConsommationSerializer(serializers.ModelSerializer):
                   'lignes', 'nb_variances', 'overage']
         read_only_fields = ['intervention', 'valide', 'valide_le']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_valide_par_nom(self, obj):
         return getattr(obj.valide_par, 'username', None)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_variances(self, obj):
         return sum(1 for li in obj.lignes.all() if li.variance != 0)
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_overage(self, obj):
         from .field_capture import consommation_overage
         return consommation_overage(obj)
@@ -824,11 +856,13 @@ class VoiceMemoSerializer(serializers.ModelSerializer):
         read_only_fields = ['intervention', 'audio', 'transcrit',
                             'date_creation']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_audio_url(self, obj):
         if not obj.audio_id:
             return None
         return f'/api/django/records/attachments/{obj.audio_id}/download/'
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_created_by_nom(self, obj):
         return getattr(obj.created_by, 'username', None)
 
@@ -855,9 +889,11 @@ class ReserveSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerialize
                             'devis_repare_id', 'resolue_le', 'date_creation',
                             'installation', 'levee_par']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_photo_url(self, obj):
         if not obj.photo_id:
             return None
@@ -918,6 +954,7 @@ class SafetyCheckItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'cle', 'libelle', 'ordre', 'coche', 'coche_par_nom',
                   'coche_le']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_coche_par_nom(self, obj):
         return getattr(obj.coche_par, 'username', None)
 
@@ -932,6 +969,7 @@ class SafetySignoffSerializer(serializers.ModelSerializer):
                   'items']
         read_only_fields = ['intervention', 'signe', 'signe_le']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_signe_par_nom(self, obj):
         return getattr(obj.signe_par, 'username', None)
 
@@ -1078,9 +1116,11 @@ class ProjetTacheSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
         ]
         read_only_fields = ['date_creation', 'date_modification']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_assigne_nom(self, obj):
         return getattr(obj.assigne, 'username', None)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_sous_taches(self, obj):
         return obj.sous_taches.count()
 
@@ -2182,6 +2222,7 @@ class RevisionKitSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
                   'date_creation']
         read_only_fields = fields
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         u = obj.user
         if u is None:
@@ -2264,14 +2305,17 @@ class OrdreAssemblageSerializer(SameCompanyFKSerializerMixin,
                 'La quantite a assembler doit etre strictement positive.')
         return value
 
+    @extend_schema_field(serializers.CharField())
     def get_cout_prevu(self, obj):
         from .services import cout_prevu_assemblage
         return str(cout_prevu_assemblage(obj))
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_temps_prevu_min(self, obj):
         from .services import totaux_temps_ordre
         return totaux_temps_ordre(obj)['prevu']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_temps_reel_min(self, obj):
         from .services import totaux_temps_ordre
         return totaux_temps_ordre(obj)['reel']
@@ -2288,6 +2332,7 @@ class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
             'body', 'user_nom', 'created_at',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 

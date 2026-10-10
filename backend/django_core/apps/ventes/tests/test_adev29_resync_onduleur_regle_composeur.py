@@ -46,7 +46,8 @@ class ResyncOnduleurTests(TestCase):
             # caractères ET leur longueur — l'ancien ``nom[:20] + len(nom)``
             # les faisait entrer en collision (unique company+sku).
             company=self.company, nom=nom,
-            sku='ADEV29-%s' % hashlib.sha1(nom.encode('utf-8')).hexdigest()[:12],
+            sku='ADEV29-%s' % hashlib.sha1(
+                nom.encode('utf-8'), usedforsecurity=False).hexdigest()[:12],
             prix_vente=Decimal(prix), prix_achat=Decimal('1'),
             quantite_stock=10)
 

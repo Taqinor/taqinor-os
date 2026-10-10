@@ -17,11 +17,13 @@ from ..serializers import (
     RetourLivraisonSerializer, RetourLivraisonLigneSerializer,
 )
 from ..services import valider_retour_livraison
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RetourLivraisonViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('livraison'), p1=oa.qs('statut'))
+class RetourLivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """ZSTK8 — retours client générés depuis une livraison livrée. Lecture
     tout rôle, écriture responsable/admin. Filtrable par `livraison`,
     `statut`."""
@@ -63,6 +65,7 @@ class RetourLivraisonViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
         """ZSTK8 — valide le retour. ACHT21 : TRANSFERT de la destination de
@@ -78,7 +81,8 @@ class RetourLivraisonViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(retour).data)
 
 
-class RetourLivraisonLigneViewSet(viewsets.ModelViewSet):
+@oa.listing(p0=oa.qi('retour'))
+class RetourLivraisonLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     """ZSTK8 — lignes d'un retour de livraison. Pas de `company` propre :
     scope via le retour parent. Filtrable par `retour`."""
     queryset = RetourLivraisonLigne.objects.select_related(

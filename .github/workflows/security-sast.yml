@@ -1,22 +1,37 @@
-name: security-sast (bandit, advisory)
+name: security-sast (bandit)
 
-# NTPLT52 — SAST Python par Bandit, ADVISORY (non-required, ne bloque aucune
-# merge — protection de branche intacte). `bandit -r backend/django_core -ll`
-# avec une baseline committée (.bandit.baseline) : seuls les NOUVEAUX findings
-# (au-delà de la baseline) sont signalés. Les 2 findings HIGH initiaux (SHA1
-# ETag, autoescape Jinja2) ont été corrigés dans la même tâche → la baseline
-# ne contient plus aucune HIGH.
-
-# WOW-CI ronde 3 (fondateur 19/08, « CI below 5 min ») : ce scan ADVISORY ne
-# tourne plus au moment PR — le cap GitHub de 20 jobs simultanés étranglait les
-# shards requis (4 jobs en file 35 s-1 min 47 mesurés). La couverture est
-# CONSERVÉE : chaque merge vers main relance le scan (push) + lancement manuel.
+# NTPLT52 — SAST Python par Bandit. ENF12 (règle fondateur 09/10/2026,
+# docs/claude-memory/enforce-all-checks.md) : job BLOQUANT — plus de
+# `continue-on-error`, plus de `|| true`.
+#
+# Seuil (mesuré le 09/10/2026 sur origin/dev-enf, bandit 1.9.4) :
+#   * `-ll` = sévérité MEDIUM et plus ; toute découverte ABSENTE de la baseline
+#     committée `.bandit.baseline` fait échouer le job.
+#   * HIGH : 0 dans l'arbre (les 4 SHA1 de fingerprint/digest restants ont reçu
+#     `usedforsecurity=False`) — une HIGH est donc toujours « nouvelle » → rouge.
+#   * La baseline contient 101 MEDIUM historiques (B108 /tmp dans des tests,
+#     B314 xml.etree, B310 urlopen, B608 SQL d'identifiants internes, B610) :
+#     c'est de la DETTE à ramener à zéro, pas une exception permanente.
+#     Ne jamais la régénérer pour faire passer une nouvelle découverte :
+#     corriger la cause. Régénération (seulement après avoir CORRIGÉ des
+#     entrées) : `bandit -r backend/django_core -ll -f json` sous Linux, chemins
+#     en `/` (la baseline précédente, écrite sous Windows en cp1252 avec des `\`,
+#     faisait planter bandit — masqué par `|| true` pendant des mois).
+#
+# Déclencheurs : PR (≈ 25 s mesurées, assez rapide pour chaque PR backend),
+# push sur main, lancement manuel.
 on:
   workflow_dispatch: {}
+  pull_request:
+    paths:
+      - 'backend/django_core/**'
+      - '.bandit.baseline'
+      - '.github/workflows/security-sast.yml'
   push:
     branches: [main]
     paths:
       - 'backend/django_core/**'
+      - '.bandit.baseline'
 
 permissions:
   contents: read
@@ -24,19 +39,19 @@ permissions:
 jobs:
   bandit:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install bandit
-        run: pip install bandit
-      - name: Bandit (nouveaux findings vs baseline)
+        run: pip install bandit==1.9.4
+      - name: Bandit (aucune découverte MEDIUM+ hors baseline)
         run: |
+          set -o pipefail
           bandit -r backend/django_core -ll -b .bandit.baseline \
-            -f screen -o bandit-report.txt || true
-          cat bandit-report.txt
+            -f screen 2>&1 | tee bandit-report.txt
       - name: Upload bandit report
         if: always()
         uses: actions/upload-artifact@v4

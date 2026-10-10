@@ -44,10 +44,10 @@ class SavedReport(models.Model):
         MONTHLY = 'monthly', 'Mensuel'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='saved_reports')
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: auteur informatif du rapport — le rapport reste partageable sans lui
         null=True, blank=True, related_name='saved_reports')
     name = models.CharField(max_length=255)
     # Paramètres du rapport (période/filtres). Forme libre, défaut objet vide.
@@ -352,13 +352,13 @@ class DashboardConfig(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_dashboard_configs',
     )
     # NULL → config de palier de rôle ; non-NULL → config per-user.
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (DashboardConfig) — sans objet sans lui
         null=True,
         blank=True,
         related_name='reporting_dashboard_configs',
@@ -499,7 +499,7 @@ class KpiAlerte(models.Model):
         ANOMALIE = 'anomalie', "Écart à l'habitude (z-score)"
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_kpi_alertes')
     nom = models.CharField(max_length=120, blank=True, default='')
     # NTJUR48 — élargi 30 → 40 : ``juridique_delai_moyen_resolution`` fait 32
@@ -633,10 +633,10 @@ class Classeur(models.Model):
     ``ClasseurPartageInterne`` plus bas)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_classeurs')
     proprietaire = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (Classeur) — sans objet sans lui
         null=True, blank=True, related_name='reporting_classeurs',
         help_text='Vide = classeur de société (non personnel).')
     titre = models.CharField(max_length=160, default='Classeur sans titre')
@@ -674,7 +674,7 @@ class ApprobationSlaConfig(models.Model):
     DEFAULT_SLA_JOURS = 3
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='approbation_sla_config')
     sla_jours = models.PositiveIntegerField(
         default=DEFAULT_SLA_JOURS,
@@ -710,12 +710,12 @@ class ClasseurPartageInterne(models.Model):
         EDITION = 'edition', 'Édition'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_classeur_partages_internes')
     classeur = models.ForeignKey(
-        Classeur, on_delete=models.CASCADE, related_name='partages_internes')
+        Classeur, on_delete=models.CASCADE, related_name='partages_internes')  # on_delete: ClasseurPartageInterne est le détail de Classeur — n'existe pas sans lui
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (ClasseurPartageInterne) — sans objet sans lui
         null=True, blank=True,
         related_name='reporting_classeur_partages_recus')
     role = models.CharField(max_length=20, blank=True, default='')
@@ -763,7 +763,7 @@ class WebVitalMetric(TenantModel):
         POOR = 'poor', 'Mauvais'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_web_vitals')
     utilisateur = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

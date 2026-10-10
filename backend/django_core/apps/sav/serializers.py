@@ -22,11 +22,11 @@ EXPIRING_SOON_DAYS = 90
 
 
 class EquipementSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True, default=None)
-    produit_marque = serializers.CharField(source='produit.marque', read_only=True, default=None)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True, default=None)
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True, default=None)
+    produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True, default=None)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True, default=None)
     installation_reference = serializers.CharField(
-        source='installation.reference', read_only=True, default=None)
+        source='installation.reference', read_only=True, allow_null=True, default=None)
     client_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -34,10 +34,10 @@ class EquipementSerializer(serializers.ModelSerializer):
     garantie_jours_restants = serializers.SerializerMethodField()
     # L632 — qui/quand : nom du créateur (les dates sont déjà sérialisées).
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True, default=None)
     # L629 — référence du ticket SAV qui a remplacé l'appareil (statut remplacé).
     remplace_par_ticket_reference = serializers.CharField(
-        source='remplace_par_ticket.reference', read_only=True, default=None)
+        source='remplace_par_ticket.reference', read_only=True, allow_null=True, default=None)
     # L624 — nombre de tickets SAV ouverts liés à cet équipement.
     nb_tickets_ouverts = serializers.SerializerMethodField()
     # FG90 — nombre de tickets correctifs sur les 12 derniers mois (citron).
@@ -48,7 +48,7 @@ class EquipementSerializer(serializers.ModelSerializer):
     sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
     # ZMFG2 — catégorie de parc (libellé lecture).
     categorie_nom = serializers.CharField(
-        source='categorie.nom', read_only=True, default=None)
+        source='categorie.nom', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = Equipement
@@ -88,6 +88,7 @@ class EquipementSerializer(serializers.ModelSerializer):
                 'Ce numéro de série existe déjà dans votre société.')
         return value
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_tickets_ouverts(self, obj):
         annote = getattr(obj, 'nb_tickets_ouverts_annote', None)
         if annote is not None:
@@ -95,6 +96,7 @@ class EquipementSerializer(serializers.ModelSerializer):
         return obj.tickets.filter(
             statut__in=Ticket.OPEN_STATUTS, annule=False).count()
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_tickets_12m(self, obj):
         """FG90 — compte les tickets correctifs des 12 derniers mois."""
         annote = getattr(obj, 'nb_tickets_12m_annote', None)
@@ -106,6 +108,7 @@ class EquipementSerializer(serializers.ModelSerializer):
             date_creation__date__gte=since,
         ).count()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_nom(self, obj):
         # XPOS9 — un équipement vendu au comptoir (sans chantier) porte son
         # client directement via `client_vente` ; sinon dérivé du chantier.
@@ -114,6 +117,7 @@ class EquipementSerializer(serializers.ModelSerializer):
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_garantie_jours_restants(self, obj):
         # ASAV44 — calculé sur la garantie EFFECTIVE (légale / constructeur).
         fin = obj.date_fin_garantie_effective
@@ -121,6 +125,7 @@ class EquipementSerializer(serializers.ModelSerializer):
             return None
         return (fin - timezone.localdate()).days
 
+    @extend_schema_field(serializers.CharField())
     def get_garantie_etat(self, obj):
         """État de garantie : non_renseignee / sous_garantie / expire_bientot /
         hors_garantie. Sert d'indicateur clair côté écran.
@@ -157,9 +162,11 @@ class TicketActivitySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['outcome', 'duree_minutes', 'visible_client']
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
 
+    @extend_schema_field(serializers.CharField())
     def get_outcome_label(self, obj):
         return dict(TicketActivity.OUTCOMES).get(obj.outcome, '') or ''
 
@@ -170,7 +177,7 @@ class TicketActiviteAFaireSerializer(serializers.ModelSerializer):
     type_display = serializers.CharField(
         source='get_type_display', read_only=True)
     assigne_nom = serializers.CharField(
-        source='assigne.username', read_only=True, default=None)
+        source='assigne.username', read_only=True, allow_null=True, default=None)
     en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -188,11 +195,11 @@ class TicketActiviteAFaireSerializer(serializers.ModelSerializer):
 class PieceRetireeSerializer(serializers.ModelSerializer):
     """XMFG10 — pièce retirée (lecture). Aucun prix d'achat exposé côté client."""
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True, default=None)
+        source='produit.marque', read_only=True, allow_null=True, default=None)
     produit_sku = serializers.CharField(
-        source='produit.sku', read_only=True, default=None)
+        source='produit.sku', read_only=True, allow_null=True, default=None)
     destination_display = serializers.CharField(
         source='get_destination_display', read_only=True)
     # ZMFG8 — typage opérationnel explicite (ajout/retrait/recyclage).
@@ -218,9 +225,9 @@ class PretEquipementSerializer(serializers.ModelSerializer):
     """XSAV27 — prêt d'équipement (loaner). Statut/mouvements posés par les
     actions dédiées du service (jamais en écriture directe du corps)."""
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True, default=None)
+        source='produit.marque', read_only=True, allow_null=True, default=None)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     en_retard = serializers.BooleanField(read_only=True)
@@ -242,11 +249,11 @@ class PretEquipementSerializer(serializers.ModelSerializer):
 class PieceConsommeeSerializer(serializers.ModelSerializer):
     """N46 — pièce consommée (lecture). Aucun prix d'achat exposé côté client."""
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True, default=None)
     produit_marque = serializers.CharField(
-        source='produit.marque', read_only=True, default=None)
+        source='produit.marque', read_only=True, allow_null=True, default=None)
     produit_sku = serializers.CharField(
-        source='produit.sku', read_only=True, default=None)
+        source='produit.sku', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = PieceConsommee
@@ -269,6 +276,7 @@ class TicketInterventionSerializer(serializers.Serializer):
     compte_rendu = serializers.CharField()
     technicien_nom = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien, 'username', None)
 
@@ -276,7 +284,7 @@ class TicketInterventionSerializer(serializers.Serializer):
 class TicketChecklistItemSerializer(serializers.ModelSerializer):
     """FG82 — Item de checklist sur un ticket (coché/non coché)."""
     coche_par_nom = serializers.CharField(
-        source='coche_par.username', read_only=True, default=None)
+        source='coche_par.username', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = TicketChecklistItem
@@ -304,18 +312,18 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     # VX108 — tap-to-call : numéro du client du ticket (lecture seule).
     client_telephone = serializers.SerializerMethodField()
     installation_reference = serializers.CharField(
-        source='installation.reference', read_only=True, default=None)
+        source='installation.reference', read_only=True, allow_null=True, default=None)
     equipement_serie = serializers.CharField(
-        source='equipement.numero_serie', read_only=True, default=None)
+        source='equipement.numero_serie', read_only=True, allow_null=True, default=None)
     equipement_produit = serializers.CharField(
-        source='equipement.produit.nom', read_only=True, default=None)
+        source='equipement.produit.nom', read_only=True, allow_null=True, default=None)
     equipement_fin_garantie = serializers.DateField(
-        source='equipement.date_fin_garantie', read_only=True, default=None)
+        source='equipement.date_fin_garantie', read_only=True, allow_null=True, default=None)
     # ASAV44 — fin de garantie EFFECTIVE (max légale / constructeur), celle
     # que ``sous_garantie_effectif`` utilise ; la constructeur reste servie
     # ci-dessus.
     equipement_fin_garantie_effective = serializers.DateField(
-        source='equipement.date_fin_garantie_effective', read_only=True,
+        source='equipement.date_fin_garantie_effective', read_only=True, allow_null=True,
         default=None)
     # ASAV39 — l'utilisateur courant suit-il ce ticket ?
     je_suis_abonne = serializers.SerializerMethodField()
@@ -340,19 +348,19 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
     reopen_count = serializers.IntegerField(read_only=True)
     # XSAV14 — taxonomie panne / cause / remède (libellés lecture).
     cause_nom = serializers.CharField(
-        source='cause.nom', read_only=True, default=None)
+        source='cause.nom', read_only=True, allow_null=True, default=None)
     remede_nom = serializers.CharField(
-        source='remede.nom', read_only=True, default=None)
+        source='remede.nom', read_only=True, allow_null=True, default=None)
     # ZSAV2 — catégorie de ticket configurable (libellé lecture).
     categorie_nom = serializers.CharField(
-        source='categorie.libelle', read_only=True, default=None)
+        source='categorie.libelle', read_only=True, allow_null=True, default=None)
     # ZMFG1 — équipe de maintenance assignée (libellé lecture).
     equipe_nom = serializers.CharField(
-        source='equipe.nom', read_only=True, default=None)
+        source='equipe.nom', read_only=True, allow_null=True, default=None)
     # ZMFG7 — catégorie d'équipement d'origine (libellé lecture, routage
     # par alias e-mail).
     categorie_equipement_nom = serializers.CharField(
-        source='categorie_equipement.nom', read_only=True, default=None)
+        source='categorie_equipement.nom', read_only=True, allow_null=True, default=None)
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
@@ -442,6 +450,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         # TicketViewSet.perform_create qui rejette un ticket sans client résolu.
         extra_kwargs = {'client': {'required': False}}
 
+    @extend_schema_field(serializers.IntegerField())
     def get_statut_ordre(self, obj):
         order = list(Ticket.STATUT_ORDER)
         try:
@@ -449,19 +458,23 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         except ValueError:
             return len(order)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_nom(self, obj):
         c = obj.client
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_telephone(self, obj):
         c = obj.client
         return c.telephone if c else None
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):
         return getattr(obj.technicien_responsable, 'username', None)
 
+    @extend_schema_field(serializers.CharField())
     def get_sous_garantie_effectif(self, obj):
         return obj.sous_garantie_calcule
 
@@ -484,20 +497,24 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         from . import machine_etats
         return machine_etats.statuts_suivants(obj)
 
+    @extend_schema_field(serializers.CharField())
     def get_sous_garantie_effectif_display(self, obj):
         return dict(Ticket.SousGarantie.choices).get(
             obj.sous_garantie_calcule, obj.sous_garantie_calcule)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_interventions(self, obj):
         # Reuse the prefetch cache (interventions__technicien on
         # TicketViewSet.queryset) instead of .count(), which would re-query
         # per row and defeat the N+1 fix.
         return len(obj.interventions.all())
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_sla_due_at_effectif(self, obj):
         due = obj.sla_due_at_effectif()
         return due.isoformat() if due else None
 
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_equipement_couvert(self, obj):
         """XCTR2 — indicateur « couvert / non couvert » calculé sur le ticket :
         None si pas d'équipement lié ou pas de contrat actif du client, sinon
@@ -514,6 +531,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
         return contrat.couvre_equipement(
             obj.equipement, cache=self._registre_cache)
 
+    @extend_schema_field(serializers.CharField())
     def get_couverture_proposee(self, obj):
         # N+1 réel corrigé (YOPSB13) : partage le cache ContratMaintenance
         # (contrat actif le plus récent, sans condition d'override SLA — un
@@ -524,6 +542,7 @@ class TicketSerializer(SameCompanyFKSerializerMixin,
             registre_cache=self._registre_cache,
             droits_cache=self._droits_cache)
 
+    @extend_schema_field(serializers.CharField())
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()
 
@@ -578,9 +597,9 @@ class WarrantyClaimSerializer(serializers.ModelSerializer):
     resolution_display = serializers.CharField(
         source='get_resolution_display', read_only=True)
     equipement_serie = serializers.CharField(
-        source='equipement.numero_serie', read_only=True, default=None)
+        source='equipement.numero_serie', read_only=True, allow_null=True, default=None)
     equipement_produit = serializers.CharField(
-        source='equipement.produit.nom', read_only=True, default=None)
+        source='equipement.produit.nom', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = WarrantyClaim
@@ -597,9 +616,9 @@ class WarrantyClaimSerializer(serializers.ModelSerializer):
 
 class KbArticleSerializer(serializers.ModelSerializer):
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, allow_null=True, default=None)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = KbArticle
@@ -629,13 +648,13 @@ class AlarmeOnduleurSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     equipement_serie = serializers.CharField(
-        source='equipement.numero_serie', read_only=True, default=None)
+        source='equipement.numero_serie', read_only=True, allow_null=True, default=None)
     equipement_produit = serializers.CharField(
-        source='equipement.produit.nom', read_only=True, default=None)
+        source='equipement.produit.nom', read_only=True, allow_null=True, default=None)
     ticket_reference = serializers.CharField(
-        source='ticket.reference', read_only=True, default=None)
+        source='ticket.reference', read_only=True, allow_null=True, default=None)
     acquittee_par_nom = serializers.CharField(
-        source='acquittee_par.username', read_only=True, default=None)
+        source='acquittee_par.username', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = AlarmeOnduleur
@@ -676,7 +695,7 @@ class CategorieTicketSerializer(serializers.ModelSerializer):
 
 class EquipeMaintenanceSerializer(serializers.ModelSerializer):
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, default=None)
+        source='responsable.username', read_only=True, allow_null=True, default=None)
     membres_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -690,6 +709,7 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'date_creation']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_membres_count(self, obj):
         return obj.membres.count()
 
@@ -717,12 +737,12 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
 
 class CategorieEquipementSerializer(serializers.ModelSerializer):
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, default=None)
+        source='responsable.username', read_only=True, allow_null=True, default=None)
     # Compteur d'équipements par catégorie (smart-button façon Odoo).
     nb_equipements = serializers.SerializerMethodField()
     # ZMFG7 — équipe responsable (libellé lecture).
     equipe_responsable_nom = serializers.CharField(
-        source='equipe_responsable.nom', read_only=True, default=None)
+        source='equipe_responsable.nom', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = CategorieEquipement
@@ -734,6 +754,7 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_equipements(self, obj):
         annote = getattr(obj, 'nb_equipements_annote', None)
         if annote is not None:
@@ -755,7 +776,7 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
 
 class EquipementDowntimeSerializer(serializers.ModelSerializer):
     ticket_reference = serializers.CharField(
-        source='ticket.reference', read_only=True, default=None)
+        source='ticket.reference', read_only=True, allow_null=True, default=None)
     en_cours = serializers.SerializerMethodField()
 
     class Meta:
@@ -768,6 +789,7 @@ class EquipementDowntimeSerializer(serializers.ModelSerializer):
             'id', 'company', 'created_by', 'date_creation',
         ]
 
+    @extend_schema_field(serializers.BooleanField())
     def get_en_cours(self, obj):
         return obj.fin is None
 
@@ -785,6 +807,7 @@ class ReleveCompteurEquipementSerializer(serializers.ModelSerializer):
                   'moyenne_jour_depuis_precedent']
         read_only_fields = ['id', 'company', 'created_by', 'date_creation']
 
+    @extend_schema_field(serializers.FloatField(allow_null=True))
     def get_moyenne_jour_depuis_precedent(self, obj):
         from .selectors import moyenne_jour_depuis_precedent
         return moyenne_jour_depuis_precedent(obj)
@@ -831,11 +854,11 @@ class ReponseTypeSerializer(serializers.ModelSerializer):
 
 class CompatibilitePieceSerializer(serializers.ModelSerializer):
     produit_equipement_nom = serializers.CharField(
-        source='produit_equipement.nom', read_only=True, default=None)
+        source='produit_equipement.nom', read_only=True, allow_null=True, default=None)
     piece_nom = serializers.CharField(
-        source='piece.nom', read_only=True, default=None)
+        source='piece.nom', read_only=True, allow_null=True, default=None)
     remplace_par_nom = serializers.CharField(
-        source='remplace_par.nom', read_only=True, default=None)
+        source='remplace_par.nom', read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = CompatibilitePiece
@@ -861,7 +884,7 @@ class WorksheetMaintenanceModeleSerializer(serializers.ModelSerializer):
 
 class TicketWorksheetSerializer(serializers.ModelSerializer):
     modele_nom = serializers.CharField(
-        source='modele.nom', read_only=True, default=None)
+        source='modele.nom', read_only=True, allow_null=True, default=None)
     champs_requis_manquants = serializers.SerializerMethodField()
 
     class Meta:
@@ -876,6 +899,7 @@ class TicketWorksheetSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_champs_requis_manquants(self, obj):
         return obj.champs_requis_manquants()
 

@@ -33,6 +33,9 @@ nom de l'attribut est EXACTEMENT ``fonction.__name__`` : DRF mappe par
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -41,6 +44,10 @@ from ..permissions import PeutVoirCalepinage
 __all__ = ['comparer_projets', 'comparatif_xlsx']
 
 
+@extend_schema(request=inline_serializer(
+    'CalepinageComparerProjetsRequete', {
+        'ids': drf_serializers.ListField(
+            child=drf_serializers.IntegerField())}))
 @action(detail=False, methods=['post'], url_path='comparer-projets',
         url_name='comparer-projets', permission_classes=[PeutVoirCalepinage])
 def comparer_projets(self, request):
@@ -59,6 +66,12 @@ def comparer_projets(self, request):
                         status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'ids', {'type': 'array', 'items': {'type': 'integer'}},
+        required=False, explode=True,
+        description='Calepinages à comparer (répétable).')],
+    responses={200: OpenApiTypes.BINARY})
 @action(detail=True, methods=['get'], url_path=r'comparatif\.xlsx',
         url_name='comparatif-xlsx', permission_classes=[PeutVoirCalepinage])
 def comparatif_xlsx(self, request, pk=None):

@@ -62,7 +62,7 @@ class TestDossierCreation(TestCase):
         r = self.api.post(f'{BASE}/dossiers-import/', {
             'designation': 'Conteneur 540 panneaux 550W',
             'incoterm': 'cif', 'numero_conteneur': 'MSCU1234567',
-        })
+        }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         d = DossierImport.objects.get(id=r.data['id'])
         self.assertEqual(d.company_id, self.company.id)
@@ -75,7 +75,7 @@ class TestDossierCreation(TestCase):
         r = self.api.post(f'{BASE}/dossiers-import/', {
             'company': autre.id, 'reference': 'IMP-HACK',
             'statut_douane': 'livre', 'designation': 'X',
-        })
+        }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         d = DossierImport.objects.get(id=r.data['id'])
         self.assertEqual(d.company_id, self.company.id)
@@ -87,11 +87,11 @@ class TestDossierCreation(TestCase):
         f_o = make_fournisseur(autre)
         r = self.api.post(f'{BASE}/dossiers-import/', {
             'designation': 'X', 'fournisseur': f_o.id,
-        })
+        }, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
     def test_blank_designation_rejected(self):
-        r = self.api.post(f'{BASE}/dossiers-import/', {'designation': '  '})
+        r = self.api.post(f'{BASE}/dossiers-import/', {'designation': '  '}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
 
@@ -111,7 +111,7 @@ class TestAvancer(TestCase):
 
     def test_jump_forward(self):
         r = self.api.post(f'{BASE}/dossiers-import/{self.d.id}/avancer/',
-                          {'statut_douane': 'dedouane'})
+                          {'statut_douane': 'dedouane'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['statut_douane'], 'dedouane')
 
@@ -119,12 +119,12 @@ class TestAvancer(TestCase):
         self.d.statut_douane = DossierImport.StatutDouane.DEDOUANE
         self.d.save(update_fields=['statut_douane'])
         r = self.api.post(f'{BASE}/dossiers-import/{self.d.id}/avancer/',
-                          {'statut_douane': 'commande'})
+                          {'statut_douane': 'commande'}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
     def test_unknown_statut_rejected(self):
         r = self.api.post(f'{BASE}/dossiers-import/{self.d.id}/avancer/',
-                          {'statut_douane': 'inconnu'})
+                          {'statut_douane': 'inconnu'}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
 
@@ -137,7 +137,7 @@ class TestScopeRole(TestCase):
     def test_write_requires_role(self):
         normal = make_user(self.company, role='normal')
         api = auth(normal)
-        r = api.post(f'{BASE}/dossiers-import/', {'designation': 'X'})
+        r = api.post(f'{BASE}/dossiers-import/', {'designation': 'X'}, format='json')
         self.assertEqual(r.status_code, 403, r.data)
 
     def test_scope_isolation(self):

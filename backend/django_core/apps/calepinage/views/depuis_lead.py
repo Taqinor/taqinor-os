@@ -34,6 +34,8 @@ est INTROUVABLE (refus nommé), jamais « interdit ».
 from __future__ import annotations
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -67,6 +69,11 @@ def _reponse(calepinage, *, cree):
     }
 
 
+@extend_schema(request=inline_serializer(
+    'CalepinageDepuisLeadRequete', {
+        'lead': drf_serializers.IntegerField(),
+        'titre': drf_serializers.CharField(required=False, allow_blank=True),
+    }))
 @action(detail=False, methods=['post'], url_path='depuis-lead',
         permission_classes=[PeutGererCalepinage])
 def depuis_lead(self, request):

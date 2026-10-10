@@ -17,11 +17,13 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..models import RegleReappro
 from ..serializers import RegleReapproSerializer
 from .. import selectors
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve', 'propositions']
 
 
-class RegleReapproViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qs('active'), p1=oa.qi('emplacement_cible'), p2=oa.qi('produit'))
+class RegleReapproViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG326 — règles de réapprovisionnement. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `produit`, `emplacement_cible`, `active`."""
     queryset = RegleReappro.objects.select_related(
@@ -72,6 +74,7 @@ class RegleReapproViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(responses=oa.LIST)
     @action(detail=False, methods=['get'])
     def propositions(self, request):
         """FG326 — liste des transferts proposés (emplacements sous leur min).

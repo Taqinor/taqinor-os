@@ -5,6 +5,8 @@ pour afficher un warning doux quand l'encours du client dépasse son plafond.
 Jamais un blocage dur : l'encours est calculé à la volée depuis les factures
 ouvertes et renvoyé avec un message prêt à l'affichage.
 """
+from drf_spectacular.utils import extend_schema
+from ..openapi_params import qstr
 from django.http import Http404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -14,6 +16,7 @@ from authentication.permissions import IsAnyRole
 from core.selectors import get_company_object
 
 
+@extend_schema(parameters=[qstr('montant_ttc')])
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_credit_warning(request, client_id):

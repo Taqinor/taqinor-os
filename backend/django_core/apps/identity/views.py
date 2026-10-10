@@ -4,8 +4,14 @@ NTSEC11 — CRUD de la politique réseau (allowlist IP/CIDR), réservé au
 Directeur (rôle Administrateur). Tout est scopé société côté serveur : la
 société n'est jamais lue du corps de requête.
 """
-from rest_framework import mixins, permissions, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
+from rest_framework import mixins, permissions, serializers, viewsets
+from rest_framework.exceptions import APIException
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,6 +27,25 @@ from .serializers import (
     NetworkPolicySerializer,
     TrustedDeviceSerializer,
 )
+from rest_framework import serializers as drf_serializers
+
+
+class PolitiqueReseauExistante(APIException):
+    """ENF10 — conflit d'état (une politique par société) : 409, pas 400."""
+    status_code = 409
+    default_detail = 'Une politique réseau existe déjà pour cette société.'
+    default_code = 'unique_conflict'
+
+
+class BreakGlassSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    motif = serializers.CharField()
+    duree_minutes = serializers.IntegerField(
+        required=False, min_value=1, max_value=1440, default=60)
+
+
+class LoginBannerAckSerializer(serializers.Serializer):
+    username = serializers.CharField(required=False, allow_blank=True)
 
 
 class NetworkPolicyViewSet(CompanyScopedModelViewSet):
@@ -29,12 +54,12 @@ class NetworkPolicyViewSet(CompanyScopedModelViewSet):
     queryset = NetworkPolicy.objects.all().prefetch_related('rules')
     serializer_class = NetworkPolicySerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [JSONParser]
 
     def perform_create(self, serializer):
         company = self.request.user.company
         if NetworkPolicy.objects.filter(company=company).exists():
-            raise DRFValidationError(
-                'Une politique réseau existe déjà pour cette société.')
+            raise PolitiqueReseauExistante()
         serializer.save(company=company)
 
 
@@ -44,6 +69,7 @@ class IpAllowRuleViewSet(CompanyScopedModelViewSet):
     queryset = IpAllowRule.objects.all()
     serializer_class = IpAllowRuleSerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [JSONParser]
 
     def _company_apres_controle_policy(self, serializer):
         """AUD406 — la politique référencée doit appartenir à la société de
@@ -151,12 +177,20 @@ class LoginBannerView(APIView):
     permission_classes = [permissions.AllowAny]
     # ASEC17 — plafond anonyme par IP (GET + POST) : au-delà, 429.
     throttle_classes = [LoginBannerThrottle]
+    parser_classes = [JSONParser]
 
+    @extend_schema(
+        parameters=[OpenApiParameter('username', OpenApiTypes.STR, required=False)],
+        responses=inline_serializer('LoginBannerTexte', {
+            'login_banner_text': serializers.CharField(allow_blank=True)}))
     def get(self, request):
         profile = _banner_profile(request)
         text = getattr(profile, 'login_banner_text', '') if profile else ''
         return Response({'login_banner_text': text or ''})
 
+    @extend_schema(request=LoginBannerAckSerializer,
+                   responses=inline_serializer('LoginBannerAck', {
+                       'acknowledged': serializers.BooleanField()}))
     def post(self, request):
         username = (request.data.get('username') if hasattr(request, 'data')
                     else None) or ''
@@ -209,6 +243,7 @@ class IdentityProviderViewSet(CompanyScopedModelViewSet):
     queryset = IdentityProvider.objects.all()
     serializer_class = IdentityProviderSerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [JSONParser]
 
     def _reject_double_active(self, company, protocol, actif, exclude_pk=None):
         if not actif:
@@ -250,7 +285,18 @@ class BreakGlassView(APIView):
     la société ; GET liste les octrois de la société (scopé société)."""
 
     permission_classes = [IsAdminRole]
+    parser_classes = [JSONParser]
 
+    @extend_schema(responses=inline_serializer('BreakGlassListe', {
+        'results': inline_serializer('BreakGlassOctroi', {
+            'id': serializers.IntegerField(),
+            'user': serializers.IntegerField(),
+            'motif': serializers.CharField(),
+            'accorde_par': serializers.IntegerField(allow_null=True),
+            'active_jusqu_a': serializers.DateTimeField(),
+            'revoque_le': serializers.DateTimeField(allow_null=True),
+            'actif': serializers.BooleanField(),
+        }, many=True)}))
     def get(self, request):
         from .models import BreakGlassGrant
         grants = BreakGlassGrant.objects.filter(
@@ -263,6 +309,10 @@ class BreakGlassView(APIView):
         } for g in grants]
         return Response({'results': data})
 
+    @extend_schema(request=BreakGlassSerializer, responses={
+        201: inline_serializer('BreakGlassCree', {
+            'id': serializers.IntegerField(),
+            'active_jusqu_a': serializers.DateTimeField()})})
     def post(self, request):
         from authentication.models import CustomUser
 
@@ -296,11 +346,27 @@ class BreakGlassView(APIView):
                         status=201)
 
 
+_VIEWS_SECURITY_POSTURE_VIEW_GET_REPONSE = inline_serializer('ViewsSecurityPostureViewGetReponse', {
+    'mfa_pct': drf_serializers.JSONField(required=False, allow_null=True),
+    'sso_configured': drf_serializers.JSONField(required=False, allow_null=True),
+    'active_sessions': drf_serializers.JSONField(required=False, allow_null=True),
+    'dormant_accounts': drf_serializers.JSONField(required=False, allow_null=True),
+    'sod_open_violations': drf_serializers.JSONField(required=False, allow_null=True),
+    'overdue_review_campaigns': drf_serializers.JSONField(required=False, allow_null=True),
+    'expired_secrets': drf_serializers.JSONField(required=False, allow_null=True),
+    'ip_allowlist_active': drf_serializers.JSONField(required=False, allow_null=True),
+    'score': drf_serializers.JSONField(required=False, allow_null=True),
+    'soc2_iso27001_ready': drf_serializers.JSONField(required=False, allow_null=True),
+    'items_faibles': drf_serializers.JSONField(required=False, allow_null=True),
+})
+
+
 class SecurityPostureView(APIView):
     """NTSEC27 — posture de sécurité consolidée de la société (Directeur only)."""
 
     permission_classes = [IsAdminRole]
 
+    @extend_schema(responses=_VIEWS_SECURITY_POSTURE_VIEW_GET_REPONSE)
     def get(self, request):
         from .posture import security_posture
         return Response(security_posture(request.user.company))

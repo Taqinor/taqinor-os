@@ -21,6 +21,7 @@ from apps.ventes.utils.references import create_with_reference
 from ..models import DossierImport
 from ..serializers import DossierImportSerializer
 from .. import selectors
+from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve', 'landed_cost']
 
@@ -35,7 +36,8 @@ STATUT_ORDER = [
 ]
 
 
-class DossierImportViewSet(CompanyScopedModelViewSet):
+@oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut_douane'))
+class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG315 — dossiers d'import. Lecture tout rôle, écriture responsable/admin.
     Référence anti-collision + société + `created_by` posés serveur ;
     fournisseur/bon_commande validés tenant. Filtrable par `statut_douane`,
@@ -85,6 +87,7 @@ class DossierImportViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @oa.extend_schema(request=oa.body('AvancerDossierImportRequete', statut_douane=oa.s(True)))
     @action(detail=True, methods=['post'])
     def avancer(self, request, pk=None):
         """FG315 — fait progresser le statut douanier d'un cran dans l'ordre
@@ -113,6 +116,7 @@ class DossierImportViewSet(CompanyScopedModelViewSet):
         dossier.save(update_fields=['statut_douane', 'date_modification'])
         return Response(self.get_serializer(dossier).data)
 
+    @oa.extend_schema(responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='landed-cost')
     def landed_cost(self, request, pk=None):
         """FG316 — coût de revient débarqué : répartit les frais d'import sur les
@@ -121,6 +125,7 @@ class DossierImportViewSet(CompanyScopedModelViewSet):
         dossier = self.get_object()
         return Response(selectors.landed_cost_dossier(dossier))
 
+    @oa.extend_schema(request=None, responses=oa.OBJ)
     @action(detail=True, methods=['post'], url_path='appliquer-cout-stock')
     def appliquer_cout_stock(self, request, pk=None):
         """DC38 — reporte le coût débarqué (FG316) dans le coût d'achat stock :

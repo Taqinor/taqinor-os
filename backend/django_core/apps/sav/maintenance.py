@@ -17,6 +17,10 @@ from math import asin, cos, radians, sin, sqrt
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer)
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -188,6 +192,47 @@ def generer_visites_dues(company, user, avance_jours=0):
     return genere
 
 
+_RentabiliteContrat = inline_serializer('RentabiliteContrat', {
+    'contrat_id': drf_serializers.IntegerField(),
+    'client_id': drf_serializers.IntegerField(),
+    'installation_id': drf_serializers.IntegerField(allow_null=True),
+    'revenu': drf_serializers.FloatField(),
+    'cout': drf_serializers.FloatField(),
+    'marge': drf_serializers.FloatField(),
+    'nb_visites': drf_serializers.IntegerField(),
+    'marge_par_visite': drf_serializers.FloatField(allow_null=True),
+})
+
+_TourneeLigne = inline_serializer('TourneeVisiteDue', {
+    'id': drf_serializers.IntegerField(),
+    'reference': drf_serializers.CharField(),
+    'statut': drf_serializers.CharField(),
+    'client_id': drf_serializers.IntegerField(),
+    'client_nom': drf_serializers.CharField(allow_null=True),
+    'installation_id': drf_serializers.IntegerField(allow_null=True),
+    'date_ouverture': drf_serializers.CharField(allow_null=True),
+    'date_tournee': drf_serializers.CharField(allow_null=True),
+    'technicien_id': drf_serializers.IntegerField(allow_null=True),
+    'technicien': drf_serializers.CharField(allow_null=True),
+    'gps_lat': drf_serializers.CharField(allow_null=True),
+    'gps_lng': drf_serializers.CharField(allow_null=True),
+    'distance_km': drf_serializers.FloatField(allow_null=True),
+})
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        OpenApiParameter(
+            'due', OpenApiTypes.STR, required=False,
+            description="'1' ou 'true' : seulement les contrats dont la visite est due."),
+        OpenApiParameter(
+            'a_renouveler', OpenApiTypes.STR, required=False,
+            description="'1' ou 'true' : seulement les contrats à renouveler."),
+        OpenApiParameter(
+            'client', OpenApiTypes.INT, required=False,
+            description="Identifiant du client : seulement ses contrats."),
+    ]),
+)
 class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     """Contrats de maintenance (T16). Lecture tout rôle, écriture responsable/
     admin. ?due=1 → seulement les contrats dont la visite est due."""
@@ -225,6 +270,9 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        client = self.request.query_params.get('client')
+        if client and client.isdigit():
+            qs = qs.filter(client_id=int(client))
         if self.request.query_params.get('due') in ('1', 'true'):
             ids = [c.id for c in qs if c.is_due()]
             qs = qs.filter(id__in=ids)
@@ -236,6 +284,12 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(id__in=ids)
         return qs
 
+    @extend_schema(
+        request=None,
+        responses=inline_serializer('GenererDusReponse', {
+            'ok': drf_serializers.BooleanField(),
+            'tickets_generes': drf_serializers.IntegerField(),
+        }))
     @action(detail=False, methods=['post'], url_path='generer-dus',
             permission_classes=[IsResponsableOrAdmin])
     def generer_dus(self, request):
@@ -245,6 +299,17 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         return Response({'ok': True, 'tickets_generes': n},
                         status=status.HTTP_200_OK)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('lat', OpenApiTypes.FLOAT, required=False,
+                             description="Latitude du point d'origine."),
+            OpenApiParameter('lng', OpenApiTypes.FLOAT, required=False,
+                             description="Longitude du point d'origine."),
+        ],
+        responses=inline_serializer('TourneeReponse', {
+            'count': drf_serializers.IntegerField(),
+            'results': type(_TourneeLigne)(many=True),
+        }))
     @action(detail=False, methods=['get'], url_path='tournee',
             permission_classes=[IsAnyRole])
     def tournee(self, request):
@@ -270,6 +335,18 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         return Response({'count': len(rows), 'results': rows},
                         status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=inline_serializer('PlanifierTourneeRequete', {
+            'ticket_ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField(), allow_empty=False),
+            'date_tournee': drf_serializers.DateField(),
+            'technicien_id': drf_serializers.IntegerField(
+                required=False, allow_null=True),
+        }),
+        responses=inline_serializer('PlanifierTourneeReponse', {
+            'ok': drf_serializers.BooleanField(),
+            'tickets_planifies': drf_serializers.IntegerField(),
+        }))
     @action(detail=False, methods=['post'], url_path='planifier-tournee',
             permission_classes=[IsResponsableOrAdmin])
     def planifier_tournee(self, request):
@@ -304,6 +381,11 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         return Response({'ok': True, 'tickets_planifies': n},
                         status=status.HTTP_200_OK)
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'date', OpenApiTypes.DATE, required=False,
+            description='Date de la visite (défaut : dernière visite).')],
+        responses={200: OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_pdf(self, request, pk=None):
@@ -323,6 +405,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
             f'attachment; filename="maintenance-contrat-{contrat.pk}.pdf"')
         return resp
 
+    @extend_schema(responses=_RentabiliteContrat)
     @action(detail=True, methods=['get'], url_path='rentabilite',
             permission_classes=[IsResponsableOrAdmin])
     def rentabilite(self, request, pk=None):
@@ -339,6 +422,8 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         contrat = self.get_object()
         return Response(rentabilite_contrat(contrat))
 
+    @extend_schema(responses=inline_serializer('RentabiliteContratsReponse', {
+        'results': type(_RentabiliteContrat)(many=True)}))
     @action(detail=False, methods=['get'], url_path='rentabilite',
             permission_classes=[IsResponsableOrAdmin])
     def rentabilite_liste(self, request):

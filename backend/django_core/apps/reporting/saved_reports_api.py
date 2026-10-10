@@ -11,6 +11,9 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from .models import EnvoiRapport, SavedReport
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 
 
 class SavedReportSerializer(serializers.ModelSerializer):
@@ -72,6 +75,7 @@ class SavedReportViewSet(TenantMixin, viewsets.ModelViewSet):
     `company` est forcée par `TenantMixin.perform_create/update` ; `owner` est
     fixé sur l'utilisateur courant à la création."""
     serializer_class = SavedReportSerializer
+    parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     queryset = SavedReport.objects.all()
 
@@ -107,6 +111,9 @@ class EnvoiRapportSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+@extend_schema_view(list=extend_schema(parameters=[
+    OpenApiParameter('saved_report', OpenApiTypes.INT, required=False),
+    OpenApiParameter('statut', OpenApiTypes.STR, required=False)]))
 class EnvoiRapportViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTDATA40 — historique de diffusion des rapports (lecture seule).
 

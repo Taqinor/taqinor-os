@@ -46,7 +46,7 @@ class TestLeadForeignPhoneSurvivesApiWrite(TestCase):
     def test_create_keeps_foreign_telephone_exactly_as_typed(self):
         resp = self.api.post('/api/django/crm/leads/', {
             'nom': 'Diaspora', 'telephone': '+33612345678',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['telephone'], '+33612345678')
         lead = Lead.objects.get(nom='Diaspora')
@@ -55,7 +55,7 @@ class TestLeadForeignPhoneSurvivesApiWrite(TestCase):
     def test_create_keeps_foreign_whatsapp_exactly_as_typed(self):
         resp = self.api.post('/api/django/crm/leads/', {
             'nom': 'Diaspora WA', 'whatsapp': '+34600123456',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['whatsapp'], '+34600123456')
         lead = Lead.objects.get(nom='Diaspora WA')
@@ -76,7 +76,7 @@ class TestLeadForeignPhoneSurvivesApiWrite(TestCase):
         # continue d'être canonicalisé (jamais de régression sur ce chemin).
         resp = self.api.post('/api/django/crm/leads/', {
             'nom': 'Marocain', 'telephone': '0612345678',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['telephone'], '212612345678')
 

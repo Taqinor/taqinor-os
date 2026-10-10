@@ -143,7 +143,7 @@ class GestionViewsetTests(XGed7Base):
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/depots-publics/', {
             'folder': self.folder_a.pk, 'message': 'Envoyez vos pièces',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         depot_id = resp.data['id']
         self.assertTrue(DepotPublic.objects.filter(

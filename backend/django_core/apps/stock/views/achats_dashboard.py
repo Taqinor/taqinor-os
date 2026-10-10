@@ -7,20 +7,21 @@ dupliquée ici, cette vue ne fait que router la requête HTTP.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
+from ..openapi_helpers import DATE, P
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 
 
-@extend_schema(responses=inline_serializer('TableauBordAchats', {
+@extend_schema(parameters=[P('debut', DATE), P('fin', DATE)], responses=inline_serializer('TableauBordAchats', {
     'debut': drf_serializers.CharField(allow_null=True),
     'fin': drf_serializers.CharField(allow_null=True),
     'budgets_departement': drf_serializers.JSONField(),
     'top_fournisseurs': drf_serializers.JSONField(),
     'delai_demande_bcf_jours': drf_serializers.FloatField(allow_null=True),
     'delai_bcf_reception_jours': drf_serializers.FloatField(allow_null=True),
-    'exceptions_3_voies': drf_serializers.JSONField(),
+    'exceptions_3voies': drf_serializers.JSONField(),
 }))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])

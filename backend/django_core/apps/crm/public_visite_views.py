@@ -17,10 +17,11 @@ nombre de visites déjà connues, jamais un identifiant de lead, jamais un
 corps inexploitable vaut aussi ``{"ok": true}`` : un beacon ne doit jamais
 faire apparaître une erreur dans la console d'un visiteur.
 """
+from .openapi_public import PUBLIC_DETAIL
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -80,9 +81,10 @@ class PublicVisiteRateThrottle(SimpleRateThrottle):
     }),
     responses={200: inline_serializer('PublicVisiteReponse', {
         'ok': serializers.BooleanField(),
-    })},
+    }), 401: PUBLIC_DETAIL},
 )
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicVisiteRateThrottle])
 def public_visite(request):

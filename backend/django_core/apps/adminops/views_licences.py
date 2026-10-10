@@ -20,6 +20,7 @@ reste de cette app) ; NTADM39 affine l'accès fin (``adminops_licences_voir``,
 rétrocompat rôles système — voir ``permissions.py``)."""
 from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.html import escape
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
@@ -79,7 +80,7 @@ def _historique_plan(company):
     'sieges_max': drf_serializers.IntegerField(allow_null=True),
     'quota_atteint': drf_serializers.BooleanField(),
     'plan': drf_serializers.JSONField(allow_null=True),
-    'historique': drf_serializers.JSONField(),
+    'historique_plan': drf_serializers.JSONField(),
 }))
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
@@ -121,7 +122,7 @@ def _comptes_actifs_nominatifs(company):
     ]
 
 
-@extend_schema(responses={200: OpenApiTypes.BINARY})
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def licence_pdf_view(request):
@@ -142,20 +143,24 @@ def licence_pdf_view(request):
     sieges = _statut_sieges(company, profile)
     comptes = _comptes_actifs_nominatifs(company)
 
+    # ENF12 (semgrep raw-html-format) — toute valeur saisie (nom d'utilisateur,
+    # société, plan) est échappée avant d'entrer dans le HTML rendu en PDF.
     lignes_comptes = ''.join(
-        f'<tr><td>{c["username"]}</td><td>{c["nom_complet"]}</td>'
-        f'<td>{c["derniere_connexion"]}</td></tr>'
+        f'<tr><td>{escape(c["username"])}</td>'
+        f'<td>{escape(c["nom_complet"])}</td>'
+        f'<td>{escape(c["derniere_connexion"])}</td></tr>'
         for c in comptes)
     plan_html = (
-        f'{plan["nom"]} ({plan["code"]})' if plan else 'Aucun plan assigné — accès complet')
+        escape(f'{plan["nom"]} ({plan["code"]})') if plan
+        else 'Aucun plan assigné — accès complet')
     sieges_max_html = (
         sieges['sieges_max'] if sieges['sieges_max'] is not None else 'illimité')
     genere_le = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')
     html = f'''<html><body>
     <h1>Utilisation des sièges</h1>
-    <p>Société : {company.nom} — généré le {genere_le}</p>
+    <p>Société : {escape(company.nom)} — généré le {genere_le}</p>
     <p>Plan de licence : {plan_html}</p>
-    <p>Sièges utilisés : {sieges["sieges_utilises"]} / {sieges_max_html}</p>
+    <p>Sièges utilisés : {escape(sieges["sieges_utilises"])} / {escape(sieges_max_html)}</p>
     <table border="1" cellpadding="4">
       <thead><tr><th>Utilisateur</th><th>Nom complet</th><th>Dernière connexion</th></tr></thead>
       <tbody>{lignes_comptes}</tbody>

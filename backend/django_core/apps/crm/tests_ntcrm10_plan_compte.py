@@ -29,14 +29,14 @@ class PlanCompteApiTests(TestCase):
             'objectifs_strategiques': 'Doubler le CA en 2027',
             'potentiel_estime': '500000',
             'statut': 'brouillon',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         plan_id = resp.data['id']
 
         resp = self.client_api.patch(f'/api/django/crm/plans-compte/{plan_id}/', {
             'statut': 'actif',
             'potentiel_estime': '750000',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         plan = PlanCompte.objects.get(pk=plan_id)
         self.assertEqual(plan.statut, 'actif')
@@ -54,7 +54,7 @@ class PlanCompteApiTests(TestCase):
         resp = self.client_api.post('/api/django/crm/revues-compte/', {
             'plan': plan.pk, 'date_revue': '2026-07-15',
             'decisions': 'Augmenter la fréquence de contact.',
-        })
+        }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         resp = self.client_api.get(f'/api/django/crm/plans-compte/{plan.pk}/')
         self.assertEqual(len(resp.data['revues']), 1)

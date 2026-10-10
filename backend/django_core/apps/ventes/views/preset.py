@@ -28,6 +28,7 @@ class DevisPresetViewSet(viewsets.GenericViewSet):
     ``POST /ventes/devis/{id}/save-preset/`` (company forcée depuis devis).
     """
     serializer_class = DevisPresetSerializer
+    pagination_class = None  # list() renvoie une liste brute
     permission_classes = [IsResponsableOrAdmin]
 
     def get_queryset(self):

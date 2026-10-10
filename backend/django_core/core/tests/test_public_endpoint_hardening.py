@@ -13,6 +13,9 @@ from datetime import timedelta
 
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
+from rest_framework.permissions import AllowAny
+from django.urls import URLPattern, URLResolver, get_resolver
 
 from core import public_endpoint_scan
 
@@ -263,3 +266,48 @@ class TokenLinkExpiryContractTests(TestCase):
         self.assertIn(
             "expires_at", fields,
             "PaymentLink doit porter expires_at pour le contrat d'expiry.")
+
+
+# ENF2 (C5) — routes publiques à jeton : aucun authentificateur JWT, un Bearer périmé ne transforme
+# jamais un lien public en 401.
+def _routes(patterns, prefixe=''):
+    for p in patterns:
+        if isinstance(p, URLResolver):
+            yield from _routes(p.url_patterns, prefixe + str(p.pattern))
+        elif isinstance(p, URLPattern):
+            yield prefixe + str(p.pattern), p.callback
+
+
+def _route_publique(route):
+    return ('public' in route or '<str:token>' in route
+            or '<str:idempotency_key>' in route)
+
+
+class VuesPubliquesSansJwtTests(TestCase):
+    """C5 — une route publique (AllowAny, lien à jeton) n'exécute AUCUN
+    authentificateur JWT : un Bearer périmé ne la transforme pas en 401."""
+
+    def test_aucune_route_publique_n_authentifie_par_jwt(self):
+        fautives = set()
+        for route, callback in _routes(get_resolver().url_patterns):
+            cls = getattr(callback, 'cls', None) or getattr(
+                callback, 'view_class', None)
+            if cls is None or not _route_publique(route):
+                continue
+            perms = getattr(cls, 'permission_classes', None) or []
+            if not perms or not all(p is AllowAny for p in perms):
+                continue
+            noms = {getattr(a, '__name__', '')
+                    for a in getattr(cls, 'authentication_classes', [])}
+            if 'CookieJWTAuthentication' in noms:
+                fautives.add(f'{route} ({cls.__module__}.{cls.__name__})')
+        self.assertEqual(sorted(fautives), [])
+
+    def test_bearer_perime_sur_lien_public_ne_donne_pas_401(self):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION='Bearer jeton.perime.invalide')
+        for url in ('/api/django/public/sav/ticket/inconnu/',
+                    '/api/django/ged/signature/inconnu/',
+                    '/api/django/statuspage/public/incidents/999999/'):
+            with self.subTest(url=url):
+                self.assertNotEqual(api.get(url).status_code, 401)

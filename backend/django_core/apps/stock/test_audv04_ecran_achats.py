@@ -198,7 +198,7 @@ class TestProfilSaisonnierViewSet(Audv04Base):
         rep = self.api.post('/api/django/stock/profils-saisonniers/', {
             'produit': self.produit.pk, 'mois_debut': 5, 'mois_fin': 8,
             'seuil_min': 10, 'quantite_cible': 40, 'nom': 'Saison pompage',
-        })
+        }, format='json')
         self.assertEqual(rep.status_code, 201, rep.data)
         self.assertEqual(ProfilSaisonnier.objects.count(), 1)
         profil = ProfilSaisonnier.objects.get()
@@ -210,7 +210,7 @@ class TestProfilSaisonnierViewSet(Audv04Base):
         rep = self.api.post('/api/django/stock/profils-saisonniers/', {
             'produit': self.produit.pk, 'categorie': cat.pk,
             'mois_debut': 5, 'mois_fin': 8,
-        })
+        }, format='json')
         self.assertEqual(rep.status_code, 400)
         self.assertEqual(ProfilSaisonnier.objects.count(), 0)
 
@@ -220,7 +220,7 @@ class TestProfilSaisonnierViewSet(Audv04Base):
             mois_debut=5, mois_fin=8, actif=True)
         rep = self.api.post('/api/django/stock/profils-saisonniers/', {
             'produit': self.produit.pk, 'mois_debut': 6, 'mois_fin': 9,
-        })
+        }, format='json')
         self.assertEqual(rep.status_code, 400)
         self.assertEqual(ProfilSaisonnier.objects.count(), 1)
 

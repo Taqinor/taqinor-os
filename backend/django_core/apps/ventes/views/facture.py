@@ -1,9 +1,12 @@
+from drf_spectacular.utils import extend_schema_view
+from ..openapi_params import ENTITE, qint, qstr
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from drf_spectacular.utils import extend_schema, inline_serializer
+from . import openapi_docs as D
 from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
@@ -157,6 +160,8 @@ class IsSuperuserOnly(BasePermission):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]))
 class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
@@ -204,6 +209,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # AFAC17/ENF — `?client=` (réaffectation d'un paiement : factures du
+        # MÊME client) ; une valeur non numérique est ignorée.
+        client = self.request.query_params.get('client')
+        if self.action == 'list' and client and str(client).isdigit():
+            qs = qs.filter(client_id=int(client))
         # Portée de visibilité (Feature F) — factures créées par soi / l'équipe.
         return scope_queryset(qs, self.request.user, ['created_by'])
 
@@ -631,6 +641,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture).data)
 
+    @extend_schema(request=D.FactureAnnulerRequest, responses=FactureSerializer)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[IsAdminRole])
     def annuler(self, request, pk=None):
@@ -946,6 +957,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             ).data
         )
 
+    @extend_schema(parameters=[qstr('mode')])
     @action(detail=True, methods=['get'], url_path='arrondi-caisse',
             permission_classes=[IsAnyRole])
     def arrondi_caisse(self, request, pk=None):
@@ -1114,6 +1126,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         facture.save(update_fields=['retenue_liberee_le'])
         return Response(FactureSerializer(facture).data)
 
+    @extend_schema(request=None, responses={202: D.PdfTaskResponse})
     @action(detail=True, methods=['post'], url_path='generer-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def generer_pdf(self, request, pk=None):
@@ -1257,6 +1270,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'dgi_motif_rejet': facture.dgi_motif_rejet,
         })
 
+    @extend_schema(request=D.FactureWhatsappRequest, responses=D.FactureWhatsappResponse)
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp(self, request, pk=None):
@@ -1287,6 +1301,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'phone': phone, 'message': message, 'url': link['url'],
         })
 
+    @extend_schema(request=D.LienPaiementRequest, responses={201: D.LienPaiementResponse})
     @action(detail=True, methods=['post'], url_path='lien-paiement',
             permission_classes=[IsResponsableOrAdmin])
     def lien_paiement(self, request, pk=None):
@@ -1337,6 +1352,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'expires_at': link.expires_at.isoformat(),
         }, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=D.RevoquerLienPaiementResponse)
     @action(detail=True, methods=['post'], url_path='revoquer-lien-paiement',
             permission_classes=[IsResponsableOrAdmin])
     def revoquer_lien_paiement(self, request, pk=None):
@@ -1515,6 +1531,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=D.CreerNoteDebitRequest, responses={201: NoteDebitSerializer})
     @action(detail=True, methods=['post'], url_path='creer-note-debit')
     def creer_note_debit(self, request, pk=None):
         """ZFAC4 — crée une NoteDebit (majoration d'une facture déjà émise) —
@@ -1798,6 +1815,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         facture = self.get_object()
         return Response(apercu_relance(facture))
 
+    @extend_schema(request=D.ExclureRelanceRequest, responses=FactureSerializer)
     @action(detail=True, methods=['post'], url_path='exclure-relance',
             permission_classes=[IsResponsableOrAdmin])
     def exclure_relance(self, request, pk=None):

@@ -31,7 +31,7 @@ class CommandeCadre(models.Model):
         CLOS = 'clos', 'Clos'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_commandes_cadre')
     reference = models.CharField(max_length=50)
@@ -73,7 +73,7 @@ class CommandeCadreLigne(models.Model):
     des commandes d'appel."""
 
     commande_cadre = models.ForeignKey(
-        CommandeCadre, on_delete=models.CASCADE, related_name='lignes')
+        CommandeCadre, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de CommandeCadre — n'existe pas sans son document parent
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -112,11 +112,11 @@ class AppelCommande(models.Model):
     contrat-cadre au prix négocié. Multi-tenant : société posée côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_appels_commande')
     ligne = models.ForeignKey(
-        CommandeCadreLigne, on_delete=models.CASCADE, related_name='appels')
+        CommandeCadreLigne, on_delete=models.CASCADE, related_name='appels')  # on_delete: AppelCommande est le détail de CommandeCadreLigne — n'existe pas sans lui
     quantite = models.DecimalField(
         max_digits=12, decimal_places=2, default=0)
     date_appel = models.DateField(null=True, blank=True)

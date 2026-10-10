@@ -18,9 +18,11 @@ import logging
 
 from django.conf import settings
 from django.utils import timezone
-from rest_framework import status
+from .openapi_public import PUBLIC_DETAIL
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, permission_classes, throttle_classes,
 )
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -104,7 +106,14 @@ def _append_transcript(session, auteur, texte):
     return entry
 
 
+@extend_schema(
+    request=None,
+    responses={201: inline_serializer('PublicChatSessionOuverte', {
+        'token': serializers.CharField(),
+        'statut': serializers.CharField(),
+    }), 404: PUBLIC_DETAIL})
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicChatRateThrottle])
 def open_chat_session(request):
@@ -128,6 +137,7 @@ def open_chat_session(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicChatRateThrottle])
 def post_chat_message(request, token):
@@ -196,6 +206,7 @@ def post_chat_message(request, token):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([PublicChatRateThrottle])
 def get_chat_session(request, token):

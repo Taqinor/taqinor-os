@@ -1,4 +1,4 @@
-# Mesure de couverture backend (informational). Lancé en CI :
+# Mesure de couverture backend (seuil bloquant, ENF24). Lancé en CI :
 #   coverage run manage.py test apps authentication … && coverage report
 # On mesure le CODE applicatif, pas les tests/migrations/réglages.
 [run]
@@ -19,3 +19,11 @@ omit =
 show_missing = False
 skip_covered = False
 precision = 1
+# ENF24 (règle fondateur 09/10/2026, docs/claude-memory/enforce-all-checks.md)
+# — seuil BLOQUANT : `coverage report` rend 2 sous ce taux et fait échouer le
+# job nocturne `backend-full` (release-verify.yml). Valeur MESURÉE sur les
+# passes nocturnes de main : 88,4 % le 07/10/2026 (run 37604394845), 88,5 % le
+# 08/10/2026 (run 37761943603) — plancher arrondi à l'entier inférieur.
+# Relever par paliers d'un point quand la médiane des 3 dernières nuits
+# dépasse le seuil d'au moins un point ; ne jamais le baisser.
+fail_under = 88

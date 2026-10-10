@@ -25,7 +25,7 @@
   {
    "args": [],
    "kwargs": {
-    "on_delete": "callable:CASCADE",
+    "on_delete": "callable:PROTECT",
     "related_name": "commissions",
     "to": "crm.partenaire",
     "verbose_name": "Partenaire"

@@ -320,7 +320,7 @@ class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
                                        serializers.ModelSerializer):
     # ASEC30 — une règle d'une autre société = id absent (400).
     same_company_fields = ('rule',)
-    rule_nom = serializers.CharField(source='rule.nom', read_only=True)
+    rule_nom = serializers.CharField(source='rule.nom', read_only=True, allow_null=True)
     url_path = serializers.SerializerMethodField()
 
     class Meta:

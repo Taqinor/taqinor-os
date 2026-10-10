@@ -1,6 +1,11 @@
 import datetime
 
 from django.db.models import Q
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,6 +20,9 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+_Suppression409 = inline_serializer('OutillageSuppressionRefusee', {
+    'detail': drf_serializers.CharField()})
 
 # Kits d'outillage par défaut — semés à la première consultation par société.
 # Coquilles nommées et vides : le founder y ajoute les outils de son parc.
@@ -34,6 +42,16 @@ def seed_kits_outillage(company):
             company=company, nom=nom, defaults={'ordre': i})
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        OpenApiParameter('emplacement', OpenApiTypes.INT, required=False),
+        OpenApiParameter('a_calibrer', OpenApiTypes.STR, required=False,
+                         enum=['1', 'true', 'True'],
+                         description='Seulement les outils à calibrer.'),
+    ]),
+    destroy=extend_schema(responses={204: None, 409: _Suppression409}),
+)
 class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
                        viewsets.ModelViewSet):
     """Catalogue d'outillage durable (F1). Lecture tout rôle ; écriture
@@ -101,6 +119,11 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         return qs
 
     # ── FG80 — enregistrement d'une calibration ──────────────────────────────
+    @extend_schema(
+        request=inline_serializer('OutillageCalibrerRequete', {
+            'date_calibration': drf_serializers.DateField(required=False),
+        }),
+        responses=OutillageSerializer)
     @action(detail=True, methods=['post'], url_path='calibrer',
             permission_classes=[IsResponsableOrAdmin])
     def calibrer(self, request, pk=None):
@@ -144,6 +167,9 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         return Response(OutillageSerializer(outil).data)
 
 
+@extend_schema_view(
+    destroy=extend_schema(responses={204: None, 409: _Suppression409}),
+)
 class KitOutillageViewSet(UsageGuardedDestroyMixin, TenantMixin, viewsets.ModelViewSet):
     """Kits d'outillage (F2), gérés dans Paramètres. Lecture tout rôle ;
     écriture admin. Les 3 kits par défaut sont semés à la première liste.
@@ -175,6 +201,12 @@ class KitOutillageViewSet(UsageGuardedDestroyMixin, TenantMixin, viewsets.ModelV
         return None
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        OpenApiParameter('kit', OpenApiTypes.INT, required=False,
+                         description='Filtre par kit.'),
+    ]),
+)
 class KitOutillageItemViewSet(TenantMixin, viewsets.ModelViewSet):
     """Outils d'un kit (F2). Company posée côté serveur depuis le kit parent ;
     écriture admin. Filtrable par kit."""

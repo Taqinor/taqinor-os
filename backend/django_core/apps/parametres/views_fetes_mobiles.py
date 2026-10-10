@@ -7,7 +7,10 @@ Administrateur/Responsable promu — même patron que le reste de l'app — ET
 porteur de ``localisation_gerer`` (NTI18N40). La LECTURE reste ouverte à tout
 rôle interne : le calendrier des fériés sert à tout le monde (planification
 chantier/RH), la borner masquerait des jours non ouvrés à ceux qui les subissent."""
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -37,7 +40,11 @@ FETES_MOBILES_ETAT_RESPONSE = inline_serializer('FetesMobilesEtat', {
 })
 
 
-@extend_schema(responses=FETES_MOBILES_ETAT_RESPONSE)
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'annee', OpenApiTypes.INT, OpenApiParameter.QUERY, required=True,
+        description='Année civile (1900 à 2200).')],
+    responses=FETES_MOBILES_ETAT_RESPONSE)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def fetes_mobiles_etat(request):
@@ -56,12 +63,12 @@ def fetes_mobiles_etat(request):
 
 FETES_MOBILES_ENREGISTRER_REQUEST = inline_serializer(
     'FetesMobilesEnregistrerRequest', {
-        'annee': serializers.IntegerField(),
+        'annee': serializers.IntegerField(min_value=1900, max_value=2200),
         'dates': inline_serializer('FetesMobilesEnregistrerDates', {
-            'aid_el_fitr': serializers.CharField(required=False),
-            'aid_el_adha': serializers.CharField(required=False),
-            '1er_moharram': serializers.CharField(required=False),
-            'aid_el_mawlid': serializers.CharField(required=False),
+            'aid_el_fitr': serializers.DateField(required=False),
+            'aid_el_adha': serializers.DateField(required=False),
+            '1er_moharram': serializers.DateField(required=False),
+            'aid_el_mawlid': serializers.DateField(required=False),
         }),
     })
 

@@ -61,10 +61,10 @@ class GpsConsentRecord(models.Model):
     l'audit (fin de contrat, retrait légal) mais n'est jamais posé par le
     client mobile ; seule une action responsable/admin peut révoquer."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='gps_consent_records')
     technicien = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée de suivi/planning du technicien — sans objet sans lui (GpsConsentRecord)
         related_name='gps_consent_records')
     # Référence externe au support de consentement (ex. n° de document RH
     # signé, id d'un formulaire) — texte libre, jamais interprété ici.
@@ -108,13 +108,13 @@ class PositionTechnicien(models.Model):
     purge_positions_expirees`` supprime les lignes plus vieilles que
     ``POSITION_RETENTION_JOURS`` — aucune conservation indéfinie."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='positions_techniciens')
     technicien = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée de suivi/planning du technicien — sans objet sans lui (PositionTechnicien)
         related_name='positions_gps')
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, null=True, blank=True,
+        Intervention, on_delete=models.CASCADE, null=True, blank=True,  # on_delete: PositionTechnicien est le détail de Intervention — n'existe pas sans lui
         related_name='positions_gps')
     lat = models.DecimalField(max_digits=9, decimal_places=6)
     lng = models.DecimalField(max_digits=9, decimal_places=6)
@@ -169,15 +169,15 @@ class GeofenceAlert(models.Model):
         SORTIE = 'sortie', 'Sortie'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='geofence_alerts')
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='geofence_alerts')
+        Intervention, on_delete=models.CASCADE, related_name='geofence_alerts')  # on_delete: GeofenceAlert est le détail de Intervention — n'existe pas sans lui
     technicien = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée de suivi/planning du technicien — sans objet sans lui (GeofenceAlert)
         related_name='geofence_alerts')
     position = models.ForeignKey(
-        PositionTechnicien, on_delete=models.CASCADE,
+        PositionTechnicien, on_delete=models.CASCADE,  # on_delete: GeofenceAlert est le détail de PositionTechnicien — n'existe pas sans lui
         related_name='geofence_alerts')
     distance_site_km = models.DecimalField(max_digits=8, decimal_places=3)
     rayon_attendu_km = models.DecimalField(max_digits=8, decimal_places=3)

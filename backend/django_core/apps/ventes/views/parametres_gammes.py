@@ -6,6 +6,7 @@ lecture (aucune régression sur la composition automatique tant que rien n'est
 réglé).
 """
 from rest_framework import generics
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -25,6 +26,7 @@ class ParametresGammesView(generics.RetrieveUpdateAPIView):
     Admin/Responsable, comme ``ParametresTresorerieView``.
     """
     http_method_names = ['get', 'patch', 'head', 'options']
+    parser_classes = [JSONParser]  # ENF5/D2 : aucun envoi de fichier
     serializer_class = ParametresGammesSerializer
 
     def get_permissions(self):

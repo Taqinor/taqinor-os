@@ -1,7 +1,10 @@
 from django.db import transaction  # noqa: F401
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from ..openapi_helpers import INT, OBJET, P, PID, STR
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
     DocumentConformiteFournisseur, AchatsParametres,
@@ -22,6 +25,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
 class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR1 — documents de conformité fournisseur (ARF/CNSS/RC/assurance).
 
@@ -34,6 +38,8 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_expiration', 'date_creation', 'type_document']
     ordering = ['fournisseur_id', 'type_document']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -54,6 +60,9 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@extend_schema_view(
+    list=extend_schema(responses=AchatsParametresSerializer),
+    partial_update=extend_schema(parameters=[PID], request=AchatsParametresSerializer, responses=AchatsParametresSerializer))
 class AchatsParametresViewSet(viewsets.ViewSet):
     """XPUR1 — paramètres achats de la société connectée (singleton par
     company). GET renvoie (en le créant si besoin) le réglage courant ; PATCH
@@ -79,6 +88,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         serializer.save()
         return Response(serializer.data)
 
+    @extend_schema(parameters=[P('periode', STR, False, 'AAAA-MM'), P('seuil_jours', INT)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='checklist-cloture')
     def checklist_cloture(self, request):
         """NTP2P30 — wizard de clôture de fin de mois achats : agrège en
@@ -117,6 +127,8 @@ class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):
         'categorie').all()
     serializer_class = ToleranceRapprochementCategorieSerializer
     ordering = ['categorie__nom']
+
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
