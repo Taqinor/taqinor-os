@@ -28,6 +28,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import cadence_temps, horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
@@ -241,15 +242,15 @@ class ToucheParSignalTests(TestCase):
     def test_un_jour_deja_pris_par_un_appel_pousse_au_lendemain(self):
         RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_CONFIRMATION,
+            ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION,
             canal=RelanceEtape.Canal.APPEL,
-            libelle=services.VISITE_CONFIRMATION_LIBELLE,
+            libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
             due_at=JEUDI_10H, due_date=JEUDI_10H.date())
         touche = self._signal()
         self.assertEqual(_local(touche.due_at), VENDREDI_9H)
         # Le geste de visite n'est pas une touche du plan : il ne bouge pas.
         visite = RelanceEtape.objects.get(
-            lead=self.lead, libelle=services.VISITE_CONFIRMATION_LIBELLE)
+            lead=self.lead, libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE)
         self.assertEqual(_local(visite.due_at), JEUDI_10H)
 
     # ── Garde 4 : jamais sur un lead qu'on ne relance plus ──

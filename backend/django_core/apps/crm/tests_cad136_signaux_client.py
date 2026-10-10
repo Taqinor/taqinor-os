@@ -36,6 +36,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, questionnaire, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.intake_photo import attach_capture_photo, est_photo_de_facture
 from apps.crm.models import Lead, QuestionnaireLien, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -204,7 +205,7 @@ class GestesDansLaFileTests(TestCase):
         self.assertTrue(notifier.called)
         etapes = list(RelanceEtape.objects.filter(lead=self.lead))
         self.assertEqual([e.libelle for e in etapes],
-                         [services.FILET_JOINT_LIBELLE])
+                         [cadence_reperes.FILET_JOINT_LIBELLE])
         etape = etapes[0]
         self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
         # Tâche de production : la cadence hors protocole, jamais un barreau
@@ -222,7 +223,7 @@ class GestesDansLaFileTests(TestCase):
         self._photo(self.lead)
         self._photo(self.lead)
         self.assertEqual(RelanceEtape.objects.filter(
-            lead=self.lead, libelle=services.FILET_JOINT_LIBELLE).count(), 1)
+            lead=self.lead, libelle=cadence_reperes.FILET_JOINT_LIBELLE).count(), 1)
 
     def test_une_photo_de_compteur_ne_pose_rien(self):
         self._photo(self.lead, photoFilename='questionnaire-compteur.jpg')

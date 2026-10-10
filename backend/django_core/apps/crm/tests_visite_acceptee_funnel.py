@@ -22,6 +22,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -29,7 +30,7 @@ from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 User = get_user_model()
 
 GEL = datetime.datetime(2026, 9, 23, 10, 0, tzinfo=horaires.CASABLANCA)
-VISITE = services.OUTCOME_VISITE_ACCEPTEE
+VISITE = cadence_reperes.OUTCOME_VISITE_ACCEPTEE
 
 
 class _Base(TestCase):

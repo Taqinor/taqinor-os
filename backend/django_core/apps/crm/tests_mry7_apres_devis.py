@@ -237,7 +237,7 @@ class RefusTests(_Base):
         active, un devis refusé laisse une étape « décider la suite » (le
         dossier ne disparaît pas) ; un événement REJOUÉ n'ajoute rien (le
         filet no-op sur une étape déjà ouverte — anti-spam conservé)."""
-        from apps.crm.services import FILET_REFUS_LIBELLE
+        from apps.crm.cadence_reperes import FILET_REFUS_LIBELLE
         devis = self._devis('DEV-MRY7-0101')
         devis_refused.send(sender='test', devis=devis, user=self.acteur,
                            motif_refus='Trop cher')

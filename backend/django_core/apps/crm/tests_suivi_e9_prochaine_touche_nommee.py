@@ -23,7 +23,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import CLE_DEVIS
 from apps.crm.models import Lead, RelanceEtape
@@ -65,7 +65,7 @@ class FormePubliqueTests(SimpleTestCase):
 
     def test_une_etape_posee_avant_la_cle_est_reconnue(self):
         forme = _prochaine_touche_publique(
-            self._etape(libelle=services.FILET_JOINT_LIBELLE))
+            self._etape(libelle=cadence_reperes.FILET_JOINT_LIBELLE))
         self.assertEqual(forme['cle'], CLE_DEVIS)
 
     def test_un_barreau_du_protocole_n_a_pas_de_cle(self):
@@ -131,14 +131,14 @@ class ReponsesNommentLEtapeTests(_Base):
     def test_le_report_d_une_etape_de_filet_la_nomme(self):
         filet = self._touche(cadence='generique', ordre=1,
                              canal=RelanceEtape.Canal.APPEL,
-                             libelle=services.FILET_REFUS_LIBELLE)
+                             libelle=cadence_reperes.FILET_REFUS_LIBELLE)
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{filet.pk}/fait/',
             {'outcome': 'rappel', 'rappel_le': '2026-09-28',
              'rappel_heure': '11:00'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         prochaine = resp.data['prochaine_touche']
-        self.assertEqual(prochaine['libelle'], services.FILET_REFUS_LIBELLE)
+        self.assertEqual(prochaine['libelle'], cadence_reperes.FILET_REFUS_LIBELLE)
         self.assertEqual(prochaine['cle'], 'decider_suite')
         self.assertEqual(prochaine['due_date'], '2026-09-28')
 
@@ -190,7 +190,7 @@ class LaPlusProcheToucheTests(_Base):
         passation = self._touche(cadence='generique',
                                  ordre=cadence_reponses.PASSATION_ORDRE,
                                  canal=RelanceEtape.Canal.WHATSAPP,
-                                 libelle=services.PASSATION_LIBELLE)
+                                 libelle=cadence_reperes.PASSATION_LIBELLE)
         resp = self._rappel(passation)
         passation.refresh_from_db()
         self.assertEqual(passation.statut, A_FAIRE)
@@ -201,7 +201,7 @@ class LaPlusProcheToucheTests(_Base):
         creneau = self._touche(cadence='generique', ordre=1,
                                canal=RelanceEtape.Canal.WHATSAPP,
                                cle='message_creneau',
-                               libelle=services.FILET_MESSAGE_CRENEAU_LIBELLE)
+                               libelle=cadence_reperes.FILET_MESSAGE_CRENEAU_LIBELLE)
         resp = self._rappel(creneau)
         self.assertTrue(self.lead.relance_etapes.filter(
             cle='rappel_convenu', statut=A_FAIRE,

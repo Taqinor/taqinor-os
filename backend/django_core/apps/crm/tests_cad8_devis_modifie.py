@@ -25,9 +25,12 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    VISITE_DEBRIEF_LIBELLE, VISITE_DEVIS_LIBELLE, VISITE_ORDRE_DEBRIEF,
-    calculer_echeances_cadence)
+from apps.crm.services import calculer_echeances_cadence
+from apps.crm.cadence_reperes import (
+    VISITE_DEBRIEF_LIBELLE,
+    VISITE_DEVIS_LIBELLE,
+    VISITE_ORDRE_DEBRIEF,
+)
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.ventes.models import Devis

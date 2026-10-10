@@ -28,7 +28,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.crm import services, stages
+from apps.crm import stages, cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CADENCE_DE_LA_CLE
@@ -105,8 +105,8 @@ def _representants(etape_table):
             defaut = barreau_par_defaut(gabarit, cle)
             visite = gabarit == Cadence.VISITE
             cadence = 'apres_devis' if visite else 'generique'
-            ordre = services.VISITE_ORDRE_FILET if visite else 1
-            canal = services._canal_configure(defaut)
+            ordre = cadence_reperes.VISITE_ORDRE_FILET if visite else 1
+            canal = cadence_reperes._canal_configure(defaut)
             # Posée DEPUIS la clé, sous un libellé RENOMMÉ par la société…
             yield _etape(cadence, ordre, canal, 'Libellé renommé', cle=cle,
                          devis=visite)

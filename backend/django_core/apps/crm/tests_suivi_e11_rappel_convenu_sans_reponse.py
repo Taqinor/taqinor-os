@@ -22,6 +22,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
@@ -54,10 +55,10 @@ class EscalierTests(SimpleTestCase):
         self.assertEqual(services.prochain_palier_sans_reponse(
             CLE_RAPPEL_CONVENU, 'non_joint', _tous_actifs), CLE_DERNIER_APPEL)
         self.assertEqual(
-            cadence_reponses._palier_sans_reponse(services.FILET_RAPPEL_LIBELLE,
+            cadence_reponses._palier_sans_reponse(cadence_reperes.FILET_RAPPEL_LIBELLE,
                                                   'non_joint'),
-            (services.FILET_DERNIER_APPEL_LIBELLE, RelanceEtape.Canal.APPEL,
-             services.FILET_JOINT_DELAI_JOURS))
+            (cadence_reperes.FILET_DERNIER_APPEL_LIBELLE, RelanceEtape.Canal.APPEL,
+             cadence_reperes.FILET_JOINT_DELAI_JOURS))
 
     def test_palier_desactive_saute(self):
         self.assertIsNone(services.prochain_palier_sans_reponse(
@@ -71,7 +72,7 @@ class EscalierTests(SimpleTestCase):
         etape = RelanceEtape(cadence='generique', ordre=1,
                              canal=RelanceEtape.Canal.APPEL,
                              cle=CLE_RAPPEL_CONVENU,
-                             libelle=services.FILET_RAPPEL_LIBELLE,
+                             libelle=cadence_reperes.FILET_RAPPEL_LIBELLE,
                              statut=A_FAIRE)
         etape.lead = Lead(nom='témoin', stage=stages.CONTACTED)
         self.assertEqual(
@@ -109,7 +110,7 @@ class RappelConvenuSansReponseTests(TestCase):
         self.rappel = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='generique',
             ordre=1, canal=RelanceEtape.Canal.APPEL, cle=CLE_RAPPEL_CONVENU,
-            libelle=services.FILET_RAPPEL_LIBELLE, due_at=GEL,
+            libelle=cadence_reperes.FILET_RAPPEL_LIBELLE, due_at=GEL,
             due_date=GEL.date())
 
     def _sans_reponse(self):

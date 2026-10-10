@@ -27,7 +27,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import FILET_JOINT_LIBELLE
+from apps.crm.cadence_reperes import FILET_JOINT_LIBELLE
 from apps.parametres.models import CompanyProfile
 from apps.records.models import Attachment
 

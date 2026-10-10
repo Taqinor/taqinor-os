@@ -24,6 +24,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.notifications.models import Notification
 from apps.notifications.types_evenements import EventType
@@ -96,7 +97,7 @@ class NotificationSuiteReelleTests(_Base):
         self._emettre_retour()
 
         etape = self.lead.relance_etapes.get(
-            libelle=services.FILET_JOINT_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE, statut=A_FAIRE)
         corps = self._notification().body
         self.assertIn('préparer et envoyer le devis', corps)
         self.assertIn(f'{etape.due_date:%d/%m}', corps)
@@ -113,7 +114,7 @@ class NotificationSuiteReelleTests(_Base):
     def test_la_phrase_se_lit_sur_l_etape_rendue(self):
         self.assertEqual(services.phrase_notification_retour_visite(None),
                          services.NOTIF_RETOUR_VISITE_RAPPELER)
-        debrief = RelanceEtape(libelle=services.VISITE_DEBRIEF_LIBELLE,
+        debrief = RelanceEtape(libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE,
                                due_date=datetime.date(2026, 9, 24))
         self.assertEqual(services.phrase_notification_retour_visite(debrief),
                          services.NOTIF_RETOUR_VISITE_RAPPELER)
@@ -126,7 +127,7 @@ class ConfirmationAnnuleeAuRetourTests(_Base):
         services.appliquer_visite_planifiee(
             self.lead, self.terrain, VISITE_LE, commercial_nom='Youssef')
         confirmation = self.lead.relance_etapes.get(
-            libelle=services.VISITE_CONFIRMATION_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE, statut=A_FAIRE)
 
         services.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
 
@@ -145,17 +146,17 @@ class ConfirmationAnnuleeAuRetourTests(_Base):
         services.appliquer_retour_visite(self.lead, self.terrain, RETOUR)
 
         self.assertFalse(self.lead.relance_etapes.filter(
-            libelle=services.VISITE_CONFIRMATION_LIBELLE,
+            libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
             statut=A_FAIRE).exists())
         # Le débrief, lui, reste la suite.
         self.assertTrue(self.lead.relance_etapes.filter(
-            libelle=services.VISITE_DEBRIEF_LIBELLE, statut=A_FAIRE).exists())
+            libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, statut=A_FAIRE).exists())
 
     def test_une_confirmation_deja_faite_n_est_pas_touchee(self):
         services.appliquer_visite_planifiee(
             self.lead, self.terrain, VISITE_LE, commercial_nom='Youssef')
         confirmation = self.lead.relance_etapes.get(
-            libelle=services.VISITE_CONFIRMATION_LIBELLE, statut=A_FAIRE)
+            libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE, statut=A_FAIRE)
         confirmation.statut = RelanceEtape.Statut.FAIT
         confirmation.save(update_fields=['statut'])
 

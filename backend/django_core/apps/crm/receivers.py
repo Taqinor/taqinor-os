@@ -43,10 +43,9 @@ from .services import (
     avancer_stage_new_vers_contacted,
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
-    est_note_de_report,
-    est_note_de_touche_sautee,
     signaler_mismatch_signe_sur_refus,
 )
+from .cadence_reperes import est_note_de_report, est_note_de_touche_sautee
 from .leads_premier_contact import marquer_premier_contact
 
 logger = logging.getLogger(__name__)

@@ -2418,7 +2418,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # inchangée) : aucune question, et jamais un second plan à côté.
         # SUIVI E1 (30/09/2026) — un plan ouvert = un BARREAU du protocole :
         # une étape de visite ouverte (même cadence) ne l'est pas.
-        from .services import q_visite
+        from .cadence_reperes import q_visite
         devis = None
         if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
                 cadence=Cadence.APRES_DEVIS,
@@ -4635,12 +4635,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import (
-            est_etape_de_filet,
-            est_etape_de_visite,
-            marquer_etape_relance,
-            reporter_prochaine_touche,
-        )
+        from .services import est_etape_de_filet, marquer_etape_relance, reporter_prochaine_touche
+        from .cadence_reperes import est_etape_de_visite
         from .cadence_reponses import (
             est_derniere_touche_de_contact,
             est_derniere_touche_du_suivi,
@@ -5038,7 +5034,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .services import journaliser_whatsapp_ouvert, message_pour_etape, refus_langue_relance
+        from .services import message_pour_etape, refus_langue_relance
+        from .cadence_reperes import journaliser_whatsapp_ouvert
         from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
         if langue and refus_langue_relance(langue):
@@ -6727,7 +6724,7 @@ def _message_ouvert_sur_touche(etape):
     issue sur un canal « appel » — le seul cas où la réponse sert.
     """
     from .models import LeadActivity
-    from .services import prefixe_activite_message_ouvert
+    from .cadence_reperes import prefixe_activite_message_ouvert
     return LeadActivity.objects.filter(
         company_id=etape.company_id, lead_id=etape.lead_id,
         kind=LeadActivity.Kind.WHATSAPP,

@@ -37,7 +37,8 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import FILET_REFUS_LIBELLE, annuler_touche_relance, AnnulationToucheRefusee
+from apps.crm.services import annuler_touche_relance, AnnulationToucheRefusee
+from apps.crm.cadence_reperes import FILET_REFUS_LIBELLE
 from apps.crm.cadence_reponses import MOTIF_NE_PLUS_CONTACTER
 from apps.parametres.models import CompanyProfile
 

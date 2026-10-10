@@ -32,9 +32,13 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, RelanceEtape
-from apps.crm.services import (
-    FILET_APPEL_LIBELLE, FILET_DERNIER_APPEL_LIBELLE, FILET_JOINT_LIBELLE,
-    FILET_MESSAGE_CRENEAU_LIBELLE, marquer_etape_relance)
+from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_reperes import (
+    FILET_APPEL_LIBELLE,
+    FILET_DERNIER_APPEL_LIBELLE,
+    FILET_JOINT_LIBELLE,
+    FILET_MESSAGE_CRENEAU_LIBELLE,
+)
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

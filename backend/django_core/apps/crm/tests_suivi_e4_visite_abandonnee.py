@@ -29,6 +29,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_DEVIS_MODIFIE, CLE_PLANIFIER,
@@ -179,9 +180,9 @@ class AnnuleLeRendezVousTests(_Base):
         self._planifier()
         modifie = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_DEBRIEF + 5,
+            ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF + 5,
             canal=RelanceEtape.Canal.APPEL, cle=CLE_DEVIS_MODIFIE,
-            libelle=services.VISITE_DEVIS_LIBELLE,
+            libelle=cadence_reperes.VISITE_DEVIS_LIBELLE,
             due_at=GEL + datetime.timedelta(days=1),
             due_date=(GEL + datetime.timedelta(days=1)).date())
         resp = self._abandonner(self._etape(CLE_CONFIRMATION))

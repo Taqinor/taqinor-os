@@ -52,7 +52,7 @@ from testkit.time import frozen
 from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, MotifPerte, RelanceEtape
-from apps.crm.services import (
+from apps.crm.cadence_reperes import (
     _LIBELLES_FILET,
     _LIBELLES_VISITE,
     FILET_APPEL_LIBELLE,

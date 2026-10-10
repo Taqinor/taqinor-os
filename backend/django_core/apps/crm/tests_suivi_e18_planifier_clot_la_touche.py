@@ -29,6 +29,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_PLANIFIER, q_etape)
 from apps.crm.models import Lead, RelanceEtape
@@ -108,7 +109,7 @@ class LaTouchEstCloseTests(_Base):
 
         appel.refresh_from_db()
         self.assertEqual(appel.statut, FAIT)
-        self.assertEqual(appel.outcome, services.OUTCOME_VISITE_ACCEPTEE)
+        self.assertEqual(appel.outcome, cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(appel.note, 'RDV pris lundi')
         # Le rendez-vous est calé : aucune étape « planifier la visite ».
         self.assertFalse(self._ouvertes(q_etape(CLE_PLANIFIER)).exists())

@@ -33,7 +33,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS, q_etape
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
@@ -84,7 +84,7 @@ class _Base(TestCase):
 
     def _decider(self):
         return self._touche(
-            cle=CLE_DECIDER_SUITE, libelle=services.FILET_REFUS_LIBELLE)
+            cle=CLE_DECIDER_SUITE, libelle=cadence_reperes.FILET_REFUS_LIBELLE)
 
     def _fait(self, etape, **corps):
         return self.api.post(
@@ -163,7 +163,7 @@ class PerduTests(_Base):
 
     def test_perdu_hors_de_decider_la_suite_est_refuse(self):
         devis = self._touche(cle=CLE_DEVIS,
-                             libelle=services.FILET_JOINT_LIBELLE)
+                             libelle=cadence_reperes.FILET_JOINT_LIBELLE)
         resp = self._fait(devis, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte=MOTIF)
         self.assertEqual(resp.status_code, 400, resp.data)
@@ -193,7 +193,7 @@ class RefusSurDeciderLaSuiteTests(_Base):
 
     def test_temoin_refus_sur_une_autre_etape_reste_accepte(self):
         devis = self._touche(cle=CLE_DEVIS,
-                             libelle=services.FILET_JOINT_LIBELLE)
+                             libelle=cadence_reperes.FILET_JOINT_LIBELLE)
         resp = self._fait(devis, outcome='refuse')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(self._ouvertes().filter(

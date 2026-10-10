@@ -31,7 +31,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
@@ -150,7 +150,7 @@ class RestrictionsTests(SimpleTestCase):
         self.assertIn('WhatsApp', refus)
 
     def test_refusee_sur_un_geste_de_visite(self):
-        confirmation = _touche('apres_devis', services.VISITE_ORDRE_CONFIRMATION,
+        confirmation = _touche('apres_devis', cadence_reperes.VISITE_ORDRE_CONFIRMATION,
                                WHATSAPP, cle=CLE_CONFIRMATION, devis=True)
         refus = cadence_reponses.refus_reponse_touche(confirmation, JOINT_TELEPHONE)
         self.assertIn('« Client joint au téléphone »', refus)
@@ -235,7 +235,7 @@ class JointTelephoneApiTests(TestCase):
                                        'décroché tout de suite')
         # La ligne de chatter de la touche est un APPEL abouti.
         ligne = LeadActivity.objects.get(
-            lead=lead, body__startswith=services.prefixe_activite_touche(
+            lead=lead, body__startswith=cadence_reperes.prefixe_activite_touche(
                 message))
         self.assertEqual(ligne.kind, LeadActivity.Kind.APPEL)
         self.assertEqual(ligne.outcome, 'joint')

@@ -4135,7 +4135,7 @@ def journal_relance(company, user, lead_id):
     from . import stages
     from .controle_suivi import etape_en_retard
     from .models import Lead, LeadActivity, RelanceEtape
-    from .services import prefixe_activite_touche
+    from .cadence_reperes import prefixe_activite_touche
 
     lead = scope_queryset(
         Lead.objects.filter(company=company, pk=lead_id), user,
@@ -6746,7 +6746,8 @@ def lead_en_attente_ou_veille(lead_id, today, *, company):
     ne jamais parquer au Froid un lead qui attend. Lecture seule ; un lead
     d'une autre société n'est jamais lu (``False``)."""
     from .models import Lead, RelanceEtape
-    from .services import ETIQUETTES_RAISON_ATTENTE, _lead_porte_tag
+    from .services import ETIQUETTES_RAISON_ATTENTE
+    from .cadence_reperes import _lead_porte_tag
 
     if not lead_id or company is None:
         return False

@@ -29,6 +29,7 @@ from django.test import TestCase
 from testkit.time import frozen
 
 from apps.crm import horaires, services
+from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CadenceRelanceEtape
@@ -171,13 +172,13 @@ class LesGardeFousTests(_Base):
         """Créer une touche ici serait un redémarrage de cadence."""
         avant = self.lead.relance_etapes.filter(
             cadence='apres_devis').exclude(
-            libelle__in=services._LIBELLES_VISITE).count()
+            libelle__in=cadence_reperes._LIBELLES_VISITE).count()
         self.assertEqual(avant, 0)
         services.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         apres = self.lead.relance_etapes.filter(
             cadence='apres_devis').exclude(
-            libelle__in=services._LIBELLES_VISITE).count()
+            libelle__in=cadence_reperes._LIBELLES_VISITE).count()
         self.assertEqual(apres, 0)
 
     def test_le_delai_de_reprise_reste_celui_du_debrief(self):
@@ -206,5 +207,5 @@ class LesGardeFousTests(_Base):
         debrief = services.appliquer_retour_visite(
             self.lead, self.acteur, {'notes': 'RAS.'})
         self.assertIsNotNone(debrief)
-        self.assertIn(debrief.libelle, services._LIBELLES_VISITE)
+        self.assertIn(debrief.libelle, cadence_reperes._LIBELLES_VISITE)
         self.assertLess(debrief.due_date, self._reprise_attendue())

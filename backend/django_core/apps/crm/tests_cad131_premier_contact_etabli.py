@@ -24,6 +24,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
@@ -37,21 +38,21 @@ class ReconnaissanceTests(SimpleTestCase):
     """La règle vit là où la note est ÉCRITE — pas dans un texte deviné."""
 
     def test_la_mention_est_celle_que_le_service_ecrit(self):
-        self.assertIn(services.VERBE_TOUCHE_SAUTEE,
-                      services.MENTION_TOUCHE_SAUTEE)
+        self.assertIn(cadence_reperes.VERBE_TOUCHE_SAUTEE,
+                      cadence_reperes.MENTION_TOUCHE_SAUTEE)
 
     def test_une_note_ordinaire_nest_pas_une_touche_sautee(self):
         note = LeadActivity(kind=LeadActivity.Kind.NOTE,
                             body='Appelé, pas de réponse')
-        self.assertFalse(services.est_note_de_touche_sautee(note))
+        self.assertFalse(cadence_reperes.est_note_de_touche_sautee(note))
 
     def test_un_appel_nest_jamais_une_touche_sautee(self):
         appel = LeadActivity(kind=LeadActivity.Kind.APPEL,
-                             body=services.MENTION_TOUCHE_SAUTEE)
-        self.assertFalse(services.est_note_de_touche_sautee(appel))
+                             body=cadence_reperes.MENTION_TOUCHE_SAUTEE)
+        self.assertFalse(cadence_reperes.est_note_de_touche_sautee(appel))
 
     def test_une_absence_dactivite_ne_casse_rien(self):
-        self.assertFalse(services.est_note_de_touche_sautee(None))
+        self.assertFalse(cadence_reperes.est_note_de_touche_sautee(None))
 
 
 class PremierContactEtabliTests(TestCase):

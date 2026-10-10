@@ -26,6 +26,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -85,7 +86,7 @@ class ParquerAuFroidTests(TestCase):
         self.assertEqual(self.lead.stage, stages.COLD)
         filet.refresh_from_db()
         self.assertEqual(filet.statut, ANNULEE)
-        self.assertEqual(filet.note, services.MOTIF_PARQUE_AU_FROID)
+        self.assertEqual(filet.note, cadence_reperes.MOTIF_PARQUE_AU_FROID)
         self.assertTrue(self._reveils().exists())
 
     def test_sans_filet_les_reveils_sont_poses_comme_avant(self):

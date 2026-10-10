@@ -38,6 +38,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.models import Client, Lead, RelanceEtape
@@ -92,7 +93,7 @@ class _Base(TestCase):
 
     def _demain_au_creneau_d_appel(self):
         vise = timezone.now() + datetime.timedelta(
-            days=services.FILET_JOINT_DELAI_JOURS)
+            days=cadence_reperes.FILET_JOINT_DELAI_JOURS)
         return horaires.prochain_creneau_appel(
             vise, self.company, canal=APPEL,
         ).astimezone(horaires.CASABLANCA).date()
@@ -100,8 +101,8 @@ class _Base(TestCase):
     def _jamais_au_froid(self, stage_attendu):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stage_attendu)
-        self.assertFalse(services._lead_porte_tag(self.lead,
-                                                  TAG_DEVIS_SANS_SUITE))
+        self.assertFalse(cadence_reperes._lead_porte_tag(self.lead,
+                                                         TAG_DEVIS_SANS_SUITE))
         self.assertFalse(self.lead.relance_etapes.filter(
             cadence='reveil').exists())
 
@@ -113,8 +114,8 @@ class DebriefSansDevisTests(_Base):
         super().setUp()
         services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
         self.confirmation = self._ouverte(
-            services.VISITE_CONFIRMATION_LIBELLE).get()
-        self.debrief = self._ouverte(services.VISITE_DEBRIEF_LIBELLE).get()
+            cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
+        self.debrief = self._ouverte(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
 
     def test_la_confirmation_close_sans_issue_ne_change_rien(self):
         avant = set(self.lead.relance_etapes.filter(statut=A_FAIRE)
@@ -134,29 +135,29 @@ class DebriefSansDevisTests(_Base):
         self._fait(self.debrief, 'non_joint')
 
         self._jamais_au_froid(stages.CONTACTED)
-        essai = self._ouverte(services.FILET_DERNIER_APPEL_LIBELLE).get()
+        essai = self._ouverte(cadence_reperes.FILET_DERNIER_APPEL_LIBELLE).get()
         self.assertEqual(essai.canal, APPEL)
         self.assertEqual(essai.due_date, self._demain_au_creneau_d_appel())
         self.assertEqual(
             set(self.lead.relance_etapes.filter(statut=A_FAIRE)
                 .values_list('libelle', flat=True)),
-            {services.FILET_DERNIER_APPEL_LIBELLE})
+            {cadence_reperes.FILET_DERNIER_APPEL_LIBELLE})
 
     def test_le_dernier_essai_sans_reponse_retombe_sur_le_devis(self):
         self._fait(self.confirmation)
         self._fait(self.debrief, 'non_joint')
-        essai = self._ouverte(services.FILET_DERNIER_APPEL_LIBELLE).get()
+        essai = self._ouverte(cadence_reperes.FILET_DERNIER_APPEL_LIBELLE).get()
 
         self._fait(essai, 'non_joint')
 
         self._jamais_au_froid(stages.CONTACTED)
-        devis = self._ouverte(services.FILET_JOINT_LIBELLE).get()
+        devis = self._ouverte(cadence_reperes.FILET_JOINT_LIBELLE).get()
         self.assertEqual(devis.due_date, self._demain_au_creneau_d_appel())
         self.assertFalse(
-            self._ouverte(services.FILET_DERNIER_APPEL_LIBELLE).exists())
+            self._ouverte(cadence_reperes.FILET_DERNIER_APPEL_LIBELLE).exists())
 
     def test_le_debrief_devis_modifie_sans_reponse_ne_part_pas_au_froid(self):
-        self.debrief.libelle = services.VISITE_DEVIS_LIBELLE
+        self.debrief.libelle = cadence_reperes.VISITE_DEVIS_LIBELLE
         self.debrief.save(update_fields=['libelle'])
         self._fait(self.confirmation)
 
@@ -164,7 +165,7 @@ class DebriefSansDevisTests(_Base):
 
         self._jamais_au_froid(stages.CONTACTED)
         self.assertTrue(
-            self._ouverte(services.FILET_DERNIER_APPEL_LIBELLE).exists())
+            self._ouverte(cadence_reperes.FILET_DERNIER_APPEL_LIBELLE).exists())
 
 
 class FiletVisiteSansReponseTests(_Base):
@@ -207,8 +208,8 @@ class DebriefAvecPlanPendantTests(_Base):
             cadence_depart=GEL - datetime.timedelta(days=7))
         debrief = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_DEBRIEF, canal=APPEL,
-            libelle=services.VISITE_DEBRIEF_LIBELLE, devis=devis,
+            ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF, canal=APPEL,
+            libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE, devis=devis,
             due_at=GEL, due_date=GEL.date())
 
         self._fait(debrief, 'non_joint')
@@ -231,8 +232,8 @@ class PromesseTests(SimpleTestCase):
 
     def test_le_debrief_sans_reponse_promet_la_suite(self):
         etape = RelanceEtape(
-            cadence='apres_devis', ordre=services.VISITE_ORDRE_DEBRIEF,
-            canal=APPEL, libelle=services.VISITE_DEBRIEF_LIBELLE,
+            cadence='apres_devis', ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
+            canal=APPEL, libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE,
             statut=A_FAIRE)
         etape.lead = Lead(nom='témoin', stage=stages.CONTACTED)
         ordres = frozenset(e['ordre'] for e in CADENCES_DEFAUT['apres_devis'])
@@ -243,13 +244,13 @@ class PromesseTests(SimpleTestCase):
                          [st.SUITE_SI_PLUS_RIEN_OUVERT])
 
     def test_l_escalier_du_debrief_se_termine(self):
-        for libelle in (services.VISITE_DEBRIEF_LIBELLE,
-                        services.VISITE_DEVIS_LIBELLE):
+        for libelle in (cadence_reperes.VISITE_DEBRIEF_LIBELLE,
+                        cadence_reperes.VISITE_DEVIS_LIBELLE):
             with self.subTest(libelle=libelle):
                 self.assertEqual(
                     cadence_reponses._palier_sans_reponse(libelle, 'non_joint'),
-                    (services.FILET_DERNIER_APPEL_LIBELLE, APPEL,
-                     services.FILET_JOINT_DELAI_JOURS))
+                    (cadence_reperes.FILET_DERNIER_APPEL_LIBELLE, APPEL,
+                     cadence_reperes.FILET_JOINT_DELAI_JOURS))
         # Après le dernier essai : plus aucun palier, le devis.
         self.assertIsNone(cadence_reponses._palier_sans_reponse(
-            services.FILET_DERNIER_APPEL_LIBELLE, 'non_joint'))
+            cadence_reperes.FILET_DERNIER_APPEL_LIBELLE, 'non_joint'))

@@ -39,6 +39,7 @@ from django.test import TestCase
 from testkit.time import frozen
 
 from apps.crm import horaires, services
+from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.notifications.models import Notification
 from apps.notifications.types_evenements import EventType
@@ -181,8 +182,8 @@ class VisitePlanifieeTests(VisiteCadenceBase):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
         libelles = set(self._touches().values_list('libelle', flat=True))
-        self.assertEqual(libelles, {services.VISITE_CONFIRMATION_LIBELLE,
-                                    services.VISITE_DEBRIEF_LIBELLE})
+        self.assertEqual(libelles, {cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
+                                    cadence_reperes.VISITE_DEBRIEF_LIBELLE})
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
         self.assertNotIn('Relances décalées', note.body)
@@ -198,8 +199,8 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.assertEqual(self.lead.visite_prevue_le, VISITE_LE)
 
         confirmation = self._touches(
-            services.VISITE_CONFIRMATION_LIBELLE).get()
-        debrief = self._touches(services.VISITE_DEBRIEF_LIBELLE).get()
+            cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
+        debrief = self._touches(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
         self.assertEqual(
             confirmation.due_date,
             _echeance_attendue(self.company,
@@ -284,7 +285,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, AUJOURDHUI)
         confirmation = self._touches(
-            services.VISITE_CONFIRMATION_LIBELLE).get()
+            cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
         self.assertGreaterEqual(confirmation.due_date, AUJOURDHUI)
 
     def test_replanifier_deplace_sans_dupliquer(self):
@@ -293,17 +294,17 @@ class VisitePlanifieeTests(VisiteCadenceBase):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
             confirmation_avant = self._touches(
-                services.VISITE_CONFIRMATION_LIBELLE).get()
+                cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
             nouveau = VISITE_LE + datetime.timedelta(days=7)
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, nouveau)
 
         self.assertEqual(self._touches(
-            services.VISITE_CONFIRMATION_LIBELLE).count(), 1)
+            cadence_reperes.VISITE_CONFIRMATION_LIBELLE).count(), 1)
         self.assertEqual(self._touches(
-            services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+            cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
         confirmation = self._touches(
-            services.VISITE_CONFIRMATION_LIBELLE).get()
+            cadence_reperes.VISITE_CONFIRMATION_LIBELLE).get()
         self.assertEqual(confirmation.pk, confirmation_avant.pk)
         self.assertEqual(
             confirmation.due_date,
@@ -434,15 +435,15 @@ class RetourVisiteTests(VisiteCadenceBase):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur,
                 AUJOURDHUI + datetime.timedelta(days=10))
-            lointain = self._touches(services.VISITE_DEBRIEF_LIBELLE).get()
+            lointain = self._touches(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
             self.assertGreater(lointain.due_date,
                                AUJOURDHUI + datetime.timedelta(days=1))
             services.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
 
         self.assertEqual(self._touches(
-            services.VISITE_DEBRIEF_LIBELLE).count(), 1)
-        debrief = self._touches(services.VISITE_DEBRIEF_LIBELLE).get()
+            cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
+        debrief = self._touches(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
         self.assertEqual(debrief.pk, lointain.pk)
         self.assertEqual(
             debrief.due_date,
@@ -454,9 +455,9 @@ class RetourVisiteTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             proche = RelanceEtape.objects.create(
                 company=self.company, lead=self.lead, cadence='apres_devis',
-                ordre=services.VISITE_ORDRE_DEBRIEF,
+                ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
                 canal=RelanceEtape.Canal.APPEL,
-                libelle=services.VISITE_DEBRIEF_LIBELLE,
+                libelle=cadence_reperes.VISITE_DEBRIEF_LIBELLE,
                 due_date=AUJOURDHUI, due_at=MAINTENANT)
             services.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
@@ -468,7 +469,7 @@ class RetourVisiteTests(VisiteCadenceBase):
             services.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR)
         self.assertEqual(self._touches(
-            services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+            cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
 
     def test_lead_perdu_chatter_seul(self):
         self.lead.perdu = True
@@ -581,7 +582,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
             services.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, rappel='demain_matin'))
-        etape = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+        etape = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
         self.assertEqual(
             etape.due_date,
             _echeance_attendue(self.company,
@@ -593,7 +594,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
             services.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, rappel='cette_semaine'))
-        etape = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+        etape = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
         self.assertEqual(
             etape.due_date,
             _echeance_attendue(self.company,
@@ -609,7 +610,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, AUJOURDHUI)
-            pose = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+            pose = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
             self.assertEqual(
                 pose.due_date,
                 _echeance_attendue(self.company,
@@ -619,8 +620,8 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, rappel='cette_semaine'))
         self.assertEqual(
-            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 1)
-        etape = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+            self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
+        etape = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
         self.assertEqual(etape.pk, pose.pk)
         self.assertEqual(
             etape.due_date,
@@ -635,9 +636,9 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
                 qualification=dict(QUALIFICATION, devis='a_modifier',
                                    devis_details='Ajouter une batterie'))
         self.assertEqual(
-            self._debrief(services.VISITE_DEVIS_LIBELLE).count(), 1)
+            self._debrief(cadence_reperes.VISITE_DEVIS_LIBELLE).count(), 1)
         self.assertEqual(
-            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 0)
+            self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 0)
 
     def test_un_nouveau_devis_change_aussi_le_libelle(self):
         with frozen(MAINTENANT):
@@ -646,23 +647,23 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
                 qualification=dict(QUALIFICATION, devis='nouveau',
                                    devis_details='Refaire en triphasé'))
         self.assertEqual(
-            self._debrief(services.VISITE_DEVIS_LIBELLE).count(), 1)
+            self._debrief(cadence_reperes.VISITE_DEVIS_LIBELLE).count(), 1)
 
     def test_le_debrief_deja_pose_est_RENOMME_jamais_duplique(self):
         with frozen(MAINTENANT):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur,
                 AUJOURDHUI + datetime.timedelta(days=10))
-            pose = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+            pose = self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
             services.appliquer_retour_visite(
                 self.lead, self.acteur, self.RETOUR,
                 qualification=dict(QUALIFICATION, devis='a_modifier',
                                    devis_details='Ajouter une batterie'))
         self.assertEqual(
-            self._debrief(services.VISITE_DEVIS_LIBELLE).count(), 1)
+            self._debrief(cadence_reperes.VISITE_DEVIS_LIBELLE).count(), 1)
         self.assertEqual(
-            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 0)
-        renomme = self._debrief(services.VISITE_DEVIS_LIBELLE).get()
+            self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 0)
+        renomme = self._debrief(cadence_reperes.VISITE_DEVIS_LIBELLE).get()
         self.assertEqual(renomme.pk, pose.pk)
 
     def test_une_qualification_illisible_retombe_sur_le_defaut(self):
@@ -671,7 +672,7 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
                 self.lead, self.acteur, self.RETOUR,
                 qualification={'temperature': 'inconnue'})
         self.assertEqual(
-            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+            self._debrief(cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
 
 
 class RecepteurRetourVisiteTests(VisiteCadenceBase):
@@ -701,7 +702,7 @@ class RecepteurRetourVisiteTests(VisiteCadenceBase):
             body__contains='Qualification :').get()
         self.assertIn('Devis à modifier : Ajouter une batterie', note.body)
         self.assertEqual(self.lead.relance_etapes.filter(
-            libelle=services.VISITE_DEVIS_LIBELLE,
+            libelle=cadence_reperes.VISITE_DEVIS_LIBELLE,
             statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
 
     def test_notifie_le_responsable_du_lead(self):
@@ -797,12 +798,12 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             services.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
-                outcome=services.OUTCOME_VISITE_ACCEPTEE)
+                outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
 
-        filet = self._touches(services.VISITE_FILET_LIBELLE).get()
+        filet = self._touches(cadence_reperes.VISITE_FILET_LIBELLE).get()
         self.assertEqual(filet.canal, RelanceEtape.Canal.APPEL)
         self.assertEqual(filet.due_date, AUJOURDHUI)
-        self.assertEqual(filet.cadence, services.VISITE_CADENCE)
+        self.assertEqual(filet.cadence, cadence_reperes.VISITE_CADENCE)
         # AUCUN barreau du gabarit n'est né de cette issue.
         self.assertEqual(self._touches().count(), 1)
 
@@ -814,7 +815,7 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             services.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
-                outcome=services.OUTCOME_VISITE_ACCEPTEE)
+                outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.lead.refresh_from_db()
         # Relevé du 25/09/2026 : « visite acceptée » est une réponse du client
         # (``services.ISSUES_CLIENT_JOINT``) — le funnel avance d'UN cran
@@ -830,9 +831,9 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             services.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
-                outcome=services.OUTCOME_VISITE_ACCEPTEE)
+                outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(self._touches(
-            services.VISITE_FILET_LIBELLE).count(), 0)
+            cadence_reperes.VISITE_FILET_LIBELLE).count(), 0)
 
     def test_une_visite_passee_ne_compte_pas_comme_calee(self):
         VisiteTerrain.objects.create(
@@ -842,13 +843,13 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             services.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
-                outcome=services.OUTCOME_VISITE_ACCEPTEE)
+                outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertEqual(self._touches(
-            services.VISITE_FILET_LIBELLE).count(), 1)
+            cadence_reperes.VISITE_FILET_LIBELLE).count(), 1)
 
     def test_lissue_est_un_choix_declare_du_modele(self):
         self.assertIn(
-            services.OUTCOME_VISITE_ACCEPTEE,
+            cadence_reperes.OUTCOME_VISITE_ACCEPTEE,
             {code for code, _ in LeadActivity.OUTCOMES})
 
     def test_lactivite_porte_lissue(self):
@@ -856,9 +857,9 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         with frozen(MAINTENANT):
             services.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
-                outcome=services.OUTCOME_VISITE_ACCEPTEE)
+                outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE)
         self.assertTrue(self.lead.activites.filter(
-            outcome=services.OUTCOME_VISITE_ACCEPTEE).exists())
+            outcome=cadence_reperes.OUTCOME_VISITE_ACCEPTEE).exists())
 
 
 class MessageVisiteTests(VisiteCadenceBase):
@@ -891,9 +892,9 @@ class MessageVisiteTests(VisiteCadenceBase):
         self.lead.save(update_fields=['visite_prevue_le'])
         etape = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=services.VISITE_ORDRE_CONFIRMATION,
+            ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION,
             canal=RelanceEtape.Canal.WHATSAPP,
-            libelle=services.VISITE_CONFIRMATION_LIBELLE,
+            libelle=cadence_reperes.VISITE_CONFIRMATION_LIBELLE,
             template_cle='visite_confirmation',
             due_date=datetime.date(2026, 9, 21))
         rendu = services.message_pour_etape(etape, user=self.acteur)

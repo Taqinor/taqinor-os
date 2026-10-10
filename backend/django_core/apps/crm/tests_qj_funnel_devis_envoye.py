@@ -28,11 +28,11 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.services import (
-    FILET_JOINT_LIBELLE,
     avancer_stage_devis_envoye_sur_touche,
     avancer_stage_sur_reponse_devis,
     marquer_etape_relance,
 )
+from apps.crm.cadence_reperes import FILET_JOINT_LIBELLE
 
 User = get_user_model()
 

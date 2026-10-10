@@ -142,6 +142,9 @@ backend/django_core/apps/calepinage/services/versions.py::borne_de_purge
 backend/django_core/apps/calepinage/services/zones_reglementaires.py::appliquer_modele
 backend/django_core/apps/crm/cadence_config.py::etape_configuree
 backend/django_core/apps/crm/cadence_config.py::palier_actif
+backend/django_core/apps/crm/cadence_reperes.py::q_etape_moteur
+backend/django_core/apps/crm/cadence_reperes.py::q_filet
+backend/django_core/apps/crm/cadence_reperes.py::touche_traitee_en_avance
 backend/django_core/apps/crm/cadence_reponses.py::marquer_lead_ne_plus_contacter
 backend/django_core/apps/crm/cadence_reponses.py::notifier_touches_heritees
 backend/django_core/apps/crm/cadence_reponses.py::poser_etape_validite_a_renouveler
@@ -200,8 +203,6 @@ backend/django_core/apps/crm/services.py::playbooks_recommandes
 backend/django_core/apps/crm/services.py::poser_compteur_deploiements
 backend/django_core/apps/crm/services.py::poser_reveils_saisonniers
 backend/django_core/apps/crm/services.py::poser_touche_rappel_demande
-backend/django_core/apps/crm/services.py::q_etape_moteur
-backend/django_core/apps/crm/services.py::q_filet
 backend/django_core/apps/crm/services.py::reactivate_lead_on_new_touch
 backend/django_core/apps/crm/services.py::refus_touche_signal
 backend/django_core/apps/crm/services.py::reprendre_plan_apres_retour_visite
@@ -212,6 +213,5 @@ backend/django_core/apps/crm/services.py::retirer_tag_lead
 backend/django_core/apps/crm/services.py::soumission_partenaire_deja_faite
 backend/django_core/apps/crm/services.py::suspendre_plan_jusqu_apres_visite
 backend/django_core/apps/crm/services.py::texte_en_repli_de_langue
-backend/django_core/apps/crm/services.py::touche_traitee_en_avance
 backend/django_core/apps/crm/services.py::verifier_gabarit_assignable
 backend/django_core/apps/crm/services.py::visite_sans_devis

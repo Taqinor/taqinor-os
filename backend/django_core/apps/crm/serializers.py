@@ -518,7 +518,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         que l'écriture, jamais un second littéral."""
         if not self._message_eligible(obj):
             return None
-        from .services import prefixe_activite_message_ouvert
+        from .cadence_reperes import prefixe_activite_message_ouvert
         # APRF21 — lecture EN LOT : la première touche éligible de la page
         # lit UNE fois les activités « WhatsApp ouvert » de tous les leads
         # éligibles (patron ``_visite_du_lead``), carte posée en contexte.

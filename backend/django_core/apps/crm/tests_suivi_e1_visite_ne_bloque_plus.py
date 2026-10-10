@@ -34,6 +34,7 @@ from core.events import devis_sent
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS_MODIFIE, CLE_PLANIFIER, q_etape)
@@ -120,7 +121,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
                              libelle="Appel d'ouverture", cadence_depart=GEL)
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{appel.pk}/fait/',
-            {'outcome': services.OUTCOME_VISITE_ACCEPTEE}, format='json')
+            {'outcome': cadence_reperes.OUTCOME_VISITE_ACCEPTEE}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         planifier = self._ouvertes(q_etape(CLE_PLANIFIER)).get()
 
@@ -182,10 +183,10 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
         self.lead.stage = stages.QUOTE_SENT
         self.lead.save(update_fields=['stage'])
         modifie = self._touche(cadence='apres_devis',
-                               ordre=services.VISITE_ORDRE_DEBRIEF,
+                               ordre=cadence_reperes.VISITE_ORDRE_DEBRIEF,
                                canal=RelanceEtape.Canal.APPEL,
                                cle=CLE_DEVIS_MODIFIE,
-                               libelle=services.VISITE_DEVIS_LIBELLE)
+                               libelle=cadence_reperes.VISITE_DEVIS_LIBELLE)
         services._recaler_file(self.lead, self.acteur)
         self.lead.refresh_from_db(fields=['relance_date'])
         self.assertEqual(self.lead.relance_date, GEL.date())
@@ -226,7 +227,7 @@ class InitialisationAvecVisiteOuverteTests(_Base):
             self.lead, self.acteur, cadence='apres_devis', depart=GEL)
         self.assertTrue(etapes)
         self.assertNotIn(planifier.pk, [e.pk for e in etapes])
-        self.assertTrue(all(e.ordre < services.VISITE_ORDRE_CONFIRMATION
+        self.assertTrue(all(e.ordre < cadence_reperes.VISITE_ORDRE_CONFIRMATION
                             for e in etapes))
 
     def test_la_fiche_demarre_le_suivi_du_devis_envoye(self):

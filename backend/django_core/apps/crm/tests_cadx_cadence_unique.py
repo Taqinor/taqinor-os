@@ -16,6 +16,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.crm import services
+from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from authentication.models import Company
 
@@ -155,7 +156,7 @@ class FiletGeneriqueSansIssueTests(CadxBase):
 
     def test_fait_sans_issue_passe_sur_un_filet_generique(self):
         filet = _touche(self.lead, 'generique', ordre=1,
-                        libelle=services.FILET_JOINT_LIBELLE)
+                        libelle=cadence_reperes.FILET_JOINT_LIBELLE)
         reponse = self._api().post(
             f'/api/django/crm/relance-etapes/{filet.id}/fait/', {},
             format='json')
@@ -197,7 +198,7 @@ class TreadmillTests(CadxBase):
         return RelanceEtape.objects.create(
             company=self.lead.company, lead=self.lead, cadence='generique',
             ordre=1, canal=RelanceEtape.Canal.APPEL,
-            libelle=services.FILET_JOINT_LIBELLE,
+            libelle=cadence_reperes.FILET_JOINT_LIBELLE,
             due_at=timezone.now(), due_date=timezone.now().date())
 
     def test_relancer_apres_arret_cree_un_nouveau_plan(self):
@@ -226,7 +227,7 @@ class TreadmillTests(CadxBase):
             cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
         self.assertEqual(ouvertes.count(), 1)
         self.assertFalse(self.lead.relance_etapes.filter(
-            cadence='generique', libelle=services.FILET_JOINT_LIBELLE,
+            cadence='generique', libelle=cadence_reperes.FILET_JOINT_LIBELLE,
             statut=RelanceEtape.Statut.A_FAIRE).exists())
         # Le client répond → le moteur annule le plan (équivalent MRY9).
         services.arreter_cadence(self.lead, user=self.user, motif='joint',
@@ -248,15 +249,15 @@ class TreadmillTests(CadxBase):
         self.assertEqual(ouvertes.count(), 1)
         self.assertIsNone(ouvertes.get().devis_id)
         self.assertFalse(self.lead.relance_etapes.filter(
-            cadence='generique', libelle=services.FILET_JOINT_LIBELLE,
+            cadence='generique', libelle=cadence_reperes.FILET_JOINT_LIBELLE,
             statut=RelanceEtape.Statut.A_FAIRE).exists())
 
     def test_ceinture_jamais_le_meme_libelle_repose(self):
         etape = services.assurer_prochaine_etape_apres_succes(
             self.lead, self.user, avec_plan_devis=False,
-            libelle_touche_close=services.FILET_JOINT_LIBELLE)
+            libelle_touche_close=cadence_reperes.FILET_JOINT_LIBELLE)
         self.assertIsNotNone(etape)
-        self.assertEqual(etape.libelle, services.FILET_REFUS_LIBELLE)
+        self.assertEqual(etape.libelle, cadence_reperes.FILET_REFUS_LIBELLE)
 
     def test_un_plan_redemarre_fait_naitre_ses_propres_barreaux(self):
         # Génération (ancre) : les ordres consommés par l'ANCIEN plan clos ne

@@ -33,9 +33,8 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    FILET_APPEL_LIBELLE, FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE,
-    marquer_etape_relance)
+from apps.crm.services import marquer_etape_relance
+from apps.crm.cadence_reperes import FILET_APPEL_LIBELLE, FILET_JOINT_LIBELLE, FILET_REFUS_LIBELLE
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

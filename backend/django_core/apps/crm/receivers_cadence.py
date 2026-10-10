@@ -16,10 +16,8 @@ from .models import Lead, LeadActivity
 from .services import (
     CADENCES_ARRETEES_PAR_ISSUE,
     CAUSE_RDV_REFUS,
-    OUTCOME_VISITE_ACCEPTEE,
     _poser_etape_de_filet,
     _recaler_file,
-    annuler_etapes_moteur_ouvertes,
     annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
@@ -27,10 +25,14 @@ from .services import (
     arreter_cadence_du_lead_id,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
-    est_cloture_d_etape_visite,
     initialiser_plan_relance,
     phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
+)
+from .cadence_reperes import (
+    OUTCOME_VISITE_ACCEPTEE,
+    annuler_etapes_moteur_ouvertes,
+    est_cloture_d_etape_visite,
     q_visite,
     touche_close_de,
 )

@@ -31,6 +31,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_reperes
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
@@ -43,7 +44,7 @@ VISITE_LE = datetime.date(2026, 9, 28)
 
 A_FAIRE = RelanceEtape.Statut.A_FAIRE
 ANNULEE = RelanceEtape.Statut.ANNULEE
-DEVIS = services.FILET_JOINT_LIBELLE
+DEVIS = cadence_reperes.FILET_JOINT_LIBELLE
 
 
 class _Base(TestCase):
@@ -124,7 +125,7 @@ class PlanificationSansDevisTests(_Base):
         # Les deux gestes du rendez-vous sont là ; plus aucune étape devis.
         self.assertEqual(self._ouvertes(DEVIS).count(), 0)
         self.assertEqual(
-            self._ouvertes(services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+            self._ouvertes(cadence_reperes.VISITE_DEBRIEF_LIBELLE).count(), 1)
 
     def test_replanifier_n_annule_rien_de_plus_et_ne_le_redit_pas(self):
         self._etape_devis_ouverte()
@@ -177,7 +178,7 @@ class RetourSansDevisTests(_Base):
 
     def test_la_suite_du_retour_est_de_preparer_le_devis(self):
         services.appliquer_visite_planifiee(self.lead, self.acteur, VISITE_LE)
-        debrief = self._ouvertes(services.VISITE_DEBRIEF_LIBELLE).get()
+        debrief = self._ouvertes(cadence_reperes.VISITE_DEBRIEF_LIBELLE).get()
 
         etape = services.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR, auteur='Youssef')
@@ -192,8 +193,8 @@ class RetourSansDevisTests(_Base):
         self.assertEqual(etape.due_date, self._echeance_devis(1))
         self.assertEqual(self._ouvertes(DEVIS).count(), 1)
         self.assertFalse(self.lead.relance_etapes.filter(
-            libelle__in=(services.VISITE_DEBRIEF_LIBELLE,
-                         services.VISITE_DEVIS_LIBELLE),
+            libelle__in=(cadence_reperes.VISITE_DEBRIEF_LIBELLE,
+                         cadence_reperes.VISITE_DEVIS_LIBELLE),
             statut=A_FAIRE).exists())
         # Le funnel ne bouge pas : c'est une tâche, pas un devis parti.
         self.lead.refresh_from_db()
@@ -240,7 +241,7 @@ class RetourSansDevisTests(_Base):
             qualification={'devis': 'a_modifier',
                            'devis_details': 'Ajouter une batterie'})
         self.assertEqual(
-            self._ouvertes(services.VISITE_DEVIS_LIBELLE).count(), 1)
+            self._ouvertes(cadence_reperes.VISITE_DEVIS_LIBELLE).count(), 1)
         self.assertEqual(self._ouvertes(DEVIS).count(), 0)
 
     def test_avec_un_devis_envoye_le_debrief_reste_la_suite(self):
@@ -250,7 +251,7 @@ class RetourSansDevisTests(_Base):
         etape = services.appliquer_retour_visite(
             self.lead, self.acteur, self.RETOUR)
 
-        self.assertEqual(etape.libelle, services.VISITE_DEBRIEF_LIBELLE)
+        self.assertEqual(etape.libelle, cadence_reperes.VISITE_DEBRIEF_LIBELLE)
         self.assertEqual(etape.statut, A_FAIRE)
         self.assertEqual(self._ouvertes(DEVIS).count(), 0)
         note = self._notes('Visite technique terminée').get()

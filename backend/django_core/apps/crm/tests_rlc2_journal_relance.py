@@ -165,7 +165,7 @@ class CausesTests(_Base):
         self.assertIn(self.acteur.username, annulations[0]['titre'])
 
     def test_le_message_ouvert_est_une_ligne(self):
-        from apps.crm.services import journaliser_whatsapp_ouvert
+        from apps.crm.cadence_reperes import journaliser_whatsapp_ouvert
 
         message = next(
             (e for e in self.etapes
