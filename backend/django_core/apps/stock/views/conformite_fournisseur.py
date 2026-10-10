@@ -4,9 +4,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from ..openapi_helpers import (  # noqa: F401
-    INT, OBJET, P, PID, STR,
-)
+from ..openapi_helpers import INT, OBJET, P, PID, STR
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
     DocumentConformiteFournisseur, AchatsParametres,

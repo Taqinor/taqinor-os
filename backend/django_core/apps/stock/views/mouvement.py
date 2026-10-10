@@ -6,9 +6,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, DATE, INT, LISTE, P, S, STR, XLSX, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -102,7 +101,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(date__date__lte=date_max)
         return qs
 
-    @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'), P('produit', INT, False, 'Produit (id)'), P('date_min', DATE), P('date_max', DATE)], responses={XLSX: BINARY, 202: corps('MouvementsExportAsyncReponse', detail=S.CharField(), job_id=S.IntegerField(), statut=S.CharField(), status=S.CharField(), rows=S.IntegerField(), status_url=S.CharField())})
+    @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'), P('produit', INT, False, 'Produit (id)'), P('date_min', DATE), P('date_max', DATE)], responses={XLSX: BINARY, 202: corps('MouvementsExportAsyncReponse', detail=serializers.CharField(), job_id=serializers.IntegerField(), statut=serializers.CharField(), status=serializers.CharField(), rows=serializers.IntegerField(), status_url=serializers.CharField())})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):

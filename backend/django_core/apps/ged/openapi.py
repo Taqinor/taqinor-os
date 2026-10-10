@@ -13,8 +13,7 @@ from apps.records.openapi import CibleModelField
 
 from .models import LIFECYCLE_CHOICES
 from .serializers import (
-    CreerMultiSignatairesSerializer, DemandeDocumentSerializer,
-    DocumentSerializer, ExigenceDossierSerializer,
+    DemandeDocumentSerializer, DocumentSerializer, ExigenceDossierSerializer,
 )
 
 
@@ -405,5 +404,3 @@ PUBLIC_PARTAGE_CORPS = S('PartagePublicCorps', {
 PUBLIC_ERREUR = S('PublicDetail', {
     'detail': s.CharField(), 'code': s.CharField(required=False)})
 OTP_REPONSE = S('OtpReponse', {'detail': s.CharField(required=False)})
-
-CREER_MULTI_CORPS = CreerMultiSignatairesSerializer

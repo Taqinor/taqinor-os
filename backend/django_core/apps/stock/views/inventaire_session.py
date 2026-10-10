@@ -15,9 +15,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import (  # noqa: F401
-    OBJET,
-)
+from ..openapi_helpers import OBJET
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import InventaireSession

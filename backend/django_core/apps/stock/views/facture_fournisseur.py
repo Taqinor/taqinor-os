@@ -8,9 +8,8 @@ from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from rest_framework.parsers import MultiPartParser, JSONParser  # noqa: F401
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, DATE, INT, LISTE, NUM, P, PDF, S, STR, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import BINARY, DATE, INT, LISTE, NUM, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -255,8 +254,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     @extend_schema(
-        request={'multipart/form-data': corps('FactureDepuisOcrMultipart', fields=S.CharField(help_text='JSON'), file=S.FileField(required=False), confirmer_malgre_doublon=S.BooleanField(required=False)),
-                 'application/json': corps('FactureDepuisOcrJson', fields=S.DictField(), confirmer_malgre_doublon=S.BooleanField(required=False))},
+        request={'multipart/form-data': corps('FactureDepuisOcrMultipart', fields=serializers.CharField(help_text='JSON'), file=serializers.FileField(required=False), confirmer_malgre_doublon=serializers.BooleanField(required=False)),
+                 'application/json': corps('FactureDepuisOcrJson', fields=serializers.DictField(), confirmer_malgre_doublon=serializers.BooleanField(required=False))},
         responses={201: FactureFournisseurSerializer})
     @action(detail=False, methods=['post'], url_path='depuis-ocr',
             parser_classes=[MultiPartParser, JSONParser])
@@ -330,7 +329,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             montant=montant))
 
     @extend_schema(
-        request={'multipart/form-data': corps('FactureDepuisUblMultipart', file=S.FileField())},
+        request={'multipart/form-data': corps('FactureDepuisUblMultipart', file=serializers.FileField())},
         responses={201: FactureFournisseurSerializer})
     @action(detail=False, methods=['post'], url_path='depuis-ubl',
             parser_classes=[MultiPartParser, JSONParser])
@@ -382,7 +381,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             date_fin=request.query_params.get('date_fin'))
         return Response(releve)
 
-    @extend_schema(responses=corps('FactureComptesAPayer', results=FactureFournisseurSerializer(many=True), total_du=S.CharField()))
+    @extend_schema(responses=corps('FactureComptesAPayer', results=FactureFournisseurSerializer(many=True), total_du=serializers.CharField()))
     @action(detail=False, methods=['get'], url_path='comptes-a-payer')
     def comptes_a_payer(self, request):
         """Liste des factures fournisseur NON soldées (à payer ou
@@ -484,7 +483,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(facture).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('FactureResoudreExceptionCorps', commentaire=S.CharField(required=False, allow_blank=True)), responses=FactureFournisseurSerializer)
+    @extend_schema(request=corps('FactureResoudreExceptionCorps', commentaire=serializers.CharField(required=False, allow_blank=True)), responses=FactureFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='resoudre-exception')
     def resoudre_exception(self, request, pk=None):
         """XPUR10 — résout (Responsable/Admin) une facture en exception de
@@ -511,7 +510,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
     @extend_schema(methods=['GET'], responses=LISTE)
-    @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps', tranches=S.ListField(child=S.DictField())), responses={201: EcheanceFactureFournisseurSerializer(many=True)})
+    @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps', tranches=serializers.ListField(child=serializers.DictField())), responses={201: EcheanceFactureFournisseurSerializer(many=True)})
     @action(detail=True, methods=['get', 'post'], url_path='echeancier')
     def echeancier(self, request, pk=None):
         """XPUR6 — GET : liste les tranches d'échéancier de la facture.

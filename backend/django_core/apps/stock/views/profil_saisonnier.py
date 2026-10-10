@@ -14,9 +14,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.serializers import CompanyScopedRelationsMixin
-from ..openapi_helpers import (  # noqa: F401
-    BOOL, INT, P,
-)
+from ..openapi_helpers import BOOL, INT, P
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ProfilSaisonnier

@@ -16,9 +16,7 @@ from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from core.entite_scoping import EntiteScopeMixin
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, DATE, INT, LISTE, OBJET, P, PDF, S, STR, XLSX, corps,
-)
+from ..openapi_helpers import BINARY, DATE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -492,7 +490,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             status=status.HTTP_200_OK,
         )
 
-    @extend_schema(request=corps('ProduitBulkCorps', action=S.ChoiceField(choices=['set_price', 'set_warranty', 'set_category', 'set_brand']), ids=S.ListField(child=S.IntegerField()), mode=S.CharField(required=False, help_text='percent ou fixed'), valeur=S.DecimalField(max_digits=12, decimal_places=2, required=False), garantie_mois=S.IntegerField(required=False, allow_null=True), garantie_production_mois=S.IntegerField(required=False, allow_null=True), categorie_id=S.IntegerField(required=False, allow_null=True), marque=S.CharField(required=False, allow_blank=True)), responses=OBJET)
+    @extend_schema(request=corps('ProduitBulkCorps', action=serializers.ChoiceField(choices=['set_price', 'set_warranty', 'set_category', 'set_brand']), ids=serializers.ListField(child=serializers.IntegerField()), mode=serializers.CharField(required=False, help_text='percent ou fixed'), valeur=serializers.DecimalField(max_digits=12, decimal_places=2, required=False), garantie_mois=serializers.IntegerField(required=False, allow_null=True), garantie_production_mois=serializers.IntegerField(required=False, allow_null=True), categorie_id=serializers.IntegerField(required=False, allow_null=True), marque=serializers.CharField(required=False, allow_blank=True)), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def bulk(self, request):
@@ -525,7 +523,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
-    @extend_schema(request=corps('ProduitInventaireCorps', motif=S.CharField(required=False, allow_blank=True), lignes=S.ListField(child=S.DictField())), responses=OBJET)
+    @extend_schema(request=corps('ProduitInventaireCorps', motif=serializers.CharField(required=False, allow_blank=True), lignes=serializers.ListField(child=serializers.DictField())), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='inventaire',
             permission_classes=[IsAdminRole])
     def inventaire(self, request):
@@ -545,7 +543,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             motif=request.data.get('motif'), lignes=lignes)
         return Response(result)
 
-    @extend_schema(request=corps('ProduitExportXlsxCorps', ids=S.ListField(child=S.IntegerField())), responses={XLSX: BINARY})
+    @extend_schema(request=corps('ProduitExportXlsxCorps', ids=serializers.ListField(child=serializers.IntegerField())), responses={XLSX: BINARY})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
@@ -596,7 +594,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(valorisation_a_date(request.user.company, date))
 
-    @extend_schema(request=corps('ProduitDecoupeCorps', produit_source=S.IntegerField(), quantite_consommee=S.IntegerField(), produit_cible=S.IntegerField(), quantite_produite=S.IntegerField(), emplacement=S.IntegerField(required=False, allow_null=True), lot_source=S.IntegerField(required=False, allow_null=True)), responses={201: corps('ProduitDecoupeReponse', reference=S.CharField(), valeur_transferee=S.CharField(), cout_unitaire=S.CharField(), produit_source_quantite_stock=S.IntegerField(), produit_cible_quantite_stock=S.IntegerField(), numero_lot=S.CharField(allow_null=True))})
+    @extend_schema(request=corps('ProduitDecoupeCorps', produit_source=serializers.IntegerField(), quantite_consommee=serializers.IntegerField(), produit_cible=serializers.IntegerField(), quantite_produite=serializers.IntegerField(), emplacement=serializers.IntegerField(required=False, allow_null=True), lot_source=serializers.IntegerField(required=False, allow_null=True)), responses={201: corps('ProduitDecoupeReponse', reference=serializers.CharField(), valeur_transferee=serializers.CharField(), cout_unitaire=serializers.CharField(), produit_source_quantite_stock=serializers.IntegerField(), produit_cible_quantite_stock=serializers.IntegerField(), numero_lot=serializers.CharField(allow_null=True))})
     @action(detail=False, methods=['post'], url_path='decoupes',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def decoupes(self, request):
@@ -715,7 +713,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         produit = self.get_object()
         return Response(localisation_casiers(produit))
 
-    @extend_schema(responses=corps('ProduitClasseAbc', produit=S.IntegerField(), classe_abc=S.CharField(allow_null=True), depuis=S.DateField(), jusqu_a=S.DateField()))
+    @extend_schema(responses=corps('ProduitClasseAbc', produit=serializers.IntegerField(), classe_abc=serializers.CharField(allow_null=True), depuis=serializers.DateField(), jusqu_a=serializers.DateField()))
     @action(detail=True, methods=['get'], url_path='classe-abc',
             permission_classes=[IsAnyRole])
     def classe_abc(self, request, *args, **kwargs):
@@ -738,7 +736,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'jusqu_a': jusqu_a,
         })
 
-    @extend_schema(parameters=[P('quantite', INT, False, 'Quantité à prélever (défaut 1)'), P('strategie', STR, False, 'Stratégie de prélèvement', ['aucune', 'fifo', 'fefo', 'zone'])], responses=corps('ProduitPlanPicking', strategie=S.CharField(), lignes=S.ListField(child=S.DictField())))
+    @extend_schema(parameters=[P('quantite', INT, False, 'Quantité à prélever (défaut 1)'), P('strategie', STR, False, 'Stratégie de prélèvement', ['aucune', 'fifo', 'fefo', 'zone'])], responses=corps('ProduitPlanPicking', strategie=serializers.CharField(), lignes=serializers.ListField(child=serializers.DictField())))
     @action(detail=True, methods=['get'], url_path='plan-picking',
             permission_classes=[IsAnyRole])
     def plan_picking(self, request, *args, **kwargs):
@@ -766,7 +764,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 produit, quantite, strategie),
         })
 
-    @extend_schema(methods=['POST'], request={'multipart/form-data': corps('ProduitPhotoCorps', file=S.FileField())}, responses={201: corps('ProduitPhotoReponse', image_url=S.CharField())})
+    @extend_schema(methods=['POST'], request={'multipart/form-data': corps('ProduitPhotoCorps', file=serializers.FileField())}, responses={201: corps('ProduitPhotoReponse', image_url=serializers.CharField())})
     @extend_schema(methods=['DELETE'], request=None, responses={204: None})
     @action(detail=True, methods=['post', 'delete'], url_path='photo',
             parser_classes=[MultiPartParser, JSONParser])
@@ -970,7 +968,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import produits_a_reapprovisionner
         return Response(produits_a_reapprovisionner(request.user.company))
 
-    @extend_schema(request=corps('ProduitGenererBcfReapproCorps', fournisseur_id=S.IntegerField(required=False, allow_null=True)), responses={201: OBJET})
+    @extend_schema(request=corps('ProduitGenererBcfReapproCorps', fournisseur_id=serializers.IntegerField(required=False, allow_null=True)), responses={201: OBJET})
     @action(detail=False, methods=['post'], url_path='generer-bcf-reappro',
             permission_classes=[IsResponsableOrAdmin])
     def generer_bcf_reappro(self, request):
@@ -1564,7 +1562,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)
 
-    @extend_schema(request=corps('ProduitRebutCorps', quantite=S.IntegerField(), motif=S.CharField(), emplacement=S.IntegerField(required=False, allow_null=True), reference_chantier=S.CharField(required=False, allow_blank=True, allow_null=True)), responses={201: corps('ProduitRebutReponse', mouvement_id=S.IntegerField(), valeur_perdue=S.CharField())})
+    @extend_schema(request=corps('ProduitRebutCorps', quantite=serializers.IntegerField(), motif=serializers.CharField(), emplacement=serializers.IntegerField(required=False, allow_null=True), reference_chantier=serializers.CharField(required=False, allow_blank=True, allow_null=True)), responses={201: corps('ProduitRebutReponse', mouvement_id=serializers.IntegerField(), valeur_perdue=serializers.CharField())})
     @action(detail=True, methods=['post'], url_path='rebuter')
     def rebuter(self, request, *args, **kwargs):
         """XSTK10 — met au rebut une quantité de ce produit (casse/obsolète/
@@ -1637,7 +1635,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             for e in rapport
         ])
 
-    @extend_schema(request=corps('ProduitDupliquerCorps', nom=S.CharField()), responses={201: ProduitSerializer})
+    @extend_schema(request=corps('ProduitDupliquerCorps', nom=serializers.CharField()), responses={201: ProduitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):
         """QP2 — Clone ce produit sous un nouveau nom (rename → « créer un

@@ -13,7 +13,7 @@ garde et son test restent au même endroit.
 Toutes les vues sont en LECTURE : aucune n'écrit, aucune ne réserve.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
-from ..openapi_helpers import INT, P, STR  # noqa: F401
+from ..openapi_helpers import INT, P, STR
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response

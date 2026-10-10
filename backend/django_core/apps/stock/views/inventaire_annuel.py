@@ -4,9 +4,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, S, XLSX, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import BINARY, XLSX, corps
 from ..models import InventaireAnnuel
 from ..serializers import InventaireAnnuelSerializer
 from authentication.permissions import IsAdminRole
@@ -27,7 +26,7 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     parser_classes = [JSONParser]
 
-    @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=S.IntegerField()), responses={201: InventaireAnnuelSerializer})
+    @extend_schema(request=corps('InventaireAnnuelFigerCorps', exercice=serializers.IntegerField()), responses={201: InventaireAnnuelSerializer})
     @action(detail=False, methods=['post'], url_path='figer')
     def figer(self, request):
         """Fige l'inventaire de l'exercice donné (`{"exercice": 2026}`) —

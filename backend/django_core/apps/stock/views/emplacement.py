@@ -6,9 +6,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, LISTE, P, PDF, S, STR, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import BINARY, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -152,7 +151,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         from ..selectors import van_stock_a_reapprovisionner
         return Response(van_stock_a_reapprovisionner(request.user.company))
 
-    @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=S.IntegerField(), emplacement_id=S.IntegerField()), responses={200: TransfertStockSerializer, 201: TransfertStockSerializer})
+    @extend_schema(request=corps('VanStockCreerTransfertCorps', produit_id=serializers.IntegerField(), emplacement_id=serializers.IntegerField()), responses={200: TransfertStockSerializer, 201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='van-stock/creer-transfert',
             permission_classes=[IsResponsableOrAdmin])
     def van_stock_creer_transfert(self, request):

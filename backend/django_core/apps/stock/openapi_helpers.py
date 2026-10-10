@@ -17,7 +17,6 @@ DATE = OpenApiTypes.DATE
 NUM = OpenApiTypes.NUMBER
 BINARY = OpenApiTypes.BINARY
 OBJET = OpenApiTypes.OBJECT
-S = serializers
 
 # Liste d'objets libres (rapports dont la forme n'a pas de sérialiseur).
 LISTE = List[Dict[str, Any]]

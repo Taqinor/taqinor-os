@@ -10,9 +10,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from ..openapi_helpers import (  # noqa: F401
-    BINARY, BOOL, DATE, INT, OBJET, P, PDF, S, STR, corps,
-)
+from ..openapi_helpers import BINARY, BOOL, DATE, INT, OBJET, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
@@ -126,7 +124,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         vague.refresh_from_db()
         return Response(self.get_serializer(vague).data)
 
-    @extend_schema(request=corps('VagueConfigurerLiberationCorps', mode=S.CharField(), seuil_lignes=S.IntegerField(required=False, allow_null=True)), responses=VaguePickingSerializer)
+    @extend_schema(request=corps('VagueConfigurerLiberationCorps', mode=serializers.CharField(), seuil_lignes=serializers.IntegerField(required=False, allow_null=True)), responses=VaguePickingSerializer)
     @action(detail=True, methods=['post'], url_path='configurer-liberation')
     def configurer_liberation(self, request, pk=None):
         """NTWMS12 — règle de libération de la vague
@@ -144,7 +142,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         vague.refresh_from_db()
         return Response(self.get_serializer(vague).data)
 
-    @extend_schema(request=corps('VaguePreleverCorps', quantite=S.IntegerField()), responses=VaguePickingSerializer)
+    @extend_schema(request=corps('VaguePreleverCorps', quantite=serializers.IntegerField()), responses=VaguePickingSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'lignes/(?P<ligne_id>[0-9]+)/prelever')
     def prelever(self, request, pk=None, ligne_id=None):
@@ -234,7 +232,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 'Unité scellée : elle ne peut plus être modifiée.')})
         super().perform_update(serializer)
 
-    @extend_schema(request=corps('UniteAjouterLigneCorps', produit=S.IntegerField(), quantite=S.IntegerField(), lot=S.IntegerField(required=False, allow_null=True)), responses={201: UniteLogistiqueSerializer})
+    @extend_schema(request=corps('UniteAjouterLigneCorps', produit=serializers.IntegerField(), quantite=serializers.IntegerField(), lot=serializers.IntegerField(required=False, allow_null=True)), responses={201: UniteLogistiqueSerializer})
     @action(detail=True, methods=['post'], url_path='lignes')
     def ajouter_ligne(self, request, pk=None):
         """Ajoute une ligne de contenu (``{produit, quantite, lot?}``).
@@ -260,7 +258,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('UniteControlerScanCorps', produit=S.IntegerField(), quantite=S.IntegerField(required=False)), responses={201: UniteLogistiqueSerializer})
+    @extend_schema(request=corps('UniteControlerScanCorps', produit=serializers.IntegerField(), quantite=serializers.IntegerField(required=False)), responses={201: UniteLogistiqueSerializer})
     @action(detail=True, methods=['post'], url_path='controler-scan')
     def controler_scan(self, request, pk=None):
         """NTWMS11 — poste d'EMBALLAGE : contrôle bloquant d'un produit scanné.
@@ -287,7 +285,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('UniteDeplacerCorps', bin_destination=S.IntegerField()), parameters=[P('bin_destination', INT, False, 'Casier de destination (ou dans le corps)')], responses={
+    @extend_schema(request=corps('UniteDeplacerCorps', bin_destination=serializers.IntegerField()), parameters=[P('bin_destination', INT, False, 'Casier de destination (ou dans le corps)')], responses={
         200: inline_serializer('StockUniteDeplacement', {
             'unite_logistique': serializers.IntegerField(),
             'sscc': serializers.CharField(),
@@ -356,7 +354,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 f'attachment; filename="asn-{unite.sscc}.json"')
         return reponse
 
-    @extend_schema(request=corps('UniteImportAsnCorps', version=S.CharField(required=False), unite=S.DictField(required=False), lignes=S.ListField(child=S.DictField(), required=False), totaux=S.DictField(required=False)), responses={
+    @extend_schema(request=corps('UniteImportAsnCorps', version=serializers.CharField(required=False), unite=serializers.DictField(required=False), lignes=serializers.ListField(child=serializers.DictField(), required=False), totaux=serializers.DictField(required=False)), responses={
         200: inline_serializer('StockUniteAsnImport', {
             'valide': serializers.BooleanField(),
             'erreurs': serializers.ListField(child=serializers.CharField()),
@@ -627,7 +625,7 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             'a_une_etiquette': bool(expedition.etiquette_pdf_key),
         })
 
-    @extend_schema(parameters=[P('unite_logistique', INT, True, 'Unité logistique (id)'), P('destination', STR)], responses=corps('ExpeditionTarifsReponse', unite_logistique=S.IntegerField(), offres=S.ListField(child=S.DictField())))
+    @extend_schema(parameters=[P('unite_logistique', INT, True, 'Unité logistique (id)'), P('destination', STR)], responses=corps('ExpeditionTarifsReponse', unite_logistique=serializers.IntegerField(), offres=serializers.ListField(child=serializers.DictField())))
     @action(detail=False, methods=['get'], url_path='tarifs')
     def tarifs(self, request):
         """NTWMS10 — comparatif coût/délai pour une unité logistique
@@ -834,7 +832,7 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         blocage.refresh_from_db()
         return Response(self.get_serializer(blocage).data)
 
-    @extend_schema(request=corps('QuarantaineLeverCasierCorps', bin=S.IntegerField()), responses={
+    @extend_schema(request=corps('QuarantaineLeverCasierCorps', bin=serializers.IntegerField()), responses={
         200: inline_serializer('StockQuarantaineLeveeCasier', {
             'bin': serializers.IntegerField(),
             'blocages_leves': serializers.IntegerField(),
@@ -930,7 +928,7 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         from ..services import verifier_capacite_plan
         return Response(verifier_capacite_plan(self.get_object()))
 
-    @extend_schema(request=corps('PlanChargementAjoutCorps', unite_logistique=S.IntegerField()), responses={
+    @extend_schema(request=corps('PlanChargementAjoutCorps', unite_logistique=serializers.IntegerField()), responses={
         201: inline_serializer('StockPlanChargementAjout', {
             'plan': serializers.IntegerField(),
             'nb_unites': serializers.IntegerField(),
@@ -1083,7 +1081,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         retour.refresh_from_db()
         return Response(self.get_serializer(retour).data)
 
-    @extend_schema(request=corps('RetourClientInspecterCorps', lignes=S.ListField(child=S.DictField())), responses=RetourClientSerializer)
+    @extend_schema(request=corps('RetourClientInspecterCorps', lignes=serializers.ListField(child=serializers.DictField())), responses=RetourClientSerializer)
     @action(detail=True, methods=['post'], url_path='inspecter')
     def inspecter(self, request, pk=None):
         """Acte le contrôle qualité : ``{lignes: [{ligne, etat_constate,

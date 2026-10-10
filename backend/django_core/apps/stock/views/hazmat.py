@@ -7,9 +7,7 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
-from ..openapi_helpers import (  # noqa: F401
-    INT, P, STR,
-)
+from ..openapi_helpers import INT, P, STR
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import CompatibiliteHazmatCasier, Produit

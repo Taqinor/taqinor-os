@@ -19,9 +19,7 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin
-from ..openapi_helpers import (  # noqa: F401
-    INT, P, S, STR, corps,
-)
+from ..openapi_helpers import INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import (
@@ -196,7 +194,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(depot).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=S.IntegerField(), date_declaration=S.DateField(required=False, allow_null=True), note=S.CharField(required=False, allow_blank=True)),
+    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=serializers.IntegerField(), date_declaration=serializers.DateField(required=False, allow_null=True), note=serializers.CharField(required=False, allow_blank=True)),
                    responses={201: DeclarationFactureeSerializer})
     @action(detail=True, methods=['post'], url_path='declarer-consommation',
             permission_classes=[IsResponsableOrAdmin])

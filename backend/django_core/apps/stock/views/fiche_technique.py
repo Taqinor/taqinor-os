@@ -2,9 +2,8 @@ from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import (  # noqa: F401
-    INT, OBJET, P, S, corps,
-)
+from rest_framework import serializers
+from ..openapi_helpers import INT, OBJET, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..importers.fiche_pan_ond import FichierIllisible, champs_a_ecrire, parse_pan_ond_bytes
 from ..models import FicheTechnique, Produit
@@ -48,7 +47,7 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(produit_id=produit_id)
         return qs
 
-    @extend_schema(request={'multipart/form-data': corps('FicheImporterDatasheetCorps', produit=S.IntegerField(), file=S.FileField(), confirmer=S.BooleanField(required=False))}, responses=OBJET)
+    @extend_schema(request={'multipart/form-data': corps('FicheImporterDatasheetCorps', produit=serializers.IntegerField(), file=serializers.FileField(), confirmer=serializers.BooleanField(required=False))}, responses=OBJET)
     @action(detail=False, methods=['post'], url_path='importer-datasheet')
     def importer_datasheet(self, request):
         """CAL117 — import OPTIONNEL d'une fiche constructeur .PAN/.OND.
