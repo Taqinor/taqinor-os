@@ -119,12 +119,20 @@ def _conditions_publiques(data, devis=None):
     l'inverse. Lecture seule (règle #4) ; rien n'est lu hors du ``data`` de CE
     devis (multi-tenant). ``devis`` reste accepté pour la signature d'appel :
     la correspondance échéancier → créneaux est déjà faite dans ``data``.
+
+    APDF19 (C-APDF-005) — les puces sont celles de
+    ``generate_devis_premium.cgv_imprimees(data)`` (APDF12), LA source que le
+    PDF imprime : un devis C&I à variante sert SA variante (gelée à l'envoi
+    ou vive en brouillon, marqueurs {echeancier}/{retenue} substitués par le
+    builder) — plus les puces résidentielles par défaut, plus un
+    « Echeancier {echeancier} » brut ; sinon les puces société gelées ou
+    vives, comme avant (``cgv_bullets_remplies`` en est un détail).
     """
     import html as _html
     try:
-        from ..quote_engine.generate_devis_premium import cgv_bullets_remplies
+        from ..quote_engine.generate_devis_premium import cgv_imprimees
         out = [txt for txt in (_html.unescape(str(puce)).strip()
-                               for puce in cgv_bullets_remplies(data or {}))
+                               for puce in cgv_imprimees(data or {})["puces"])
                if txt]
         return out or None
     except Exception:  # noqa: BLE001 — best-effort

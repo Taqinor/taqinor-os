@@ -387,7 +387,9 @@ class UneSeuleFonctionDeRemplissageTests(TestCase):
             source_du_symbole('_conditions_publiques', groupe)).body[0]
         appels = self._appels(fonction)
         self.assertNotIn('format', appels)
-        self.assertIn('cgv_bullets_remplies', appels)
+        # APDF19 — la page publique lit LA source du PDF, ``cgv_imprimees``
+        # (APDF12), dont ``cgv_bullets_remplies`` est un détail.
+        self.assertIn('cgv_imprimees', appels)
         definies = {n.name for chemin in groupe
                     for n in ast.walk(ast.parse(
                         chemin.read_text(encoding='utf-8')))
