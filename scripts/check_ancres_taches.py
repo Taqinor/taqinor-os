@@ -15,6 +15,7 @@ Tache v2 : le nombre d ancres derivees est imprime, jamais bloque.
 """
 import argparse
 import os
+import ast
 import re
 import subprocess
 import sys
@@ -42,6 +43,28 @@ def fichier_de(rel: str, racine: Path) -> str:
     return trouves[0] if len(trouves) == 1 else rel
 
 
+def _methode_existe(path: Path, symbole: str) -> bool:
+    """`module::test_x` sans sa classe : vrai si une fonction/méthode porte ce nom (forme courte)."""
+    if "." in symbole or not path.is_file():
+        return False
+    try:
+        arbre = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except SyntaxError:
+        return False
+    return any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == symbole
+               for n in ast.walk(arbre))
+
+
+#: La clause « Test rouge d'abord » nomme le test que la tâche CRÉERA (règle (b) : dans le
+#: module de test existant) : ses ancres ne sont jamais résolues.
+TEST_ROUGE = re.compile(r"Test rouge d.abord\s*:(.*?)(?=Preuve en direct|Hors p[ée]rim[èe]tre|Test-du-test|"
+                        r"Source r[ée]elle|Appelants\s*:|\(gen |Files\s*:|$)", re.S)
+
+
+def _hors_test_rouge(texte: str) -> str:
+    return TEST_ROUGE.sub("Test rouge d'abord : (test à créer)", texte)
+
+
 def verifier_ancre(rel: str, symbole: str, racine) -> str:
     """'' si l'ancre resout, sinon la raison (francais)."""
     racine = Path(racine)
@@ -50,7 +73,7 @@ def verifier_ancre(rel: str, symbole: str, racine) -> str:
         try:
             at.resoudre(f"{rel}::{symbole}", racine)
         except SystemExit as exc:
-            return str(exc)
+            return "" if _methode_existe(racine / rel, symbole) else str(exc)
         return ""
     path = racine / rel
     if not path.is_file():
@@ -62,7 +85,7 @@ def verifier_ancre(rel: str, symbole: str, racine) -> str:
 
 def analyser_tache(tache, v2: bool, racine) -> tuple:
     """(echecs [(id, ancre, raison)], nb_ancres)."""
-    ancres = ANCRE.findall(tache.texte)
+    ancres = ANCRE.findall(_hors_test_rouge(tache.texte))
     if v2:
         return [], len(ancres)
     echecs = []

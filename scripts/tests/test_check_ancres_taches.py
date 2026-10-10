@@ -78,6 +78,20 @@ class AncresTests(unittest.TestCase):
         self.assertEqual(self.depot.echecs("AAA4 — `mod.py::Foo.bar` (l.2) et `mod.py:3`"), [])
         self.assertEqual(self.depot.echecs("AAA5 — `mod.py::haut`"), [])
 
+    def test_methode_citee_sans_sa_classe_resout_si_elle_existe(self):
+        # Revue du lot audit_deploy (ACRM68) : `module::test_x` vise une methode de classe de test.
+        self.assertEqual(self.depot.echecs("AAA6 — `mod.py::bar` existe"), [])
+        absent = self.depot.echecs("AAA7 — `mod.py::inexistante` n'existe pas")
+        self.assertEqual([e[1] for e in absent], ["mod.py::inexistante"])
+
+    def test_test_rouge_d_abord_nomme_un_test_a_creer(self):
+        # La clause « Test rouge d'abord » nomme le test que la tache CREERA : jamais resolu
+        # (regle (b) : il va dans le module de test EXISTANT, ou il n'existait pas encore).
+        texte = ("AAA8 — Assertions existantes : `mod.py::haut` reste vert. Test rouge d'abord : "
+                 "`mod.py::Foo.test_a_creer` (classe ajoutee), rouge avant. "
+                 "Preuve en direct : n/a. Hors perimetre : `mod.py::autre_absente`.")
+        self.assertEqual([e[1] for e in self.depot.echecs(texte)], ["mod.py::autre_absente"])
+
     def test_citation_entre_backticks_de_la_regle_nest_pas_une_ancre(self):
         self.assertEqual(self.depot.echecs("AAA9 — une ancre `(l.123)` ou `chemin:123` est citee"), [])
 
