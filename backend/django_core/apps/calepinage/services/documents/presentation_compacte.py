@@ -35,8 +35,7 @@ from ..rapport.production import mention_borne_haute, texte_non_publie
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_PAS_UN_DEVIS', 'MOTIF_SANS_RESULTAT',
-    'totaux_de_pose', 'construire_presentation',
-    'html_de_presentation', 'html_de_presentation_compacte',
+    'html_de_presentation_compacte',
     'rendre_presentation_compacte',
 ]
 
@@ -70,7 +69,7 @@ _LIBELLE_MOIS = {
 _LIRE = object()
 
 
-def totaux_de_pose(roof_layout, resultat=None):
+def _totaux_de_pose(roof_layout, resultat=None):
     """Modules, kWc et pans — ACAL259 : LUS par ``mesures.mesures_du_document``
     (LA lecture du module), AUCUNE simulation requise. Le kWc est celui de la
     FICHE du module de chaque pan (bloc ``pose`` du résultat servi, sinon la
@@ -87,9 +86,9 @@ def totaux_de_pose(roof_layout, resultat=None):
     }
 
 
-def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
-                            svg_planche=None, styles=None, provenance=None,
-                            etat=None):
+def _construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
+                             svg_planche=None, styles=None, provenance=None,
+                             etat=None):
     """L'agrégat prêt à mettre en page.
 
     Args:
@@ -153,7 +152,7 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
     return {
         'code': CODE_DOCUMENT,
         # ACAL259 — le résultat SERVI porte le bloc ``pose`` (fiche du stock).
-        'totaux': totaux_de_pose(roof_layout, resultat),
+        'totaux': _totaux_de_pose(roof_layout, resultat),
         'svg_planche': svg_planche or '',
         'resultat': resultat,
         'motif_perime': motif_perime,
@@ -251,7 +250,7 @@ CSS_PRESENTATION = (
 )
 
 
-def html_de_presentation(document):
+def _html_de_presentation(document):
     """Le HTML AUTONOME, habillé du gabarit société — SANS garde (deux pages
     seulement)."""
     from .gabarit_document import document_html
@@ -268,8 +267,8 @@ def html_de_presentation_compacte(calepinage, *, langue=None, **options):
     """L'UNIQUE mise en page — le PDF et l'aperçu (CALX323) la partagent.
     ``langue`` est accepté pour la forme commune : cette pièce n'est servie
     qu'en français."""
-    return html_de_presentation(construire_presentation(calepinage,
-                                                        **options))
+    return _html_de_presentation(_construire_presentation(calepinage,
+                                                          **options))
 
 
 def rendre_presentation_compacte(calepinage, *, company=None, **options):

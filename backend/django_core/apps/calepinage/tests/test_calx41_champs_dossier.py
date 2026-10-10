@@ -15,7 +15,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.permissions import PeutGererCalepinage
 from apps.calepinage.services.reglementaire import (
-    ChampsDossierInvalides, avancement_du_dossier, composer_dossier,
+    ChampsDossierInvalides, _avancement_du_dossier, _composer_dossier,
     enregistrer_champs, _valider_champs_saisis,
 )
 from apps.calepinage.views.calepinages import CalepinageViewSet
@@ -193,8 +193,8 @@ class AvancementTest(SimpleTestCase):
     """Un champ enregistré quitte « à compléter » — et l'avancement le voit."""
 
     def test_le_champ_saisi_change_de_liste(self):
-        avant = composer_dossier(_entree(), {})
-        apres = composer_dossier(
+        avant = _composer_dossier(_entree(), {})
+        apres = _composer_dossier(
             _entree({'reference_dossier': 'DP-2026-01'}), {})
 
         self.assertEqual([c['code'] for c in avant['champs_a_completer']],
@@ -211,8 +211,8 @@ class AvancementTest(SimpleTestCase):
                          'Référence du dossier')
 
     def test_l_avancement_tient_compte_des_champs_saisis(self):
-        avant = avancement_du_dossier(composer_dossier(_entree(), {}))
-        apres = avancement_du_dossier(composer_dossier(
+        avant = _avancement_du_dossier(_composer_dossier(_entree(), {}))
+        apres = _avancement_du_dossier(_composer_dossier(
             _entree({'reference_dossier': 'DP-2026-01'}), {}))
 
         self.assertEqual(avant['champs_a_completer'], 3)
@@ -221,7 +221,7 @@ class AvancementTest(SimpleTestCase):
         self.assertEqual(apres['champs_saisis'], 1)
 
     def test_les_deux_champs_obligatoires_saisis_rendent_generable(self):
-        dossier = composer_dossier(_entree({
+        dossier = _composer_dossier(_entree({
             'reference_dossier': 'DP-2026-01', 'puissance_declaree': 12.5,
         }), {})
 
@@ -253,7 +253,7 @@ class VueTest(SimpleTestCase):
     """Chaque refus sort SOUS le champ qu'il nomme, jamais en vrac."""
 
     def _compose(self):
-        return composer_dossier(_entree(), {})
+        return _composer_dossier(_entree(), {})
 
     def test_aucun_dossier_designe_le_dit_sous_le_champ_dossier(self):
         with mock.patch(MODULE + '.dossiers_du_calepinage',
@@ -281,11 +281,11 @@ class VueEnregistrementTest(TestCase):
     """ACAL240 — la saisie acceptée s'écrit en base (sous verrou)."""
 
     def _compose(self):
-        return composer_dossier(_entree(), {})
+        return _composer_dossier(_entree(), {})
 
     def test_la_saisie_acceptee_rend_l_agregat_recompose(self):
         dossier = _dossier_reel()
-        agregat_apres = _agregat([composer_dossier(
+        agregat_apres = _agregat([_composer_dossier(
             _entree({'reference_dossier': 'DP-2026-01'}), {})])
         with mock.patch(MODULE + '.dossiers_du_calepinage',
                         side_effect=[_agregat([self._compose()]),

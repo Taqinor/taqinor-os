@@ -79,7 +79,7 @@ class ConstruireSansConceptionTest(unittest.TestCase):
             calepinage = FauxCalepinage(roof_layout=vide)
             with self.assertRaises(rapport_ombrage.RapportOmbrageRefuse) \
                     as capture:
-                rapport_ombrage.construire_rapport_ombrage(calepinage)
+                rapport_ombrage._construire_rapport_ombrage(calepinage)
             self.assertEqual(capture.exception.champ, 'roof_layout')
 
 
@@ -91,7 +91,7 @@ class ConstruireSansMatriceTest(unittest.TestCase):
                 roof_layout={'shading12x24': matrice_invalide, 'zones': []})
             with self.assertRaises(rapport_ombrage.RapportOmbrageRefuse) \
                     as capture:
-                rapport_ombrage.construire_rapport_ombrage(calepinage)
+                rapport_ombrage._construire_rapport_ombrage(calepinage)
             self.assertEqual(capture.exception.champ, 'shading12x24')
             self.assertEqual(str(capture.exception),
                              rapport_ombrage.MOTIF_SANS_MATRICE)
@@ -123,7 +123,7 @@ class DeuxPansDeuxBlocsTest(unittest.TestCase):
                 {'pan': 'PAN-A', 'tof': 0.97, 'tsrf': 0.94},
                 {'pan': 'PAN-B', 'tof': 0.9, 'tsrf': 0.85},
             ])
-        rapport = rapport_ombrage.construire_rapport_ombrage(
+        rapport = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
 
         self.assertEqual(len(rapport['blocs']), 2)
@@ -156,7 +156,7 @@ class DeuxPansDeuxBlocsTest(unittest.TestCase):
             ombrage_par_pan=[ligne_ombrage],
             production_par_pan=[{'pan': 'PAN-A', 'tof': None,
                                  'tsrf': None}])
-        rapport = rapport_ombrage.construire_rapport_ombrage(
+        rapport = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
         bloc = rapport['blocs'][0]
         self.assertIsNone(bloc['tof'])
@@ -189,7 +189,7 @@ class MethodesIncompatiblesTest(unittest.TestCase):
             ])
         with self.assertRaises(rapport_ombrage.RapportOmbrageRefuse) \
                 as capture:
-            rapport_ombrage.construire_rapport_ombrage(
+            rapport_ombrage._construire_rapport_ombrage(
                 calepinage, resultat=resultat, etat={})
         self.assertEqual(capture.exception.champ, 'methode_acces')
         message = str(capture.exception)
@@ -210,7 +210,7 @@ class EnTeteNommeLaMethodeTest(unittest.TestCase):
             [PANS_DEUX[0]],
             ombrage_par_pan=[ligne_ombrage],
             production_par_pan=[{'pan': 'PAN-A', 'tof': 0.9, 'tsrf': 0.8}])
-        rapport = rapport_ombrage.construire_rapport_ombrage(
+        rapport = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
         html = rapport_ombrage._table_blocs(rapport['blocs'], 'fr')
         self.assertIn(
@@ -224,7 +224,7 @@ class AucunMontantTest(unittest.TestCase):
         resultat = _resultat(PANS_DEUX)
         resultat['prix_achat'] = 100  # clé de coût INTERDITE (D5)
         with self.assertRaises(rapport_ombrage.RapportOmbrageRefuse):
-            rapport_ombrage.construire_rapport_ombrage(
+            rapport_ombrage._construire_rapport_ombrage(
                 calepinage, resultat=resultat, etat={})
         # Le pare-feu lève d'abord RapportRefuse : confirmons qu'il est
         # bien RÉELLEMENT levé ici (pas un texte inventé), puis TRADUIT.
@@ -251,7 +251,7 @@ class ChaineLaPlusFaibleTest(unittest.TestCase):
             ombrage_par_pan=[ligne_ombrage],
             production_par_pan=[{'pan': 'PAN-A', 'tof': 0.9, 'tsrf': 0.8}],
             electrique={'chaine_la_plus_faible': chaine})
-        rapport = rapport_ombrage.construire_rapport_ombrage(
+        rapport = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
         self.assertEqual(rapport['blocs'][0]['chaine_la_plus_faible'],
                          chaine)
@@ -262,7 +262,7 @@ class AvertissementSansCourseDuSoleilTest(unittest.TestCase):
         roof_layout = {'shading12x24': MATRICE_12X24, 'zones': []}
         calepinage = FauxCalepinage(roof_layout=roof_layout)
         resultat = _resultat(PANS_DEUX)
-        rapport = rapport_ombrage.construire_rapport_ombrage(
+        rapport = rapport_ombrage._construire_rapport_ombrage(
             calepinage, resultat=resultat, etat={})
         self.assertIn(rapport_ombrage.AVERTISSEMENT_SANS_COURSE_SOLEIL,
                       rapport['avertissements'])
@@ -340,7 +340,7 @@ class RapportOmbrageApiTest(BaseApiCalepinage):
              + base64.b64encode(tampon.getvalue()).decode('ascii')},
             format='json')
         self.assertEqual(depot.status_code, 201, depot.data)
-        html = rapport_ombrage.html_du_rapport_ombrage(self.calepinage)
+        html = rapport_ombrage._html_du_rapport_ombrage(self.calepinage)
         self.assertIn('data:image/png;base64,', html)
         self.assertIn('déposée le', html)
         reponse = self.api.get(self._url(self.calepinage))

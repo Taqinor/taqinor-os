@@ -17,7 +17,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.electrique import (
     REGLE_CHAINE_MODULE, REGLE_CHAINE_OPTIMISEUR, evaluation_electrique,
-    regle_de_chaine,
+    _regle_de_chaine,
 )
 
 MODULE = {
@@ -64,7 +64,7 @@ class RegleDeChaineTest(SimpleTestCase):
     """Sans optimiseur, RIEN ne change ; avec, la règle est substituée."""
 
     def test_sans_optimiseur_la_regle_reste_celle_du_module(self):
-        regle = regle_de_chaine(MODULE, ONDULEUR, None)
+        regle = _regle_de_chaine(MODULE, ONDULEUR, None)
 
         self.assertEqual(regle['regle'], REGLE_CHAINE_MODULE)
         self.assertIn('Voc À FROID du module', regle['libelle'])
@@ -72,8 +72,8 @@ class RegleDeChaineTest(SimpleTestCase):
         self.assertEqual(regle['bornes_non_verifiables'], [])
 
     def test_avec_optimiseur_la_borne_voc_module_ne_ferme_plus_la_chaine(self):
-        regle = regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR,
-                                designation='Optimiseur d essai')
+        regle = _regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR,
+                                 designation='Optimiseur d essai')
 
         self.assertEqual(regle['regle'], REGLE_CHAINE_OPTIMISEUR)
         self.assertIn('RÉGULÉE', regle['libelle'])
@@ -81,8 +81,8 @@ class RegleDeChaineTest(SimpleTestCase):
         self.assertIn('Optimiseur d essai', regle['source'])
 
     def test_les_bornes_d_entree_de_l_optimiseur_sont_verifiees(self):
-        regle = regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR,
-                                designation='Optimiseur d essai')
+        regle = _regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR,
+                                 designation='Optimiseur d essai')
         codes = {v['code']: v for v in regle['verdicts_entree']}
 
         self.assertEqual(sorted(codes), ['optimiseur_i_in_max_a',
@@ -94,8 +94,8 @@ class RegleDeChaineTest(SimpleTestCase):
         self.assertTrue(codes['optimiseur_i_in_max_a']['conforme'])
 
     def test_un_module_trop_puissant_pour_l_optimiseur_est_signale(self):
-        regle = regle_de_chaine(MODULE, ONDULEUR,
-                                dict(OPTIMISEUR, pmax_in_w=600.0))
+        regle = _regle_de_chaine(MODULE, ONDULEUR,
+                                 dict(OPTIMISEUR, pmax_in_w=600.0))
         codes = {v['code']: v for v in regle['verdicts_entree']}
 
         self.assertFalse(codes['optimiseur_pmax_in_w']['conforme'])
@@ -105,14 +105,14 @@ class RegleDeChaineTest(SimpleTestCase):
         incomplete = {cle: valeur for cle, valeur in OPTIMISEUR.items()
                       if cle != 'i_in_max_a'}
 
-        regle = regle_de_chaine(MODULE, ONDULEUR, incomplete)
+        regle = _regle_de_chaine(MODULE, ONDULEUR, incomplete)
         codes = {v['code']: v for v in regle['verdicts_entree']}
 
         self.assertIsNone(codes['optimiseur_i_in_max_a']['conforme'])
         self.assertIsNone(codes['optimiseur_i_in_max_a']['source'])
 
     def test_la_longueur_de_chaine_reste_non_verifiable_et_le_dit(self):
-        regle = regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR)
+        regle = _regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR)
 
         self.assertEqual(len(regle['bornes_non_verifiables']), 1)
         self.assertIn('repli PRUDENT', regle['bornes_non_verifiables'][0])

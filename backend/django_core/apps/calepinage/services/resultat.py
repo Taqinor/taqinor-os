@@ -25,7 +25,8 @@ version (``services/layout.py``) n'est pas un écrivain de clé : il reste à pa
 """
 from __future__ import annotations
 
-__all__ = ['CLES_SAISIES', 'CLES_SORTIES', 'modifier_resultat']
+__all__ = ['CLES_SAISIES', 'CLES_SORTIES', 'appliquer_en_memoire',
+           'modifier_resultat']
 
 #: Les clés de ``resultat`` qui portent une SAISIE (ou un geste) de
 #: l'utilisateur — par opposition aux sorties du moteur, recalculables.
@@ -52,6 +53,23 @@ def _est_un_modele(calepinage):
     return isinstance(calepinage, models.Model)
 
 
+def appliquer_en_memoire(calepinage, modifier):
+    """``modifier`` appliqué à une COPIE de ``calepinage.resultat``, SANS base.
+
+    La copie remplace ``calepinage.resultat`` EN MÉMOIRE (rien n'est lu en
+    base, rien n'est enregistré) ; la valeur de ``modifier`` est rendue telle
+    quelle. C'est le chemin « sans ``pk`` » de :func:`modifier_resultat`, et le
+    repli d'un journal qui ne doit jamais casser un geste quand l'écriture sous
+    verrou échoue (``electrique._journaliser_ecart_longueur``) : l'affectation
+    de ``resultat`` reste ainsi dans le SEUL module écrivain (ACAL321).
+    """
+    resultat = getattr(calepinage, 'resultat', None)
+    resultat = dict(resultat) if isinstance(resultat, dict) else {}
+    valeur = modifier(resultat)
+    calepinage.resultat = resultat
+    return valeur
+
+
 def modifier_resultat(calepinage, modifier):
     """Applique ``modifier`` au ``resultat`` FRAIS de ``calepinage``.
 
@@ -71,10 +89,7 @@ def modifier_resultat(calepinage, modifier):
     """
     pk = getattr(calepinage, 'pk', None)
     if not pk or not _est_un_modele(calepinage):
-        resultat = getattr(calepinage, 'resultat', None)
-        resultat = dict(resultat) if isinstance(resultat, dict) else {}
-        valeur = modifier(resultat)
-        calepinage.resultat = resultat
+        valeur = appliquer_en_memoire(calepinage, modifier)
         if pk:
             calepinage.save(update_fields=['resultat', 'updated_at'])
         return valeur

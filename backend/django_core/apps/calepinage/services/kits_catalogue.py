@@ -23,9 +23,9 @@ sur la section ``presets``) ; il n'y a donc toujours qu'un chemin d'écriture.
 
 ATTENTION, UNE FOIS POUR TOUTES : ``enregistrer_parametres`` remplace la
 SECTION fournie, pas la clé. Un écrivain de la section ``presets`` doit donc
-RELIRE la section et n'en changer que sa clé — c'est ce que fait
-``services/presets._section`` pour ``jeux``, et ce que tout futur écrivain de
-``kits`` doit faire. Écrire ``{'presets': {'kits': …}}`` seul effacerait les
+RELIRE la section et n'en changer que sa clé — c'est ce que fait l'écran
+Bibliothèque (il renvoie la section ``presets`` entière), et ce que tout futur
+écrivain serveur de ``jeux`` ou de ``kits`` doit faire. Écrire ``{'presets': {'kits': …}}`` seul effacerait les
 jeux maison, et l'inverse effacerait le catalogue.
 
 LA FORME PUBLIÉE NE BOUGE PAS D'UN CHAMP

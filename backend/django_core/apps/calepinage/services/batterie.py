@@ -28,10 +28,10 @@ la puissance publiée.
 CE QUI N'EST JAMAIS DEVINÉ
 --------------------------
 Le seuil d'effacement et les heures de charge/décharge sont **SAISIS** ; aucun
-tarif n'entre ici (le module ne connaît aucun prix). Les tranches horaires de
-référence du dépôt sont OFFERTES (``tranches_horaires()``) pour que l'écran
-propose « charger en creuse » — mais rien ne s'applique tant que
-l'utilisateur n'a pas choisi.
+tarif n'entre ici (le module ne connaît aucun prix). Aucune grille horaire de
+référence du dépôt n'est relue en repli : les heures viennent de la saisie, ou
+de la grille SOCIÉTÉ (``parametres.tou_heures``) pour ``heures_tarif`` — rien
+ne s'applique tant que l'utilisateur n'a pas choisi.
 
 Module PUR côté calcul ; la fiche est lue par le SÉLECTEUR du stock, jamais par
 ses modèles.
@@ -87,7 +87,7 @@ __all__ = ['CHAMP_CYCLES_FICHE', 'CHAMP_EOL_FICHE', 'CHAMP_TOU_HEURES',
            'capacite_batterie_par_annee', 'heures_tarif_societe',
            'reserve_depuis_appareils',
            'simuler_batterie', 'simuler_groupes', 'specs_batterie',
-           'tranches_horaires', 'vieillissement_batterie']
+           'vieillissement_batterie']
 
 #: Les stratégies simulables. ``autoconso`` et ``backup`` existaient (côté
 #: dimensionnement) ; ``peak_shaving`` et ``decalage`` sont l'apport de
@@ -112,18 +112,6 @@ class StrategieInvalide(ValueError):
         super().__init__(message)
         self.champ = champ
         self.motif = message
-
-
-def tranches_horaires():
-    """Les tranches horaires de RÉFÉRENCE du dépôt (creuse/pleine/pointe).
-
-    Relues dans ``apps.ventes.solar_design`` — jamais recopiées. Elles sont
-    OFFERTES à l'écran pour proposer des heures ; elles ne s'appliquent pas
-    toutes seules : ``decalage`` n'agit que sur des heures SAISIES.
-    """
-    from apps.ventes.solar_finance import DEFAULT_HOUR_TRANCHES
-
-    return list(DEFAULT_HOUR_TRANCHES)
 
 
 def _hypotheses_de_reference():
@@ -694,8 +682,7 @@ def _tranches_par_pas(grille, longueur, heure_de_depart, mois):
     La tranche d'une heure se résout par ``tranches_du_mois`` (CALX275 :
     saison saisie, sinon ``annuel``, sinon ``None`` avec son motif — jamais
     « pleine » supposée). Import LOCAL de ``apps.ventes.solar_design`` :
-    aucun sélecteur de ``ventes`` n'expose cette résolution, et ce module
-    relit déjà ce fichier de la même façon (:func:`tranches_horaires`).
+    aucun sélecteur de ``ventes`` n'expose cette résolution.
     """
     from apps.ventes.solar_finance import tranches_du_mois
 

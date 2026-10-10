@@ -24,7 +24,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.services.degagements import (
     DEGAGEMENT_ATELIER_DEFAUT_M, MENTION_NON_SOURCEE, RETRAIT_ATELIER_M,
     SECTION, _degagement_du_type, normaliser_section_degagements,
-    _retrait_perimetre, types_admis,
+    _retrait_perimetre, _types_admis,
 )
 from apps.calepinage.services.parametres import ReglageInvalide
 from apps.calepinage.services.traduction import entree_depuis_layout
@@ -54,12 +54,12 @@ class SansReglageRienNeChange(SimpleTestCase):
         self.assertEqual(_retrait_perimetre({})[0], RETRAIT_ATELIER_M)
 
     def test_la_phrase_annonce_une_valeur_non_sourcee(self):
-        for nom in types_admis():
+        for nom in _types_admis():
             self.assertIn(MENTION_NON_SOURCEE, _degagement_du_type(nom, {})[1])
         self.assertIn(MENTION_NON_SOURCEE, _retrait_perimetre({})[1])
 
     def test_aucune_phrase_ne_presente_la_valeur_comme_une_norme(self):
-        for nom in types_admis():
+        for nom in _types_admis():
             phrase = _degagement_du_type(nom, {})[1].lower()
             self.assertNotIn('norme', phrase)
             self.assertNotIn('réglementaire', phrase)

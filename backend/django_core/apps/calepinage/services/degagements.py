@@ -109,13 +109,13 @@ _PAYS_ALLEE = re.compile(r'^[a-z]{2}$')
 __all__ = [
     'SECTION', 'DEGAGEMENTS_ATELIER', 'DEGAGEMENT_ATELIER_DEFAUT_M',
     'RETRAIT_ATELIER_M', 'CLE_RETRAIT', 'CLE_ALLEE', 'CLE_SOURCE',
-    'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION', 'types_admis',
+    'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION',
     '_degagement_du_type', '_retrait_perimetre', 'allee_technique',
     '_largeur_allee_circulation', 'normaliser_section_degagements',
 ]
 
 
-def types_admis():
+def _types_admis():
     """Les types d'obstacle de l'atelier — jamais une liste recopiée."""
     return tuple(nom for nom, _valeur, _libelle in DEGAGEMENTS_ATELIER)
 
@@ -190,7 +190,7 @@ def normaliser_section_degagements(valeur):
     if not valeur:
         return {}
 
-    admises = types_admis() + (
+    admises = _types_admis() + (
         CLE_RETRAIT, CLE_ALLEE, CLE_ALLEES_CIRCULATION, CLE_SOURCE)
     inconnues = [str(cle) for cle in valeur if str(cle) not in admises]
     if inconnues:

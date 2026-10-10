@@ -117,7 +117,7 @@ class ContratPartageTest(unittest.TestCase):
         for cle in ('exemple', 'exemple_apercu', 'requete'):
             self.assertEqual(
                 ep._chemins(CONTRAT[cle], '',
-                            lambda c, _v: ep.cle_de_montant(c)), [], cle)
+                            lambda c, _v: ep._cle_de_montant(c)), [], cle)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -185,7 +185,7 @@ class ExportFormat2Test(unittest.TestCase):
             self.assertEqual(tuple(ligne), CLES_VARIANTE)
 
     def test_l_export_se_relit_par_la_reimportation(self):
-        plan = _analyser_projet(json.loads(ep.octets_de_projet(exporte())))
+        plan = _analyser_projet(json.loads(ep._octets_de_projet(exporte())))
         self.assertEqual(len(plan['postes']), len(POSTES))
         self.assertEqual(plan['roof_layout'],
                          EXPORT['exemple']['roof_layout'])
@@ -334,7 +334,7 @@ class AllerRetourEnBaseTest(BaseApiCalepinage):
                 'apps.calepinage.services.electrique.resultat_calepinage',
                 return_value=copy.deepcopy(RESULTAT['exemple_vide'])):
             document = ep.document_de_projet(self.source)
-        return json.loads(ep.octets_de_projet(document))
+        return json.loads(ep._octets_de_projet(document))
 
     def _variantes(self, calepinage):
         from apps.calepinage.selectors import variantes
@@ -351,7 +351,7 @@ class AllerRetourEnBaseTest(BaseApiCalepinage):
         document = self._exporter()
         self.assertEqual(document['format_version'], FORMAT_VERSION)
         self.assertEqual(ep._chemins(document, '',
-                                     lambda c, _v: ep.cle_de_montant(c)), [])
+                                     lambda c, _v: ep._cle_de_montant(c)), [])
 
         vide = Company.objects.create(nom='Société vide', slug='vide-calx370')
         client = Client.objects.create(company=vide, nom='Client arrivée')

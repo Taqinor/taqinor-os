@@ -39,7 +39,7 @@ from apps.calepinage.services.export_tableur import (
 )
 from apps.calepinage.services.rapport.contrat import RapportRefuse
 from apps.calepinage.services.rapport.nomenclature import (
-    html_de_section, html_de_table,
+    html_de_section, _html_de_table,
 )
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
@@ -218,7 +218,7 @@ class HtmlDeSectionTest(unittest.TestCase):
 
     def test_html_de_table_trois_colonnes(self):
         entetes, lignes = table_nomenclature(RESULTAT_BASE)
-        html = html_de_table(entetes, lignes)
+        html = _html_de_table(entetes, lignes)
         self.assertEqual(html.count('<th>'), 3)
         self.assertEqual(html.count('<tr>'), 1 + len(lignes))
 

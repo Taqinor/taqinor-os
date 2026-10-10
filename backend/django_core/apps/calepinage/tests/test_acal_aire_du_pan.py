@@ -17,7 +17,7 @@ import math
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.lestage import masse_du_layout
+from apps.calepinage.services.lestage import _masse_du_layout
 from apps.ventes.services import aire_du_pan, extract_roof_config
 
 #: Un rectangle à Casablanca : 0,00018° de longitude × 0,00015° de latitude.
@@ -49,8 +49,8 @@ class AireDuPanTest(SimpleTestCase):
         self.assertAlmostEqual(cfg['pans'][0]['surface_m2'], 278.77,
                                places=2)
 
-        masse = masse_du_layout({'version': 2, 'zones': [zone]},
-                                poids_module_kg=22.0, section={})
+        masse = _masse_du_layout({'version': 2, 'zones': [zone]},
+                                 poids_module_kg=22.0, section={})
         pan = masse['pans'][0]
         self.assertAlmostEqual(pan['surface_pan_m2'], AIRE_ATTENDUE, places=4)
         self.assertAlmostEqual(pan['masse_par_m2_kg'], 220.0 / AIRE_ATTENDUE,

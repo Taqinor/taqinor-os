@@ -27,8 +27,8 @@ from apps.calepinage.services.asbuilt import MENTION_SANS_SAISIE
 from apps.calepinage.services.documents import mise_en_page
 from apps.calepinage.services.documents.document_asbuilt import (
     CODE_DOCUMENT,
-    construire_document,
-    html_de_document,
+    _construire_document,
+    _html_de_document,
     html_du_document_asbuilt,
     rendre_document_asbuilt,
 )
@@ -93,7 +93,7 @@ def document(**options):
     options.setdefault('site', SITE)
     options.setdefault('identite', IDENTITE)
     options.setdefault('styles', STYLES)
-    return construire_document(NU, **options)
+    return _construire_document(NU, **options)
 
 
 class AucunImportInstallationsTest(unittest.TestCase):
@@ -107,7 +107,7 @@ class AucunImportInstallationsTest(unittest.TestCase):
 
 class TableEcartsTest(unittest.TestCase):
     def setUp(self):
-        self.html = html_de_document(document())
+        self.html = _html_de_document(document())
 
     def test_3_pans_dont_1_releve_1_ecart_imprime_et_2_mentions(self):
         # Le seul écart CHIFFRÉ imprimé est celui de « Pan Sud » (-1) : les
@@ -129,20 +129,20 @@ class TableEcartsTest(unittest.TestCase):
 
 class EcartTotalAbsentTest(unittest.TestCase):
     def test_ecart_total_absent_tant_qu_aucun_pan_n_est_releve(self):
-        html = html_de_document(document(ecarts=ECARTS_AUCUN_RELEVE))
+        html = _html_de_document(document(ecarts=ECARTS_AUCUN_RELEVE))
         self.assertNotIn('Écart total :', html)
         self.assertIn('Écart total non affiché', html)
 
 
 class PhotosTest(unittest.TestCase):
     def test_sans_photo_la_mention_est_imprimee(self):
-        html = html_de_document(document(photos=[]))
+        html = _html_de_document(document(photos=[]))
         self.assertIn('Aucune photo de site déposée', html)
 
     def test_une_photo_legendee_et_datee_est_imprimee(self):
         photos = [{'genre': 'drone', 'legende': 'Vue toiture',
                   'prise_le': '2026-09-01', 'url': 'https://minio/x.jpg'}]
-        html = html_de_document(document(photos=photos))
+        html = _html_de_document(document(photos=photos))
         self.assertIn('Vue toiture', html)
         self.assertIn('2026-09-01', html)
         self.assertIn('<img src="https://minio/x.jpg"', html)
@@ -150,11 +150,11 @@ class PhotosTest(unittest.TestCase):
 
 class SansPlancheTest(unittest.TestCase):
     def test_sans_planche_aucune_section_planche_n_est_imprimee(self):
-        html = html_de_document(document(svg_planche=''))
+        html = _html_de_document(document(svg_planche=''))
         self.assertNotIn('data-section="planche"', html)
 
     def test_avec_planche_le_svg_est_embarque(self):
-        html = html_de_document(
+        html = _html_de_document(
             document(svg_planche='<svg><rect/></svg>'))
         self.assertIn('data-section="planche"', html)
         self.assertIn('<svg><rect/></svg>', html)
@@ -162,7 +162,7 @@ class SansPlancheTest(unittest.TestCase):
 
 class AucunMontantTest(unittest.TestCase):
     def test_aucun_mot_de_montant(self):
-        html = html_de_document(document())
+        html = _html_de_document(document())
         mots_de_montant = (
             'MAD', 'DH', 'prix', 'coût', 'cout', 'montant', 'remise',
             'marge', 'TTC', 'HT', '€')
@@ -174,7 +174,7 @@ class MiseEnPageTest(unittest.TestCase):
     def test_le_document_porte_son_code_et_sa_garde(self):
         agrege = document()
         self.assertEqual(agrege['code'], CODE_DOCUMENT)
-        html = html_de_document(agrege)
+        html = _html_de_document(agrege)
         self.assertEqual(html.count('class="page-de-garde"'), 1)
         self.assertIn('Document as-built', html)
 

@@ -36,7 +36,7 @@ from apps.calepinage.services import pack_technique
 from apps.calepinage.services.pack_technique import (
     CABINET, DOSSIER, DOSSIER_CHANTIER_GED, DOSSIER_FIN_CHANTIER,
     MENTION_RECETTE_GARANTIES, PackRefuse, construire_dossier_fin_chantier,
-    rendre_pieces,
+    _rendre_pieces,
 )
 
 try:
@@ -104,10 +104,10 @@ class RenduDesCinqPiecesTest(SimpleTestCase):
         }
 
     def test_les_cinq_pieces_sont_rendues_et_comptees(self):
-        pieces, signalements = rendre_pieces(self.calepinage,
-                                             company='societe-essai',
-                                             rendus=self.rendus,
-                                             spec=DOSSIER_FIN_CHANTIER)
+        pieces, signalements = _rendre_pieces(self.calepinage,
+                                              company='societe-essai',
+                                              rendus=self.rendus,
+                                              spec=DOSSIER_FIN_CHANTIER)
         self.assertEqual([code for code, _l, _o, _p in pieces],
                          list(CODES_DOSSIER_CHANTIER))
         for _code, _libelle, octets, pages in pieces:
@@ -118,10 +118,10 @@ class RenduDesCinqPiecesTest(SimpleTestCase):
     def test_une_piece_facultative_absente_est_signalee_jamais_sautee(self):
         rendus = dict(self.rendus)
         del rendus['document_asbuilt']
-        pieces, signalements = rendre_pieces(self.calepinage,
-                                             company='societe-essai',
-                                             rendus=rendus,
-                                             spec=DOSSIER_FIN_CHANTIER)
+        pieces, signalements = _rendre_pieces(self.calepinage,
+                                              company='societe-essai',
+                                              rendus=rendus,
+                                              spec=DOSSIER_FIN_CHANTIER)
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
             ['plan_pose', 'plan_cablage', 'nomenclature',

@@ -49,15 +49,13 @@ from .valeurs import nombre as _nombre
 
 __all__ = [
     'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM', 'PAS_D_ECHELLE_M',
-    'PlancheRefusee', 'dimensions_module', 'geometrie_de_planche',
+    'PlancheRefusee', 'geometrie_de_planche',
     'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
     'rendre_planche_pdf', 'nom_de_fichier',
-    'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
     'hash_court', 'texte_d_empreinte',
     'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE',
-    'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
-    'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
-    'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
+    'CONTENU_POSE', 'CONTENUS',
+    'rendre_plan_pdf', 'PlanDePoseRefuse',
     'rendre_plan_pose_pdf', 'planche_svg_ou_vide', 'MOTIF_SANS_PARCELLE',
     'pied_du_calepinage',
 ]
@@ -200,7 +198,7 @@ def _dimensions_du_catalogue(roof_layout, zone):
     return (longueur / 1000.0, largeur / 1000.0)
 
 
-def dimensions_module(roof_layout, zone=None):
+def _dimensions_module(roof_layout, zone=None):
     """``(long_m, court_m)`` du module, ou ``None`` si rien ne les SOURCE.
 
     ACAL263 — avec ``zone``, le module du PAN fait foi : ``modules[]`` résolu
@@ -265,7 +263,7 @@ def geometrie_de_planche(roof_layout):
     contour = [local(lat, lng) for lat, lng
                in _points_geo((roof_layout or {}).get('outline'), 'latlng')]
 
-    module_m = dimensions_module(roof_layout)
+    module_m = _dimensions_module(roof_layout)
     pans, obstacles = [], []
     for rang, zone in enumerate(_zones(roof_layout), start=1):
         points = [local(lat, lng)
@@ -293,7 +291,7 @@ def geometrie_de_planche(roof_layout):
             'modules': modules,
             'reperes_modules': reperes,
             # ACAL263 — le module de CE pan (catalogue puis repli kit).
-            'module_m': dimensions_module(roof_layout, zone),
+            'module_m': _dimensions_module(roof_layout, zone),
             'batiment': str(zone.get('buildingId') or ''),
         }
         pans.append(pan)
@@ -419,7 +417,7 @@ def _geometrie_sans_toit(roof_layout, surfaces):
     seulement les feuilles des surfaces de pose."""
     return {
         'contour': [], 'pans': [], 'obstacles': [], 'zones_interdites': [],
-        'module_m': dimensions_module(roof_layout), 'parcelle': [],
+        'module_m': _dimensions_module(roof_layout), 'parcelle': [],
         'surfaces_de_pose': surfaces, 'etendue': None,
     }
 
@@ -557,7 +555,7 @@ def _cadre_de_dessin():
     return (MARGE_MM, MARGE_MM, largeur, hauteur)
 
 
-def echelle_de_dessin(etendue, cadre=None):
+def _echelle_de_dessin(etendue, cadre=None):
     """Millimètres de feuille par mètre de terrain — la plus grande qui tienne.
 
     L'échelle n'est jamais ANNONCÉE en fraction (« 1/200 ») : un dossier
@@ -575,7 +573,7 @@ def echelle_de_dessin(etendue, cadre=None):
 def _transformation(etendue, cadre=None):
     """``(x_m, y_m) -> (x_mm, y_mm)`` — le Y du SVG descend, celui du terrain monte."""
     cadre = cadre or _cadre_de_dessin()
-    echelle = echelle_de_dessin(etendue, cadre)
+    echelle = _echelle_de_dessin(etendue, cadre)
     x0, y0, x1, y1 = etendue
     largeur_mm = (x1 - x0) * echelle
     hauteur_mm = (y1 - y0) * echelle
@@ -692,7 +690,7 @@ PAS_D_ECHELLE_M = (1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0)
 LARGEUR_BARRE_MM = 45.0
 
 
-def longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
+def _longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
     """``(longueur_m, longueur_mm)`` de la barre d'échelle — un nombre ROND.
 
     ``echelle`` est en mm de feuille par mètre de terrain. On ne rend jamais
@@ -706,7 +704,7 @@ def longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
     return (plus_petit, plus_petit * echelle)
 
 
-def echelle_nommee(echelle):
+def _echelle_nommee(echelle):
     """``1/200`` — le DÉNOMINATEUR de l'échelle du tracé, arrondi au rang lisible.
 
     L'échelle nommée est CALCULÉE du tracé (millimètres de feuille par mètre de
@@ -725,9 +723,9 @@ def echelle_nommee(echelle):
     return int(round(denominateur / 1000.0) * 1000)
 
 
-def mention_d_echelle(echelle):
+def _mention_d_echelle(echelle):
     """« Échelle du tracé 1/200 — valable sur un tirage A3 non réduit. »"""
-    denominateur = echelle_nommee(echelle)
+    denominateur = _echelle_nommee(echelle)
     if denominateur is None:
         return ''
     return ('Échelle du tracé 1/%d — valable sur un tirage A3 non réduit ; '
@@ -793,7 +791,7 @@ def _degres(valeur):
     return ('%.1f' % nombre).replace('.', ',') + '°'
 
 
-def texte_d_orientation(pan):
+def _texte_d_orientation(pan):
     """« Pan Sud — azimut 180° · inclinaison 15° », les absences OMISES.
 
     Un pan dont l'azimut n'est pas connu n'affiche PAS « 0° » : il n'affiche
@@ -811,11 +809,11 @@ def texte_d_orientation(pan):
         else ' · '.join(mentions)
 
 
-def lignes_d_orientation(geometrie):
+def _lignes_d_orientation(geometrie):
     """Une ligne par pan DOCUMENTÉ ; un pan sans mesure n'en produit aucune."""
     lignes = []
     for pan in geometrie.get('pans') or ():
-        texte = texte_d_orientation(pan)
+        texte = _texte_d_orientation(pan)
         if texte:
             lignes.append(texte)
     return tuple(lignes)
@@ -844,7 +842,7 @@ def _fleche_nord_svg(x, y):
 
 def _barre_echelle_svg(x, y, echelle):
     """La barre d'échelle MÉTRIQUE — jamais une fraction « 1/200 »."""
-    metres, longueur_mm = longueur_de_barre(echelle)
+    metres, longueur_mm = _longueur_de_barre(echelle)
     moitie = longueur_mm / 2.0
     return (
         '<g>'
@@ -1085,7 +1083,7 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
     morceaux.append(
         '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
         % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
-           escape(mention_d_echelle(echelle))))
+           escape(_mention_d_echelle(echelle))))
     modules = surface['modules']
     lignes = [
         'Surface de pose : %s (%s)' % (surface['libelle'], genre),
@@ -1178,7 +1176,7 @@ def _corps_feuille_toit(geometrie, *, titre='', sous_titre='', bandeau=(),
     morceaux.append(
         '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
         % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
-           escape(mention_d_echelle(echelle))))
+           escape(_mention_d_echelle(echelle))))
 
     morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie,
                                  contenu))
@@ -1221,7 +1219,7 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
     # Un plan de MASSE ne dessine pas les pans : leur orientation n'y a rien
     # à dire.
     orientations = () if contenu == CONTENU_MASSE \
-        else lignes_d_orientation(geometrie)
+        else _lignes_d_orientation(geometrie)
     if orientations:
         morceaux.append('<text x="%s" y="%s" font-size="3.6" '
                         'font-weight="bold" fill="%s">ORIENTATION DES PANS'
@@ -1370,7 +1368,7 @@ class PlanDePoseRefuse(PlancheRefusee):
     """Le plan de pose refuse de sortir — il porterait un montant."""
 
 
-def verifier_absence_d_argent(document):
+def _verifier_absence_d_argent(document):
     """Refuse un texte de plan de pose qui porte un mot d'argent.
 
     La règle est ARMÉE et pas seulement respectée : un montant glissé dans un
@@ -1439,7 +1437,7 @@ def _reperes_de_pose(pan, vers_feuille):
 MENTION_NON_CHAINE = 'Électrique non chaîné — chaînes non calculées.'
 
 
-def lignes_de_chaines(resultat):
+def _lignes_de_chaines(resultat):
     """La LISTE DES CHAÎNES pour le bandeau — recopiée du moteur.
 
     Rien n'est recomposé : le chaînage et l'affectation sont ceux que le
@@ -1481,33 +1479,33 @@ TITRE_DE_CONTENU = {
 }
 
 
-def rendre_plan_pose_svg(calepinage, *, moment=None, **options):
+def _rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
     from .. import selectors
 
     bandeau = tuple(options.pop('bandeau', ()))
     # ACAL216 — les chaînes sont celles du résultat SERVI (lecteur tolérant :
     # jamais la colonne brute, qui ne porte pas le bloc électrique).
-    chaines = lignes_de_chaines(selectors.resultat_servi(calepinage))
+    chaines = _lignes_de_chaines(selectors.resultat_servi(calepinage))
     bandeau += chaines or (MENTION_NON_CHAINE,)
     # ACAL231 - la garde ne porte que sur les textes du catalogue / du moteur
     # (le bandeau), jamais sur le titre ou les libellés de pan SAISIS.
-    verifier_absence_d_argent('\n'.join(bandeau))
-    return rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
-                           bandeau=bandeau, **options)
+    _verifier_absence_d_argent('\n'.join(bandeau))
+    return _rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
+                            bandeau=bandeau, **options)
 
 
 def rendre_plan_pose_pdf(calepinage, *, company=None, **options):
     """Octets PDF du plan de pose, par ``core.pdf.render_pdf`` (ARC11)."""
     from core.pdf import render_pdf
 
-    svg = rendre_plan_pose_svg(calepinage, **options)
+    svg = _rendre_plan_pose_svg(calepinage, **options)
     return render_pdf(html=html_de_planche(svg),
                       company=company or getattr(calepinage, 'company', None))
 
 
-def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
-                    **options):
+def _rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
+                     **options):
     """CAL194 — le SVG d'un des trois plans, depuis la MÊME géométrie.
 
     Le plan de masse est REFUSÉ quand aucune parcelle n'a été saisie, en
@@ -1533,7 +1531,7 @@ def rendre_plan_pdf(calepinage, *, contenu=CONTENU_IMPLANTATION, company=None,
     """Octets PDF d'un des trois plans, par ``core.pdf.render_pdf`` (ARC11)."""
     from core.pdf import render_pdf
 
-    svg = rendre_plan_svg(calepinage, contenu=contenu, **options)
+    svg = _rendre_plan_svg(calepinage, contenu=contenu, **options)
     return render_pdf(html=html_de_planche(svg),
                       company=company or getattr(calepinage, 'company', None))
 

@@ -31,7 +31,7 @@ from apps.calepinage.services.documents.gabarit_document import (
     LIBELLES_GARDE_FR, identite_du_calepinage, page_de_garde_html,
 )
 from apps.calepinage.services.note_calcul import (
-    construire_note_calcul, html_de_note_calcul,
+    _construire_note_calcul, _html_de_note_calcul,
 )
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
@@ -121,12 +121,12 @@ class GardeCompleteTest(unittest.TestCase):
 
 class NoteAvecGardeTest(unittest.TestCase):
     def _note(self, **options):
-        return construire_note_calcul(copy.deepcopy(RESULTAT), site=SITE,
-                                      **options)
+        return _construire_note_calcul(copy.deepcopy(RESULTAT), site=SITE,
+                                       **options)
 
     def test_la_note_s_ouvre_sur_sa_garde(self):
-        html = html_de_note_calcul(self._note(identite=IDENTITE,
-                                              styles=STYLES))
+        html = _html_de_note_calcul(self._note(identite=IDENTITE,
+                                               styles=STYLES))
         self.assertIn('page-de-garde', html)
         self.assertLess(html.index('page-de-garde'),
                         html.index('<h1>Note de calcul — calepinage</h1>'))
@@ -134,18 +134,18 @@ class NoteAvecGardeTest(unittest.TestCase):
         self.assertIn('Soleil Atlas', html)
 
     def test_sans_identite_le_titre_de_la_note_est_celui_de_la_garde(self):
-        html = html_de_note_calcul(self._note())
+        html = _html_de_note_calcul(self._note())
         self.assertIn('<h1>Note de calcul</h1>', html)
         self.assertNotIn('None', html)
 
     def test_garde_false_rend_la_note_d_avant(self):
-        html = html_de_note_calcul(self._note(), garde=False)
+        html = _html_de_note_calcul(self._note(), garde=False)
         self.assertNotIn('page-de-garde', html)
         self.assertEqual(html.count('<h1>'), 1)
 
     def test_la_note_reste_autonome_et_sans_montant(self):
-        html = html_de_note_calcul(self._note(identite=IDENTITE,
-                                              styles=STYLES))
+        html = _html_de_note_calcul(self._note(identite=IDENTITE,
+                                               styles=STYLES))
         for interdit in ('http://', 'https://', '@import', 'MAD', 'prix'):
             self.assertNotIn(interdit, html)
 
@@ -166,11 +166,11 @@ class LaNoteGagneUnePageTest(unittest.TestCase):
 
         from apps.calepinage.services.pack_technique import compter_pages
 
-        note = construire_note_calcul(copy.deepcopy(RESULTAT), site=SITE,
-                                      identite=IDENTITE, styles=STYLES)
-        avant = compter_pages(render_pdf(html=html_de_note_calcul(
+        note = _construire_note_calcul(copy.deepcopy(RESULTAT), site=SITE,
+                                       identite=IDENTITE, styles=STYLES)
+        avant = compter_pages(render_pdf(html=_html_de_note_calcul(
             note, garde=False)))
-        apres = compter_pages(render_pdf(html=html_de_note_calcul(note)))
+        apres = compter_pages(render_pdf(html=_html_de_note_calcul(note)))
         self.assertGreater(avant, 0)
         self.assertEqual(apres, avant + 1)
 

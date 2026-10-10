@@ -19,7 +19,7 @@ from apps.calepinage.services.electrique import (
     SOURCE_TMY,
     TemperaturesInvalides,
     enregistrer_fournisseur_temperatures,
-    fournisseur_temperatures,
+    _fournisseur_temperatures,
     temperatures_site,
 )
 from core.electrique.types import TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C
@@ -127,10 +127,10 @@ class FournisseurEnregistreTest(SimpleTestCase):
     def test_enregistrement_et_restauration(self):
         precedent = enregistrer_fournisseur_temperatures(_fournisseur_tmy)
         try:
-            self.assertIs(fournisseur_temperatures(), _fournisseur_tmy)
+            self.assertIs(_fournisseur_temperatures(), _fournisseur_tmy)
             temperatures = temperatures_site(pin=PIN)
             self.assertEqual(temperatures.source, SOURCE_TMY)
         finally:
             enregistrer_fournisseur_temperatures(precedent)
 
-        self.assertIs(fournisseur_temperatures(), precedent)
+        self.assertIs(_fournisseur_temperatures(), precedent)

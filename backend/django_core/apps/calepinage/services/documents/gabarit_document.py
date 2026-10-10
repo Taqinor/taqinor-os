@@ -49,8 +49,8 @@ from ..planche import hash_court
 
 __all__ = [
     'NOIR', 'GRIS_TEXTE', 'GRIS_TRAIT', 'GRIS_FOND', 'CHARTE_IMPRESSION',
-    'CLES_STYLES', 'styles_vides', 'couleur_valide', 'logo_valide',
-    'styles_de_societe', 'entete_html', 'pied_html', 'css_du_gabarit',
+    'CLES_STYLES',
+    'styles_de_societe', 'pied_html',
     'document_html',
     # CALX295 — la page de garde
     'LIBELLES_GARDE_FR', 'CHAMPS_GARDE', 'page_de_garde_html',
@@ -81,18 +81,18 @@ _CARACTERES_REFUSES_LOGO = ('"', "'", '<', '>', '\\', ' ', '\n', '\r', '\t')
 _LIRE = object()
 
 
-def styles_vides():
+def _styles_vides():
     """Une marque VIDE : aucune clé ne manque, aucune ne vaut quoi que ce soit."""
     return {cle: '' for cle in CLES_STYLES}
 
 
-def couleur_valide(valeur):
+def _couleur_valide(valeur):
     """``valeur`` si c'est un hexadécimal ``#rgb``/``#rrggbb``, sinon ``''``."""
     texte = str(valeur or '').strip()
     return texte if _COULEUR.match(texte) else ''
 
 
-def logo_valide(valeur):
+def _logo_valide(valeur):
     """``valeur`` si c'est une URL d'image imprimable, sinon ``''``."""
     texte = str(valeur or '').strip()
     if not texte or any(c in texte for c in _CARACTERES_REFUSES_LOGO):
@@ -187,16 +187,16 @@ def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
     return {
         'nom_affiche': (_attr(theme, 'nom_affichage') or _attr(profil, 'nom')
                         or raison_sociale),
-        'logo_url': logo_valide(_attr(theme, 'logo_url')),
-        'couleur_primaire': couleur_valide(_attr(theme, 'couleur_primaire')),
-        'couleur_secondaire': couleur_valide(
+        'logo_url': _logo_valide(_attr(theme, 'logo_url')),
+        'couleur_primaire': _couleur_valide(_attr(theme, 'couleur_primaire')),
+        'couleur_secondaire': _couleur_valide(
             _attr(theme, 'couleur_secondaire')),
     }
 
 
 # ── Les deux éléments courants ──────────────────────────────────────────────
 
-def entete_html(styles, *, titre=''):
+def _entete_html(styles, *, titre=''):
     """L'en-tête courant (logo, nom affiché, titre de la pièce), ou ``''``.
 
     Placé dans la boîte ``@top-center`` par ``css_du_gabarit`` : il se répète
@@ -206,7 +206,7 @@ def entete_html(styles, *, titre=''):
     styles = styles or {}
     nom = str(styles.get('nom_affiche') or '').strip()
     morceaux = []
-    logo = logo_valide(styles.get('logo_url'))
+    logo = _logo_valide(styles.get('logo_url'))
     if logo:
         morceaux.append('<img class="gabarit-logo" src="%s" alt="%s">'
                         % (escape(logo, quote=True),
@@ -245,15 +245,15 @@ def pied_html(provenance, *, mentions=(), etat=None):
         '<div>%s</div>' % escape(ligne) for ligne in lignes)
 
 
-def css_du_gabarit(styles, *, format_page='A4'):
+def _css_du_gabarit(styles, *, format_page='A4'):
     """La feuille du gabarit : boîtes de marge, pagination, typographie.
 
     La couleur primaire de la société souligne l'en-tête et les titres ; sans
     thème, ce sont le noir et le gris de la charte d'impression.
     """
     styles = styles or {}
-    primaire = couleur_valide(styles.get('couleur_primaire')) or NOIR
-    secondaire = couleur_valide(styles.get('couleur_secondaire')) or GRIS_TRAIT
+    primaire = _couleur_valide(styles.get('couleur_primaire')) or NOIR
+    secondaire = _couleur_valide(styles.get('couleur_secondaire')) or GRIS_TRAIT
     return ''.join([
         '@page{size:', format_page, ';margin:24mm 14mm 20mm 14mm;',
         '@top-center{content:element(gabarit-entete);vertical-align:bottom;}',
@@ -293,13 +293,13 @@ def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
     APRÈS celle du gabarit. ``etat`` (CALX325, ``etat_de_conception``) fait
     porter au pied de CHAQUE page la mention « verrouillée »/« archivée ».
     """
-    styles = styles or styles_vides()
+    styles = styles or _styles_vides()
     return ''.join([
         '<!doctype html><html lang="', escape(langue or 'fr', quote=True),
         '"><head><meta charset="utf-8"><title>', escape(titre or ''),
-        '</title><style>', css_du_gabarit(styles), css or '',
+        '</title><style>', _css_du_gabarit(styles), css or '',
         '</style></head><body>',
-        entete_html(styles, titre=titre),
+        _entete_html(styles, titre=titre),
         pied_html(provenance, mentions=mentions, etat=etat),
         corps or '',
         '</body></html>',
@@ -310,8 +310,8 @@ def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
 # CALX295 — LA PAGE DE GARDE : identité société et projet
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# ``construire_note_calcul`` rangeait une identité dans la note sans que
-# ``html_de_note_calcul`` ne l'imprime NULLE PART : la pièce sortait sans nom
+# ``_construire_note_calcul`` rangeait une identité dans la note sans que
+# ``_html_de_note_calcul`` ne l'imprime NULLE PART : la pièce sortait sans nom
 # de société, sans client, sans date. La garde imprime ce qui est CONNU, et
 # BARRE ce qui ne l'est pas : une valeur absente reste visible comme absente
 # (son libellé barré, « non renseigné »), jamais remplacée par un texte qui
@@ -391,7 +391,7 @@ def page_de_garde_html(identite, site, provenance, styles, *, libelles=None):
                           '</tr>' % (libelle, escape(textes['non_renseigne'])))
 
     titre = _texte(identite.get('titre_document')) or textes['titre_defaut']
-    logo = logo_valide(styles.get('logo_url'))
+    logo = _logo_valide(styles.get('logo_url'))
     bloc_logo = ('<p class="garde-logo"><img src="%s" alt="%s"></p>'
                  % (escape(logo, quote=True),
                     escape(valeurs['societe'] or 'logo', quote=True))
@@ -409,7 +409,7 @@ def client_du_calepinage(calepinage):
     bornés à la société du calepinage — jamais un import de
     ``apps.crm.models``. UNE seule résolution, partagée par la page de garde
     (:func:`identite_du_calepinage`) et le préremplissage réglementaire
-    (``services/reglementaire.infos_du_calepinage``).
+    (``services/reglementaire._infos_du_calepinage``).
     """
     company = getattr(calepinage, 'company', None)
     client = ''

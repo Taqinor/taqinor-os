@@ -29,7 +29,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import consommation
 from apps.calepinage.services.consommation import (
-    AVIS_KWH_NON_CONVERTIS, ProfilInvalide, profil_mensuel, publier_kwh,
+    AVIS_KWH_NON_CONVERTIS, ProfilInvalide, _profil_mensuel, _publier_kwh,
 )
 from apps.parametres.models_tariff import TariffSettings
 
@@ -49,9 +49,9 @@ class KwhPubliesTest(SimpleTestCase):
             redevance_compteur_mad_mois=Decimal('39.94'))
 
     def test_la_facture_reelle_publie_359_kwh_par_mois(self):
-        profil = profil_mensuel(facture_hiver=Decimal('535.97'))
-        publier_kwh(profil, 'SOCIETE', classe='residentiel',
-                    lire_reglages=lecteur(self.reglages))
+        profil = _profil_mensuel(facture_hiver=Decimal('535.97'))
+        _publier_kwh(profil, 'SOCIETE', classe='residentiel',
+                     lire_reglages=lecteur(self.reglages))
         for ligne in profil['mois']:
             self.assertAlmostEqual(ligne['kwh'], 359.0, delta=1.0)
             self.assertEqual(ligne['kwh_motif'], '')
@@ -60,9 +60,9 @@ class KwhPubliesTest(SimpleTestCase):
         self.assertEqual(profil['conversion_kwh']['motifs'], [])
 
     def test_un_mois_vide_reste_vide_avec_son_motif(self):
-        profil = profil_mensuel(facture_hiver=None, saisies={3: 535.97})
-        publier_kwh(profil, 'SOCIETE', classe='residentiel',
-                    lire_reglages=lecteur(self.reglages))
+        profil = _profil_mensuel(facture_hiver=None, saisies={3: 535.97})
+        _publier_kwh(profil, 'SOCIETE', classe='residentiel',
+                     lire_reglages=lecteur(self.reglages))
         par_mois = {ligne['mois']: ligne for ligne in profil['mois']}
         self.assertAlmostEqual(par_mois[3]['kwh'], 359.0, delta=1.0)
         self.assertIsNone(par_mois[1]['kwh'])
@@ -70,9 +70,9 @@ class KwhPubliesTest(SimpleTestCase):
 
     def test_sans_societe_kwh_none_et_le_motif_nomme_le_reglage(self):
         appels = []
-        profil = profil_mensuel(facture_hiver=Decimal('535.97'))
-        publier_kwh(profil, None, classe='residentiel',
-                    lire_reglages=lecteur(self.reglages, appels))
+        profil = _profil_mensuel(facture_hiver=Decimal('535.97'))
+        _publier_kwh(profil, None, classe='residentiel',
+                     lire_reglages=lecteur(self.reglages, appels))
         self.assertEqual(appels, [])          # jamais un réglage de repli
         for ligne in profil['mois']:
             self.assertIsNone(ligne['kwh'])
@@ -83,10 +83,10 @@ class KwhPubliesTest(SimpleTestCase):
         self.assertIn(motifs[0], profil['avertissements'])
 
     def test_classe_inconnue_refusee_en_la_nommant(self):
-        profil = profil_mensuel(facture_hiver=600)
+        profil = _profil_mensuel(facture_hiver=600)
         with self.assertRaises(ProfilInvalide) as capture:
-            publier_kwh(profil, 'SOCIETE', classe='commercial',
-                        lire_reglages=lecteur(self.reglages))
+            _publier_kwh(profil, 'SOCIETE', classe='commercial',
+                         lire_reglages=lecteur(self.reglages))
         self.assertEqual(capture.exception.champ, 'classe')
 
 
@@ -143,7 +143,7 @@ class GardeDeSourceTest(unittest.TestCase):
     def test_la_fonction_qui_publie_ne_calcule_rien(self):
         fonctions = {noeud.name: noeud for noeud in ast.walk(_arbre())
                      if isinstance(noeud, ast.FunctionDef)}
-        for nom in ('publier_kwh', '_lire_reglages_tarif'):
+        for nom in ('_publier_kwh', '_lire_reglages_tarif'):
             calculs = [sous for sous in ast.walk(fonctions[nom])
                        if isinstance(sous, ARITHMETIQUE)
                        or (isinstance(sous, ast.UnaryOp)

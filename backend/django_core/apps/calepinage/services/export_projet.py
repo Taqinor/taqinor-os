@@ -79,8 +79,8 @@ __all__ = [
     'CLES_NON_PORTABLES', 'CLES_ENTREE_PORTABLES',
     'FORMAT_VERSION', 'CODE_DOCUMENT', 'CLES_DOCUMENT', 'CLES_SITE',
     'FAMILLES_EQUIPEMENT', 'MOTIF_SANS_CONCEPTION', 'MOTIF_NON_SIMULE',
-    'ExportProjetRefuse', 'horodatage_utc', 'cle_de_montant',
-    'verifier_aucun_montant', 'octets_de_projet', 'resultat_servi',
+    'ExportProjetRefuse',
+    'resultat_servi',
     'document_de_projet',
     # CALX370 — la réimportation.
     'FORMATS_IMPORTABLES', 'CLES_VARIANTE', 'BLOCS_REPRIS', 'BLOCS_IGNORES',
@@ -151,7 +151,7 @@ class ExportProjetRefuse(ValueError):
         self.champ = champ
 
 
-def horodatage_utc(moment=None):
+def _horodatage_utc(moment=None):
     """``'2026-09-23T10:00:00Z'`` — l'instant de production, en UTC.
 
     ``moment`` est fourni par l'appelant (rendu reproductible) ; à défaut,
@@ -167,7 +167,7 @@ def horodatage_utc(moment=None):
 
 # ── Le pare-feu de montants ─────────────────────────────────────────────────
 
-def cle_de_montant(cle):
+def _cle_de_montant(cle):
     """Vrai si ``cle`` nomme un montant — pare-feu de la note + contrat."""
     from .note_calcul import _cle_interdite
 
@@ -196,10 +196,10 @@ def _chemins(noeud, chemin, predicat):
     return trouves
 
 
-def verifier_aucun_montant(document):
+def _verifier_aucun_montant(document):
     """Refuse un document qui porte une clé de montant — en la NOMMANT."""
     trouves = sorted(_chemins(document, '',
-                              lambda cle, _valeur: cle_de_montant(cle)))
+                              lambda cle, _valeur: _cle_de_montant(cle)))
     if trouves:
         raise ExportProjetRefuse(
             "Export du projet refusé : le document porte des grandeurs de "
@@ -216,7 +216,7 @@ def _non_fini(_cle, valeur):
     return False
 
 
-def octets_de_projet(document):
+def _octets_de_projet(document):
     """Le document en JSON STRICT (utf-8) — le rendu même de la vue.
 
     ``JSONRenderer`` de DRF (encodeur du dépôt, ``allow_nan=False``) : une
@@ -341,7 +341,7 @@ def document_de_projet(calepinage, *, moment=None, resultat=_LIRE,
     pertes = (resultat_exporte or {}).get('pertes')
     document = {
         'format_version': FORMAT_VERSION,
-        'produit_le': horodatage_utc(moment),
+        'produit_le': _horodatage_utc(moment),
         'calepinage': _bloc_calepinage(calepinage),
         'site': _bloc_site(site, resultat_exporte),
         'equipements': _bloc_equipements(equipements),
@@ -362,8 +362,8 @@ def document_de_projet(calepinage, *, moment=None, resultat=_LIRE,
         # ACAL243 — format 3 : les saisies électriques portables.
         'saisies': _bloc_saisies(calepinage),
     }
-    verifier_aucun_montant(document)
-    octets_de_projet(document)  # JSON strict, ou refus nommé
+    _verifier_aucun_montant(document)
+    _octets_de_projet(document)  # JSON strict, ou refus nommé
     return document
 
 
@@ -789,7 +789,7 @@ def _analyser_projet(document):
             champ='format_version')
 
     montants = sorted(_chemins(document, '',
-                               lambda cle, _valeur: cle_de_montant(cle)))
+                               lambda cle, _valeur: _cle_de_montant(cle)))
     if montants:
         raise ImportProjetRefuse(
             'Fichier de projet refusé : il porte des grandeurs de coût — %s. '

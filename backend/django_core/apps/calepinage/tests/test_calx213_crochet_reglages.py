@@ -29,7 +29,7 @@ from apps.calepinage.services.chaines import (
     concevoir_par_pan, evaluer_onduleurs,
 )
 from apps.calepinage.services.electrique import (
-    temperatures_site, verdicts_electriques,
+    temperatures_site, _verdicts_electriques,
 )
 from apps.calepinage.services.parametres_cles import (
     SECTION_ELECTRIQUE_SOCIETE, registre,
@@ -111,13 +111,13 @@ class CrochetVerdictsElectriquesTest(SimpleTestCase):
     """C'est la borne SOCIÉTÉ qui juge le verdict ``ratio_dc_ac``."""
 
     def test_sans_reglage_le_ratio_reste_dans_les_bornes(self):
-        verdict = _verdict(verdicts_electriques(_conception()), 'ratio_dc_ac')
+        verdict = _verdict(_verdicts_electriques(_conception()), 'ratio_dc_ac')
 
         # 1,278 sous la borne usuelle 1,35 du noyau.
         self.assertTrue(verdict['conforme'])
 
     def test_une_borne_societe_plus_stricte_fait_basculer_le_verdict(self):
-        verdicts = verdicts_electriques(_conception(), reglages={
+        verdicts = _verdicts_electriques(_conception(), reglages={
             CLE_BORNE_USUELLE_DC_AC: {'valeur': 1.1, 'source': 'societe'}})
         verdict = _verdict(verdicts, 'ratio_dc_ac')
 

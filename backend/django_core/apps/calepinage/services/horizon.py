@@ -50,8 +50,8 @@ import statistics
 from .pvgis_serie import ClientPvgis, EntreeInvalide, _coordonnee
 
 __all__ = ['DIRECTIONS_MINIMALES', 'ORIGINES_PUBLIEES', 'SOURCES_HORIZON',
-           'ClientHorizon', 'azimut_de_face', 'lire_profil',
-           'profil_depuis_document', 'profil_saisi',
+           'ClientHorizon',
+           'profil_depuis_document',
            'reechantillonner_pour_pvgis']
 
 #: D'où vient un profil d'horizon publié.
@@ -69,7 +69,7 @@ ORIGINES_PUBLIEES = {'pvgis': 'profil_mesure', 'saisie': 'saisie'}
 DIRECTIONS_MINIMALES = 8
 
 
-def azimut_de_face(azimut_pvgis_deg):
+def _azimut_de_face(azimut_pvgis_deg):
     """``A`` PVGIS (0 = Sud, + vers l'Ouest) → azimut de FACE (0 = Nord).
 
     L'inverse exact de ``pvgis_serie.azimut_pvgis``. Publier les deux évite
@@ -106,12 +106,12 @@ class ClientHorizon(ClientPvgis):
             'outputformat': 'json',
         }
         charge, depuis_cache = self._appeler('printhorizon', params)
-        return dict(lire_profil(charge),
+        return dict(_lire_profil(charge),
                     url=self.construire_url('printhorizon', params),
                     depuis_cache=depuis_cache)
 
 
-def lire_profil(charge):
+def _lire_profil(charge):
     """La lecture PURE d'une réponse ``printhorizon`` (aucun réseau).
 
     Séparée du client pour qu'un profil enregistré se relise sans transport,
@@ -143,7 +143,7 @@ def lire_profil(charge):
             continue
         points.append({
             'azimut_pvgis_deg': azimut,
-            'azimut_face_deg': azimut_de_face(azimut),
+            'azimut_face_deg': _azimut_de_face(azimut),
             'hauteur_deg': hauteur,
         })
         hauteur_max = hauteur if hauteur_max is None else max(hauteur_max,
@@ -325,7 +325,7 @@ def profil_depuis_document(horizon_profile):
         convertis.append({'azimut_face_deg': azimut,
                           'hauteur_deg': point.get('heightDeg')})
     try:
-        profil = profil_saisi(convertis)
+        profil = _profil_saisi(convertis)
     except EntreeInvalide:
         # Illisible ou vide : la forme est convertie, le REFUS nommé viendra
         # de ``reechantillonner_pour_pvgis`` (jamais un profil inventé).
@@ -345,7 +345,7 @@ def profil_depuis_document(horizon_profile):
     return profil
 
 
-def profil_saisi(points, *, note=''):
+def _profil_saisi(points, *, note=''):
     """Un profil CORRIGÉ à la main — source ``saisie``, jamais mélangée.
 
     Args:

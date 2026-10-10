@@ -15,14 +15,14 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import export_tableur, planche, sld
 from apps.calepinage.services.export_tableur import (
-    ExportRefuse, table_modules, table_nomenclature, tables_du_resultat,
+    ExportRefuse, _table_modules, table_nomenclature, _tables_du_resultat,
     verifier_absence_de_prix,
 )
 from apps.calepinage.services.garde_montants import (
     MOTS_D_ARGENT, mots_d_argent,
 )
 from apps.calepinage.services.planche import (
-    PlanDePoseRefuse, geometrie_de_planche, verifier_absence_d_argent,
+    PlanDePoseRefuse, geometrie_de_planche, _verifier_absence_d_argent,
 )
 from apps.calepinage.services.rapport import RapportRefuse
 from apps.calepinage.services.rapport.nomenclature import html_de_section
@@ -42,15 +42,15 @@ class SansFauxPositifTest(SimpleTestCase):
             self.assertEqual(mots_d_argent(nom), [], nom)
             # Le texte guarde du plan de pose est le bandeau (catalogue /
             # moteur) : un nom de calepinage n'y entre jamais.
-            verifier_absence_d_argent('Chaînes : 2\nOnduleur ONDULEUR-ESSAI')
+            _verifier_absence_d_argent('Chaînes : 2\nOnduleur ONDULEUR-ESSAI')
 
     def test_classeur_rend_un_pan_nomme_remise(self):
         geometrie = geometrie_de_planche(_layout_nomme('Remise'))
-        tables = tables_du_resultat(geometrie, None)    # ne leve pas
-        entetes, lignes = table_modules(geometrie, None)
+        tables = _tables_du_resultat(geometrie, None)    # ne leve pas
+        entetes, lignes = _table_modules(geometrie, None)
         self.assertTrue(any(ligne[0] == 'Remise' for ligne in lignes))
         self.assertEqual([t[0] for t in tables][:1], ['Modules'])
-        classeur = export_tableur.classeur_octets(tables)
+        classeur = export_tableur._classeur_octets(tables)
         self.assertTrue(classeur.startswith(b'PK'))
 
     def test_rapport_etude_200_avec_motif_remise_aux_normes(self):
@@ -102,7 +102,7 @@ class RefusAttenduTest(SimpleTestCase):
 
     def test_le_plan_de_pose_refuse_un_mot_entier(self):
         with self.assertRaises(PlanDePoseRefuse):
-            verifier_absence_d_argent('Onduleur (prix sur demande)')
+            _verifier_absence_d_argent('Onduleur (prix sur demande)')
 
 
 class UneSeuleListeTest(SimpleTestCase):

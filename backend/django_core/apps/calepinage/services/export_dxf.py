@@ -31,7 +31,7 @@ La géométrie est celle de la planche (``services.planche.geometrie_de_planche`
 
 CALX310 — le calque ``CHAINES``, SOUS UN PARAMÈTRE EXPLICITE
 ============================================================
-``document_dxf(geometrie, chaines=…)`` ajoute un cinquième calque, ``CHAINES`` :
+``_document_dxf(geometrie, chaines=…)`` ajoute un cinquième calque, ``CHAINES`` :
 un objet par module AFFECTÉ, teint de la couleur de sa chaîne (celle du plan de
 câblage et de l'écran), et un texte ``C<n>`` (``C<n>*`` en affectation
 manuelle). Sans le paramètre, le fichier est EXACTEMENT celui de CAL178 — les
@@ -40,7 +40,7 @@ calque : il reste sur ``MODULES``, jamais teinté d'une chaîne voisine.
 
 CALX314 — le calque ``PROVENANCE`` (non imprimable)
 ===================================================
-``document_dxf(geometrie, provenance=…)`` pose UN bloc de texte (MTEXT) sur un
+``_document_dxf(geometrie, provenance=…)`` pose UN bloc de texte (MTEXT) sur un
 calque ``PROVENANCE`` marqué NON IMPRIMABLE : le fichier dit d'où il vient
 (base de rayonnement, version du moteur, empreintes) sans charger le tirage.
 Les lignes sont celles de ``provenance_document.lignes_de_provenance`` — la
@@ -51,7 +51,7 @@ from __future__ import annotations
 
 __all__ = [
     'CALQUE_TOITURE', 'CALQUE_OBSTACLES', 'CALQUE_MODULES', 'CALQUE_COTES',
-    'CALQUES', 'document_dxf', 'octets_dxf', 'exporter_dxf',
+    'CALQUES', 'octets_dxf', 'exporter_dxf',
     # CALX310
     'CALQUE_CHAINES',
     # CALX314
@@ -98,7 +98,7 @@ def _rectangle(centre, longueur, largeur):
             (x + demi_l, y + demi_c), (x - demi_l, y + demi_c)]
 
 
-def document_dxf(geometrie, *, chaines=None, provenance=None):
+def _document_dxf(geometrie, *, chaines=None, provenance=None):
     """``geometrie_de_planche(...)`` -> un document ``ezdxf`` prêt à écrire.
 
     L'import d'``ezdxf`` est FONCTION-LOCAL : la bibliothèque n'a aucune raison
@@ -319,8 +319,8 @@ def octets_dxf(geometrie, *, chaines=None, provenance=None):
     import io
 
     tampon = io.StringIO()
-    document_dxf(geometrie, chaines=chaines,
-                 provenance=provenance).write(tampon)
+    _document_dxf(geometrie, chaines=chaines,
+                  provenance=provenance).write(tampon)
     return tampon.getvalue().encode('utf-8')
 
 

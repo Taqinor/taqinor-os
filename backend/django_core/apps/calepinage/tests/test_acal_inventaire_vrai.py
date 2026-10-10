@@ -107,7 +107,7 @@ class CartesVraiesTest(SansBase, SimpleTestCase):
     def _cartes(self, gabarit=None):
         with mock.patch(
                 'apps.calepinage.services.documents.manuel_proprietaire.'
-                'gabarit_manuel_actif', return_value=gabarit):
+                '_gabarit_manuel_actif', return_value=gabarit):
             return _par_code(self.pivot)
 
     def test_toute_carte_disponible_se_telecharge_au_bon_format(self):

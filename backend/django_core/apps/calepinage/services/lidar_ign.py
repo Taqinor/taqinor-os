@@ -89,7 +89,7 @@ __all__ = [
     'PAYS_COUVERT', 'SOURCE', 'URL_SOURCE', 'CLE_SUGGESTION',
     'SUGGEREE', 'VALIDEE', 'REFUSEE', 'ServiceIndisponible',
     'service_disponible', 'suggerer_pentes', 'accepter_suggestion',
-    'refuser_suggestion', 'libelle_source',
+    'refuser_suggestion',
 ]
 
 
@@ -153,7 +153,7 @@ def suggerer_pentes(company, roof_layout, *, altimetre=None, maintenant=None):
     if not pans:
         return []
 
-    altimetre = altimetre or altimetre_ign
+    altimetre = altimetre or _altimetre_ign
     horodatage = _horodatage(maintenant)
 
     suggestions = []
@@ -222,7 +222,7 @@ def refuser_suggestion(pan, suggestion, *, maintenant=None):
     return pan
 
 
-def libelle_source(suggestion):
+def _libelle_source(suggestion):
     """« source IGN (suggestion validée le 12/03/2026) », ou ``''``.
 
     Une suggestion non décidée ou refusée ne produit AUCUN libellé : on ne
@@ -334,7 +334,7 @@ def _horodatage(maintenant=None):
 # L'altimètre par défaut — la SEULE sortie réseau de ce module
 # ---------------------------------------------------------------------------
 
-def altimetre_ign(points):
+def _altimetre_ign(points):
     """Altitudes (m) des ``points`` ``(lon, lat)``, ou ``None`` par point.
 
     Service PUBLIC et GRATUIT de la Géoplateforme IGN (aucune clé, aucune

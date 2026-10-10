@@ -13,7 +13,7 @@ import math
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import fixation
-from apps.calepinage.services.export_tableur import table_modules
+from apps.calepinage.services.export_tableur import _table_modules
 from apps.calepinage.services.planche import (
     CONTENU_POSE, geometrie_de_planche, svg_de_planche,
 )
@@ -71,7 +71,7 @@ class RangeesOrienteesTest(SimpleTestCase):
     def test_classeur_et_bom_fixation_comptent_les_memes_rangees(self):
         document = layout(pan_tourne(172), azimut=172.0)
         geometrie = geometrie_de_planche(document)
-        _entetes, lignes = table_modules(geometrie, None)
+        _entetes, lignes = _table_modules(geometrie, None)
         rangees_du_classeur = {ligne[2] for ligne in lignes}
         valeurs = fixation._grandeurs_du_document(document)['valeurs']
         self.assertEqual(rangees_du_classeur, {1, 2, 3})

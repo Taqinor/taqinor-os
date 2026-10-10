@@ -13,7 +13,7 @@ Base réelle, calepinages réels, aucun mock.
 from __future__ import annotations
 
 from apps.calepinage.models import Calepinage
-from apps.calepinage.services.reglementaire import infos_du_calepinage
+from apps.calepinage.services.reglementaire import _infos_du_calepinage
 from apps.crm.models import Client, Lead
 
 from .test_api_liste import BaseApiCalepinage
@@ -31,7 +31,7 @@ class IdentiteDossierTest(BaseApiCalepinage):
         calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead_site.pk, titre='Villa')
 
-        infos = infos_du_calepinage(calepinage)
+        infos = _infos_du_calepinage(calepinage)
 
         self.assertEqual(infos['client_nom'], 'Alami')
         self.assertEqual(infos['adresse'], '12 rue X, Rabat')
@@ -43,7 +43,7 @@ class IdentiteDossierTest(BaseApiCalepinage):
             company=self.company, lead_id=self.lead_site.pk, client=client,
             titre='Villa')
 
-        infos = infos_du_calepinage(calepinage)
+        infos = _infos_du_calepinage(calepinage)
 
         self.assertEqual(infos['adresse'], '12 rue X, Rabat')
         self.assertEqual(infos['client_nom'], 'Alami SARL')
@@ -54,7 +54,7 @@ class IdentiteDossierTest(BaseApiCalepinage):
         calepinage = Calepinage.objects.create(
             company=self.company, lead_id=999999, titre='Sans rattachement')
 
-        infos = infos_du_calepinage(calepinage)
+        infos = _infos_du_calepinage(calepinage)
 
         self.assertIsNone(infos['client_nom'])
         self.assertIsNone(infos['adresse'])

@@ -36,11 +36,11 @@ from apps.calepinage.services.documents.presentation_compacte import (
     CODE_DOCUMENT,
     MENTION_PAS_UN_DEVIS,
     MOTIF_SANS_RESULTAT,
-    construire_presentation,
-    html_de_presentation,
+    _construire_presentation,
+    _html_de_presentation,
     html_de_presentation_compacte,
     rendre_presentation_compacte,
-    totaux_de_pose,
+    _totaux_de_pose,
 )
 from apps.calepinage.services.rapport import RapportRefuse
 
@@ -75,7 +75,7 @@ def presentation(**options):
     options.setdefault('roof_layout', LAYOUT)
     options.setdefault('svg_planche', '')
     options.setdefault('styles', STYLES)
-    return construire_presentation(NU, **options)
+    return _construire_presentation(NU, **options)
 
 
 def _layout_avec_fiche():
@@ -94,7 +94,7 @@ class TotauxDePoseTest(unittest.TestCase):
     def test_lus_du_document_seul_aucune_simulation_requise(self):
         # ACAL259 — kWc = modules × pmax de la FICHE du module du pan, jamais
         # ``geometry.kwc`` (le wattage de l'outil).
-        totaux = totaux_de_pose(_layout_avec_fiche())
+        totaux = _totaux_de_pose(_layout_avec_fiche())
         self.assertEqual(totaux['total_modules'], 2)
         self.assertEqual(totaux['total_kwc'], 1.42)
         self.assertGreaterEqual(totaux['nombre_pans'], 1)
@@ -103,23 +103,23 @@ class TotauxDePoseTest(unittest.TestCase):
         # ACAL259 — ``LAYOUT`` ne porte que le wattage de l'OUTIL
         # (``panelWatt``) : sans fiche du module, aucun kWc n'est publié —
         # jamais modules × panelWatt.
-        totaux = totaux_de_pose(LAYOUT)
+        totaux = _totaux_de_pose(LAYOUT)
         self.assertGreater(totaux['total_modules'], 0)
         self.assertIsNone(totaux['total_kwc'])
         # Le bloc ``pose`` du résultat servi (fiche du stock) fait foi quand
         # il décrit CE document (même compte).
         pose = {'total_modules': totaux['total_modules'], 'kwc': 1.42,
                 'pans': [{'pan': 'Pan Sud', 'modules': 2, 'kwc': 1.42}]}
-        totaux = totaux_de_pose(LAYOUT, {'pose': pose})
+        totaux = _totaux_de_pose(LAYOUT, {'pose': pose})
         self.assertEqual(totaux['total_kwc'], 1.42)
         # Une pose qui décrit un AUTRE document (autre compte) n'est jamais
         # reprise.
         autre = dict(pose, total_modules=3)
-        self.assertIsNone(totaux_de_pose(LAYOUT, {'pose': autre})[
+        self.assertIsNone(_totaux_de_pose(LAYOUT, {'pose': autre})[
             'total_kwc'])
 
     def test_sans_conception_les_totaux_sont_a_zero(self):
-        totaux = totaux_de_pose(None)
+        totaux = _totaux_de_pose(None)
         self.assertEqual(totaux['total_modules'], 0)
         self.assertIsNone(totaux['total_kwc'])
         self.assertEqual(totaux['nombre_pans'], 0)
@@ -145,12 +145,12 @@ class ConstruirePresentationTest(unittest.TestCase):
 
 class MiseEnPagePage1Test(unittest.TestCase):
     def test_les_totaux_et_le_tableau_des_pans_sont_imprimes(self):
-        html = html_de_presentation(presentation())
+        html = _html_de_presentation(presentation())
         self.assertIn('data-section="pose"', html)
         self.assertIn('presentation-pans', html)
 
     def test_le_plan_embarque_apparait_quand_fourni(self):
-        html = html_de_presentation(
+        html = _html_de_presentation(
             presentation(svg_planche='<svg><rect/></svg>'))
         self.assertIn('<svg><rect/></svg>', html)
 
@@ -158,19 +158,19 @@ class MiseEnPagePage1Test(unittest.TestCase):
 class MiseEnPagePage2Test(unittest.TestCase):
     def test_avec_resultat_la_production_mensuelle_et_le_pr_sont_imprimes(
             self):
-        html = html_de_presentation(presentation())
+        html = _html_de_presentation(presentation())
         self.assertIn('data-section="production"', html)
         self.assertIn('presentation-mensuelle', html)
         self.assertIn('Ratio de performance', html)
         self.assertIn("Taux d'autoconsommation", html)
 
     def test_sans_resultat_la_page_2_nomme_ce_qui_manque_sans_refuser(self):
-        html = html_de_presentation(presentation(resultat=None))
+        html = _html_de_presentation(presentation(resultat=None))
         self.assertIn('data-section="production"', html)
         self.assertIn(escape(MOTIF_SANS_RESULTAT), html)
 
     def test_exactement_une_coupure_de_page_entre_page_1_et_page_2(self):
-        html = html_de_presentation(presentation())
+        html = _html_de_presentation(presentation())
         self.assertEqual(html.count('page-break-after:always'), 1)
         # Aucune page de garde : cette pièce n'a QUE deux pages.
         self.assertEqual(html.count('class="page-de-garde"'), 0)
@@ -185,18 +185,18 @@ def _sans_la_mention(html):
 
 class MentionEtMontantTest(unittest.TestCase):
     def test_la_mention_ne_vaut_pas_offre_de_prix_est_presente(self):
-        html = html_de_presentation(presentation())
+        html = _html_de_presentation(presentation())
         self.assertIn(escape(MENTION_PAS_UN_DEVIS), html)
         self.assertIn('ne vaut pas offre de prix', html)
 
     def test_aucun_mot_de_montant_hors_la_mention(self):
-        html = _sans_la_mention(html_de_presentation(presentation()))
+        html = _sans_la_mention(_html_de_presentation(presentation()))
         for mot in MOTS_DE_MONTANT:
             self.assertNotIn(mot, html, mot)
 
     def test_aucun_mot_de_montant_sans_resultat_non_plus(self):
         html = _sans_la_mention(
-            html_de_presentation(presentation(resultat=None)))
+            _html_de_presentation(presentation(resultat=None)))
         for mot in MOTS_DE_MONTANT:
             self.assertNotIn(mot, html, mot)
 
