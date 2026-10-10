@@ -18,6 +18,8 @@ CLES = ('CMI_ENABLED', 'CMI_MERCHANT_KEY')
 
 _SCRIPT = r"""
 import json
+import django
+django.setup()
 from apps.portail import services
 print('RESULTAT=' + json.dumps({'actif': services.cmi_actif()}))
 """

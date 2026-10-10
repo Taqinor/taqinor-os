@@ -18,6 +18,8 @@ CLES = ('ESIGN_ENABLED', 'ESIGN_PROVIDER', 'GED_OFFICE_URL',
 
 _SCRIPT = r"""
 import json
+import django
+django.setup()
 from django.conf import settings
 from apps.ged import services
 print('RESULTAT=' + json.dumps({
