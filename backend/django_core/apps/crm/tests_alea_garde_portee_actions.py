@@ -31,7 +31,7 @@ from rest_framework.test import APIClient
 
 from apps.crm import stages
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.crm.services import BULK_ACTIONS
+from apps.crm.fiche_bulk import BULK_ACTIONS
 from apps.crm.views import ClientViewSet, LeadViewSet
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (

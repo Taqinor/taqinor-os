@@ -30,8 +30,12 @@ from testkit.time import frozen
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.services import (
-    PASSATION_LIBELLE, PASSATION_TEMPLATE_CLE, apply_bulk_action,
-    lead_notification_recipients, reattribuer_lead)
+    PASSATION_LIBELLE,
+    PASSATION_TEMPLATE_CLE,
+    lead_notification_recipients,
+    reattribuer_lead,
+)
+from apps.crm.fiche_bulk import apply_bulk_action
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
