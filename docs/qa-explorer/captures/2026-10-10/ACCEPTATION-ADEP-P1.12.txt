@@ -1,0 +1,4 @@
+# ADEP39 P1.12 — PAYMENT_PROVIDER déclaré dans settings
+# rejeu orchestrateur, pile locale (main f7bc5042d : code identique a pc2-batch9), 2026-10-10
+manage.py shell : hasattr(settings,'PAYMENT_PROVIDER')=True (valeur '' par défaut)
+P1.12 verdict: PASS
