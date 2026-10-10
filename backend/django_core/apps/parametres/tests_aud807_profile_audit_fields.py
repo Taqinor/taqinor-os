@@ -86,3 +86,31 @@ class Aud807SecurityFieldsAuditedTest(TestCase):
         self.assertIn('lockout_duration_minutes', fields)
         self.assertIn('session_absolute_hours', fields)
         self.assertIn('allow_device_trust', fields)
+
+
+class Aud807DrapeauxParcoursTest(TestCase):
+    """AMET16 — le profil sert `drapeaux_parcours` = le contrat partagé."""
+
+    def test_drapeaux_parcours_servis_avec_defaut_et_parcours(self):
+        import json
+        from pathlib import Path
+
+        contrat = json.loads(
+            (Path(__file__).parent / 'contract_samples'
+             / 'drapeaux_parcours.json').read_text(encoding='utf-8'))
+        company = _company('amet16-co', 'AMET16 Co')
+        admin = User.objects.create_user(
+            username='amet16_admin', password='pw',
+            role_legacy='admin', company=company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION='Bearer %s' % AccessToken.for_user(admin))
+        r = api.get('/api/django/parametres/')
+        self.assertEqual(r.status_code, 200, r.content)
+        servis = json.loads(json.dumps(r.data['drapeaux_parcours']))
+        self.assertEqual(len(servis), 8)
+        self.assertEqual(servis, contrat['exemple']['drapeaux_parcours'])
+        for ligne in servis:
+            self.assertEqual(
+                ligne['defaut'],
+                CompanyProfile._meta.get_field(ligne['cle']).default)

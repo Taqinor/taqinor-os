@@ -1,0 +1,47 @@
+{
+  "endpoint": "POST /api/django/ventes/factures/<int:pk>/creer-avoir/",
+  "pourquoi": "ATOT36 (C-AMET-004, D-ATOT5 — décision fondateur 10/10/2026) — un avoir porte un `type` : `correction` | `geste_commercial` | `retour`. SEUL un avoir de CORRECTION émis est REMIS à la dernière tranche (solde) de l'échéancier du devis (`next_tranche`, `solde_devis`) : il rectifie une erreur de facturation, tout le devis reste dû. Un geste commercial ou un retour réduit le dû de SA facture (`Facture.montant_du`) et n'est jamais re-facturé. Exemple : devis 30 000 TTC, acompte 9 000, avoir 6 000 → solde 21 000 en geste commercial (le client paie 24 000), 27 000 en correction (le client paie 30 000). `type` absent = `geste_commercial` pour un nouvel avoir ; les avoirs antérieurs à ATOT36 sont `correction` (calcul d'hier) ; l'action `retour-client` pose toujours `retour`. Un type inconnu répond 400. Réponse = l'avoir sérialisé (`AvoirSerializer`), montants en texte décimal.",
+  "types": ["correction", "geste_commercial", "retour"],
+  "type_par_defaut": "geste_commercial",
+  "requete": {
+    "motif": "Geste commercial — retard de pose",
+    "type": "geste_commercial",
+    "lignes": [
+      {"produit": 42, "designation": "Geste commercial", "quantite": "1", "prix_unitaire": "5000.00", "remise": "0", "taux_tva": "20"}
+    ]
+  },
+  "exemple": {
+    "id": 23,
+    "lignes": [
+      {"id": 51, "produit": 42, "designation": "Geste commercial", "quantite": "1.00", "prix_unitaire": "5000.00", "remise": "0.00", "taux_tva": "20.00", "total_ht": "5000.00"}
+    ],
+    "total_ht": "5000.00",
+    "total_tva": "1000.00",
+    "total_ttc": "6000.00",
+    "tva_par_taux": [{"taux": "20.00", "base_ht": "5000.00", "montant": "1000.00"}],
+    "statut_display": "Émis",
+    "facture_reference": "FAC-2026-10-0007",
+    "client_nom": "Atlas Agro",
+    "company": 1,
+    "type": "geste_commercial",
+    "reference": "AV-2026-10-0003",
+    "facture": 118,
+    "client": 55,
+    "statut": "emise",
+    "motif": "Geste commercial — retard de pose",
+    "date_emission": "2026-10-10",
+    "taux_tva": "20.00",
+    "remise_globale": "0.00",
+    "arrondi_pas": 0,
+    "arrondi_unites": 1,
+    "montant_ht": null,
+    "montant_tva": null,
+    "montant_ttc": null,
+    "created_by": 3,
+    "fichier_pdf": null,
+    "ventilation_tva": null,
+    "restocke": false,
+    "motif_retour": "",
+    "note_debit": null
+  }
+}

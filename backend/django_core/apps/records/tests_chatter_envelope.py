@@ -88,3 +88,66 @@ class TestUniformChatterEnvelope(TenantAPITestCase):
         d2 = UniformChatterSerializer(
             ticket_chatter_envelope(ticket), many=True).data
         self.assertEqual(set(d1[0].keys()), set(d2[0].keys()))
+
+
+class ProvenanceTests(TenantAPITestCase):
+    """AMET22 (D-PROVENANCE) — `records.provenance` : une saisie humaine n'est
+    jamais écrasée par un écrivain automatique ; le refus est journalisé."""
+
+    def _cible(self):
+        cible = ClientFactory(company=self.company)
+        cible.telephone_whatsapp = '0611111111'
+        cible.saisies_humaines = ['telephone_whatsapp']
+        return cible
+
+    def test_ecrire_si_libre_refuse_une_cle_saisie_et_journalise(self):
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Activity
+        from apps.records.provenance import MESSAGE_REFUS, ecrire_si_libre
+        cible = self._cible()
+        self.assertFalse(
+            ecrire_si_libre(cible, 'telephone_whatsapp', '0600000000'))
+        self.assertEqual(cible.telephone_whatsapp, '0611111111')
+        journal = Activity.objects.filter(
+            company=self.company, object_id=cible.pk, body=MESSAGE_REFUS,
+            content_type=ContentType.objects.get_for_model(type(cible)))
+        self.assertEqual(journal.count(), 1)
+        self.assertEqual(journal.get().field, 'telephone_whatsapp')
+        self.assertEqual(journal.get().new_value, '0600000000')
+
+    def test_ecrire_si_libre_ecrit_un_champ_libre_sans_save(self):
+        from apps.records.provenance import ecrire_si_libre
+        cible = self._cible()
+        nom_avant = type(cible).objects.get(pk=cible.pk).nom
+        self.assertTrue(ecrire_si_libre(cible, 'nom', 'Nouveau nom'))
+        self.assertEqual(cible.nom, 'Nouveau nom')
+        # Aucun save() implicite : la base garde l'ancienne valeur.
+        self.assertEqual(type(cible).objects.get(pk=cible.pk).nom, nom_avant)
+
+    def test_marquer_saisie_humaine_trie_sans_doublon(self):
+        from apps.records.provenance import marquer_saisie_humaine
+        cible = self._cible()
+        marquer_saisie_humaine(cible, ['email', 'telephone_whatsapp', 'email'])
+        self.assertEqual(cible.saisies_humaines,
+                         ['email', 'telephone_whatsapp'])
+
+    def test_contrat_partage_provenance(self):
+        import json
+        from pathlib import Path
+
+        from apps.records.provenance import (
+            MESSAGE_REFUS, ecrire_si_libre, marquer_saisie_humaine)
+        chemin = (Path(__file__).resolve().parent / 'contract_samples'
+                  / 'provenance.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))['exemple']
+        cible = ClientFactory(company=self.company)
+        marquer_saisie_humaine(cible, ['telephone_whatsapp', 'email'])
+        self.assertEqual(cible.saisies_humaines, exemple['saisies_humaines'])
+        self.assertEqual(MESSAGE_REFUS, exemple['message_refus'])
+        self.assertEqual(
+            ecrire_si_libre(cible, 'email', 'x@exemple.ma', journal=False),
+            exemple['ecrire_si_libre']['champ_saisi'])
+        self.assertEqual(
+            ecrire_si_libre(cible, 'nom', 'Libre', journal=False),
+            exemple['ecrire_si_libre']['champ_libre'])

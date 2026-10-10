@@ -142,6 +142,13 @@ const TYPES_FACTURE = [
   { value: 'solde',        label: 'Solde' },
 ]
 
+// ATOT36 — types d'avoir choisis à l'émission (contrat `avoir.json`) ; le
+// « retour » est posé par l'action retour-client, jamais ici.
+const TYPES_AVOIR = [
+  ['geste_commercial', 'Geste commercial (réduit le dû de cette facture)'],
+  ['correction', 'Correction d’erreur (le montant reste dû : remis au solde de l’échéancier)'],
+]
+
 // VX230 — MODES_PAIEMENT + défauts intelligents VX92/VX93 (localStorage) ont
 // suivi la modale de paiement dans le composant partagé PaiementDialog.jsx.
 
@@ -339,10 +346,14 @@ export default function FactureList() {
   const [avoirSaving, setAvoirSaving] = useState(false)
   // Quantités à créditer par ligne (clé = id de ligne) ; vide = avoir total.
   const [avoirQtes, setAvoirQtes]     = useState({})
+  // ATOT36 (décision fondateur 10/10) — une CORRECTION est remise au solde de
+  // l'échéancier ; un geste commercial réduit le dû de cette facture.
+  const [avoirType, setAvoirType]     = useState('geste_commercial')
 
   const openAvoirModal = async (f) => {
     setAvoirMotif('')
     setAvoirQtes({})
+    setAvoirType('geste_commercial')
     // Charge le détail des lignes pour permettre un avoir partiel.
     try {
       const res = await ventesApi.getFacture(f.id)
@@ -356,7 +367,7 @@ export default function FactureList() {
     if (!avoirTarget) return
     setAvoirSaving(true)
     try {
-      const payload = { motif: avoirMotif }
+      const payload = { motif: avoirMotif, type: avoirType }
       if (mode === 'partiel') {
         const lignes = (avoirTarget.lignes || [])
           .map(l => ({ ...l, _qte: parseFloat(avoirQtes[l.id] ?? 0) }))
@@ -1235,6 +1246,17 @@ export default function FactureList() {
               <Input id="avoir-motif" type="text" value={avoirMotif}
                      onChange={e => setAvoirMotif(e.target.value)} />
             </FormField>
+            <fieldset className="grid gap-1" data-testid="avoir-type">
+              <legend className="text-sm font-medium">Type d’avoir</legend>
+              {TYPES_AVOIR.map(([value, label]) => (
+                <label key={value} className="flex items-center gap-2 text-sm">
+                  <input type="radio" name="avoir-type" value={value}
+                         checked={avoirType === value}
+                         onChange={() => setAvoirType(value)} />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
             {(avoirTarget?.lignes?.length ?? 0) > 0 && (
               <div className="overflow-x-auto">
                 <table className="data-table text-sm">

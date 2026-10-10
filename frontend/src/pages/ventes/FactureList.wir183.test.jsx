@@ -5,6 +5,7 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import CONTRAT_AVOIR from '../../../../backend/django_core/apps/facturation/contract_samples/avoir.json'
 
 /* WIR183 — Six actions Facture COMPLÈTES côté serveur, sans aucune UI :
    remettre-brouillon (ZFAC1), abandonner-solde (XFAC13), retour-client
@@ -24,6 +25,7 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
 // déclaration avec elles — patron déjà en place dans ce dépôt
 // (ExcelImport.wir48.test.jsx, BackgroundJobsBell.test.jsx).
 const api = vi.hoisted(() => ({
+  creerAvoir: vi.fn(() => Promise.resolve({ data: {} })),
   remettreBrouillonFacture: vi.fn(() => Promise.resolve({ data: {} })),
   abandonnerSoldeFacture: vi.fn(() => Promise.resolve({ data: {} })),
   retourClientFacture: vi.fn(() => Promise.resolve({ data: {} })),
@@ -354,5 +356,50 @@ describe('WIR183 — gating de palier', () => {
     expect(screen.queryByTestId('facturer-penalites')).toBeNull()
     expect(screen.queryByTestId('abandonner-solde')).toBeNull()
     expect(screen.queryByTestId('retour-client')).toBeNull()
+  })
+})
+
+/* ATOT36 (D-ATOT5, décision fondateur 10/10/2026) — la modale « Créer un
+   avoir » envoie le `type` choisi : geste commercial par défaut (réduit le
+   dû de la facture), correction sur choix (remise au solde de
+   l'échéancier). Types et réponse simulée : contrat partagé `avoir.json`. */
+describe('ATOT36 — type d’avoir à l’émission', () => {
+  const ouvrirAvoir = async (user) => {
+    const row = screen.getByText('FAC-2026-07-0001').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /^Avoir$/ }))
+    return screen.findByTestId('avoir-type')
+  }
+  beforeEach(() => {
+    api.creerAvoir.mockImplementation(() => Promise.resolve({ data: CONTRAT_AVOIR.exemple }))
+  })
+
+  it('propose les types du contrat (hors « retour », posé par retour-client)', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [emise] })
+    const groupe = await ouvrirAvoir(user)
+    const valeurs = within(groupe).getAllByRole('radio').map(r => r.value)
+    expect(valeurs.sort()).toEqual(
+      CONTRAT_AVOIR.types.filter(t => t !== 'retour').sort())
+    expect(within(groupe).getByRole('radio', { checked: true }).value)
+      .toBe(CONTRAT_AVOIR.type_par_defaut)
+  })
+
+  it('envoie geste_commercial par défaut', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [emise] })
+    await ouvrirAvoir(user)
+    await user.click(screen.getByRole('button', { name: 'Avoir total' }))
+    await waitFor(() => expect(api.creerAvoir).toHaveBeenCalledWith(
+      1, expect.objectContaining({ type: 'geste_commercial' })))
+  })
+
+  it('envoie correction quand elle est choisie', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [emise] })
+    const groupe = await ouvrirAvoir(user)
+    await user.click(within(groupe).getByRole('radio', { name: /Correction/ }))
+    await user.click(screen.getByRole('button', { name: 'Avoir total' }))
+    await waitFor(() => expect(api.creerAvoir).toHaveBeenCalledWith(
+      1, expect.objectContaining({ type: 'correction' })))
   })
 })

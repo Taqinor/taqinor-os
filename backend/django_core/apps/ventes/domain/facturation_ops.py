@@ -1600,7 +1600,7 @@ def _figer_avoir_retour(avoir, facture, *, epuise, reste_creditable):
 
 def creer_avoir_facture(*, facture, user, motif, mode='correction',
                         lignes_saisies=None, retour_lignes=None,
-                        restocker=False):
+                        restocker=False, type_avoir=None):
     """AFAC27 (C-AFAC-024) — LE constructeur unique d'un avoir client.
 
     Appelé par ``creer-avoir`` (correction totale/partielle, contre-
@@ -1630,6 +1630,14 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
 
     company = facture.company
     est_retour = retour_lignes is not None
+    # ATOT36 (D-ATOT5) — type de l'avoir : un retour est TOUJOURS « retour » ;
+    # sinon le choix saisi, à défaut le type neutre du modèle (geste
+    # commercial). Seule une CORRECTION est remise au solde de l'échéancier.
+    type_avoir = (Avoir.Type.RETOUR if est_retour
+                  else (type_avoir or Avoir.Type.GESTE_COMMERCIAL))
+    if type_avoir not in Avoir.Type.values:
+        raise AvoirRefuse(
+            "type doit être 'correction', 'geste_commercial' ou 'retour'.")
     with transaction.atomic():
         locked = Facture.objects.select_for_update().get(pk=facture.pk)
         epuise = False
@@ -1643,6 +1651,7 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
             avoir = Avoir.objects.create(
                 company=company, reference=ref, facture=locked,
                 client=locked.client, statut=Avoir.Statut.EMISE,
+                type=type_avoir,
                 motif=motif, motif_retour=motif if est_retour else '',
                 restocke=bool(restocker and est_retour),
                 taux_tva=locked.taux_tva,
@@ -1832,3 +1841,54 @@ def annuler_note_debit_par_avoir(*, note_debit, user):
         recalculer_statut_paiement(
             locked_facture, user=user, source='annulation_note_debit')
     return avoir, True
+
+
+MESSAGE_BC_EXISTANT = 'Un bon de commande existe déjà pour ce devis.'
+
+
+class BonCommandeExistant(Exception):
+    """AMET5 — le devis porte déjà un BC (message FR, prêt 400)."""
+
+    def __init__(self, message=MESSAGE_BC_EXISTANT):
+        super().__init__(message)
+        self.message = message
+
+
+def creer_bon_commande(devis, company, user=None, *, enregistrer=None):
+    """AMET5 (C-AMET-008) — LA porte unique de création d'un BC : refuse un
+    devis qui a déjà un BC (``BonCommandeExistant``), numérote par
+    ``create_numbered`` et émet ``bon_commande_cree`` exactement une fois.
+    ``enregistrer(ref)`` crée l'objet (création manuelle : le sérialiseur) ;
+    défaut = BC « en attente » repris du devis (``convertir_en_bc``, AMET6)."""
+    from django.db import transaction
+    from core.events import bon_commande_cree
+    from ..models import BonCommande, Devis
+    from ..utils.company_settings import create_numbered
+    if enregistrer is None:
+        def enregistrer(ref):
+            return BonCommande.objects.create(
+                reference=ref, devis=devis, client=devis.client,
+                statut=BonCommande.Statut.EN_ATTENTE, company=company)
+    with transaction.atomic():
+        if devis is not None:
+            Devis.objects.select_for_update().filter(pk=devis.pk).first()
+            if BonCommande.objects.filter(devis=devis).exists():
+                raise BonCommandeExistant()
+        bc = create_numbered(BonCommande, company, 'bon_commande', enregistrer)
+    bon_commande_cree.send(sender=BonCommande, instance=bc, company=company)
+    return bc
+
+
+def argent_modifie(instance, donnees, champs):
+    """ATOT35 (C-AMET-001) — champs d'ARGENT dont la VALEUR change : une clé
+    présente avec une valeur identique (PUT du formulaire inchangé) ne compte
+    pas. ``champs`` = ``FACTURE_CHAMPS_ARGENT`` (définition unique, vue)."""
+    modifies = set()
+    for champ in set(donnees) & set(champs):
+        nouveau, actuel = donnees[champ], getattr(instance, champ, None)
+        if nouveau is None or actuel is None:
+            if nouveau is not actuel:
+                modifies.add(champ)
+        elif Decimal(str(nouveau)) != Decimal(str(actuel)):
+            modifies.add(champ)
+    return modifies
