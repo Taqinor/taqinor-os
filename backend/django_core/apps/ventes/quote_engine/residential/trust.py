@@ -184,6 +184,9 @@ def _bloc_paiement(d, ctx, ident) -> str:
 
 def build(ctx) -> str:
     from . import theme
+    # APDF8 — libellés FIXES de la page de confiance (fr : littéral d'origine,
+    # octet pour octet ; en/ar : ``i18n_labels``), la fonction de la couverture.
+    from .cover import libelle_fixe as LF
 
     d = ctx["d"]
     C = ctx["C"]
@@ -256,15 +259,19 @@ def build(ctx) -> str:
     # constante theme.WARRANTIES et OMISSION du composant absent : deux gammes
     # aux marques différentes affichent chacune SES vraies garanties.
     gar_html = (
-        '<div class="p3-gar"><span class="p3-gar-t">Nos garanties</span>'
+        '<div class="p3-gar"><span class="p3-gar-t">'
+        + LF(d, "res_nos_garanties", "Nos garanties") + '</span>'
         + " &middot; ".join(
             f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
             f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
             for n, u, label, sub in theme.warranties_for(d))
-        + '<div class="p3-gar-n">Les garanties fabricant sont attachées au '
-          "matériel : elles suivent votre installation, restent transférables "
-          "avec le bien et demeurent valables quel que soit l'installateur."
-          '</div>'
+        + '<div class="p3-gar-n">'
+        + LF(d, "res_garanties_note",
+             "Les garanties fabricant sont attachées au "
+             "matériel : elles suivent votre installation, restent "
+             "transférables avec le bien et demeurent valables quel que soit "
+             "l'installateur.")
+        + '</div>'
         + '</div>')
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
@@ -276,9 +283,11 @@ def build(ctx) -> str:
     # /realisations : une carte dupliquée sur un PDF client).
     l_prod = links.get("produits", _lien_site("/produits"))
     trust_items = [(titre, url) for titre, url in (
-        ("Réalisations et avis clients", l_real),
-        ("Fiches techniques produits", l_prod),
-        ("Garanties et certifications", l_gar),
+        (LF(d, "res_realisations_avis", "Réalisations et avis clients"),
+         l_real),
+        (LF(d, "res_fiches_produits", "Fiches techniques produits"), l_prod),
+        (LF(d, "res_garanties_certifs", "Garanties et certifications"),
+         l_gar),
     ) if url]
     trust_html = "".join(
         f'<a class="p3-trust-item" href="{_link(url)}">'
@@ -299,7 +308,9 @@ def build(ctx) -> str:
     _valid_until = (d.get("valid_until") or "").strip() or (
         theme.valid_until(d.get("date"), validity_days)
         if validity_days else "")
-    cta_deadline = (f" Offre valable jusqu'au {_valid_until}."
+    cta_deadline = (LF(d, "res_cta_offre",
+                       f" Offre valable jusqu'au {_valid_until}.",
+                       date=_valid_until)
                     if _valid_until else "")
     # Q5 — le DÉLAI D'INSTALLATION QUITTE LA BOÎTE « CONDITIONS » : entre la
     # validité de l'offre, l'échéancier de paiement et la TVA, il se lisait
@@ -307,10 +318,12 @@ def build(ctx) -> str:
     # avec la mention « (indicatif) ». Une échéance indéterminable retire aussi
     # la ligne de validité — jamais « None jours ».
     conditions = [
-        *((("Validité de l'offre", f"jusqu'au {_valid_until}"),)
+        *(((LF(d, "res_validite_offre", "Validité de l'offre"),
+             LF(d, "res_jusqu_au", f"jusqu'au {_valid_until}",
+                date=_valid_until)),)
           if _valid_until else ()),
-        ("Paiement", paiement),
-        ("TVA", tva_note or "Selon barème en vigueur"),
+        (LF(d, "res_paiement", "Paiement"), paiement),
+        (LF(d, "tva", "TVA"), tva_note or "Selon barème en vigueur"),
     ]
     # QF3 / QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos
     # économies » QUITTE la colonne Conditions. Le texte reste celui du builder
@@ -376,12 +389,14 @@ def build(ctx) -> str:
     # un réglage vidé laisse l'étape sans sous-titre plutôt qu'avec un délai
     # inventé.
     steps = [
-        ("1", "Signature du devis", f"+ acompte {acompte}%"),
-        ("2", "Visite technique",
+        ("1", LF(d, "res_signature_devis", "Signature du devis"),
+         LF(d, "res_plus_acompte", f"+ acompte {acompte}%", pct=acompte)),
+        ("2", LF(d, "res_visite_technique", "Visite technique"),
          f"sous {_delai_visite} (indicatif)" if _delai_visite else ""),
-        ("3", "Installation",
+        ("3", LF(d, "res_installation", "Installation"),
          f"{_delai_install} (indicatif)" if _delai_install else ""),
-        ("4", "Mise en service", "tests + formation"),
+        ("4", LF(d, "res_mise_en_service", "Mise en service"),
+         LF(d, "res_tests_formation", "tests + formation")),
     ]
     steps_html = "".join(
         f'<div class="p3-step"><div class="p3-step-n">{n}</div>'
@@ -402,8 +417,11 @@ def build(ctx) -> str:
     _cols_head = (
         '<colgroup><col><col class="p3-cgap"><col></colgroup>'
         '<tr class="p3-crh">'
-        '<td><div class="p3-h">Conditions</div></td><td></td>'
-        '<td><div class="p3-h">Prochaines étapes</div></td></tr>')
+        '<td><div class="p3-h">'
+        + LF(d, "res_conditions", "Conditions")
+        + '</div></td><td></td><td><div class="p3-h">'
+        + LF(d, "res_prochaines_etapes", "Prochaines étapes")
+        + '</div></td></tr>')
     _right_html = f'<div class="p3-steps">{steps_html}</div>'
     _cols_cls = "p3-cols p3-block"
     cols_html = (
@@ -426,7 +444,9 @@ def build(ctx) -> str:
         _ts, _ta = d.get("total_sans"), d.get("total_avec")
         # QJR614 — prix TTC des options au centime.
         fmt_mad = ctx.get("fmt_mad") or theme.fmt
-        accord_opt_html = ("Offre valable jusqu'au " + _valid_until
+        accord_opt_html = (LF(d, "res_offre_valable",
+                              "Offre valable jusqu'au " + _valid_until,
+                              date=_valid_until)
                            if _valid_until else "")
         # AMOT33 — la pastille « recommandé » suit l'option RECOMMANDÉE par
         # le serveur ; aucune recommandation ⇒ aucune pastille.
@@ -434,7 +454,9 @@ def build(ctx) -> str:
         _reco = option_recommandee(d)
         _mini = '<span class="p3-reco-mini">recommandé</span>'
         accord_pick_html = (
-            '<div class="p3-accord-pick">Cochez votre option :'
+            '<div class="p3-accord-pick">'
+            + LF(d, "res_cochez_option", "Cochez votre option :")
+            + ''
             f'<span class="p3-box"></span> Sans batterie — '
             f'<b>{fmt_mad(_ts)} MAD TTC</b>'
             + (_mini if _reco == "sans" else "")
@@ -451,7 +473,9 @@ def build(ctx) -> str:
     qr_html = (
         f'<div class="p3-cta-qr">'
         f'<img src="{qr_uri}" alt="QR — signer en ligne">'
-        f'<span class="p3-cta-qr-t">Scannez pour signer</span></div>'
+        '<span class="p3-cta-qr-t">'
+        + LF(d, "res_scannez_signer", "Scannez pour signer")
+        + '</span></div>'
         if qr_uri else "")
 
     # Legal identifier band — CIQ310 : UNE fonction partagée avec les pages
@@ -473,9 +497,30 @@ def build(ctx) -> str:
     # de titre « La preuve, en ligne » au-dessus d'une bande vide).
     preuve_html = "" if (paiement_html or not trust_html) else (
         '<div class="p3-block">\n'
-        '    <div class="p3-h">La preuve, en ligne</div>\n'
+        '    <div class="p3-h">'
+        + LF(d, "res_preuve_en_ligne", "La preuve, en ligne")
+        + '</div>\n'
         f'    <div class="p3-trust">{trust_html}</div>\n'
         '  </div>')
+
+    # APDF8 — libellés fixes du gabarit ci-dessous (hors f-string).
+    _t_confiance = LF(d, "res_confiance", "Confiance &amp; Engagement")
+    _t_pourquoi = LF(d, "res_pourquoi_marque", f"Pourquoi {brand}",
+                     marque=brand)
+    _t_bpa = LF(d, "res_bon_pour_accord", "Bon pour accord")
+    _t_bpa_client = LF(d, "res_bpa_client", "Bon pour accord — le client")
+    _t_bpa_mention = LF(d, "res_bpa_mention",
+                        "Nom, date, mention « Bon pour accord » &amp; "
+                        "signature")
+    _t_pour = LF(d, "res_pour_marque", f"Pour {brand}", marque=brand)
+    _t_cachet = LF(d, "res_cachet_signature", "Cachet et signature")
+    _t_foi = LF(d, "res_devis_fait_foi",
+                "Le devis fait foi dès réception de l'acompte")
+    _t_pret = LF(d, "res_pret_solaire", "Prêt à passer au solaire ?")
+    _t_validez = LF(d, "res_validez_devis",
+                    "Validez votre devis en quelques clics, sans vous "
+                    "déplacer.")
+    _t_signez = LF(d, "res_signez_en_ligne", "Signez en ligne")
 
     # ERR114 — la surcharge compacte est concaténée APRÈS le style de page :
     # même spécificité, la dernière règle l'emporte. Vide par défaut.
@@ -647,8 +692,8 @@ def build(ctx) -> str:
 </style>
 {compact_css}
 <div class="p3-wrap">
-  <div class="p3-kicker">Confiance &amp; Engagement</div>
-  <div class="p3-title">Pourquoi {brand}</div>
+  <div class="p3-kicker">{_t_confiance}</div>
+  <div class="p3-title">{_t_pourquoi}</div>
 
   {values_html}
   {gar_html}
@@ -662,22 +707,22 @@ def build(ctx) -> str:
   <div class="qj" data-w="40"></div>
   <div class="p3-accord">
     <div class="p3-accord-hd">
-      <div class="p3-accord-ttl">Bon pour accord</div>
+      <div class="p3-accord-ttl">{_t_bpa}</div>
       <div class="p3-accord-opt">{accord_opt_html}</div>
     </div>
     {accord_pick_html}
     <div class="p3-accord-bd">
       <div class="p3-sig">
-        <div class="p3-sig-who">Bon pour accord — le client</div>
+        <div class="p3-sig-who">{_t_bpa_client}</div>
         <div class="p3-sig-name">{client_full}</div>
         <div class="p3-sig-zone"></div>
-        <div class="p3-sig-hint">Nom, date, mention « Bon pour accord » &amp; signature</div>
+        <div class="p3-sig-hint">{_t_bpa_mention}</div>
       </div>
       <div class="p3-sig">
-        <div class="p3-sig-who">Pour {brand}</div>
-        <div class="p3-sig-name">Cachet et signature</div>
+        <div class="p3-sig-who">{_t_pour}</div>
+        <div class="p3-sig-name">{_t_cachet}</div>
         <div class="p3-sig-zone"></div>
-        <div class="p3-sig-hint">Le devis fait foi dès réception de l'acompte</div>
+        <div class="p3-sig-hint">{_t_foi}</div>
       </div>
     </div>
   </div>
@@ -685,9 +730,9 @@ def build(ctx) -> str:
   <div class="qj" data-w="35"></div>
   <div class="p3-cta">
     <div class="p3-cta-l">
-      <div class="p3-cta-t">Prêt à passer au solaire ?</div>
-      <div class="p3-cta-s">Validez votre devis en quelques clics, sans vous déplacer.{cta_deadline}</div>
-      {f'<a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp_short(l_sign)}</a>' if l_sign else ''}
+      <div class="p3-cta-t">{_t_pret}</div>
+      <div class="p3-cta-s">{_t_validez}{cta_deadline}</div>
+      {f'<a class="p3-cta-btn" href="{_link(l_sign)}">{_t_signez} <span>&rarr;</span> {_disp_short(l_sign)}</a>' if l_sign else ''}
     </div>
     {qr_html}
   </div>
