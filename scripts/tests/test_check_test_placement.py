@@ -21,7 +21,8 @@ import check_test_placement as ctp  # noqa: E402
 from test_check_forme_code import Depot as DepotForme, PLAN, _git, tache  # noqa: E402
 
 V2 = "scripts/taches_audit_v2.txt"
-BASE = {"apps/x/tests/test_existant.py": "X = 1\n", PLAN: tache("ZZ1", "x", coche=False), V2: "ZZV2\n"}
+BASE = {"apps/x/tests/test_existant.py": "X = 1\n", PLAN: tache("ZZ1", "x", coche=False), V2: "ZZV2\n",
+        "docs/PLAN.md": tache("AMET9", "prefixe AMET connu des plans", coche=False)}
 
 
 class Depot(DepotForme):
@@ -68,6 +69,18 @@ class PlacementTests(unittest.TestCase):
         # Cochee + clause (casse libre) + chemin cite, meme apres un backtick impair : accepte.
         ligne = f"`impair {chemin}` (Nouveau FICHIER car : convention) `{chemin}::T::t`"
         code, sortie = d.scenario({chemin: "X = 1\n", PLAN: tache("ZZ1", ligne)})
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("OK", sortie)
+
+    def test_nom_technique_sans_prefixe_de_tache_reel_admis_par_nouveau_fichier_car(self):
+        # Revue du lot audit_deploy : `sha256`, `utf8`, `oauth2` ne sont PAS des ids de tâche — seuls les
+        # préfixes lus dans les plans comptent ; la clause « Nouveau fichier car : » reste donc applicable.
+        d = self.depot()
+        chemin = "apps/ged/tests/test_sha256_signature.py"
+        code, sortie = d.scenario({chemin: "X = 1\n"})
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("sans « Nouveau fichier car : »", sortie)
+        code, sortie = d.scenario({chemin: "X = 1\n", PLAN: tache("ZZ1", f"`{chemin}` (Nouveau fichier car : crypto)")})
         self.assertEqual(code, 0, sortie)
         self.assertIn("OK", sortie)
 
@@ -124,10 +137,24 @@ class PlacementTests(unittest.TestCase):
             self.assertTrue(ctp.est_fichier_test(nom), nom)
         for nom in ("a/conftest.py", "a/__init__.py", "a/helpers.py", "a/test_data.json", "node_modules/x.test.js"):
             self.assertFalse(ctp.est_fichier_test(nom), nom)
-        for nom in ("a/test_amet9_x.py", "a/tests_ab12_x.py", "a/x.amet9.test.mjs"):
-            self.assertTrue(ctp.NOM_AVEC_ID.search(nom), nom)
-        for nom in ("a/test_parcours_pa4.py", "a/test_sonde.py", "a/x.erreurHttp.test.mjs", "a/test_check_x.py"):
-            self.assertFalse(ctp.NOM_AVEC_ID.search(nom), nom)
+        connus = {"amet", "ab"}
+        for nom in ("a/test_amet9_x.py", "a/tests_ab12_x.py", "a/x.amet9.test.mjs", "a/test_AMET9_x.py"):
+            self.assertTrue(ctp.porte_un_id(nom, connus), nom)
+        for nom in ("a/test_parcours_pa4.py", "a/test_sonde.py", "a/x.erreurHttp.test.mjs", "a/test_check_x.py",
+                    "a/test_sha256_x.py", "a/test_utf8_x.py", "a/test_oauth2_x.py", "a/test_md5_x.py",
+                    "a/x.sha1.test.mjs"):
+            self.assertFalse(ctp.porte_un_id(nom, connus), nom)
+
+    def test_prefixes_lus_sur_toutes_les_formes_de_ligne_de_tache(self):
+        texte = ("- [x] AMET9 — a\n- [ ] **QJR5** — b\n- [BLOCKED: attend x] NTHOT4 — c\n"
+                 "- [GATED: fondateur] ZQ1 — d\n- texte libre SHA256 — e\n  - [ ] SOUS1 imbriquee\n"
+                 "AOF=194\nFE-COMPTA=2\n")
+        self.assertEqual(ctp.prefixes_de(texte), {"amet", "qjr", "nthot", "zq", "aof"})
+        for chemin in ("docs/plans/PLAN_AUDIT_X.md", "docs/PLAN2.md", "docs/WEB_ERROR_PLAN.md",
+                       "docs/new_tasks_plan.md", "docs/done_task.md"):
+            self.assertTrue(ctp.PLAN_DE_TACHES.match(chemin), chemin)
+        for chemin in ("docs/CODEMAP.md", "docs/plans/sous/PLAN_X.md", "docs/audits/METHODE.md"):
+            self.assertFalse(ctp.PLAN_DE_TACHES.match(chemin), chemin)
 
 
 if __name__ == "__main__":
