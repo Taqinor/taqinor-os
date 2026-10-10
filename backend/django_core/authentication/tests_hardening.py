@@ -20,6 +20,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -152,3 +153,44 @@ class TestLoginAuditActorNormalization(TestCase):
         self.assertEqual(
             AuditLog.objects.filter(action=AuditLog.Action.LOGIN).count(),
             before)
+
+
+# ENF2 (C4) — un cookie access_token présent mais vide n'est jamais remplacé en silence par le Bearer
+# de la même requête.
+def _client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+class CookieVideTests(TestCase):
+    """C4 — un cookie `access_token` vide n'est jamais remplacé en silence."""
+
+    def setUp(self):
+        co = Company.objects.create(nom='ENF2 Cookie', slug='enf2-cookie')
+        self.user = User.objects.create_user(
+            username='enf2_cookie', password='x', role_legacy='admin', company=co)
+        self.url = '/api/django/auth/me/'
+
+    def test_bearer_seul_accepte(self):
+        self.assertEqual(_client(self.user).get(self.url).status_code, 200)
+
+    def test_cookie_vide_plus_bearer_valide_refuse(self):
+        api = _client(self.user)
+        api.cookies['access_token'] = ''
+        response = api.get(self.url)
+        self.assertEqual(response.status_code, 401, response.content)
+        self.assertEqual(response.json()['error']['code'], 'not_authenticated')
+
+    def test_cookie_vide_seul_equivaut_a_anonyme(self):
+        api = APIClient()
+        api.cookies['access_token'] = ''
+        self.assertEqual(api.get(self.url).status_code, 401)
+        # …et une route publique reste joignable (pas de 401 forcé).
+        public = api.get('/api/django/statuspage/public/')
+        self.assertNotEqual(public.status_code, 401)
+
+    def test_cookie_valide_reste_prioritaire(self):
+        api = APIClient()
+        api.cookies['access_token'] = str(AccessToken.for_user(self.user))
+        self.assertEqual(api.get(self.url).status_code, 200)
