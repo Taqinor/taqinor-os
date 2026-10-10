@@ -34,8 +34,7 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = ['ETATS_PROTECTION', 'HorsReseauInvalide', 'SEUILS_PROTECTION',
-           'banque_pour_autonomie', 'dimensionner_hors_reseau',
-           'simuler_hors_reseau']
+           'dimensionner_hors_reseau']
 
 MOIS_LIBELLES = ('janvier', 'février', 'mars', 'avril', 'mai', 'juin',
                  'juillet', 'août', 'septembre', 'octobre', 'novembre',
@@ -51,9 +50,9 @@ class HorsReseauInvalide(ValueError):
         self.motif = message
 
 
-def banque_pour_autonomie(*, consommation_journaliere_kwh=None,
-                          jours_autonomie=None, dod_pct=None,
-                          source_dod=None, rendement_ar_pct=None):
+def _banque_pour_autonomie(*, consommation_journaliere_kwh=None,
+                           jours_autonomie=None, dod_pct=None,
+                           source_dod=None, rendement_ar_pct=None):
     """La banque à installer pour tenir J jours SANS soleil.
 
     Args:
@@ -214,11 +213,11 @@ def _plages(etats):
     return plages
 
 
-def simuler_hors_reseau(charge_horaire, production_horaire, *,
-                        capacite_utile_kwh, puissance_charge_kw=None,
-                        puissance_decharge_kw=None, rendement_ar_pct=None,
-                        mois_par_heure=None, etat_initial_kwh=None,
-                        pas_heures=1.0, seuils=None):
+def _simuler_hors_reseau(charge_horaire, production_horaire, *,
+                         capacite_utile_kwh, puissance_charge_kw=None,
+                         puissance_decharge_kw=None, rendement_ar_pct=None,
+                         mois_par_heure=None, etat_initial_kwh=None,
+                         pas_heures=1.0, seuils=None):
     """Fait tourner le site SANS RÉSEAU et publie son taux de défaillance.
 
     Il n'y a pas de soutirage ici : ce que la production et la batterie ne
@@ -462,11 +461,11 @@ def dimensionner_hors_reseau(charge_horaire, production_horaire, *,
     que « J jours » suffit toujours ; simuler sans dimensionner ne dit pas
     quoi acheter.
     """
-    banque = banque_pour_autonomie(
+    banque = _banque_pour_autonomie(
         consommation_journaliere_kwh=consommation_journaliere_kwh,
         jours_autonomie=jours_autonomie, dod_pct=dod_pct,
         source_dod=source_dod, rendement_ar_pct=rendement_ar_pct)
-    resultat = simuler_hors_reseau(
+    resultat = _simuler_hors_reseau(
         charge_horaire, production_horaire,
         capacite_utile_kwh=banque['capacite_utile_kwh'],
         rendement_ar_pct=rendement_ar_pct, **simulation)
