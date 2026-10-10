@@ -143,3 +143,49 @@ class TrancheParCleTests(TestCase):
         solde = Facture.objects.get(pk=r.data['id'])
         self.assertEqual(solde.cle_tranche, 'solde')
         self.assertEqual(Decimal(str(solde.total_ttc)), Decimal('21000.00'))
+
+    def _facture_emise(self):
+        from apps.ventes.models import Facture
+        return Facture.objects.create(
+            company=self.company, reference=f'FAC-ATOT35-{_nxt()}',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('0'),
+            montant_ht=Decimal('10000.00'), montant_tva=Decimal('2000.00'),
+            montant_ttc=Decimal('12000.00'))
+
+    def _put_formulaire(self, facture, **surcharge):
+        # Forme exacte de `FactureForm.jsx::handleSubmit` → `updateFacture`
+        # (PUT de l'en-tête, valeurs telles que relues du serveur).
+        corps = {
+            'client': self.client_obj.id, 'bon_commande': None,
+            'statut': facture.statut, 'date_echeance': None,
+            'date_livraison': None, 'conditions_paiement': '',
+            'taux_tva': '20.00', 'remise_globale': '0.00',
+            'statut_teledeclaration': facture.statut_teledeclaration,
+            'note': None, 'reference_commande_client': '',
+        }
+        corps.update(surcharge)
+        return self.api.put(
+            f'/api/django/ventes/factures/{facture.id}/', corps,
+            format='json')
+
+    def test_put_formulaire_inchange_sur_facture_emise_passe(self):
+        """ATOT35 (C-AMET-001) — le PUT du formulaire sans modification
+        d'une facture ÉMISE passe en 200 ; l'argent reste octet-identique."""
+        facture = self._facture_emise()
+        r = self._put_formulaire(facture)
+        self.assertEqual(r.status_code, 200, r.data)
+        facture.refresh_from_db()
+        self.assertEqual(facture.taux_tva, Decimal('20.00'))
+        self.assertEqual(facture.remise_globale, Decimal('0'))
+        self.assertEqual(facture.montant_ttc, Decimal('12000.00'))
+        self.assertEqual(facture.statut, 'emise')
+
+    def test_put_formulaire_remise_modifiee_sur_facture_emise_400(self):
+        """ATOT35 — une VALEUR d'argent qui change reste refusée (avoir)."""
+        facture = self._facture_emise()
+        r = self._put_formulaire(facture, remise_globale='5')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('Montant figé', str(r.data))
+        facture.refresh_from_db()
+        self.assertEqual(facture.remise_globale, Decimal('0'))

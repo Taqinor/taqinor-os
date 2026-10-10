@@ -1832,3 +1832,18 @@ def annuler_note_debit_par_avoir(*, note_debit, user):
         recalculer_statut_paiement(
             locked_facture, user=user, source='annulation_note_debit')
     return avoir, True
+
+
+def argent_modifie(instance, donnees, champs):
+    """ATOT35 (C-AMET-001) — champs d'ARGENT dont la VALEUR change : une clé
+    présente avec une valeur identique (PUT du formulaire inchangé) ne compte
+    pas. ``champs`` = ``FACTURE_CHAMPS_ARGENT`` (définition unique, vue)."""
+    modifies = set()
+    for champ in set(donnees) & set(champs):
+        nouveau, actuel = donnees[champ], getattr(instance, champ, None)
+        if nouveau is None or actuel is None:
+            if nouveau is not actuel:
+                modifies.add(champ)
+        elif Decimal(str(nouveau)) != Decimal(str(actuel)):
+            modifies.add(champ)
+    return modifies
