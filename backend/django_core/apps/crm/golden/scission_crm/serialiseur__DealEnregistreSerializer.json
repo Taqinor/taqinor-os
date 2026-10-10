@@ -1,0 +1,70 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "apporteur",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "apporteur_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "lead_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_enregistrement",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "statut",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "expire_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "montant_commission_estime",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "montant_commission_du",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

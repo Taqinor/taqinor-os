@@ -136,6 +136,10 @@ def _augment(data: dict) -> dict:
 
 def render_pdf_bytes(data: dict) -> bytes:
     """Render the premium commercial proposal to PDF bytes, or raise Unsupported."""
+    # Décision fondateur 08/10/2026 — un devis envoyé avant les
+    # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
+    from ..montants import poser_regles_origine
+    poser_regles_origine((data or {}).get("regles_calcul_origine"))
     from weasyprint import HTML
     from . import render as commercial_render
     from ..commercial.equip import pdf_adaptatif

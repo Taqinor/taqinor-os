@@ -1,0 +1,70 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "company",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "source",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "source_display",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "payload",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "remote_addr",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "received_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "processed",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "error",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "lead_nom",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

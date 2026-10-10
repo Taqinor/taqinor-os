@@ -1,0 +1,40 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "playbook",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "stage",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "stage_display",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ListSerializer",
+   "nom": "taches",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

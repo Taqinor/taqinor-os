@@ -1,0 +1,94 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "client",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "titre",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "token",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "expires_at",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "actif",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "has_password",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "mot_de_passe",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "lien_public",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ListSerializer",
+   "nom": "items",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "created_by",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "updated_at",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

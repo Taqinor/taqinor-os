@@ -304,8 +304,9 @@ describe('AGR420 — le pompage se pré-remplit des seules entrées du lead', ()
     const liste = screen.getByTestId('provenance-lead-pompage')
     expect(liste).toHaveTextContent('HMT (m) : 60')
     expect(liste).toHaveTextContent('formulaire du site')
-    // Les heures de pompage SOLAIRE ne viennent jamais du lead.
-    expect(document.getElementById('gen-heures').value).toBe('7')
+    // Les heures de pompage SOLAIRE ne viennent jamais du lead — AGNR26 : le
+    // champ mort « Heures de pompage » n'existe plus du tout.
+    expect(document.getElementById('gen-heures')).toBeNull()
   })
 
   it('un lead sans entrée laisse tout VIDE : ni butane, ni 20 m, ni région', async () => {

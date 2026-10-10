@@ -1,0 +1,40 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "company",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "actif",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ListSerializer",
+   "nom": "etapes",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

@@ -1,0 +1,90 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^plans-compte/$",
+  "nom": "plancompte-list",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/$",
+  "nom": "plancompte-detail",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "chatter_historique"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/chatter/historique/$",
+  "nom": "plancompte-chatter-historique",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "chatter_historique"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/chatter/historique\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "plancompte-chatter-historique",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "chatter_noter"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/chatter/noter/$",
+  "nom": "plancompte-chatter-noter",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "chatter_noter"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/chatter/noter\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "plancompte-chatter-noter",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "historique"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/historique/$",
+  "nom": "plancompte-historique",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "historique"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)/historique\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "plancompte-historique",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^plans-compte/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "plancompte-detail",
+  "vue": "PlanCompteViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^plans-compte\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "plancompte-list",
+  "vue": "PlanCompteViewSet"
+ }
+]

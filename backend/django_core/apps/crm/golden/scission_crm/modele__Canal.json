@@ -1,0 +1,70 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "canaux",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 40
+   },
+   "nom": "cle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 80
+   },
+   "nom": "libelle",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "protege",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "archived",
+   "type": "BooleanField"
+  }
+ ],
+ "db_table": "crm_canal",
+ "label": "crm.Canal",
+ "relations_inverses": []
+}

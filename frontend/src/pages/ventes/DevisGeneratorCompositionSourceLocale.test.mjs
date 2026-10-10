@@ -12,12 +12,12 @@
 // Run : node --test src/pages/ventes/DevisGeneratorCompositionSourceLocale.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 const CODE = DG.split(/\r?\n/).filter(l => !/^\s*(\/\/|\{\/\*)/.test(l)).join('\n')
 
 function blocCatchResidentiel() {

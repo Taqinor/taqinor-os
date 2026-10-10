@@ -1,0 +1,94 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "HiddenField",
+   "nom": "company",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "lead_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "canal",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "canal_libelle",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "source",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_contact",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "detail",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "cout",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "saisi_par",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "saisi_par_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "saisi_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_modification",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

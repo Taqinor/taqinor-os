@@ -1,0 +1,77 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "etapes",
+    "to": "crm.planactivite"
+   },
+   "nom": "plan",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:PROTECT",
+    "related_name": "etapes_plan_activite",
+    "to": "records.activitytype"
+   },
+   "nom": "activity_type",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0,
+    "help_text": "Nombre de jours après l'application du plan (0 = le jour même)."
+   },
+   "nom": "delai_jours",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 255
+   },
+   "nom": "resume_defaut",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "etapes_plan_activite_assignees",
+    "to": "authentication.customuser"
+   },
+   "nom": "assigne_par_defaut",
+   "type": "ForeignKey"
+  }
+ ],
+ "db_table": "crm_etapeplanactivite",
+ "label": "crm.EtapePlanActivite",
+ "relations_inverses": []
+}

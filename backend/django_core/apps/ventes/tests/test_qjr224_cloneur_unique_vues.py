@@ -155,9 +155,17 @@ class LeJeuDeChampsEstDERIVE(_Base):
             for champ in CHAMPS_CLONES:
                 if champ in a_part:
                     continue
+                attendu = getattr(origine, champ)
+                if (champ == 'taux_tva' and attendu is None
+                        and origine.type_ligne == 'produit'):
+                    # TVA-LIGNE + ATOT20 — une ligne PRODUIT sans taux renaît
+                    # par l'écrivain unique (``creer_ligne``) avec le taux du
+                    # produit, sinon celui du DEVIS : jamais NULL.
+                    tva_produit = getattr(origine.produit, 'tva', None)
+                    attendu = (tva_produit if tva_produit is not None
+                               else self.source.taux_tva)
                 with self.subTest(designation=ligne.designation, champ=champ):
-                    self.assertEqual(getattr(ligne, champ),
-                                     getattr(origine, champ))
+                    self.assertEqual(getattr(ligne, champ), attendu)
 
     def _reviser_source(self):
         # QJR521 — un BROUILLON ne se révise plus (409).

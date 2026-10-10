@@ -1,0 +1,748 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^leads/$",
+  "nom": "lead-list",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/$",
+  "nom": "lead-detail",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "desepingler"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/activites/(?P<activite_id>[^/.]+)/desepingler/$",
+  "nom": "lead-desepingler",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "desepingler"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/activites/(?P<activite_id>[^/.]+)/desepingler\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-desepingler",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "epingler"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/activites/(?P<activite_id>[^/.]+)/epingler/$",
+  "nom": "lead-epingler",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "epingler"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/activites/(?P<activite_id>[^/.]+)/epingler\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-epingler",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "appliquer_plan"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/appliquer-plan/$",
+  "nom": "lead-appliquer-plan",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "appliquer_plan"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/appliquer-plan\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-appliquer-plan",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "archiver"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/archiver/$",
+  "nom": "lead-archiver",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "archiver"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/archiver\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-archiver",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "client_match"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/client-match/$",
+  "nom": "lead-client-match",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "client_match"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/client-match\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-client-match",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "convertir_client"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/convertir-client/$",
+  "nom": "lead-convertir-client",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "convertir_client"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/convertir-client\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-convertir-client",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "devis_auto"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/devis-auto/$",
+  "nom": "lead-devis-auto",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "devis_auto"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/devis-auto\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-devis-auto",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "duplicates"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/duplicates/$",
+  "nom": "lead-duplicates",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "duplicates"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/duplicates\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-duplicates",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "historique"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/historique/$",
+  "nom": "lead-historique",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "historique"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/historique\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-historique",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "jalons_devis"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/jalons-devis/$",
+  "nom": "lead-jalons-devis",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "jalons_devis"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/jalons-devis\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-jalons-devis",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "locataire",
+   "post": "locataire"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/locataire/$",
+  "nom": "lead-locataire",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "locataire",
+   "post": "locataire"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/locataire\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-locataire",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "log_interaction"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/log-interaction/$",
+  "nom": "lead-log-interaction",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "log_interaction"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/log-interaction\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-log-interaction",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "merge"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/merge/$",
+  "nom": "lead-merge",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "merge"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/merge\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-merge",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "message_visite"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/message-visite/$",
+  "nom": "lead-message-visite",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "message_visite_ouvert"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/message-visite/ouvert/$",
+  "nom": "lead-message-visite-ouvert",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "message_visite_ouvert"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/message-visite/ouvert\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-message-visite-ouvert",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "message_visite"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/message-visite\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-message-visite",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "noter"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/noter/$",
+  "nom": "lead-noter",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "noter"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/noter\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-noter",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "panneau_appel"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/panneau-appel/$",
+  "nom": "lead-panneau-appel",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "panneau_appel"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/panneau-appel\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-panneau-appel",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "points_contact"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/points-contact/$",
+  "nom": "lead-points-contact",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "points_contact"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/points-contact\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-points-contact",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "questionnaire_lien"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/questionnaire-lien/$",
+  "nom": "lead-questionnaire-lien",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "questionnaire_lien"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/questionnaire-lien\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-questionnaire-lien",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "references_proches"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/references-proches/$",
+  "nom": "lead-references-proches",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "references_proches"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/references-proches\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-references-proches",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "arreter_relance"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/relance/arreter/$",
+  "nom": "lead-arreter-relance",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "arreter_relance"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/relance/arreter\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-arreter-relance",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "initialiser_relance"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/relance/initialiser/$",
+  "nom": "lead-initialiser-relance",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "initialiser_relance"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/relance/initialiser\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-initialiser-relance",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "restaurer"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/restaurer/$",
+  "nom": "lead-restaurer",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "restaurer"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/restaurer\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-restaurer",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "resume_associe"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/resume-associe/$",
+  "nom": "lead-resume-associe",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "resume_associe"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/resume-associe\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-resume-associe",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "salle_vente_analytics_view"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/salle-vente-analytics/$",
+  "nom": "lead-salle-vente-analytics-view",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "salle_vente_analytics_view"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/salle-vente-analytics\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-salle-vente-analytics-view",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "synchroniser_client"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/synchroniser-client/$",
+  "nom": "lead-synchroniser-client",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "synchroniser_client"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/synchroniser-client\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-synchroniser-client",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "visites"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/visites/$",
+  "nom": "lead-visites",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "planifier_visite"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/visites/planifier/$",
+  "nom": "lead-planifier-visite",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "planifier_visite"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/visites/planifier\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-planifier-visite",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "visites"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/visites\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-visites",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "whatsapp_devis_apercu"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/whatsapp-devis-apercu/$",
+  "nom": "lead-whatsapp-devis-apercu",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "whatsapp_devis_apercu"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/whatsapp-devis-apercu\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-whatsapp-devis-apercu",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "whatsapp_devis"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/whatsapp-devis/$",
+  "nom": "lead-whatsapp-devis",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "whatsapp_devis"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)/whatsapp-devis\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-whatsapp-devis",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^leads/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-detail",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "bulk"
+  },
+  "motif": "^leads/bulk/$",
+  "nom": "lead-bulk",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "bulk"
+  },
+  "motif": "^leads/bulk\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-bulk",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "check_duplicates"
+  },
+  "motif": "^leads/check-duplicates/$",
+  "nom": "lead-check-duplicates",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "check_duplicates"
+  },
+  "motif": "^leads/check-duplicates\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-check-duplicates",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "doublons"
+  },
+  "motif": "^leads/doublons/$",
+  "nom": "lead-doublons",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "doublons"
+  },
+  "motif": "^leads/doublons\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-doublons",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "export_xlsx"
+  },
+  "motif": "^leads/export-xlsx/$",
+  "nom": "lead-export-xlsx",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "export_xlsx"
+  },
+  "motif": "^leads/export-xlsx\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-export-xlsx",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "kpi_cadences"
+  },
+  "motif": "^leads/kpi-cadences/$",
+  "nom": "lead-kpi-cadences",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "kpi_cadences"
+  },
+  "motif": "^leads/kpi-cadences\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-kpi-cadences",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "kpi_premier_contact"
+  },
+  "motif": "^leads/kpi-premier-contact/$",
+  "nom": "lead-kpi-premier-contact",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "kpi_premier_contact"
+  },
+  "motif": "^leads/kpi-premier-contact\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-kpi-premier-contact",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "mesure_cadence"
+  },
+  "motif": "^leads/mesure-cadence/$",
+  "nom": "lead-mesure-cadence",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "mesure_cadence"
+  },
+  "motif": "^leads/mesure-cadence\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-mesure-cadence",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "placement_cadences"
+  },
+  "motif": "^leads/placement-cadences/$",
+  "nom": "lead-placement-cadences",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "placement_cadences"
+  },
+  "motif": "^leads/placement-cadences\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-placement-cadences",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "relances"
+  },
+  "motif": "^leads/relances/$",
+  "nom": "lead-relances",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "relances"
+  },
+  "motif": "^leads/relances\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-relances",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "resoudre_gps"
+  },
+  "motif": "^leads/resoudre-gps/$",
+  "nom": "lead-resoudre-gps",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "resoudre_gps"
+  },
+  "motif": "^leads/resoudre-gps\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-resoudre-gps",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "roi_sources"
+  },
+  "motif": "^leads/roi-sources/$",
+  "nom": "lead-roi-sources",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "roi_sources"
+  },
+  "motif": "^leads/roi-sources\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-roi-sources",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "scan_carte"
+  },
+  "motif": "^leads/scan-carte/$",
+  "nom": "lead-scan-carte",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "scan_carte"
+  },
+  "motif": "^leads/scan-carte\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-scan-carte",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "sla_breach"
+  },
+  "motif": "^leads/sla-breach/$",
+  "nom": "lead-sla-breach",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "sla_breach"
+  },
+  "motif": "^leads/sla-breach\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-sla-breach",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "ville_statut"
+  },
+  "motif": "^leads/ville-statut/$",
+  "nom": "lead-ville-statut",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "ville_statut"
+  },
+  "motif": "^leads/ville-statut\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-ville-statut",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^leads\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-list",
+  "vue": "LeadViewSet"
+ }
+]

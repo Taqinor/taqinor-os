@@ -6,12 +6,22 @@
 // Exécuté en CI : node --test src/pages/ventes/generator/edc.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const lire = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
   .replace(/\r\n/g, '\n')
 const cssBrut = lire('../../../index.css')
+// SPL40-55 : le générateur est découpé — DevisGenerator.jsx + ses cartes et
+// panneaux de generator/ forment UN source pour les gardes EDC (LigneTable.jsx
+// a sa propre garde ci-dessous, il n'entre pas dans l'agrégat).
+const generateurComplet = (exclus = []) => [
+  lire('../DevisGenerator.jsx'),
+  ...readdirSync(fileURLToPath(new URL('.', import.meta.url)))
+    .filter((f) => f.endsWith('.jsx') && !f.includes('.test.') && f !== 'LigneTable.jsx' && !exclus.includes(f))
+    .sort()
+    .map((f) => lire(`./${f}`)),
+].join(String.fromCharCode(10))
 // Commentaires retirés : ils citent des règles qui piégeraient les regex.
 const sansCommentaires = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '')
 
@@ -57,7 +67,7 @@ test('EDC : aucun bloc EDC ne pose `table-layout: fixed` ni `position: fixed`', 
 })
 
 test('EDC2 : le rail du générateur ne porte plus aucune classe `lg:` ni de `top` en ligne', () => {
-  const gen = lire('../DevisGenerator.jsx')
+  const gen = generateurComplet()
   const aside = gen.match(/<aside className="[^"]*"[^>]*>/)
   assert.ok(aside, 'le rail <aside> doit exister')
   assert.equal(aside[0], '<aside className="gen-summary-rail">')
@@ -135,7 +145,7 @@ test('EDC3 : en-tête collant et `separate` sur BUREAU seulement — empilement 
 })
 
 test('EDC3 : les trois tableaux d’étude horaire passent par la barre collante (plus d’overflowX en ligne)', () => {
-  const gen = lire('../DevisGenerator.jsx')
+  const gen = generateurComplet()
   assert.doesNotMatch(gen, /overflowX: 'auto'/)
   assert.equal((gen.match(/<BarreDefilementCollante[\s>]/g) || []).length, 3)
   const table = lire('./LigneTable.jsx')
@@ -157,7 +167,7 @@ test('EDC9 : navigation collée sous la barre d’actions, cartes atteintes sous
 })
 
 test('EDC9 : ancres de section posées sur les cartes, jamais sur l’argent', () => {
-  const gen = lire('../DevisGenerator.jsx')
+  const gen = generateurComplet(['CarteMetrique.jsx'])
   for (const [id, libelle] of [
     ['gen-sec-document', 'Document'], ['gen-sec-lead', 'Lead & Client'],
     ['gen-sec-technique', 'Technique'], ['gen-sec-simulation', 'Simulation'],

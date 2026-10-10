@@ -518,6 +518,12 @@ def creer_ligne(devis, **champs):
         taux_produit = _taux_tva_du_produit(champs)
         if taux_produit is not None:
             champs['taux_tva'] = taux_produit
+        elif str(champs.get('type_ligne') or 'produit') == 'produit':
+            # ATOT20 — une ligne PRODUIT naît TOUJOURS avec un taux : celui du
+            # produit, sinon celui du DEVIS (le taux que le serveur et le PDF
+            # lui appliquaient de toute façon : total inchangé). Plus aucune
+            # ligne NULL dont l'écran devait deviner le taux.
+            champs['taux_tva'] = getattr(devis, 'taux_tva', None)
     return LigneDevis.objects.create(devis=devis, **champs)
 
 
@@ -986,6 +992,22 @@ def exiger_base_legale_tva(lignes_in):
         })
 
 
+def _borner_ligne(qte, pu, remise):
+    """ATOT21 — bornes d'argent d'une ligne émise (garde unique
+    ``domain/bornes``) : 400 NOMMÉ par champ, AVANT la contrainte CHECK
+    (500 / texte SQL)."""
+    from rest_framework.exceptions import ValidationError
+    from .bornes import montant_saisi, pourcentage_saisi
+
+    for champ, valeur in (('quantite', qte), ('prix_unitaire', pu)):
+        _nombre, erreur = montant_saisi(valeur, champ)
+        if erreur:
+            raise ValidationError({champ: [erreur[champ]]})
+    _nombre, erreur = pourcentage_saisi({'remise': remise}, 'remise', None)
+    if erreur:
+        raise ValidationError({'remise': [erreur['remise']]})
+
+
 def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
                      autoriser_vidage=False):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
@@ -1106,6 +1128,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             remise = Decimal(str(li.get('remise', 0)))
         except (InvalidOperation, TypeError, ValueError):
             raise ValueError('Quantité/prix/remise invalide.')
+        _borner_ligne(qte, pu, remise)
         taux = li.get('taux_tva')
         # L-2OPT — tag d'option porté par la ligne. Absent (tous les
         # appelants d'hier) ou inconnu ⇒ '' : ligne commune, comportement

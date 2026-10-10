@@ -192,14 +192,28 @@ class IdempotentCreateMixin:
         return f'{self.__class__.__module__}.{self.__class__.__qualname__}'
 
     def create(self, request, *args, **kwargs):
+        return self._avec_idempotence(
+            request, lambda: super(IdempotentCreateMixin, self).create(
+                request, *args, **kwargs))
+
+    def _avec_idempotence(self, request, creer, suffixe=''):
+        """Le contrat ``Idempotency-Key`` autour d'un geste de création
+        ``creer()`` (sans argument, rend la ``Response``) : ``create`` l'emploie,
+        et une action de création dédiée aussi (AGNR40 — ``POST
+        /ventes/devis/atomic/``, le VRAI chemin de création du générateur).
+        ``suffixe`` sépare l'espace de clés d'une action de celui de ``create``
+        (même endpoint de vue, deux gestes distincts). Sans en-tête : ``creer()``
+        tel quel, aucune requête supplémentaire."""
         idem_key = self._idempotency_key(request)
         if not idem_key:
-            return super().create(request, *args, **kwargs)
+            return creer()
 
         from rest_framework.response import Response
 
         company = getattr(request.user, 'company', None)
         endpoint = self._idempotency_endpoint()
+        if suffixe:
+            endpoint = f'{endpoint}.{suffixe}'
         fingerprint = _fingerprint(request.data)
 
         existing = IdempotencyRecord.objects.filter(
@@ -210,7 +224,11 @@ class IdempotentCreateMixin:
             return Response(
                 existing.response_body, status=existing.response_status)
 
-        response = super().create(request, *args, **kwargs)
+        response = creer()
+        if response.status_code >= 400:
+            # Un refus n'est pas mémorisé : corriger puis renvoyer la même
+            # clé doit pouvoir créer (le rejeu ne vaut que pour un succès).
+            return response
         try:
             IdempotencyRecord.objects.get_or_create(
                 company=company, endpoint=endpoint, key=idem_key,

@@ -1,0 +1,91 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "items",
+    "to": "crm.sallevente"
+   },
+   "nom": "salle",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "devis",
+      "Devis"
+     ],
+     [
+      "document",
+      "Document"
+     ],
+     [
+      "video_lien",
+      "Lien vidéo"
+     ],
+     [
+      "note",
+      "Note"
+     ]
+    ],
+    "max_length": 12
+   },
+   "nom": "type",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "help_text": "Id du devis/document GED cible, ou URL/texte libre (video_lien/note).",
+    "max_length": 500
+   },
+   "nom": "reference",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "default": "",
+    "max_length": 200
+   },
+   "nom": "titre",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  }
+ ],
+ "db_table": "crm_salleventeitem",
+ "label": "crm.SalleVenteItem",
+ "relations_inverses": []
+}

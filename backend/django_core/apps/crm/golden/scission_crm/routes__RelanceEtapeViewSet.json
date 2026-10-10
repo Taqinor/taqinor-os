@@ -1,0 +1,274 @@
+[
+ {
+  "actions_map": {
+   "get": "list"
+  },
+  "motif": "^relance-etapes/$",
+  "nom": "relance-etape-list",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "annuler"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/annuler/$",
+  "nom": "relance-etape-annuler",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "annuler"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/annuler\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-annuler",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "appel_compose"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/appel-compose/$",
+  "nom": "relance-etape-appel-compose",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "appel_compose"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/appel-compose\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-appel-compose",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "fait"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/fait/$",
+  "nom": "relance-etape-fait",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "fait"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/fait\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-fait",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "langue"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/langue/$",
+  "nom": "relance-etape-langue",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "langue"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/langue\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-langue",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "message"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/message/$",
+  "nom": "relance-etape-message",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "message"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/message\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-message",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "piece_recue"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/piece-recue/$",
+  "nom": "relance-etape-piece-recue",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "piece_recue"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/piece-recue\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-piece-recue",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "reporter"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/reporter/$",
+  "nom": "relance-etape-reporter",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "reporter"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/reporter\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-reporter",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "sauter"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/sauter/$",
+  "nom": "relance-etape-sauter",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "sauter"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/sauter\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-sauter",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "whatsapp"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/whatsapp/$",
+  "nom": "relance-etape-whatsapp",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "post": "whatsapp"
+  },
+  "motif": "^relance-etapes/(?P<pk>[^/.]+)/whatsapp\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-whatsapp",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "cadences_echues"
+  },
+  "motif": "^relance-etapes/cadences-echues/$",
+  "nom": "relance-etape-cadences-echues",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "cadences_echues"
+  },
+  "motif": "^relance-etapes/cadences-echues\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-cadences-echues",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "chaine_commerciale"
+  },
+  "motif": "^relance-etapes/chaine-commerciale/$",
+  "nom": "relance-etape-chaine-commerciale",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "chaine_commerciale"
+  },
+  "motif": "^relance-etapes/chaine-commerciale\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-chaine-commerciale",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "controle"
+  },
+  "motif": "^relance-etapes/controle/$",
+  "nom": "relance-etape-controle",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "controle"
+  },
+  "motif": "^relance-etapes/controle\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-controle",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "journal"
+  },
+  "motif": "^relance-etapes/journal/$",
+  "nom": "relance-etape-journal",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "journal"
+  },
+  "motif": "^relance-etapes/journal\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-journal",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "kpi_adherence"
+  },
+  "motif": "^relance-etapes/kpi-adherence/$",
+  "nom": "relance-etape-kpi-adherence",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "kpi_adherence"
+  },
+  "motif": "^relance-etapes/kpi-adherence\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-kpi-adherence",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "mes_stats"
+  },
+  "motif": "^relance-etapes/mes-stats/$",
+  "nom": "relance-etape-mes-stats",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "mes_stats"
+  },
+  "motif": "^relance-etapes/mes-stats\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-mes-stats",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "suivi"
+  },
+  "motif": "^relance-etapes/suivi/$",
+  "nom": "relance-etape-suivi",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "suivi"
+  },
+  "motif": "^relance-etapes/suivi\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-suivi",
+  "vue": "RelanceEtapeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list"
+  },
+  "motif": "^relance-etapes\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "relance-etape-list",
+  "vue": "RelanceEtapeViewSet"
+ }
+]
