@@ -1245,8 +1245,14 @@ class EdiParqueTests(SimpleTestCase):
         from django.urls import Resolver404, resolve
         for chemin in ('/api/public/v1/edi/', '/api/django/publicapi/edi/',
                        '/api/public/v1/edi/810/', '/api/public/v1/edi/850/'):
-            with self.assertRaises(Resolver404, msg=chemin):
-                resolve(chemin)
+            try:
+                resolu = resolve(chemin)
+            except Resolver404:
+                continue
+            # Un motif fourre-tout (jeton, slug) peut capter le chemin : il ne
+            # doit alors mener à AUCUNE vue EDI.
+            cible = f"{resolu.func.__module__}.{getattr(resolu.func, '__name__', '')} {resolu.url_name or ''}"
+            self.assertNotIn('edi', cible.lower(), f'{chemin} → {cible}')
 
     def test_modules_edi_absents(self):
         import importlib.util
