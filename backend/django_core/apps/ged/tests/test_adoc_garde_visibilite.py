@@ -14,15 +14,16 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ged import services
 from apps.ged.models import (
     AclGed, AnnotationDocument, Cabinet, Coffre, DemandeApprobation, DemandeDocument,
-    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, FavoriGed, Folder, LegalHold,
-    PlanificationDocument, ValidationOcrDocument,
+    ChampSignature, DemandeSignatureDocument, Document, DocumentLien,
+    DocumentTag, DocumentTagAssignment, DocumentVersion, FavoriGed, Folder,
+    LegalHold, PlanificationDocument, SignataireDemande, ValidationOcrDocument,
 )
 from apps.ged.urls import router
 from authentication.models import Company
@@ -50,6 +51,19 @@ def _fk_vers(modele, nom):
     except FieldDoesNotExist:
         return False
     return bool(getattr(champ, 'is_relation', False))
+
+
+def _fks_indirectes(modele):
+    """ADOC173 — FK d'un modèle vers un modèle qui porte lui-même une FK
+    `document` (intermédiaire) : ex. SignataireDemande -> DemandeSignatureDocument."""
+    trouvees = []
+    for champ in modele._meta.get_fields():
+        if not (getattr(champ, 'many_to_one', False) and champ.concrete):
+            continue
+        cible = champ.related_model
+        if cible is not None and _fk_vers(cible, 'document'):
+            trouvees.append(champ)
+    return trouvees
 
 
 class GardeVisibiliteGed(TestCase):
@@ -88,9 +102,27 @@ class GardeVisibiliteGed(TestCase):
         PlanificationDocument.objects.create(
             company=self.co, document=self.doc, libelle='Relancer',
             echeance='2026-12-01')
-        DemandeSignatureDocument.objects.create(
+        demande_sig = DemandeSignatureDocument.objects.create(
             company=self.co, document=self.doc, signataire_nom='S',
             signataire_email='s@example.com', created_by=self.emp1)
+        SignataireDemande.objects.create(
+            company=self.co, demande=demande_sig, nom='Signataire D',
+            email='sd@example.com')
+        ChampSignature.objects.create(
+            company=self.co, demande=demande_sig, page=1, x=0.1, y=0.1,
+            largeur=0.2, hauteur=0.1)
+        # ADOC173 — document en corbeille : ses lignes sortent aussi des listes.
+        doc_corbeille = Document.objects.create(
+            company=self.co, folder=folder, nom='Corbeille')
+        demande_corbeille = DemandeSignatureDocument.objects.create(
+            company=self.co, document=doc_corbeille, signataire_nom='T',
+            signataire_email='t@example.com', created_by=self.emp2)
+        SignataireDemande.objects.create(
+            company=self.co, demande=demande_corbeille, nom='Signataire C',
+            email='sc@example.com')
+        Document.objects.filter(pk=doc_corbeille.pk).update(
+            supprime_le=timezone.now())
+        self.demandes_invisibles = {demande_sig.pk, demande_corbeille.pk}
         DemandeDocument.objects.create(
             company=self.co, folder=folder, libelle='Paie', statut='soldee',
             document=self.doc)
@@ -109,6 +141,10 @@ class GardeVisibiliteGed(TestCase):
 
     def _references(self, modele, ligne):
         ids_docs = {self.doc.pk, self.archive.pk}
+        for champ in _fks_indirectes(modele):
+            if champ.name == 'demande' and (
+                    ligne.get('demande') in self.demandes_invisibles):
+                return True
         if modele is Document:
             return ligne.get('id') in ids_docs
         if modele is DocumentVersion:
@@ -117,8 +153,21 @@ class GardeVisibiliteGed(TestCase):
                 or ligne.get('document_id') in ids_docs
                 or ligne.get('version') == self.version.pk)
 
+    def _fixture_attendue(self, modele):
+        """Une liste rattachée par un intermédiaire n'est jugée « vide à tort »
+        que si la fixture porte au moins une de ses lignes."""
+        indirectes = _fks_indirectes(modele)
+        direct = (_fk_vers(modele, 'document') or _fk_vers(modele, 'version')
+                  or modele in (Document, DocumentVersion))
+        if not indirectes or direct:
+            return True
+        return any(
+            modele.objects.filter(**{f'{c.name}__in': self.demandes_invisibles}
+                                  ).exists()
+            for c in indirectes if c.name == 'demande')
+
     def test_aucune_liste_ne_fuit(self):
-        fuites, vides = [], []
+        fuites, vides, anormales = [], [], []
         routes_controlees = 0
         for prefixe, viewset, _base in router.registry:
             modele = getattr(getattr(viewset, 'queryset', None), 'model', None)
@@ -126,19 +175,27 @@ class GardeVisibiliteGed(TestCase):
                 continue
             if not (modele in (Document, DocumentVersion)
                     or _fk_vers(modele, 'document')
-                    or _fk_vers(modele, 'version')):
+                    or _fk_vers(modele, 'version')
+                    or _fks_indirectes(modele)):
                 continue
             url = f'{BASE}{prefixe}/?page_size=200'
             resp = auth(self.emp2).get(url)
-            if resp.status_code != 200:
+            if resp.status_code == 403:
                 continue  # liste non ouverte à ce rôle (permission).
+            if resp.status_code != 200:
+                # ADOC173 — une 404/500 ne « saute » plus la garde.
+                anormales.append((prefixe, resp.status_code))
+                continue
             routes_controlees += 1
             if any(self._references(modele, ligne) for ligne in _lignes(resp)):
                 fuites.append(prefixe)
             proprio = auth(self.emp1).get(url)
-            if proprio.status_code == 200 and not any(
-                    self._references(modele, ligne) for ligne in _lignes(proprio)):
+            voit = any(self._references(modele, ligne)
+                       for ligne in _lignes(proprio))
+            if (proprio.status_code == 200 and not voit
+                    and self._fixture_attendue(modele)):
                 vides.append(prefixe)
+        self.assertEqual(anormales, [], f'Listes en erreur : {anormales}')
         self.assertGreaterEqual(routes_controlees, 8)
         self.assertEqual(fuites, [], f'Listes qui fuient : {fuites}')
         self.assertEqual(
