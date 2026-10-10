@@ -63,13 +63,13 @@ entre crochets évite qu'un `pgrep` lancé par SSH se trouve lui-même).
 | `DJANGO_SECRET_KEY` | la clé réelle déjà en place (jamais un `change_me…`) | oui | `RuntimeError` au démarrage / erreur `core.E_AUD410_SECRET_KEY` |
 | `DJANGO_ALLOWED_HOSTS` | `api.taqinor.ma,178-105-192-116.sslip.io` (les deux hôtes de la Caddyfile ; le 2e = `PUBLIC_HOSTNAME`) | oui | **toute requête refusée (400)** et erreur `core.E_QJR423_ALLOWED_HOSTS` : en prod il n'y a plus de défaut `localhost` |
 | `CSRF_TRUSTED_ORIGINS` | `https://api.taqinor.ma,https://178-105-192-116.sslip.io` (déjà posée) | recommandé | complétée automatiquement des origines CORS |
-| `CORS_ALLOWED_ORIGINS` | `https://taqinor.ma,https://www.taqinor.ma` | non (c'est le défaut de `settings.prod`) | défaut : les deux domaines publics |
+| `CORS_ALLOWED_ORIGINS` | **absente** — décision de Reda du 10/10/2026 : garder le défaut de `settings.prod` (`https://taqinor.ma,https://www.taqinor.ma`) | non | défaut : les deux domaines publics |
 | `MINIO_ROOT_PASSWORD` | le mot de passe réel (jamais un `change_me…`) | oui | erreur `core.E_AUD410_MINIO` |
 | `NUM_PROXIES` | absente, ou `1` | non | absente = 1 ; `0` ou illisible ⇒ **démarrage refusé** (tout Internet dans un seul seau de limitation) |
 | `AUTH_COOKIE_SECURE` | **absente** | non | `0` retirerait `Secure` aux cookies JWT — ne jamais la poser en prod |
 | `ODOO_COMPANY_ID` | id numérique de la société propriétaire du connecteur Odoo (ASEC40) | si Odoo est utilisé | le tableau Odoo s'éteint (fail-closed) |
 | `TENANT_SIGNUP_ENABLED` | `0` (ou absente) | non | `1` rouvrirait l'inscription publique de sociétés (D-ASEC-2) |
-| `DJANGO_ADMIN_URL` | recommandé : un chemin non devinable SOUS `api/django/`, terminé par `/` (ex. `api/django/<mot-choisi>/`) | non | défaut `api/django/admin/` (devinable). Hors `api/django/`, nginx ne relaierait pas l'admin |
+| `DJANGO_ADMIN_URL` | **POSÉE le 10/10/2026** (décision de Reda) : chemin aléatoire SOUS `api/django/`, terminé par `/` ; la valeur n'existe QUE dans le `.env` serveur, jamais au dépôt ni dans un chat — la lire : `grep '^DJANGO_ADMIN_URL=' /opt/taqinor-os/.env` | oui (décision) | l'ancien `/api/django/admin/` répond 404 ; le login `<DJANGO_ADMIN_URL>login/` reste plafonné par nginx (`login_limit`, ASEC47). Hors `api/django/`, nginx ne relaierait pas l'admin |
 | `PUBLIC_BASE_URL` | `https://api.taqinor.ma` | recommandé | liens client relatifs (comportement historique) |
 | `LOG_LEVEL` | `INFO` | non | défaut `INFO` (journaux lisibles sans DEBUG) |
 
