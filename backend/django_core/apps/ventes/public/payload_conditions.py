@@ -95,7 +95,7 @@ def _conditions_publiques(data, devis=None):
     QJR668 (décision fondateur 01/10/2026, « figer le texte CGV à l'envoi ») —
     la page de signature (« J'accepte … les conditions générales ») sert
     EXACTEMENT ce que le PDF de CE devis imprime, par LA fonction de
-    remplissage du moteur (``generate_devis_premium.cgv_bullets_remplies`` →
+    remplissage du moteur (``clauses_cgv.cgv_bullets_remplies`` →
     ``remplir_cgv_bullets``, celle que ``_cgv_bullets_html`` appelle). Plus
     aucune copie locale du remplissage (l'ancien ``.format`` +
     ``_pct_lisible`` écrivait « 33,5 » là où le PDF imprime « 33.5 », et
@@ -121,7 +121,7 @@ def _conditions_publiques(data, devis=None):
     la correspondance échéancier → créneaux est déjà faite dans ``data``.
 
     APDF19 (C-APDF-005) — les puces sont celles de
-    ``generate_devis_premium.cgv_imprimees(data)`` (APDF12), LA source que le
+    ``clauses_cgv.cgv_imprimees(data)`` (APDF12), LA source que le
     PDF imprime : un devis C&I à variante sert SA variante (gelée à l'envoi
     ou vive en brouillon, marqueurs {echeancier}/{retenue} substitués par le
     builder) — plus les puces résidentielles par défaut, plus un
@@ -130,7 +130,7 @@ def _conditions_publiques(data, devis=None):
     """
     import html as _html
     try:
-        from ..quote_engine.generate_devis_premium import cgv_imprimees
+        from ..quote_engine.clauses_cgv import cgv_imprimees
         out = [txt for txt in (_html.unescape(str(puce)).strip()
                                for puce in cgv_imprimees(data or {})["puces"])
                if txt]

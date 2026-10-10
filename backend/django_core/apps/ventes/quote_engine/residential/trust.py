@@ -351,7 +351,7 @@ def build(ctx) -> str:
     # l'envoi ou vives, sinon le défaut du moteur (validité, échéancier, TVA,
     # tarifs) — celles que la page publique de signature fait accepter. Plus
     # aucune ligne composée en dur : validité et TVA ne sont plus doublées.
-    from ..generate_devis_premium import cgv_imprimees
+    from ..clauses_cgv import cgv_imprimees
     # L'échéance est celle déjà résolue ici (repli M7 compris).
     _cgv = cgv_imprimees(dict(d, valid_until=_valid_until))
     conditions = []

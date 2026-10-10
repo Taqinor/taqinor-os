@@ -653,8 +653,7 @@ def _note_et_clauses(d, lg):
     """ADEV67 (C-ADEV-044) — la note CLIENT (déjà échappée par le builder)
     et les clauses/CGV gelées (QJR668), comme les autres marchés ; rien
     quand ni l'une ni les autres n'existent (jamais un bloc vide)."""
-    from ..clauses_cgv import bloc_clauses_html
-    from ..generate_devis_premium import cgv_imprimees
+    from ..clauses_cgv import bloc_clauses_html, cgv_imprimees
     note = (d.get("note_client") or "").strip()
     note_html = (f'<div class="ag-small" style="margin-top:6px;">'
                  f'<b>{_t(lg, "ci_note")}</b> : {note}</div>'

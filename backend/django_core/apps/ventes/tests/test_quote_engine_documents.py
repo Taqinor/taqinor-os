@@ -17,7 +17,7 @@ from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.models import Devis
 from apps.ventes.quote_engine.builder import build_quote_data
-from apps.ventes.quote_engine.generate_devis_premium import cgv_imprimees
+from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_produit,
     make_user,
@@ -663,7 +663,7 @@ class TestLayoutV2NeBougePasLeDocument(TestCase):
 
 
 # APDF12-APDF14 (C-APDF-005, C-APDF-006) — les conditions générales
-# imprimées ont UNE source : ``generate_devis_premium.cgv_imprimees(data)``.
+# imprimées ont UNE source : ``clauses_cgv.cgv_imprimees(data)``.
 #
 # APDF12 — ``CgvImprimeesTests`` : la variante C&I (gelée à l'envoi ou vive)
 # garde SON titre, ses marqueurs {echeancier}/{retenue} sont substitués dans les

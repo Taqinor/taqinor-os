@@ -18,7 +18,7 @@ from apps.ventes.models import Devis
 from apps.ventes.public.payload_conditions import _conditions_publiques
 from apps.ventes.quote_engine import generate_devis_premium as legacy
 from apps.ventes.quote_engine.builder import build_quote_data, clean_pdf_options
-from apps.ventes.quote_engine.generate_devis_premium import cgv_bullets_remplies
+from apps.ventes.quote_engine.clauses_cgv import cgv_bullets_remplies
 from apps.ventes.quote_engine.residential import render as res_render
 from apps.ventes.quote_engine.residential import renderer as res_renderer
 from apps.ventes.tests._quote_engine_common import (

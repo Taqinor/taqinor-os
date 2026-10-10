@@ -28,7 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.quote_engine.builder import build_quote_data
-from apps.ventes.quote_engine.generate_devis_premium import cgv_imprimees
+from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
@@ -294,7 +294,7 @@ class PageSignatureCgvTests(_Base):
     """QJR668 — la page PUBLIQUE de signature (``proposal_data`` →
     ``conditions``) sert les CGV que le PDF de CE devis imprime : la version
     GELÉE à l'envoi quand elle existe, remplie par LA fonction du moteur
-    (``generate_devis_premium.remplir_cgv_bullets``) — jamais une seconde
+    (``clauses_cgv.remplir_cgv_bullets``) — jamais une seconde
     copie du remplissage."""
 
     def _conditions(self, devis):
@@ -307,7 +307,7 @@ class PageSignatureCgvTests(_Base):
     def _attendu_pdf(self, devis):
         """Les puces du bloc CGV du PDF de CE devis, en texte."""
         from apps.ventes.quote_engine.builder import build_quote_data
-        from apps.ventes.quote_engine.generate_devis_premium import (
+        from apps.ventes.quote_engine.clauses_cgv import (
             cgv_bullets_remplies)
         return [t for t in (html.unescape(str(p)).strip()
                             for p in cgv_bullets_remplies(
@@ -404,7 +404,9 @@ class UneSeuleFonctionDeRemplissageTests(TestCase):
         appels = self._appels(html_cgv)
         self.assertIn('remplir_cgv_bullets', appels)
         self.assertNotIn('format', appels)
-        _, remplies = self._fonction(moteur, 'cgv_bullets_remplies')
+        # C20 — la famille pure des CGV vit dans ``clauses_cgv.py``.
+        cgv = self.VENTES / 'quote_engine' / 'clauses_cgv.py'
+        _, remplies = self._fonction(cgv, 'cgv_bullets_remplies')
         self.assertIn('remplir_cgv_bullets', self._appels(remplies))
 
 
@@ -437,7 +439,7 @@ class ConditionsPubliquesParitePdfTests(TestCase):
     """APDF19 (C-APDF-005) — la page publique de signature sert les conditions
     générales du PDF de CE devis, brouillon comme envoyé.
 
-    ``_conditions_publiques`` lit ``generate_devis_premium.cgv_imprimees(data)``
+    ``_conditions_publiques`` lit ``clauses_cgv.cgv_imprimees(data)``
     (APDF12), la source que le PDF imprime. Vrai GET
     ``/api/django/public/proposal/<jeton>/data/`` (client Django, jeton d'aperçu
     interne pour le brouillon — ADEV11 ne sert pas un brouillon au jeton client —,

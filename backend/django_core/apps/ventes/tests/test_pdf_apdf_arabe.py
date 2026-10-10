@@ -643,7 +643,7 @@ class PucesCgvLangueHtmlTests(SimpleTestCase):
 
     def _puces(self, langue, **data):
         from apps.ventes.quote_engine.builder import tva_note_des_lignes
-        from apps.ventes.quote_engine.generate_devis_premium import (
+        from apps.ventes.quote_engine.clauses_cgv import (
             cgv_bullets_remplies)
 
         class _Ligne:
@@ -668,8 +668,9 @@ class PucesCgvLangueHtmlTests(SimpleTestCase):
                 self.assertEqual(len(puces), len(fr))
 
     def test_fr_inchange(self):
+        from apps.ventes.quote_engine.clauses_cgv import remplir_cgv_bullets
         from apps.ventes.quote_engine.generate_devis_premium import (
-            DEFAULT_DOC_TEXTS, remplir_cgv_bullets)
+            DEFAULT_DOC_TEXTS)
         attendu = remplir_cgv_bullets(
             DEFAULT_DOC_TEXTS["cgv_bullets"], acompte=40, materiel=50,
             solde=10, tva_note=("TVA : 10% panneaux photovoltaïques · 20% "

@@ -1285,7 +1285,7 @@ def _doc_texts_envoyes(devis, doc_texts):
     Brouillon / jamais envoyé → pas d'entrée → textes vifs, inchangé.
     APDF12 — une variante C&I gelée (entrée portant un ``mode``) n'est
     JAMAIS recopiée ici : elle est servie par ``cgv_ci`` (titre compris,
-    marqueurs substitués), via ``generate_devis_premium.cgv_imprimees``.
+    marqueurs substitués), via ``clauses_cgv.cgv_imprimees``.
     APDF14 — devis envoyé ou signé : l'ENSEMBLE des textes gelés à l'envoi
     (CGV, titre, garanties, bon pour accord…) prime sur les textes vifs ; la
     boucle ERR-QJR668 ne sert plus qu'aux envoyés d'avant ce gel.

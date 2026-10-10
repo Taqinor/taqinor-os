@@ -904,14 +904,6 @@ def _pct_echeance(valeur, defaut):
     return int(f) if f == int(f) else round(f, 2)
 
 
-def _pct_nul(valeur):
-    """AMOT19 — un pourcentage d'échéancier NUL (créneau absent) ?"""
-    try:
-        return float(valeur) == 0
-    except (TypeError, ValueError):
-        return False
-
-
 def _tva_note_par_defaut(tva_pct, langue=None):
     """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois.
     APDF10 — en/ar : la clé ``tva_unique`` d'``i18n_labels``."""
@@ -922,132 +914,14 @@ def _tva_note_par_defaut(tva_pct, langue=None):
             f"travaux.")
 
 
-def cgv_bullets_defaut(langue=None, mode=None):
-    """APDF10 — puces CGV PAR DÉFAUT dans la langue du document : fr →
-    ``DEFAULT_DOC_TEXTS['cgv_bullets']`` (octet pour octet) ; en/ar → les clés
-    ``cgv_*`` d'``i18n_labels``, mêmes marqueurs, mêmes pourcentages.
-
-    APDF13 × AGR310 — un devis AGRICOLE ne cite aucun barème ONEE/SRM
-    (« aucune mécanique résidentielle ») : la dernière puce par défaut
-    (« Tarifs de référence ») est retirée pour ce mode, sur le PDF comme sur
-    la page publique (même fonction)."""
-    if i18n_labels.normaliser(langue) == "fr":
-        puces = DEFAULT_DOC_TEXTS["cgv_bullets"]
-    else:
-        puces = ["{validite_offre}"] + [
-            i18n_labels.libelle(cle, langue) for cle in (
-                "cgv_acompte_commande", "cgv_reception_materiel",
-                "cgv_mise_en_marche")] + [
-            "{tva_note}", i18n_labels.libelle("cgv_tarifs_reference", langue)]
-    if (mode or "").strip().lower() == "agricole":
-        return puces[:-1]
-    return puces
-
-
-def _puces_cgv(bullets, langue, mode=None):
-    """APDF10 — puces saisies (souveraines) ou, à défaut, celles du moteur
-    dans la langue du document (et du mode, APDF13 × AGR310)."""
-    if not bullets or bullets == DEFAULT_DOC_TEXTS["cgv_bullets"]:
-        return cgv_bullets_defaut(langue, mode)
-    return bullets
-
-
-def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
-                        valid_until, langue=None):
-    """QJR668 — LA fonction qui remplit les cases des puces CGV.
-
-    Substitue {acompte}/{materiel}/{solde}/{tva_note}/{validite_offre} et rend
-    les puces NON VIDES, entités HTML conservées (le moteur ne les échappe
-    pas). Une puce au gabarit illisible (case inconnue, accolade seule) est
-    rendue telle quelle ; une puce vide après remplissage (échéance inconnue)
-    est omise. Pure (aucun global) : le PDF (:func:`_cgv_bullets_html`) et la
-    page publique de signature (``public_views._conditions_publiques``, via
-    :func:`cgv_bullets_remplies`) passent par ELLE — jamais une seconde copie
-    du remplissage."""
-    out = []
-    for raw in bullets or ():
-        # AMOT19 — un créneau ABSENT de l'échéancier (deux tranches : matériel
-        # à 0) n'est jamais imprimé « 0 % à la réception du matériel » : la
-        # puce qui le porte est omise, comme les cases du « Devis final ».
-        # Décision fondateur 08/10/2026 — devis envoyé avant AMOT19 : les puces
-        # d'hier (rien d'omis).
-        if ("{materiel}" in str(raw) and _pct_nul(materiel)
-                and not regles_origine()):
-            continue
-        try:
-            txt = raw.format(
-                acompte=acompte, materiel=materiel, solde=solde,
-                tva_note=tva_note,
-                # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
-                validite_offre=(i18n_labels.libelle(
-                    "cgv_validite_offre", langue).format(date=valid_until)
-                    if valid_until else ""))
-        except (KeyError, IndexError, ValueError):
-            txt = raw
-        if not str(txt).strip():
-            continue
-        out.append(txt)
-    return out
-
-
-def cgv_bullets_remplies(data):
-    """QJR668 — les puces CGV que le rendu de ``data`` (sortie de
-    ``build_quote_data``) IMPRIME, cases remplies, entités HTML conservées.
-
-    Mêmes entrées que le rendu, lues dans le MÊME dict : les puces de
-    ``data['doc_texts']`` (où le builder a déjà substitué la version GELÉE à
-    l'envoi — ``Devis.clauses_appliquees`` ``cgv_gelees``, ERR-QJR668) sinon
-    le littéral par défaut ; les pourcentages de ``data['payment_terms']``
-    (échéancier du devis rabattu par le builder, QJR623) ; ``tva_note`` ;
-    ``valid_until``. Pure : ne lit ni n'écrit aucun global de rendu."""
-    data = data or {}
-    surcharges = data.get("doc_texts") or {}
-    langue = data.get("langue_sortie")
-    bullets = _puces_cgv(surcharges.get("cgv_bullets")
-                         if isinstance(surcharges, dict) else None, langue,
-                         data.get("mode_installation"))
-    terms = data.get("payment_terms") or {}
-    try:
-        tva_pct = float(data.get("taux_tva", 20) or 20)
-    except (TypeError, ValueError):
-        tva_pct = 20.0
-    return remplir_cgv_bullets(
-        bullets,
-        acompte=_pct_echeance(terms.get("acompte"), 30),
-        materiel=_pct_echeance(terms.get("materiel"), 60),
-        solde=_pct_echeance(terms.get("solde"), 10),
-        tva_note=(data.get("tva_note")
-                  or _tva_note_par_defaut(tva_pct, langue)),
-        valid_until=(data.get("valid_until") or "").strip(), langue=langue)
-
-
-def cgv_imprimees(data):
-    """APDF12 (C-APDF-005) — LES conditions générales imprimées, forme
-    ``{"titre": str, "puces": [str]}`` (figée ; servie au PDF par
-    ``ci/blocs``, à la page publique — APDF19 — et au portail — APDF35).
-
-    * devis C&I à variante (``data['cgv_ci']``, gelée à l'envoi ou vive,
-      marqueurs {echeancier}/{retenue}/{tva_note} substitués par le builder)
-      → SES puces et SON titre (``data['cgv_ci_titre']``) ;
-    * sinon les puces société gelées ou vives (:func:`cgv_bullets_remplies`).
-    Titre de repli : surcharge société (``doc_texts['cgv_titre']``), sinon
-    celui du moteur dans la langue du document. Pure."""
-    data = data or {}
-    textes = data.get("doc_texts")
-    textes = textes if isinstance(textes, dict) else {}
-    langue = data.get("langue_sortie")
-    titre = str(textes.get("cgv_titre") or "").strip()
-    if not titre or titre == DEFAULT_DOC_TEXTS["cgv_titre"]:
-        titre = (DEFAULT_DOC_TEXTS["cgv_titre"]
-                 if i18n_labels.normaliser(langue) == "fr"
-                 else i18n_labels.libelle("ci_cgv_titre", langue))
-    ci = data.get("cgv_ci")
-    puces_ci = ([str(p) for p in ci if str(p).strip()]
-                if isinstance(ci, list) else [])
-    if puces_ci:
-        return {"titre": str(data.get("cgv_ci_titre") or "").strip() or titre,
-                "puces": puces_ci}
-    return {"titre": titre, "puces": cgv_bullets_remplies(data)}
+# APDF12/APDF13 (C20) — la famille PURE des conditions générales (puces
+# par défaut, remplissage, ``cgv_imprimees``, échappement des textes saisis)
+# vit dans ``clauses_cgv`` (move only). Importée ICI, après
+# DEFAULT_DOC_TEXTS, _esc, _pct_echeance et _tva_note_par_defaut
+# que ``clauses_cgv`` relit en FIN de module : le cycle d'import se résout
+# dans les deux ordres de chargement.
+from .clauses_cgv import (  # noqa: E402
+    _conditions_echappees, _puces_cgv, remplir_cgv_bullets)
 
 
 def _cgv_bullets_html():
@@ -4845,23 +4719,6 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     # interleave (one client's data leaking into another's PDF).
     with _RENDER_LOCK:
         return _render_premium_pdf(data, out_path)
-
-
-def _conditions_echappees(data):
-    """QJR668 / APDF13 — ``(clauses de l'affaire, conditions générales
-    imprimées)``, textes SAISIS échappés ici (ERR37) : clauses gelées et
-    variante C&I ; les puces société gardent leurs entités (le moteur ne les
-    échappe pas)."""
-    clauses = [
-        {"nom": _esc(str(c.get("nom") or "")),
-         "corps_texte": _esc(str(c.get("corps_texte") or ""))}
-        for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
-    cgv_data = dict(data)
-    if isinstance(data.get("cgv_ci"), list):
-        cgv_data["cgv_ci"] = [_esc(p) for p in data["cgv_ci"]]
-    if data.get("cgv_ci_titre"):
-        cgv_data["cgv_ci_titre"] = _esc(data["cgv_ci_titre"])
-    return clauses, cgv_imprimees(cgv_data)
 
 
 def apply_quote_data(data: dict) -> None:

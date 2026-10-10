@@ -364,11 +364,11 @@ def textes_bpa(d):
 def puces_conditions(d):
     """Les puces des conditions générales que le document IMPRIME.
 
-    APDF12 — lues de LA source ``generate_devis_premium.cgv_imprimees`` :
+    APDF12 — lues de LA source ``clauses_cgv.cgv_imprimees`` :
     la variante C&I du mode (``cgv_ci``, gelée ou vive, marqueurs
     substitués), sinon les puces société gelées ou vives. Jamais ``cpq``
     (parqué)."""
-    from ..generate_devis_premium import cgv_imprimees
+    from ..clauses_cgv import cgv_imprimees
     puces = [_txt(p) for p in cgv_imprimees(d)["puces"] if _txt(p)]
     # AMOT36 — troncature DÉCLARÉE posée par ``commercial.equip.
     # pdf_adaptatif`` quand le contrat de pages ne tient pas : les premières
@@ -394,7 +394,7 @@ def bloc_conditions(d, prefixe, couleur_titre, couleur_texte):
     # APDF12 — titre de ``cgv_imprimees`` (celui de la variante C&I, sinon
     # la surcharge société) ; le défaut garde son libellé du catalogue.
     from .. import i18n_labels
-    from ..generate_devis_premium import cgv_imprimees
+    from ..clauses_cgv import cgv_imprimees
     titre = _txt(cgv_imprimees(d)["titre"])
     if titre in (TITRE_CGV_DEFAUT, i18n_labels.libelle(
             "ci_cgv_titre", d.get("langue_sortie"))):
