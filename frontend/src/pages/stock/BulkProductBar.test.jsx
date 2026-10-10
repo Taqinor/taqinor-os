@@ -3,6 +3,13 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BulkProductBar from './BulkProductBar.jsx'
 
+// ASTK242 — le gating par codes lit le store : ici l'auto-accord (compte
+// légacy sans rôle fin) ; les cas « sans code » sont dans ModelesBcf.test.jsx.
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: () => true,
+  useVoitPrixAchat: () => true,
+}))
+
 /* ============================================================================
    WIR268/XSTK20 — « Cartes kanban » (deux-bacs, réservées à un emplacement
    précis) : bouton additif de la barre en masse, absent tant que le parent

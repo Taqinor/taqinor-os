@@ -1,0 +1,202 @@
+{
+  "parcours": "PA5",
+  "titre": "Chantier -> SAV",
+  "pilote": "installations",
+  "pourquoi": "AMET15 (C-AMET-025) — table du parcours création du chantier depuis le devis -> planning -> interventions -> checklist -> avancement -> mise en service -> réception -> parc SAV -> ticket. Lue par la garde `apps/installations/test_parcours_pa5.py` (AST, sans base) : chaque déclencheur, fonction d'entrée, point de persistance et règle aval est un symbole qui existe ; chaque étape à effet automatique (`effet_automatique: true`) porte sa `compensation` (annulation, réouverture). Les deux étapes de gate de `contract_samples/parcours_etapes_chantier.json` sont référencées (`references`), pas recopiées. Coutures : `devis_accepted` -> `installations/receivers.py`, `chantier_receptionne` -> sav + monitoring, `sweep_bom_to_parc`. Source R1_G J3 non disponible dans le dépôt : la table est dressée depuis le code.",
+  "chemins_relatifs_a": "backend/django_core",
+  "references": [
+    "apps/installations/contract_samples/parcours_etapes_chantier.json"
+  ],
+  "etapes": [
+    {
+      "id": "creation_chantier",
+      "libelle": "Chantier créé automatiquement à l'acceptation du devis",
+      "declencheur": {
+        "type": "signal",
+        "signal": "devis_accepted",
+        "source": "apps/installations/receivers.py::_creer_chantier_on_devis_accepted"
+      },
+      "fonction_entree": "apps/installations/services.py::create_installation_from_devis",
+      "checkpoint": {
+        "persistance": "apps/installations/models_installation.py::Installation",
+        "description": "Un seul chantier par devis (anti-doublon), société du devis."
+      },
+      "regles_aval": [
+        {
+          "regle": "Les réservations de stock du chantier sont semées depuis le devis.",
+          "source": "apps/installations/services.py::seed_reservations"
+        },
+        {
+          "regle": "Le dossier 82-21 d'un chantier C&I est ouvert en constitution.",
+          "source": "apps/installations/receivers.py::_ouvrir_dossier_8221_ci"
+        }
+      ],
+      "effet_automatique": true,
+      "compensation": {
+        "regle": "Acceptation annulée : le chantier est annulé (drapeau + motif, jamais supprimé) et ses réservations libérées.",
+        "source": "apps/installations/services.py::annuler_chantiers_desaccepte"
+      }
+    },
+    {
+      "id": "planning_intervention",
+      "libelle": "Interventions planifiées puis replanifiées",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/intervention.py::InterventionViewSet.perform_create"
+      },
+      "fonction_entree": "apps/installations/services.py::changer_statut_intervention",
+      "checkpoint": {
+        "persistance": "apps/installations/models_intervention.py::Intervention",
+        "description": "Une intervention par rendez-vous, statut tracé par le service unique."
+      },
+      "regles_aval": [
+        {
+          "regle": "Un report de rendez-vous est enregistré avec son motif.",
+          "source": "apps/installations/services.py::replanifier"
+        },
+        {
+          "regle": "Le démarrage est refusé sans les contrôles de sécurité.",
+          "source": "apps/installations/services.py::verifier_securite_avant_demarrage"
+        }
+      ],
+      "effet_automatique": false
+    },
+    {
+      "id": "checklist_execution",
+      "libelle": "Checklist d'exécution cochée sur le chantier",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.cocher_checklist"
+      },
+      "fonction_entree": "apps/installations/services.py::ensure_checklist_items",
+      "checkpoint": {
+        "persistance": "apps/installations/models_chantier.py::ChantierChecklistItem",
+        "description": "Une ligne par étape de modèle, cochée avec son auteur."
+      },
+      "regles_aval": [
+        {
+          "regle": "La checklist complète conditionne le passage à l'étape suivante.",
+          "source": "apps/installations/services.py::_gate_check_checklist"
+        }
+      ],
+      "effet_automatique": false
+    },
+    {
+      "id": "avancement_etape",
+      "libelle": "Chantier avancé d'une étape (gates et réouverture motivée)",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.avancer_etape"
+      },
+      "fonction_entree": "apps/installations/services.py::changer_statut_chantier",
+      "checkpoint": {
+        "persistance": "apps/installations/models_installation.py::Installation",
+        "description": "Statut du chantier écrit par le seul service, gates évalués avant."
+      },
+      "regles_aval": [
+        {
+          "regle": "Les gates de l'étape (checklist, acompte, dossier) bloquent la transition.",
+          "source": "apps/installations/services.py::_gate_check_checklist"
+        }
+      ],
+      "effet_automatique": true,
+      "compensation": {
+        "regle": "Une réouverture exige un motif et défait les effets de l'étape (service unique, même point d'écriture).",
+        "source": "apps/installations/services.py::changer_statut_chantier"
+      }
+    },
+    {
+      "id": "mise_en_service",
+      "libelle": "Mise en service enregistrée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.mise_en_service"
+      },
+      "fonction_entree": "apps/installations/services.py::changer_statut_chantier",
+      "checkpoint": {
+        "persistance": "apps/installations/models_installation.py::Installation",
+        "description": "Date, tension, production test et notes PV écrites dans le même save que le statut."
+      },
+      "regles_aval": [
+        {
+          "regle": "La consommation des réservations sort le matériel du stock à « Installé ».",
+          "source": "apps/installations/services.py::consume_reservations"
+        }
+      ],
+      "effet_automatique": false
+    },
+    {
+      "id": "reception_chantier",
+      "libelle": "Réception définitive prononcée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.reception_definitive"
+      },
+      "fonction_entree": "apps/installations/services.py::prononcer_reception_definitive",
+      "checkpoint": {
+        "persistance": "apps/installations/models_installation.py::Installation",
+        "description": "Statut « réceptionné » et date de réception posés."
+      },
+      "regles_aval": [
+        {
+          "regle": "`chantier_receptionne` : proposition d'un contrat d'entretien au commercial.",
+          "source": "apps/sav/receivers.py::_proposer_contrat_maintenance_on_chantier_receptionne"
+        },
+        {
+          "regle": "`chantier_receptionne` : production attendue du monitoring semée.",
+          "source": "apps/monitoring/receivers.py::_semer_attendu_a_reception"
+        },
+        {
+          "regle": "Le solde à facturer est notifié.",
+          "source": "apps/installations/services.py::notifier_reception_solde_a_facturer"
+        }
+      ],
+      "effet_automatique": false
+    },
+    {
+      "id": "parc_sav",
+      "libelle": "Parc d'équipements SAV semé depuis la nomenclature posée",
+      "declencheur": {
+        "type": "signal",
+        "signal": "chantier_receptionne",
+        "source": "apps/installations/services.py::changer_statut_chantier"
+      },
+      "fonction_entree": "apps/sav/services.py::sweep_bom_to_parc",
+      "checkpoint": {
+        "persistance": "apps/sav/models.py::Equipement",
+        "description": "Une ligne de parc par équipement posé, garantie figée à la pose."
+      },
+      "regles_aval": [
+        {
+          "regle": "Une date de réception corrigée recale le parc.",
+          "source": "apps/installations/services.py::recaler_parc_apres_correction_reception"
+        }
+      ],
+      "effet_automatique": true,
+      "compensation": {
+        "regle": "Date de réception corrigée : le parc est recalé sur la nouvelle date, sans doublon.",
+        "source": "apps/installations/services.py::recaler_parc_apres_correction_reception"
+      }
+    },
+    {
+      "id": "ticket_sav",
+      "libelle": "Ticket SAV ouvert sur un équipement du parc",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/sav/views.py::TicketViewSet.perform_create"
+      },
+      "fonction_entree": "apps/sav/services.py::create_corrective_ticket",
+      "checkpoint": {
+        "persistance": "apps/sav/models.py::Ticket",
+        "description": "Un ticket par panne, rattaché au chantier et à l'équipement."
+      },
+      "regles_aval": [
+        {
+          "regle": "L'échéance SLA du ticket est posée à l'ouverture.",
+          "source": "apps/sav/services.py::poser_sla_due_at"
+        }
+      ],
+      "effet_automatique": false
+    }
+  ]
+}
