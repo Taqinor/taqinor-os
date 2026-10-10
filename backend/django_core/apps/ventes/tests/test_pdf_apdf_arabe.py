@@ -8,6 +8,9 @@ aucune doublure du moteur.
 
 Test-du-test : réintroduire ``_font_face("Noto Sans Arabic", 400, ...)``
 dans ``_css_arabe`` ⇒ ``test_aucun_font_face_homonyme`` échoue.
+
+APDF11 — le devis résidentiel premium arabe est une page RTL
+(``ResidentielRtlTests``), toujours 3 pages ; fr et en inchangés.
 """
 import re
 
@@ -101,3 +104,56 @@ class OnePageArabeTests(TestCase):
         finally:
             doc.close()
         self.assertIn('DEV-APDF6-1', texte)
+
+
+# ── APDF11 — devis résidentiel premium arabe en page RTL ───────────────────
+# Test-du-test : retirer ``dir="rtl"`` de ``residential/render.py`` ⇒
+# ``test_ar_dir_rtl`` échoue.
+
+def _donnees_residentiel(langue):
+    from apps.ventes.quote_engine import i18n_labels
+    from apps.ventes.quote_engine.residential import sample_data
+    d = dict(sample_data.build("deux"))
+    if langue != "fr":
+        d["langue_sortie"] = langue
+        d["libelles_document"] = i18n_labels.libelles(langue)
+    return d
+
+
+def _html_residentiel(langue):
+    from apps.ventes.quote_engine.residential import render, renderer
+    return render.build_html(renderer._augment(_donnees_residentiel(langue)))
+
+
+class ResidentielRtlTests(SimpleTestCase):
+
+    def test_ar_dir_rtl(self):
+        html = _html_residentiel("ar")
+        racine = re.search(r"<html[^>]*>", html).group(0)
+        self.assertIn('dir="rtl"', racine)
+        self.assertIn('lang="ar"', racine)
+
+    def test_fr_ltr_inchange(self):
+        self.assertIn("<!doctype html><html><head>", _html_residentiel("fr"))
+        racine_en = re.search(r"<html[^>]*>", _html_residentiel("en")).group(0)
+        self.assertEqual(racine_en, '<html lang="en">')
+
+    @tag('pdf')
+    def test_ar_trois_pages(self):
+        try:
+            import fitz
+            from apps.ventes.quote_engine.residential import renderer
+            renderer._PDF_CACHE.clear()
+            pdf = renderer.render_pdf_bytes(_donnees_residentiel("ar"))
+        except (ImportError, OSError):  # pragma: no cover — hôte sans libs
+            self.skipTest('WeasyPrint / PyMuPDF indisponible')
+        doc = fitz.open(stream=pdf, filetype='pdf')
+        try:
+            self.assertEqual(len(doc), 3)
+            # Page 2 : le titre traduit est calé à DROITE (page RTL).
+            titre = 'تفاصيل مشروعكم'
+            zones = doc[1].search_for(titre)
+            if zones:
+                self.assertGreater(zones[0].x1, doc[1].rect.width * 0.6)
+        finally:
+            doc.close()

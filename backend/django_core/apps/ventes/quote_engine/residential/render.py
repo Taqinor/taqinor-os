@@ -8,7 +8,7 @@ from pathlib import Path
 from . import theme
 from . import charts as charts_mod
 from . import cover, options, trust
-from .. import montants
+from .. import i18n_labels, montants
 
 # QRES62 — joints élastiques : marqueurs inertes posés par les gabarits de
 # page ; le second passage de rendu les remplace par des espaceurs
@@ -179,8 +179,13 @@ def build_html(data: dict, elastic: dict | None = None,
     # QJR666 — langue du document : un document français garde la racine
     # ``<html>`` d'origine (octet pour octet) ; en / ar portent ``lang``, et
     # l'arabe la police de ses libellés traduits.
+    # APDF11 — l'arabe est une page RTL (``dir="rtl"`` sur la racine, comme le
+    # commercial et l'industriel : WeasyPrint en tire l'alignement à droite et
+    # l'ordre miroir des tableaux) ; fr et en gardent leur racine d'hier.
     langue = theme.langue_doc(data)
     racine = "<html>" if langue == "fr" else f'<html lang="{langue}">'
+    if i18n_labels.est_rtl(langue):
+        racine = f'<html lang="{langue}" dir="rtl">'
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(data)}</style></head>"
             f"<body>{body}</body></html>")
