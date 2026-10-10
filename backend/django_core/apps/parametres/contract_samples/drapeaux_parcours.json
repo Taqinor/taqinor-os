@@ -1,0 +1,19 @@
+{
+  "endpoint": "GET /api/django/parametres/",
+  "pourquoi": "AMET16 (PACT10) — huit drapeaux booléens de `CompanyProfile` changent la forme d'un parcours (PA1-PA6) sans qu'aucun écran ne les montre (C-AMET-014). Le profil société sert `drapeaux_parcours` : une ligne par drapeau (clé, libellé FR, valeur actuelle, défaut, parcours touché, effet en une phrase). Source unique : la table `DRAPEAUX_PARCOURS` de `serializers_company.py`. L'écran « Parcours automatiques » (AMET17) importe cet exemple ; l'écriture reste `PATCH /api/django/parametres/update/` avec la clé du drapeau. `valeur` ici = celle d'une société neuve (égale au défaut).",
+  "exemple": {
+    "drapeaux_parcours": [
+      {"cle": "devis_auto_depuis_tunnel", "libelle": "Devis automatique depuis le tunnel", "valeur": true, "defaut": true, "parcours": "PA1", "effet": "Un lead du site web assez renseigné reçoit un devis brouillon à vérifier, sans création manuelle."},
+      {"cle": "round_robin_leads_actif", "libelle": "Affectation équilibrée des leads", "valeur": false, "defaut": false, "parcours": "PA1", "effet": "Un nouveau lead est confié au commercial le moins chargé, sous le plafond de leads ouverts."},
+      {"cle": "referral_enabled", "libelle": "Parrainage", "valeur": false, "defaut": false, "parcours": "PA1", "effet": "Un parrainage peut être enregistré sur un lead et sa récompense suivie."},
+      {"cle": "garantie_production_autorisee", "libelle": "Garantie de production imprimée", "valeur": false, "defaut": false, "parcours": "PA3", "effet": "La garantie de production peut figurer sur le devis, après validation tracée."},
+      {"cle": "revue_factures_active", "libelle": "Revue à quatre yeux des factures", "valeur": false, "defaut": false, "parcours": "PA4", "effet": "L'émission d'une facture exige la validation d'une autre personne que son créateur."},
+      {"cle": "factures_immuables", "libelle": "Factures émises immuables", "valeur": false, "defaut": false, "parcours": "PA4", "effet": "Une facture émise n'est plus modifiable sur ses champs financiers : correction par avoir seulement."},
+      {"cle": "securite_obligatoire_avant_demarrage", "libelle": "Contrôle sécurité avant démarrage", "valeur": false, "defaut": false, "parcours": "PA5", "effet": "Un chantier ne démarre pas tant que le contrôle de sécurité n'est pas fait."},
+      {"cle": "reserver_stock_bc", "libelle": "Réservation du stock à la commande", "valeur": false, "defaut": false, "parcours": "PA6", "effet": "Le stock est réservé dès le bon de commande au lieu d'être décrémenté plus tard."}
+    ]
+  },
+  "notes": {
+    "forme": "`cle` = nom du champ de `CompanyProfile` ; `valeur`/`defaut` = booléens ; `parcours` = PA1..PA7."
+  }
+}

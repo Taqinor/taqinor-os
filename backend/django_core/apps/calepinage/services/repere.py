@@ -75,6 +75,7 @@ CHEMINS_TRANSLATES = {
     'electrical.cheminements[].points[]': ('point', 'lng_lat'),
     'shadeObstructions[].contour': ('couples', 'lng_lat'),
     'shadeObstructions[].centre': ('couple', 'lng_lat'),
+    'shadeObstructions[].bout': ('couple', 'lng_lat'),  # ACAL352
     'parcelle.vertices': ('couples', 'lng_lat'),
 }
 
