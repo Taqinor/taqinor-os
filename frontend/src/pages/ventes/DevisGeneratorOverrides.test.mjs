@@ -14,12 +14,12 @@
 // Run : node --test src/pages/ventes/DevisGeneratorOverrides.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 
 test('QJR215 — lecture du registre À L’OUVERTURE d’un devis existant', () => {
   assert.match(DG, /import \{\s*CHEMINS_AUTORISES,[^}]*\} from '\.\.\/\.\.\/features\/ventes\/quote\/overrides'/)

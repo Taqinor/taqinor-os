@@ -226,10 +226,9 @@ def _audit_tracking(company):
     # PUB29 — webhook WhatsApp Cloud (attribution des conversations CTWA).
     # AACQ25 — jumeau : le webhook exige aussi WHATSAPP_CLOUD_COMPANY_ID
     # (``whatsapp_webhook`` le lit pour rattacher la conversation).
-    whatsapp_ok = bool(
-        os.environ.get('WHATSAPP_CLOUD_VERIFY_TOKEN')
-        and os.environ.get('WHATSAPP_CLOUD_APP_SECRET')
-        and os.environ.get('WHATSAPP_CLOUD_COMPANY_ID'))
+    # ADEP35 — même source que le webhook (settings), jamais os.environ.
+    from .whatsapp_webhook import boucle_ctwa_active
+    whatsapp_ok = boucle_ctwa_active()
     if not whatsapp_ok:
         items.append(
             "Webhook WhatsApp Cloud non câblé — l'attribution des "
@@ -387,6 +386,11 @@ def pending_activation_loops():
             # fonction que celle qui décide des appels Odoo).
             from . import odoo_client
             actif = odoo_client.is_configured()
+        elif loop['id'] == 'whatsapp_cloud_ctwa':
+            # ADEP35 — l'état affiché = celui du webhook (même source
+            # settings) : « actif » implique un GET de vérification Meta 200.
+            from .whatsapp_webhook import boucle_ctwa_active
+            actif = boucle_ctwa_active()
         loops.append({
             'id': loop['id'],
             'nom': loop['nom'],

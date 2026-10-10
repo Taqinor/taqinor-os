@@ -1,0 +1,72 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "etapes",
+    "to": "crm.playbook"
+   },
+   "nom": "playbook",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "NEW",
+      "Nouveau"
+     ],
+     [
+      "CONTACTED",
+      "Contacté"
+     ],
+     [
+      "QUOTE_SENT",
+      "Devis envoyé"
+     ],
+     [
+      "FOLLOW_UP",
+      "Relance"
+     ],
+     [
+      "SIGNED",
+      "Signé"
+     ],
+     [
+      "COLD",
+      "Froid"
+     ]
+    ],
+    "max_length": 20
+   },
+   "nom": "stage",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 0
+   },
+   "nom": "ordre",
+   "type": "PositiveIntegerField"
+  }
+ ],
+ "db_table": "crm_playbooketape",
+ "label": "crm.PlaybookEtape",
+ "relations_inverses": [
+  "taches"
+ ]
+}

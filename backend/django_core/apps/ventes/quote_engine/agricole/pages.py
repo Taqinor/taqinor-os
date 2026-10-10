@@ -506,10 +506,11 @@ _LIBELLE_REGROUPEMENT = {
 }
 
 
-def _ligne_regroupee(reste, lg):
+def _ligne_regroupee(reste, lg, catalogue_seul=False):
     """AMOT37 — UNE ligne qui regroupe ``reste`` : total HT = Σ des lignes
     regroupées (aucun dirham ne disparaît), TVA affichée si unique."""
-    total = sum(ligne[4] for ligne in lignes_remisees(reste))
+    total = sum(ligne[4] for ligne in lignes_remisees(
+        reste, catalogue_seul=catalogue_seul))
     taux = {(_num(it.get("taux_tva")) or 0) for it in reste}
     taux_txt = f"{taux.pop():g} %" if len(taux) == 1 else "—"
     libelle = _LIBELLE_REGROUPEMENT.get(lg, _LIBELLE_REGROUPEMENT["fr"])
@@ -521,6 +522,9 @@ def _ligne_regroupee(reste, lg):
 
 def _lignes(d):
     items = _items(d)
+    # Décision fondateur 08/10/2026 — devis envoyé avant AMOT45 : prix
+    # catalogue, comme le client l'a reçu.
+    _catalogue_seul = bool(d.get("regles_calcul_origine"))
     # AMOT37 — regroupement DÉCLARÉ posé par le renderer quand même la
     # densité serrée ne tient pas en 3 pages : les ``garder`` premières
     # lignes restent, la suite tient en UNE ligne au total exact.
@@ -545,7 +549,7 @@ def _lignes(d):
         # par LE helper unique : P.U. catalogue barré + P.U. remisé, et
         # Σ des totaux de ligne = Total HT.
         (_it, pu_cat, pu_rem, _tot_cat, tot_rem,
-         remisee) = lignes_remisees([it])[0]
+         remisee) = lignes_remisees([it], catalogue_seul=_catalogue_seul)[0]
         pu_txt = (f'<span class="ag-was">{fmt_centimes(pu_cat)}</span> '
                   f'{fmt_centimes(pu_rem)}' if remisee
                   else fmt_centimes(pu_rem))
@@ -555,7 +559,7 @@ def _lignes(d):
             f'<td class="r">{taux:g} %</td>'
             f'<td class="r t">{fmt_centimes(tot_rem)}</td></tr>')
     if reste:
-        rows.append(_ligne_regroupee(reste, _langue(d)))
+        rows.append(_ligne_regroupee(reste, _langue(d), _catalogue_seul))
     return "".join(rows)
 
 

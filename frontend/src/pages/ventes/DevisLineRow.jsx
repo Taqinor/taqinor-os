@@ -94,7 +94,9 @@ function DevisLineRowImpl({
   // L'alerte d'incohérence se tait pour une ligne à 0 % qui porte sa base.
   if (Number.isFinite(t) && (l.designation || '').trim() && !(tauxNul && !baseManquante)) {
     const expected = expectedTvaForDesignation(l.designation, { tvaPanneaux, tvaStandard })
-    if (t !== expected) tvaWarning = `${expected} % attendu`
+    // ATOT20 — l'indice dit le taux RÉELLEMENT appliqué (celui qui fait le
+    // total), le taux habituel du catalogue n'en est que la référence.
+    if (t !== expected) tvaWarning = `TVA appliquée : ${t} % (catalogue : ${expected} %)`
   }
 
   // PVORD — boutons monter/descendre, PARTAGÉS entre la ligne produit et la

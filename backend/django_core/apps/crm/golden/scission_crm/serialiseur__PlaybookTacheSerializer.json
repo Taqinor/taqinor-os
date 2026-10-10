@@ -1,0 +1,34 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "etape",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "libelle",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "obligatoire",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "ordre",
+   "read_only": false,
+   "required": false
+  }
+ ]
+}

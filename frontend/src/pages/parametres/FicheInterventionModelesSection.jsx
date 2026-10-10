@@ -15,6 +15,7 @@ import {
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import installationsApi from '../../api/installationsApi'
+import { apiErrorMessage } from '../../lib/apiError'
 
 const TYPE_CHAMPS = [
   ['case', 'Case à cocher'], ['texte', 'Texte court'],
@@ -52,7 +53,7 @@ export default function FicheInterventionModelesSection() {
       setNewNom(''); setNewType(''); setError(null)
       load()
     } catch (e) {
-      setError(e?.response?.data?.detail || 'La création du modèle a échoué.')
+      setError(apiErrorMessage(e, 'La création du modèle a échoué.'))
     }
   }
 
@@ -63,7 +64,7 @@ export default function FicheInterventionModelesSection() {
       await installationsApi.deleteFicheTemplate(tpl.id)
       load()
     } catch (e) {
-      setError(e?.response?.data?.detail || 'Suppression impossible.')
+      setError(apiErrorMessage(e, 'Suppression impossible.'))
     } finally { setBusyId(null) }
   }
 
@@ -117,6 +118,7 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
   // devenir. Aucun changement backend.
   const [obligatoire, setObligatoire] = useState(false)
   const [busyChampId, setBusyChampId] = useState(null)
+  const { confirmDelete } = useConfirmDialog()
   const [error, setError] = useState(null)
   const champs = template.champs ?? []
 
@@ -131,7 +133,7 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
       setCle(''); setLibelle(''); setUnite(''); setObligatoire(false); setError(null)
       onChanged?.()
     } catch (e) {
-      setError(e?.response?.data?.detail || "Ajout du champ impossible.")
+      setError(apiErrorMessage(e, "Ajout du champ impossible."))
     }
   }
 
@@ -144,15 +146,21 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
       await installationsApi.saveFicheChamp(champ.id, { obligatoire: valeur })
       onChanged?.()
     } catch (e) {
-      setError(e?.response?.data?.detail || 'Modification du champ impossible.')
+      setError(apiErrorMessage(e, 'Modification du champ impossible.'))
     } finally {
       setBusyChampId(null)
     }
   }
 
   const delChamp = async (champ) => {
-    await installationsApi.deleteFicheChamp(champ.id).catch(() => {})
-    onChanged?.()
+    if (!(await confirmDelete({ title: `Retirer le champ « ${champ.libelle} » ?`, description: 'Les valeurs déjà relevées sur des interventions empêcheront la suppression.' }))) return
+    setError(null)
+    try {
+      await installationsApi.deleteFicheChamp(champ.id)
+      onChanged?.()
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Suppression du champ impossible.'))
+    }
   }
 
   return (

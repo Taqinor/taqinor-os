@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^forecast-entries/$",
+  "nom": "forecastentry-list",
+  "vue": "ForecastEntryViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^forecast-entries/(?P<pk>[^/.]+)/$",
+  "nom": "forecastentry-detail",
+  "vue": "ForecastEntryViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^forecast-entries/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "forecastentry-detail",
+  "vue": "ForecastEntryViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^forecast-entries\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "forecastentry-list",
+  "vue": "ForecastEntryViewSet"
+ }
+]

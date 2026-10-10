@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^canaux/$",
+  "nom": "canal-list",
+  "vue": "CanalViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^canaux/(?P<pk>[^/.]+)/$",
+  "nom": "canal-detail",
+  "vue": "CanalViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^canaux/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "canal-detail",
+  "vue": "CanalViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^canaux\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "canal-list",
+  "vue": "CanalViewSet"
+ }
+]

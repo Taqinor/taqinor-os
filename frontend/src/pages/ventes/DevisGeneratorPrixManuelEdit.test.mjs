@@ -28,9 +28,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const DG = lireSourceGenerateur()
 const LE = readFileSync(join(HERE, '../../features/ventes/quote/lignesEcran.js'), 'utf8')
 // QJR658 — l'Édition complète passe par le module pur `etatDevis.js` (son
 // aller-retour, prix_manuel compris, est EXÉCUTÉ par etatDevis.test.mjs).
@@ -44,7 +45,8 @@ function mappeurEdit() {
   assert.ok(end > start, "la pose des lignes (setLines(withKeys(etat.lignes))) est introuvable")
   // QJR658 — le devis passe par devisVersEtat, qui COMPOSE le mappeur UNIQUE
   // de lignesEcran.js (QJR523).
-  assert.match(DG.slice(start, end), /devisVersEtat\(d\)/)
+  // AGNR35 — le barème société voyage avec (reconnaissance de la conso).
+  assert.match(DG.slice(start, end), /devisVersEtat\(d(, \{ bareme: baremeSociete \})?\)/)
   assert.match(ED, /lignesServeurVersEcran\(/)
   const debut = LE.indexOf('export function lignesServeurVersEcran(')
   assert.ok(debut > -1, 'lignesServeurVersEcran introuvable')
@@ -91,5 +93,6 @@ test("ÉCRITURE — le marqueur ne part QUE sur les lignes produit (une section/
 test('GARDE — refreshTarif protège toujours un prix manuel (la garde ne bouge pas, elle devient seulement atteignable après ?edit=)', () => {
   const start = DG.indexOf('const refreshTarif = useCallback(async (key, produitId, quantite) => {')
   assert.ok(start > -1, 'refreshTarif introuvable')
-  assert.match(DG.slice(start, start + 1200), /\(l\._key === key && !l\.prixManuel\)/)
+  // AGNR15 — fenêtre élargie : la conversion HT -> TTC (commentée) précède la garde.
+  assert.match(DG.slice(start, start + 2000), /\(l\._key === key && !l\.prixManuel\)/)
 })

@@ -20,12 +20,12 @@
 //      drapeau « touché » — jamais réécrit après un choix manuel du vendeur.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+const gen = lireSourceGenerateur()
 
 test('contrôle « Raccordement » : deux choix, id stable, importe isOffgridInverter', () => {
   assert.match(gen, /isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,/)

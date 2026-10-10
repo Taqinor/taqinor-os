@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Ban, Upload, Wallet } from 'lucide-react'
+import { Ban, Upload, Wallet, Undo2, Shuffle } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
+// AFAC18 — gestes de correction d'un paiement (réaffecter / annuler la saisie) :
+// client `api` partagé, comme RemisesEncaissementPage (aucune méthode ventesApi neuve).
+import api from '../../api/axios'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
@@ -39,6 +42,11 @@ const STATUTS_RELEVE = {
   erreur: { label: 'Erreur', tone: 'danger' },
 }
 const LIGNES_PAR_PAGE = 50
+
+// AUD132 / AFAC18 — un paiement rejeté OU annulé (erreur de saisie) sort du payé.
+const estRejete = (p) => p.statut === 'rejete'
+const estAnnuleSaisie = (p) => p.statut === 'annule_saisie'
+const estNonCompte = (p) => estRejete(p) || estAnnuleSaisie(p)
 
 // Modes de paiement. Le modele vit dans `facturation` (pas `ventes`) ;
 // `all` est la sentinelle du FILTRE, jamais un mode enregistre.
@@ -198,10 +206,9 @@ export default function PaiementsPage() {
   // exactement comme il sort de `Facture.montant_paye` côté serveur. Il reste
   // VISIBLE dans la liste, badgé « Rejeté » : c'est une piste d'audit, pas un
   // encaissement.
-  const estRejete = (p) => p.statut === 'rejete'
   const total = useMemo(
     () => filtered.reduce(
-      (s, p) => (estRejete(p) ? s : s + Number(p.montant || 0)), 0),
+      (s, p) => (estNonCompte(p) ? s : s + Number(p.montant || 0)), 0),
     [filtered],
   )
 
@@ -242,6 +249,66 @@ export default function PaiementsPage() {
       setRejetErreur(
         err?.response?.data?.detail || 'Le rejet a échoué. Réessayez.')
     } finally { setRejetBusy(false) }
+  }
+
+  /* ── AFAC18 — correction d'un paiement mal saisi ─────────────────────────
+     Deux gestes serveur (AFAC17, formes AFAC4 `paiement_reaffecter.json` /
+     `paiement_annuler_saisie.json`) à côté de « Rejeter » : réaffecter vers une
+     autre facture ENCAISSABLE du même client, ou annuler la saisie (motif
+     obligatoire). Le serveur reste seul juge ; son `detail` s'affiche sous le
+     champ concerné, jamais en toast seul. */
+  const [reafCible, setReafCible] = useState(null)
+  const [reafFactures, setReafFactures] = useState([])
+  const [reafChoix, setReafChoix] = useState('')
+  const [reafBusy, setReafBusy] = useState(false)
+  const [reafErreur, setReafErreur] = useState('')
+
+  const ouvrirReaffecter = async (p) => {
+    setReafCible(p); setReafChoix(''); setReafErreur(''); setReafFactures([])
+    try {
+      const data = await fetchAllPages((page) => api.get('/ventes/factures/',
+        { params: { client: p.client, page, page_size: 200 } }).then((r) => r.data))
+      const liste = Array.isArray(data) ? data : (data?.results || [])
+      setReafFactures(liste.filter((f) => String(f.client) === String(p.client)
+        && f.id !== p.facture && f.encaissable !== false
+        && ['emise', 'en_retard'].includes(f.statut)))
+    } catch {
+      setReafErreur('Impossible de charger les factures du client.')
+    }
+  }
+
+  const confirmerReaffecter = async () => {
+    if (!reafCible || !reafChoix) return
+    setReafBusy(true); setReafErreur('')
+    try {
+      await api.post(`/ventes/paiements/${reafCible.id}/reaffecter/`,
+        { facture_cible: Number(reafChoix) })
+      setReafCible(null)
+      setLoading(true)
+      await chargerPaiements()
+    } catch (err) {
+      setReafErreur(err?.response?.data?.detail || 'La réaffectation a échoué. Réessayez.')
+    } finally { setReafBusy(false) }
+  }
+
+  const [annulCible, setAnnulCible] = useState(null)
+  const [annulMotif, setAnnulMotif] = useState('')
+  const [annulBusy, setAnnulBusy] = useState(false)
+  const [annulErreur, setAnnulErreur] = useState('')
+  const ouvrirAnnulSaisie = (p) => { setAnnulCible(p); setAnnulMotif(''); setAnnulErreur('') }
+
+  const confirmerAnnulSaisie = async () => {
+    if (!annulCible || !annulMotif.trim()) return
+    setAnnulBusy(true); setAnnulErreur('')
+    try {
+      await api.post(`/ventes/paiements/${annulCible.id}/annuler-saisie/`,
+        { motif: annulMotif.trim() })
+      setAnnulCible(null)
+      setLoading(true)
+      await chargerPaiements()
+    } catch (err) {
+      setAnnulErreur(err?.response?.data?.detail || 'L’annulation a échoué. Réessayez.')
+    } finally { setAnnulBusy(false) }
   }
 
   return (
@@ -543,7 +610,7 @@ export default function PaiementsPage() {
                   key: 'montant',
                   header: 'Montant',
                   align: 'right',
-                  cell: (p) => (estRejete(p)
+                  cell: (p) => (estNonCompte(p)
                     ? <s className="text-muted-foreground">{dh(p.montant)}</s>
                     : <strong>{dh(p.montant)}</strong>),
                 },
@@ -554,7 +621,12 @@ export default function PaiementsPage() {
                 {
                   key: 'statut',
                   header: 'Statut',
-                  cell: (p) => (estRejete(p) ? (
+                  cell: (p) => (estAnnuleSaisie(p) ? (
+                    <Badge tone="neutral"
+                           title={p.motif_annulation || 'Saisie annulée'}>
+                      Annulé (saisie)
+                    </Badge>
+                  ) : estRejete(p) ? (
                     <Badge tone="danger"
                            title={p.motif_rejet || 'Règlement rejeté'}>
                       Rejeté
@@ -568,12 +640,24 @@ export default function PaiementsPage() {
                   key: 'actions',
                   header: '',
                   align: 'right',
-                  cell: (p) => (peutRejeter && !estRejete(p) ? (
-                    <Button size="sm" variant="outline"
-                            onClick={() => ouvrirRejet(p)}
-                            title="Chèque impayé / virement rejeté">
-                      <Ban className="size-4" /> Rejeter
-                    </Button>
+                  cell: (p) => (peutRejeter && !estNonCompte(p) ? (
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Button size="sm" variant="outline"
+                              onClick={() => ouvrirRejet(p)}
+                              title="Chèque impayé / virement rejeté">
+                        <Ban className="size-4" /> Rejeter
+                      </Button>
+                      <Button size="sm" variant="outline"
+                              onClick={() => ouvrirReaffecter(p)}
+                              title="Rapproché sur la mauvaise facture">
+                        <Shuffle className="size-4" /> Réaffecter
+                      </Button>
+                      <Button size="sm" variant="outline"
+                              onClick={() => ouvrirAnnulSaisie(p)}
+                              title="Erreur de saisie : le paiement sort du payé">
+                        <Undo2 className="size-4" /> Annuler (erreur de saisie)
+                      </Button>
+                    </div>
                   ) : null),
                 },
               ]}
@@ -591,7 +675,7 @@ export default function PaiementsPage() {
               footer={filtered.length > 0 && (
                 <tr className="border-t border-border font-bold">
                   <td className="px-3 py-2" colSpan={2} data-label="Total">
-                    Total encaissé ({filtered.filter(p => !estRejete(p)).length})
+                    Total encaissé ({filtered.filter(p => !estNonCompte(p)).length})
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums" data-label="Montant">{dh(total)}</td>
                   <td className="px-3 py-2" colSpan={6} />
@@ -601,6 +685,83 @@ export default function PaiementsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── AFAC18 — Réaffecter un paiement à une autre facture ─────────── */}
+      <Dialog open={!!reafCible}
+              onOpenChange={(o) => { if (!o) setReafCible(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Réaffecter le paiement de {dh(reafCible?.montant)}
+            </DialogTitle>
+            <DialogDescription>
+              Le paiement passe sur une autre facture ouverte du même client ;
+              les deux factures sont recalculées. Rien n’est supprimé.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="reaf-facture">Facture cible</Label>
+              <select id="reaf-facture" value={reafChoix}
+                      onChange={(e) => setReafChoix(e.target.value)}
+                      className="rounded border border-border bg-background px-2 py-1 text-sm">
+                <option value="">Choisir une facture ouverte…</option>
+                {reafFactures.map((f) => (
+                  <option key={f.id} value={f.id}>{f.reference}</option>
+                ))}
+              </select>
+              {reafErreur && (
+                <p role="alert" data-testid="reaffecter-erreur"
+                   className="text-sm text-destructive">{reafErreur}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setReafCible(null)}>
+              Annuler
+            </Button>
+            <Button type="button" disabled={!reafChoix} loading={reafBusy}
+                    onClick={confirmerReaffecter}>
+              Réaffecter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── AFAC18 — Annuler la saisie d'un paiement (erreur de saisie) ──── */}
+      <Dialog open={!!annulCible}
+              onOpenChange={(o) => { if (!o) setAnnulCible(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Annuler la saisie du paiement de {dh(annulCible?.montant)}
+            </DialogTitle>
+            <DialogDescription>
+              Le paiement sort du payé et reste tracé « Annulé (saisie) » avec
+              son motif — différent d’un rejet bancaire.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="annul-motif">Motif (obligatoire)</Label>
+            <Input id="annul-motif" value={annulMotif}
+                   placeholder="Montant saisi 5 000 au lieu de 500"
+                   onChange={(e) => setAnnulMotif(e.target.value)} />
+            {annulErreur && (
+              <p role="alert" data-testid="annulation-saisie-erreur"
+                 className="text-sm text-destructive">{annulErreur}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setAnnulCible(null)}>
+              Retour
+            </Button>
+            <Button type="button" variant="destructive" disabled={!annulMotif.trim()}
+                    loading={annulBusy} onClick={confirmerAnnulSaisie}>
+              Annuler la saisie
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── AUD132 (PAY-10) — Rejeter un règlement (chèque impayé) ───────── */}
       <Dialog open={!!rejetCible}

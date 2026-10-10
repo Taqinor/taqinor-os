@@ -206,7 +206,9 @@ def _p90_bancable(d):
     # partagée avec le legacy, ``bankable.bankable_imprimable``) ; sinon
     # omise, motif dit en interne.
     from ..bankable import bankable_imprimable
-    if bank:
+    # Décision fondateur 08/10/2026 — devis envoyé avant AMOT35
+    # (``regles_calcul_origine``) : la P90 d'hier, sans le nouveau contrôle.
+    if bank and not d.get("regles_calcul_origine"):
         ok, motif = bankable_imprimable(
             bank, d.get("ind_kwc") or d.get("puissance_kwc"),
             d.get("ind_prod"))

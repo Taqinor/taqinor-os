@@ -4,7 +4,7 @@
 // sont JAMAIS écrits ici : le marquage « envoyé » est fait par le serveur
 // (garde T17, règle #4).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchDevis } from '../../../features/ventes/store/ventesSlice.js'
+import { rafraichirDevis } from '../../../features/ventes/store/ventesSlice.js'
 import ventesApi from '../../../api/ventesApi.js'
 import { toast } from '../../../ui/index.js'
 import { formatMAD } from '../../../lib/format.js'
@@ -40,7 +40,7 @@ export function useDevisEnvoi({
       const payload = emailAddress ? { to_email: emailAddress } : {}
       await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
       closeEmailModal()
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(emailTarget.id))
       // VX156/VX155 — moment « devis envoyé » : un jalon (toastMilestone), pas
       // un succès plat — réf/client/montant + la voix Taqinor en description.
       toastMilestone(`Devis ${emailTarget.reference} envoyé par email.`, {
@@ -100,7 +100,7 @@ export function useDevisEnvoi({
     setShareBusyId(d.id)
     try {
       const res = await ventesApi.shareLinkDevis(d.id, { envoi: true })
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(d.id))
       // Le backend renvoie {token, path} (path = /proposition/<slug-client>/
       // <token>, PV84 — slug cosmétique, jamais vérifié côté serveur) — on
       // reconstruit l'URL publique complète (site public, cf. VITE_PUBLIC_SITE_URL).
@@ -215,7 +215,7 @@ export function useDevisEnvoi({
           waTarget.id, `Relance du devis ${waTarget.reference} envoyée par WhatsApp.`,
         ).catch(() => {})
       }
-      dispatch(fetchDevis())
+      dispatch(rafraichirDevis(waTarget.id))
     } catch (err) {
       toast.error(frenchError(err, 'Le marquage « Envoyé » a échoué — vérifiez le devis.'))
     } finally {

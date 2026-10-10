@@ -1,0 +1,92 @@
+[
+ {
+  "action": "__action_absente__",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "__action_absente__",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "create",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "destroy",
+  "methode": "DELETE",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "list",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "partial_update",
+  "methode": "PATCH",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "reorder",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "retrieve",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ },
+ {
+  "action": "update",
+  "methode": "PUT",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsAnyRole"
+   }
+  ]
+ }
+]

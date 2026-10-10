@@ -228,7 +228,10 @@ def _balayage_stockage_publique(dimensionnement, devis=None):
             continue
         cout_ttc = palier.get('cout_ttc')
         payback = _nombre_positif_ou_none(palier.get('payback_annees'))
-        if devis is not None:
+        from apps.ventes.domain.regles_calcul import calcul_corrige
+        # Décision fondateur 08/10/2026 — devis envoyé avant AMOT59
+        # (``regles_calcul = 1``) : le palier publie le coût d'hier.
+        if devis is not None and calcul_corrige(devis):
             # AMOT59 (C-AMOT-035) — le palier du curseur publie le prix de
             # VENTE (coût catalogue × remise du devis, palier ARRONDI-100) par
             # LA fonction de l'échelle et des cartes, et le payback publié

@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^equipes/$",
+  "nom": "equipecommerciale-list",
+  "vue": "EquipeCommercialeViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^equipes/(?P<pk>[^/.]+)/$",
+  "nom": "equipecommerciale-detail",
+  "vue": "EquipeCommercialeViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^equipes/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "equipecommerciale-detail",
+  "vue": "EquipeCommercialeViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^equipes\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "equipecommerciale-list",
+  "vue": "EquipeCommercialeViewSet"
+ }
+]

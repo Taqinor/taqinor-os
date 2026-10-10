@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
-from .devis_gardes import _pourcentage_saisi  # ACAL278
+from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 
 
 def _emettre_layout_finalise(devis, user):
@@ -317,6 +317,10 @@ class DevisCalepinageActionsMixin:
         Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
         devis = self.get_object()  # borné société par get_queryset
+        # ADEV42 — la garde de ce geste est celle de la resynchro
+        # (``resynchronisation._refus_resynchro``, geste CALEPINAGE), jouée
+        # par ``_ecrire_conception`` AVANT toute écriture du calepinage lié :
+        # 409 « document clos » + ``revision_possible`` (QJR516, test_pv18).
         payload = request.data
         if isinstance(payload, dict):
             for enveloppe in ('layout', 'roof_layout'):

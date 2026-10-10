@@ -32,7 +32,7 @@ from ..utils.client_links import chemin_proposition
 from core.entite_scoping import EntiteScopeMixin  # NTADM2
 from core.idempotency import IdempotentCreateMixin  # YAPIC9
 from ..utils.company_settings import create_numbered
-from .devis_gardes import _pourcentage_saisi  # ACAL278
+from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 from .devis_edition import DevisEditionActionsMixin  # SPL135
 from .devis_cycle import DevisCycleActionsMixin  # SPL136
 from .devis_etudes import DevisEtudesActionsMixin  # SPL137

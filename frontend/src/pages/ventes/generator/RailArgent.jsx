@@ -15,14 +15,35 @@
 // les calcule pas, il les reçoit déjà chiffrés.
 import { Button } from '../../../ui'
 import { formatMoney } from '../../../features/ventes/solar'
+import MargeIndicative from './MargeIndicative'
 
 export default function RailArgent({
   showSans, showAvec, sansRec, avecRec, totals,
   discountPct, setDiscountPct, remiseMax,
-  tauxTva, setTauxTva,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
   marge, kpiTotal, margeLignesSansAchat = 0,
+  // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
+  // commercial » qui sépare Σ lignes affichées du total (palier ARRONDI-100).
+  remiseParPanier = null,
+  // AGNR33 — refus 400 par champ et notes de normalisation (AGNR8).
+  erreursChamps = {}, notesNormalisation = {},
 }) {
+  const sousChamp = (champ) => (
+    <>
+      {erreursChamps[champ] && (
+        <span className="text-destructive ml-1.5" style={{ fontSize: 11 }} data-testid={`erreur-champ-${champ}`}>
+          {erreursChamps[champ]}
+        </span>
+      )}
+      {notesNormalisation[champ] && (
+        <span className="text-muted-foreground ml-1.5" style={{ fontSize: 11 }} data-testid={`note-champ-${champ}`}>
+          {notesNormalisation[champ]}
+        </span>
+      )}
+    </>
+  )
+  const arrondiSans = remiseParPanier?.sans?.arrondi ?? 0
+  const arrondiAvec = remiseParPanier?.avec?.arrondi ?? 0
   return (
     <>
       {/* VX138 — chaîne de totaux hiérarchisée (paliers F121 existants) :
@@ -48,6 +69,7 @@ export default function RailArgent({
           <input type="number" min="0" max="100" step="any" className="gen-discount-input"
                  value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
           <span style={{ fontWeight: 700 }}>%</span>
+          {sousChamp('remise_globale')}
           {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
             /* VX17 — couleur d'avertissement via token de thème. */
             <span className="text-warning ml-1.5" style={{ fontSize: 11 }}>
@@ -55,11 +77,13 @@ export default function RailArgent({
             </span>
           )}
         </div>
-        <div className="gen-total-item gen-total-inline gen-tier-2">
-          <span className="gen-total-label">TVA</span>
-          <input type="number" min="0" max="100" step="any" className="gen-discount-input"
-                 value={tauxTva} onChange={e => setTauxTva(e.target.value)} />
-          <span style={{ fontWeight: 700 }}>%</span>
+        {/* AGNR28 — plus de champ « TVA % » ici : il ne changeait AUCUN total
+            (chaque ligne porte son taux, lu par les totaux et le serveur).
+            L'en-tête `taux_tva` garde la valeur chargée / le défaut société,
+            simple repli serveur. Un refus serveur sur ce champ reste affiché. */}
+        <div className="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
+          <span className="gen-total-label">TVA : par ligne (voir la table)</span>
+          {sousChamp('taux_tva')}
         </div>
         {parseFloat(discountPct) > 0 && showSans && (
           <div className="gen-total-item gen-tier-3">
@@ -71,6 +95,20 @@ export default function RailArgent({
           <div className="gen-total-item gen-tier-3">
             <span className="gen-total-label green">Total final AVEC batterie</span>
             <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
+          </div>
+        )}
+        {/* ATOT25 — l'« Arrondi commercial » est DIT : Σ des lignes affichées
+            (remisées au centime comme le PDF) + arrondi = total affiché. */}
+        {showSans && arrondiSans !== 0 && (
+          <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-sans">
+            <span className="gen-total-label">Arrondi commercial{showAvec ? ' SANS batterie' : ''}</span>
+            <span className="gen-total-value">{formatMoney(arrondiSans)}</span>
+          </div>
+        )}
+        {showAvec && arrondiAvec !== 0 && (
+          <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-avec">
+            <span className="gen-total-label">Arrondi commercial{showSans ? ' AVEC batterie' : ''}</span>
+            <span className="gen-total-value">{formatMoney(arrondiAvec)}</span>
           </div>
         )}
       </div>
@@ -106,33 +144,16 @@ export default function RailArgent({
           <input type="number" min="0" step="any" className="gen-discount-input"
                  style={{ width: 100 }} placeholder="ex: 9000"
                  value={prixCible} onChange={e => setPrixCible(e.target.value)} />
+          {sousChamp('prix_cible_kwc')}
           <Button type="button" size="sm" variant="outline"
                   onClick={applyPrixCible}
                   disabled={!(kwp > 0) || prixCible === ''}>
             Appliquer via remise
           </Button>
         </div>
-        {marge != null && (
-          <div className="gen-total-item">
-            {/* VX17 — couleurs via tokens de thème (text-success/destructive)
-                plutôt qu'un hex codé en dur. */}
-            <span className={`gen-total-label ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-              Marge indicative (interne)
-            </span>
-            <span className={`gen-total-value ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
-              {formatMoney(marge)}
-              {margeLignesSansAchat === 0 && kpiTotal > 0
-                ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
-            </span>
-            {margeLignesSansAchat > 0 && (
-              /* AGR134 — une ligne chiffrée sans prix d'achat sort du coût : la
-                 marge est gonflée, son pourcentage est masqué et le dit. */
-              <span className="text-xs text-warning" data-testid="marge-partielle">
-                marge partielle : {margeLignesSansAchat} ligne{margeLignesSansAchat > 1 ? 's' : ''} sans prix d'achat
-              </span>
-            )}
-          </div>
-        )}
+        {/* AGNR29 — composant partagé avec le rail latéral (AGR134 : marge
+            partielle dite, jamais de % sur un coût partiel). */}
+        <MargeIndicative marge={marge} kpiTotal={kpiTotal} lignesSansAchat={margeLignesSansAchat} />
       </div>
       {marge != null && marge < 0 && (
         <div className="mx-5 mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

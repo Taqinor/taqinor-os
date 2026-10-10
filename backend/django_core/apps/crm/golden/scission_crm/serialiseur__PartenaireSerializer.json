@@ -1,0 +1,124 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "nom",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "type_partenaire",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "EmailField",
+   "nom": "email",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "telephone",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DecimalField",
+   "nom": "taux_commission",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "token_acces",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "actif",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "statut_onboarding",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "numero_agrement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "zone",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "date_activation",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "niveau_certification",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "date_certification",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "date_expiration_certification",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "JSONField",
+   "nom": "specialites",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "nb_deploiements_reussis",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "certification_expiree",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "rang_certification",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "date_creation",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}

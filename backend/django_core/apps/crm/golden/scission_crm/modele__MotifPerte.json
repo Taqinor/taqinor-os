@@ -1,0 +1,56 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:CASCADE",
+    "related_name": "motifs_perte",
+    "to": "authentication.company"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 150
+   },
+   "nom": "nom",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false
+   },
+   "nom": "archived",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "help_text": "Numéro invalide, spam/bot, hors zone, jamais répondu — distinct d'un motif de perte commercial réel.",
+    "verbose_name": "Motif junk (pas un vrai prospect)"
+   },
+   "nom": "est_junk",
+   "type": "BooleanField"
+  }
+ ],
+ "db_table": "crm_motifperte",
+ "label": "crm.MotifPerte",
+ "relations_inverses": []
+}

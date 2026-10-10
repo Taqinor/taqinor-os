@@ -51,11 +51,13 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
     .slice()
     .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .map((l) => {
-      // TVA-LIGNE (06/10/2026) — une ligne SANS taux prend d'abord celui de
-      // sa fiche produit (`produit_tva`, DC7 : 10 % panneaux PV), et
-      // seulement ensuite le taux du devis : sinon le prochain
-      // enregistrement figeait 20 % sur un panneau. 0 % reste 0 % (AGR216).
-      const taux = tauxTvaOuDefaut(l.taux_tva ?? l.produit_tva ?? tauxDevis, 20)
+      // ATOT20 — UNE règle avec le serveur : une ligne relue SANS taux est
+      // chiffrée au taux du DEVIS (le serveur et le PDF lui appliquent ce
+      // taux) ; jamais celui de la fiche produit (`produit_tva`), qui changeait
+      // le total au premier « Enregistrer » sans saisie. Les lignes NOUVELLES
+      // naissent avec le taux de leur produit (serveur `creer_ligne`,
+      // TVA-LIGNE). 0 % reste 0 % (AGR216).
+      const taux = tauxTvaOuDefaut(l.taux_tva ?? tauxDevis, 20)
       const produit = l.produit ?? l.produit_id
       // Marqueur d'écran `compose` ⇄ provenance persistée `ligne_composee`
       // (ERR-QJR570) : composée ⇒ remplacée par la prochaine recomposition,
@@ -77,6 +79,10 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         variante: l.variante ?? '',
         prixManuel: !!l.prix_manuel,
         quantiteManuelle: !!l.quantite_manuelle,
+        // AGNR16 — prix RELU du serveur : l'effet de tarif de l'écran
+        // (`[clientId, lines.length]`) ne le réécrit jamais sans geste. Marqueur
+        // d'écran seulement, jamais envoyé (absent de `lignesEcranVersPayload`).
+        prixRelu: true,
         groupeIndex: l.groupe_index ?? null,
         groupeLabel: l.groupe_label ?? '',
         role_devis: l.role_devis ?? '',
@@ -103,6 +109,22 @@ const lignesEnvoyees = (lines) => (lines || []).filter((l) => (estStructure(l)
  * @param {Array<object>} lines  lignes d'écran
  * @param {{multiMode?: string}} [opts]  groupes villa envoyés seulement en mode 'villas'
  */
+// ATOT28 — le HT ENVOYÉ d'une ligne : le HT catalogue d'origine tel quel
+// (`prixHtOrigine`) tant que le vendeur n'a pas tapé de prix et que le TTC
+// affiché est toujours celui qui en dérive (même taux) ; sinon le HT re-dérivé
+// du TTC saisi au taux DE LA LIGNE, comme avant.
+function prixUnitaireEnvoye(l) {
+  const taux = l.taux_tva ?? 20
+  const origine = l.prixHtOrigine
+  if (!l.prixManuel && origine != null && origine !== '') {
+    const ttcOrigine = ttcExactFromHt(origine, taux)
+    if (Math.abs(ttcOrigine - (parseFloat(l.prix_unit_ttc) || 0)) < 0.005) {
+      return (parseFloat(origine) || 0).toFixed(2)
+    }
+  }
+  return htFromTtc(l.prix_unit_ttc, taux)
+}
+
 export function lignesEcranVersPayload(lines, { multiMode } = {}) {
   const villas = multiMode === 'villas'
   const gardees = lignesEnvoyees(lines)
@@ -118,7 +140,7 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       produit: parseInt(l.produit, 10),
       designation: l.designation,
       quantite: l.quantite,
-      prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
+      prix_unitaire: prixUnitaireEnvoye(l),
       remise: String(parseFloat(l.remise) || 0),
       taux_tva: String(l.taux_tva ?? 20),
       groupe_index: villas ? (l.groupeIndex ?? null) : null,

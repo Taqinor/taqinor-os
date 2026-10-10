@@ -1,0 +1,42 @@
+[
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^tags/$",
+  "nom": "leadtag-list",
+  "vue": "LeadTagViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^tags/(?P<pk>[^/.]+)/$",
+  "nom": "leadtag-detail",
+  "vue": "LeadTagViewSet"
+ },
+ {
+  "actions_map": {
+   "delete": "destroy",
+   "get": "retrieve",
+   "patch": "partial_update",
+   "put": "update"
+  },
+  "motif": "^tags/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "leadtag-detail",
+  "vue": "LeadTagViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "list",
+   "post": "create"
+  },
+  "motif": "^tags\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "leadtag-list",
+  "vue": "LeadTagViewSet"
+ }
+]

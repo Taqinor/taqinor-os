@@ -1,0 +1,59 @@
+{
+ "hors_fichiers": [],
+ "par_signal": {
+  "devis_acceptation_annulee": [
+   "crm_defaire_acceptation_on_acceptation_annulee"
+  ],
+  "devis_accepted": [
+   "crm_advance_stage_on_devis_accepted",
+   "crm_stop_relance_on_devis_accepted",
+   "crm_deal_commission_on_devis_accepted",
+   "crm_flip_parrainage_converti_on_devis_accepted",
+   "crm_lien_parrainage_on_devis_accepted"
+  ],
+  "devis_refused": [
+   "crm_stop_apres_devis_on_devis_refused",
+   "crm_mark_lead_perdu_on_devis_refused",
+   "crm_signal_signe_sans_devis_actif"
+  ],
+  "devis_sent": [
+   "crm_plan_apres_devis_on_devis_sent",
+   "crm_advance_stage_on_devis_sent"
+  ],
+  "facture_emise": [
+   "crm_cad61_trace_facture_emise"
+  ],
+  "layout_finalise": [
+   "crm_note_chatter_on_layout_finalise"
+  ],
+  "lead_stage_changed": [
+   "crm_stop_relance_on_stage_signed_or_cold",
+   "crm_generate_playbook_progress_on_stage_change"
+  ],
+  "post_save": [
+   "crm_advance_stage_new_vers_contacted_on_activity",
+   "crm_stop_contact_cadence_on_outcome",
+   "crm_emit_appointment_effectue",
+   "crm_emit_lead_created",
+   "crm_client_mirror_tiers"
+  ],
+  "pre_save": [
+   "crm_capture_appointment_old_statut"
+  ],
+  "salle_vente_signal_interet": [
+   "crm_notifier_interet_salle_vente"
+  ],
+  "ticket_resolu": [
+   "crm_chatter_on_ticket_resolu"
+  ],
+  "visite_planifiee": [
+   "crm_suivi_on_visite_planifiee"
+  ],
+  "visite_terminee": [
+   "crm_suivi_on_visite_terminee"
+  ],
+  "visite_validee": [
+   "crm_retour_lead_on_visite_validee"
+  ]
+ }
+}

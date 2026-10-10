@@ -1,0 +1,76 @@
+{
+ "champs": [
+  {
+   "classe": "IntegerField",
+   "nom": "id",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "lead",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "tache",
+   "read_only": false,
+   "required": true
+  },
+  {
+   "classe": "CharField",
+   "nom": "tache_libelle",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "tache_obligatoire",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "etape_stage",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "BooleanField",
+   "nom": "fait",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "PrimaryKeyRelatedField",
+   "nom": "fait_par",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "CharField",
+   "nom": "fait_par_nom",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "fait_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "DateTimeField",
+   "nom": "created_at",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "SerializerMethodField",
+   "nom": "cle_message",
+   "read_only": true,
+   "required": false
+  }
+ ]
+}
