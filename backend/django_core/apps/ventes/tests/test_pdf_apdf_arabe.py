@@ -11,8 +11,15 @@ dans ``_css_arabe`` ⇒ ``test_aucun_font_face_homonyme`` échoue.
 
 APDF11 — le devis résidentiel premium arabe est une page RTL
 (``ResidentielRtlTests``), toujours 3 pages ; fr et en inchangés.
+
+APDF47 — les woff2 « NotoSansArabic » ont quitté ``assets/fonts/`` : plus
+aucun chargeur ne les lit (``test_aucune_police_vendorisee_chargee``).
 """
+import ast
+import os
 import re
+from pathlib import Path
+from unittest import mock
 
 from django.test import SimpleTestCase, TestCase, tag
 
@@ -25,6 +32,7 @@ from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
 from apps.ventes.tests.test_agr310_renderer_agricole import data_complete
+from apps.ventes.utils import libelles_ar
 
 FONT_FACE_ARABE = re.compile(
     r"@font-face\s*\{[^}]*Noto Sans Arabic", re.IGNORECASE)
@@ -36,6 +44,62 @@ def _data_agricole_ar():
     d['langue_sortie'] = 'ar'
     d['libelles_document'] = i18n_labels.libelles('ar')
     return agr_renderer._augment(d)
+
+
+# ── APDF47 — plus aucun woff2 arabe vendorisé ni chargeur ─────────────────
+# Test-du-test : restaurer ``_load_gfont("NotoSansArabic-400.woff2")`` (dans
+# ``_css_arabe`` ou au chargement du module) ⇒
+# ``test_aucune_police_vendorisee_chargee`` échoue (lecture enregistrée par
+# l'espion, ou nom de fichier cité hors commentaire).
+_WOFF2_ARABE = 'NotoSansArabic'
+_RACINE_DJANGO = Path(G.__file__).resolve().parents[3]
+
+
+def _ids_docstrings(arbre):
+    ids = set()
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                              ast.AsyncFunctionDef)) and noeud.body:
+            tete = noeud.body[0]
+            if (isinstance(tete, ast.Expr) and isinstance(tete.value, ast.Constant)
+                    and isinstance(tete.value.value, str)):
+                ids.add(id(tete.value))
+    return ids
+
+
+def _citations_woff2_arabe():
+    """``chemin:ligne`` de chaque littéral (hors commentaire / docstring) qui
+    nomme un woff2 arabe dans le code servi : ``apps/`` et ``templates/`` du
+    backend, hors tests et migrations (le grep de la tâche, sans ses
+    commentaires)."""
+    trouves = []
+    for base in ('apps', 'templates'):
+        for dossier, sous, fichiers in os.walk(_RACINE_DJANGO / base):
+            sous[:] = [d for d in sous
+                       if d not in ('__pycache__', 'migrations', 'tests')]
+            for nom in fichiers:
+                if nom.startswith('test') or not nom.endswith(('.py', '.html')):
+                    continue
+                chemin = Path(dossier) / nom
+                texte = chemin.read_bytes().decode('utf-8', 'replace')
+                if _WOFF2_ARABE not in texte:
+                    continue
+                rel = chemin.relative_to(_RACINE_DJANGO).as_posix()
+                if nom.endswith('.html'):
+                    sans = re.sub(
+                        r'<!--.*?-->|\{#.*?#\}'
+                        r'|\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}',
+                        '', texte, flags=re.S)
+                    if _WOFF2_ARABE in sans:
+                        trouves.append(rel)
+                    continue
+                arbre = ast.parse(texte)
+                docs = _ids_docstrings(arbre)
+                trouves += [
+                    f'{rel}:{n.lineno}' for n in ast.walk(arbre)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                    and _WOFF2_ARABE in n.value and id(n) not in docs]
+    return trouves
 
 
 class PoliceArabeTests(SimpleTestCase):
@@ -56,6 +120,35 @@ class PoliceArabeTests(SimpleTestCase):
         html = agr_pages.build_html(_data_agricole_ar())
         self.assertIsNone(FONT_FACE_ARABE.search(html))
         self.assertIn('letter-spacing:0', html)
+
+    def test_aucune_police_vendorisee_chargee(self):
+        # Les woff2 arabes ont quitté le dossier que lisent les trois chargeurs.
+        for dossier in {G.FONT_DIR, theme._FONT_DIR, libelles_ar._FONT_DIR}:
+            self.assertEqual(
+                sorted(p.name for p in dossier.glob(f'{_WOFF2_ARABE}*')), [])
+        # Aucun rendu arabe ne demande un woff2 arabe à un chargeur.
+        lus = []
+
+        def espion(chargeur):
+            def lire(nom, *args, **kwargs):
+                lus.append(nom)
+                return chargeur(nom, *args, **kwargs)
+            return lire
+
+        theme.font_face_css.cache_clear()
+        with mock.patch.object(G, '_load_gfont', espion(G._load_gfont)), \
+                mock.patch.object(theme, '_font_b64', espion(theme._font_b64)), \
+                mock.patch.object(libelles_ar, '_load_font_base64',
+                                  espion(libelles_ar._load_font_base64)):
+            G._css_arabe()
+            theme.css_langue({'langue_sortie': 'ar'})
+            agr_pages.build_html(_data_agricole_ar())
+            _html_residentiel('ar')
+            libelles_ar.arabic_font_face_css()
+        self.assertTrue(lus, 'espion non branché : aucune police lue')
+        self.assertEqual([n for n in lus if _WOFF2_ARABE in str(n)], [])
+        # Plus aucun nom de woff2 arabe cité hors commentaire (grep de la tâche).
+        self.assertEqual(_citations_woff2_arabe(), [])
 
 
 class OnePageArabeTests(TestCase):
