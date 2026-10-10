@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS, CLE_PLANIFIER, q_etape
@@ -74,7 +74,7 @@ class PlanifierSansReponseTests(TestCase):
             company=self.company, nom=f'Prospect E12 {n}',
             stage=stages.CONTACTED, owner=self.acteur,
             telephone=f'+21266112{n:04d}')
-        self.planifier = services.poser_filet_visite_a_planifier(
+        self.planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
 
     def _sans_reponse(self, etape):

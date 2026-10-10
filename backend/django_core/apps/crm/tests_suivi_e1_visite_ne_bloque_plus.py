@@ -34,6 +34,7 @@ from core.events import devis_sent
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_filet
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
@@ -222,7 +223,7 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
 class InitialisationAvecVisiteOuverteTests(_Base):
 
     def test_le_service_ne_rend_jamais_l_etape_de_visite(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         etapes = cadence_plan.initialiser_plan_relance(
             self.lead, self.acteur, cadence='apres_devis', depart=GEL)
@@ -232,7 +233,7 @@ class InitialisationAvecVisiteOuverteTests(_Base):
                             for e in etapes))
 
     def test_la_fiche_demarre_le_suivi_du_devis_envoye(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         devis = self._devis()
         resp = self.api.post(

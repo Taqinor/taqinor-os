@@ -1457,7 +1457,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                   != new_lead.dossier_subvention_le))
                 or (old.dossier_subvention == accorde
                     and new_lead.dossier_subvention != accorde)):
-            from .services import poser_rappel_subvention
+            from .cadence_filet import poser_rappel_subvention
             try:
                 poser_rappel_subvention(new_lead, self.request.user)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead

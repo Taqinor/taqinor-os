@@ -142,6 +142,8 @@ backend/django_core/apps/calepinage/services/versions.py::borne_de_purge
 backend/django_core/apps/calepinage/services/zones_reglementaires.py::appliquer_modele
 backend/django_core/apps/crm/cadence_config.py::etape_configuree
 backend/django_core/apps/crm/cadence_config.py::palier_actif
+backend/django_core/apps/crm/cadence_filet.py::dernier_barreau_consomme
+backend/django_core/apps/crm/cadence_filet.py::libelle_rappel_subvention
 backend/django_core/apps/crm/cadence_messages.py::cle_identite_pour_lead
 backend/django_core/apps/crm/cadence_messages.py::crochets_a_completer
 backend/django_core/apps/crm/cadence_messages.py::langues_relance
@@ -184,7 +186,6 @@ backend/django_core/apps/crm/services.py::clients_par_ids
 backend/django_core/apps/crm/services.py::composer_note_retour_visite
 backend/django_core/apps/crm/services.py::create_lead_from_evenement_marketing
 backend/django_core/apps/crm/services.py::creer_relance_lead
-backend/django_core/apps/crm/services.py::dernier_barreau_consomme
 backend/django_core/apps/crm/services.py::dispatch_appointment_reminder
 backend/django_core/apps/crm/services.py::enregistrer_consentement_lead
 backend/django_core/apps/crm/services.py::fetch_meta_lead_node
@@ -193,7 +194,6 @@ backend/django_core/apps/crm/services.py::issue_fait_naitre_la_suite
 backend/django_core/apps/crm/services.py::lead_est_entreprise
 backend/django_core/apps/crm/services.py::lead_signe_sans_devis_actif
 backend/django_core/apps/crm/services.py::leads_avec_cadence_active
-backend/django_core/apps/crm/services.py::libelle_rappel_subvention
 backend/django_core/apps/crm/services.py::lignes_notification_pro
 backend/django_core/apps/crm/services.py::maybe_assign_mql
 backend/django_core/apps/crm/services.py::mention_devis_apres_visite

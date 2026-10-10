@@ -676,7 +676,7 @@ def _codes_filet(etape, issue, est_actif):
     palier désactivé, exactement comme le moteur
     (``services.prochain_palier_sans_reponse``)."""
     from .cadence_config import CLE_DERNIER_APPEL, CLE_MESSAGE_CRENEAU, cle_de
-    from .services import prochain_palier_sans_reponse
+    from .cadence_filet import prochain_palier_sans_reponse
     from .cadence_reperes import OUTCOME_VISITE_ACCEPTEE
 
     if issue == OUTCOME_VISITE_ACCEPTEE:

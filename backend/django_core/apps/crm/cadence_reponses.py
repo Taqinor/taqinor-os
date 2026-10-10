@@ -28,18 +28,20 @@ from .leads_socle import motif_refus_valide
 from .models import Lead, LeadActivity, RelanceEtape
 from .services import (
     CAUSE_RDV_NE_PLUS_CONTACTER,
-    _config_visite,
     _debrief_ouvert,
+    _requalifier_debrief,
+    annuler_rendez_vous_du_lead,
+    annuler_rendez_vous_sur_arret,
+    cause_rdv_perdu,
+    marquer_etape_relance,
+)
+from .cadence_filet import (
+    _config_visite,
     _lead_relancable,
     _poser_etape_de_filet,
     _poser_etape_visite,
-    _requalifier_debrief,
     _visite_a_venir,
-    annuler_rendez_vous_du_lead,
-    annuler_rendez_vous_sur_arret,
     assurer_prochaine_etape_apres_succes,
-    cause_rdv_perdu,
-    marquer_etape_relance,
     prochain_palier_sans_reponse,
 )
 from .cadence_plan import (

@@ -28,7 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.cadence_config import (
@@ -168,7 +168,7 @@ class AnnuleLeRendezVousTests(_Base):
         self.assertFalse(self._ouvertes(q_etape(CLE_DEVIS)).exists())
 
     def test_depuis_planifier_la_visite(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         resp = self._abandonner(planifier)
         self.assertEqual(resp.status_code, 200, resp.data)

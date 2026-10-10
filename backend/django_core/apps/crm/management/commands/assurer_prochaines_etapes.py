@@ -17,7 +17,7 @@ from django.db.models import Exists, OuterRef
 
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import assurer_prochaine_etape_apres_succes
+from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 
 
 class Command(BaseCommand):

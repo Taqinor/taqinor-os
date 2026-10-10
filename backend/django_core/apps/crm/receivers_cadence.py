@@ -16,12 +16,14 @@ from .models import Lead, LeadActivity
 from .services import (
     CADENCES_ARRETEES_PAR_ISSUE,
     CAUSE_RDV_REFUS,
-    _poser_etape_de_filet,
     annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
-    assurer_prochaine_etape_apres_succes,
     phrase_notification_retour_visite,
+)
+from .cadence_filet import (
+    _poser_etape_de_filet,
+    assurer_prochaine_etape_apres_succes,
     poser_filet_visite_a_planifier,
 )
 from .cadence_plan import (

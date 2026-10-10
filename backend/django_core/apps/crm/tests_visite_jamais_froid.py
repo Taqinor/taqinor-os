@@ -38,6 +38,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
@@ -172,8 +173,8 @@ class FiletVisiteSansReponseTests(_Base):
     slug = 'vjf-filet'
 
     def test_planifier_la_visite_sans_reponse_ne_part_pas_au_froid(self):
-        filet = services.poser_filet_visite_a_planifier(self.lead,
-                                                        self.acteur)
+        filet = cadence_filet.poser_filet_visite_a_planifier(self.lead,
+                                                             self.acteur)
 
         self._fait(filet, 'non_joint')
 

@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from testkit.time import frozen
 
-from apps.crm import horaires, services, stages
+from apps.crm import horaires, stages, cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
@@ -52,7 +52,7 @@ def _sans_dernier_appel(cle):
 class EscalierTests(SimpleTestCase):
 
     def test_le_rappel_convenu_sans_reponse_monte_au_dernier_essai(self):
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             CLE_RAPPEL_CONVENU, 'non_joint', _tous_actifs), CLE_DERNIER_APPEL)
         self.assertEqual(
             cadence_reponses._palier_sans_reponse(cadence_reperes.FILET_RAPPEL_LIBELLE,
@@ -61,11 +61,11 @@ class EscalierTests(SimpleTestCase):
              cadence_reperes.FILET_JOINT_DELAI_JOURS))
 
     def test_palier_desactive_saute(self):
-        self.assertIsNone(services.prochain_palier_sans_reponse(
+        self.assertIsNone(cadence_filet.prochain_palier_sans_reponse(
             CLE_RAPPEL_CONVENU, 'non_joint', _sans_dernier_appel))
 
     def test_seul_le_sans_reponse_monte(self):
-        self.assertIsNone(services.prochain_palier_sans_reponse(
+        self.assertIsNone(cadence_filet.prochain_palier_sans_reponse(
             CLE_RAPPEL_CONVENU, 'rappel', _tous_actifs))
 
     def test_la_promesse_dit_le_dernier_essai(self):

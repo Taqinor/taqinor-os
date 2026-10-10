@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_filet
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_CONFIRMATION
@@ -227,11 +228,11 @@ class DeplacementMoteurTests(_Base):
         self.assertEqual(touche.due_initial_at, touche.due_at)
 
     def test_le_recalage_d_un_geste_de_visite_ne_compte_pas(self):
-        premiere = services._poser_etape_visite(
+        premiere = cadence_filet._poser_etape_visite(
             self.lead, cle=CLE_CONFIRMATION,
             ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION,
             quand=_a(3).date())
-        recalee = services._poser_etape_visite(
+        recalee = cadence_filet._poser_etape_visite(
             self.lead, cle=CLE_CONFIRMATION,
             ordre=cadence_reperes.VISITE_ORDRE_CONFIRMATION,
             quand=_a(6).date())

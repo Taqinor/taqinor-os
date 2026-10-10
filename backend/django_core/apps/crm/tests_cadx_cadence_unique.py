@@ -16,6 +16,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.crm import services
+from apps.crm import cadence_filet
 from apps.crm import cadence_plan
 from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -254,7 +255,7 @@ class TreadmillTests(CadxBase):
             statut=RelanceEtape.Statut.A_FAIRE).exists())
 
     def test_ceinture_jamais_le_meme_libelle_repose(self):
-        etape = services.assurer_prochaine_etape_apres_succes(
+        etape = cadence_filet.assurer_prochaine_etape_apres_succes(
             self.lead, self.user, avec_plan_devis=False,
             libelle_touche_close=cadence_reperes.FILET_JOINT_LIBELLE)
         self.assertIsNotNone(etape)

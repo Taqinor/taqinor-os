@@ -34,6 +34,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import cadence_config, horaires, services, stages
+from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm import cadence_reponses
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -228,13 +229,13 @@ class PalierDesactiveTests(_Base):
     def test_l_escalier_se_lit_en_cles(self):
         tous = lambda cle: True  # noqa: E731
         aucun = lambda cle: False  # noqa: E731
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'appel_apres_reponse', 'non_joint', tous), 'message_creneau')
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'appel_apres_reponse', 'non_joint', aucun), None)
-        self.assertEqual(services.prochain_palier_sans_reponse(
+        self.assertEqual(cadence_filet.prochain_palier_sans_reponse(
             'devis_modifie', 'non_joint', tous), 'dernier_appel')
-        self.assertIsNone(services.prochain_palier_sans_reponse(
+        self.assertIsNone(cadence_filet.prochain_palier_sans_reponse(
             'dernier_appel', 'non_joint', tous))
 
 
@@ -380,8 +381,8 @@ class DeuxSocietesTests(_Base):
             role_legacy='responsable', company=autre)
         lead_b = self._lead(autre, acteur_b, nom='Tazi')
 
-        services.assurer_prochaine_etape_apres_succes(self.lead, self.acteur)
-        services.assurer_prochaine_etape_apres_succes(lead_b, acteur_b)
+        cadence_filet.assurer_prochaine_etape_apres_succes(self.lead, self.acteur)
+        cadence_filet.assurer_prochaine_etape_apres_succes(lead_b, acteur_b)
 
         [a] = self._ouvertes()
         [b] = self._ouvertes(lead_b)

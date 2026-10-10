@@ -29,6 +29,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
+from apps.crm import cadence_filet
 from apps.crm import cadence_reperes
 from apps.crm.cadence_config import (
     CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_PLANIFIER, q_etape)
@@ -141,7 +142,7 @@ class LaTouchEstCloseTests(_Base):
 class LaTouchDejaAnnuleeResteAnnuleeTests(_Base):
 
     def test_l_etape_planifier_reste_annulee_et_la_note_part_au_chatter(self):
-        planifier = services.poser_filet_visite_a_planifier(
+        planifier = cadence_filet.poser_filet_visite_a_planifier(
             self.lead, self.acteur)
         resp = self._planifier(etape=planifier.pk, note_etape='Calé au tél.')
         self.assertEqual(resp.status_code, 201, resp.data)

@@ -39,6 +39,7 @@ from django.test import TestCase
 from testkit.time import frozen
 
 from apps.crm import horaires, services
+from apps.crm import cadence_filet
 from apps.crm import cadence_messages
 from apps.crm import cadence_reperes
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -325,7 +326,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
     def test_annule_le_filet_planifier_la_visite(self):
         with frozen(MAINTENANT):
-            filet = services.poser_filet_visite_a_planifier(
+            filet = cadence_filet.poser_filet_visite_a_planifier(
                 self.lead, self.acteur)
             self.assertIsNotNone(filet)
             services.appliquer_visite_planifiee(
