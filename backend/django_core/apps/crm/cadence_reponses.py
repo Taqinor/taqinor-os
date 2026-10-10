@@ -44,17 +44,15 @@ from .services import (
     annuler_rendez_vous_sur_arret,
     arreter_cadence,
     assurer_prochaine_etape_apres_succes,
-    avancer_stage_lead_vers,
     cause_rdv_perdu,
     demarrer_cadence_contact,
     deplacer_echeance_etape,
     initialiser_plan_relance,
     marquer_etape_relance,
-    poser_tag_lead,
     prochain_palier_sans_reponse,
     reporter_prochaine_touche,
-    retirer_tag_lead,
 )
+from .fiche_funnel import avancer_stage_lead_vers, poser_tag_lead, retirer_tag_lead
 from .cadence_messages import ETIQUETTES_RAISON_ATTENTE, PREFIXE_LIEN_LOCATAIRE, RAISONS_ATTENTE
 from .cadence_reperes import (
     FILET_JOINT_DELAI_JOURS,

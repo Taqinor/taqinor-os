@@ -1387,11 +1387,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # est journalisée et n'échoue plus un PATCH déjà écrit (LFICHE-5).
         from django.db import transaction
         from .services import (
-            _emit_stage_changed,
             recompute_lead_score,
             reporter_prochaine_touche,
             sync_relance_activity,
         )
+        from .fiche_funnel import _emit_stage_changed
         from .leads_premier_contact import maybe_set_first_contacted_at
         with transaction.atomic():
             # Décision fondateur 08/10/2026 — SORTIR de « Signé » par une
@@ -1401,9 +1401,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # avancé…) rend un 409 qui nomme la cause, rien n'est écrit.
             if (old.stage == stages.SIGNED and 'stage' in vd
                     and vd['stage'] != stages.SIGNED):
-                from .services import (
-                    SortieSigneBloquee, desaccepter_devis_du_lead,
-                )
+                from .fiche_funnel import SortieSigneBloquee, desaccepter_devis_du_lead
                 try:
                     desaccepter_devis_du_lead(old, self.request.user)
                 except SortieSigneBloquee as exc:
@@ -1486,7 +1484,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # la tâche FDA apparaît pour les étapes atteintes (idempotent).
         if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle
                 and new_lead.pompe_alim_actuelle == 'butane'):
-            from .services import rattraper_playbooks_pompe
+            from .fiche_funnel import rattraper_playbooks_pompe
             try:
                 rattraper_playbooks_pompe(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
@@ -1498,7 +1496,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if any(getattr(old, champ) != getattr(new_lead, champ)
                for champ in ('tension_raccordement', 'regularisation_8221',
                              'objectif_projet')):
-            from .services import rattraper_playbooks_8221
+            from .fiche_funnel import rattraper_playbooks_8221
             try:
                 rattraper_playbooks_8221(new_lead)
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead

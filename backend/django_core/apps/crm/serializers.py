@@ -1429,7 +1429,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # l'entonnoir doit être EXPLICITEMENT assumé (Froid = parking, jamais
         # une régression : _bulk_stage_allowed l'autorise déjà des deux côtés).
         if self.instance is not None and 'stage' in attrs:
-            from .services import _bulk_stage_allowed
+            from .fiche_funnel import _bulk_stage_allowed
             current = self.instance.stage
             target = attrs['stage']
             if target != current:

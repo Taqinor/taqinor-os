@@ -24,11 +24,11 @@ from .services import (
     arreter_cadence,
     arreter_cadence_du_lead_id,
     assurer_prochaine_etape_apres_succes,
-    avancer_stage_lead_vers,
     initialiser_plan_relance,
     phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
 )
+from .fiche_funnel import avancer_stage_lead_vers
 from .cadence_reperes import (
     OUTCOME_VISITE_ACCEPTEE,
     annuler_etapes_moteur_ouvertes,

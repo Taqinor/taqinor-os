@@ -26,8 +26,8 @@ from authentication.models import Company
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    arreter_cadence, avancer_stage_lead_vers, initialiser_plan_relance)
+from apps.crm.services import arreter_cadence, initialiser_plan_relance
+from apps.crm.fiche_funnel import avancer_stage_lead_vers
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

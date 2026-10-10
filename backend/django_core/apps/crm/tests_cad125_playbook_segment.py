@@ -24,7 +24,7 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, Playbook
-from apps.crm.services import playbooks_recommandes
+from apps.crm.fiche_funnel import playbooks_recommandes
 from apps.crm.cadence_messages import (
     PLAYBOOKS_SEGMENT_CAD125,
     cle_message_segment,
@@ -165,12 +165,12 @@ class LePlaybookPoseLaTacheTests(TestCase):
         lead = self._lead('agricole', pompe_alim_actuelle='diesel')
         self.assertEqual(self._noms_recommandes(lead), set())
         self.assertIsNone(cle_message_segment(lead))
-        from apps.crm.services import generer_playbook_progress
+        from apps.crm.fiche_funnel import generer_playbook_progress
         self.assertEqual(generer_playbook_progress(lead, stages.CONTACTED),
                          [])
 
     def test_agr525_au_butane_tache_et_cle_fda(self):
-        from apps.crm.services import generer_playbook_progress
+        from apps.crm.fiche_funnel import generer_playbook_progress
         lead = self._lead('agricole', pompe_alim_actuelle='butane')
         self.assertEqual(len(generer_playbook_progress(
             lead, stages.CONTACTED)), 1)
@@ -192,7 +192,7 @@ class LePlaybookPoseLaTacheTests(TestCase):
         self.assertEqual(
             LeadPlaybookProgress.objects.filter(lead=lead).count(), 1)
         # Rejouer ne double rien.
-        from apps.crm.services import rattraper_playbooks_pompe
+        from apps.crm.fiche_funnel import rattraper_playbooks_pompe
         lead.refresh_from_db()
         self.assertEqual(rattraper_playbooks_pompe(lead), [])
         self.assertEqual(
@@ -291,7 +291,7 @@ class Ciq517Tests(TestCase):
             stage=stages.CONTACTED, type_installation=segment, **extra)
 
     def _taches(self, lead):
-        from apps.crm.services import generer_playbook_progress
+        from apps.crm.fiche_funnel import generer_playbook_progress
         return generer_playbook_progress(lead, stages.CONTACTED)
 
     def test_a_commercial_bt_sans_regularisation_ni_revente(self):
@@ -316,7 +316,7 @@ class Ciq517Tests(TestCase):
 
     def test_deja_contacte_passe_en_mt_la_tache_apparait(self):
         from apps.crm.models import LeadPlaybookProgress
-        from apps.crm.services import rattraper_playbooks_8221
+        from apps.crm.fiche_funnel import rattraper_playbooks_8221
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.tokens import AccessToken
         lead = self._lead('industriel', tension_raccordement='bt')

@@ -16,9 +16,8 @@ from authentication.models import Company
 
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity
-from apps.crm.services import (
-    avancer_stage_sur_ouverture_devis, noter_devis_ouvert,
-)
+from apps.crm.services import noter_devis_ouvert
+from apps.crm.fiche_funnel import avancer_stage_sur_ouverture_devis
 
 
 def _make_lead(company, stage=stages.QUOTE_SENT, perdu=False):

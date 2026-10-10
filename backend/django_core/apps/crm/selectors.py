@@ -6611,7 +6611,7 @@ def leads_signes_sans_devis_accepte(company):
     Renvoie une liste de dicts ``{'id', 'stage', 'source'}`` — aucune donnée
     personnelle (le nom n'est pas lu). Scopé à ``company``."""
     from .models import Lead
-    from .services import _DEVIS_STATUT_ACCEPTE
+    from .fiche_funnel import _DEVIS_STATUT_ACCEPTE
     return list(
         Lead.objects
         .filter(lead_signe_q(), company=company)

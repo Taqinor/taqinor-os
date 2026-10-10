@@ -124,7 +124,7 @@ class WhatsappTypeTests(_Base):
     def test_un_whatsapp_compte_comme_prise_de_contact(self):
         """`_CONTACT_KINDS` : un WhatsApp fait avancer NEW → CONTACTED, comme
         un e-mail. C'est le canal principal de Meryem."""
-        from apps.crm.services import _CONTACT_KINDS
+        from apps.crm.fiche_funnel import _CONTACT_KINDS
         self.assertIn(LeadActivity.Kind.WHATSAPP, _CONTACT_KINDS)
         self.api.post(
             f'/api/django/crm/leads/{self.lead.pk}/log-interaction/',
