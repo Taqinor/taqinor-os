@@ -1241,6 +1241,21 @@ def _marqueurs_cgv_ci(devis, tva_note):
             "tva_note": tva_note or ""}
 
 
+def _source_cgv_ci(devis):
+    """CIQ218 / APDF12 — la variante C&I (``{titre, bullets, mode}``) GELÉE à
+    l'envoi, sinon — brouillon jamais envoyé — la variante vive ; ``None``
+    hors C&I ou sans variante."""
+    mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
+    if mode not in MODES_CGV_CI:
+        return None
+    gelees = [c for c in (getattr(devis, "clauses_appliquees", None) or [])
+              if isinstance(c, dict) and c.get("type") == "cgv_gelees"]
+    if gelees:
+        return gelees[0] if gelees[0].get("mode") else None
+    from apps.parametres.selectors import cgv_variante_ci
+    return cgv_variante_ci(getattr(devis, "company", None), mode)
+
+
 def cgv_ci_du_devis(devis, tva_note=""):
     """CIQ218 — les conditions générales C&I d'un devis commercial ou
     industriel, marqueurs substitués, ou ``None``.
@@ -1250,16 +1265,7 @@ def cgv_ci_du_devis(devis, tva_note=""):
     envoyé lit la variante vive de la société (``parametres.selectors.
     cgv_variante_ci``). Les puces société au ton résidentiel ne sont JAMAIS
     servies ici. Le moteur ne fait que RENDRE ce texte (règle #4)."""
-    mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
-    if mode not in MODES_CGV_CI:
-        return None
-    gelees = [c for c in (getattr(devis, "clauses_appliquees", None) or [])
-              if isinstance(c, dict) and c.get("type") == "cgv_gelees"]
-    if gelees:
-        source = gelees[0] if gelees[0].get("mode") else None
-    else:
-        from apps.parametres.selectors import cgv_variante_ci
-        source = cgv_variante_ci(getattr(devis, "company", None), mode)
+    source = _source_cgv_ci(devis)
     if not source or not isinstance(source.get("bullets"), list):
         return None
     valeurs = _marqueurs_cgv_ci(devis, tva_note)
@@ -3498,8 +3504,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # vives dans le bloc CGV STANDARD : un texte édité après l'envoi ne change
     # pas ce que le client a reçu. Copie : le dict mémoïsé est partagé.
     # Brouillon / jamais envoyé → pas d'entrée → textes vifs, inchangé.
+    # APDF12 — une variante C&I gelée (entrée portant un ``mode``) n'est
+    # JAMAIS recopiée ici : elle est servie par ``cgv_ci`` (titre compris,
+    # marqueurs substitués), via ``generate_devis_premium.cgv_imprimees``.
     for _c in (getattr(devis, "clauses_appliquees", None) or []):
         if (isinstance(_c, dict) and _c.get("type") == "cgv_gelees"
+                and not _c.get("mode")
                 and isinstance(_c.get("bullets"), list) and _c["bullets"]):
             doc_texts = dict(doc_texts, cgv_bullets=[
                 str(b) for b in _c["bullets"]])
@@ -4307,6 +4317,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _cgv_ci = cgv_ci_du_devis(devis, data.get("tva_note"))
     if _cgv_ci:
         data["cgv_ci"] = _cgv_ci
+        # APDF12 — le TITRE de la variante n'est plus jeté (clé posée
+        # seulement quand il est saisi).
+        _titre_ci = str((_source_cgv_ci(devis) or {}).get("titre")
+                        or "").strip()
+        if _titre_ci:
+            data["cgv_ci_titre"] = _titre_ci
 
     # ── PV86 — Avertissements INTERNES sur l'état des données du devis ───────
     # Additif : la clé n'est posée QUE lorsqu'il y a quelque chose à signaler →
@@ -4755,6 +4771,8 @@ def echapper_textes_client(data: dict) -> dict:
     # CIQ218 — conditions générales C&I : texte saisi par la société.
     if isinstance(sortie.get("cgv_ci"), list):
         sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]
+    if sortie.get("cgv_ci_titre"):
+        sortie["cgv_ci_titre"] = _e(sortie["cgv_ci_titre"])
     # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
     # elles n'étaient échappées par aucun des deux moteurs.
     for _cle in ("sans_bullets", "avec_bullets"):

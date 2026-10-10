@@ -364,18 +364,12 @@ def textes_bpa(d):
 def puces_conditions(d):
     """Les puces des conditions générales que le document IMPRIME.
 
-    * ``cgv_ci`` (CIQ218) : la variante C&I du mode, GELÉE à l'envoi,
-      marqueurs substitués par le builder ;
-    * sinon ``cgv_bullets_remplies(data)`` (QJR668) : les puces société
-      gelées à l'envoi (``doc_texts``), la fonction unique que la page
-      publique appelle déjà. Jamais ``cpq`` (parqué)."""
-    cgv_ci = d.get("cgv_ci")
-    puces = []
-    if isinstance(cgv_ci, list):
-        puces = [_txt(p) for p in cgv_ci if _txt(p)]
-    if not puces:
-        from ..generate_devis_premium import cgv_bullets_remplies
-        puces = [p for p in cgv_bullets_remplies(d) if _txt(p)]
+    APDF12 — lues de LA source ``generate_devis_premium.cgv_imprimees`` :
+    la variante C&I du mode (``cgv_ci``, gelée ou vive, marqueurs
+    substitués), sinon les puces société gelées ou vives. Jamais ``cpq``
+    (parqué)."""
+    from ..generate_devis_premium import cgv_imprimees
+    puces = [_txt(p) for p in cgv_imprimees(d)["puces"] if _txt(p)]
     # AMOT36 — troncature DÉCLARÉE posée par ``commercial.equip.
     # pdf_adaptatif`` quand le contrat de pages ne tient pas : les premières
     # puces restent, la suite est renvoyée à la proposition en ligne.
@@ -397,8 +391,14 @@ def bloc_conditions(d, prefixe, couleur_titre, couleur_texte):
         puces.append(tva_note)
     if not puces:
         return ""
-    titre = _txt(_doc_texts(d).get("cgv_titre")) or libelle(
-        d, "ci_cgv_titre", TITRE_CGV_DEFAUT)
+    # APDF12 — titre de ``cgv_imprimees`` (celui de la variante C&I, sinon
+    # la surcharge société) ; le défaut garde son libellé du catalogue.
+    from .. import i18n_labels
+    from ..generate_devis_premium import cgv_imprimees
+    titre = _txt(cgv_imprimees(d)["titre"])
+    if titre in (TITRE_CGV_DEFAUT, i18n_labels.libelle(
+            "ci_cgv_titre", d.get("langue_sortie"))):
+        titre = libelle(d, "ci_cgv_titre", TITRE_CGV_DEFAUT)
     items = "".join(f'<li style="margin-top:1px;">{p}</li>' for p in puces)
     return (
         f'<div class="{prefixe}-cond" style="margin-top:10px;'

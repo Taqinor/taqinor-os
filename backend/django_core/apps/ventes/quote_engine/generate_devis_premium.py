@@ -997,6 +997,35 @@ def cgv_bullets_remplies(data):
         valid_until=(data.get("valid_until") or "").strip(), langue=langue)
 
 
+def cgv_imprimees(data):
+    """APDF12 (C-APDF-005) — LES conditions générales imprimées, forme
+    ``{"titre": str, "puces": [str]}`` (figée ; servie au PDF par
+    ``ci/blocs``, à la page publique — APDF19 — et au portail — APDF35).
+
+    * devis C&I à variante (``data['cgv_ci']``, gelée à l'envoi ou vive,
+      marqueurs {echeancier}/{retenue}/{tva_note} substitués par le builder)
+      → SES puces et SON titre (``data['cgv_ci_titre']``) ;
+    * sinon les puces société gelées ou vives (:func:`cgv_bullets_remplies`).
+    Titre de repli : surcharge société (``doc_texts['cgv_titre']``), sinon
+    celui du moteur dans la langue du document. Pure."""
+    data = data or {}
+    textes = data.get("doc_texts")
+    textes = textes if isinstance(textes, dict) else {}
+    langue = data.get("langue_sortie")
+    titre = str(textes.get("cgv_titre") or "").strip()
+    if not titre or titre == DEFAULT_DOC_TEXTS["cgv_titre"]:
+        titre = (DEFAULT_DOC_TEXTS["cgv_titre"]
+                 if i18n_labels.normaliser(langue) == "fr"
+                 else i18n_labels.libelle("ci_cgv_titre", langue))
+    ci = data.get("cgv_ci")
+    puces_ci = ([str(p) for p in ci if str(p).strip()]
+                if isinstance(ci, list) else [])
+    if puces_ci:
+        return {"titre": str(data.get("cgv_ci_titre") or "").strip() or titre,
+                "puces": puces_ci}
+    return {"titre": titre, "puces": cgv_bullets_remplies(data)}
+
+
 def _cgv_bullets_html():
     """Puces CGV éditables rendues avec le MÊME enrobage <li> qu'avant.
 
