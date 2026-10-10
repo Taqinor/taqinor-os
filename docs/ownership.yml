@@ -1023,6 +1023,8 @@ append_only:
     rule: "variables ajoutées sous le bloc commenté de leur module ; jamais renommer une variable existante"
   - path: docs/ownership.yml
     rule: "une tâche n'ajoute ou ne retire QUE les globs de SON propriétaire (dans son bloc) ; jamais réordonner ni toucher le bloc d'un autre (hors racines : vérifié par la garde elle-même)"
+  - path: backend/django_core/apps/crm/selectors.py
+    rule: "façade pure : une ligne de ré-export par nouveau nom, dans le bloc de son module ; jamais un corps (SPL89)"
 
 # Plan → propriétaire(s). Chaque owners.<x>.plan lie déjà son plan ; ici les fichiers plan
 # historiques. Les propriétaires `platform` / `transverse` / `parked` sont exemptés de la règle
